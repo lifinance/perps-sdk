@@ -448,94 +448,11 @@ try {
 
 ## TypeScript Support
 
-All types and enums are exported:
+The SDK is fully typed. All types, interfaces, and enums are exported from the package entry point:
 
 ```typescript
-// Domain types
-import type {
-  Market,
-  Order,
-  Position,
-  OpenOrder,
-  Balance,
-  HistoryItem,
-  Dex,
-  Candle,
-  AccountResponse,
-  HistoryResponse,
-  OrderbookResponse,
-  PricesResponse,
-  OhlcvResponse,
-  OhlcvInterval,
-  Pagination,
-} from '@lifi/perps-sdk'
-
-// Authorization & trading types
-import type {
-  AuthorizationInput,
-  AuthorizationAction,
-  SignedAuthorization,
-  OrderAction,
-  SignedOrderAction,
-  CreateOrderResponse,
-  CreateAuthorizationResponse,
-  SubmitOrderResponse,
-  CancelOrderPayloadResponse,
-  PerpsTypedData,
-  PerpsSignedTypedData,
-} from '@lifi/perps-sdk'
-
-// Client & config types
-import type {
-  PerpsConfig,
-  PerpsBaseConfig,
-  PerpsSDKClient,
-  PerpsClientOptions,
-  SDKRequestOptions,
-  SigningMode,
-  PlaceOrderParams,
-  CancelOrdersParams,
-  BuildAuthorizationParams,
-  GetRequiredAuthorizationsParams,
-  ExecuteAuthorizationsParams,
-  RequiredAuthorizationsResult,
-  ExecuteAuthorizationsResult,
-  StorageAdapter,
-  Agent,
-} from '@lifi/perps-sdk'
-
-// Service param types
-import type {
-  GetMarketsParams,
-  GetMarketParams,
-  GetPricesParams,
-  GetOhlcvParams,
-  GetOrderbookParams,
-  GetAccountParams,
-  GetHistoryParams,
-  GetOrderParams,
-  CreateOrderParams,
-  CancelOrderParams,
-  CreateAuthorizationParams,
-  SubmitAuthorizationParams,
-  SubmitOrderParams,
-} from '@lifi/perps-sdk'
-
-// Enums
-import {
-  OrderSide,        // BUY, SELL
-  OrderType,        // MARKET, LIMIT
-  OrderStatus,      // PENDING, OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED, EXPIRED, TRIGGERED
-  PositionSide,     // LONG, SHORT
-  MarginMode,       // ISOLATED, CROSS
-  TimeInForce,      // GTC, IOC, POST_ONLY, GTT
-  HistoryItemStatus,// FILLED, PARTIALLY_FILLED, CANCELLED, REJECTED
-  OrderActionType,  // updateLeverage, placeOrder, placeTriggerOrder, cancelOrder
-  TriggerCondition, // ABOVE, BELOW
-  TriggerOrderType, // TAKE_PROFIT, STOP_LOSS
-  TriggerOrderStatus,// WAITING, TRIGGERED, CANCELLED
-  PerpsErrorCode,   // Numeric error codes (2000+ range)
-} from '@lifi/perps-sdk'
+import { OrderSide, OrderType, TimeInForce, PerpsErrorCode } from '@lifi/perps-sdk'
+import type { Market, Order, Position, PerpsConfig } from '@lifi/perps-sdk'
 ```
 
 ## License
