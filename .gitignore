@@ -1,0 +1,43 @@
+# build
+dist
+cjs
+esm
+types
+_esm/
+_cjs/
+_types/
+
+# IDE
+.idea/
+.vscode-test
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage
+*.lcov
+.nyc_output
+
+# Dependencies
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# dotenv environment variables
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db

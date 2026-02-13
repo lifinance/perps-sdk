@@ -1,0 +1,48 @@
+import type {
+  PerpsSDKClient,
+  SDKRequestOptions,
+} from '../client/createPerpsClient.js'
+import type { Address, Order } from '../types/perps.js'
+import { buildUrl, request } from '../utils/request.js'
+
+export interface GetOrderParams {
+  /** DEX to get order from (e.g., 'hyperliquid') */
+  dex: string
+  /** Wallet address */
+  address: Address
+  /** Order ID */
+  id: string
+}
+
+/**
+ * Get a specific order by ID.
+ *
+ * @param client - The SDK client instance
+ * @param params - Request parameters
+ * @param options - Request options (e.g., AbortSignal)
+ * @returns Order details
+ * @throws {HTTPError} On API error responses (e.g., 404 if order not found)
+ * @throws {PerpsError} On network or parsing errors
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({ integrator: 'my-app' })
+ * const order = await getOrder(client, {
+ *   dex: 'hyperliquid',
+ *   address: '0x1234...',
+ *   id: '123456'
+ * })
+ * console.log(order) // { orderId: '123456', status: 'FILLED', ... }
+ * ```
+ */
+export async function getOrder(
+  client: PerpsSDKClient,
+  params: GetOrderParams,
+  options?: SDKRequestOptions
+): Promise<Order> {
+  const url = buildUrl(`${client.config.apiUrl}/order/${params.id}`, {
+    dex: params.dex,
+    address: params.address,
+  })
+  return request<Order>(client.config, url, {}, options)
+}

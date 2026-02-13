@@ -1,0 +1,4 @@
+{
+  "ignore": ["scripts/**", "**/version.ts"],
+  "ignoreDependencies": ["@vitest/coverage-v8", "@lifi/perps-types"]
+}
