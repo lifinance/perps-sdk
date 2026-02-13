@@ -1,0 +1,98 @@
+{
+  "name": "@lifi/perps-types",
+  "version": "0.1.0",
+  "description": "Shared types for the LI.FI perps stack",
+  "keywords": [
+    "lifi",
+    "perps",
+    "perpetuals",
+    "types",
+    "defi",
+    "trading",
+    "cross-chain"
+  ],
+  "homepage": "https://github.com/lifinance/perps-types",
+  "bugs": {
+    "url": "https://github.com/lifinance/perps-types"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/lifinance/perps-types.git"
+  },
+  "license": "Apache-2.0",
+  "author": "LI.FI <github@li.finance>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/_types/index.d.ts",
+      "import": "./src/_esm/index.js",
+      "default": "./src/_cjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./src/_cjs/index.js",
+  "module": "./src/_esm/index.js",
+  "types": "./src/_types/index.d.ts",
+  "typings": "./src/_types/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "!src/**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types",
+    "build:cjs": "tsc --project ./tsconfig.build.json --module commonjs --outDir ./src/_cjs --removeComments --verbatimModuleSyntax false && printf '{\"type\":\"commonjs\"}' > ./src/_cjs/package.json",
+    "build:esm": "tsc --project ./tsconfig.build.json --module es2015 --outDir ./src/_esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/_esm/package.json",
+    "build:types": "tsc --project ./tsconfig.build.json --module esnext --declarationDir ./src/_types --emitDeclarationOnly --declaration --declarationMap",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo src/tsconfig.build.tsbuildinfo src/_esm src/_cjs src/_types",
+    "lint:fix": "eslint --ext .tsx --ext .ts ./src --fix",
+    "package": "npm run build && npm pack",
+    "postinstall": "husky",
+    "postpack": "pinst --enable",
+    "pre-commit": "lint-staged",
+    "pre-push": "pnpm build",
+    "prepack": "pinst --disable",
+    "prepublishOnly": "pnpm node scripts/prepublishOnly.js",
+    "release": "standard-version -a",
+    "release:alpha": "standard-version -a --prerelease alpha --skip.changelog",
+    "release:beta": "standard-version -a --prerelease beta --skip.changelog",
+    "prettier:fix": "prettier --write ./src/.",
+    "typecheck": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "pnpm run lint:fix",
+      "pnpm run prettier:fix"
+    ]
+  },
+  "dependencies": {
+    "@lifi/types": "^17.57.0",
+    "viem": "^2.33.2"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@types/fs-extra": "^11.0.4",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.5.3",
+    "fs-extra": "^11.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.4",
+    "pinst": "^3.0.0",
+    "prettier": "^3.6.2",
+    "standard-version": "^9.5.0",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748",
+  "publishConfig": {
+    "access": "public"
+  },
+  "standard-version": {
+    "scripts": {
+      "postbump": "git add ."
+    }
+  }
+}
