@@ -27,21 +27,21 @@ jobs:
           prerelease: false
 
   # Holding back publishing while in beta
-  # publish:
-  #   permissions:
-  #     contents: write
-  #     id-token: write
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Install dependencies
-  #       uses: ./.github/actions/pnpm-install
-  #     - name: Build
-  #       run: pnpm build
-  #     - name: Publish to npm
-  #       run: |
-  #         pnpm publish --no-git-checks --access public \
-  #         ${{ contains(github.ref_name, 'alpha') && '--tag alpha' || contains(github.ref_name, 'beta') && '--tag beta' || '' }}
-  #       env:
-  #         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-  #         NPM_CONFIG_PROVENANCE: true
+  publish:
+    permissions:
+      contents: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+      - name: Build
+        run: pnpm build
+      - name: Publish to npm
+        run: |
+          pnpm publish --no-git-checks --access public \
+          ${{ contains(github.ref_name, 'alpha') && '--tag alpha' || contains(github.ref_name, 'beta') && '--tag beta' || '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
