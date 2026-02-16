@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1-alpha.0",
   "description": "LI.FI Perps SDK for perpetuals trading",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
