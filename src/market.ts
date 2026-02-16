@@ -15,6 +15,7 @@ export interface Dex {
   name: string
   logoURI: string
   authorizations: Authorization[]
+  extraData?: Record<string, unknown>
 }
 
 export interface DexesResponse {
