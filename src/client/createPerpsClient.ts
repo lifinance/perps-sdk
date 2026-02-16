@@ -1,8 +1,8 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsErrorName } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { PerpsErrorCode } from '../types/perps.js'
 import { sleep } from '../utils/sleep.js'
 
 const DEFAULT_API_URL = 'https://li.quest/v1/perps'

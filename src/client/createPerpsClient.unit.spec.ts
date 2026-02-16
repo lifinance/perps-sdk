@@ -1,7 +1,7 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../test/handlers.js'
-import { PerpsErrorCode } from '../types/perps.js'
 import { createPerpsClient } from './createPerpsClient.js'
 
 describe('createPerpsClient', () => {

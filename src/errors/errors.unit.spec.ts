@@ -1,5 +1,5 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { PerpsErrorCode } from '../types/perps.js'
 import { AgentError } from './AgentError.js'
 import { PerpsError } from './PerpsError.js'
 import { PerpsSDKError } from './PerpsSDKError.js'

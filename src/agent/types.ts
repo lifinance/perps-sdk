@@ -1,4 +1,4 @@
-import type { Address, Hex } from '../types/perps.js'
+import type { Address, Hex } from '@lifi/perps-types'
 
 /**
  * Agent keypair for signing trading actions.

@@ -1,8 +1,8 @@
+import type { Address, Order } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { Address, Order } from '../types/perps.js'
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOrderParams {

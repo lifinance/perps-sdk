@@ -1,5 +1,5 @@
-import type { PerpsErrorBody } from '../types/perps.js'
-import { PerpsErrorCode } from '../types/perps.js'
+import type { PerpsErrorBody } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsErrorName } from './constants.js'
 import { PerpsError } from './PerpsError.js'
 

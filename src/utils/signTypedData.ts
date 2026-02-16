@@ -1,5 +1,5 @@
+import type { Hex, PerpsTypedData } from '@lifi/perps-types'
 import { privateKeyToAccount } from 'viem/accounts'
-import type { Hex, PerpsTypedData } from '../types/perps.js'
 
 /**
  * Sign EIP-712 typed data with a private key.

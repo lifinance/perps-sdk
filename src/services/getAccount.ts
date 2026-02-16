@@ -1,8 +1,8 @@
+import type { AccountResponse, Address } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { AccountResponse, Address } from '../types/perps.js'
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetAccountParams {

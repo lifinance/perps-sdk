@@ -1,4 +1,3 @@
-import type { StorageAdapter } from '../agent/types.js'
 import type {
   Address,
   AuthorizationInput,
@@ -8,7 +7,8 @@ import type {
   SignedAuthorization,
   TimeInForce,
   TriggerOrderInput,
-} from '../types/perps.js'
+} from '@lifi/perps-types'
+import type { StorageAdapter } from '../agent/types.js'
 
 // Re-export the SDK client types from createPerpsClient
 export type {

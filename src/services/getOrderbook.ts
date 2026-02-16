@@ -1,8 +1,8 @@
+import type { OrderbookResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { OrderbookResponse } from '../types/perps.js'
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOrderbookParams {

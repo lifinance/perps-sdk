@@ -1,8 +1,8 @@
+import type { OhlcvInterval, OhlcvResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { OhlcvInterval, OhlcvResponse } from '../types/perps.js'
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOhlcvParams {

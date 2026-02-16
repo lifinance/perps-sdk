@@ -1,5 +1,3 @@
-import { HttpResponse, http } from 'msw'
-import { setupServer } from 'msw/node'
 import type {
   AccountResponse,
   AuthorizationsResponse,
@@ -14,7 +12,7 @@ import type {
   OrderbookResponse,
   PricesResponse,
   SubmitOrderResponse,
-} from '../src/types/perps.js'
+} from '@lifi/perps-types'
 import {
   HistoryItemStatus,
   MarginMode,
@@ -23,7 +21,9 @@ import {
   OrderStatus,
   OrderType,
   PositionSide,
-} from '../src/types/perps.js'
+} from '@lifi/perps-types'
+import { HttpResponse, http } from 'msw'
+import { setupServer } from 'msw/node'
 
 const BASE_URL = 'https://li.quest/v1/perps'
 const HEALTH_URL = 'https://li.quest/health/live'

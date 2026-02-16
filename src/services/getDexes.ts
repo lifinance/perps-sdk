@@ -1,8 +1,8 @@
+import type { DexesResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { DexesResponse } from '../types/perps.js'
 import { request } from '../utils/request.js'
 
 /**

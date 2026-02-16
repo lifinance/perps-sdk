@@ -1,4 +1,4 @@
-import { PerpsErrorCode } from '../types/perps.js'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { version } from '../version.js'
 import { PerpsError } from './PerpsError.js'
 

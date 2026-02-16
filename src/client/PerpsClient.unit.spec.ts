@@ -1,6 +1,6 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMemoryStorage } from '../agent/storage.js'
-import { PerpsErrorCode } from '../types/perps.js'
 import { PerpsClient } from './PerpsClient.js'
 
 describe('PerpsClient', () => {

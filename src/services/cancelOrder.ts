@@ -1,8 +1,8 @@
+import type { Address, CancelOrderPayloadResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { Address, CancelOrderPayloadResponse } from '../types/perps.js'
 import { request } from '../utils/request.js'
 
 export interface CancelOrderParams {

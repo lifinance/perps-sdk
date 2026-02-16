@@ -1,14 +1,3 @@
-import { PerpsErrorMessage } from '../errors/constants.js'
-import { PerpsError } from '../errors/PerpsError.js'
-import { cancelOrder } from '../services/cancelOrder.js'
-import { createAuthorization } from '../services/createAuthorization.js'
-import { createOrder } from '../services/createOrder.js'
-import { getAccount } from '../services/getAccount.js'
-import { getDexes } from '../services/getDexes.js'
-import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
-import { submitAuthorization } from '../services/submitAuthorization.js'
-import type { SubmitOrderParams } from '../services/submitOrder.js'
-import { submitOrder } from '../services/submitOrder.js'
 import type {
   Address,
   AuthorizationInput,
@@ -20,8 +9,19 @@ import type {
   SignedAuthorization,
   SignedOrderAction,
   SubmitOrderResponse,
-} from '../types/perps.js'
-import { PerpsErrorCode } from '../types/perps.js'
+} from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsErrorMessage } from '../errors/constants.js'
+import { PerpsError } from '../errors/PerpsError.js'
+import { cancelOrder } from '../services/cancelOrder.js'
+import { createAuthorization } from '../services/createAuthorization.js'
+import { createOrder } from '../services/createOrder.js'
+import { getAccount } from '../services/getAccount.js'
+import { getDexes } from '../services/getDexes.js'
+import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
+import { submitAuthorization } from '../services/submitAuthorization.js'
+import type { SubmitOrderParams } from '../services/submitOrder.js'
+import { submitOrder } from '../services/submitOrder.js'
 import { signTypedData } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import type {

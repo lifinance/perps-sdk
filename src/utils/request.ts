@@ -1,10 +1,10 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import type {
   PerpsBaseConfig,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
 import { HTTPError } from '../errors/HTTPError.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { PerpsErrorCode } from '../types/perps.js'
 import { version } from '../version.js'
 import { sleep } from './sleep.js'
 

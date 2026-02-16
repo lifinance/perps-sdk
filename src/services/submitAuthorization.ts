@@ -1,12 +1,12 @@
 import type {
-  PerpsSDKClient,
-  SDKRequestOptions,
-} from '../client/createPerpsClient.js'
-import type {
   Address,
   AuthorizationsResponse,
   SignedAuthorization,
-} from '../types/perps.js'
+} from '@lifi/perps-types'
+import type {
+  PerpsSDKClient,
+  SDKRequestOptions,
+} from '../client/createPerpsClient.js'
 import { request } from '../utils/request.js'
 
 export interface SubmitAuthorizationParams {

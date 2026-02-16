@@ -1,8 +1,8 @@
+import type { MarketsResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import type { MarketsResponse } from '../types/perps.js'
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetMarketsParams {
