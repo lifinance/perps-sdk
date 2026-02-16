@@ -2,15 +2,6 @@
 
 TypeScript SDK for the LI.FI Perps API. Trade perpetuals across multiple DEXes with a unified interface.
 
-## Prerequisites
-
-This package depends on `@lifi/perps-types`, which lives in a sibling directory (`../perps-types`). Make sure you have it cloned locally before building:
-
-```bash
-git clone <perps-types-repo-url> ../perps-types
-cd ../perps-types && npm install && npm run build
-```
-
 ## Installation
 
 ```bash
