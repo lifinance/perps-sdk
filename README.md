@@ -1,3 +1,12 @@
+<div align="center">
+
+[![license](https://img.shields.io/github/license/lifinance/perps-sdk)](/LICENSE)
+[![npm latest package](https://img.shields.io/npm/v/@lifi/perps-sdk/latest.svg)](https://www.npmjs.com/package/@lifi/perps-sdk)
+[![npm downloads](https://img.shields.io/npm/dm/@lifi/perps-sdk.svg)](https://www.npmjs.com/package/@lifi/perps-sdk)
+[![Follow on Twitter](https://img.shields.io/twitter/follow/lifiprotocol.svg?label=follow+LI.FI)](https://twitter.com/lifiprotocol)
+
+</div>
+
 # @lifi/perps-sdk
 
 TypeScript SDK for the LI.FI Perps API. Trade perpetuals across multiple DEXes with a unified interface.
@@ -445,6 +454,24 @@ The SDK is fully typed. All types, interfaces, and enums are exported from the p
 import { OrderSide, OrderType, TimeInForce, PerpsErrorCode } from '@lifi/perps-sdk'
 import type { Market, Order, Position, PerpsConfig } from '@lifi/perps-sdk'
 ```
+
+## Release
+
+The package uses `standard-version` to generate a changelog based on semantic commit history. The `standard-version` package also handles version numbering.
+
+Once main is up to date with the changes to be released execute the following command on the main branch to invoke `standard-version`:
+
+```bash
+pnpm release
+```
+
+Then to release:
+
+```bash
+git push --follow-tags origin main
+```
+
+This will push a newly created git tag to the remote repository, which will trigger a github action which will publish the new version to npm.
 
 ## License
 
