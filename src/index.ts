@@ -17,6 +17,7 @@ export { createPerpsClient } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export type {
   BuildAuthorizationParams,
+  BuildWithdrawalParams,
   CancelOrdersParams,
   ExecuteAuthorizationsParams,
   ExecuteAuthorizationsResult,
@@ -48,6 +49,8 @@ export type { CreateAuthorizationParams } from './services/createAuthorization.j
 export { createAuthorization } from './services/createAuthorization.js'
 export type { CreateOrderParams } from './services/createOrder.js'
 export { createOrder } from './services/createOrder.js'
+export type { CreateWithdrawalParams } from './services/createWithdrawal.js'
+export { createWithdrawal } from './services/createWithdrawal.js'
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export { getDexes } from './services/getDexes.js'
@@ -69,6 +72,8 @@ export type { SubmitAuthorizationParams } from './services/submitAuthorization.j
 export { submitAuthorization } from './services/submitAuthorization.js'
 export type { SubmitOrderParams } from './services/submitOrder.js'
 export { submitOrder } from './services/submitOrder.js'
+export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
+export { submitWithdrawal } from './services/submitWithdrawal.js'
 
 // Utils
 export { signTypedData } from './utils/signTypedData.js'

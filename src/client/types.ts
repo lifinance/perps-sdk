@@ -7,6 +7,7 @@ import type {
   SignedAuthorization,
   TimeInForce,
   TriggerOrderInput,
+  WithdrawalInput,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
 
@@ -89,6 +90,18 @@ export interface PlaceOrderParams {
   takeProfit?: TriggerOrderInput
   /** Stop loss trigger */
   stopLoss?: TriggerOrderInput
+}
+
+/**
+ * Parameters for building a withdrawal payload.
+ */
+export interface BuildWithdrawalParams {
+  /** DEX to withdraw from */
+  dex: string
+  /** User wallet address (account owner) */
+  address: Address
+  /** Withdrawal details */
+  withdrawal: WithdrawalInput
 }
 
 /**

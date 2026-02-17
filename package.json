@@ -56,7 +56,7 @@
     "postinstall": "husky"
   },
   "dependencies": {
-    "@lifi/perps-types": "^0.1.1-alpha.0",
+    "@lifi/perps-types": "^0.1.1-alpha.1",
     "viem": "^2.21.0"
   },
   "devDependencies": {

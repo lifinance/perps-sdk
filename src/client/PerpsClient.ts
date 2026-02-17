@@ -5,10 +5,12 @@ import type {
   CancelOrderPayloadResponse,
   CreateAuthorizationResponse,
   CreateOrderResponse,
+  CreateWithdrawalResponse,
   OrderActionType,
   SignedAuthorization,
   SignedOrderAction,
   SubmitOrderResponse,
+  SubmitWithdrawalResponse,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsErrorMessage } from '../errors/constants.js'
@@ -16,16 +18,20 @@ import { PerpsError } from '../errors/PerpsError.js'
 import { cancelOrder } from '../services/cancelOrder.js'
 import { createAuthorization } from '../services/createAuthorization.js'
 import { createOrder } from '../services/createOrder.js'
+import { createWithdrawal } from '../services/createWithdrawal.js'
 import { getAccount } from '../services/getAccount.js'
 import { getDexes } from '../services/getDexes.js'
 import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
 import { submitAuthorization } from '../services/submitAuthorization.js'
 import type { SubmitOrderParams } from '../services/submitOrder.js'
 import { submitOrder } from '../services/submitOrder.js'
+import type { SubmitWithdrawalParams } from '../services/submitWithdrawal.js'
+import { submitWithdrawal } from '../services/submitWithdrawal.js'
 import { signTypedData } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import type {
   BuildAuthorizationParams,
+  BuildWithdrawalParams,
   CancelOrdersParams,
   ExecuteAuthorizationsParams,
   ExecuteAuthorizationsResult,
@@ -433,6 +439,39 @@ export class PerpsClient {
     params: SubmitOrderParams
   ): Promise<SubmitOrderResponse> {
     return submitOrder(this.sdkClient, params)
+  }
+
+  /**
+   * Build a withdrawal payload for the user to sign.
+   *
+   * Withdrawals are user-signed only — agents cannot initiate withdrawals.
+   * No agent injection is performed regardless of signing mode.
+   *
+   * @param params - Withdrawal parameters
+   * @returns Withdrawal action with typed data for signing
+   */
+  async buildWithdrawal(
+    params: BuildWithdrawalParams
+  ): Promise<CreateWithdrawalResponse> {
+    return createWithdrawal(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      withdrawal: params.withdrawal,
+    })
+  }
+
+  /**
+   * Submit a signed withdrawal.
+   *
+   * Withdrawals are user-signed only — agents cannot initiate withdrawals.
+   *
+   * @param params - Signed withdrawal parameters
+   * @returns Withdrawal result
+   */
+  async submitWithdrawal(
+    params: SubmitWithdrawalParams
+  ): Promise<SubmitWithdrawalResponse> {
+    return submitWithdrawal(this.sdkClient, params)
   }
 
   /**
