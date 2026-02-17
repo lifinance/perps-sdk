@@ -506,6 +506,9 @@ export class PerpsClient {
     const agents = account.config.agents as
       | Array<{ address: string; validUntil: number }>
       | undefined
+    const builderFeeApproval = account.config.builderFeeApproval as
+      | { builderAddress: string; maxFeeRate: string; approved: boolean }
+      | undefined
 
     const userAuthorizations: AuthorizationInput[] = []
     const agentAuthorizations: AuthorizationInput[] = []
@@ -555,7 +558,12 @@ export class PerpsClient {
         }
       }
     } else {
-      // Agent is valid - check abstraction only
+      // Agent is valid — check builder fee approval independently
+      if (hasBuilderFee && builderFeeApproval && !builderFeeApproval.approved) {
+        userAuthorizations.push({ key: 'ApproveBuilderFee' })
+      }
+
+      // Check abstraction
       if (requireAbstraction && !isAbstractionEnabled(abstractionStatus)) {
         if (abstractionStatus === null) {
           // null → agent can auto-enable (no user signature needed)
