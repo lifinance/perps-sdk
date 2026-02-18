@@ -32,6 +32,9 @@ export interface CreateWithdrawalParams {
  * @throws {HTTPError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
+ * @remarks
+ * The example below uses Hyperliquid. Withdrawal mechanics vary by DEX.
+ *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })

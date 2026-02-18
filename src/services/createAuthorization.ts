@@ -31,6 +31,10 @@ export interface CreateAuthorizationParams {
  * @throws {HTTPError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
+ * @remarks
+ * The example below uses Hyperliquid authorization keys. Use `getDexes()` to discover
+ * available authorizations for each DEX.
+ *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })

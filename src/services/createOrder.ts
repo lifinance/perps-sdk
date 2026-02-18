@@ -56,6 +56,9 @@ export interface CreateOrderParams {
  * @throws {HTTPError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
+ * @remarks
+ * The example below uses Hyperliquid. Replace the `dex` value for other DEXes.
+ *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
