@@ -27,6 +27,9 @@ export type {
   RequiredAuthorizationsResult,
   SigningMode,
 } from './client/types.js'
+// Dex
+export { getDexAuthProvider } from './dex/registry.js'
+export type { DexAuthInputs, DexAuthProvider } from './dex/types.js'
 export { AgentError } from './errors/AgentError.js'
 export { PerpsErrorMessage, PerpsErrorName } from './errors/constants.js'
 // Errors

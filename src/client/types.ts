@@ -1,5 +1,6 @@
 import type {
   Address,
+  AuthorizationAction,
   AuthorizationInput,
   AuthorizationsResponse,
   OrderSide,
@@ -124,22 +125,16 @@ export interface GetRequiredAuthorizationsParams {
   dex: string
   /** User wallet address */
   address: Address
-  /** Whether to require abstraction (for HIP-3 assets). Default: false */
-  requireAbstraction?: boolean
 }
 
 /**
  * Result from getRequiredAuthorizations().
  */
 export interface RequiredAuthorizationsResult {
-  /** Authorizations requiring user wallet signature (0, 1, or 2 items) */
-  userAuthorizations: AuthorizationInput[]
-  /** Authorizations the SDK auto-signs with the agent after user auths are submitted */
-  agentAuthorizations: AuthorizationInput[]
-  /** Whether the local agent is registered and valid on the backend */
-  agentValid: boolean
-  /** The raw abstractionStatus from config (null=never set, 'disabled', 'unifiedAccount', 'portfolioMargin') */
-  abstractionStatus: string | null
+  /** Authorization actions requiring user wallet signature (with typed data for signing) */
+  userAuthorizations: AuthorizationAction[]
+  /** Authorization actions the SDK auto-signs with the agent (with typed data) */
+  agentAuthorizations: AuthorizationAction[]
   /** Whether all authorizations are already satisfied (ready to trade) */
   isReady: boolean
 }

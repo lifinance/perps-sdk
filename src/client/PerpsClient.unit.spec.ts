@@ -124,16 +124,17 @@ describe('PerpsClient', () => {
   })
 
   describe('buildAuthorization', () => {
-    it('should auto-inject agent address in USER_AGENT mode', async () => {
+    it('should auto-inject signerAddress in USER_AGENT mode', async () => {
       await client.setSigningMode(userAddress, dex, 'USER_AGENT')
 
       const result = await client.buildAuthorization({
         dex,
         address: userAddress,
-        authorizations: [{ key: 'ApproveAgent' }],
+        authorizations: [
+          { key: 'ApproveAgent', params: { agentAddress: '0xagent' } },
+        ],
       })
 
-      // The mock returns the action, we verify it was called with correct params
       expect(result.actions).toHaveLength(1)
       expect(result.actions[0].action).toBe('ApproveAgent')
     })

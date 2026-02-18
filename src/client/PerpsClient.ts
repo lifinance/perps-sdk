@@ -1,6 +1,5 @@
 import type {
   Address,
-  AuthorizationInput,
   AuthorizationsResponse,
   CancelOrderPayloadResponse,
   CreateAuthorizationResponse,
@@ -13,14 +12,13 @@ import type {
   SubmitWithdrawalResponse,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import { getDexAuthProvider } from '../dex/registry.js'
 import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { cancelOrder } from '../services/cancelOrder.js'
 import { createAuthorization } from '../services/createAuthorization.js'
 import { createOrder } from '../services/createOrder.js'
 import { createWithdrawal } from '../services/createWithdrawal.js'
-import { getAccount } from '../services/getAccount.js'
-import { getDexes } from '../services/getDexes.js'
 import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
 import { submitAuthorization } from '../services/submitAuthorization.js'
 import type { SubmitOrderParams } from '../services/submitOrder.js'
@@ -54,6 +52,9 @@ import type {
  * - Auto-injects agent address into authorization requests
  * - Auto-signs trading actions with the agent key
  *
+ * @remarks
+ * The example below uses Hyperliquid. Authorization keys and parameters are DEX-specific.
+ *
  * @example
  * ```ts
  * const perps = new PerpsClient({ integrator: 'my-app' })
@@ -61,14 +62,10 @@ import type {
  * // Set up agent signing for a user + DEX pair
  * await perps.setSigningMode(userAddress, 'hyperliquid', 'USER_AGENT')
  *
- * // Build authorization (agent address auto-injected)
- * const { actions } = await perps.buildAuthorization({
+ * // Check and execute required authorizations
+ * const required = await perps.getRequiredAuthorizations({
  *   dex: 'hyperliquid',
  *   address: userAddress,
- *   authorizations: [
- *     { key: 'ApproveAgent' },
- *     { key: 'ApproveBuilderFee' }
- *   ]
  * })
  *
  * // ... sign actions with user wallet ...
@@ -182,8 +179,7 @@ export class PerpsClient {
    * Build authorization payloads for signing.
    *
    * In `USER` mode, `signerAddress` is omitted (backend defaults to `address`).
-   * In `USER_AGENT` mode, auto-injects the agent address as `signerAddress`
-   * and `agentAddress` param for `ApproveAgent` authorization.
+   * In `USER_AGENT` mode, auto-injects the agent address as `signerAddress`.
    *
    * @param params - Authorization parameters
    * @returns Authorization actions with typed data for signing
@@ -192,7 +188,7 @@ export class PerpsClient {
     params: BuildAuthorizationParams
   ): Promise<CreateAuthorizationResponse> {
     const mode = this.getSigningMode(params.address, params.dex)
-    let { signerAddress, authorizations } = params
+    let { signerAddress } = params
 
     if (mode === 'USER_AGENT') {
       const agent = await this.sdkClient.agentManager.getAgent(
@@ -200,23 +196,11 @@ export class PerpsClient {
         params.dex
       )
       signerAddress = signerAddress ?? agent.address
-
-      // Auto-inject agentAddress for ApproveAgent authorization
-      authorizations = authorizations.map((auth) => {
-        if (auth.key === 'ApproveAgent' && !auth.params?.agentAddress) {
-          return {
-            ...auth,
-            params: { ...auth.params, agentAddress: agent.address },
-          }
-        }
-        return auth
-      })
     }
 
     return createAuthorization(this.sdkClient, {
       ...params,
       signerAddress,
-      authorizations,
     })
   }
 
@@ -477,119 +461,61 @@ export class PerpsClient {
   /**
    * Determine which authorizations (if any) the user needs to sign before trading.
    *
-   * Fetches account state and checks the current signing mode to build
-   * a precise list of required authorizations.
+   * Uses the dex auth provider to determine what authorizations to request,
+   * then calls buildAuthorization — the backend filters already-valid auths
+   * and returns only what's needed.
    *
-   * @param params - Parameters including dex, address, and asset requirements
+   * @param params - Parameters including dex, address, and dex-specific config
    * @returns Which authorizations are needed and whether the user is ready to trade
    */
   async getRequiredAuthorizations(
     params: GetRequiredAuthorizationsParams
   ): Promise<RequiredAuthorizationsResult> {
-    const { dex, address, requireAbstraction = false } = params
+    const { dex, address } = params
     const mode = this.getSigningMode(address, dex)
+    const provider = getDexAuthProvider(dex)
 
-    // Fetch account state and dex config in parallel
-    const [account, dexesResponse] = await Promise.all([
-      getAccount(this.sdkClient, { dex, address }),
-      getDexes(this.sdkClient),
-    ])
-    const dexConfig = dexesResponse.dexes.find((d) => d.key === dex)
-    const hasBuilderFee =
-      dexConfig?.authorizations.some((a) => a.key === 'ApproveBuilderFee') ??
-      false
-    const rawAbstraction = account.config.abstractionStatus as
-      | string
-      | null
-      | undefined
-    const abstractionStatus = rawAbstraction ?? null
-    const agents = account.config.agents as
-      | Array<{ address: string; validUntil: number }>
-      | undefined
-    const builderFeeApproval = account.config.builderFeeApproval as
-      | { builderAddress: string; maxFeeRate: string; approved: boolean }
-      | undefined
-
-    const userAuthorizations: AuthorizationInput[] = []
-    const agentAuthorizations: AuthorizationInput[] = []
-
-    if (mode === 'USER') {
-      // USER mode: no agent-related authorizations
-      if (requireAbstraction && !isAbstractionEnabled(abstractionStatus)) {
-        userAuthorizations.push({
-          key: 'UserSetAbstraction',
-          params: { abstraction: 'unifiedAccount' },
-        })
-      }
-
-      return {
-        userAuthorizations,
-        agentAuthorizations,
-        agentValid: false,
-        abstractionStatus,
-        isReady: userAuthorizations.length === 0,
-      }
+    // Ensure agent exists in USER_AGENT mode
+    let agentAddress: Address | undefined
+    if (mode === 'USER_AGENT') {
+      const agent = await this.sdkClient.agentManager.getOrCreateAgent(
+        address,
+        dex
+      )
+      agentAddress = agent.address
     }
 
-    // USER_AGENT mode: check agent validity
-    const agentValid = await this.validateAgent(address, dex, agents)
+    // Provider declares auth inputs categorized as user/agent
+    const authInputs = provider.getAuthorizationInputs({
+      signingMode: mode,
+      agentAddress,
+    })
 
-    if (!agentValid) {
-      // Need to approve agent (+ builder fee if configured)
-      userAuthorizations.push({ key: 'ApproveAgent' })
-      if (hasBuilderFee) {
-        userAuthorizations.push({ key: 'ApproveBuilderFee' })
-      }
-
-      // Abstraction handling when agent is not yet valid
-      if (requireAbstraction && !isAbstractionEnabled(abstractionStatus)) {
-        if (abstractionStatus === null) {
-          // null → agent can't auto-enable yet (not approved), user must set it
-          userAuthorizations.push({
-            key: 'UserSetAbstraction',
-            params: { abstraction: 'unifiedAccount' },
-          })
-        } else {
-          // 'disabled' → user must re-enable
-          userAuthorizations.push({
-            key: 'UserSetAbstraction',
-            params: { abstraction: 'unifiedAccount' },
-          })
-        }
-      }
-    } else {
-      // Agent is valid — check builder fee approval independently
-      if (hasBuilderFee && builderFeeApproval && !builderFeeApproval.approved) {
-        userAuthorizations.push({ key: 'ApproveBuilderFee' })
-      }
-
-      // Check abstraction
-      if (requireAbstraction && !isAbstractionEnabled(abstractionStatus)) {
-        if (abstractionStatus === null) {
-          // null → agent can auto-enable (no user signature needed)
-          agentAuthorizations.push({
-            key: 'AgentSetAbstraction',
-            params: { abstraction: 'unifiedAccount' },
-          })
-        } else {
-          // 'disabled' → user must re-enable
-          userAuthorizations.push({
-            key: 'UserSetAbstraction',
-            params: { abstraction: 'unifiedAccount' },
-          })
-        }
-      }
+    const allInputs = [...authInputs.user, ...authInputs.agent]
+    if (allInputs.length === 0) {
+      return { userAuthorizations: [], agentAuthorizations: [], isReady: true }
     }
 
-    const isReady =
-      userAuthorizations.length === 0 && agentAuthorizations.length === 0
+    // Send ALL to backend — it filters already-satisfied ones and returns typed data
+    const { actions } = await this.buildAuthorization({
+      dex,
+      address,
+      authorizations: allInputs,
+    })
+
+    if (actions.length === 0) {
+      return { userAuthorizations: [], agentAuthorizations: [], isReady: true }
+    }
+
+    // Categorize backend results using provider's original key sets
+    const agentKeys = new Set(authInputs.agent.map((a) => a.key))
+    const userAuthorizations = actions.filter((a) => !agentKeys.has(a.action))
+    const agentAuthorizations = actions.filter((a) => agentKeys.has(a.action))
 
     return {
       userAuthorizations,
       agentAuthorizations,
-      agentValid,
-      abstractionStatus,
-      isReady,
+      isReady: false,
     }
   }
 
@@ -628,27 +554,18 @@ export class PerpsClient {
     }
 
     // 2. Auto-sign and submit agent authorizations (if any)
+    // Typed data already built by getRequiredAuthorizations — just sign and submit
     if (required.agentAuthorizations.length > 0 && mode === 'USER_AGENT') {
       const agent = await this.sdkClient.agentManager.getAgent(address, dex)
 
-      // Build typed data for agent authorizations
-      const { actions } = await createAuthorization(this.sdkClient, {
-        dex,
-        address,
-        signerAddress: agent.address,
-        authorizations: required.agentAuthorizations,
-      })
-
-      // Sign with agent key
       const signedAgentActions: SignedAuthorization[] = await Promise.all(
-        actions.map(async (action) => ({
+        required.agentAuthorizations.map(async (action) => ({
           action: action.action,
           typedData: action.typedData,
           signature: await signTypedData(agent.privateKey, action.typedData),
         }))
       )
 
-      // Submit agent-signed actions
       const agentResults = await submitAuthorization(this.sdkClient, {
         dex,
         address,
@@ -661,41 +578,4 @@ export class PerpsClient {
 
     return { userResults }
   }
-
-  /**
-   * Check if the local agent is registered and valid on the backend.
-   */
-  private async validateAgent(
-    address: Address,
-    dex: string,
-    backendAgents?: Array<{ address: string; validUntil: number }>
-  ): Promise<boolean> {
-    const hasLocal = await this.sdkClient.agentManager.hasAgent(address, dex)
-    if (!hasLocal) {
-      return false
-    }
-
-    const agent = await this.sdkClient.agentManager.getAgent(address, dex)
-    if (!backendAgents) {
-      return false
-    }
-
-    const match = backendAgents.find(
-      (a) => a.address.toLowerCase() === agent.address.toLowerCase()
-    )
-    if (!match) {
-      return false
-    }
-
-    return match.validUntil > Date.now()
-  }
-}
-
-/**
- * Check if abstraction is enabled based on the status string.
- * Enabled statuses: 'unifiedAccount', 'portfolioMargin'
- * Not enabled: null (never set), 'disabled'
- */
-function isAbstractionEnabled(status: string | null): boolean {
-  return status !== null && status !== 'disabled'
 }
