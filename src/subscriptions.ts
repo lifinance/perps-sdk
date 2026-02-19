@@ -15,6 +15,7 @@ export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
   symbol: string
+  depth?: number
 }
 export type TradesSubscription = {
   channel: 'trades'
