@@ -45,6 +45,9 @@ export {
   hasErrorType,
 } from './errors/utils/rootCause.js'
 export { ValidationError } from './errors/ValidationError.js'
+// Realtime
+export { PerpsWsClient } from './realtime/PerpsWsClient.js'
+export type { EventForSubscription } from './realtime/types.js'
 export type { CancelOrderParams } from './services/cancelOrder.js'
 // Services
 export { cancelOrder } from './services/cancelOrder.js'

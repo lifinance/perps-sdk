@@ -15,7 +15,10 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@lifi/perps-types/providers/hyperliquid": ["./node_modules/@lifi/perps-types/src/_types/providers/hyperliquid/index.d.ts"]
+    }
   },
   "include": ["./src/**/*"],
   "exclude": [
