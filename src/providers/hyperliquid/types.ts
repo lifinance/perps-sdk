@@ -8,8 +8,8 @@ export type HlUniverseItem = {
   name: string
   szDecimals: number
   maxLeverage: number
-  onlyIsolated: boolean
-  isDelisted: boolean
+  onlyIsolated?: boolean
+  isDelisted?: boolean
 }
 
 export type HlMeta = {
