@@ -39,6 +39,13 @@
   "module": "./src/_esm/index.js",
   "types": "./src/_types/index.d.ts",
   "typings": "./src/_types/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "providers/hyperliquid": [
+        "./src/_types/providers/hyperliquid/index.d.ts"
+      ]
+    }
+  },
   "sideEffects": false,
   "files": [
     "src",
@@ -72,7 +79,6 @@
   },
   "dependencies": {
     "@lifi/types": "^17.57.0",
-    "@sinclair/typebox": "^0.34.48",
     "viem": "^2.33.2"
   },
   "devDependencies": {

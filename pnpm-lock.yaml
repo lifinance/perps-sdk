@@ -11,9 +11,6 @@ importers:
       '@lifi/types':
         specifier: ^17.57.0
         version: 17.60.0(typescript@5.9.3)
-      '@sinclair/typebox':
-        specifier: ^0.34.48
-        version: 0.34.48
       viem:
         specifier: ^2.33.2
         version: 2.45.3(typescript@5.9.3)
@@ -220,9 +217,6 @@ packages:
 
   '@scure/bip39@1.6.0':
     resolution: {integrity: sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==}
-
-  '@sinclair/typebox@0.34.48':
-    resolution: {integrity: sha512-kKJTNuK3AQOrgjjotVxMrCn1sUJwM76wMszfq1kdU4uYVJjvEWuFQ6HgvLt4Xz3fSmZlTOxJ/Ie13KnIcWQXFA==}
 
   '@types/conventional-commits-parser@5.0.2':
     resolution: {integrity: sha512-BgT2szDXnVypgpNxOK8aL5SGjUdaQbC++WZNjF1Qge3Og2+zhHj+RWhmehLhYyvQwqAmvezruVfOf8+3m74W+g==}
@@ -1909,8 +1903,6 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
-
-  '@sinclair/typebox@0.34.48': {}
 
   '@types/conventional-commits-parser@5.0.2':
     dependencies:
