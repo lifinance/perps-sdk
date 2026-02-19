@@ -92,7 +92,6 @@ export class PerpsClient {
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
       storage: options.storage,
-      healthCheck: options.healthCheck,
     })
   }
 
@@ -101,14 +100,6 @@ export class PerpsClient {
    */
   get client(): PerpsSDKClient {
     return this.sdkClient
-  }
-
-  /**
-   * Promise that resolves when the API health check passes.
-   * Await this before making requests if you need to handle readiness explicitly.
-   */
-  get ready(): Promise<void> {
-    return this.sdkClient.ready
   }
 
   /**

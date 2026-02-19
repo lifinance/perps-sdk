@@ -41,8 +41,6 @@ export interface PerpsClientOptions {
   apiUrl?: string
   /** Custom storage adapter for agent keys. Defaults to localStorage. */
   storage?: StorageAdapter
-  /** Whether to perform a health check on startup before allowing requests. Default: true */
-  healthCheck?: boolean
 }
 
 /**

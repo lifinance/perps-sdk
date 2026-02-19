@@ -6,7 +6,7 @@ async function run() {
     integrator: 'my-app',
     storage: createMemoryStorage(),
   })
-  console.log('Memory client ready:', await memoryPerps.ready)
+  console.log('Memory client created:', memoryPerps.client.config.integrator)
 
   // Custom storage adapter
   const myStore = new Map<string, string>()
@@ -22,7 +22,7 @@ async function run() {
       },
     },
   })
-  console.log('Custom client ready:', await customPerps.ready)
+  console.log('Custom client created:', customPerps.client.config.integrator)
 }
 
 run()

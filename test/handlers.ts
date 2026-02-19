@@ -26,7 +26,6 @@ import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 
 const BASE_URL = 'https://li.quest/v1/perps'
-const HEALTH_URL = 'https://li.quest/health/live'
 
 export const mockDexes: DexesResponse = {
   dexes: [
@@ -281,9 +280,6 @@ export const mockSubmitOrderResponse: SubmitOrderResponse = {
 }
 
 export const handlers = [
-  // Health
-  http.get(HEALTH_URL, () => HttpResponse.json({ status: 'OK' })),
-
   // Market data
   http.get(`${BASE_URL}/dexes`, () => HttpResponse.json(mockDexes)),
 

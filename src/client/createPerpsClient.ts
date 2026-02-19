@@ -3,11 +3,8 @@ import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsErrorName } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { sleep } from '../utils/sleep.js'
 
 const DEFAULT_API_URL = 'https://li.quest/v1/perps'
-const HEALTH_POLL_INTERVAL_MS = 500
-const HEALTH_MAX_ATTEMPTS = 50
 
 /**
  * Configuration options for creating a Perps SDK client.
@@ -25,8 +22,6 @@ export interface PerpsConfig {
   storage?: StorageAdapter
   /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
-  /** Whether to perform a health check on startup before allowing requests. Default: true */
-  healthCheck?: boolean
 }
 
 /**
@@ -43,8 +38,6 @@ export interface PerpsBaseConfig {
   disableVersionCheck?: boolean
   /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
-  /** Promise that resolves when the API is ready. Requests wait for this. */
-  readyPromise?: Promise<void>
 }
 
 /**
@@ -73,8 +66,6 @@ export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
   /** Agent manager for USER_AGENT signing mode */
   readonly agentManager: AgentManager
-  /** Promise that resolves when the API health check passes. */
-  readonly ready: Promise<void>
 }
 
 /**
@@ -107,16 +98,12 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
 
   const apiUrl = options.apiUrl ?? DEFAULT_API_URL
 
-  const readyPromise =
-    options.healthCheck !== false ? pollHealth(apiUrl) : Promise.resolve()
-
   const config: PerpsBaseConfig = {
     integrator: options.integrator,
     apiKey: options.apiKey,
     apiUrl,
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,
-    readyPromise,
   }
 
   const agentManager = new AgentManager(options.storage)
@@ -128,37 +115,5 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     get agentManager() {
       return agentManager
     },
-    get ready() {
-      return readyPromise
-    },
   }
-}
-
-/**
- * Poll the API health endpoint until it returns a successful response.
- *
- * Derives the health URL from the apiUrl origin (e.g. https://li.quest/health/live).
- * Retries up to {@link HEALTH_MAX_ATTEMPTS} times with {@link HEALTH_POLL_INTERVAL_MS} delays.
- *
- * @throws {PerpsError} If the health endpoint does not respond after all attempts
- */
-async function pollHealth(apiUrl: string): Promise<void> {
-  const healthUrl = `${new URL(apiUrl).origin}/health/live`
-
-  for (let i = 0; i < HEALTH_MAX_ATTEMPTS; i++) {
-    try {
-      const response = await fetch(healthUrl)
-      if (response.ok) {
-        return
-      }
-    } catch {
-      // Server not reachable yet, retry
-    }
-    await sleep(HEALTH_POLL_INTERVAL_MS)
-  }
-
-  throw new PerpsError(
-    PerpsErrorCode.ServerError,
-    'API health check failed: server did not become ready'
-  )
 }

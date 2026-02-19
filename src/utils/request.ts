@@ -32,11 +32,6 @@ export async function request<T>(
   options: RequestOptions = {},
   sdkOptions?: SDKRequestOptions
 ): Promise<T> {
-  // Wait for API health check to pass before making requests
-  if (config.readyPromise) {
-    await config.readyPromise
-  }
-
   const retries = options.retries ?? DEFAULT_RETRIES
 
   const headers: Record<string, string> = {
