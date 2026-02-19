@@ -72,6 +72,7 @@
   },
   "dependencies": {
     "@lifi/types": "^17.57.0",
+    "@sinclair/typebox": "^0.34.48",
     "viem": "^2.33.2"
   },
   "devDependencies": {
