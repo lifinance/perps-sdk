@@ -118,7 +118,11 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'prices':
         return { type: 'allMids' }
       case 'orderbook':
-        return { type: 'l2Book', coin: sub.symbol }
+        return {
+          type: 'l2Book',
+          coin: sub.symbol,
+          ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
+        }
       case 'trades':
         return { type: 'trades', coin: sub.symbol }
       case 'candle':
