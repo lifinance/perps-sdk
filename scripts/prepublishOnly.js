@@ -39,6 +39,8 @@ function generatePackageJson() {
   } = tmpPackageJson
 
   // Generate proxy packages for each export.
+  // These proxy package.json files allow moduleResolution: "node" (node10)
+  // to resolve subpath imports like "@lifi/perps-types/providers/hyperliquid".
   const files_ = [...files]
   for (const [key, value] of Object.entries(exports_)) {
     if (typeof value === 'string') {
@@ -47,33 +49,34 @@ function generatePackageJson() {
     if (key === '.') {
       continue
     }
-    if (!value.default || !value.import) {
-      throw new Error('`default` and `import` are required.')
+
+    // Compute the correct relative prefix to get back to the package root.
+    // e.g. "./providers/hyperliquid" → depth 2 → "../../"
+    const subpath = key.replace('./', '')
+    const depth = subpath.split('/').length
+    const prefix = '../'.repeat(depth)
+
+    // Extract paths from nested export conditions (import/require with types/default).
+    const typesPath = value.import?.types ?? value.require?.types
+    const modulePath = value.import?.default ?? value.import
+    const mainPath = value.require?.default ?? value.default
+
+    if (!modulePath || !mainPath) {
+      throw new Error(`Export "${key}": both import and require/default paths are required.`)
     }
+
+    const entries = []
+    if (typesPath) {
+      entries.push(`"types": "${typesPath.replace('./', prefix)}"`)
+    }
+    entries.push(`"module": "${(typeof modulePath === 'string' ? modulePath : '').replace('./', prefix)}"`)
+    entries.push(`"main": "${(typeof mainPath === 'string' ? mainPath : '').replace('./', prefix)}"`)
 
     outputFileSync(
       `${key}/package.json`,
-      `{
-  ${Object.entries(value)
-    .map(([k, v]) => {
-      const key = (() => {
-        if (k === 'import') {
-          return 'module'
-        }
-        if (k === 'default') {
-          return 'main'
-        }
-        if (k === 'types') {
-          return 'types'
-        }
-        throw new Error('Invalid key')
-      })()
-      return `"${key}": "${v.replace('./', '../')}"`
-    })
-    .join(',\n  ')}
-}`
+      `{\n  ${entries.join(',\n  ')}\n}`
     )
-    files_.push(key.replace('./', ''))
+    files_.push(subpath)
   }
 
   writeJsonSync(

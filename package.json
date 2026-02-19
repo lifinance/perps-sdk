@@ -24,14 +24,24 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/_types/index.d.ts",
-      "import": "./src/_esm/index.js",
-      "default": "./src/_cjs/index.js"
+      "import": {
+        "types": "./src/_types/index.d.ts",
+        "default": "./src/_esm/index.js"
+      },
+      "require": {
+        "types": "./src/_types/index.d.ts",
+        "default": "./src/_cjs/index.js"
+      }
     },
     "./providers/hyperliquid": {
-      "types": "./src/_types/providers/hyperliquid/index.d.ts",
-      "import": "./src/_esm/providers/hyperliquid/index.js",
-      "default": "./src/_cjs/providers/hyperliquid/index.js"
+      "import": {
+        "types": "./src/_types/providers/hyperliquid/index.d.ts",
+        "default": "./src/_esm/providers/hyperliquid/index.js"
+      },
+      "require": {
+        "types": "./src/_types/providers/hyperliquid/index.d.ts",
+        "default": "./src/_cjs/providers/hyperliquid/index.js"
+      }
     },
     "./package.json": "./package.json"
   },
