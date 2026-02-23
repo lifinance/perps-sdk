@@ -31,7 +31,7 @@ const dexesWithWsUrl = {
 
 function useWsUrlHandler() {
   server.use(
-    http.get('https://li.quest/v1/perps/dexes', () =>
+    http.get('https://developperps.li.finance/v1/perps/dexes', () =>
       HttpResponse.json(dexesWithWsUrl)
     )
   )

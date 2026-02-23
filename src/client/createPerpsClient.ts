@@ -4,7 +4,7 @@ import type { StorageAdapter } from '../agent/types.js'
 import { PerpsErrorName } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 
-const DEFAULT_API_URL = 'https://li.quest/v1/perps'
+const DEFAULT_API_URL = 'https://developperps.li.finance/v1/perps'
 
 /**
  * Configuration options for creating a Perps SDK client.
@@ -14,7 +14,7 @@ export interface PerpsConfig {
   integrator: string
   /** Optional API key for authenticated requests */
   apiKey?: string
-  /** Base API URL. Defaults to https://li.quest/v1/perps */
+  /** Base API URL. Defaults to https://developperps.li.finance/v1/perps */
   apiUrl?: string
   /** Disable version update check in development mode */
   disableVersionCheck?: boolean

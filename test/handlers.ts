@@ -25,7 +25,7 @@ import {
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 
-const BASE_URL = 'https://li.quest/v1/perps'
+const BASE_URL = 'https://developperps.li.finance/v1/perps'
 
 export const mockDexes: DexesResponse = {
   dexes: [

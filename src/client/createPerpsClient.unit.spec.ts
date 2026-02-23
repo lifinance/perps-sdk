@@ -9,7 +9,9 @@ describe('createPerpsClient', () => {
     })
 
     expect(client.config.integrator).toBe('test-app')
-    expect(client.config.apiUrl).toBe('https://li.quest/v1/perps')
+    expect(client.config.apiUrl).toBe(
+      'https://developperps.li.finance/v1/perps'
+    )
   })
 
   it('should use custom apiUrl when provided', () => {
