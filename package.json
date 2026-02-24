@@ -52,8 +52,7 @@
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
     "pre-commit": "pnpm check && pnpm check:types && pnpm check:circular-deps && pnpm knip:check",
     "pre-push": "pnpm test:unit",
-    "prepare": "husky",
-    "postinstall": "husky"
+    "prepare": "husky"
   },
   "dependencies": {
     "@lifi/perps-types": "0.1.1-alpha.7",
