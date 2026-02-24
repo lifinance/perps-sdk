@@ -24,8 +24,9 @@ import {
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
+import { DEFAULT_API_URL } from '../src/client/createPerpsClient.js'
 
-const BASE_URL = 'https://developperps.li.finance/v1/perps'
+const BASE_URL = DEFAULT_API_URL
 
 export const mockDexes: DexesResponse = {
   dexes: [

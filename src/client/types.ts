@@ -37,7 +37,7 @@ export interface PerpsClientOptions {
   integrator: string
   /** Optional API key for authenticated requests */
   apiKey?: string
-  /** Base API URL. Defaults to https://developperps.li.finance/v1/perps */
+  /** Base API URL. Defaults to DEFAULT_API_URL */
   apiUrl?: string
   /** Custom storage adapter for agent keys. Defaults to localStorage. */
   storage?: StorageAdapter

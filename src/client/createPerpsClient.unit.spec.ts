@@ -1,6 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { createPerpsClient } from './createPerpsClient.js'
+import { createPerpsClient, DEFAULT_API_URL } from './createPerpsClient.js'
 
 describe('createPerpsClient', () => {
   it('should create client with required integrator', () => {
@@ -9,9 +9,7 @@ describe('createPerpsClient', () => {
     })
 
     expect(client.config.integrator).toBe('test-app')
-    expect(client.config.apiUrl).toBe(
-      'https://developperps.li.finance/v1/perps'
-    )
+    expect(client.config.apiUrl).toBe(DEFAULT_API_URL)
   })
 
   it('should use custom apiUrl when provided', () => {

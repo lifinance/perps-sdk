@@ -13,7 +13,10 @@ export type {
   RequestInterceptor,
   SDKRequestOptions,
 } from './client/createPerpsClient.js'
-export { createPerpsClient } from './client/createPerpsClient.js'
+export {
+  createPerpsClient,
+  DEFAULT_API_URL,
+} from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export type {
   BuildAuthorizationParams,

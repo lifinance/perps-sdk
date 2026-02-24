@@ -1,7 +1,10 @@
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { mockDexes, server } from '../../test/handlers.js'
-import { createPerpsClient } from '../client/createPerpsClient.js'
+import {
+  createPerpsClient,
+  DEFAULT_API_URL,
+} from '../client/createPerpsClient.js'
 import { PerpsWsClient } from './PerpsWsClient.js'
 
 // --- Mock HyperliquidWsProvider ---
@@ -31,7 +34,7 @@ const dexesWithWsUrl = {
 
 function useWsUrlHandler() {
   server.use(
-    http.get('https://developperps.li.finance/v1/perps/dexes', () =>
+    http.get(`${DEFAULT_API_URL}/dexes`, () =>
       HttpResponse.json(dexesWithWsUrl)
     )
   )
