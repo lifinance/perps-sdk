@@ -43,3 +43,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+      - name: Fix latest dist-tag
+        if: contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta')
+        run: npm dist-tag add @lifi/perps-sdk@${GITHUB_REF_NAME#v} latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
