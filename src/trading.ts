@@ -17,7 +17,6 @@ export interface CreateOrderRequest {
   dex: string
   address: Address
   signerAddress?: Address
-  clientOrderId?: string
   symbol: string
   side: OrderSide
   type: OrderType
@@ -78,7 +77,6 @@ export interface SubmitOrderResponse {
 
 export interface Order {
   orderId: string
-  clientOrderId?: string
   symbol: string
   side: OrderSide
   type: OrderType

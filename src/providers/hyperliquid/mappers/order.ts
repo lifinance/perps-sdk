@@ -70,7 +70,6 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
 
   return {
     orderId: String(o.oid),
-    clientOrderId: o.cloid ?? undefined,
     symbol: o.coin,
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type: o.orderType === 'Limit' ? OrderType.LIMIT : OrderType.MARKET,
