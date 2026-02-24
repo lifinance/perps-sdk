@@ -14,6 +14,10 @@ export interface GetHistoryParams {
   limit?: number
   /** Cursor for pagination */
   cursor?: string
+  /** Filter: orders after this timestamp (ms) */
+  startTime?: number
+  /** Filter: orders before this timestamp (ms) */
+  endTime?: number
 }
 
 /**
@@ -57,6 +61,8 @@ export async function getHistory(
     address: params.address,
     limit: params.limit,
     cursor: params.cursor,
+    startTime: params.startTime,
+    endTime: params.endTime,
   })
   return request<HistoryResponse>(client.config, url, {}, options)
 }
