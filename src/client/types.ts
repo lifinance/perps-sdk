@@ -65,8 +65,6 @@ export interface PlaceOrderParams {
   dex: string
   /** User wallet address */
   address: Address
-  /** Client-provided order ID */
-  clientOrderId?: string
   /** Market symbol */
   symbol: string
   /** Order side */

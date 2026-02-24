@@ -19,8 +19,6 @@ export interface CreateOrderParams {
   address: Address
   /** Address of the signer (for agent mode, this is the agent address) */
   signerAddress?: Address
-  /** Client-provided order ID for tracking */
-  clientOrderId?: string
   /** Market symbol (e.g., 'BTC') */
   symbol: string
   /** Order side */
@@ -97,7 +95,6 @@ export async function createOrder(
         dex: params.dex,
         address: params.address,
         signerAddress: params.signerAddress,
-        clientOrderId: params.clientOrderId,
         symbol: params.symbol,
         side: params.side,
         type: params.type,
