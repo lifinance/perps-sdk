@@ -11,7 +11,10 @@ import {
 } from '@lifi/perps-sdk'
 
 async function run() {
-  const perps = new PerpsClient({ integrator: 'my-app' })
+  const perps = new PerpsClient({
+    integrator: 'my-app',
+    apiKey: 'your-api-key',
+  })
 
   try {
     await perps.placeOrder({

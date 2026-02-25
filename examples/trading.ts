@@ -9,7 +9,10 @@ import {
 } from '@lifi/perps-sdk'
 
 async function run() {
-  const client = createPerpsClient({ integrator: 'my-app' })
+  const client = createPerpsClient({
+    integrator: 'my-app',
+    apiKey: 'your-api-key',
+  })
 
   // Create order payloads
   const { actions } = await createOrder(client, {

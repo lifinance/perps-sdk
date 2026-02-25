@@ -12,8 +12,8 @@ export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
 export interface PerpsConfig {
   /** Integrator identifier (required) */
   integrator: string
-  /** Optional API key for authenticated requests */
-  apiKey?: string
+  /** API key for authenticated requests (get one at https://portal.li.fi/) */
+  apiKey: string
   /** Base API URL. Defaults to DEFAULT_API_URL */
   apiUrl?: string
   /** Disable version update check in development mode */
@@ -30,8 +30,8 @@ export interface PerpsConfig {
 export interface PerpsBaseConfig {
   /** Integrator identifier (required) */
   integrator: string
-  /** Optional API key for authenticated requests */
-  apiKey?: string
+  /** API key for authenticated requests */
+  apiKey: string
   /** Resolved API URL (always set) */
   apiUrl: string
   /** Disable version update check in development mode */
@@ -79,7 +79,7 @@ export interface PerpsSDKClient {
  * ```ts
  * const client = createPerpsClient({
  *   integrator: 'my-app',
- *   apiKey: 'optional-api-key',
+ *   apiKey: 'your-api-key',
  * })
  *
  * // Use with service functions

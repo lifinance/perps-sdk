@@ -9,12 +9,13 @@
 
 <h1 align="center">LI.FI Perps SDK</h1>
 
-[**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) provides a TypeScript SDK for the LI.FI Perps API. Trade perpetuals across multiple DEXes with a unified interface.
+[**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) is a TypeScript SDK for trading perpetuals across multiple DEXes through a unified interface.
 
-- Unified interface across multiple perpetual DEXes
-- Low-level service functions for explicit signing control
-- High-level `PerpsClient` with automatic agent signing (no wallet popups)
-- Full TypeScript support with all types and enums exported
+- Unified interface across perpetual DEXes (Hyperliquid and more)
+- Two signing modes: **USER** (wallet signs each action) and **USER_AGENT** (agent auto-signs, no popups)
+- Low-level service functions and high-level `PerpsClient`
+- Real-time WebSocket subscriptions for prices, orderbook, and fills
+- Full TypeScript support with all types exported
 
 ## Installation
 
@@ -26,23 +27,45 @@ npm install @lifi/perps-sdk
 
 ## Quick Start
 
+Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
+
+### Fetch Market Data
+
 ```typescript
-import { createPerpsClient, getDexes, getMarkets } from '@lifi/perps-sdk'
+import { createPerpsClient, getDexes, getMarkets, getPrices } from '@lifi/perps-sdk'
 
-// 1. Create a client (required before any API calls)
-const client = createPerpsClient({
-  integrator: 'my-app',
-  apiKey: 'optional-api-key',
-})
+const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
 
-// 2. Fetch market data (no authentication required)
 const { dexes } = await getDexes(client)
 const { markets } = await getMarkets(client, { dex: 'hyperliquid' })
+const { prices } = await getPrices(client, { dex: 'hyperliquid', symbols: ['BTC', 'ETH'] })
+```
+
+### Trade with PerpsClient
+
+```typescript
+import { PerpsClient } from '@lifi/perps-sdk'
+
+const perps = new PerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
+
+// Enable agent signing mode (one-time setup, requires user wallet signature)
+await perps.setSigningMode(address, 'hyperliquid', 'USER_AGENT')
+
+// Place orders without wallet popups
+const result = await perps.placeOrder({
+  dex: 'hyperliquid',
+  address,
+  symbol: 'BTC',
+  side: 'BUY',
+  type: 'MARKET',
+  size: '0.1',
+  price: '95000.00',
+})
 ```
 
 ## Examples
 
-See the [`examples/`](./examples) folder for runnable code covering market data, account data, trading, agent-based trading, error handling, and custom storage.
+See the [`examples/`](./examples) folder for runnable code covering market data, account management, trading, agent-based signing, error handling, and custom storage.
 
 ## Documentation
 

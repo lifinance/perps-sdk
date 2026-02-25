@@ -4,7 +4,10 @@ import { createPerpsClient } from '../client/createPerpsClient.js'
 import { getDexes } from './getDexes.js'
 
 describe('getDexes', () => {
-  const client = createPerpsClient({ integrator: 'test-app' })
+  const client = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+  })
 
   it('should return list of dexes', async () => {
     const result = await getDexes(client)

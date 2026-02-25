@@ -35,8 +35,8 @@ export type SigningMode = 'USER' | 'USER_AGENT'
 export interface PerpsClientOptions {
   /** Integrator identifier (required) */
   integrator: string
-  /** Optional API key for authenticated requests */
-  apiKey?: string
+  /** API key for authenticated requests (get one at https://portal.li.fi/) */
+  apiKey: string
   /** Base API URL. Defaults to DEFAULT_API_URL */
   apiUrl?: string
   /** Custom storage adapter for agent keys. Defaults to localStorage. */

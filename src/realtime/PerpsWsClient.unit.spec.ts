@@ -41,7 +41,7 @@ function useWsUrlHandler() {
 }
 
 function createClient() {
-  return createPerpsClient({ integrator: 'test-app' })
+  return createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
 }
 
 describe('PerpsWsClient', () => {

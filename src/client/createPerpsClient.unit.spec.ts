@@ -6,6 +6,7 @@ describe('createPerpsClient', () => {
   it('should create client with required integrator', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
     })
 
     expect(client.config.integrator).toBe('test-app')
@@ -15,6 +16,7 @@ describe('createPerpsClient', () => {
   it('should use custom apiUrl when provided', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
       apiUrl: 'https://custom.api/perps',
     })
 
@@ -31,12 +33,14 @@ describe('createPerpsClient', () => {
   })
 
   it('should throw when integrator is missing', () => {
-    expect(() => createPerpsClient({ integrator: '' })).toThrow()
+    expect(() =>
+      createPerpsClient({ integrator: '', apiKey: 'test-key' })
+    ).toThrow()
   })
 
   it('should include correct error code when integrator is missing', () => {
     try {
-      createPerpsClient({ integrator: '' })
+      createPerpsClient({ integrator: '', apiKey: 'test-key' })
     } catch (error: any) {
       expect(error.code).toBe(PerpsErrorCode.ValidationError)
     }
@@ -45,6 +49,7 @@ describe('createPerpsClient', () => {
   it('should provide access to agentManager', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
     })
 
     expect(client.agentManager).toBeDefined()
@@ -54,6 +59,7 @@ describe('createPerpsClient', () => {
   it('should support requestInterceptor', async () => {
     const client = createPerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
       requestInterceptor: (_url, options) => {
         return options
       },
@@ -66,6 +72,7 @@ describe('createPerpsClient', () => {
   it('should create immutable config', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
     })
     const config1 = client.config
     const config2 = client.config

@@ -10,7 +10,10 @@ import { getHistory } from './getHistory.js'
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
 describe('getHistory', () => {
-  const client = createPerpsClient({ integrator: 'test-app' })
+  const client = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+  })
 
   it('should return history items', async () => {
     const result = await getHistory(client, {

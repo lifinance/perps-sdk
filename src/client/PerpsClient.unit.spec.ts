@@ -11,6 +11,7 @@ describe('PerpsClient', () => {
   beforeEach(() => {
     client = new PerpsClient({
       integrator: 'test-app',
+      apiKey: 'test-key',
       storage: createMemoryStorage(),
     })
   })

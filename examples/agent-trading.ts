@@ -1,7 +1,10 @@
 import { OrderSide, OrderType, PerpsClient } from '@lifi/perps-sdk'
 
 async function run() {
-  const perps = new PerpsClient({ integrator: 'my-app' })
+  const perps = new PerpsClient({
+    integrator: 'my-app',
+    apiKey: 'your-api-key',
+  })
   const userAddress = '0x1234...' as const
 
   // 1. Set up agent signing (USER_AGENT mode)

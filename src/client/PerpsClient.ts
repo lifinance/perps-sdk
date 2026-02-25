@@ -57,7 +57,7 @@ import type {
  *
  * @example
  * ```ts
- * const perps = new PerpsClient({ integrator: 'my-app' })
+ * const perps = new PerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
  *
  * // Set up agent signing for a user + DEX pair
  * await perps.setSigningMode(userAddress, 'hyperliquid', 'USER_AGENT')

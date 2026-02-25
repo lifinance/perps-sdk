@@ -4,7 +4,10 @@ import { createPerpsClient } from '../client/createPerpsClient.js'
 import { getMarkets } from './getMarkets.js'
 
 describe('getMarkets', () => {
-  const client = createPerpsClient({ integrator: 'test-app' })
+  const client = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+  })
 
   it('should return list of markets', async () => {
     const result = await getMarkets(client, { dex: 'hyperliquid' })

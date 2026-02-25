@@ -6,7 +6,10 @@ import {
 } from '@lifi/perps-sdk'
 
 async function run() {
-  const client = createPerpsClient({ integrator: 'my-app' })
+  const client = createPerpsClient({
+    integrator: 'my-app',
+    apiKey: 'your-api-key',
+  })
 
   // Get account info (balances, positions, open orders)
   const account = await getAccount(client, {
