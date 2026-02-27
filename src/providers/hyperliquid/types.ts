@@ -184,7 +184,7 @@ export type HlOrderStatusResponse =
 
 export type HlLedgerDelta = {
   type: string
-  usdc: string
+  usdc?: string
   [key: string]: unknown
 }
 

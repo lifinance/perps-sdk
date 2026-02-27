@@ -29,14 +29,14 @@ export const mapLedgerEntry = (
       return {
         ...base,
         type: ActivityType.DEPOSIT,
-        amount: delta.usdc,
+        amount: delta.usdc ?? '0',
       } satisfies DepositActivity
 
     case 'withdraw':
       return {
         ...base,
         type: ActivityType.WITHDRAWAL,
-        amount: delta.usdc,
+        amount: delta.usdc ?? '0',
         fee: (delta as { fee?: string }).fee ?? '0',
       } satisfies WithdrawalActivity
 
