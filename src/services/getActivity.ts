@@ -1,4 +1,8 @@
-import type { ActivitiesResponse, Address } from '@lifi/perps-types'
+import type {
+  ActivitiesResponse,
+  ActivityType,
+  Address,
+} from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
@@ -18,6 +22,8 @@ export interface GetActivityParams {
   startTime?: number
   /** Filter: activity before this timestamp (ms) */
   endTime?: number
+  /** Filter by activity type(s) */
+  type?: ActivityType[]
 }
 
 /**
@@ -54,7 +60,7 @@ export async function getActivity(
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/activity`, {
+  let url = buildUrl(`${client.config.apiUrl}/activity`, {
     dex: params.dex,
     address: params.address,
     limit: params.limit,
@@ -62,5 +68,10 @@ export async function getActivity(
     startTime: params.startTime,
     endTime: params.endTime,
   })
+  if (params.type?.length) {
+    const sep = url.includes('?') ? '&' : '?'
+    url +=
+      sep + params.type.map((t) => `type=${encodeURIComponent(t)}`).join('&')
+  }
   return request<ActivitiesResponse>(client.config, url, {}, options)
 }
