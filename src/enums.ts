@@ -97,3 +97,10 @@ export enum TriggerOrderStatus {
   TRIGGERED = 'TRIGGERED',
   CANCELLED = 'CANCELLED',
 }
+
+export enum ActivityType {
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAWAL = 'WITHDRAWAL',
+  LIQUIDATION = 'LIQUIDATION',
+  FUNDING = 'FUNDING',
+}

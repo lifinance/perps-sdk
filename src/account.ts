@@ -1,5 +1,6 @@
 import type { Address } from './typedData.js'
 import type {
+  ActivityType,
   HistoryItemStatus,
   MarginMode,
   OrderSide,
@@ -84,5 +85,59 @@ export interface Pagination {
 export interface HistoryResponse {
   dex: string
   items: HistoryItem[]
+  pagination: Pagination
+}
+
+// ---------------------------------------------------------------------------
+// Activities
+// ---------------------------------------------------------------------------
+
+export interface BaseActivity {
+  id: string
+  dex: string
+  timestamp: string
+}
+
+export interface DepositActivity extends BaseActivity {
+  type: ActivityType.DEPOSIT
+  amount: string
+}
+
+export interface WithdrawalActivity extends BaseActivity {
+  type: ActivityType.WITHDRAWAL
+  amount: string
+  fee: string
+}
+
+export interface LiquidatedPosition {
+  symbol: string
+  size: string
+}
+
+export interface LiquidationActivity extends BaseActivity {
+  type: ActivityType.LIQUIDATION
+  liquidatedNotionalPosition: string
+  accountValue: string
+  leverageType: string
+  liquidatedPositions: LiquidatedPosition[]
+}
+
+export interface FundingActivity extends BaseActivity {
+  type: ActivityType.FUNDING
+  symbol: string
+  amount: string
+  positionSize: string
+  fundingRate: string
+}
+
+export type ActivityItem =
+  | DepositActivity
+  | WithdrawalActivity
+  | LiquidationActivity
+  | FundingActivity
+
+export interface ActivitiesResponse {
+  dex: string
+  items: ActivityItem[]
   pagination: Pagination
 }

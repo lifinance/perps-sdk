@@ -180,6 +180,40 @@ export type HlOrderStatusResponse =
   | HlOrderStatusFound
   | { status: 'unknownOid' }
 
+// -- userNonFundingLedgerUpdates --------------------------------------------
+
+export type HlLedgerDelta = {
+  type: string
+  usdc: string
+  [key: string]: unknown
+}
+
+export type HlLedgerUpdate = {
+  time: number
+  hash: string
+  delta: HlLedgerDelta
+}
+
+export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
+
+// -- userFunding ------------------------------------------------------------
+
+export type HlFundingDelta = {
+  type: 'funding'
+  coin: string
+  usdc: string
+  szi: string
+  fundingRate: string
+}
+
+export type HlFundingUpdate = {
+  time: number
+  hash: string
+  delta: HlFundingDelta
+}
+
+export type HlUserFunding = HlFundingUpdate[]
+
 // -- perpDexs ---------------------------------------------------------------
 
 export type HlPerpDexs = (null | { name: string })[]
