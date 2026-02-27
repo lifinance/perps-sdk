@@ -1,5 +1,6 @@
 import type {
   AccountResponse,
+  ActivitiesResponse,
   AuthorizationsResponse,
   CancelOrderPayloadResponse,
   CreateAuthorizationResponse,
@@ -14,6 +15,7 @@ import type {
   SubmitOrderResponse,
 } from '@lifi/perps-types'
 import {
+  ActivityType,
   HistoryItemStatus,
   MarginMode,
   OrderActionType,
@@ -179,6 +181,30 @@ export const mockHistory: HistoryResponse = {
   pagination: { limit: 50, hasMore: false },
 }
 
+export const mockActivity: ActivitiesResponse = {
+  dex: 'hyperliquid',
+  items: [
+    {
+      id: '0xdep1',
+      dex: 'hyperliquid',
+      timestamp: '2024-01-01T00:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      amount: '5000.00',
+    },
+    {
+      id: '0xfund1',
+      dex: 'hyperliquid',
+      timestamp: '2023-12-31T23:00:00.000Z',
+      type: ActivityType.FUNDING,
+      symbol: 'BTC',
+      amount: '2.50',
+      positionSize: '0.1',
+      fundingRate: '0.0001',
+    },
+  ],
+  pagination: { limit: 50, hasMore: false },
+}
+
 export const mockOrder: Order = {
   orderId: 'order1',
   symbol: 'BTC',
@@ -306,6 +332,8 @@ export const handlers = [
   http.get(`${BASE_URL}/account`, () => HttpResponse.json(mockAccount)),
 
   http.get(`${BASE_URL}/history`, () => HttpResponse.json(mockHistory)),
+
+  http.get(`${BASE_URL}/activity`, () => HttpResponse.json(mockActivity)),
 
   http.get(`${BASE_URL}/order/:id`, () => HttpResponse.json(mockOrder)),
 

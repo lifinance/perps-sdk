@@ -55,7 +55,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@lifi/perps-types": "0.1.1-alpha.8",
+    "@lifi/perps-types": "0.1.1-alpha.9",
     "viem": "^2.21.0"
   },
   "devDependencies": {

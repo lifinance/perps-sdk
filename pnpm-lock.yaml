@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@lifi/perps-types':
-        specifier: 0.1.1-alpha.8
-        version: 0.1.1-alpha.8(typescript@5.9.3)(zod@4.3.6)
+        specifier: 0.1.1-alpha.9
+        version: 0.1.1-alpha.9(typescript@5.9.3)(zod@4.3.6)
       viem:
         specifier: ^2.21.0
         version: 2.45.3(typescript@5.9.3)(zod@4.3.6)
@@ -422,8 +422,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lifi/perps-types@0.1.1-alpha.8':
-    resolution: {integrity: sha512-mcYTp7m2foD0J29xEAEZO2JQJWsRwBXra/tHmh5i5dMZocSSie5fUUyGkBrC+XQ2yqf1juceOVZG6F371oOtpA==}
+  '@lifi/perps-types@0.1.1-alpha.9':
+    resolution: {integrity: sha512-I6CbaeKpaFfPfiKYDjIiAre6stPXTL1kbX2PRv3VFlbf3r8fCgd3MVVqpWwNp2GjHoVM5DnApZoWRfHu1VoU9g==}
 
   '@lifi/types@17.61.0':
     resolution: {integrity: sha512-rYMw2qpYxqgXpW7UU/QdBDaU+zBWZVPU30IseYk3Ji7H88ve6jbwV8FlysUEATFOP2xEj/4mErWchhXua0VTFg==}
@@ -2848,7 +2848,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lifi/perps-types@0.1.1-alpha.8(typescript@5.9.3)(zod@4.3.6)':
+  '@lifi/perps-types@0.1.1-alpha.9(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       '@lifi/types': 17.61.0(typescript@5.9.3)(zod@4.3.6)
       viem: 2.45.3(typescript@5.9.3)(zod@4.3.6)
