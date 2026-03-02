@@ -105,11 +105,11 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'candle':
         return `candle:${sub.symbol}:${sub.interval}`
       case 'orderUpdates':
-        return `orderUpdates:${sub.address}`
+        return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
-        return `userFills:${sub.address}`
+        return `userFills:${sub.address.toLowerCase()}`
       case 'positions':
-        return `webData2:${sub.address}`
+        return `webData2:${sub.address.toLowerCase()}`
     }
   }
 
