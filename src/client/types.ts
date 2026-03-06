@@ -90,6 +90,15 @@ export interface PlaceOrderParams {
 }
 
 /**
+ * Parameters for placing trigger-only orders (TP/SL on existing positions).
+ * Sends a TRIGGER_ONLY order that skips the main order wire.
+ */
+export type PlaceTriggerOrderParams = Pick<
+  PlaceOrderParams,
+  'dex' | 'address' | 'symbol' | 'side' | 'size' | 'takeProfit' | 'stopLoss'
+>
+
+/**
  * Parameters for building a withdrawal payload.
  */
 export interface BuildWithdrawalParams {

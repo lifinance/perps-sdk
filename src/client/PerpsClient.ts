@@ -11,7 +11,7 @@ import type {
   SubmitOrderResponse,
   SubmitWithdrawalResponse,
 } from '@lifi/perps-types'
-import { PerpsErrorCode } from '@lifi/perps-types'
+import { OrderType, PerpsErrorCode } from '@lifi/perps-types'
 import { getDexAuthProvider } from '../dex/registry.js'
 import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
@@ -36,6 +36,7 @@ import type {
   GetRequiredAuthorizationsParams,
   PerpsClientOptions,
   PlaceOrderParams,
+  PlaceTriggerOrderParams,
   RequiredAuthorizationsResult,
   SigningMode,
 } from './types.js'
@@ -347,6 +348,44 @@ export class PerpsClient {
       address: params.address,
       signerAddress: agent.address,
       actions: signedActions,
+    })
+  }
+
+  /**
+   * Build trigger-only order payloads (TP/SL on existing positions).
+   *
+   * In `USER` mode, returns actions for the user to sign with their wallet.
+   * In `USER_AGENT` mode, auto-injects the agent address as signer.
+   *
+   * @param params - Trigger order parameters
+   * @returns Order actions with typed data for signing
+   */
+  async buildTriggerOrder(
+    params: PlaceTriggerOrderParams
+  ): Promise<CreateOrderResponse> {
+    return this.buildOrder({
+      ...params,
+      type: OrderType.TRIGGER_ONLY,
+      price: '0',
+    })
+  }
+
+  /**
+   * Place trigger-only orders (TP/SL on existing positions) with automatic agent signing.
+   *
+   * **Requires USER_AGENT mode.** For USER mode, use `buildTriggerOrder()` + wallet sign + `submitSignedOrder()`.
+   *
+   * @param params - Trigger order parameters
+   * @returns Order submission results
+   * @throws {PerpsError} If not in USER_AGENT mode
+   */
+  async placeTriggerOrder(
+    params: PlaceTriggerOrderParams
+  ): Promise<SubmitOrderResponse> {
+    return this.placeOrder({
+      ...params,
+      type: OrderType.TRIGGER_ONLY,
+      price: '0',
     })
   }
 

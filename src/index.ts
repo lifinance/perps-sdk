@@ -27,6 +27,7 @@ export type {
   GetRequiredAuthorizationsParams,
   PerpsClientOptions,
   PlaceOrderParams,
+  PlaceTriggerOrderParams,
   RequiredAuthorizationsResult,
   SigningMode,
 } from './client/types.js'
