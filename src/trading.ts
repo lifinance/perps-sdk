@@ -19,9 +19,9 @@ export interface CreateOrderRequest {
   signerAddress?: Address
   symbol: string
   side: OrderSide
-  type: OrderType
+  type?: OrderType
   size: string
-  price: string
+  price?: string
   leverage?: number
   reduceOnly?: boolean
   timeInForce?: TimeInForce

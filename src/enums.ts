@@ -38,6 +38,7 @@ export enum OrderSide {
 export enum OrderType {
   MARKET = 'MARKET',
   LIMIT = 'LIMIT',
+  TRIGGER_ONLY = 'TRIGGER_ONLY',
 }
 
 export enum PositionSide {
