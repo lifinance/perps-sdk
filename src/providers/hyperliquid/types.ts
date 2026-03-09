@@ -123,6 +123,10 @@ export type HlFrontendOpenOrder = {
   origSz: string
   reduceOnly: boolean
   timestamp: number
+  isTrigger: boolean
+  isPositionTpsl: boolean
+  triggerCondition: string
+  triggerPx: string
 }
 
 export type HlFrontendOpenOrders = HlFrontendOpenOrder[]

@@ -39,6 +39,7 @@ export interface OpenOrder {
   price: string
   filledSize: string
   reduceOnly: boolean
+  providerData?: Record<string, unknown>
   createdAt: string
 }
 

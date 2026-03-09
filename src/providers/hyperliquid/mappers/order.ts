@@ -27,6 +27,12 @@ export const mapOpenOrder = (
     ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
     : '0',
   reduceOnly: o.reduceOnly ?? false,
+  providerData: {
+    isTrigger: o.isTrigger,
+    isPositionTpsl: o.isPositionTpsl,
+    triggerPrice: o.triggerPx,
+    triggerCondition: o.triggerCondition,
+  },
   createdAt: new Date(o.timestamp).toISOString(),
 })
 
