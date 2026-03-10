@@ -20,7 +20,7 @@ export const mapOpenOrder = (
   assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
   dex: dexKey,
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-  type: o.orderType === 'Limit' ? OrderType.LIMIT : OrderType.MARKET,
+  type: o.orderType.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: o.sz,
   price: o.limitPx,
   filledSize: o.origSz
@@ -28,6 +28,7 @@ export const mapOpenOrder = (
     : '0',
   reduceOnly: o.reduceOnly ?? false,
   providerData: {
+    label: o.orderType,
     isTrigger: o.isTrigger,
     isPositionTpsl: o.isPositionTpsl,
     triggerPrice: o.triggerPx,
@@ -78,7 +79,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
     orderId: String(o.oid),
     symbol: o.coin,
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-    type: o.orderType === 'Limit' ? OrderType.LIMIT : OrderType.MARKET,
+    type: o.orderType.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
     price: o.limitPx,
     originalSize: o.origSz,
     remainingSize: o.sz,

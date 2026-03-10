@@ -127,6 +127,9 @@ export type HlFrontendOpenOrder = {
   isPositionTpsl: boolean
   triggerCondition: string
   triggerPx: string
+  children: unknown[]
+  tif: string | null
+  cloid: string | null
 }
 
 export type HlFrontendOpenOrders = HlFrontendOpenOrder[]
