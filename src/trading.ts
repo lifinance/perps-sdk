@@ -51,6 +51,27 @@ export interface CancelOrderPayloadResponse {
   actions: OrderAction[]
 }
 
+export interface ModifyOrderInput {
+  id: string
+  price?: string
+  size?: string
+  triggerPrice?: string
+  limitPrice?: string
+}
+
+export interface ModifyOrderRequest {
+  dex: string
+  address: Address
+  signerAddress?: Address
+  symbol: string
+  side: OrderSide
+  modifications: ModifyOrderInput[]
+}
+
+export interface ModifyOrderPayloadResponse {
+  actions: OrderAction[]
+}
+
 export interface SignedOrderAction {
   action: OrderActionType
   typedData: PerpsTypedData

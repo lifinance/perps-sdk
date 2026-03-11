@@ -81,6 +81,7 @@ export enum OrderActionType {
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
   CANCEL_ORDER = 'cancelOrder',
+  MODIFY_ORDER = 'modifyOrder',
 }
 
 export enum TriggerCondition {
