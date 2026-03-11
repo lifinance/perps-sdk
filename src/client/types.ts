@@ -3,6 +3,7 @@ import type {
   AuthorizationAction,
   AuthorizationInput,
   AuthorizationsResponse,
+  ModifyOrderInput,
   OrderSide,
   OrderType,
   SignedAuthorization,
@@ -120,6 +121,22 @@ export interface CancelOrdersParams {
   address: Address
   /** Order IDs to cancel */
   ids: string[]
+}
+
+/**
+ * Parameters for modifying orders.
+ */
+export interface ModifyOrdersParams {
+  /** DEX to modify orders on */
+  dex: string
+  /** User wallet address */
+  address: Address
+  /** Market symbol */
+  symbol: string
+  /** Order side */
+  side: OrderSide
+  /** Modifications to apply */
+  modifications: ModifyOrderInput[]
 }
 
 /**

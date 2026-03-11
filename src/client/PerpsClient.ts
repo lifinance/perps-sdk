@@ -5,6 +5,7 @@ import type {
   CreateAuthorizationResponse,
   CreateOrderResponse,
   CreateWithdrawalResponse,
+  ModifyOrderPayloadResponse,
   OrderActionType,
   SignedAuthorization,
   SignedOrderAction,
@@ -19,6 +20,7 @@ import { cancelOrder } from '../services/cancelOrder.js'
 import { createAuthorization } from '../services/createAuthorization.js'
 import { createOrder } from '../services/createOrder.js'
 import { createWithdrawal } from '../services/createWithdrawal.js'
+import { modifyOrder } from '../services/modifyOrder.js'
 import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
 import { submitAuthorization } from '../services/submitAuthorization.js'
 import type { SubmitOrderParams } from '../services/submitOrder.js'
@@ -34,6 +36,7 @@ import type {
   ExecuteAuthorizationsParams,
   ExecuteAuthorizationsResult,
   GetRequiredAuthorizationsParams,
+  ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
   PlaceTriggerOrderParams,
@@ -288,6 +291,91 @@ export class PerpsClient {
       address: params.address,
       signerAddress,
       ids: params.ids,
+    })
+  }
+
+  /**
+   * Build modify order payloads for signing.
+   *
+   * In `USER` mode, `signerAddress` is omitted (backend defaults to `address`).
+   * In `USER_AGENT` mode, auto-injects the agent address as `signerAddress`.
+   *
+   * @param params - Modify parameters
+   * @returns Modify actions with typed data for signing
+   */
+  async buildModifyOrder(
+    params: ModifyOrdersParams
+  ): Promise<ModifyOrderPayloadResponse> {
+    const mode = this.getSigningMode(params.address, params.dex)
+    let signerAddress: Address | undefined
+
+    if (mode === 'USER_AGENT') {
+      const agent = await this.sdkClient.agentManager.getAgent(
+        params.address,
+        params.dex
+      )
+      signerAddress = agent.address
+    }
+
+    return modifyOrder(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress,
+      symbol: params.symbol,
+      side: params.side,
+      modifications: params.modifications,
+    })
+  }
+
+  /**
+   * Modify orders with automatic agent signing.
+   *
+   * **Requires USER_AGENT mode.** For USER mode, use `buildModifyOrder()` + `submitSignedOrder()`.
+   *
+   * @param params - Modify parameters
+   * @returns Modify submission results
+   * @throws {PerpsError} If not in USER_AGENT mode
+   */
+  async modifyOrders(params: ModifyOrdersParams): Promise<SubmitOrderResponse> {
+    const mode = this.getSigningMode(params.address, params.dex)
+
+    if (mode !== 'USER_AGENT') {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `${PerpsErrorMessage.InvalidSigningMode} modifyOrders() requires USER_AGENT mode. Use modifyOrder() + submitOrder() for USER mode.`
+      )
+    }
+
+    const agent = await this.sdkClient.agentManager.getAgent(
+      params.address,
+      params.dex
+    )
+
+    // 1. Create modify payloads
+    const { actions } = await modifyOrder(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress: agent.address,
+      symbol: params.symbol,
+      side: params.side,
+      modifications: params.modifications,
+    })
+
+    // 2. Sign each action with agent key
+    const signedActions: SignedOrderAction[] = await Promise.all(
+      actions.map(async (a) => ({
+        action: a.action as OrderActionType,
+        typedData: a.typedData,
+        signature: await signTypedData(agent.privateKey, a.typedData),
+      }))
+    )
+
+    // 3. Submit
+    return submitOrder(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress: agent.address,
+      actions: signedActions,
     })
   }
 

@@ -25,6 +25,7 @@ export type {
   ExecuteAuthorizationsParams,
   ExecuteAuthorizationsResult,
   GetRequiredAuthorizationsParams,
+  ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
   PlaceTriggerOrderParams,
@@ -80,6 +81,8 @@ export type { GetOrderbookParams } from './services/getOrderbook.js'
 export { getOrderbook } from './services/getOrderbook.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
+export type { ModifyOrderParams } from './services/modifyOrder.js'
+export { modifyOrder } from './services/modifyOrder.js'
 export type { SubmitAuthorizationParams } from './services/submitAuthorization.js'
 export { submitAuthorization } from './services/submitAuthorization.js'
 export type { SubmitOrderParams } from './services/submitOrder.js'
