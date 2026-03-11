@@ -1,4 +1,8 @@
-import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  Position,
+  Subscription,
+  SubscriptionEvent,
+} from '@lifi/perps-types'
 import { HistoryItemStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import type {
   HlAssetPosition,
@@ -15,12 +19,15 @@ import type { SubscriptionListener, WsProvider } from '../types.js'
 import type {
   HlWsAllMidsData,
   HlWsCandleData,
+  HlWsClearinghouseStateData,
   HlWsL2BookData,
   HlWsMessage,
   HlWsTrade,
   HlWsUserFillsData,
-  HlWsWebData2Data,
 } from './types.js'
+
+/** HIP-3 sub-dexes to subscribe alongside the default clearinghouse. */
+const HL_PERP_SUB_DEXES = ['xyz']
 
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
@@ -28,6 +35,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private listeners = new Map<string, Set<SubscriptionListener>>()
   private readonly dexKey: string
   private readonly assetIdLookup: Map<string, number>
+  private positionsBySubDex = new Map<string, Position[]>()
 
   constructor(
     wsUrl: string,
@@ -46,13 +54,58 @@ export class HyperliquidWsProvider implements WsProvider {
     listener: SubscriptionListener
   ): Promise<() => void> {
     const key = this.toKey(sub)
-    const payload = this.toHlPayload(sub)
 
     if (!this.listeners.has(key)) {
       this.listeners.set(key, new Set())
     }
     this.listeners.get(key)!.add(listener)
 
+    // Positions require multi-sub-dex clearinghouseState subscriptions
+    if (sub.channel === 'positions') {
+      const entries = this.getPositionSubEntries(sub.address)
+
+      for (const { subKey, payload } of entries) {
+        const existing = this.subs.get(subKey)
+        if (existing) {
+          existing.count++
+        } else {
+          this.subs.set(subKey, { count: 1, payload })
+          await this.rws.ready()
+          this.rws.send(
+            JSON.stringify({ method: 'subscribe', subscription: payload })
+          )
+        }
+      }
+
+      return () => {
+        this.listeners.get(key)?.delete(listener)
+        let allRemoved = true
+        for (const { subKey, payload } of entries) {
+          const s = this.subs.get(subKey)
+          if (s) {
+            s.count--
+            if (s.count <= 0) {
+              this.subs.delete(subKey)
+              this.rws.send(
+                JSON.stringify({
+                  method: 'unsubscribe',
+                  subscription: payload,
+                })
+              )
+            } else {
+              allRemoved = false
+            }
+          }
+        }
+        if (allRemoved) {
+          this.listeners.delete(key)
+          this.positionsBySubDex.clear()
+        }
+      }
+    }
+
+    // All other channels: single WS subscription per key
+    const payload = this.toHlPayload(sub)
     const existing = this.subs.get(key)
     if (existing) {
       existing.count++
@@ -78,6 +131,23 @@ export class HyperliquidWsProvider implements WsProvider {
         }
       }
     }
+  }
+
+  /** Build sub-key + payload pairs for each sub-dex clearinghouseState subscription. */
+  private getPositionSubEntries(
+    address: string
+  ): Array<{ subKey: string; payload: object }> {
+    const addr = address.toLowerCase()
+    return [
+      {
+        subKey: `positions:${addr}:default`,
+        payload: { type: 'clearinghouseState', user: address },
+      },
+      ...HL_PERP_SUB_DEXES.map((dex) => ({
+        subKey: `positions:${addr}:${dex}`,
+        payload: { type: 'clearinghouseState', user: address, dex },
+      })),
+    ]
   }
 
   close() {
@@ -109,7 +179,7 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'fills':
         return `userFills:${sub.address.toLowerCase()}`
       case 'positions':
-        return `webData2:${sub.address.toLowerCase()}`
+        return `positions:${sub.address.toLowerCase()}`
     }
   }
 
@@ -132,7 +202,9 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'fills':
         return { type: 'userFills', user: sub.address }
       case 'positions':
-        return { type: 'webData2', user: sub.address }
+        // Positions are handled via getPositionSubEntries in subscribe()
+        // and never reach toHlPayload, but TS requires exhaustive cases.
+        return { type: 'clearinghouseState', user: sub.address }
     }
   }
 
@@ -190,8 +262,8 @@ export class HyperliquidWsProvider implements WsProvider {
         case 'userFills':
           this.handleUserFills(msg.data as HlWsUserFillsData)
           break
-        case 'webData2':
-          this.handleWebData2(msg.data as HlWsWebData2Data)
+        case 'clearinghouseState':
+          this.handleClearinghouseState(msg.data as HlWsClearinghouseStateData)
           break
       }
     } catch {
@@ -266,13 +338,19 @@ export class HyperliquidWsProvider implements WsProvider {
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
-  private handleWebData2(data: HlWsWebData2Data) {
+  private handleClearinghouseState(data: HlWsClearinghouseStateData) {
+    const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
       mapPosition(ap as HlAssetPosition, this.dexKey, this.assetIdLookup)
     )
-    this.emit(`webData2:${data.user}`, {
+    this.positionsBySubDex.set(subDexKey, positions)
+
+    // Merge all sub-dex positions into a single flat array
+    const merged = [...this.positionsBySubDex.values()].flat()
+
+    this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',
-      data: positions,
+      data: merged,
     })
   }
 }

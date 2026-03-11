@@ -71,6 +71,7 @@ const dexKey = 'hyperliquid'
 const assetIdLookup = new Map<string, number>([
   ['BTC', 0],
   ['ETH', 1],
+  ['xyz:BRENTOIL', 10000],
 ])
 
 function createProvider(): HyperliquidWsProvider {
@@ -229,7 +230,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should map positions subscription to webData2 payload', async () => {
+    it('should send clearinghouseState subscribe for default and xyz sub-dexes', async () => {
       const provider = createProvider()
 
       await provider.subscribe(
@@ -237,9 +238,46 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+      expect(getMockRwsInstance().sent).toHaveLength(2)
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'webData2', user: '0xabc' },
+        subscription: { type: 'clearinghouseState', user: '0xabc' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'subscribe',
+        subscription: {
+          type: 'clearinghouseState',
+          user: '0xabc',
+          dex: 'xyz',
+        },
+      })
+    })
+
+    it('should send two unsubscribe messages when positions listener unsubscribes', async () => {
+      const provider = createProvider()
+
+      const unsub = await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+
+      getMockRwsInstance().sent = [] // Clear subscribe messages
+      unsub()
+
+      expect(getMockRwsInstance().sent).toHaveLength(2)
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).toContainEqual({
+        method: 'unsubscribe',
+        subscription: { type: 'clearinghouseState', user: '0xabc' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'unsubscribe',
+        subscription: {
+          type: 'clearinghouseState',
+          user: '0xabc',
+          dex: 'xyz',
+        },
       })
     })
   })
@@ -534,7 +572,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit positions event for webData2 channel', async () => {
+    it('should emit combined positions for clearinghouseState messages', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
@@ -543,10 +581,12 @@ describe('HyperliquidWsProvider', () => {
         listener
       )
 
+      // Default sub-dex (native BTC position)
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'webData2',
+          channel: 'clearinghouseState',
           data: {
+            dex: '',
             user: '0xuser1',
             clearinghouseState: {
               assetPositions: [
@@ -569,16 +609,50 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.channel).toBe('positions')
-      expect(event.data).toHaveLength(1)
-      expect(event.data[0]).toMatchObject({
+      const event1 = listener.mock.calls[0][0]
+      expect(event1.channel).toBe('positions')
+      expect(event1.data).toHaveLength(1)
+      expect(event1.data[0]).toMatchObject({
         symbol: 'BTC',
         dex: 'hyperliquid',
         size: '0.1',
         entryPrice: '94000',
         leverage: 10,
       })
+
+      // xyz sub-dex (HIP-3 BRENTOIL position) — should merge with native
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'clearinghouseState',
+          data: {
+            dex: 'xyz',
+            user: '0xuser1',
+            clearinghouseState: {
+              assetPositions: [
+                {
+                  position: {
+                    coin: 'xyz:BRENTOIL',
+                    szi: '-0.45',
+                    entryPx: '70.50',
+                    positionValue: '31.725',
+                    liquidationPx: '90.00',
+                    unrealizedPnl: '-2.50',
+                    marginUsed: '15.86',
+                    leverage: { type: 'isolated', value: 2 },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const event2 = listener.mock.calls[1][0]
+      expect(event2.channel).toBe('positions')
+      expect(event2.data).toHaveLength(2)
+      expect(event2.data.map((p: any) => p.symbol)).toContain('BTC')
+      expect(event2.data.map((p: any) => p.symbol)).toContain('xyz:BRENTOIL')
     })
 
     it('should ignore pong messages', async () => {

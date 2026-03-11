@@ -42,7 +42,8 @@ export type HlWsUserFillsData = {
   fills: HlUserFill[]
 }
 
-export type HlWsWebData2Data = {
+export type HlWsClearinghouseStateData = {
+  dex: string
   user: string
   clearinghouseState: Pick<HlClearinghouseState, 'assetPositions'>
 }
