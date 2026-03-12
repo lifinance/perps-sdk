@@ -91,6 +91,15 @@ export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
 export { submitWithdrawal } from './services/submitWithdrawal.js'
 
 // Utils
+export {
+  applySlippage,
+  calculateNotionalValue,
+  calculatePositionSize,
+  calculateRequiredMargin,
+  calculateRoe,
+  calculateUnrealizedPnl,
+  estimateFees,
+} from './utils/calculations.js'
 export { signTypedData } from './utils/signTypedData.js'
 
 // Version
