@@ -100,6 +100,13 @@ export {
   calculateUnrealizedPnl,
   estimateFees,
 } from './utils/calculations.js'
+export type { FillClassification } from './utils/orderClassification.js'
+export {
+  classifyFill,
+  isStopLossOrder,
+  isTakeProfitOrder,
+  isTpSlOrder,
+} from './utils/orderClassification.js'
 export {
   formatOrderPrice,
   formatOrderSize,
