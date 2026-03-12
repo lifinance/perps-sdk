@@ -100,6 +100,11 @@ export {
   calculateUnrealizedPnl,
   estimateFees,
 } from './utils/calculations.js'
+export {
+  formatOrderPrice,
+  formatOrderSize,
+  getMaxPriceDecimals,
+} from './utils/orderFormatting.js'
 export { signTypedData } from './utils/signTypedData.js'
 
 // Version
