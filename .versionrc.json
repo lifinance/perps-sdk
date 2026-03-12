@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "postbump": "node scripts/version.js && git add src/version.ts"
+  }
+}
