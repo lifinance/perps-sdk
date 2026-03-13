@@ -1,3 +1,5 @@
+import type { PerpsSigner } from './enums.js'
+
 export interface AuthorizationParam {
   name: string
   type: 'string' | 'number' | 'boolean'
@@ -8,6 +10,7 @@ export interface Authorization {
   key: string
   name: string
   params?: AuthorizationParam[]
+  signer?: PerpsSigner
 }
 
 export interface Dex {

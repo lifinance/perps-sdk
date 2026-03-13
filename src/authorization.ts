@@ -1,4 +1,5 @@
 import type { Address, Hex, PerpsTypedData } from './typedData.js'
+import type { PerpsSigner } from './enums.js'
 
 export interface AuthorizationInput {
   key: string
@@ -16,6 +17,7 @@ export interface AuthorizationAction {
   action: string
   description?: string
   typedData: PerpsTypedData
+  signer?: PerpsSigner
 }
 
 export interface CreateAuthorizationResponse {

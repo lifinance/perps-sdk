@@ -106,3 +106,8 @@ export enum ActivityType {
   LIQUIDATION = 'LIQUIDATION',
   FUNDING = 'FUNDING',
 }
+
+export enum PerpsSigner {
+  USER = 'USER',
+  AGENT = 'AGENT',
+}
