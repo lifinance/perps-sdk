@@ -5,6 +5,7 @@ export enum PerpsErrorCode {
   ValidationError = 2002,
   TimeoutError = 2003,
   ThirdPartyError = 2004,
+  SDKError = 2005,
 
   // Auth errors (2010-2019)
   SignatureInvalid = 2010,
