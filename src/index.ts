@@ -32,24 +32,9 @@ export type {
   RequiredAuthorizationsResult,
   SigningMode,
 } from './client/types.js'
-// Dex
-export { getDexAuthProvider } from './dex/registry.js'
-export type { DexAuthInputs, DexAuthProvider } from './dex/types.js'
-export { AgentError } from './errors/AgentError.js'
-export { PerpsErrorMessage, PerpsErrorName } from './errors/constants.js'
 // Errors
-export { HTTPError } from './errors/HTTPError.js'
+export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
-export { PerpsSDKError } from './errors/PerpsSDKError.js'
-export { ServerError } from './errors/ServerError.js'
-export {
-  findErrorType,
-  getErrorChain,
-  getRootCause,
-  getRootCauseMessage,
-  hasErrorType,
-} from './errors/utils/rootCause.js'
-export { ValidationError } from './errors/ValidationError.js'
 // Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
 export type { EventForSubscription } from './realtime/types.js'
