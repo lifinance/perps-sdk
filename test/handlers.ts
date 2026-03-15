@@ -22,6 +22,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsSigner,
   PositionSide,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
@@ -37,8 +38,27 @@ export const mockDexes: DexesResponse = {
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
       authorizations: [
-        { key: 'ApproveAgent', name: 'Approve Agent', params: [] },
-        { key: 'ApproveBuilderFee', name: 'Approve Builder Fee', params: [] },
+        {
+          key: 'ApproveAgent',
+          name: 'Approve Agent',
+          signer: PerpsSigner.USER,
+          params: [{ name: 'agentAddress', type: 'string', required: true }],
+        },
+        {
+          key: 'ApproveBuilderFee',
+          name: 'Approve Builder Fee',
+          signer: PerpsSigner.USER,
+        },
+        {
+          key: 'UserSetAbstraction',
+          name: 'Set User Abstraction',
+          signer: PerpsSigner.USER,
+        },
+        {
+          key: 'AgentSetAbstraction',
+          name: 'Set User Abstraction (Agent)',
+          signer: PerpsSigner.AGENT,
+        },
       ],
     },
   ],
@@ -224,6 +244,7 @@ export const mockCreateAuthResponse: CreateAuthorizationResponse = {
     {
       action: 'ApproveAgent',
       description: 'Approve agent wallet',
+      signer: PerpsSigner.USER,
       typedData: {
         domain: { name: 'Hyperliquid', chainId: 1 },
         types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
