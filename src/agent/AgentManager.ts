@@ -49,10 +49,12 @@ export class AgentManager {
       return agent
     }
 
-    throw new PerpsError(
-      PerpsErrorCode.AgentUnauthorized,
+    const error = new PerpsError(
+      PerpsErrorCode.SDKError,
       PerpsErrorMessage.AgentNotFound
     )
+    error.tool = '@lifi/perps-sdk'
+    throw error
   }
 
   /**

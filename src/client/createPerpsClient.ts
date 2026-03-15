@@ -1,7 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
-import { PerpsErrorName } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
@@ -89,10 +88,10 @@ export interface PerpsSDKClient {
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   if (!options.integrator) {
     const error = new PerpsError(
-      PerpsErrorCode.ValidationError,
+      PerpsErrorCode.SDKError,
       'Integrator is required. Please see documentation at https://docs.li.fi'
     )
-    error.name = PerpsErrorName.ValidationError
+    error.tool = '@lifi/perps-sdk'
     throw error
   }
 
