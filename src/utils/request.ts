@@ -1,9 +1,9 @@
+import type { PerpsErrorBody } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type {
   PerpsBaseConfig,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import { HTTPError } from '../errors/HTTPError.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { version } from '../version.js'
 import { sleep } from './sleep.js'
@@ -23,8 +23,7 @@ const DEFAULT_RETRIES = 1
  * @param options - Fetch options plus retries
  * @param sdkOptions - SDK-specific options (signal, etc.)
  * @returns Parsed JSON response
- * @throws {HTTPError} On non-2xx responses
- * @throws {PerpsError} On network or parsing errors
+ * @throws {PerpsError} On non-2xx responses or network errors
  */
 export async function request<T>(
   config: PerpsBaseConfig,
@@ -61,10 +60,13 @@ export async function request<T>(
     const response = await fetch(url, finalOptions)
 
     if (!response.ok) {
-      const error = new HTTPError(response, url)
-      await error.buildAdditionalDetails()
+      // Parse the backend's error body
+      let body: PerpsErrorBody | undefined
+      try {
+        body = await response.json()
+      } catch {}
 
-      // Retry on 5xx errors
+      // Retry on 5xx before throwing
       if (retries > 0 && response.status >= 500) {
         await sleep(500)
         return request<T>(
@@ -75,12 +77,25 @@ export async function request<T>(
         )
       }
 
+      // Rehydrate backend error — code/message/tool come straight from the response
+      const fallbackMessage = `Request failed with status code ${response.status}`
+      if (
+        body &&
+        typeof body.code === 'number' &&
+        typeof body.message === 'string'
+      ) {
+        const error = new PerpsError(body.code, body.message)
+        error.tool = body.tool ?? 'unknown'
+        throw error
+      }
+      const error = new PerpsError(PerpsErrorCode.DefaultError, fallbackMessage)
+      error.tool = 'unknown'
       throw error
     }
 
     return (await response.json()) as T
   } catch (error) {
-    if (error instanceof HTTPError || error instanceof PerpsError) {
+    if (error instanceof PerpsError) {
       throw error
     }
 
