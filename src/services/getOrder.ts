@@ -21,7 +21,7 @@ export interface GetOrderParams {
  * @param params - Request parameters
  * @param options - Request options (e.g., AbortSignal)
  * @returns Order details
- * @throws {HTTPError} On API error responses (e.g., 404 if order not found)
+ * @throws {PerpsError} On API error responses (e.g., 404 if order not found)
  * @throws {PerpsError} On network or parsing errors
  *
  * @example

@@ -19,7 +19,7 @@ export interface GetPricesParams {
  * @param params - Request parameters
  * @param options - Request options (e.g., AbortSignal)
  * @returns Map of symbol to price
- * @throws {HTTPError} On API error responses
+ * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
  * @example

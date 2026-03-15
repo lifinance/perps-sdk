@@ -28,7 +28,7 @@ export interface CreateAuthorizationParams {
  * @param params - Request parameters
  * @param options - Request options (e.g., AbortSignal)
  * @returns Authorization actions with typed data for signing
- * @throws {HTTPError} On API error responses
+ * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
  * @remarks

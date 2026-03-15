@@ -11,7 +11,7 @@ import { request } from '../utils/request.js'
  * @param client - The SDK client instance
  * @param options - Request options (e.g., AbortSignal)
  * @returns List of supported DEXes with their authorization requirements
- * @throws {HTTPError} On API error responses
+ * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
  * @example

@@ -27,7 +27,7 @@ export interface SubmitOrderParams {
  * @param params - Request parameters
  * @param options - Request options (e.g., AbortSignal)
  * @returns Results for each order action
- * @throws {HTTPError} On API error responses
+ * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
  * @example

@@ -19,7 +19,7 @@ export interface GetMarketParams {
  * @param params - Request parameters
  * @param options - Request options (e.g., AbortSignal)
  * @returns Market details
- * @throws {HTTPError} On API error responses (e.g., 404 if market not found)
+ * @throws {PerpsError} On API error responses (e.g., 404 if market not found)
  * @throws {PerpsError} On network or parsing errors
  *
  * @example
