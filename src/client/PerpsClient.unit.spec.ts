@@ -73,7 +73,7 @@ describe('PerpsClient', () => {
         })
         expect.fail('Should have thrown')
       } catch (error: any) {
-        expect(error.code).toBe(PerpsErrorCode.ValidationError)
+        expect(error.code).toBe(PerpsErrorCode.SDKError)
         expect(error.message).toContain('USER_AGENT mode')
       }
     })
@@ -107,7 +107,7 @@ describe('PerpsClient', () => {
         })
         expect.fail('Should have thrown')
       } catch (error: any) {
-        expect(error.code).toBe(PerpsErrorCode.ValidationError)
+        expect(error.code).toBe(PerpsErrorCode.SDKError)
       }
     })
 

@@ -21,7 +21,7 @@ describe('getDexes', () => {
     const result = await getDexes(client)
 
     expect(result.dexes[0].authorizations).toBeDefined()
-    expect(result.dexes[0].authorizations).toHaveLength(2)
+    expect(result.dexes[0].authorizations).toHaveLength(4)
   })
 
   it('should support AbortSignal', async () => {

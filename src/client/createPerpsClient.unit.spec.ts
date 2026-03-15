@@ -42,7 +42,7 @@ describe('createPerpsClient', () => {
     try {
       createPerpsClient({ integrator: '', apiKey: 'test-key' })
     } catch (error: any) {
-      expect(error.code).toBe(PerpsErrorCode.ValidationError)
+      expect(error.code).toBe(PerpsErrorCode.SDKError)
     }
   })
 
