@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@lifi/perps-types':
-        specifier: 0.1.1-alpha.14
-        version: 0.1.1-alpha.14(typescript@5.9.3)(zod@4.3.6)
+        specifier: 0.1.1-alpha.16
+        version: 0.1.1-alpha.16(typescript@5.9.3)(zod@4.3.6)
       viem:
         specifier: ^2.21.0
         version: 2.45.3(typescript@5.9.3)(zod@4.3.6)
@@ -422,11 +422,11 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lifi/perps-types@0.1.1-alpha.14':
-    resolution: {integrity: sha512-TAzmUNQLoswbFIoB3plJmqdP3bAkv5OyJMK7Vib4F0/4e5LY4ScGdzNjXY038IupQdQBeAN5YznMK26ZjgE5Gg==}
+  '@lifi/perps-types@0.1.1-alpha.16':
+    resolution: {integrity: sha512-hFOHvqbfz8tPmH6qO8kwCY/PN6L0uNgXxVdvAktF0CtF8yNkNvnn1T6R6ijE633q6og0Xa1dh8IA2c5N1TGXlg==}
 
-  '@lifi/types@17.61.0':
-    resolution: {integrity: sha512-rYMw2qpYxqgXpW7UU/QdBDaU+zBWZVPU30IseYk3Ji7H88ve6jbwV8FlysUEATFOP2xEj/4mErWchhXua0VTFg==}
+  '@lifi/types@17.66.0':
+    resolution: {integrity: sha512-g8pJYzCg7YEZk8xjVkjPLYqjYEQAjGJ4+NabV4ml+lTxUO0cCXZWOCFOOXccLJazUU0Hr9g8qMhgjbiX2OeyOQ==}
 
   '@mswjs/interceptors@0.41.2':
     resolution: {integrity: sha512-7G0Uf0yK3f2bjElBLGHIQzgRgMESczOMyYVasq1XK8P5HaXtlW4eQhz9MBL+TQILZLaruq+ClGId+hH0w4jvWw==}
@@ -2848,9 +2848,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lifi/perps-types@0.1.1-alpha.14(typescript@5.9.3)(zod@4.3.6)':
+  '@lifi/perps-types@0.1.1-alpha.16(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
-      '@lifi/types': 17.61.0(typescript@5.9.3)(zod@4.3.6)
+      '@lifi/types': 17.66.0(typescript@5.9.3)(zod@4.3.6)
       viem: 2.45.3(typescript@5.9.3)(zod@4.3.6)
     transitivePeerDependencies:
       - bufferutil
@@ -2858,7 +2858,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@lifi/types@17.61.0(typescript@5.9.3)(zod@4.3.6)':
+  '@lifi/types@17.66.0(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       viem: 2.45.3(typescript@5.9.3)(zod@4.3.6)
     transitivePeerDependencies:
