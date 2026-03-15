@@ -1,10 +1,13 @@
 import type {
   Address,
+  Authorization,
+  AuthorizationInput,
   AuthorizationsResponse,
   CancelOrderPayloadResponse,
   CreateAuthorizationResponse,
   CreateOrderResponse,
   CreateWithdrawalResponse,
+  Dex,
   ModifyOrderPayloadResponse,
   OrderActionType,
   SignedAuthorization,
@@ -12,14 +15,14 @@ import type {
   SubmitOrderResponse,
   SubmitWithdrawalResponse,
 } from '@lifi/perps-types'
-import { OrderType, PerpsErrorCode } from '@lifi/perps-types'
-import { getDexAuthProvider } from '../dex/registry.js'
+import { OrderType, PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
 import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { cancelOrder } from '../services/cancelOrder.js'
 import { createAuthorization } from '../services/createAuthorization.js'
 import { createOrder } from '../services/createOrder.js'
 import { createWithdrawal } from '../services/createWithdrawal.js'
+import { getDexes } from '../services/getDexes.js'
 import { modifyOrder } from '../services/modifyOrder.js'
 import type { SubmitAuthorizationParams } from '../services/submitAuthorization.js'
 import { submitAuthorization } from '../services/submitAuthorization.js'
@@ -89,6 +92,7 @@ import type {
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
   private signingModes: Map<string, SigningMode> = new Map()
+  private dexMetadataCache: Map<string, Dex> = new Map()
 
   constructor(options: PerpsClientOptions) {
     this.sdkClient = createPerpsClient({
@@ -111,6 +115,71 @@ export class PerpsClient {
    */
   private modeKey(address: Address, dex: string): string {
     return `${address.toLowerCase()}:${dex.toLowerCase()}`
+  }
+
+  /**
+   * Fetch and cache DEX metadata from the backend.
+   */
+  private async getDexMetadata(dex: string): Promise<Dex> {
+    const cached = this.dexMetadataCache.get(dex)
+    if (cached) {
+      return cached
+    }
+
+    const { dexes } = await getDexes(this.sdkClient)
+    for (const d of dexes) {
+      this.dexMetadataCache.set(d.key, d)
+    }
+
+    const metadata = this.dexMetadataCache.get(dex)
+    if (!metadata) {
+      const error = new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Unsupported dex: ${dex}`
+      )
+      error.tool = '@lifi/perps-sdk'
+      throw error
+    }
+    return metadata
+  }
+
+  /**
+   * Build authorization inputs from DEX metadata based on signing mode.
+   */
+  private buildAuthInputsFromMetadata(
+    authorizations: Authorization[],
+    mode: SigningMode,
+    agentAddress?: Address
+  ): AuthorizationInput[] {
+    return authorizations
+      .filter((auth) => {
+        if (mode === 'USER') {
+          // In USER mode, only include USER-signer auths
+          return auth.signer === PerpsSigner.USER
+        }
+        // In USER_AGENT mode, skip UserSetAbstraction (user-mode only)
+        if (
+          auth.signer === PerpsSigner.USER &&
+          auth.key === 'UserSetAbstraction'
+        ) {
+          return false
+        }
+        return true
+      })
+      .map((auth) => {
+        const params: Record<string, unknown> = {}
+        // Fill agentAddress param if declared and agent exists
+        if (
+          auth.params?.some((p) => p.name === 'agentAddress') &&
+          agentAddress
+        ) {
+          params.agentAddress = agentAddress
+        }
+        return {
+          key: auth.key,
+          ...(Object.keys(params).length > 0 ? { params } : {}),
+        }
+      })
   }
 
   /**
@@ -340,10 +409,12 @@ export class PerpsClient {
     const mode = this.getSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
+      const error = new PerpsError(
+        PerpsErrorCode.SDKError,
         `${PerpsErrorMessage.InvalidSigningMode} modifyOrders() requires USER_AGENT mode. Use modifyOrder() + submitOrder() for USER mode.`
       )
+      error.tool = '@lifi/perps-sdk'
+      throw error
     }
 
     const agent = await this.sdkClient.agentManager.getAgent(
@@ -392,10 +463,12 @@ export class PerpsClient {
     const mode = this.getSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
+      const error = new PerpsError(
+        PerpsErrorCode.SDKError,
         `${PerpsErrorMessage.InvalidSigningMode} placeOrder() requires USER_AGENT mode. Use createOrder() + submitOrder() for USER mode.`
       )
+      error.tool = '@lifi/perps-sdk'
+      throw error
     }
 
     const agent = await this.sdkClient.agentManager.getAgent(
@@ -490,10 +563,12 @@ export class PerpsClient {
     const mode = this.getSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
+      const error = new PerpsError(
+        PerpsErrorCode.SDKError,
         `${PerpsErrorMessage.InvalidSigningMode} cancelOrders() requires USER_AGENT mode. Use cancelOrder() + submitOrder() for USER mode.`
       )
+      error.tool = '@lifi/perps-sdk'
+      throw error
     }
 
     const agent = await this.sdkClient.agentManager.getAgent(
@@ -577,9 +652,10 @@ export class PerpsClient {
   /**
    * Determine which authorizations (if any) the user needs to sign before trading.
    *
-   * Uses the dex auth provider to determine what authorizations to request,
+   * Fetches DEX metadata from the backend to determine what authorizations to request,
    * then calls buildAuthorization — the backend filters already-valid auths
-   * and returns only what's needed.
+   * and returns only what's needed. Categorizes results by the `signer` field
+   * from the response.
    *
    * @param params - Parameters including dex, address, and dex-specific config
    * @returns Which authorizations are needed and whether the user is ready to trade
@@ -589,7 +665,6 @@ export class PerpsClient {
   ): Promise<RequiredAuthorizationsResult> {
     const { dex, address } = params
     const mode = this.getSigningMode(address, dex)
-    const provider = getDexAuthProvider(dex)
 
     // Ensure agent exists in USER_AGENT mode
     let agentAddress: Address | undefined
@@ -601,13 +676,14 @@ export class PerpsClient {
       agentAddress = agent.address
     }
 
-    // Provider declares auth inputs categorized as user/agent
-    const authInputs = provider.getAuthorizationInputs({
-      signingMode: mode,
-      agentAddress,
-    })
+    // Fetch metadata and build inputs
+    const metadata = await this.getDexMetadata(dex)
+    const allInputs = this.buildAuthInputsFromMetadata(
+      metadata.authorizations,
+      mode,
+      agentAddress
+    )
 
-    const allInputs = [...authInputs.user, ...authInputs.agent]
     if (allInputs.length === 0) {
       return { userAuthorizations: [], agentAuthorizations: [], isReady: true }
     }
@@ -623,10 +699,13 @@ export class PerpsClient {
       return { userAuthorizations: [], agentAuthorizations: [], isReady: true }
     }
 
-    // Categorize backend results using provider's original key sets
-    const agentKeys = new Set(authInputs.agent.map((a) => a.key))
-    const userAuthorizations = actions.filter((a) => !agentKeys.has(a.action))
-    const agentAuthorizations = actions.filter((a) => agentKeys.has(a.action))
+    // Categorize by the signer field from the backend response
+    const userAuthorizations = actions.filter(
+      (a) => a.signer === PerpsSigner.USER
+    )
+    const agentAuthorizations = actions.filter(
+      (a) => a.signer === PerpsSigner.AGENT
+    )
 
     return {
       userAuthorizations,
