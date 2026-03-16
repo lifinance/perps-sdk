@@ -104,3 +104,82 @@ export function applySlippage(
   const multiplier = 1 + slippagePercent / 100
   return isBuy ? price * multiplier : price / multiplier
 }
+
+// ---------------------------------------------------------------------------
+// TP/SL expected P&L calculations
+// ---------------------------------------------------------------------------
+
+export interface ExpectedPnl {
+  amount: number
+  percent: number
+}
+
+/**
+ * Calculate expected gain/loss for a TP or SL trigger price.
+ * Returns signed values — positive means profit, negative means loss.
+ *
+ * @param triggerPrice - The TP or SL target price
+ * @param entryPrice - Position entry / current market price
+ * @param leverage - Position leverage multiplier
+ * @param isLong - True for long positions, false for short
+ * @param margin - Margin amount in USD
+ */
+export function calculateExpectedPnl(
+  triggerPrice: number,
+  entryPrice: number,
+  leverage: number,
+  isLong: boolean,
+  margin: number
+): ExpectedPnl | null {
+  if (!triggerPrice || entryPrice === 0 || margin === 0) {
+    return null
+  }
+  const priceDiff = isLong
+    ? triggerPrice - entryPrice
+    : entryPrice - triggerPrice
+  const percent = (priceDiff / entryPrice) * leverage * 100
+  const amount = margin * (percent / 100)
+  return { amount, percent }
+}
+
+/**
+ * Convert a percentage gain/loss to a target price.
+ *
+ * @param percent - Target gain/loss percentage (positive = profitable direction)
+ * @param entryPrice - Position entry price
+ * @param leverage - Position leverage multiplier
+ * @param isLong - True for long positions, false for short
+ */
+export function priceFromPercent(
+  percent: number,
+  entryPrice: number,
+  leverage: number,
+  isLong: boolean
+): number {
+  if (entryPrice === 0 || leverage === 0) {
+    return 0
+  }
+  const priceDelta = (percent / 100 / leverage) * entryPrice
+  return isLong ? entryPrice + priceDelta : entryPrice - priceDelta
+}
+
+/**
+ * Convert a target price to a percentage gain/loss.
+ *
+ * @param price - Target price
+ * @param entryPrice - Position entry price
+ * @param leverage - Position leverage multiplier
+ * @param isLong - True for long positions, false for short
+ */
+export function percentFromPrice(
+  price: number,
+  entryPrice: number,
+  leverage: number,
+  isLong: boolean
+): number {
+  if (entryPrice === 0 || leverage === 0) {
+    return 0
+  }
+  const priceDiff = isLong ? price - entryPrice : entryPrice - price
+  return (priceDiff / entryPrice) * leverage * 100
+}

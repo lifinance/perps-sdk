@@ -76,14 +76,18 @@ export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
 export { submitWithdrawal } from './services/submitWithdrawal.js'
 
 // Utils
+export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
+  calculateExpectedPnl,
   calculateNotionalValue,
   calculatePositionSize,
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
   estimateFees,
+  percentFromPrice,
+  priceFromPercent,
 } from './utils/calculations.js'
 export type { FillClassification } from './utils/orderClassification.js'
 export {
