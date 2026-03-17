@@ -11,6 +11,7 @@ export interface Authorization {
   name: string
   params?: AuthorizationParam[]
   signer?: PerpsSigner
+  usage?: 'mandatory' | 'optional' | 'user'
 }
 
 export interface Dex {

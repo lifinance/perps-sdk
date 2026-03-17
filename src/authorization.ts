@@ -18,6 +18,7 @@ export interface AuthorizationAction {
   description?: string
   typedData: PerpsTypedData
   signer?: PerpsSigner
+  optional?: boolean
 }
 
 export interface CreateAuthorizationResponse {
