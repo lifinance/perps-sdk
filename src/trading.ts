@@ -4,6 +4,7 @@ import type {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsSigner,
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
@@ -28,12 +29,14 @@ export interface CreateOrderRequest {
   expiresAt?: string
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
+  market?: 'spot' | 'perps'
 }
 
 export interface OrderAction {
   action: OrderActionType
   description?: string
   typedData: PerpsTypedData
+  signer?: PerpsSigner
 }
 
 export interface CreateOrderResponse {
