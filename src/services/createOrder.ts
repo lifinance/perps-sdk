@@ -41,6 +41,8 @@ export interface CreateOrderParams {
   takeProfit?: TriggerOrderInput
   /** Stop loss trigger order */
   stopLoss?: TriggerOrderInput
+  /** Market type: 'spot' or 'perps' (defaults to 'perps') */
+  market?: 'spot' | 'perps'
 }
 
 /**
@@ -106,6 +108,7 @@ export async function createOrder(
         expiresAt: params.expiresAt,
         takeProfit: params.takeProfit,
         stopLoss: params.stopLoss,
+        market: params.market,
       }),
     },
     options

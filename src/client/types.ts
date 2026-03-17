@@ -88,6 +88,8 @@ export interface PlaceOrderParams {
   takeProfit?: TriggerOrderInput
   /** Stop loss trigger */
   stopLoss?: TriggerOrderInput
+  /** Market type: 'spot' or 'perps' (defaults to 'perps') */
+  market?: 'spot' | 'perps'
 }
 
 /**

@@ -329,6 +329,7 @@ export class PerpsClient {
       expiresAt: params.expiresAt,
       takeProfit: params.takeProfit,
       stopLoss: params.stopLoss,
+      market: params.market,
     })
   }
 
@@ -492,6 +493,7 @@ export class PerpsClient {
       expiresAt: params.expiresAt,
       takeProfit: params.takeProfit,
       stopLoss: params.stopLoss,
+      market: params.market,
     })
 
     // 2. Sign each action with agent key
