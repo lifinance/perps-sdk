@@ -153,6 +153,10 @@ export class PerpsClient {
   ): AuthorizationInput[] {
     return authorizations
       .filter((auth) => {
+        // Skip user-initiated authorizations — they are invoked on-demand
+        if (auth.usage === 'user') {
+          return false
+        }
         if (mode === 'USER') {
           // In USER mode, only include USER-signer auths
           return auth.signer === PerpsSigner.USER
@@ -743,9 +747,16 @@ export class PerpsClient {
         actions: userSignedActions,
       })
 
-      // Check for failures - return early if any user auth failed
-      const failed = userResults.results.find((r) => !r.success)
-      if (failed) {
+      // Check for mandatory failures - return early if any non-optional user auth failed
+      const optionalActions = new Set(
+        required.userAuthorizations
+          .filter((a) => a.optional)
+          .map((a) => a.action)
+      )
+      const mandatoryFailure = userResults.results.find(
+        (r) => !r.success && !optionalActions.has(r.action)
+      )
+      if (mandatoryFailure) {
         return { userResults }
       }
     }
