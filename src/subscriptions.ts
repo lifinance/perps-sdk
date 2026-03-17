@@ -43,6 +43,11 @@ export type PositionsSubscription = {
   dex: string
   address: Address
 }
+export type SpotBalancesSubscription = {
+  channel: 'spotBalances'
+  dex: string
+  address: Address
+}
 
 export type Subscription =
   | PricesSubscription
@@ -52,8 +57,15 @@ export type Subscription =
   | OrderUpdatesSubscription
   | FillsSubscription
   | PositionsSubscription
+  | SpotBalancesSubscription
 
 // --- Events emitted to listeners ---
+
+export interface SpotBalance {
+  coin: string
+  total: string
+  hold: string
+}
 
 export type PricesEvent = { channel: 'prices'; data: PricesResponse }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
@@ -62,6 +74,7 @@ export type CandleEvent = { channel: 'candle'; data: Candle }
 export type OrderUpdatesEvent = { channel: 'orderUpdates'; data: Order[] }
 export type FillsEvent = { channel: 'fills'; data: HistoryItem[] }
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
+export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }
 
 export type SubscriptionEvent =
   | PricesEvent
@@ -71,3 +84,4 @@ export type SubscriptionEvent =
   | OrderUpdatesEvent
   | FillsEvent
   | PositionsEvent
+  | SpotBalancesEvent

@@ -51,7 +51,7 @@ export interface Balance {
 export interface AccountResponse {
   dex: string
   address: Address
-  balances: Balance[]
+  balances: Record<string, Balance[]>
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
