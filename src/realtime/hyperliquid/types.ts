@@ -47,3 +47,8 @@ export type HlWsClearinghouseStateData = {
   user: string
   clearinghouseState: Pick<HlClearinghouseState, 'assetPositions'>
 }
+
+export type HlWsSpotClearinghouseStateData = {
+  user: string
+  balances: Array<{ coin: string; total: string; hold: string }>
+}

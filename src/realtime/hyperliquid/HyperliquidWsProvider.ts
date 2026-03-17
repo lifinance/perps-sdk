@@ -22,6 +22,7 @@ import type {
   HlWsClearinghouseStateData,
   HlWsL2BookData,
   HlWsMessage,
+  HlWsSpotClearinghouseStateData,
   HlWsTrade,
   HlWsUserFillsData,
 } from './types.js'
@@ -180,6 +181,8 @@ export class HyperliquidWsProvider implements WsProvider {
         return `userFills:${sub.address.toLowerCase()}`
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
+      case 'spotBalances':
+        return `spotClearinghouseState:${sub.address.toLowerCase()}`
     }
   }
 
@@ -205,6 +208,8 @@ export class HyperliquidWsProvider implements WsProvider {
         // Positions are handled via getPositionSubEntries in subscribe()
         // and never reach toHlPayload, but TS requires exhaustive cases.
         return { type: 'clearinghouseState', user: sub.address }
+      case 'spotBalances':
+        return { type: 'spotClearinghouseState', user: sub.address }
     }
   }
 
@@ -264,6 +269,11 @@ export class HyperliquidWsProvider implements WsProvider {
           break
         case 'clearinghouseState':
           this.handleClearinghouseState(msg.data as HlWsClearinghouseStateData)
+          break
+        case 'spotClearinghouseState':
+          this.handleSpotClearinghouseState(
+            msg.data as HlWsSpotClearinghouseStateData
+          )
           break
       }
     } catch {
@@ -351,6 +361,18 @@ export class HyperliquidWsProvider implements WsProvider {
     this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',
       data: merged,
+    })
+  }
+
+  private handleSpotClearinghouseState(data: HlWsSpotClearinghouseStateData) {
+    const balances = data.balances.map((b) => ({
+      coin: b.coin,
+      total: b.total,
+      hold: b.hold,
+    }))
+    this.emit(`spotClearinghouseState:${data.user.toLowerCase()}`, {
+      channel: 'spotBalances',
+      data: balances,
     })
   }
 }
