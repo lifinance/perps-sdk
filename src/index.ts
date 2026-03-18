@@ -25,10 +25,12 @@ export type {
   ExecuteAuthorizationsParams,
   ExecuteAuthorizationsResult,
   GetRequiredAuthorizationsParams,
+  HyperliquidConfig,
   ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
   PlaceTriggerOrderParams,
+  ProviderConfigs,
   RequiredAuthorizationsResult,
   SigningMode,
 } from './client/types.js'
@@ -82,7 +84,6 @@ export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
   calculateExpectedPnl,
-  calculateLiquidationPrice,
   calculateNotionalValue,
   calculatePositionSize,
   calculateRealizedPnlPercent,
@@ -94,6 +95,8 @@ export {
   priceFromPercent,
 } from './utils/calculations.js'
 export {
+  calculateLiquidationPrice,
+  calculateMaintenanceMarginRate,
   formatOrderPrice,
   formatOrderSize,
   getMaxPriceDecimals,
