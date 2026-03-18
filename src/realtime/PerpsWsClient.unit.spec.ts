@@ -30,7 +30,7 @@ const dexesWithWsUrl = {
     ...d,
     wsUrl: 'wss://api.hyperliquid.xyz/ws',
     extraData: {
-      venues: [
+      dexes: [
         { name: '', quoteAsset: 'USDC' },
         { name: 'xyz', quoteAsset: 'USDC' },
       ],

@@ -62,8 +62,10 @@ export class PerpsWsClient {
       assetIdLookup.set(m.symbol, m.assetId)
     }
 
-    const venues = (dexInfo.extraData?.venues ?? []) as Array<{ name: string }>
-    const subDexes = venues.map((v) => v.name).filter((n) => n !== '')
+    const subDexList = (dexInfo.extraData?.dexes ?? []) as Array<{
+      name: string
+    }>
+    const subDexes = subDexList.map((v) => v.name).filter((n) => n !== '')
 
     const provider = new HyperliquidWsProvider(
       dexInfo.wsUrl,
