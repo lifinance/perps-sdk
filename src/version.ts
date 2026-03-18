@@ -1,2 +1,2 @@
 export const name = '@lifi/perps-sdk'
-export const version = '0.1.1-alpha.29'
+export const version = '0.1.1-alpha.30'
