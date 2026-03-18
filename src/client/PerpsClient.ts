@@ -100,6 +100,7 @@ export class PerpsClient {
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
       storage: options.storage,
+      providers: options.providers,
     })
   }
 
