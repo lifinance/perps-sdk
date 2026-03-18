@@ -1,13 +1,13 @@
 /**
- * Order size and price formatting for exchange submission.
+ * Hyperliquid order size and price formatting for exchange submission.
  *
- * These encode exchange-specific order submission rules. Getting size/price
- * formatting wrong causes rejected orders. Currently implements Hyperliquid
- * rules; as the SDK goes multi-dex, these should move behind a provider
- * interface.
+ * These encode Hyperliquid-specific order submission rules. Getting size/price
+ * formatting wrong causes rejected orders.
  *
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size
  */
+
+import { stringToFloat } from '../parse.js'
 
 /**
  * Max combined decimals (size + price) enforced by Hyperliquid.
@@ -39,8 +39,8 @@ export function formatOrderSize(size: number, szDecimals: number): string {
   // Truncate (don't round up) to avoid exceeding available balance
   const multiplier = 10 ** szDecimals
   const truncated = Math.floor(size * multiplier) / multiplier
-  // Remove trailing zeros by converting through parseFloat
-  return parseFloat(truncated.toFixed(szDecimals)).toString()
+  // Remove trailing zeros by round-tripping through stringToFloat
+  return stringToFloat(truncated.toFixed(szDecimals)).toString()
 }
 
 /**
@@ -60,7 +60,7 @@ export function formatOrderPrice(price: number, szDecimals: number): string {
   const maxPriceDecimals = getMaxPriceDecimals(szDecimals)
 
   // Round to max allowed decimals
-  let rounded = parseFloat(price.toFixed(maxPriceDecimals))
+  let rounded = stringToFloat(price.toFixed(maxPriceDecimals))
 
   // Integer prices are always allowed regardless of significant figures
   if (Number.isInteger(rounded)) {
@@ -73,7 +73,7 @@ export function formatOrderPrice(price: number, szDecimals: number): string {
 
   // If more than 5 significant figures, round to 5
   if (sigFigs > 5) {
-    rounded = parseFloat(rounded.toPrecision(5))
+    rounded = stringToFloat(rounded.toPrecision(5))
   }
 
   // Return without trailing zeros

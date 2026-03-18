@@ -28,6 +28,11 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/cjs/index.js"
     },
+    "./utils/hyperliquid": {
+      "types": "./dist/types/utils/hyperliquid/index.d.ts",
+      "import": "./dist/esm/utils/hyperliquid/index.js",
+      "default": "./dist/cjs/utils/hyperliquid/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

@@ -82,8 +82,10 @@ export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
   calculateExpectedPnl,
+  calculateLiquidationPrice,
   calculateNotionalValue,
   calculatePositionSize,
+  calculateRealizedPnlPercent,
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
@@ -91,6 +93,12 @@ export {
   percentFromPrice,
   priceFromPercent,
 } from './utils/calculations.js'
+export {
+  formatOrderPrice,
+  formatOrderSize,
+  getMaxPriceDecimals,
+} from './utils/hyperliquid/index.js'
+export { getAsset, getQuoteAsset, getVenue } from './utils/market.js'
 export type { FillClassification } from './utils/orderClassification.js'
 export {
   classifyFill,
@@ -98,12 +106,10 @@ export {
   isTakeProfitOrder,
   isTpSlOrder,
 } from './utils/orderClassification.js'
-export {
-  formatOrderPrice,
-  formatOrderSize,
-  getMaxPriceDecimals,
-} from './utils/orderFormatting.js'
+export { stringToFloat } from './utils/parse.js'
 export { signTypedData } from './utils/signTypedData.js'
+export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
+export { validateMargin } from './utils/validation.js'
 
 // Version
 export { name, version } from './version.js'

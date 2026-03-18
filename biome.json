@@ -80,7 +80,11 @@
       }
     },
     {
-      "includes": ["src/index.ts"],
+      "includes": [
+        "src/index.ts",
+        "src/utils/orderFormatting.ts",
+        "src/utils/hyperliquid/index.ts"
+      ],
       "linter": {
         "rules": {
           "performance": {
