@@ -68,6 +68,7 @@ vi.mock('../ReconnectingWebSocket.js', () => ({
 // --- Test setup ---
 
 const dexKey = 'hyperliquid'
+const subDexes = ['xyz']
 const assetIdLookup = new Map<string, number>([
   ['BTC', 0],
   ['ETH', 1],
@@ -78,13 +79,14 @@ function createProvider(): HyperliquidWsProvider {
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
     dexKey,
-    assetIdLookup
+    assetIdLookup,
+    subDexes
   )
 }
 
 describe('HyperliquidWsProvider', () => {
   describe('subscribe', () => {
-    it('should send subscribe message to WebSocket', async () => {
+    it('should send subscribe message for default and sub-dex allMids', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
@@ -93,10 +95,15 @@ describe('HyperliquidWsProvider', () => {
         listener
       )
 
-      expect(getMockRwsInstance().sent).toHaveLength(1)
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+      expect(getMockRwsInstance().sent).toHaveLength(2)
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).toContainEqual({
         method: 'subscribe',
         subscription: { type: 'allMids' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'allMids', dex: 'xyz' },
       })
     })
 
@@ -122,8 +129,8 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      // Only one subscribe message should be sent
-      expect(getMockRwsInstance().sent).toHaveLength(1)
+      // Only two subscribe messages (default + xyz), not four
+      expect(getMockRwsInstance().sent).toHaveLength(2)
     })
 
     it('should send unsubscribe when last listener unsubscribes', async () => {
@@ -139,15 +146,22 @@ describe('HyperliquidWsProvider', () => {
       )
 
       unsub1()
-      // Still one subscriber, no unsubscribe sent
-      expect(getMockRwsInstance().sent).toHaveLength(1)
+      // Still one subscriber, no unsubscribe sent (2 initial subscribes)
+      expect(getMockRwsInstance().sent).toHaveLength(2)
 
       unsub2()
-      // Last subscriber removed, unsubscribe should be sent
-      expect(getMockRwsInstance().sent).toHaveLength(2)
-      expect(JSON.parse(getMockRwsInstance().sent[1])).toEqual({
+      // Last subscriber removed, unsubscribes for both default + xyz
+      expect(getMockRwsInstance().sent).toHaveLength(4)
+      const unsubPayloads = getMockRwsInstance()
+        .sent.slice(2)
+        .map((s) => JSON.parse(s))
+      expect(unsubPayloads).toContainEqual({
         method: 'unsubscribe',
         subscription: { type: 'allMids' },
+      })
+      expect(unsubPayloads).toContainEqual({
+        method: 'unsubscribe',
+        subscription: { type: 'allMids', dex: 'xyz' },
       })
     })
 
@@ -302,6 +316,46 @@ describe('HyperliquidWsProvider', () => {
       expect(listener).toHaveBeenCalledWith({
         channel: 'prices',
         data: { prices: { BTC: '95000', ETH: '3400' } },
+      })
+    })
+
+    it('should merge sub-dex allMids with default mids', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        listener
+      )
+
+      // Default allMids
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allMids',
+          data: { mids: { BTC: '95000', ETH: '3400' } },
+        })
+      )
+
+      // xyz sub-dex allMids
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allMids',
+          data: { dex: 'xyz', mids: { BRENTOIL: '70.50', GOLD: '2300' } },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const lastEvent = listener.mock.calls[1][0]
+      expect(lastEvent).toEqual({
+        channel: 'prices',
+        data: {
+          prices: {
+            BTC: '95000',
+            ETH: '3400',
+            BRENTOIL: '70.50',
+            GOLD: '2300',
+          },
+        },
       })
     })
 
@@ -805,11 +859,16 @@ describe('HyperliquidWsProvider', () => {
       // Simulate reconnection
       getMockRwsInstance().simulateOpen()
 
-      expect(getMockRwsInstance().sent).toHaveLength(2)
+      // 2 allMids (default + xyz) + 1 l2Book
+      expect(getMockRwsInstance().sent).toHaveLength(3)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
         subscription: { type: 'allMids' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'allMids', dex: 'xyz' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',

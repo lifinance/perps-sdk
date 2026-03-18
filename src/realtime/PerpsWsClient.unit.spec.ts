@@ -29,6 +29,12 @@ const dexesWithWsUrl = {
   dexes: mockDexes.dexes.map((d) => ({
     ...d,
     wsUrl: 'wss://api.hyperliquid.xyz/ws',
+    extraData: {
+      venues: [
+        { name: '', quoteAsset: 'USDC' },
+        { name: 'xyz', quoteAsset: 'USDC' },
+      ],
+    },
   })),
 }
 
@@ -60,7 +66,8 @@ describe('PerpsWsClient', () => {
       expect(MockedHlProvider).toHaveBeenCalledWith(
         'wss://api.hyperliquid.xyz/ws',
         'hyperliquid',
-        expect.any(Map)
+        expect.any(Map),
+        ['xyz']
       )
 
       ws.close()

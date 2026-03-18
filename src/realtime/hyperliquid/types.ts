@@ -16,6 +16,7 @@ export type HlWsMessage = {
 
 export type HlWsAllMidsData = {
   mids: HlAllMids
+  dex?: string
 }
 
 export type HlWsL2BookData = HlL2Book & { coin: string }

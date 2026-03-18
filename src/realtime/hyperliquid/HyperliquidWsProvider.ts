@@ -27,24 +27,25 @@ import type {
   HlWsUserFillsData,
 } from './types.js'
 
-/** HIP-3 sub-dexes to subscribe alongside the default clearinghouse. */
-const HL_PERP_SUB_DEXES = ['xyz']
-
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
   private readonly dexKey: string
   private readonly assetIdLookup: Map<string, number>
+  private readonly subDexes: string[]
   private positionsBySubDex = new Map<string, Position[]>()
+  private midsBySubDex = new Map<string, Record<string, string>>()
 
   constructor(
     wsUrl: string,
     dexKey: string,
-    assetIdLookup: Map<string, number>
+    assetIdLookup: Map<string, number>,
+    subDexes: string[]
   ) {
     this.dexKey = dexKey
     this.assetIdLookup = assetIdLookup
+    this.subDexes = subDexes
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
     this.rws.on('open', () => this.resubscribeAll())
@@ -60,6 +61,50 @@ export class HyperliquidWsProvider implements WsProvider {
       this.listeners.set(key, new Set())
     }
     this.listeners.get(key)!.add(listener)
+
+    // Prices require multi-sub-dex allMids subscriptions
+    if (sub.channel === 'prices') {
+      const entries = this.getPriceSubEntries()
+
+      for (const { subKey, payload } of entries) {
+        const existing = this.subs.get(subKey)
+        if (existing) {
+          existing.count++
+        } else {
+          this.subs.set(subKey, { count: 1, payload })
+          await this.rws.ready()
+          this.rws.send(
+            JSON.stringify({ method: 'subscribe', subscription: payload })
+          )
+        }
+      }
+
+      return () => {
+        this.listeners.get(key)?.delete(listener)
+        let allRemoved = true
+        for (const { subKey, payload } of entries) {
+          const s = this.subs.get(subKey)
+          if (s) {
+            s.count--
+            if (s.count <= 0) {
+              this.subs.delete(subKey)
+              this.rws.send(
+                JSON.stringify({
+                  method: 'unsubscribe',
+                  subscription: payload,
+                })
+              )
+            } else {
+              allRemoved = false
+            }
+          }
+        }
+        if (allRemoved) {
+          this.listeners.delete(key)
+          this.midsBySubDex.clear()
+        }
+      }
+    }
 
     // Positions require multi-sub-dex clearinghouseState subscriptions
     if (sub.channel === 'positions') {
@@ -134,6 +179,20 @@ export class HyperliquidWsProvider implements WsProvider {
     }
   }
 
+  /** Build sub-key + payload pairs for each sub-dex allMids subscription. */
+  private getPriceSubEntries(): Array<{ subKey: string; payload: object }> {
+    return [
+      {
+        subKey: 'allMids:default',
+        payload: { type: 'allMids' },
+      },
+      ...this.subDexes.map((dex) => ({
+        subKey: `allMids:${dex}`,
+        payload: { type: 'allMids', dex },
+      })),
+    ]
+  }
+
   /** Build sub-key + payload pairs for each sub-dex clearinghouseState subscription. */
   private getPositionSubEntries(
     address: string
@@ -144,7 +203,7 @@ export class HyperliquidWsProvider implements WsProvider {
         subKey: `positions:${addr}:default`,
         payload: { type: 'clearinghouseState', user: address },
       },
-      ...HL_PERP_SUB_DEXES.map((dex) => ({
+      ...this.subDexes.map((dex) => ({
         subKey: `positions:${addr}:${dex}`,
         payload: { type: 'clearinghouseState', user: address, dex },
       })),
@@ -189,6 +248,8 @@ export class HyperliquidWsProvider implements WsProvider {
   private toHlPayload(sub: Subscription): object {
     switch (sub.channel) {
       case 'prices':
+        // Prices are handled via getPriceSubEntries in subscribe()
+        // and never reach toHlPayload, but TS requires exhaustive cases.
         return { type: 'allMids' }
       case 'orderbook':
         return {
@@ -282,7 +343,16 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleAllMids(data: HlWsAllMidsData) {
-    this.emit('allMids', { channel: 'prices', data: { prices: data.mids } })
+    const subDexKey = data.dex || 'default'
+    this.midsBySubDex.set(subDexKey, data.mids)
+
+    // Merge all sub-dex mids into a single record
+    const merged: Record<string, string> = {}
+    for (const mids of this.midsBySubDex.values()) {
+      Object.assign(merged, mids)
+    }
+
+    this.emit('allMids', { channel: 'prices', data: { prices: merged } })
   }
 
   private handleL2Book(data: HlWsL2BookData) {
