@@ -221,6 +221,22 @@ export type HlFundingUpdate = {
 
 export type HlUserFunding = HlFundingUpdate[]
 
+// -- abstraction mode -------------------------------------------------------
+
+/**
+ * Possible values returned by the `userAbstraction` info endpoint.
+ * `null` means abstraction has never been set (standard mode).
+ */
+export const HlAbstractionMode = {
+  DISABLED: 'disabled',
+  UNIFIED_ACCOUNT: 'unifiedAccount',
+  PORTFOLIO_MARGIN: 'portfolioMargin',
+  DEX_ABSTRACTION: 'dexAbstraction',
+} as const
+
+export type HlAbstractionMode =
+  (typeof HlAbstractionMode)[keyof typeof HlAbstractionMode]
+
 // -- perpDexs ---------------------------------------------------------------
 
 export type HlPerpDexs = (null | { name: string })[]
