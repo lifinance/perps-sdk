@@ -76,6 +76,8 @@ export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
 export { submitWithdrawal } from './services/submitWithdrawal.js'
 
 // Utils
+export type { AccountSummary } from './utils/accountSummary.js'
+export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
