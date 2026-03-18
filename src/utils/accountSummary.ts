@@ -1,4 +1,6 @@
 import type { AccountResponse } from '@lifi/perps-types'
+// biome-ignore lint/correctness/useImportExtensions: package subpath export
+import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 import { stringToFloat } from './parse.js'
 
 export interface AccountSummary {
@@ -28,10 +30,9 @@ function getSpotPrice(
   return null
 }
 
-const UNIFIED_STATUSES = new Set([
-  'unified',
-  'unifiedAccount',
-  'portfolioMargin',
+const UNIFIED_STATUSES: ReadonlySet<string> = new Set([
+  HlAbstractionMode.UNIFIED_ACCOUNT,
+  HlAbstractionMode.PORTFOLIO_MARGIN,
 ])
 
 export function calculateAccountSummary(

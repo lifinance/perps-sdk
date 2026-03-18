@@ -2,6 +2,9 @@
 
 // Types
 export * from '@lifi/perps-types'
+// Utils
+// biome-ignore lint/correctness/useImportExtensions: package subpath export
+export { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 // Agent
 export { AgentManager } from './agent/AgentManager.js'
 export { createMemoryStorage, localStorageAdapter } from './agent/storage.js'
@@ -76,8 +79,6 @@ export type { SubmitOrderParams } from './services/submitOrder.js'
 export { submitOrder } from './services/submitOrder.js'
 export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
 export { submitWithdrawal } from './services/submitWithdrawal.js'
-
-// Utils
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
