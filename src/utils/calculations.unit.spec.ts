@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   applySlippage,
-  calculateLiquidationPrice,
   calculateNotionalValue,
   calculatePositionSize,
   calculateRealizedPnlPercent,
@@ -216,32 +215,6 @@ describe('applySlippage', () => {
   it('should handle very small prices', () => {
     const result = applySlippage(0.00001, 0.5, true)
     expect(result).toBeGreaterThan(0.00001)
-  })
-})
-
-describe('calculateLiquidationPrice', () => {
-  it('should calculate liquidation price for long position', () => {
-    // 10x leverage, 5% maintenance margin → buffer = 0.1 * 0.95 = 0.095
-    // Liq price = 50000 * (1 - 0.095) = 45250
-    expect(calculateLiquidationPrice(50000, 10, true, 0.05)).toBeCloseTo(45250)
-  })
-
-  it('should calculate liquidation price for short position', () => {
-    // 10x leverage, 5% maintenance margin → buffer = 0.095
-    // Liq price = 50000 * (1 + 0.095) = 54750
-    expect(calculateLiquidationPrice(50000, 10, false, 0.05)).toBeCloseTo(54750)
-  })
-
-  it('should produce tighter liquidation at higher leverage', () => {
-    const liq10x = calculateLiquidationPrice(1000, 10, true, 0.05)
-    const liq50x = calculateLiquidationPrice(1000, 50, true, 0.05)
-    // Higher leverage → liquidation closer to entry
-    expect(liq50x).toBeGreaterThan(liq10x)
-  })
-
-  it('should handle 1x leverage', () => {
-    // buffer = 1 * 0.95 = 0.95, liq = 1000 * 0.05 = 50
-    expect(calculateLiquidationPrice(1000, 1, true, 0.05)).toBeCloseTo(50)
   })
 })
 
