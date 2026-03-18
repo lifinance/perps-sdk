@@ -8,6 +8,7 @@
 
 import type { OpenOrder } from '@lifi/perps-types'
 import { OrderSide } from '@lifi/perps-types'
+import { stringToFloat } from './parse.js'
 
 /**
  * Check if an open order is a Take Profit trigger order.
@@ -87,7 +88,7 @@ export function classifyFill(
   side: OrderSide,
   realizedPnl: string | null | undefined
 ): FillClassification {
-  const isClose = realizedPnl != null && parseFloat(realizedPnl) !== 0
+  const isClose = realizedPnl != null && stringToFloat(realizedPnl) !== 0
   if (side === OrderSide.BUY) {
     return isClose ? 'closed-short' : 'opened-long'
   }

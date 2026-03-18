@@ -183,3 +183,59 @@ export function percentFromPrice(
   const priceDiff = isLong ? price - entryPrice : entryPrice - price
   return (priceDiff / entryPrice) * leverage * 100
 }
+
+// ---------------------------------------------------------------------------
+// Liquidation price estimation
+// ---------------------------------------------------------------------------
+
+/**
+ * Estimate liquidation price for a position.
+ *
+ * This is a simplified formula that approximates liquidation price.
+ * Actual liquidation depends on the exchange's specific margin system.
+ * For existing positions, prefer Position.liquidationPrice from the API.
+ * This function is for *predictions* during order entry (before a position exists).
+ *
+ * Formula: Entry * (1 +/- (1/leverage) * (1 - maintenanceMarginRate))
+ * - For longs: price drops below this level triggers liquidation
+ * - For shorts: price rises above this level triggers liquidation
+ *
+ * @param entryPrice - Position entry price
+ * @param leverage - Position leverage (e.g., 10 for 10x)
+ * @param isLong - True if long position, false if short
+ * @param maintenanceMarginRate - Maintenance margin rate (e.g., 0.03 for 3%)
+ * @returns Estimated liquidation price
+ */
+export function calculateLiquidationPrice(
+  entryPrice: number,
+  leverage: number,
+  isLong: boolean,
+  maintenanceMarginRate: number
+): number {
+  const buffer = (1 / leverage) * (1 - maintenanceMarginRate)
+  return isLong ? entryPrice * (1 - buffer) : entryPrice * (1 + buffer)
+}
+
+// ---------------------------------------------------------------------------
+// Realized PnL percentage
+// ---------------------------------------------------------------------------
+
+/**
+ * Calculate realized PnL as a percentage of position value at close.
+ *
+ * @param realizedPnl - The realized profit/loss in USD
+ * @param size - Position size in asset units at close
+ * @param price - Price at close
+ * @returns PnL as a percentage of position value
+ */
+export function calculateRealizedPnlPercent(
+  realizedPnl: number,
+  size: number,
+  price: number
+): number {
+  const positionValue = Math.abs(size) * price
+  if (positionValue === 0) {
+    return 0
+  }
+  return (realizedPnl / positionValue) * 100
+}

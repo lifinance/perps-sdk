@@ -1,4 +1,5 @@
 import type { AccountResponse } from '@lifi/perps-types'
+import { stringToFloat } from './parse.js'
 
 export interface AccountSummary {
   /** Total portfolio value in USD */
@@ -21,7 +22,7 @@ function getSpotPrice(
   const prefix = `${currency}:`
   for (const key of Object.keys(prices)) {
     if (key.startsWith(prefix)) {
-      return parseFloat(prices[key]!)
+      return stringToFloat(prices[key]!)
     }
   }
   return null
@@ -40,8 +41,8 @@ export function calculateAccountSummary(
   let marginUsed = 0
   let unrealizedPnl = 0
   for (const p of account.positions) {
-    marginUsed += parseFloat(p.marginUsed)
-    unrealizedPnl += parseFloat(p.unrealizedPnl)
+    marginUsed += stringToFloat(p.marginUsed)
+    unrealizedPnl += stringToFloat(p.unrealizedPnl)
   }
 
   let spotValue = 0
@@ -51,12 +52,12 @@ export function calculateAccountSummary(
       for (const b of entries) {
         const price = getSpotPrice(b.currency, prices)
         if (price !== null) {
-          spotValue += parseFloat(b.amount) * price
+          spotValue += stringToFloat(b.amount) * price
         }
       }
     } else {
       for (const b of entries) {
-        perpsBalance += parseFloat(b.amount)
+        perpsBalance += stringToFloat(b.amount)
       }
     }
   }
