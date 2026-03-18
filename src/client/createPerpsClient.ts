@@ -6,6 +6,21 @@ import { PerpsError } from '../errors/PerpsError.js'
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
 
 /**
+ * Provider-specific configuration for Hyperliquid.
+ */
+export interface HyperliquidConfig {
+  /** Venues to include. Filters visible assets and various API calls. */
+  venues: string[]
+}
+
+/**
+ * Provider-specific configurations keyed by provider name.
+ */
+export interface ProviderConfigs {
+  hyperliquid?: HyperliquidConfig
+}
+
+/**
  * Configuration options for creating a Perps SDK client.
  */
 export interface PerpsConfig {
@@ -21,6 +36,8 @@ export interface PerpsConfig {
   storage?: StorageAdapter
   /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
+  /** Provider-specific configuration */
+  providers?: ProviderConfigs
 }
 
 /**
@@ -37,6 +54,8 @@ export interface PerpsBaseConfig {
   disableVersionCheck?: boolean
   /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
+  /** Provider-specific configuration */
+  providers?: ProviderConfigs
 }
 
 /**
@@ -103,6 +122,7 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     apiUrl,
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,
+    providers: options.providers,
   }
 
   const agentManager = new AgentManager(options.storage)
