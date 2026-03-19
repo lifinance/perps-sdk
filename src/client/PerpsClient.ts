@@ -16,6 +16,8 @@ import type {
   SubmitWithdrawalResponse,
 } from '@lifi/perps-types'
 import { OrderType, PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
+import { localStorageAdapter } from '../agent/storage.js'
+import type { StorageAdapter } from '../agent/types.js'
 import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { cancelOrder } from '../services/cancelOrder.js'
@@ -91,15 +93,17 @@ import type {
  */
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
+  private storage: StorageAdapter
   private signingModes: Map<string, SigningMode> = new Map()
   private dexMetadataCache: Map<string, Dex> = new Map()
 
   constructor(options: PerpsClientOptions) {
+    this.storage = options.storage ?? localStorageAdapter
     this.sdkClient = createPerpsClient({
       integrator: options.integrator,
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
-      storage: options.storage,
+      storage: this.storage,
       providers: options.providers,
     })
   }
@@ -112,10 +116,17 @@ export class PerpsClient {
   }
 
   /**
-   * Get the storage key for a user + DEX pair.
+   * Get the in-memory map key for a user + DEX pair.
    */
   private modeKey(address: Address, dex: string): string {
     return `${address.toLowerCase()}:${dex.toLowerCase()}`
+  }
+
+  /**
+   * Get the storage key for persisting signing mode.
+   */
+  private signingModeStorageKey(address: Address, dex: string): string {
+    return `lifi-perps-mode:${address.toLowerCase()}:${dex.toLowerCase()}`
   }
 
   /**
@@ -204,6 +215,9 @@ export class PerpsClient {
     const key = this.modeKey(address, dex)
     this.signingModes.set(key, mode)
 
+    // Persist to storage so mode survives page refreshes
+    await this.storage.set(this.signingModeStorageKey(address, dex), mode)
+
     if (mode === 'USER_AGENT') {
       // Generate agent keypair if not exists
       await this.sdkClient.agentManager.getOrCreateAgent(address, dex)
@@ -212,10 +226,53 @@ export class PerpsClient {
 
   /**
    * Get the current signing mode for a user + DEX pair.
-   * Defaults to `USER` if not set.
+   * Defaults to `USER` if not explicitly set.
    */
   getSigningMode(address: Address, dex: string): SigningMode {
     return this.signingModes.get(this.modeKey(address, dex)) ?? 'USER'
+  }
+
+  /**
+   * Load the persisted signing mode from storage into the in-memory map.
+   * Call this on startup / page refresh to rehydrate before using getSigningMode().
+   * Returns the loaded mode (defaults to 'USER' if nothing persisted).
+   */
+  async loadSigningMode(address: Address, dex: string): Promise<SigningMode> {
+    const key = this.modeKey(address, dex)
+    // Already loaded — skip storage read
+    if (this.signingModes.has(key)) {
+      return this.signingModes.get(key)!
+    }
+
+    const stored = await this.storage.get(
+      this.signingModeStorageKey(address, dex)
+    )
+    const mode: SigningMode =
+      stored === 'USER_AGENT' || stored === 'USER' ? stored : 'USER'
+    this.signingModes.set(key, mode)
+    return mode
+  }
+
+  /**
+   * Load the persisted agent mode preference.
+   * Returns true if USER_AGENT mode is persisted, false otherwise.
+   * Use this on startup to rehydrate the UI toggle state.
+   */
+  async loadAgentMode(address: Address, dex: string): Promise<boolean> {
+    const mode = await this.loadSigningMode(address, dex)
+    return mode === 'USER_AGENT'
+  }
+
+  /**
+   * Set whether agent signing is enabled for a user + DEX pair.
+   * Convenience wrapper around setSigningMode for boolean toggle UIs.
+   */
+  async setAgentMode(
+    address: Address,
+    dex: string,
+    useAgent: boolean
+  ): Promise<void> {
+    await this.setSigningMode(address, dex, useAgent ? 'USER_AGENT' : 'USER')
   }
 
   /**
@@ -242,6 +299,7 @@ export class PerpsClient {
   async removeAgent(address: Address, dex: string): Promise<void> {
     await this.sdkClient.agentManager.removeAgent(address, dex)
     this.signingModes.delete(this.modeKey(address, dex))
+    await this.storage.remove(this.signingModeStorageKey(address, dex))
   }
 
   /**
@@ -256,7 +314,7 @@ export class PerpsClient {
   async buildAuthorization(
     params: BuildAuthorizationParams
   ): Promise<CreateAuthorizationResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
     let { signerAddress } = params
 
     if (mode === 'USER_AGENT') {
@@ -284,7 +342,7 @@ export class PerpsClient {
   async submitAuthorizations(
     params: SubmitAuthorizationParams
   ): Promise<AuthorizationsResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
     let { signerAddress } = params
 
     if (mode === 'USER_AGENT') {
@@ -308,7 +366,7 @@ export class PerpsClient {
    * @returns Order actions with typed data for signing
    */
   async buildOrder(params: PlaceOrderParams): Promise<CreateOrderResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
     let signerAddress: Address | undefined
 
     if (mode === 'USER_AGENT') {
@@ -350,7 +408,7 @@ export class PerpsClient {
   async buildCancelOrder(
     params: CancelOrdersParams
   ): Promise<CancelOrderPayloadResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
     let signerAddress: Address | undefined
 
     if (mode === 'USER_AGENT') {
@@ -381,7 +439,7 @@ export class PerpsClient {
   async buildModifyOrder(
     params: ModifyOrdersParams
   ): Promise<ModifyOrderPayloadResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
     let signerAddress: Address | undefined
 
     if (mode === 'USER_AGENT') {
@@ -412,7 +470,7 @@ export class PerpsClient {
    * @throws {PerpsError} If not in USER_AGENT mode
    */
   async modifyOrders(params: ModifyOrdersParams): Promise<SubmitOrderResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
       const error = new PerpsError(
@@ -466,7 +524,7 @@ export class PerpsClient {
    * @throws {PerpsError} If not in USER_AGENT mode
    */
   async placeOrder(params: PlaceOrderParams): Promise<SubmitOrderResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
       const error = new PerpsError(
@@ -567,7 +625,7 @@ export class PerpsClient {
    * @throws {PerpsError} If not in USER_AGENT mode
    */
   async cancelOrders(params: CancelOrdersParams): Promise<SubmitOrderResponse> {
-    const mode = this.getSigningMode(params.address, params.dex)
+    const mode = await this.loadSigningMode(params.address, params.dex)
 
     if (mode !== 'USER_AGENT') {
       const error = new PerpsError(
@@ -671,7 +729,7 @@ export class PerpsClient {
     params: GetRequiredAuthorizationsParams
   ): Promise<RequiredAuthorizationsResult> {
     const { dex, address } = params
-    const mode = this.getSigningMode(address, dex)
+    const mode = await this.loadSigningMode(address, dex)
 
     // Ensure agent exists in USER_AGENT mode
     let agentAddress: Address | undefined
@@ -732,7 +790,7 @@ export class PerpsClient {
     params: ExecuteAuthorizationsParams
   ): Promise<ExecuteAuthorizationsResult> {
     const { dex, address, required, userSignedActions } = params
-    const mode = this.getSigningMode(address, dex)
+    const mode = await this.loadSigningMode(address, dex)
 
     // 1. Submit user-signed actions (if any)
     let userResults: AuthorizationsResponse = { results: [] }
