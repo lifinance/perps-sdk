@@ -232,16 +232,19 @@ export class PerpsClient {
 
   /**
    * Get the current signing mode for a user + DEX pair.
-   * Defaults to `USER` if not explicitly set.
+   * Defaults to `USER_AGENT` if not explicitly set.
    */
   getSigningMode(address: Address, dex: string): SigningMode {
-    return this.signingModes.get(this.modeKey(address, dex)) ?? SigningMode.USER
+    return (
+      this.signingModes.get(this.modeKey(address, dex)) ??
+      SigningMode.USER_AGENT
+    )
   }
 
   /**
    * Load the persisted signing mode from storage into the in-memory map.
    * Call this on startup / page refresh to rehydrate before using getSigningMode().
-   * Returns the loaded mode (defaults to 'USER' if nothing persisted).
+   * Returns the loaded mode (defaults to 'USER_AGENT' if nothing persisted).
    */
   async loadSigningMode(address: Address, dex: string): Promise<SigningMode> {
     const key = this.modeKey(address, dex)
@@ -256,7 +259,7 @@ export class PerpsClient {
     const mode: SigningMode =
       stored === SigningMode.USER_AGENT || stored === SigningMode.USER
         ? stored
-        : SigningMode.USER
+        : SigningMode.USER_AGENT
     this.signingModes.set(key, mode)
     return mode
   }

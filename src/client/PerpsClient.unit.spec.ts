@@ -18,8 +18,10 @@ describe('PerpsClient', () => {
   })
 
   describe('signing mode', () => {
-    it('should default to USER mode', () => {
-      expect(client.getSigningMode(userAddress, dex)).toBe(SigningMode.USER)
+    it('should default to USER_AGENT mode', () => {
+      expect(client.getSigningMode(userAddress, dex)).toBe(
+        SigningMode.USER_AGENT
+      )
     })
 
     it('should set USER_AGENT mode and create agent', async () => {
@@ -39,6 +41,7 @@ describe('PerpsClient', () => {
     })
 
     it('should throw when getting agent in USER mode', async () => {
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       await expect(client.getAgentAddress(userAddress, dex)).rejects.toThrow()
     })
   })
@@ -59,13 +62,16 @@ describe('PerpsClient', () => {
 
       await client.removeAgent(userAddress, dex)
 
-      expect(client.getSigningMode(userAddress, dex)).toBe(SigningMode.USER)
+      expect(client.getSigningMode(userAddress, dex)).toBe(
+        SigningMode.USER_AGENT
+      )
       expect(await client.hasAgent(userAddress, dex)).toBe(false)
     })
   })
 
   describe('placeOrder', () => {
     it('should throw in USER mode', async () => {
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       try {
         await client.placeOrder({
           address: userAddress,
@@ -104,6 +110,7 @@ describe('PerpsClient', () => {
 
   describe('cancelOrders', () => {
     it('should throw in USER mode', async () => {
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       try {
         await client.cancelOrders({
           address: userAddress,
@@ -146,7 +153,7 @@ describe('PerpsClient', () => {
     })
 
     it('should use address as signerAddress in USER mode', async () => {
-      // USER mode is default, no need to set explicitly
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       const result = await client.buildAuthorization({
         dex,
         address: userAddress,
@@ -159,6 +166,7 @@ describe('PerpsClient', () => {
 
   describe('buildOrder', () => {
     it('should work in USER mode', async () => {
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       const result = await client.buildOrder({
         address: userAddress,
         dex,
@@ -192,6 +200,7 @@ describe('PerpsClient', () => {
 
   describe('buildCancelOrder', () => {
     it('should work in USER mode', async () => {
+      await client.setSigningMode(userAddress, dex, SigningMode.USER)
       const result = await client.buildCancelOrder({
         address: userAddress,
         dex,
