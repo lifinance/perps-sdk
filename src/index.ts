@@ -35,8 +35,8 @@ export type {
   PlaceTriggerOrderParams,
   ProviderConfigs,
   RequiredAuthorizationsResult,
-  SigningMode,
 } from './client/types.js'
+export { SigningMode } from './client/types.js'
 // Errors
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'

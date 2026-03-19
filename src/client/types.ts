@@ -31,7 +31,10 @@ export type {
  * - `USER`: User wallet signs each action (requires wallet popup per action)
  * - `USER_AGENT`: SDK-generated agent signs actions (no popups after initial setup)
  */
-export type SigningMode = 'USER' | 'USER_AGENT'
+export enum SigningMode {
+  USER = 'USER',
+  USER_AGENT = 'USER_AGENT',
+}
 
 /**
  * Options for PerpsClient constructor.
