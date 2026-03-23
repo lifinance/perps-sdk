@@ -10,10 +10,15 @@ import type {
   Dex,
   ModifyOrderPayloadResponse,
   OrderActionType,
+  PositionActionType,
   SignedAuthorization,
   SignedOrderAction,
+  SignedPositionAction,
   SubmitOrderResponse,
+  SubmitPositionResponse,
   SubmitWithdrawalResponse,
+  UpdatePositionMarginRequest,
+  UpdatePositionMarginResponse,
 } from '@lifi/perps-types'
 import { OrderType, PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
 import { localStorageAdapter } from '../agent/storage.js'
@@ -30,8 +35,11 @@ import type { SubmitAuthorizationParams } from '../services/submitAuthorization.
 import { submitAuthorization } from '../services/submitAuthorization.js'
 import type { SubmitOrderParams } from '../services/submitOrder.js'
 import { submitOrder } from '../services/submitOrder.js'
+import type { SubmitPositionParams } from '../services/submitPosition.js'
+import { submitPosition } from '../services/submitPosition.js'
 import type { SubmitWithdrawalParams } from '../services/submitWithdrawal.js'
 import { submitWithdrawal } from '../services/submitWithdrawal.js'
+import { updatePositionMargin as updatePositionMarginService } from '../services/updatePositionMargin.js'
 import { signTypedData } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import {
@@ -694,6 +702,112 @@ export class PerpsClient {
     params: SubmitOrderParams
   ): Promise<SubmitOrderResponse> {
     return submitOrder(this.sdkClient, params)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Position margin
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Build position margin update payloads for signing.
+   *
+   * In `USER` mode, `signerAddress` is omitted (backend defaults to `address`).
+   * In `USER_AGENT` mode, auto-injects the agent address as `signerAddress`.
+   *
+   * @param params - Position margin parameters
+   * @returns Position actions with typed data for signing
+   */
+  async buildPositionMargin(
+    params: Omit<UpdatePositionMarginRequest, 'signerAddress'>
+  ): Promise<UpdatePositionMarginResponse> {
+    const mode = await this.loadSigningMode(params.address, params.dex)
+    let signerAddress: Address | undefined
+
+    if (mode === SigningMode.USER_AGENT) {
+      const agent = await this.sdkClient.agentManager.getAgent(
+        params.address,
+        params.dex
+      )
+      signerAddress = agent.address
+    }
+
+    return updatePositionMarginService(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress,
+      symbol: params.symbol,
+      action: params.action,
+      amount: params.amount,
+    })
+  }
+
+  /**
+   * Update position margin with automatic agent signing.
+   *
+   * **Requires USER_AGENT mode.** For USER mode, use `buildPositionMargin()` + `submitSignedPosition()`.
+   *
+   * @param params - Position margin parameters
+   * @returns Position submission results
+   * @throws {PerpsError} If not in USER_AGENT mode
+   */
+  async updatePositionMargin(
+    params: Omit<UpdatePositionMarginRequest, 'signerAddress'>
+  ): Promise<SubmitPositionResponse> {
+    const mode = await this.loadSigningMode(params.address, params.dex)
+
+    if (mode !== SigningMode.USER_AGENT) {
+      const error = new PerpsError(
+        PerpsErrorCode.SDKError,
+        `${PerpsErrorMessage.InvalidSigningMode} updatePositionMargin() requires USER_AGENT mode. Use buildPositionMargin() + submitSignedPosition() for USER mode.`
+      )
+      error.tool = '@lifi/perps-sdk'
+      throw error
+    }
+
+    const agent = await this.sdkClient.agentManager.getAgent(
+      params.address,
+      params.dex
+    )
+
+    // 1. Create position margin payloads
+    const { actions } = await updatePositionMarginService(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress: agent.address,
+      symbol: params.symbol,
+      action: params.action,
+      amount: params.amount,
+    })
+
+    // 2. Sign each action with agent key
+    const signedActions: SignedPositionAction[] = await Promise.all(
+      actions.map(async (a) => ({
+        action: a.action as PositionActionType,
+        typedData: a.typedData,
+        signature: await signTypedData(agent.privateKey, a.typedData),
+      }))
+    )
+
+    // 3. Submit
+    return submitPosition(this.sdkClient, {
+      dex: params.dex,
+      address: params.address,
+      signerAddress: agent.address,
+      actions: signedActions,
+    })
+  }
+
+  /**
+   * Submit pre-signed position actions.
+   *
+   * Use this for USER mode when you've already signed the actions with the user's wallet.
+   *
+   * @param params - Signed position parameters
+   */
+  async submitSignedPosition(
+    params: SubmitPositionParams
+  ): Promise<SubmitPositionResponse> {
+    return submitPosition(this.sdkClient, params)
   }
 
   /**
