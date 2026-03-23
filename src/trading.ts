@@ -5,6 +5,7 @@ import type {
   OrderStatus,
   OrderType,
   PerpsSigner,
+  PositionActionType,
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
@@ -118,4 +119,50 @@ export interface Order {
   averagePrice?: string
   createdAt: string
   updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Position margin types
+// ---------------------------------------------------------------------------
+
+export interface UpdatePositionMarginRequest {
+  dex: string
+  address: Address
+  signerAddress?: Address
+  symbol: string
+  action: 'add' | 'remove'
+  amount: string
+}
+
+export interface PositionAction {
+  action: PositionActionType
+  description: string
+  typedData: PerpsTypedData
+}
+
+export interface UpdatePositionMarginResponse {
+  actions: PositionAction[]
+}
+
+export interface SignedPositionAction {
+  action: PositionActionType
+  typedData: PerpsTypedData
+  signature: Hex
+}
+
+export interface SubmitPositionRequest {
+  dex: string
+  address: Address
+  signerAddress?: Address
+  actions: SignedPositionAction[]
+}
+
+export interface PositionActionResult {
+  action: PositionActionType
+  success: boolean
+  error?: string
+}
+
+export interface SubmitPositionResponse {
+  results: PositionActionResult[]
 }

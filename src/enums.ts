@@ -85,6 +85,10 @@ export enum OrderActionType {
   MODIFY_ORDER = 'modifyOrder',
 }
 
+export enum PositionActionType {
+  UPDATE_MARGIN = 'updatePositionMargin',
+}
+
 export enum TriggerCondition {
   ABOVE = 'ABOVE',
   BELOW = 'BELOW',
