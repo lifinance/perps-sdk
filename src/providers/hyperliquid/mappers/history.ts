@@ -6,13 +6,13 @@ import { resolveAssetIdFromLookup } from './shared.js'
 
 export const mapHistoryItem = (
   fill: HlUserFill,
-  dexKey: string,
+  providerKey: string,
   assetIdLookup: Map<string, number>
 ): HistoryItem => ({
   id: String(fill.tid),
   symbol: fill.coin,
   assetId: resolveAssetIdFromLookup(assetIdLookup, fill.coin),
-  dex: dexKey,
+  provider: providerKey,
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,

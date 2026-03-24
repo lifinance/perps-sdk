@@ -7,9 +7,9 @@ const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 export const mapMarket = (
   universe: HlUniverseItem,
   assetCtx: HlAssetCtx,
-  dexIndex: number,
-  indexInDex: number,
-  dexKey: string
+  providerIndex: number,
+  indexInProvider: number,
+  providerKey: string
 ): Market => {
   const now = Date.now()
   const nextFundingTime =
@@ -19,8 +19,8 @@ export const mapMarket = (
     symbol: universe.name,
     name: universe.name,
     logoURI: `https://app.hyperliquid.xyz/coins/${universe.name}.svg`,
-    assetId: calculateAssetId(dexIndex, indexInDex),
-    dex: dexKey,
+    assetId: calculateAssetId(providerIndex, indexInProvider),
+    provider: providerKey,
     szDecimals: universe.szDecimals,
     maxLeverage: universe.maxLeverage,
     onlyIsolated: universe.onlyIsolated === true,

@@ -15,12 +15,12 @@ import type { HlLedgerUpdate, HlFundingUpdate } from '../types.js'
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
-  dexKey: string
+  providerKey: string
 ): ActivityItem | null => {
   const { delta } = entry
   const base = {
     id: entry.hash,
-    dex: dexKey,
+    provider: providerKey,
     timestamp: new Date(entry.time).toISOString(),
   }
 
@@ -71,10 +71,10 @@ export const mapLedgerEntry = (
  */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
-  dexKey: string
+  providerKey: string
 ): FundingActivity => ({
   id: entry.hash,
-  dex: dexKey,
+  provider: providerKey,
   timestamp: new Date(entry.time).toISOString(),
   type: ActivityType.FUNDING,
   symbol: entry.delta.coin,

@@ -16,7 +16,7 @@ export interface FeeTier {
 export interface Position {
   symbol: string
   assetId: number
-  dex: string
+  provider: string
   side: PositionSide
   size: string
   entryPrice: string
@@ -32,7 +32,7 @@ export interface OpenOrder {
   id: string
   symbol: string
   assetId: number
-  dex: string
+  provider: string
   side: OrderSide
   type: OrderType
   size: string
@@ -49,7 +49,7 @@ export interface Balance {
 }
 
 export interface AccountResponse {
-  dex: string
+  provider: string
   address: Address
   balances: Record<string, Balance[]>
   marginUsed: string
@@ -64,7 +64,7 @@ export interface HistoryItem {
   id: string
   symbol: string
   assetId: number
-  dex: string
+  provider: string
   side: OrderSide
   type: OrderType
   size: string
@@ -84,7 +84,7 @@ export interface Pagination {
 }
 
 export interface HistoryResponse {
-  dex: string
+  provider: string
   items: HistoryItem[]
   pagination: Pagination
 }
@@ -95,7 +95,7 @@ export interface HistoryResponse {
 
 export interface BaseActivity {
   id: string
-  dex: string
+  provider: string
   timestamp: string
 }
 
@@ -138,7 +138,7 @@ export type ActivityItem =
   | FundingActivity
 
 export interface ActivitiesResponse {
-  dex: string
+  provider: string
   items: ActivityItem[]
   pagination: Pagination
 }

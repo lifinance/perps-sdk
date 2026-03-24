@@ -6,7 +6,7 @@ import { resolveAssetIdFromLookup } from './shared.js'
 
 export const mapPosition = (
   ap: HlAssetPosition,
-  dexKey: string,
+  providerKey: string,
   assetIdLookup: Map<string, number>
 ): Position => {
   const pos = ap.position
@@ -15,7 +15,7 @@ export const mapPosition = (
   return {
     symbol: pos.coin,
     assetId: resolveAssetIdFromLookup(assetIdLookup, pos.coin),
-    dex: dexKey,
+    provider: providerKey,
     side: szi >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: Math.abs(szi).toString(),
     entryPrice: pos.entryPx ?? '0',

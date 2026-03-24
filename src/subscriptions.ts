@@ -6,7 +6,7 @@ import type {
   PricesResponse,
 } from './market.js'
 import type { HistoryItem, Position } from './account.js'
-import type { Order } from './trading.js'
+import type { Order } from './action.js'
 
 // --- Channels the user can subscribe to ---
 

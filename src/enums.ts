@@ -77,16 +77,26 @@ export enum HistoryItemStatus {
   REJECTED = 'REJECTED',
 }
 
-export enum OrderActionType {
-  UPDATE_LEVERAGE = 'updateLeverage',
+export enum ActionType {
+  // Prerequisites (account setup)
+  APPROVE_AGENT = 'approveAgent',
+  APPROVE_BUILDER_FEE = 'approveBuilderFee',
+  USER_SET_ABSTRACTION = 'userSetAbstraction',
+  AGENT_SET_ABSTRACTION = 'agentSetAbstraction',
+
+  // Asset management
+  SEND_ASSET = 'sendAsset',
+  WITHDRAWAL = 'withdrawal',
+
+  // Trading
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
   CANCEL_ORDER = 'cancelOrder',
   MODIFY_ORDER = 'modifyOrder',
-}
 
-export enum PositionActionType {
-  UPDATE_MARGIN = 'updatePositionMargin',
+  // Position management
+  UPDATE_LEVERAGE = 'updateLeverage',
+  UPDATE_POSITION_MARGIN = 'updatePositionMargin',
 }
 
 export enum TriggerCondition {

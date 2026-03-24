@@ -1,30 +1,24 @@
-import type { PerpsSigner } from './enums.js'
+import type { ActionType, PerpsSigner } from './enums.js'
 
-export interface AuthorizationParam {
+export interface ActionDescriptor {
+  type: ActionType
   name: string
-  type: 'string' | 'number' | 'boolean'
-  required: boolean
-}
-
-export interface Authorization {
-  key: string
-  name: string
-  params?: AuthorizationParam[]
-  signer?: PerpsSigner
+  signer: PerpsSigner
   usage?: 'mandatory' | 'optional' | 'user'
 }
 
-export interface Dex {
+export interface Provider {
   key: string
   name: string
   logoURI: string
-  authorizations: Authorization[]
+  prerequisites: ActionDescriptor[]
+  actions: ActionDescriptor[]
   extraData?: Record<string, unknown>
   wsUrl?: string
 }
 
-export interface DexesResponse {
-  dexes: Dex[]
+export interface ProvidersResponse {
+  providers: Provider[]
 }
 
 export interface FundingInfo {
@@ -37,7 +31,7 @@ export interface Market {
   name: string
   logoURI: string
   assetId: number
-  dex: string
+  provider: string
   szDecimals: number
   maxLeverage: number
   onlyIsolated: boolean
@@ -65,7 +59,7 @@ export interface Candle {
 }
 
 export interface OhlcvResponse {
-  dex: string
+  provider: string
   symbol: string
   interval: string
   candles: Candle[]
@@ -93,7 +87,7 @@ export interface OrderbookLevel {
 }
 
 export interface OrderbookResponse {
-  dex: string
+  provider: string
   symbol: string
   bids: OrderbookLevel[]
   asks: OrderbookLevel[]

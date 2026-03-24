@@ -5,20 +5,20 @@ import {
   TimeInForce,
 } from '../../../enums.js'
 import type { OpenOrder } from '../../../account.js'
-import type { Order } from '../../../trading.js'
+import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
 
 import { resolveAssetIdFromLookup } from './shared.js'
 
 export const mapOpenOrder = (
   o: HlFrontendOpenOrder,
-  dexKey: string,
+  providerKey: string,
   assetIdLookup: Map<string, number>
 ): OpenOrder => ({
   id: String(o.oid),
   symbol: o.coin,
   assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
-  dex: dexKey,
+  provider: providerKey,
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: o.orderType.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: o.sz,
