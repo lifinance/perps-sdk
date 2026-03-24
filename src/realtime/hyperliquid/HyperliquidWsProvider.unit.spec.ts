@@ -67,7 +67,7 @@ vi.mock('../ReconnectingWebSocket.js', () => ({
 
 // --- Test setup ---
 
-const dexKey = 'hyperliquid'
+const providerKey = 'hyperliquid'
 const subDexes = ['xyz']
 const assetIdLookup = new Map<string, number>([
   ['BTC', 0],
@@ -78,7 +78,7 @@ const assetIdLookup = new Map<string, number>([
 function createProvider(): HyperliquidWsProvider {
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
-    dexKey,
+    providerKey,
     assetIdLookup,
     subDexes
   )

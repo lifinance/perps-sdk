@@ -10,8 +10,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetActivityParams {
-  /** DEX to get activity from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get activity from (e.g., 'hyperliquid') */
+  provider: string
   /** Wallet address */
   address: Address
   /** Maximum number of items to return */
@@ -40,7 +40,7 @@ export interface GetActivityParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { items, pagination } = await getActivity(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   address: '0x1234...',
  *   limit: 50
  * })
@@ -48,7 +48,7 @@ export interface GetActivityParams {
  * // Fetch next page
  * if (pagination.hasMore) {
  *   const nextPage = await getActivity(client, {
- *     dex: 'hyperliquid',
+ *     provider: 'hyperliquid',
  *     address: '0x1234...',
  *     cursor: pagination.cursor
  *   })
@@ -61,7 +61,7 @@ export async function getActivity(
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> {
   let url = buildUrl(`${client.config.apiUrl}/activity`, {
-    dex: params.dex,
+    provider: params.provider,
     address: params.address,
     limit: params.limit,
     cursor: params.cursor,

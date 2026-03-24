@@ -101,7 +101,7 @@ export interface PerpsSDKClient {
  * })
  *
  * // Use with service functions
- * const { dexes } = await getDexes(client)
+ * const { providers } = await getProviders(client)
  * ```
  */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {

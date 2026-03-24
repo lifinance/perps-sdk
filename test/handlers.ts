@@ -5,13 +5,13 @@ import type {
   CancelOrderPayloadResponse,
   CreateAuthorizationResponse,
   CreateOrderResponse,
-  DexesResponse,
   HistoryResponse,
   MarketsResponse,
   OhlcvResponse,
   Order,
   OrderbookResponse,
   PricesResponse,
+  ProvidersResponse,
   SubmitOrderResponse,
 } from '@lifi/perps-types'
 import {
@@ -31,35 +31,35 @@ import { DEFAULT_API_URL } from '../src/client/createPerpsClient.js'
 
 const BASE_URL = DEFAULT_API_URL
 
-export const mockDexes: DexesResponse = {
-  dexes: [
+export const mockProviders: ProvidersResponse = {
+  providers: [
     {
       key: 'hyperliquid',
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
-      authorizations: [
+      prerequisites: [
         {
-          key: 'ApproveAgent',
+          type: 'APPROVE_AGENT',
           name: 'Approve Agent',
           signer: PerpsSigner.USER,
-          params: [{ name: 'agentAddress', type: 'string', required: true }],
         },
         {
-          key: 'ApproveBuilderFee',
+          type: 'APPROVE_BUILDER_FEE',
           name: 'Approve Builder Fee',
           signer: PerpsSigner.USER,
         },
         {
-          key: 'UserSetAbstraction',
+          type: 'USER_SET_ABSTRACTION',
           name: 'Set User Abstraction',
           signer: PerpsSigner.USER,
         },
         {
-          key: 'AgentSetAbstraction',
+          type: 'AGENT_SET_ABSTRACTION',
           name: 'Set User Abstraction (Agent)',
           signer: PerpsSigner.AGENT,
         },
       ],
+      actions: [],
     },
   ],
 }
@@ -71,7 +71,7 @@ export const mockMarkets: MarketsResponse = {
       name: 'Bitcoin',
       logoURI: 'https://example.com/btc.png',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
@@ -83,7 +83,7 @@ export const mockMarkets: MarketsResponse = {
       name: 'Ethereum',
       logoURI: 'https://example.com/eth.png',
       assetId: 1,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       szDecimals: 4,
       maxLeverage: 50,
       onlyIsolated: false,
@@ -101,7 +101,7 @@ export const mockPrices: PricesResponse = {
 }
 
 export const mockOhlcv: OhlcvResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   symbol: 'BTC',
   interval: '1h',
   candles: [
@@ -125,7 +125,7 @@ export const mockOhlcv: OhlcvResponse = {
 }
 
 export const mockOrderbook: OrderbookResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   symbol: 'BTC',
   bids: [
     { price: '94999.50', size: '1.5' },
@@ -139,7 +139,7 @@ export const mockOrderbook: OrderbookResponse = {
 }
 
 export const mockAccount: AccountResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   address: '0x1234567890123456789012345678901234567890',
   balances: [{ currency: 'USDC', amount: '10000.00' }],
   marginUsed: '500.00',
@@ -149,7 +149,7 @@ export const mockAccount: AccountResponse = {
     {
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: PositionSide.LONG,
       size: '0.1',
       entryPrice: '94000.00',
@@ -166,7 +166,7 @@ export const mockAccount: AccountResponse = {
       id: 'order1',
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       size: '0.05',
@@ -180,13 +180,13 @@ export const mockAccount: AccountResponse = {
 }
 
 export const mockHistory: HistoryResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   items: [
     {
       id: 'hist1',
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: OrderSide.BUY,
       type: OrderType.MARKET,
       size: '0.1',
@@ -202,18 +202,18 @@ export const mockHistory: HistoryResponse = {
 }
 
 export const mockActivity: ActivitiesResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   items: [
     {
       id: '0xdep1',
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       timestamp: '2024-01-01T00:00:00.000Z',
       type: ActivityType.DEPOSIT,
       amount: '5000.00',
     },
     {
       id: '0xfund1',
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       timestamp: '2023-12-31T23:00:00.000Z',
       type: ActivityType.FUNDING,
       symbol: 'BTC',
@@ -329,7 +329,7 @@ export const mockSubmitOrderResponse: SubmitOrderResponse = {
 
 export const handlers = [
   // Market data
-  http.get(`${BASE_URL}/dexes`, () => HttpResponse.json(mockDexes)),
+  http.get(`${BASE_URL}/providers`, () => HttpResponse.json(mockProviders)),
 
   http.get(`${BASE_URL}/markets`, () => HttpResponse.json(mockMarkets)),
 

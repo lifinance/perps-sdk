@@ -10,14 +10,14 @@ describe('getMarkets', () => {
   })
 
   it('should return list of markets', async () => {
-    const result = await getMarkets(client, { dex: 'hyperliquid' })
+    const result = await getMarkets(client, { provider: 'hyperliquid' })
 
     expect(result).toEqual(mockMarkets)
     expect(result.markets).toHaveLength(2)
   })
 
   it('should include market details', async () => {
-    const result = await getMarkets(client, { dex: 'hyperliquid' })
+    const result = await getMarkets(client, { provider: 'hyperliquid' })
     const btc = result.markets.find((m) => m.symbol === 'BTC')
 
     expect(btc).toBeDefined()
@@ -30,7 +30,11 @@ describe('getMarkets', () => {
     controller.abort()
 
     await expect(
-      getMarkets(client, { dex: 'hyperliquid' }, { signal: controller.signal })
+      getMarkets(
+        client,
+        { provider: 'hyperliquid' },
+        { signal: controller.signal }
+      )
     ).rejects.toThrow()
   })
 })

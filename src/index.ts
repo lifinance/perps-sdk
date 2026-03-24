@@ -22,19 +22,19 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export type {
-  BuildAuthorizationParams,
   BuildWithdrawalParams,
   CancelOrdersParams,
-  ExecuteAuthorizationsParams,
-  ExecuteAuthorizationsResult,
-  GetRequiredAuthorizationsParams,
+  CheckPrerequisitesParams,
+  ExecutePrerequisitesParams,
+  ExecutePrerequisitesResult,
+  GetPrerequisitesParams,
   HyperliquidConfig,
   ModifyOrdersParams,
   PerpsClientOptions,
-  PlaceOrderParams,
-  PlaceTriggerOrderParams,
+  PlaceOrderParams as ClientPlaceOrderParams,
+  PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
+  PrerequisitesResult,
   ProviderConfigs,
-  RequiredAuthorizationsResult,
 } from './client/types.js'
 export { SigningMode } from './client/types.js'
 // Errors
@@ -43,20 +43,15 @@ export { PerpsError } from './errors/PerpsError.js'
 // Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
 export type { EventForSubscription } from './realtime/types.js'
-export type { CancelOrderParams } from './services/cancelOrder.js'
 // Services
-export { cancelOrder } from './services/cancelOrder.js'
-export type { CreateAuthorizationParams } from './services/createAuthorization.js'
-export { createAuthorization } from './services/createAuthorization.js'
-export type { CreateOrderParams } from './services/createOrder.js'
-export { createOrder } from './services/createOrder.js'
-export type { CreateWithdrawalParams } from './services/createWithdrawal.js'
-export { createWithdrawal } from './services/createWithdrawal.js'
+export type { CreateActionParams } from './services/createAction.js'
+export { createAction } from './services/createAction.js'
+export type { ExecuteActionParams } from './services/executeAction.js'
+export { executeAction } from './services/executeAction.js'
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export type { GetActivityParams } from './services/getActivity.js'
 export { getActivity } from './services/getActivity.js'
-export { getDexes } from './services/getDexes.js'
 export type { GetHistoryParams } from './services/getHistory.js'
 export { getHistory } from './services/getHistory.js'
 export type { GetMarketParams } from './services/getMarket.js'
@@ -71,18 +66,7 @@ export type { GetOrderbookParams } from './services/getOrderbook.js'
 export { getOrderbook } from './services/getOrderbook.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
-export type { ModifyOrderParams } from './services/modifyOrder.js'
-export { modifyOrder } from './services/modifyOrder.js'
-export type { SubmitAuthorizationParams } from './services/submitAuthorization.js'
-export { submitAuthorization } from './services/submitAuthorization.js'
-export type { SubmitOrderParams } from './services/submitOrder.js'
-export { submitOrder } from './services/submitOrder.js'
-export type { SubmitPositionParams } from './services/submitPosition.js'
-export { submitPosition } from './services/submitPosition.js'
-export type { SubmitWithdrawalParams } from './services/submitWithdrawal.js'
-export { submitWithdrawal } from './services/submitWithdrawal.js'
-export type { UpdatePositionMarginParams } from './services/updatePositionMargin.js'
-export { updatePositionMargin } from './services/updatePositionMargin.js'
+export { getProviders } from './services/getProviders.js'
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'

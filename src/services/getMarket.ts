@@ -6,8 +6,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetMarketParams {
-  /** DEX to get market from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get market from (e.g., 'hyperliquid') */
+  provider: string
   /** Market symbol (e.g., 'BTC') */
   symbol: string
 }
@@ -25,7 +25,7 @@ export interface GetMarketParams {
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
- * const market = await getMarket(client, { dex: 'hyperliquid', symbol: 'BTC' })
+ * const market = await getMarket(client, { provider: 'hyperliquid', symbol: 'BTC' })
  * console.log(market) // { symbol: 'BTC', markPrice: '95000.00', ... }
  * ```
  */
@@ -35,7 +35,7 @@ export async function getMarket(
   options?: SDKRequestOptions
 ): Promise<Market> {
   const url = buildUrl(`${client.config.apiUrl}/markets/${params.symbol}`, {
-    dex: params.dex,
+    provider: params.provider,
   })
   return request<Market>(client.config, url, {}, options)
 }

@@ -15,10 +15,10 @@ describe('AgentManager', () => {
   })
 
   const userAddress = '0x1234567890123456789012345678901234567890'
-  const dex = 'hyperliquid'
+  const provider = 'hyperliquid'
 
   it('should create a new agent', async () => {
-    const agent = await manager.getOrCreateAgent(userAddress, dex)
+    const agent = await manager.getOrCreateAgent(userAddress, provider)
 
     expect(agent).toBeDefined()
     expect(isAddress(agent.address)).toBe(true)
@@ -26,33 +26,33 @@ describe('AgentManager', () => {
   })
 
   it('should return existing agent on subsequent calls', async () => {
-    const agent1 = await manager.getOrCreateAgent(userAddress, dex)
-    const agent2 = await manager.getOrCreateAgent(userAddress, dex)
+    const agent1 = await manager.getOrCreateAgent(userAddress, provider)
+    const agent2 = await manager.getOrCreateAgent(userAddress, provider)
 
     expect(agent1.address).toBe(agent2.address)
     expect(agent1.privateKey).toBe(agent2.privateKey)
   })
 
   it('should throw when getting non-existent agent', async () => {
-    await expect(manager.getAgent(userAddress, dex)).rejects.toThrow(
+    await expect(manager.getAgent(userAddress, provider)).rejects.toThrow(
       'Agent not found'
     )
   })
 
   it('should check if agent exists', async () => {
-    expect(await manager.hasAgent(userAddress, dex)).toBe(false)
+    expect(await manager.hasAgent(userAddress, provider)).toBe(false)
 
-    await manager.getOrCreateAgent(userAddress, dex)
+    await manager.getOrCreateAgent(userAddress, provider)
 
-    expect(await manager.hasAgent(userAddress, dex)).toBe(true)
+    expect(await manager.hasAgent(userAddress, provider)).toBe(true)
   })
 
   it('should remove agent', async () => {
-    await manager.getOrCreateAgent(userAddress, dex)
-    expect(await manager.hasAgent(userAddress, dex)).toBe(true)
+    await manager.getOrCreateAgent(userAddress, provider)
+    expect(await manager.hasAgent(userAddress, provider)).toBe(true)
 
-    await manager.removeAgent(userAddress, dex)
-    expect(await manager.hasAgent(userAddress, dex)).toBe(false)
+    await manager.removeAgent(userAddress, provider)
+    expect(await manager.hasAgent(userAddress, provider)).toBe(false)
   })
 
   it('should create separate agents for different dexes', async () => {
@@ -65,7 +65,7 @@ describe('AgentManager', () => {
   it('should create separate agents for different users', async () => {
     const user2 = '0x0987654321098765432109876543210987654321'
 
-    const agent1 = await manager.getOrCreateAgent(userAddress, dex)
+    const agent1 = await manager.getOrCreateAgent(userAddress, provider)
     const agent2 = await manager.getOrCreateAgent(user2, dex)
 
     expect(agent1.address).not.toBe(agent2.address)
@@ -75,7 +75,7 @@ describe('AgentManager', () => {
     const privateKey =
       '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
-    const agent = await manager.importAgent(userAddress, dex, privateKey)
+    const agent = await manager.importAgent(userAddress, provider, privateKey)
 
     expect(agent.privateKey).toBe(privateKey)
     // Known address for this private key (first Hardhat account)

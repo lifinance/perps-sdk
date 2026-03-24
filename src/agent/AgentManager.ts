@@ -10,7 +10,7 @@ const STORAGE_PREFIX = 'lifi-perps-agent'
 
 /**
  * Manages agent keypairs for USER_AGENT signing mode.
- * Agent keys are stored per user address + DEX combination.
+ * Agent keys are stored per user address + provider combination.
  */
 export class AgentManager {
   private storage: StorageAdapter
@@ -23,17 +23,17 @@ export class AgentManager {
   /**
    * Get the storage key for an agent.
    */
-  private storageKey(address: Address, dex: string): string {
-    return `${STORAGE_PREFIX}:${address.toLowerCase()}:${dex.toLowerCase()}`
+  private storageKey(address: Address, provider: string): string {
+    return `${STORAGE_PREFIX}:${address.toLowerCase()}:${provider.toLowerCase()}`
   }
 
   /**
-   * Get an existing agent for a user + DEX pair.
+   * Get an existing agent for a user + provider pair.
    *
    * @throws {PerpsError} If agent not found
    */
-  async getAgent(address: Address, dex: string): Promise<Agent> {
-    const key = this.storageKey(address, dex)
+  async getAgent(address: Address, provider: string): Promise<Agent> {
+    const key = this.storageKey(address, provider)
 
     // Check cache first
     const cached = this.cache.get(key)
@@ -60,9 +60,9 @@ export class AgentManager {
   /**
    * Get an existing agent or create a new one.
    */
-  async getOrCreateAgent(address: Address, dex: string): Promise<Agent> {
+  async getOrCreateAgent(address: Address, provider: string): Promise<Agent> {
     try {
-      return await this.getAgent(address, dex)
+      return await this.getAgent(address, provider)
     } catch {
       // Generate new agent
       const privateKey = generatePrivateKey()
@@ -74,7 +74,7 @@ export class AgentManager {
       }
 
       // Store
-      const key = this.storageKey(address, dex)
+      const key = this.storageKey(address, provider)
       await this.storage.set(key, JSON.stringify(agent))
       this.cache.set(key, agent)
 
@@ -83,11 +83,11 @@ export class AgentManager {
   }
 
   /**
-   * Check if an agent exists for a user + DEX pair.
+   * Check if an agent exists for a user + provider pair.
    */
-  async hasAgent(address: Address, dex: string): Promise<boolean> {
+  async hasAgent(address: Address, provider: string): Promise<boolean> {
     try {
-      await this.getAgent(address, dex)
+      await this.getAgent(address, provider)
       return true
     } catch {
       return false
@@ -95,11 +95,11 @@ export class AgentManager {
   }
 
   /**
-   * Remove an agent for a user + DEX pair.
+   * Remove an agent for a user + provider pair.
    * Call this when the user revokes agent authorization.
    */
-  async removeAgent(address: Address, dex: string): Promise<void> {
-    const key = this.storageKey(address, dex)
+  async removeAgent(address: Address, provider: string): Promise<void> {
+    const key = this.storageKey(address, provider)
     this.cache.delete(key)
     await this.storage.remove(key)
   }
@@ -110,7 +110,7 @@ export class AgentManager {
    */
   async importAgent(
     address: Address,
-    dex: string,
+    provider: string,
     privateKey: Hex
   ): Promise<Agent> {
     const account = privateKeyToAccount(privateKey)
@@ -120,7 +120,7 @@ export class AgentManager {
       privateKey,
     }
 
-    const key = this.storageKey(address, dex)
+    const key = this.storageKey(address, provider)
     await this.storage.set(key, JSON.stringify(agent))
     this.cache.set(key, agent)
 

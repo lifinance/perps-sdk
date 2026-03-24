@@ -7,7 +7,7 @@ import { SigningMode } from './types.js'
 describe('PerpsClient', () => {
   let client: PerpsClient
   const userAddress = '0x1234567890123456789012345678901234567890'
-  const dex = 'hyperliquid'
+  const provider = 'hyperliquid'
 
   beforeEach(() => {
     client = new PerpsClient({
@@ -19,30 +19,32 @@ describe('PerpsClient', () => {
 
   describe('signing mode', () => {
     it('should default to USER_AGENT mode', () => {
-      expect(client.getSigningMode(userAddress, dex)).toBe(
+      expect(client.getSigningMode(userAddress, provider)).toBe(
         SigningMode.USER_AGENT
       )
     })
 
     it('should set USER_AGENT mode and create agent', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
-      expect(client.getSigningMode(userAddress, dex)).toBe(
+      expect(client.getSigningMode(userAddress, provider)).toBe(
         SigningMode.USER_AGENT
       )
-      expect(await client.hasAgent(userAddress, dex)).toBe(true)
+      expect(await client.hasAgent(userAddress, provider)).toBe(true)
     })
 
     it('should get agent address in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
-      const agentAddress = await client.getAgentAddress(userAddress, dex)
+      const agentAddress = await client.getAgentAddress(userAddress, provider)
       expect(agentAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
     })
 
     it('should throw when getting agent in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
-      await expect(client.getAgentAddress(userAddress, dex)).rejects.toThrow()
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
+      await expect(
+        client.getAgentAddress(userAddress, provider)
+      ).rejects.toThrow()
     })
   })
 
@@ -55,27 +57,27 @@ describe('PerpsClient', () => {
 
   describe('removeAgent', () => {
     it('should remove agent and reset signing mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
-      expect(client.getSigningMode(userAddress, dex)).toBe(
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      expect(client.getSigningMode(userAddress, provider)).toBe(
         SigningMode.USER_AGENT
       )
 
-      await client.removeAgent(userAddress, dex)
+      await client.removeAgent(userAddress, provider)
 
-      expect(client.getSigningMode(userAddress, dex)).toBe(
+      expect(client.getSigningMode(userAddress, provider)).toBe(
         SigningMode.USER_AGENT
       )
-      expect(await client.hasAgent(userAddress, dex)).toBe(false)
+      expect(await client.hasAgent(userAddress, provider)).toBe(false)
     })
   })
 
   describe('placeOrder', () => {
     it('should throw in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       try {
         await client.placeOrder({
           address: userAddress,
-          dex,
+          provider,
           symbol: 'BTC',
           side: 'BUY' as any,
           type: 'MARKET' as any,
@@ -90,11 +92,11 @@ describe('PerpsClient', () => {
     })
 
     it('should place order in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       const result = await client.placeOrder({
         address: userAddress,
-        dex,
+        provider,
         symbol: 'BTC',
         side: 'BUY' as any,
         type: 'MARKET' as any,
@@ -110,11 +112,11 @@ describe('PerpsClient', () => {
 
   describe('cancelOrders', () => {
     it('should throw in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       try {
         await client.cancelOrders({
           address: userAddress,
-          dex,
+          provider,
           ids: ['order1'],
         })
         expect.fail('Should have thrown')
@@ -124,11 +126,11 @@ describe('PerpsClient', () => {
     })
 
     it('should cancel orders in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       const result = await client.cancelOrders({
         address: userAddress,
-        dex,
+        provider,
         ids: ['order1'],
       })
 
@@ -138,10 +140,10 @@ describe('PerpsClient', () => {
 
   describe('buildAuthorization', () => {
     it('should auto-inject signerAddress in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       const result = await client.buildAuthorization({
-        dex,
+        provider,
         address: userAddress,
         authorizations: [
           { key: 'ApproveAgent', params: { agentAddress: '0xagent' } },
@@ -153,9 +155,9 @@ describe('PerpsClient', () => {
     })
 
     it('should use address as signerAddress in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       const result = await client.buildAuthorization({
-        dex,
+        provider,
         address: userAddress,
         authorizations: [{ key: 'ApproveBuilderFee' }],
       })
@@ -166,10 +168,10 @@ describe('PerpsClient', () => {
 
   describe('buildOrder', () => {
     it('should work in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       const result = await client.buildOrder({
         address: userAddress,
-        dex,
+        provider,
         symbol: 'BTC',
         side: 'BUY' as any,
         type: 'LIMIT' as any,
@@ -182,11 +184,11 @@ describe('PerpsClient', () => {
     })
 
     it('should work in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER_AGENT)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       const result = await client.buildOrder({
         address: userAddress,
-        dex,
+        provider,
         symbol: 'BTC',
         side: 'BUY' as any,
         type: 'LIMIT' as any,
@@ -200,10 +202,10 @@ describe('PerpsClient', () => {
 
   describe('buildCancelOrder', () => {
     it('should work in USER mode', async () => {
-      await client.setSigningMode(userAddress, dex, SigningMode.USER)
+      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       const result = await client.buildCancelOrder({
         address: userAddress,
-        dex,
+        provider,
         ids: ['order1'],
       })
 

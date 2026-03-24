@@ -6,8 +6,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOrderParams {
-  /** DEX to get order from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get order from (e.g., 'hyperliquid') */
+  provider: string
   /** Wallet address */
   address: Address
   /** Order ID */
@@ -28,7 +28,7 @@ export interface GetOrderParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const order = await getOrder(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   address: '0x1234...',
  *   id: '123456'
  * })
@@ -41,7 +41,7 @@ export async function getOrder(
   options?: SDKRequestOptions
 ): Promise<Order> {
   const url = buildUrl(`${client.config.apiUrl}/order/${params.id}`, {
-    dex: params.dex,
+    provider: params.provider,
     address: params.address,
   })
   return request<Order>(client.config, url, {}, options)

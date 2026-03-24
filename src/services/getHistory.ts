@@ -6,8 +6,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetHistoryParams {
-  /** DEX to get history from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get history from (e.g., 'hyperliquid') */
+  provider: string
   /** Wallet address */
   address: Address
   /** Maximum number of items to return */
@@ -34,7 +34,7 @@ export interface GetHistoryParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { items, pagination } = await getHistory(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   address: '0x1234...',
  *   limit: 50
  * })
@@ -44,7 +44,7 @@ export interface GetHistoryParams {
  * // Fetch next page
  * if (pagination.hasMore) {
  *   const nextPage = await getHistory(client, {
- *     dex: 'hyperliquid',
+ *     provider: 'hyperliquid',
  *     address: '0x1234...',
  *     cursor: pagination.cursor
  *   })
@@ -57,7 +57,7 @@ export async function getHistory(
   options?: SDKRequestOptions
 ): Promise<HistoryResponse> {
   const url = buildUrl(`${client.config.apiUrl}/history`, {
-    dex: params.dex,
+    provider: params.provider,
     address: params.address,
     limit: params.limit,
     cursor: params.cursor,

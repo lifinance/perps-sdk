@@ -31,7 +31,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
-  private readonly dexKey: string
+  private readonly providerKey: string
   private readonly assetIdLookup: Map<string, number>
   private readonly subDexes: string[]
   private positionsBySubDex = new Map<string, Position[]>()
@@ -39,11 +39,11 @@ export class HyperliquidWsProvider implements WsProvider {
 
   constructor(
     wsUrl: string,
-    dexKey: string,
+    providerKey: string,
     assetIdLookup: Map<string, number>,
     subDexes: string[]
   ) {
-    this.dexKey = dexKey
+    this.providerKey = providerKey
     this.assetIdLookup = assetIdLookup
     this.subDexes = subDexes
     this.rws = new ReconnectingWebSocket(wsUrl)
@@ -359,7 +359,7 @@ export class HyperliquidWsProvider implements WsProvider {
     this.emit(`l2Book:${data.coin}`, {
       channel: 'orderbook',
       data: {
-        dex: this.dexKey,
+        provider: this.providerKey,
         symbol: data.coin,
         bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
         asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
@@ -377,7 +377,7 @@ export class HyperliquidWsProvider implements WsProvider {
       id: String(t.tid),
       symbol: t.coin,
       assetId: this.assetIdLookup.get(t.coin) ?? -1,
-      dex: this.dexKey,
+      provider: this.providerKey,
       side: t.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
       type: OrderType.MARKET,
       size: t.sz,
@@ -413,7 +413,7 @@ export class HyperliquidWsProvider implements WsProvider {
 
   private handleUserFills(data: HlWsUserFillsData) {
     const items = data.fills.map((f) =>
-      mapHistoryItem(f as HlUserFill, this.dexKey, this.assetIdLookup)
+      mapHistoryItem(f as HlUserFill, this.providerKey, this.assetIdLookup)
     )
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
@@ -421,7 +421,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(ap as HlAssetPosition, this.dexKey, this.assetIdLookup)
+      mapPosition(ap as HlAssetPosition, this.providerKey, this.assetIdLookup)
     )
     this.positionsBySubDex.set(subDexKey, positions)
 

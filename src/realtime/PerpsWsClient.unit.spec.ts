@@ -1,6 +1,6 @@
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import { mockDexes, server } from '../../test/handlers.js'
+import { mockProviders, server } from '../../test/handlers.js'
 import {
   createPerpsClient,
   DEFAULT_API_URL,
@@ -25,8 +25,8 @@ const MockedHlProvider = vi.mocked(HyperliquidWsProvider)
 
 // --- Helpers ---
 
-const dexesWithWsUrl = {
-  dexes: mockDexes.dexes.map((d) => ({
+const providersWithWsUrl = {
+  providers: mockProviders.providers.map((d) => ({
     ...d,
     wsUrl: 'wss://api.hyperliquid.xyz/ws',
     extraData: {
@@ -40,8 +40,8 @@ const dexesWithWsUrl = {
 
 function useWsUrlHandler() {
   server.use(
-    http.get(`${DEFAULT_API_URL}/dexes`, () =>
-      HttpResponse.json(dexesWithWsUrl)
+    http.get(`${DEFAULT_API_URL}/providers`, () =>
+      HttpResponse.json(providersWithWsUrl)
     )
   )
 }
@@ -86,7 +86,7 @@ describe('PerpsWsClient', () => {
       ws.close()
     })
 
-    it('should reuse cached provider for same dex', async () => {
+    it('should reuse cached provider for same provider', async () => {
       useWsUrlHandler()
       const ws = new PerpsWsClient(createClient())
 
@@ -130,29 +130,29 @@ describe('PerpsWsClient', () => {
       ws.close()
     })
 
-    it('should throw when dex has no WebSocket URL', async () => {
+    it('should throw when provider has no WebSocket URL', async () => {
       // Default mock dexes have no wsUrl
       const ws = new PerpsWsClient(createClient())
 
       await expect(
         ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
-      ).rejects.toThrow('No WebSocket URL found for dex: hyperliquid')
+      ).rejects.toThrow('No WebSocket URL found for provider: hyperliquid')
 
       ws.close()
     })
 
-    it('should throw for unknown dex', async () => {
+    it('should throw for unknown provider', async () => {
       useWsUrlHandler()
       const ws = new PerpsWsClient(createClient())
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'unknown-dex' }, vi.fn())
-      ).rejects.toThrow('No WebSocket URL found for dex: unknown-dex')
+        ws.subscribe({ channel: 'prices', dex: 'unknown-provider' }, vi.fn())
+      ).rejects.toThrow('No WebSocket URL found for provider: unknown-provider')
 
       ws.close()
     })
 
-    it('should handle concurrent subscribes for same dex without race', async () => {
+    it('should handle concurrent subscribes for same provider without race', async () => {
       useWsUrlHandler()
       const ws = new PerpsWsClient(createClient())
 

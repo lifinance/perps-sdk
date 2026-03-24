@@ -17,7 +17,7 @@ describe('getHistory', () => {
 
   it('should return history items', async () => {
     const result = await getHistory(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -28,7 +28,7 @@ describe('getHistory', () => {
 
   it('should include pagination info', async () => {
     const result = await getHistory(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -48,7 +48,7 @@ describe('getHistory', () => {
     )
 
     await getHistory(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
       startTime: 1700000000000,
       endTime: 1700100000000,
@@ -70,7 +70,7 @@ describe('getHistory', () => {
     )
 
     await getHistory(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -90,7 +90,7 @@ describe('getHistory', () => {
     )
 
     await getHistory(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
       limit: 10,
       cursor: 'abc123',
@@ -108,7 +108,7 @@ describe('getHistory', () => {
     await expect(
       getHistory(
         client,
-        { dex: 'hyperliquid', address: ADDRESS },
+        { provider: 'hyperliquid', address: ADDRESS },
         { signal: controller.signal }
       )
     ).rejects.toThrow()

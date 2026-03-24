@@ -6,8 +6,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOrderbookParams {
-  /** DEX to get orderbook from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get orderbook from (e.g., 'hyperliquid') */
+  provider: string
   /** Market symbol (e.g., 'BTC') */
   symbol: string
   /** Number of levels to return (default varies by DEX) */
@@ -28,7 +28,7 @@ export interface GetOrderbookParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { bids, asks } = await getOrderbook(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   symbol: 'BTC',
  *   depth: 20
  * })
@@ -42,7 +42,7 @@ export async function getOrderbook(
   options?: SDKRequestOptions
 ): Promise<OrderbookResponse> {
   const url = buildUrl(`${client.config.apiUrl}/orderbook/${params.symbol}`, {
-    dex: params.dex,
+    provider: params.provider,
     depth: params.depth,
   })
   return request<OrderbookResponse>(client.config, url, {}, options)
