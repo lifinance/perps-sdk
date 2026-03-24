@@ -66,7 +66,7 @@ describe('AgentManager', () => {
     const user2 = '0x0987654321098765432109876543210987654321'
 
     const agent1 = await manager.getOrCreateAgent(userAddress, provider)
-    const agent2 = await manager.getOrCreateAgent(user2, dex)
+    const agent2 = await manager.getOrCreateAgent(user2, provider)
 
     expect(agent1.address).not.toBe(agent2.address)
   })

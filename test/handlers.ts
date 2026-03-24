@@ -15,10 +15,10 @@ import type {
   SubmitOrderResponse,
 } from '@lifi/perps-types'
 import {
+  ActionType,
   ActivityType,
   HistoryItemStatus,
   MarginMode,
-  OrderActionType,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -262,7 +262,7 @@ export const mockAuthResponse: AuthorizationsResponse = {
 export const mockCreateOrderResponse: CreateOrderResponse = {
   actions: [
     {
-      action: OrderActionType.PLACE_ORDER,
+      action: ActionType.PLACE_ORDER,
       description: 'Place limit order',
       typedData: {
         domain: {
@@ -291,7 +291,7 @@ export const mockCreateOrderResponse: CreateOrderResponse = {
 export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
   actions: [
     {
-      action: OrderActionType.CANCEL_ORDER,
+      action: ActionType.CANCEL_ORDER,
       description: 'Cancel order',
       typedData: {
         domain: {
@@ -320,7 +320,7 @@ export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
 export const mockSubmitOrderResponse: SubmitOrderResponse = {
   results: [
     {
-      action: OrderActionType.PLACE_ORDER,
+      action: ActionType.PLACE_ORDER,
       success: true,
       orderId: 'neworder123',
     },
