@@ -3,7 +3,6 @@ import {
   type ActionType,
   type OrderSide,
   type OrderStatus,
-  type PerpsSigner,
   type TimeInForce,
   type TriggerCondition,
 } from './enums.js'
@@ -16,9 +15,6 @@ import type { Address, Hex, PerpsTypedData } from './typedData.js'
 export interface ActionStep {
   action: ActionType
   typedData: PerpsTypedData
-  signer: PerpsSigner
-  description?: string
-  optional?: boolean
 }
 
 export interface SignedActionStep {

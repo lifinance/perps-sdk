@@ -1,5 +1,6 @@
 export * from './typedData.js'
 export * from './enums.js'
+export * from './providers.js'
 export * from './market.js'
 export * from './action.js'
 export * from './account.js'

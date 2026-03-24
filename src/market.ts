@@ -1,26 +1,3 @@
-import type { ActionType, PerpsSigner } from './enums.js'
-
-export interface ActionDescriptor {
-  type: ActionType
-  name: string
-  signer: PerpsSigner
-  usage?: 'mandatory' | 'optional' | 'user'
-}
-
-export interface Provider {
-  key: string
-  name: string
-  logoURI: string
-  prerequisites: ActionDescriptor[]
-  actions: ActionDescriptor[]
-  extraData?: Record<string, unknown>
-  wsUrl?: string
-}
-
-export interface ProvidersResponse {
-  providers: Provider[]
-}
-
 export interface FundingInfo {
   rate: string
   nextFundingTime: number
