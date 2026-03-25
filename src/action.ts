@@ -90,11 +90,8 @@ export interface PlaceOrderParams {
 export interface PlaceTriggerOrderParams {
   symbol: string
   side: OrderSide
-  type?: OrderType
-  size: string
-  triggerPrice: string
-  limitPrice?: string
-  reduceOnly?: boolean
+  takeProfit?: TriggerOrderInput
+  stopLoss?: TriggerOrderInput
 }
 
 export interface CancelOrderParams {
