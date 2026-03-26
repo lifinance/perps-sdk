@@ -604,6 +604,7 @@ describe('HyperliquidWsProvider', () => {
                 fee: '4.70',
                 closedPnl: '0',
                 time: 1704067200000,
+                startPosition: '0.0',
               },
             ],
           },

@@ -91,9 +91,9 @@ export {
   getMaxPriceDecimals,
 } from './utils/hyperliquid/index.js'
 export { getAsset, getQuoteAsset, getVenue } from './utils/market.js'
-export type { FillClassification } from './utils/orderClassification.js'
 export {
   classifyFill,
+  FillClassification,
   isStopLossOrder,
   isTakeProfitOrder,
   isTpSlOrder,
