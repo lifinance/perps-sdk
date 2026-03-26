@@ -1,12 +1,14 @@
 import type { Address } from './typedData.js'
 import type {
   ActivityType,
+  FillClassification,
   HistoryItemStatus,
   MarginMode,
   OrderSide,
   OrderType,
   PositionSide,
 } from './enums.js'
+import type { TriggerOrderInput } from './action.js'
 
 export interface FeeTier {
   maker: string
@@ -39,7 +41,9 @@ export interface OpenOrder {
   price: string
   filledSize: string
   reduceOnly: boolean
-  providerData?: Record<string, unknown>
+  label?: string
+  takeProfit?: TriggerOrderInput
+  stopLoss?: TriggerOrderInput
   createdAt: string
 }
 
@@ -73,6 +77,8 @@ export interface HistoryItem {
   filledSize?: string
   fee?: string
   realizedPnl?: string | null
+  startPosition?: string
+  classification?: FillClassification
   createdAt: string
 }
 

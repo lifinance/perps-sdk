@@ -39,6 +39,10 @@ export enum OrderSide {
 export enum OrderType {
   MARKET = 'MARKET',
   LIMIT = 'LIMIT',
+  STOP_MARKET = 'STOP_MARKET',
+  STOP_LIMIT = 'STOP_LIMIT',
+  TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
+  TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
   TRIGGER_ONLY = 'TRIGGER_ONLY',
 }
 
@@ -114,6 +118,40 @@ export enum ActivityType {
   LIQUIDATION = 'LIQUIDATION',
   FUNDING = 'FUNDING',
 }
+
+export enum FillClassification {
+  OPENED_LONG = 'Opened Long',
+  OPENED_SHORT = 'Opened Short',
+  INCREASED_LONG = 'Increased Long',
+  INCREASED_SHORT = 'Increased Short',
+  REDUCED_LONG = 'Reduced Long',
+  REDUCED_SHORT = 'Reduced Short',
+  CLOSED_LONG = 'Closed Long',
+  CLOSED_SHORT = 'Closed Short',
+  REVERSED_TO_LONG = 'Reversed To Long',
+  REVERSED_TO_SHORT = 'Reversed To Short',
+  SPOT_BUY = 'Spot Buy',
+  SPOT_SELL = 'Spot Sell',
+}
+
+export enum LiquidationClassification {
+  LIQUIDATED = 'Liquidated',
+}
+
+export enum FundingClassification {
+  FUNDING = 'Funding',
+}
+
+export enum TransferClassification {
+  DEPOSIT = 'Deposit',
+  WITHDRAWAL = 'Withdrawal',
+}
+
+export type ActivityClassification =
+  | FillClassification
+  | LiquidationClassification
+  | FundingClassification
+  | TransferClassification
 
 export enum PerpsSigner {
   USER = 'USER',
