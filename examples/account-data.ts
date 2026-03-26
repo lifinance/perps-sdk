@@ -13,14 +13,14 @@ async function run() {
 
   // Get account info (balances, positions, open orders)
   const account = await getAccount(client, {
-    dex: 'hyperliquid',
+    provider: 'hyperliquid',
     address: '0x1234...',
   })
   console.log('Account:', account)
 
   // Get order history
   const { items, pagination } = await getHistory(client, {
-    dex: 'hyperliquid',
+    provider: 'hyperliquid',
     address: '0x1234...',
     limit: 50,
   })
@@ -28,7 +28,7 @@ async function run() {
 
   // Get specific order
   const order = await getOrder(client, {
-    dex: 'hyperliquid',
+    provider: 'hyperliquid',
     address: '0x1234...',
     id: 'order123',
   })

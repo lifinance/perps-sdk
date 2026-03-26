@@ -4,13 +4,16 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
+overrides:
+  '@lifi/perps-types': link:../perps-types
+
 importers:
 
   .:
     dependencies:
       '@lifi/perps-types':
-        specifier: 0.1.1-alpha.19
-        version: 0.1.1-alpha.19(typescript@5.9.3)(zod@4.3.6)
+        specifier: link:../perps-types
+        version: link:../perps-types
       viem:
         specifier: ^2.21.0
         version: 2.45.3(typescript@5.9.3)(zod@4.3.6)
@@ -421,12 +424,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@lifi/perps-types@0.1.1-alpha.19':
-    resolution: {integrity: sha512-heDY/o4SNJ9tCX9D9RHb1+fyDMtcsWWbIzDfJ5cYwwo1qtGsHGSlTzdzWBW9pQVk4v0sbQxLwfGm4vbpVIPKbw==}
-
-  '@lifi/types@17.68.1':
-    resolution: {integrity: sha512-BxmR3+mpq9cgeSB4wtTeuoylggZFOZJ0lUQTGIaMf+esVITRo6sgIUyfK3wwyTS8DXmQlW+KdF3U2NLe55jD4A==}
 
   '@mswjs/interceptors@0.41.2':
     resolution: {integrity: sha512-7G0Uf0yK3f2bjElBLGHIQzgRgMESczOMyYVasq1XK8P5HaXtlW4eQhz9MBL+TQILZLaruq+ClGId+hH0w4jvWw==}
@@ -2847,25 +2844,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@lifi/perps-types@0.1.1-alpha.19(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@lifi/types': 17.68.1(typescript@5.9.3)(zod@4.3.6)
-      viem: 2.45.3(typescript@5.9.3)(zod@4.3.6)
-    transitivePeerDependencies:
-      - bufferutil
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@lifi/types@17.68.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      viem: 2.45.3(typescript@5.9.3)(zod@4.3.6)
-    transitivePeerDependencies:
-      - bufferutil
-      - typescript
-      - utf-8-validate
-      - zod
 
   '@mswjs/interceptors@0.41.2':
     dependencies:

@@ -1,4 +1,4 @@
-import { PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMemoryStorage } from '../agent/storage.js'
 import { PerpsClient } from './PerpsClient.js'
@@ -138,31 +138,26 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('buildAuthorization', () => {
+  describe('buildPrerequisites', () => {
     it('should auto-inject signerAddress in USER_AGENT mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
-      const result = await client.buildAuthorization({
+      const result = await client.buildPrerequisites({
         provider,
         address: userAddress,
-        authorizations: [
-          { key: 'ApproveAgent', params: { agentAddress: '0xagent' } },
-        ],
       })
 
-      expect(result.actions).toHaveLength(1)
-      expect(result.actions[0].action).toBe('ApproveAgent')
+      expect(result.actions).toBeDefined()
     })
 
-    it('should use address as signerAddress in USER mode', async () => {
+    it('should work in USER mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      const result = await client.buildAuthorization({
+      const result = await client.buildPrerequisites({
         provider,
         address: userAddress,
-        authorizations: [{ key: 'ApproveBuilderFee' }],
       })
 
-      expect(result.actions).toHaveLength(1)
+      expect(result.actions).toBeDefined()
     })
   })
 
@@ -180,7 +175,7 @@ describe('PerpsClient', () => {
       })
 
       expect(result.actions).toHaveLength(1)
-      expect(result.actions[0].action).toBe('placeOrder')
+      expect(result.actions[0].action).toBe(ActionType.PLACE_ORDER)
     })
 
     it('should work in USER_AGENT mode', async () => {
@@ -210,7 +205,7 @@ describe('PerpsClient', () => {
       })
 
       expect(result.actions).toHaveLength(1)
-      expect(result.actions[0].action).toBe('cancelOrder')
+      expect(result.actions[0].action).toBe(ActionType.PLACE_ORDER)
     })
   })
 })

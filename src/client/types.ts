@@ -101,16 +101,14 @@ export interface PlaceOrderParams {
  * Parameters for placing trigger-only orders (TP/SL on existing positions).
  * Sends a TRIGGER_ONLY order that skips the main order wire.
  */
-export type PlaceTriggerOrderParams = Pick<
-  PlaceOrderParams,
-  | 'provider'
-  | 'address'
-  | 'symbol'
-  | 'side'
-  | 'size'
-  | 'takeProfit'
-  | 'stopLoss'
->
+export interface PlaceTriggerOrderParams {
+  provider: string
+  address: Address
+  symbol: string
+  side: OrderSide
+  takeProfit?: TriggerOrderInput
+  stopLoss?: TriggerOrderInput
+}
 
 /**
  * Parameters for building a withdrawal payload.
@@ -196,4 +194,6 @@ export interface ExecutePrerequisitesResult {
   userResults: ExecuteActionResponse
   /** Results from agent-signed prerequisite submission (if any) */
   agentResults?: ExecuteActionResponse
+  /** Fallback user prerequisites when agent prerequisites fail (e.g. USER_SET_ABSTRACTION when AGENT_SET_ABSTRACTION cannot upgrade from dexAbstraction) */
+  fallbackUserPrerequisites?: ActionStep[]
 }

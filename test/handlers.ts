@@ -1,10 +1,8 @@
 import type {
   AccountResponse,
   ActivitiesResponse,
-  AuthorizationsResponse,
-  CancelOrderPayloadResponse,
-  CreateAuthorizationResponse,
-  CreateOrderResponse,
+  CreateActionResponse,
+  ExecuteActionResponse,
   HistoryResponse,
   MarketsResponse,
   OhlcvResponse,
@@ -12,7 +10,6 @@ import type {
   OrderbookResponse,
   PricesResponse,
   ProvidersResponse,
-  SubmitOrderResponse,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -37,26 +34,22 @@ export const mockProviders: ProvidersResponse = {
       key: 'hyperliquid',
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
-      prerequisites: [
+      prepareAccountActions: [
         {
-          type: 'APPROVE_AGENT',
-          name: 'Approve Agent',
-          signer: PerpsSigner.USER,
+          type: ActionType.APPROVE_AGENT,
+          signers: [PerpsSigner.USER],
         },
         {
-          type: 'APPROVE_BUILDER_FEE',
-          name: 'Approve Builder Fee',
-          signer: PerpsSigner.USER,
+          type: ActionType.APPROVE_BUILDER_FEE,
+          signers: [PerpsSigner.USER],
         },
         {
-          type: 'USER_SET_ABSTRACTION',
-          name: 'Set User Abstraction',
-          signer: PerpsSigner.USER,
+          type: ActionType.USER_SET_ABSTRACTION,
+          signers: [PerpsSigner.USER],
         },
         {
-          type: 'AGENT_SET_ABSTRACTION',
-          name: 'Set User Abstraction (Agent)',
-          signer: PerpsSigner.AGENT,
+          type: ActionType.AGENT_SET_ABSTRACTION,
+          signers: [PerpsSigner.AGENT],
         },
       ],
       actions: [],
@@ -239,12 +232,10 @@ export const mockOrder: Order = {
   updatedAt: '2024-01-01T00:00:00Z',
 }
 
-export const mockCreateAuthResponse: CreateAuthorizationResponse = {
+export const mockCreateAuthResponse: CreateActionResponse = {
   actions: [
     {
-      action: 'ApproveAgent',
-      description: 'Approve agent wallet',
-      signer: PerpsSigner.USER,
+      action: ActionType.APPROVE_AGENT,
       typedData: {
         domain: { name: 'Hyperliquid', chainId: 1 },
         types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
@@ -255,15 +246,14 @@ export const mockCreateAuthResponse: CreateAuthorizationResponse = {
   ],
 }
 
-export const mockAuthResponse: AuthorizationsResponse = {
-  results: [{ action: 'ApproveAgent', success: true }],
+export const mockAuthResponse: ExecuteActionResponse = {
+  results: [{ action: ActionType.APPROVE_AGENT, success: true }],
 }
 
-export const mockCreateOrderResponse: CreateOrderResponse = {
+export const mockCreateOrderResponse: CreateActionResponse = {
   actions: [
     {
       action: ActionType.PLACE_ORDER,
-      description: 'Place limit order',
       typedData: {
         domain: {
           name: 'Exchange',
@@ -288,11 +278,10 @@ export const mockCreateOrderResponse: CreateOrderResponse = {
   ],
 }
 
-export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
+export const mockCancelOrderResponse: CreateActionResponse = {
   actions: [
     {
       action: ActionType.CANCEL_ORDER,
-      description: 'Cancel order',
       typedData: {
         domain: {
           name: 'Exchange',
@@ -317,7 +306,7 @@ export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
   ],
 }
 
-export const mockSubmitOrderResponse: SubmitOrderResponse = {
+export const mockSubmitOrderResponse: ExecuteActionResponse = {
   results: [
     {
       action: ActionType.PLACE_ORDER,
@@ -358,25 +347,12 @@ export const handlers = [
 
   http.get(`${BASE_URL}/order/:id`, () => HttpResponse.json(mockOrder)),
 
-  // Authorization
-  http.post(`${BASE_URL}/createAuthorization`, () =>
-    HttpResponse.json(mockCreateAuthResponse)
-  ),
-
-  http.post(`${BASE_URL}/authorization`, () =>
-    HttpResponse.json(mockAuthResponse)
-  ),
-
-  // Trading
-  http.post(`${BASE_URL}/createOrder`, () =>
+  // Actions (create & execute)
+  http.post(`${BASE_URL}/createAction`, () =>
     HttpResponse.json(mockCreateOrderResponse)
   ),
 
-  http.post(`${BASE_URL}/cancelOrder`, () =>
-    HttpResponse.json(mockCancelOrderResponse)
-  ),
-
-  http.post(`${BASE_URL}/order`, () =>
+  http.post(`${BASE_URL}/executeAction`, () =>
     HttpResponse.json(mockSubmitOrderResponse)
   ),
 ]

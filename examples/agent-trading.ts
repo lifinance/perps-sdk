@@ -10,21 +10,20 @@ async function run() {
   // 1. Set up agent signing (USER_AGENT mode)
   await perps.setSigningMode(userAddress, 'hyperliquid', 'USER_AGENT')
 
-  // 2. Check which authorizations are needed
-  const required = await perps.getRequiredAuthorizations({
-    dex: 'hyperliquid',
+  // 2. Check which prerequisites are needed
+  const required = await perps.checkPrerequisites({
+    provider: 'hyperliquid',
     address: userAddress,
   })
 
   if (!required.isReady) {
-    // 3. Build authorization payloads for the user to sign
-    const { actions } = await perps.buildAuthorization({
-      dex: 'hyperliquid',
+    // 3. Build prerequisite payloads for the user to sign
+    const { actions } = await perps.buildPrerequisites({
+      provider: 'hyperliquid',
       address: userAddress,
-      authorizations: required.userAuthorizations,
     })
 
-    // 4. User signs the authorizations with their wallet
+    // 4. User signs the prerequisites with their wallet
     const signedActions = await Promise.all(
       actions.map(async (a) => ({
         action: a.action,
@@ -33,9 +32,9 @@ async function run() {
       }))
     )
 
-    // 5. Submit user-signed actions (+ auto-signs agent authorizations)
-    await perps.executeAuthorizations({
-      dex: 'hyperliquid',
+    // 5. Submit user-signed actions (+ auto-signs agent prerequisites)
+    await perps.executePrerequisites({
+      provider: 'hyperliquid',
       address: userAddress,
       required,
       userSignedActions: signedActions,
@@ -45,7 +44,7 @@ async function run() {
   // 6. Place orders — agent signs automatically, no wallet popups
   const result = await perps.placeOrder({
     address: userAddress,
-    dex: 'hyperliquid',
+    provider: 'hyperliquid',
     symbol: 'BTC',
     side: OrderSide.BUY,
     type: OrderType.MARKET,
@@ -58,7 +57,7 @@ async function run() {
   // 7. Cancel orders — also automatic
   await perps.cancelOrders({
     address: userAddress,
-    dex: 'hyperliquid',
+    provider: 'hyperliquid',
     ids: ['order1', 'order2'],
   })
 }

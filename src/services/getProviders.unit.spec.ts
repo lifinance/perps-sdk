@@ -17,11 +17,11 @@ describe('getProviders', () => {
     expect(result.providers[0].key).toBe('hyperliquid')
   })
 
-  it('should include prerequisites for each provider', async () => {
+  it('should include prepareAccountActions for each provider', async () => {
     const result = await getProviders(client)
 
-    expect(result.providers[0].prerequisites).toBeDefined()
-    expect(result.providers[0].prerequisites).toHaveLength(4)
+    expect(result.providers[0].prepareAccountActions).toBeDefined()
+    expect(result.providers[0].prepareAccountActions).toHaveLength(4)
   })
 
   it('should support AbortSignal', async () => {

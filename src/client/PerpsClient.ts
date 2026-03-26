@@ -1,5 +1,6 @@
 import type {
   ActionDescriptor,
+  ActionParamsMap,
   ActionStep,
   Address,
   CreateActionResponse,
@@ -7,12 +8,7 @@ import type {
   Provider,
   SignedActionStep,
 } from '@lifi/perps-types'
-import {
-  ActionType,
-  OrderType,
-  PerpsErrorCode,
-  PerpsSigner,
-} from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
 import { localStorageAdapter } from '../agent/storage.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsErrorMessage } from '../errors/constants.js'
@@ -96,11 +92,8 @@ export class PerpsClient {
   ): Array<{ key: string; params?: Record<string, unknown> }> {
     return prerequisites
       .filter((p) => {
-        if (p.usage === 'user') {
-          return false
-        }
         if (mode === SigningMode.USER) {
-          if (p.signer !== PerpsSigner.USER) {
+          if (!p.signers.includes(PerpsSigner.USER)) {
             return false
           }
           if (p.type === ActionType.APPROVE_AGENT) {
@@ -109,7 +102,8 @@ export class PerpsClient {
           return true
         }
         if (
-          p.signer === PerpsSigner.USER &&
+          p.signers.includes(PerpsSigner.USER) &&
+          !p.signers.includes(PerpsSigner.AGENT) &&
           p.type === ActionType.USER_SET_ABSTRACTION
         ) {
           return false
@@ -128,19 +122,26 @@ export class PerpsClient {
       })
   }
 
-  private async resolveSignerAddress(
+  private async resolveSignerForAction(
+    action: ActionType,
     address: Address,
     provider: string
   ): Promise<Address | undefined> {
     const mode = await this.loadSigningMode(address, provider)
-    if (mode === SigningMode.USER_AGENT) {
-      const agent = await this.sdkClient.agentManager.getAgent(
-        address,
-        provider
-      )
-      return agent.address
+    if (mode !== SigningMode.USER_AGENT) {
+      return undefined
     }
-    return undefined
+
+    // Check if this action supports agent signing
+    const metadata = await this.getProviderMetadata(provider)
+    const allActions = [...metadata.prepareAccountActions, ...metadata.actions]
+    const descriptor = allActions.find((d) => d.type === action)
+    if (!descriptor?.signers.includes(PerpsSigner.AGENT)) {
+      return undefined
+    }
+
+    const agent = await this.sdkClient.agentManager.getAgent(address, provider)
+    return agent.address
   }
 
   private requireAgentMode(address: Address, provider: string, method: string) {
@@ -178,6 +179,39 @@ export class PerpsClient {
       action,
       actions: signedActions,
     })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Generic action helpers
+  // ---------------------------------------------------------------------------
+
+  async buildAction<T extends ActionType>(
+    action: T,
+    params: { provider: string; address: Address; params: ActionParamsMap[T] }
+  ): Promise<CreateActionResponse> {
+    const signerAddress = await this.resolveSignerForAction(
+      action,
+      params.address,
+      params.provider
+    )
+    return createAction(this.sdkClient, {
+      provider: params.provider,
+      address: params.address,
+      signerAddress,
+      action,
+      params: params.params,
+    })
+  }
+
+  async submitSignedAction(
+    action: ActionType,
+    params: {
+      provider: string
+      address: Address
+      actions: SignedActionStep[]
+    }
+  ): Promise<ExecuteActionResponse> {
+    return executeAction(this.sdkClient, { ...params, action })
   }
 
   // ---------------------------------------------------------------------------
@@ -277,13 +311,19 @@ export class PerpsClient {
 
     const metadata = await this.getProviderMetadata(provider)
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.prerequisites,
+      metadata.prepareAccountActions,
       mode,
       agentAddress
     )
 
     if (allInputs.length === 0) {
       return { userPrerequisites: [], agentPrerequisites: [], isReady: true }
+    }
+
+    // Build a signer lookup from action descriptors
+    const signersByAction = new Map<string, PerpsSigner[]>()
+    for (const desc of metadata.prepareAccountActions) {
+      signersByAction.set(desc.type, desc.signers)
     }
 
     // Send all to backend via createAction for the first prerequisite type
@@ -298,12 +338,14 @@ export class PerpsClient {
       return { userPrerequisites: [], agentPrerequisites: [], isReady: true }
     }
 
-    const userPrerequisites = actions.filter(
-      (a) => a.signer === PerpsSigner.USER
-    )
-    const agentPrerequisites = actions.filter(
-      (a) => a.signer === PerpsSigner.AGENT
-    )
+    const userPrerequisites = actions.filter((a) => {
+      const signers = signersByAction.get(a.action) ?? []
+      return signers.includes(PerpsSigner.USER)
+    })
+    const agentPrerequisites = actions.filter((a) => {
+      const signers = signersByAction.get(a.action) ?? []
+      return signers.includes(PerpsSigner.AGENT)
+    })
 
     return {
       userPrerequisites,
@@ -328,7 +370,7 @@ export class PerpsClient {
 
     const metadata = await this.getProviderMetadata(params.provider)
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.prerequisites,
+      metadata.prepareAccountActions,
       mode,
       signerAddress
     )
@@ -375,14 +417,7 @@ export class PerpsClient {
         actions: userSignedActions,
       })
 
-      const optionalActions = new Set(
-        required.userPrerequisites
-          .filter((a) => a.optional)
-          .map((a) => a.action)
-      )
-      const mandatoryFailure = userResults.results.find(
-        (r) => !r.success && !optionalActions.has(r.action)
-      )
+      const mandatoryFailure = userResults.results.find((r) => !r.success)
       if (mandatoryFailure) {
         return { userResults }
       }
@@ -415,6 +450,32 @@ export class PerpsClient {
         actions: signedAgentActions,
       })
 
+      // If AGENT_SET_ABSTRACTION failed (e.g. dexAbstraction → unified upgrade),
+      // fall back to USER_SET_ABSTRACTION so the user can sign it manually.
+      const abstractionFailed = agentResults.results.some(
+        (r) => !r.success && r.action === ActionType.AGENT_SET_ABSTRACTION
+      )
+
+      if (abstractionFailed) {
+        const { actions: fallbackActions } = await createAction(
+          this.sdkClient,
+          {
+            provider,
+            address,
+            action: ActionType.USER_SET_ABSTRACTION,
+            params: {} as ActionParamsMap[ActionType.USER_SET_ABSTRACTION],
+          }
+        )
+
+        if (fallbackActions.length > 0) {
+          return {
+            userResults,
+            agentResults,
+            fallbackUserPrerequisites: fallbackActions,
+          }
+        }
+      }
+
       return { userResults, agentResults }
     }
 
@@ -426,16 +487,9 @@ export class PerpsClient {
   // ---------------------------------------------------------------------------
 
   async buildOrder(params: PlaceOrderParams): Promise<CreateActionResponse> {
-    const signerAddress = await this.resolveSignerAddress(
-      params.address,
-      params.provider
-    )
-
-    return createAction(this.sdkClient, {
+    return this.buildAction(ActionType.PLACE_ORDER, {
       provider: params.provider,
       address: params.address,
-      signerAddress,
-      action: ActionType.PLACE_ORDER,
       params: {
         symbol: params.symbol,
         side: params.side,
@@ -456,26 +510,24 @@ export class PerpsClient {
   async buildTriggerOrder(
     params: PlaceTriggerOrderParams
   ): Promise<CreateActionResponse> {
-    return this.buildOrder({
-      ...params,
-      type: OrderType.TRIGGER_ONLY,
-      price: '0',
+    return this.buildAction(ActionType.PLACE_TRIGGER_ORDER, {
+      provider: params.provider,
+      address: params.address,
+      params: {
+        symbol: params.symbol,
+        side: params.side,
+        takeProfit: params.takeProfit,
+        stopLoss: params.stopLoss,
+      },
     })
   }
 
   async buildCancelOrder(
     params: CancelOrdersParams
   ): Promise<CreateActionResponse> {
-    const signerAddress = await this.resolveSignerAddress(
-      params.address,
-      params.provider
-    )
-
-    return createAction(this.sdkClient, {
+    return this.buildAction(ActionType.CANCEL_ORDER, {
       provider: params.provider,
       address: params.address,
-      signerAddress,
-      action: ActionType.CANCEL_ORDER,
       params: { ids: params.ids },
     })
   }
@@ -483,16 +535,9 @@ export class PerpsClient {
   async buildModifyOrder(
     params: ModifyOrdersParams
   ): Promise<CreateActionResponse> {
-    const signerAddress = await this.resolveSignerAddress(
-      params.address,
-      params.provider
-    )
-
-    return createAction(this.sdkClient, {
+    return this.buildAction(ActionType.MODIFY_ORDER, {
       provider: params.provider,
       address: params.address,
-      signerAddress,
-      action: ActionType.MODIFY_ORDER,
       params: {
         symbol: params.symbol,
         side: params.side,
@@ -508,16 +553,9 @@ export class PerpsClient {
     action: 'add' | 'remove'
     amount: string
   }): Promise<CreateActionResponse> {
-    const signerAddress = await this.resolveSignerAddress(
-      params.address,
-      params.provider
-    )
-
-    return createAction(this.sdkClient, {
+    return this.buildAction(ActionType.UPDATE_POSITION_MARGIN, {
       provider: params.provider,
       address: params.address,
-      signerAddress,
-      action: ActionType.UPDATE_POSITION_MARGIN,
       params: {
         symbol: params.symbol,
         action: params.action,
@@ -529,10 +567,9 @@ export class PerpsClient {
   async buildWithdrawal(
     params: BuildWithdrawalParams
   ): Promise<CreateActionResponse> {
-    return createAction(this.sdkClient, {
+    return this.buildAction(ActionType.WITHDRAWAL, {
       provider: params.provider,
       address: params.address,
-      action: ActionType.WITHDRAWAL,
       params: params.withdrawal,
     })
   }
@@ -544,25 +581,17 @@ export class PerpsClient {
   async submitSignedOrder(params: {
     provider: string
     address: Address
-    signerAddress?: Address
     actions: SignedActionStep[]
   }): Promise<ExecuteActionResponse> {
-    return executeAction(this.sdkClient, {
-      ...params,
-      action: ActionType.PLACE_ORDER,
-    })
+    return this.submitSignedAction(ActionType.PLACE_ORDER, params)
   }
 
   async submitSignedPosition(params: {
     provider: string
     address: Address
-    signerAddress?: Address
     actions: SignedActionStep[]
   }): Promise<ExecuteActionResponse> {
-    return executeAction(this.sdkClient, {
-      ...params,
-      action: ActionType.UPDATE_POSITION_MARGIN,
-    })
+    return this.submitSignedAction(ActionType.UPDATE_POSITION_MARGIN, params)
   }
 
   async submitWithdrawal(params: {
@@ -570,10 +599,9 @@ export class PerpsClient {
     address: Address
     action: SignedActionStep
   }): Promise<ExecuteActionResponse> {
-    return executeAction(this.sdkClient, {
+    return this.submitSignedAction(ActionType.WITHDRAWAL, {
       provider: params.provider,
       address: params.address,
-      action: ActionType.WITHDRAWAL,
       actions: [params.action],
     })
   }
@@ -598,11 +626,20 @@ export class PerpsClient {
   async placeTriggerOrder(
     params: PlaceTriggerOrderParams
   ): Promise<ExecuteActionResponse> {
-    return this.placeOrder({
-      ...params,
-      type: OrderType.TRIGGER_ONLY,
-      price: '0',
-    })
+    await this.loadSigningMode(params.address, params.provider)
+    this.requireAgentMode(
+      params.address,
+      params.provider,
+      'placeTriggerOrder()'
+    )
+
+    const { actions } = await this.buildTriggerOrder(params)
+    return this.autoSignAndExecute(
+      params.provider,
+      params.address,
+      ActionType.PLACE_TRIGGER_ORDER,
+      actions
+    )
   }
 
   async cancelOrders(
