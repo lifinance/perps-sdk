@@ -15,6 +15,7 @@ export interface Market {
   funding: FundingInfo
   openInterest?: string
   volume24h?: string
+  prevDayPrice?: string
   markPrice: string
 }
 

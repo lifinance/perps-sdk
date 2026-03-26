@@ -30,6 +30,7 @@ export const mapMarket = (
     },
     openInterest: assetCtx.openInterest,
     volume24h: assetCtx.dayNtlVlm,
+    prevDayPrice: assetCtx.prevDayPx,
     markPrice: assetCtx.markPx,
   }
 }
