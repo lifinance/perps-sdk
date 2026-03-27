@@ -1,10 +1,10 @@
 import {
   FillClassification,
-  HistoryItemStatus,
+  FillStatus,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
-import type { HistoryItem } from '../../../account.js'
+import type { Fill } from '../../../account.js'
 import type { HlUserFill } from '../types.js'
 
 import { resolveAssetIdFromLookup } from './shared.js'
@@ -52,11 +52,11 @@ export function classifyFillFromPosition(
   return FillClassification.REDUCED_SHORT
 }
 
-export const mapHistoryItem = (
+export const mapFill = (
   fill: HlUserFill,
   providerKey: string,
   assetIdLookup: Map<string, number>
-): HistoryItem => ({
+): Fill => ({
   id: String(fill.tid),
   symbol: fill.coin,
   assetId: resolveAssetIdFromLookup(assetIdLookup, fill.coin),
@@ -65,7 +65,7 @@ export const mapHistoryItem = (
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,
   price: fill.px,
-  status: HistoryItemStatus.FILLED,
+  status: FillStatus.FILLED,
   filledSize: fill.sz,
   fee: fill.fee,
   realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl,

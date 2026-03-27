@@ -5,7 +5,7 @@ import type {
   OrderbookResponse,
   PricesResponse,
 } from './market.js'
-import type { HistoryItem, Position } from './account.js'
+import type { Fill, Position } from './account.js'
 import type { Order } from './action.js'
 
 // --- Channels the user can subscribe to ---
@@ -65,7 +65,7 @@ export type PricesEvent = { channel: 'prices'; data: PricesResponse }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 export type CandleEvent = { channel: 'candle'; data: Candle }
 export type OrderUpdatesEvent = { channel: 'orderUpdates'; data: Order[] }
-export type FillsEvent = { channel: 'fills'; data: HistoryItem[] }
+export type FillsEvent = { channel: 'fills'; data: Fill[] }
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
 export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }
 

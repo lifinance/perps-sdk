@@ -74,7 +74,7 @@ export enum OrderStatus {
   TRIGGERED = 'TRIGGERED',
 }
 
-export enum HistoryItemStatus {
+export enum FillStatus {
   FILLED = 'FILLED',
   PARTIALLY_FILLED = 'PARTIALLY_FILLED',
   CANCELLED = 'CANCELLED',

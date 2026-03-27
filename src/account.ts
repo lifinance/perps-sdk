@@ -2,7 +2,7 @@ import type { Address } from './typedData.js'
 import type {
   ActivityType,
   FillClassification,
-  HistoryItemStatus,
+  FillStatus,
   MarginMode,
   OrderSide,
   OrderType,
@@ -64,7 +64,7 @@ export interface AccountResponse {
   config: Record<string, unknown>
 }
 
-export interface HistoryItem {
+export interface Fill {
   id: string
   symbol: string
   assetId: number
@@ -73,12 +73,12 @@ export interface HistoryItem {
   type: OrderType
   size: string
   price: string
-  status: HistoryItemStatus
+  status: FillStatus
   filledSize?: string
   fee?: string
   realizedPnl?: string | null
   startPosition?: string
-  classification?: FillClassification
+  classification: FillClassification
   createdAt: string
 }
 
@@ -89,9 +89,9 @@ export interface Pagination {
   nextUrl?: string
 }
 
-export interface HistoryResponse {
+export interface FillsResponse {
   provider: string
-  items: HistoryItem[]
+  items: Fill[]
   pagination: Pagination
 }
 
