@@ -3,7 +3,6 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
-import { HistoryItemStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -23,7 +22,6 @@ import type {
   HlWsL2BookData,
   HlWsMessage,
   HlWsSpotClearinghouseStateData,
-  HlWsTrade,
   HlWsUserFillsData,
 } from './types.js'
 
@@ -230,8 +228,6 @@ export class HyperliquidWsProvider implements WsProvider {
         return 'allMids'
       case 'orderbook':
         return `l2Book:${sub.symbol}`
-      case 'trades':
-        return `trades:${sub.symbol}`
       case 'candle':
         return `candle:${sub.symbol}:${sub.interval}`
       case 'orderUpdates':
@@ -257,8 +253,6 @@ export class HyperliquidWsProvider implements WsProvider {
           coin: sub.symbol,
           ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
         }
-      case 'trades':
-        return { type: 'trades', coin: sub.symbol }
       case 'candle':
         return { type: 'candle', coin: sub.symbol, interval: sub.interval }
       case 'orderUpdates':
@@ -316,9 +310,6 @@ export class HyperliquidWsProvider implements WsProvider {
         case 'l2Book':
           this.handleL2Book(msg.data as HlWsL2BookData)
           break
-        case 'trades':
-          this.handleTrades(msg.data as HlWsTrade[])
-          break
         case 'candle':
           this.handleCandle(msg.data as HlWsCandleData)
           break
@@ -366,27 +357,6 @@ export class HyperliquidWsProvider implements WsProvider {
         timestamp: data.time,
       },
     })
-  }
-
-  private handleTrades(data: HlWsTrade[]) {
-    if (data.length === 0) {
-      return
-    }
-    const coin = data[0].coin
-    const items = data.map((t) => ({
-      id: String(t.tid),
-      symbol: t.coin,
-      assetId: this.assetIdLookup.get(t.coin) ?? -1,
-      provider: this.providerKey,
-      side: t.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-      type: OrderType.MARKET,
-      size: t.sz,
-      price: t.px,
-      status: HistoryItemStatus.FILLED,
-      filledSize: t.sz,
-      createdAt: new Date(t.time).toISOString(),
-    }))
-    this.emit(`trades:${coin}`, { channel: 'trades', data: items })
   }
 
   private handleCandle(data: HlWsCandleData) {

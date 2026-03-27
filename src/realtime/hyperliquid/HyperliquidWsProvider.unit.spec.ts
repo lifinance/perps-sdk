@@ -179,20 +179,6 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should map trades subscription to trades payload', async () => {
-      const provider = createProvider()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'ETH' },
-        vi.fn()
-      )
-
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'subscribe',
-        subscription: { type: 'trades', coin: 'ETH' },
-      })
-    })
-
     it('should map candle subscription to candle payload', async () => {
       const provider = createProvider()
 
@@ -392,92 +378,6 @@ describe('HyperliquidWsProvider', () => {
           timestamp: 1704067200000,
         },
       })
-    })
-
-    it('should emit trades event for trades channel', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'BTC' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'trades',
-          data: [
-            {
-              coin: 'BTC',
-              side: 'B',
-              px: '95000',
-              sz: '0.1',
-              time: 1704067200000,
-              tid: 12345,
-            },
-          ],
-        })
-      )
-
-      expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.channel).toBe('trades')
-      expect(event.data).toHaveLength(1)
-      expect(event.data[0]).toMatchObject({
-        id: '12345',
-        symbol: 'BTC',
-        assetId: 0,
-        provider: 'hyperliquid',
-        side: OrderSide.BUY,
-        type: OrderType.MARKET,
-        size: '0.1',
-        price: '95000',
-        status: HistoryItemStatus.FILLED,
-      })
-    })
-
-    it('should emit sell side for trades with side A', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'ETH' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'trades',
-          data: [
-            {
-              coin: 'ETH',
-              side: 'A',
-              px: '3400',
-              sz: '1.0',
-              time: 1704067200000,
-              tid: 99,
-            },
-          ],
-        })
-      )
-
-      expect(listener.mock.calls[0][0].data[0].side).toBe(OrderSide.SELL)
-    })
-
-    it('should not emit for empty trades array', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'BTC' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({ channel: 'trades', data: [] })
-      )
-
-      expect(listener).not.toHaveBeenCalled()
     })
 
     it('should emit candle event for candle channel', async () => {
