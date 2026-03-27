@@ -8,7 +8,6 @@ import type {
   OrderType,
   PositionSide,
 } from './enums.js'
-import type { TriggerOrderInput } from './action.js'
 
 export interface FeeTier {
   maker: string
@@ -42,8 +41,6 @@ export interface OpenOrder {
   filledSize: string
   reduceOnly: boolean
   label?: string
-  takeProfit?: TriggerOrderInput
-  stopLoss?: TriggerOrderInput
   createdAt: string
 }
 
@@ -59,9 +56,33 @@ export interface AccountResponse {
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
-  positions: Position[]
-  openOrders: OpenOrder[]
   config: Record<string, unknown>
+}
+
+export interface TriggerOrder {
+  id: string
+  symbol: string
+  assetId: number
+  provider: string
+  type: OrderType
+  size: string
+  triggerPrice: string
+  limitPrice?: string
+  label?: string
+  createdAt: string
+}
+
+export interface PositionsResponse {
+  provider: string
+  positions: Position[]
+  pagination: Pagination
+}
+
+export interface OrdersResponse {
+  provider: string
+  openOrders: OpenOrder[]
+  triggerOrders: TriggerOrder[]
+  pagination: Pagination
 }
 
 export interface Fill {

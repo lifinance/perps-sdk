@@ -4,8 +4,7 @@ import {
   OrderType,
   TimeInForce,
 } from '../../../enums.js'
-import type { OpenOrder } from '../../../account.js'
-import type { TriggerOrderInput } from '../../../action.js'
+import type { OpenOrder, TriggerOrder } from '../../../account.js'
 import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
 
@@ -29,68 +28,51 @@ export const mapOrderType = (orderType: string): OrderType => {
   }
 }
 
-const isTpType = (type: OrderType): boolean =>
-  type === OrderType.TAKE_PROFIT_MARKET || type === OrderType.TAKE_PROFIT_LIMIT
-
-const isSlType = (type: OrderType): boolean =>
-  type === OrderType.STOP_MARKET || type === OrderType.STOP_LIMIT
-
-const buildTriggerInput = (o: HlFrontendOpenOrder): TriggerOrderInput => {
-  const type = mapOrderType(o.orderType)
-  const isLimit =
-    type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
-  return {
-    triggerPrice: o.triggerPx,
-    ...(isLimit ? { limitPrice: o.limitPx } : {}),
-  }
-}
-
-const extractChildTriggers = (
-  children: HlFrontendOpenOrder[]
-): { takeProfit?: TriggerOrderInput; stopLoss?: TriggerOrderInput } => {
-  let takeProfit: TriggerOrderInput | undefined
-  let stopLoss: TriggerOrderInput | undefined
-
-  for (const child of children) {
-    const childType = mapOrderType(child.orderType)
-    if (isTpType(childType)) {
-      takeProfit = buildTriggerInput(child)
-    } else if (isSlType(childType)) {
-      stopLoss = buildTriggerInput(child)
-    }
-  }
-
-  return { takeProfit, stopLoss }
-}
+export const isTriggerType = (type: OrderType): boolean =>
+  type === OrderType.TAKE_PROFIT_MARKET ||
+  type === OrderType.TAKE_PROFIT_LIMIT ||
+  type === OrderType.STOP_MARKET ||
+  type === OrderType.STOP_LIMIT
 
 export const mapOpenOrder = (
   o: HlFrontendOpenOrder,
   providerKey: string,
   assetIdLookup: Map<string, number>
-): OpenOrder => {
+): OpenOrder => ({
+  id: String(o.oid),
+  symbol: o.coin,
+  assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
+  provider: providerKey,
+  side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+  type: mapOrderType(o.orderType),
+  size: o.sz,
+  price: o.limitPx,
+  filledSize: o.origSz
+    ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
+    : '0',
+  reduceOnly: o.reduceOnly ?? false,
+  label: o.isTrigger ? o.triggerCondition : undefined,
+  createdAt: new Date(o.timestamp).toISOString(),
+})
+
+export const mapTriggerOrder = (
+  o: HlFrontendOpenOrder,
+  providerKey: string,
+  assetIdLookup: Map<string, number>
+): TriggerOrder => {
   const type = mapOrderType(o.orderType)
-  const isTp = isTpType(type)
-  const isSl = isSlType(type)
-
-  const childTriggers =
-    o.children.length > 0 ? extractChildTriggers(o.children) : undefined
-
+  const isLimit =
+    type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
     id: String(o.oid),
     symbol: o.coin,
     assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
     provider: providerKey,
-    side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type,
     size: o.sz,
-    price: o.limitPx,
-    filledSize: o.origSz
-      ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
-      : '0',
-    reduceOnly: o.reduceOnly ?? false,
-    label: o.isTrigger ? o.triggerCondition : undefined,
-    takeProfit: isTp ? buildTriggerInput(o) : childTriggers?.takeProfit,
-    stopLoss: isSl ? buildTriggerInput(o) : childTriggers?.stopLoss,
+    triggerPrice: o.triggerPx,
+    ...(isLimit ? { limitPrice: o.limitPx } : {}),
+    label: o.triggerCondition,
     createdAt: new Date(o.timestamp).toISOString(),
   }
 }
