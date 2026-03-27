@@ -17,11 +17,6 @@ export type OrderbookSubscription = {
   symbol: string
   depth?: number
 }
-export type TradesSubscription = {
-  channel: 'trades'
-  dex: string
-  symbol: string
-}
 export type CandleSubscription = {
   channel: 'candle'
   dex: string
@@ -52,7 +47,6 @@ export type SpotBalancesSubscription = {
 export type Subscription =
   | PricesSubscription
   | OrderbookSubscription
-  | TradesSubscription
   | CandleSubscription
   | OrderUpdatesSubscription
   | FillsSubscription
@@ -69,7 +63,6 @@ export interface SpotBalance {
 
 export type PricesEvent = { channel: 'prices'; data: PricesResponse }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
-export type TradesEvent = { channel: 'trades'; data: HistoryItem[] }
 export type CandleEvent = { channel: 'candle'; data: Candle }
 export type OrderUpdatesEvent = { channel: 'orderUpdates'; data: Order[] }
 export type FillsEvent = { channel: 'fills'; data: HistoryItem[] }
@@ -79,7 +72,6 @@ export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }
 export type SubscriptionEvent =
   | PricesEvent
   | OrderbookEvent
-  | TradesEvent
   | CandleEvent
   | OrderUpdatesEvent
   | FillsEvent
