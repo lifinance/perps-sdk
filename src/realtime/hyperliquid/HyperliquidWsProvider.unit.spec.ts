@@ -1,5 +1,5 @@
 import {
-  HistoryItemStatus,
+  FillStatus,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -523,7 +523,7 @@ describe('HyperliquidWsProvider', () => {
         price: '94000',
         size: '0.1',
         fee: '4.70',
-        status: HistoryItemStatus.FILLED,
+        status: FillStatus.FILLED,
       })
     })
 

@@ -3,7 +3,7 @@ import type {
   ActivitiesResponse,
   CreateActionResponse,
   ExecuteActionResponse,
-  HistoryResponse,
+  FillsResponse,
   MarketsResponse,
   OhlcvResponse,
   Order,
@@ -14,7 +14,7 @@ import type {
 import {
   ActionType,
   ActivityType,
-  HistoryItemStatus,
+  FillStatus,
   MarginMode,
   OrderSide,
   OrderStatus,
@@ -172,7 +172,7 @@ export const mockAccount: AccountResponse = {
   config: {},
 }
 
-export const mockHistory: HistoryResponse = {
+export const mockFills: FillsResponse = {
   provider: 'hyperliquid',
   items: [
     {
@@ -184,7 +184,7 @@ export const mockHistory: HistoryResponse = {
       type: OrderType.MARKET,
       size: '0.1',
       price: '94000.00',
-      status: HistoryItemStatus.FILLED,
+      status: FillStatus.FILLED,
       filledSize: '0.1',
       fee: '4.70',
       realizedPnl: null,
@@ -341,7 +341,7 @@ export const handlers = [
   // Account
   http.get(`${BASE_URL}/account`, () => HttpResponse.json(mockAccount)),
 
-  http.get(`${BASE_URL}/history`, () => HttpResponse.json(mockHistory)),
+  http.get(`${BASE_URL}/fills`, () => HttpResponse.json(mockFills)),
 
   http.get(`${BASE_URL}/activity`, () => HttpResponse.json(mockActivity)),
 

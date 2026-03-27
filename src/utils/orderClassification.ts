@@ -45,7 +45,7 @@ export function isTpSlOrder(order: Pick<OpenOrder, 'type'>): boolean {
 
 /**
  * Classify a fill as open or close based on realizedPnl.
- * @deprecated Use `HistoryItem.classification` instead — it uses startPosition
+ * @deprecated Use `Fill.classification` instead — it uses startPosition
  * for accurate open/increase/reduce/close/reverse classification.
  */
 export function classifyFill(

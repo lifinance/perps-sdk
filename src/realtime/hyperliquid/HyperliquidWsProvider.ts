@@ -9,7 +9,7 @@ import type {
   HlUserFill,
 } from '@lifi/perps-types/providers/hyperliquid'
 import {
-  mapHistoryItem,
+  mapFill,
   mapOrder,
   mapPosition,
 } from '@lifi/perps-types/providers/hyperliquid'
@@ -383,7 +383,7 @@ export class HyperliquidWsProvider implements WsProvider {
 
   private handleUserFills(data: HlWsUserFillsData) {
     const items = data.fills.map((f) =>
-      mapHistoryItem(f as HlUserFill, this.providerKey, this.assetIdLookup)
+      mapFill(f as HlUserFill, this.providerKey, this.assetIdLookup)
     )
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }

@@ -1,7 +1,7 @@
 import {
   createPerpsClient,
   getAccount,
-  getHistory,
+  getFills,
   getOrder,
 } from '@lifi/perps-sdk'
 
@@ -18,13 +18,13 @@ async function run() {
   })
   console.log('Account:', account)
 
-  // Get order history
-  const { items, pagination } = await getHistory(client, {
+  // Get order fills
+  const { items, pagination } = await getFills(client, {
     provider: 'hyperliquid',
     address: '0x1234...',
     limit: 50,
   })
-  console.log('History:', items, pagination)
+  console.log('Fills:', items, pagination)
 
   // Get specific order
   const order = await getOrder(client, {
