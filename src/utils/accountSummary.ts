@@ -1,4 +1,4 @@
-import type { AccountResponse } from '@lifi/perps-types'
+import type { AccountResponse, Position } from '@lifi/perps-types'
 // biome-ignore lint/correctness/useImportExtensions: package subpath export
 import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 import { stringToFloat } from './parse.js'
@@ -37,11 +37,12 @@ const UNIFIED_STATUSES: ReadonlySet<string> = new Set([
 
 export function calculateAccountSummary(
   account: AccountResponse,
+  positions: Position[],
   prices: Record<string, string>
 ): AccountSummary {
   let marginUsed = 0
   let unrealizedPnl = 0
-  for (const p of account.positions) {
+  for (const p of positions) {
     marginUsed += stringToFloat(p.marginUsed)
     unrealizedPnl += stringToFloat(p.unrealizedPnl)
   }

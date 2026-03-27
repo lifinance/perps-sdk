@@ -13,7 +13,9 @@ export interface GetAccountParams {
 }
 
 /**
- * Get account information including balances, positions, and open orders.
+ * Get account information including balances and margin details.
+ *
+ * Use {@link getPositions} and {@link getOrders} to fetch positions and orders separately.
  *
  * @param client - The SDK client instance
  * @param params - Request parameters
@@ -30,8 +32,6 @@ export interface GetAccountParams {
  *   address: '0x1234...'
  * })
  * console.log(account.balances) // [{ currency: 'USDC', amount: '10000.00' }]
- * console.log(account.positions) // [{ symbol: 'BTC', side: 'LONG', ... }]
- * console.log(account.openOrders) // [{ id: '123', symbol: 'BTC', ... }]
  * ```
  */
 export async function getAccount(

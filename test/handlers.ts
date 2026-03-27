@@ -8,6 +8,8 @@ import type {
   OhlcvResponse,
   Order,
   OrderbookResponse,
+  OrdersResponse,
+  PositionsResponse,
   PricesResponse,
   ProvidersResponse,
 } from '@lifi/perps-types'
@@ -138,6 +140,11 @@ export const mockAccount: AccountResponse = {
   marginUsed: '500.00',
   unrealizedPnl: '125.50',
   feeTier: { maker: '0.0002', taker: '0.0005' },
+  config: {},
+}
+
+export const mockPositions: PositionsResponse = {
+  provider: 'hyperliquid',
   positions: [
     {
       symbol: 'BTC',
@@ -154,6 +161,11 @@ export const mockAccount: AccountResponse = {
       marginMode: MarginMode.CROSS,
     },
   ],
+  pagination: { limit: 100, hasMore: false },
+}
+
+export const mockOrders: OrdersResponse = {
+  provider: 'hyperliquid',
   openOrders: [
     {
       id: 'order1',
@@ -169,7 +181,8 @@ export const mockAccount: AccountResponse = {
       createdAt: '2024-01-01T00:00:00Z',
     },
   ],
-  config: {},
+  triggerOrders: [],
+  pagination: { limit: 100, hasMore: false },
 }
 
 export const mockFills: FillsResponse = {
@@ -340,6 +353,10 @@ export const handlers = [
 
   // Account
   http.get(`${BASE_URL}/account`, () => HttpResponse.json(mockAccount)),
+
+  http.get(`${BASE_URL}/positions`, () => HttpResponse.json(mockPositions)),
+
+  http.get(`${BASE_URL}/orders`, () => HttpResponse.json(mockOrders)),
 
   http.get(`${BASE_URL}/fills`, () => HttpResponse.json(mockFills)),
 

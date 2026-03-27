@@ -3,6 +3,8 @@ import {
   getAccount,
   getFills,
   getOrder,
+  getOrders,
+  getPositions,
 } from '@lifi/perps-sdk'
 
 async function run() {
@@ -11,12 +13,27 @@ async function run() {
     apiKey: 'your-api-key',
   })
 
-  // Get account info (balances, positions, open orders)
+  // Get account info (balances, margin details)
   const account = await getAccount(client, {
     provider: 'hyperliquid',
     address: '0x1234...',
   })
   console.log('Account:', account)
+
+  // Get open positions
+  const { positions } = await getPositions(client, {
+    provider: 'hyperliquid',
+    address: '0x1234...',
+  })
+  console.log('Positions:', positions)
+
+  // Get open orders and trigger orders
+  const { openOrders, triggerOrders } = await getOrders(client, {
+    provider: 'hyperliquid',
+    address: '0x1234...',
+  })
+  console.log('Open orders:', openOrders)
+  console.log('Trigger orders:', triggerOrders)
 
   // Get order fills
   const { items, pagination } = await getFills(client, {
