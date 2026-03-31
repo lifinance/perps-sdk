@@ -128,8 +128,8 @@ export enum FillClassification {
   REDUCED_SHORT = 'Reduced Short',
   CLOSED_LONG = 'Closed Long',
   CLOSED_SHORT = 'Closed Short',
-  REVERSED_TO_LONG = 'Reversed To Long',
-  REVERSED_TO_SHORT = 'Reversed To Short',
+  SWITCHED_LONG = 'Switched Long',
+  SWITCHED_SHORT = 'Switched Short',
   SPOT_BUY = 'Spot Buy',
   SPOT_SELL = 'Spot Sell',
 }

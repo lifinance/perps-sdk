@@ -31,7 +31,7 @@ export function classifyFillFromPosition(
       return FillClassification.CLOSED_LONG
     }
     if (end < 0) {
-      return FillClassification.REVERSED_TO_SHORT
+      return FillClassification.SWITCHED_SHORT
     }
     if (end > start) {
       return FillClassification.INCREASED_LONG
@@ -44,7 +44,7 @@ export function classifyFillFromPosition(
     return FillClassification.CLOSED_SHORT
   }
   if (end > 0) {
-    return FillClassification.REVERSED_TO_LONG
+    return FillClassification.SWITCHED_LONG
   }
   if (end < start) {
     return FillClassification.INCREASED_SHORT
