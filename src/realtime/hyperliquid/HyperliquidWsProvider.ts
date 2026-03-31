@@ -30,19 +30,12 @@ export class HyperliquidWsProvider implements WsProvider {
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
   private readonly providerKey: string
-  private readonly assetIdLookup: Map<string, number>
   private readonly subDexes: string[]
   private positionsBySubDex = new Map<string, Position[]>()
   private midsBySubDex = new Map<string, Record<string, string>>()
 
-  constructor(
-    wsUrl: string,
-    providerKey: string,
-    assetIdLookup: Map<string, number>,
-    subDexes: string[]
-  ) {
+  constructor(wsUrl: string, providerKey: string, subDexes: string[]) {
     this.providerKey = providerKey
-    this.assetIdLookup = assetIdLookup
     this.subDexes = subDexes
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
@@ -383,7 +376,7 @@ export class HyperliquidWsProvider implements WsProvider {
 
   private handleUserFills(data: HlWsUserFillsData) {
     const items = data.fills.map((f) =>
-      mapFill(f as HlUserFill, this.providerKey, this.assetIdLookup)
+      mapFill(f as HlUserFill, this.providerKey)
     )
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
@@ -391,7 +384,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(ap as HlAssetPosition, this.providerKey, this.assetIdLookup)
+      mapPosition(ap as HlAssetPosition, this.providerKey)
     )
     this.positionsBySubDex.set(subDexKey, positions)
 

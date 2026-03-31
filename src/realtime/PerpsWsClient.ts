@@ -1,6 +1,5 @@
 import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
-import { getMarkets } from '../services/getMarkets.js'
 import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
 import type { EventForSubscription, SubscriptionListener } from './types.js'
@@ -48,36 +47,27 @@ export class PerpsWsClient {
   }
 
   private async initProvider(provider: string): Promise<HyperliquidWsProvider> {
-    const [{ providers }, { markets }] = await Promise.all([
-      getProviders(this.client),
-      getMarkets(this.client, { provider }),
-    ])
+    const { providers } = await getProviders(this.client)
 
     const providerInfo = providers.find((d) => d.key === provider)
     if (!providerInfo?.wsUrl) {
       throw new Error(`No WebSocket URL found for provider: ${provider}`)
     }
 
-    const assetIdLookup = new Map<string, number>()
-    for (const m of markets) {
-      assetIdLookup.set(m.symbol, m.assetId)
-    }
-
-    const allVenues = (providerInfo.extraData?.venues ?? []) as Array<{
-      name: string
+    const allMarkets = (providerInfo.markets ?? []) as Array<{
+      id: string
     }>
-    const configuredVenues = this.client.config.providers?.hyperliquid?.venues
-    const filteredVenues = configuredVenues
-      ? allVenues.filter((v) => configuredVenues.includes(v.name))
-      : allVenues
-    const subProviders = filteredVenues
-      .map((v) => v.name)
-      .filter((n) => n !== '')
+    const configuredMarkets = this.client.config.providers?.hyperliquid?.markets
+    const filteredMarkets = configuredMarkets
+      ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
+      : allMarkets
+    const subProviders = filteredMarkets
+      .map((m) => m.id)
+      .filter((id) => id !== 'hyperliquid' && id !== 'spot')
 
     const wsProvider = new HyperliquidWsProvider(
       providerInfo.wsUrl,
       provider,
-      assetIdLookup,
       subProviders
     )
     this.providers.set(provider, wsProvider)
