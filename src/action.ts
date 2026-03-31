@@ -50,6 +50,7 @@ export interface ModifyOrderInput {
 export interface Order {
   orderId: string
   symbol: string
+  providerAssetId: string
   side: OrderSide
   type: OrderType
   price?: string
@@ -73,7 +74,8 @@ export interface Order {
 // ---------------------------------------------------------------------------
 
 export interface PlaceOrderParams {
-  symbol: string
+  providerAssetId: string
+  providerMarketId: string
   side: OrderSide
   type?: OrderType
   size: string
@@ -84,11 +86,11 @@ export interface PlaceOrderParams {
   expiresAt?: string
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
-  market?: 'spot' | 'perps'
 }
 
 export interface PlaceTriggerOrderParams {
-  symbol: string
+  providerAssetId: string
+  providerMarketId: string
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
@@ -99,18 +101,18 @@ export interface CancelOrderParams {
 }
 
 export interface ModifyOrderParams {
-  symbol: string
-  side: OrderSide
   modifications: ModifyOrderInput[]
 }
 
 export interface UpdateLeverageParams {
-  symbol: string
+  providerAssetId: string
+  providerMarketId: string
   leverage: number
 }
 
 export interface UpdatePositionMarginParams {
-  symbol: string
+  providerAssetId: string
+  providerMarketId: string
   action: 'add' | 'remove'
   amount: string
 }

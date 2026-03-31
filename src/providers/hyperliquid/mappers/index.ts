@@ -1,5 +1,4 @@
-export { resolveAssetIdFromLookup } from './shared.js'
-export { mapMarket } from './market.js'
+export { mapAsset } from './market.js'
 export {
   isTriggerType,
   mapOpenOrder,

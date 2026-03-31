@@ -7,8 +7,6 @@ import {
 import type { Fill } from '../../../account.js'
 import type { HlUserFill } from '../types.js'
 
-import { resolveAssetIdFromLookup } from './shared.js'
-
 export function classifyFillFromPosition(
   startPosition: string,
   side: string,
@@ -52,14 +50,10 @@ export function classifyFillFromPosition(
   return FillClassification.REDUCED_SHORT
 }
 
-export const mapFill = (
-  fill: HlUserFill,
-  providerKey: string,
-  assetIdLookup: Map<string, number>
-): Fill => ({
+export const mapFill = (fill: HlUserFill, providerKey: string): Fill => ({
   id: String(fill.tid),
   symbol: fill.coin,
-  assetId: resolveAssetIdFromLookup(assetIdLookup, fill.coin),
+  providerAssetId: fill.coin,
   provider: providerKey,
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,

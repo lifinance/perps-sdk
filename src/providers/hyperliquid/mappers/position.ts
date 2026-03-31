@@ -2,19 +2,16 @@ import { MarginMode, PositionSide } from '../../../enums.js'
 import type { Position } from '../../../account.js'
 import type { HlAssetPosition } from '../types.js'
 
-import { resolveAssetIdFromLookup } from './shared.js'
-
 export const mapPosition = (
   ap: HlAssetPosition,
-  providerKey: string,
-  assetIdLookup: Map<string, number>
+  providerKey: string
 ): Position => {
   const pos = ap.position
   const szi = parseFloat(pos.szi)
 
   return {
     symbol: pos.coin,
-    assetId: resolveAssetIdFromLookup(assetIdLookup, pos.coin),
+    providerAssetId: pos.coin,
     provider: providerKey,
     side: szi >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: Math.abs(szi).toString(),

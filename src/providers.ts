@@ -5,13 +5,18 @@ export interface ActionDescriptor {
   signers: PerpsSigner[]
 }
 
+export interface ProviderMarketInfo {
+  id: string
+  quoteAsset: string | null
+}
+
 export interface Provider {
   key: string
   name: string
   logoURI: string
   prepareAccountActions: ActionDescriptor[]
   actions: ActionDescriptor[]
-  extraData?: Record<string, unknown>
+  markets: ProviderMarketInfo[]
   wsUrl?: string
 }
 

@@ -8,8 +8,6 @@ import type { OpenOrder, TriggerOrder } from '../../../account.js'
 import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
 
-import { resolveAssetIdFromLookup } from './shared.js'
-
 /** Map a Hyperliquid orderType string to the OrderType enum. */
 export const mapOrderType = (orderType: string): OrderType => {
   switch (orderType) {
@@ -36,12 +34,11 @@ export const isTriggerType = (type: OrderType): boolean =>
 
 export const mapOpenOrder = (
   o: HlFrontendOpenOrder,
-  providerKey: string,
-  assetIdLookup: Map<string, number>
+  providerKey: string
 ): OpenOrder => ({
   id: String(o.oid),
   symbol: o.coin,
-  assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
+  providerAssetId: o.coin,
   provider: providerKey,
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: mapOrderType(o.orderType),
@@ -57,8 +54,7 @@ export const mapOpenOrder = (
 
 export const mapTriggerOrder = (
   o: HlFrontendOpenOrder,
-  providerKey: string,
-  assetIdLookup: Map<string, number>
+  providerKey: string
 ): TriggerOrder => {
   const type = mapOrderType(o.orderType)
   const isLimit =
@@ -66,7 +62,7 @@ export const mapTriggerOrder = (
   return {
     id: String(o.oid),
     symbol: o.coin,
-    assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
+    providerAssetId: o.coin,
     provider: providerKey,
     type,
     size: o.sz,
@@ -118,6 +114,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
   return {
     orderId: String(o.oid),
     symbol: o.coin,
+    providerAssetId: o.coin,
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type: mapOrderType(o.orderType),
     price: o.limitPx,

@@ -3,11 +3,11 @@ export interface FundingInfo {
   nextFundingTime: number
 }
 
-export interface Market {
+export interface Asset {
   symbol: string
+  providerAssetId: string
   name: string
   logoURI: string
-  assetId: number
   provider: string
   szDecimals: number
   maxLeverage: number
@@ -19,12 +19,20 @@ export interface Market {
   markPrice: string
 }
 
-export interface MarketsResponse {
-  markets: Market[]
+export interface AssetPrice {
+  providerAssetId: string
+  price: string
+}
+
+/** Generic grouping keyed by providerMarketId */
+export type ProviderMarketGroup<T> = Record<string, T>
+
+export interface AssetsResponse {
+  assets: ProviderMarketGroup<Asset[]>
 }
 
 export interface PricesResponse {
-  prices: Record<string, string>
+  prices: ProviderMarketGroup<AssetPrice[]>
 }
 
 export interface Candle {
@@ -38,7 +46,7 @@ export interface Candle {
 
 export interface OhlcvResponse {
   provider: string
-  symbol: string
+  providerAssetId: string
   interval: string
   candles: Candle[]
 }
@@ -66,7 +74,7 @@ export interface OrderbookLevel {
 
 export interface OrderbookResponse {
   provider: string
-  symbol: string
+  providerAssetId: string
   bids: OrderbookLevel[]
   asks: OrderbookLevel[]
   timestamp: number

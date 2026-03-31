@@ -14,13 +14,13 @@ export type PricesSubscription = { channel: 'prices'; dex: string }
 export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
-  symbol: string
+  providerAssetId: string
   depth?: number
 }
 export type CandleSubscription = {
   channel: 'candle'
   dex: string
-  symbol: string
+  providerAssetId: string
   interval: OhlcvInterval
 }
 export type OrderUpdatesSubscription = {
