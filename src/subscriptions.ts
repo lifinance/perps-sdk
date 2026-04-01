@@ -1,10 +1,5 @@
 import type { Address } from './typedData.js'
-import type {
-  Candle,
-  OhlcvInterval,
-  OrderbookResponse,
-  PricesResponse,
-} from './market.js'
+import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
 import type { Fill, Position } from './account.js'
 import type { Order } from './action.js'
 
@@ -61,7 +56,7 @@ export interface SpotBalance {
   hold: string
 }
 
-export type PricesEvent = { channel: 'prices'; data: PricesResponse }
+export type PricesEvent = { channel: 'prices'; data: Record<string, string> }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 export type CandleEvent = { channel: 'candle'; data: Candle }
 export type OrderUpdatesEvent = { channel: 'orderUpdates'; data: Order[] }
