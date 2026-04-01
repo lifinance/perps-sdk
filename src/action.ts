@@ -7,6 +7,7 @@ import {
   type TriggerCondition,
 } from './enums.js'
 import type { Address, Hex, PerpsTypedData } from './typedData.js'
+import type { AssetIdentity } from './market.js'
 
 // ---------------------------------------------------------------------------
 // Action step types (create → sign → execute flow)
@@ -49,8 +50,7 @@ export interface ModifyOrderInput {
 
 export interface Order {
   orderId: string
-  symbol: string
-  providerAssetId: string
+  asset: AssetIdentity
   side: OrderSide
   type: OrderType
   price?: string
@@ -74,8 +74,8 @@ export interface Order {
 // ---------------------------------------------------------------------------
 
 export interface PlaceOrderParams {
-  providerAssetId: string
-  providerMarketId: string
+  assetId: string
+  market: string
   side: OrderSide
   type?: OrderType
   size: string
@@ -89,8 +89,8 @@ export interface PlaceOrderParams {
 }
 
 export interface PlaceTriggerOrderParams {
-  providerAssetId: string
-  providerMarketId: string
+  assetId: string
+  market: string
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
@@ -105,14 +105,14 @@ export interface ModifyOrderParams {
 }
 
 export interface UpdateLeverageParams {
-  providerAssetId: string
-  providerMarketId: string
+  assetId: string
+  market: string
   leverage: number
 }
 
 export interface UpdatePositionMarginParams {
-  providerAssetId: string
-  providerMarketId: string
+  assetId: string
+  market: string
   action: 'add' | 'remove'
   amount: string
 }

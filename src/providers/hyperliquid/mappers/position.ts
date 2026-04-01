@@ -2,17 +2,12 @@ import { MarginMode, PositionSide } from '../../../enums.js'
 import type { Position } from '../../../account.js'
 import type { HlAssetPosition } from '../types.js'
 
-export const mapPosition = (
-  ap: HlAssetPosition,
-  providerKey: string
-): Position => {
+export const mapPosition = (ap: HlAssetPosition): Position => {
   const pos = ap.position
   const szi = parseFloat(pos.szi)
 
   return {
-    symbol: pos.coin,
-    providerAssetId: pos.coin,
-    provider: providerKey,
+    asset: { assetId: pos.coin, market: '', displaySymbol: pos.coin },
     side: szi >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: Math.abs(szi).toString(),
     entryPrice: pos.entryPx ?? '0',

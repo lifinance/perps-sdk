@@ -5,19 +5,17 @@ const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
 export const mapAsset = (
   universe: HlUniverseItem,
-  assetCtx: HlAssetCtx,
-  providerKey: string
+  assetCtx: HlAssetCtx
 ): Asset => {
   const now = Date.now()
   const nextFundingTime =
     Math.ceil(now / NEXT_FUNDING_INTERVAL_MS) * NEXT_FUNDING_INTERVAL_MS
 
   return {
-    symbol: universe.name,
-    providerAssetId: universe.name,
-    name: universe.name,
+    assetId: universe.name,
+    market: '',
+    displaySymbol: universe.name,
     logoURI: `https://app.hyperliquid.xyz/coins/${universe.name}.svg`,
-    provider: providerKey,
     szDecimals: universe.szDecimals,
     maxLeverage: universe.maxLeverage,
     onlyIsolated: universe.onlyIsolated === true,

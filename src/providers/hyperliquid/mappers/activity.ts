@@ -55,8 +55,7 @@ export const mapLedgerEntry = (
         accountValue: d.accountValue,
         leverageType: d.leverageType,
         liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
-          symbol: p.coin,
-          providerAssetId: p.coin,
+          asset: { assetId: p.coin, market: '', displaySymbol: p.coin },
           size: p.szi,
         })),
       } satisfies LiquidationActivity
@@ -78,8 +77,11 @@ export const mapFundingActivity = (
   provider: providerKey,
   timestamp: new Date(entry.time).toISOString(),
   type: ActivityType.FUNDING,
-  symbol: entry.delta.coin,
-  providerAssetId: entry.delta.coin,
+  asset: {
+    assetId: entry.delta.coin,
+    market: '',
+    displaySymbol: entry.delta.coin,
+  },
   amount: entry.delta.usdc,
   positionSize: entry.delta.szi,
   fundingRate: entry.delta.fundingRate,

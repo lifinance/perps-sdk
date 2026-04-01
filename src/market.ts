@@ -3,12 +3,15 @@ export interface FundingInfo {
   nextFundingTime: number
 }
 
-export interface Asset {
-  symbol: string
-  providerAssetId: string
-  name: string
+export interface AssetIdentity {
+  assetId: string // provider's canonical identity: "BTC", "xyz:PURR", "@142"
+  market: string // market category from /providers.markets: "hyperliquid", "xyz", "spot"
+  displaySymbol: string // UI pair name: "BTC/USDC", "PURR/USDH"
+  displayName?: string // future: "Bitcoin", "Ethereum"
+}
+
+export interface Asset extends AssetIdentity {
   logoURI: string
-  provider: string
   szDecimals: number
   maxLeverage: number
   onlyIsolated: boolean
@@ -20,19 +23,16 @@ export interface Asset {
 }
 
 export interface AssetPrice {
-  providerAssetId: string
+  assetId: string
   price: string
 }
 
-/** Generic grouping keyed by providerMarketId */
-export type ProviderMarketGroup<T> = Record<string, T>
-
 export interface AssetsResponse {
-  assets: ProviderMarketGroup<Asset[]>
+  assets: Asset[]
 }
 
 export interface PricesResponse {
-  prices: ProviderMarketGroup<AssetPrice[]>
+  prices: AssetPrice[]
 }
 
 export interface Candle {
@@ -46,7 +46,7 @@ export interface Candle {
 
 export interface OhlcvResponse {
   provider: string
-  providerAssetId: string
+  assetId: string
   interval: string
   candles: Candle[]
 }
@@ -74,7 +74,7 @@ export interface OrderbookLevel {
 
 export interface OrderbookResponse {
   provider: string
-  providerAssetId: string
+  assetId: string
   bids: OrderbookLevel[]
   asks: OrderbookLevel[]
   timestamp: number

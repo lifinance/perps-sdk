@@ -50,11 +50,9 @@ export function classifyFillFromPosition(
   return FillClassification.REDUCED_SHORT
 }
 
-export const mapFill = (fill: HlUserFill, providerKey: string): Fill => ({
+export const mapFill = (fill: HlUserFill): Fill => ({
   id: String(fill.tid),
-  symbol: fill.coin,
-  providerAssetId: fill.coin,
-  provider: providerKey,
+  asset: { assetId: fill.coin, market: '', displaySymbol: fill.coin },
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,

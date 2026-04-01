@@ -32,14 +32,9 @@ export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.STOP_MARKET ||
   type === OrderType.STOP_LIMIT
 
-export const mapOpenOrder = (
-  o: HlFrontendOpenOrder,
-  providerKey: string
-): OpenOrder => ({
+export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   id: String(o.oid),
-  symbol: o.coin,
-  providerAssetId: o.coin,
-  provider: providerKey,
+  asset: { assetId: o.coin, market: '', displaySymbol: o.coin },
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: mapOrderType(o.orderType),
   size: o.sz,
@@ -52,18 +47,13 @@ export const mapOpenOrder = (
   createdAt: new Date(o.timestamp).toISOString(),
 })
 
-export const mapTriggerOrder = (
-  o: HlFrontendOpenOrder,
-  providerKey: string
-): TriggerOrder => {
+export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
   const type = mapOrderType(o.orderType)
   const isLimit =
     type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
     id: String(o.oid),
-    symbol: o.coin,
-    providerAssetId: o.coin,
-    provider: providerKey,
+    asset: { assetId: o.coin, market: '', displaySymbol: o.coin },
     type,
     size: o.sz,
     triggerPrice: o.triggerPx,
@@ -113,8 +103,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
 
   return {
     orderId: String(o.oid),
-    symbol: o.coin,
-    providerAssetId: o.coin,
+    asset: { assetId: o.coin, market: '', displaySymbol: o.coin },
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type: mapOrderType(o.orderType),
     price: o.limitPx,
