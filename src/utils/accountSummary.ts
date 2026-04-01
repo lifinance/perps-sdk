@@ -14,20 +14,31 @@ export interface AccountSummary {
   unrealizedPnl: number
 }
 
+/**
+ * Resolve the USD price of a spot balance currency.
+ *
+ * Spot balances only contain venue quote assets (stablecoins like USDC, USDE,
+ * USDT0, USDH). These are all pegged to ~$1. HL's allMids doesn't carry
+ * price entries for them, so we fall back to $1 when no market price is found.
+ */
 function getSpotPrice(
   currency: string,
   prices: Record<string, string>
-): number | null {
-  if (currency === 'USDC') {
-    return 1
+): number {
+  // Try exact match first (e.g. a perps-listed stablecoin)
+  if (prices[currency] !== undefined) {
+    return stringToFloat(prices[currency])
   }
+  // Try colon-prefixed match (e.g. "USDE:0x..." spot pair key)
   const prefix = `${currency}:`
   for (const key of Object.keys(prices)) {
     if (key.startsWith(prefix)) {
       return stringToFloat(prices[key]!)
     }
   }
-  return null
+  // All spot balance currencies are venue quote assets (dollar stablecoins).
+  // Default to $1 when no market price exists.
+  return 1
 }
 
 const UNIFIED_STATUSES: ReadonlySet<string> = new Set([
@@ -52,10 +63,7 @@ export function calculateAccountSummary(
   for (const [key, entries] of Object.entries(account.balances)) {
     if (key === 'spot') {
       for (const b of entries) {
-        const price = getSpotPrice(b.currency, prices)
-        if (price !== null) {
-          spotValue += stringToFloat(b.amount) * price
-        }
+        spotValue += stringToFloat(b.amount) * getSpotPrice(b.currency, prices)
       }
     } else {
       for (const b of entries) {

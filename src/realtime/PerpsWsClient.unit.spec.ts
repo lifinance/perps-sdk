@@ -29,12 +29,10 @@ const providersWithWsUrl = {
   providers: mockProviders.providers.map((d) => ({
     ...d,
     wsUrl: 'wss://api.hyperliquid.xyz/ws',
-    extraData: {
-      venues: [
-        { name: '', quoteAsset: 'USDC' },
-        { name: 'xyz', quoteAsset: 'USDC' },
-      ],
-    },
+    markets: [
+      { id: 'hyperliquid', quoteAsset: 'USDC' },
+      { id: 'xyz', quoteAsset: 'USDC' },
+    ],
   })),
 }
 
@@ -66,22 +64,20 @@ describe('PerpsWsClient', () => {
       expect(MockedHlProvider).toHaveBeenCalledWith(
         'wss://api.hyperliquid.xyz/ws',
         'hyperliquid',
-        expect.any(Map),
         ['xyz']
       )
 
       ws.close()
     })
 
-    it('should pass asset ID lookup from markets', async () => {
+    it('should pass sub-dexes from provider venues', async () => {
       useWsUrlHandler()
       const ws = new PerpsWsClient(createClient())
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
 
-      const assetIdLookup = MockedHlProvider.mock.calls[0][2]
-      expect(assetIdLookup.get('BTC')).toBe(0)
-      expect(assetIdLookup.get('ETH')).toBe(1)
+      const subDexes = MockedHlProvider.mock.calls[0][2]
+      expect(subDexes).toEqual(['xyz'])
 
       ws.close()
     })
@@ -92,7 +88,7 @@ describe('PerpsWsClient', () => {
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
       await ws.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
         vi.fn()
       )
 
@@ -160,7 +156,7 @@ describe('PerpsWsClient', () => {
       const [_unsub1, _unsub2] = await Promise.all([
         ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn()),
         ws.subscribe(
-          { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+          { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
           vi.fn()
         ),
       ])

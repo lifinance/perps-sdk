@@ -1,6 +1,7 @@
 import type {
   ActionStep,
   Address,
+  AssetIdentity,
   ExecuteActionResponse,
   ModifyOrderInput,
   OrderSide,
@@ -71,10 +72,8 @@ export interface PlaceOrderParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** Provider-specific asset identifier */
-  providerAssetId: string
-  /** Provider market category */
-  providerMarketId: string
+  /** Asset identity */
+  asset: AssetIdentity
   /** Order side */
   side: OrderSide
   /** Order type */
@@ -104,8 +103,7 @@ export interface PlaceOrderParams {
 export interface PlaceTriggerOrderParams {
   provider: string
   address: Address
-  providerAssetId: string
-  providerMarketId: string
+  asset: AssetIdentity
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput

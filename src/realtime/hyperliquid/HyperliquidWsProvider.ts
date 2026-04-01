@@ -220,9 +220,9 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'prices':
         return 'allMids'
       case 'orderbook':
-        return `l2Book:${sub.providerAssetId}`
+        return `l2Book:${sub.assetId}`
       case 'candle':
-        return `candle:${sub.providerAssetId}:${sub.interval}`
+        return `candle:${sub.assetId}:${sub.interval}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -243,13 +243,13 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'orderbook':
         return {
           type: 'l2Book',
-          coin: sub.providerAssetId,
+          coin: sub.assetId,
           ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
         }
       case 'candle':
         return {
           type: 'candle',
-          coin: sub.providerAssetId,
+          coin: sub.assetId,
           interval: sub.interval,
         }
       case 'orderUpdates':
@@ -348,7 +348,7 @@ export class HyperliquidWsProvider implements WsProvider {
       channel: 'orderbook',
       data: {
         provider: this.providerKey,
-        providerAssetId: data.coin,
+        assetId: data.coin,
         bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
         asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
@@ -379,16 +379,14 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.map((f) =>
-      mapFill(f as HlUserFill, this.providerKey)
-    )
+    const items = data.fills.map((f) => mapFill(f as HlUserFill))
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(ap as HlAssetPosition, this.providerKey)
+      mapPosition(ap as HlAssetPosition)
     )
     this.positionsBySubDex.set(subDexKey, positions)
 

@@ -3,6 +3,7 @@ import type {
   ActionParamsMap,
   ActionStep,
   Address,
+  AssetIdentity,
   CreateActionResponse,
   ExecuteActionResponse,
   Provider,
@@ -491,8 +492,7 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        providerAssetId: params.providerAssetId,
-        providerMarketId: params.providerMarketId,
+        asset: params.asset,
         side: params.side,
         type: params.type,
         size: params.size,
@@ -514,8 +514,7 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        providerAssetId: params.providerAssetId,
-        providerMarketId: params.providerMarketId,
+        asset: params.asset,
         side: params.side,
         takeProfit: params.takeProfit,
         stopLoss: params.stopLoss,
@@ -548,8 +547,7 @@ export class PerpsClient {
   async buildPositionMargin(params: {
     provider: string
     address: Address
-    providerAssetId: string
-    providerMarketId: string
+    asset: AssetIdentity
     action: 'add' | 'remove'
     amount: string
   }): Promise<CreateActionResponse> {
@@ -557,8 +555,7 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        providerAssetId: params.providerAssetId,
-        providerMarketId: params.providerMarketId,
+        asset: params.asset,
         action: params.action,
         amount: params.amount,
       },
@@ -676,8 +673,7 @@ export class PerpsClient {
   async updatePositionMargin(params: {
     provider: string
     address: Address
-    providerAssetId: string
-    providerMarketId: string
+    asset: AssetIdentity
     action: 'add' | 'remove'
     amount: string
   }): Promise<ExecuteActionResponse> {
