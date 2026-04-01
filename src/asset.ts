@@ -6,11 +6,12 @@ export interface FundingInfo {
 export interface AssetIdentity {
   assetId: string // provider's canonical identity: "BTC", "xyz:PURR", "@142"
   market: string // market category from /providers.markets: "hyperliquid", "xyz", "spot"
-  displaySymbol: string // UI pair name: "BTC/USDC", "PURR/USDH"
-  displayName?: string // future: "Bitcoin", "Ethereum"
 }
 
 export interface Asset extends AssetIdentity {
+  displaySymbol: string // UI base name: "BTC", "PURR"; spot keeps full pair: "PURR/USDC"
+  displayQuote: string | null // quote asset for perps: "USDC", "USDH"; null for spot
+  displayName?: string // future: "Bitcoin", "Ethereum"
   logoURI: string
   szDecimals: number
   maxLeverage: number
@@ -21,6 +22,11 @@ export interface Asset extends AssetIdentity {
   prevDayPrice?: string
   markPrice: string
 }
+
+export type AssetDisplay = Pick<
+  Asset,
+  'assetId' | 'market' | 'displaySymbol' | 'displayQuote'
+>
 
 export interface AssetPrice {
   assetId: string

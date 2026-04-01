@@ -1,4 +1,4 @@
-export { mapAsset } from './market.js'
+export { mapAsset } from './asset.js'
 export {
   isTriggerType,
   mapOpenOrder,

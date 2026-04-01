@@ -1,5 +1,5 @@
 import type { Address } from './typedData.js'
-import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
+import type { Candle, OhlcvInterval, OrderbookResponse } from './asset.js'
 import type { Fill, Position } from './account.js'
 import type { Order } from './action.js'
 

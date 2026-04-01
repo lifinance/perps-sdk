@@ -7,7 +7,7 @@ import {
   type TriggerCondition,
 } from './enums.js'
 import type { Address, Hex, PerpsTypedData } from './typedData.js'
-import type { AssetIdentity } from './market.js'
+import type { AssetIdentity, AssetDisplay } from './asset.js'
 
 // ---------------------------------------------------------------------------
 // Action step types (create → sign → execute flow)
@@ -50,7 +50,7 @@ export interface ModifyOrderInput {
 
 export interface Order {
   orderId: string
-  asset: AssetIdentity
+  asset: AssetDisplay
   side: OrderSide
   type: OrderType
   price?: string

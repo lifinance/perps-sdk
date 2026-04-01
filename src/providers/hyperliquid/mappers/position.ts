@@ -7,7 +7,12 @@ export const mapPosition = (ap: HlAssetPosition): Position => {
   const szi = parseFloat(pos.szi)
 
   return {
-    asset: { assetId: pos.coin, market: '', displaySymbol: pos.coin },
+    asset: {
+      assetId: pos.coin,
+      market: '',
+      displaySymbol: pos.coin,
+      displayQuote: null,
+    },
     side: szi >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: Math.abs(szi).toString(),
     entryPrice: pos.entryPx ?? '0',

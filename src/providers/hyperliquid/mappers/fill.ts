@@ -52,7 +52,12 @@ export function classifyFillFromPosition(
 
 export const mapFill = (fill: HlUserFill): Fill => ({
   id: String(fill.tid),
-  asset: { assetId: fill.coin, market: '', displaySymbol: fill.coin },
+  asset: {
+    assetId: fill.coin,
+    market: '',
+    displaySymbol: fill.coin,
+    displayQuote: null,
+  },
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,

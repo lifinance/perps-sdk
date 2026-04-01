@@ -1,5 +1,5 @@
 import type { Address } from './typedData.js'
-import type { AssetIdentity } from './market.js'
+import type { AssetDisplay } from './asset.js'
 import type {
   ActivityType,
   FillClassification,
@@ -16,7 +16,7 @@ export interface FeeTier {
 }
 
 export interface Position {
-  asset: AssetIdentity
+  asset: AssetDisplay
   side: PositionSide
   size: string
   entryPrice: string
@@ -30,7 +30,7 @@ export interface Position {
 
 export interface OpenOrder {
   id: string
-  asset: AssetIdentity
+  asset: AssetDisplay
   side: OrderSide
   type: OrderType
   size: string
@@ -58,7 +58,7 @@ export interface AccountResponse {
 
 export interface TriggerOrder {
   id: string
-  asset: AssetIdentity
+  asset: AssetDisplay
   type: OrderType
   size: string
   triggerPrice: string
@@ -82,7 +82,7 @@ export interface OrdersResponse {
 
 export interface Fill {
   id: string
-  asset: AssetIdentity
+  asset: AssetDisplay
   side: OrderSide
   type: OrderType
   size: string
@@ -131,7 +131,7 @@ export interface WithdrawalActivity extends BaseActivity {
 }
 
 export interface LiquidatedPosition {
-  asset: AssetIdentity
+  asset: AssetDisplay
   size: string
 }
 
@@ -145,7 +145,7 @@ export interface LiquidationActivity extends BaseActivity {
 
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
-  asset: AssetIdentity
+  asset: AssetDisplay
   amount: string
   positionSize: string
   fundingRate: string
