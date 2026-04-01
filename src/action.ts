@@ -74,8 +74,7 @@ export interface Order {
 // ---------------------------------------------------------------------------
 
 export interface PlaceOrderParams {
-  assetId: string
-  market: string
+  asset: AssetIdentity
   side: OrderSide
   type?: OrderType
   size: string
@@ -89,8 +88,7 @@ export interface PlaceOrderParams {
 }
 
 export interface PlaceTriggerOrderParams {
-  assetId: string
-  market: string
+  asset: AssetIdentity
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
@@ -105,14 +103,12 @@ export interface ModifyOrderParams {
 }
 
 export interface UpdateLeverageParams {
-  assetId: string
-  market: string
+  asset: AssetIdentity
   leverage: number
 }
 
 export interface UpdatePositionMarginParams {
-  assetId: string
-  market: string
+  asset: AssetIdentity
   action: 'add' | 'remove'
   amount: string
 }
