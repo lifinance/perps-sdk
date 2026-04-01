@@ -491,7 +491,8 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        symbol: params.symbol,
+        providerAssetId: params.providerAssetId,
+        providerMarketId: params.providerMarketId,
         side: params.side,
         type: params.type,
         size: params.size,
@@ -502,7 +503,6 @@ export class PerpsClient {
         expiresAt: params.expiresAt,
         takeProfit: params.takeProfit,
         stopLoss: params.stopLoss,
-        market: params.market,
       },
     })
   }
@@ -514,7 +514,8 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        symbol: params.symbol,
+        providerAssetId: params.providerAssetId,
+        providerMarketId: params.providerMarketId,
         side: params.side,
         takeProfit: params.takeProfit,
         stopLoss: params.stopLoss,
@@ -539,8 +540,6 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        symbol: params.symbol,
-        side: params.side,
         modifications: params.modifications,
       },
     })
@@ -549,7 +548,8 @@ export class PerpsClient {
   async buildPositionMargin(params: {
     provider: string
     address: Address
-    symbol: string
+    providerAssetId: string
+    providerMarketId: string
     action: 'add' | 'remove'
     amount: string
   }): Promise<CreateActionResponse> {
@@ -557,7 +557,8 @@ export class PerpsClient {
       provider: params.provider,
       address: params.address,
       params: {
-        symbol: params.symbol,
+        providerAssetId: params.providerAssetId,
+        providerMarketId: params.providerMarketId,
         action: params.action,
         amount: params.amount,
       },
@@ -675,7 +676,8 @@ export class PerpsClient {
   async updatePositionMargin(params: {
     provider: string
     address: Address
-    symbol: string
+    providerAssetId: string
+    providerMarketId: string
     action: 'add' | 'remove'
     amount: string
   }): Promise<ExecuteActionResponse> {

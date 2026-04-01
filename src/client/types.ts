@@ -71,8 +71,10 @@ export interface PlaceOrderParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** Market symbol */
-  symbol: string
+  /** Provider-specific asset identifier */
+  providerAssetId: string
+  /** Provider market category */
+  providerMarketId: string
   /** Order side */
   side: OrderSide
   /** Order type */
@@ -93,8 +95,6 @@ export interface PlaceOrderParams {
   takeProfit?: TriggerOrderInput
   /** Stop loss trigger */
   stopLoss?: TriggerOrderInput
-  /** Market type: 'spot' or 'perps' (defaults to 'perps') */
-  market?: 'spot' | 'perps'
 }
 
 /**
@@ -104,7 +104,8 @@ export interface PlaceOrderParams {
 export interface PlaceTriggerOrderParams {
   provider: string
   address: Address
-  symbol: string
+  providerAssetId: string
+  providerMarketId: string
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
@@ -142,10 +143,6 @@ export interface ModifyOrdersParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** Market symbol */
-  symbol: string
-  /** Order side */
-  side: OrderSide
   /** Modifications to apply */
   modifications: ModifyOrderInput[]
 }

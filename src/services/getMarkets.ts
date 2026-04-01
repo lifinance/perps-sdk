@@ -1,39 +1,32 @@
-import type { MarketsResponse } from '@lifi/perps-types'
+import type { AssetsResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
-export interface GetMarketsParams {
-  /** Provider to get markets from (e.g., 'hyperliquid') */
+export interface GetAssetsParams {
+  /** Provider to get assets from (e.g., 'hyperliquid') */
   provider: string
 }
 
 /**
- * Get all available markets for a DEX.
- *
- * @param client - The SDK client instance
- * @param params - Request parameters
- * @param options - Request options (e.g., AbortSignal)
- * @returns List of available markets
- * @throws {PerpsError} On API error responses
- * @throws {PerpsError} On network or parsing errors
+ * Get all available assets for a DEX, grouped by providerMarketId.
  *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
- * const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
- * console.log(markets) // [{ symbol: 'BTC', name: 'Bitcoin', ... }]
+ * const { assets } = await getAssets(client, { provider: 'hyperliquid' })
+ * console.log(assets) // { hyperliquid: [...], xyz: [...], spot: [...] }
  * ```
  */
-export async function getMarkets(
+export async function getAssets(
   client: PerpsSDKClient,
-  params: GetMarketsParams,
+  params: GetAssetsParams,
   options?: SDKRequestOptions
-): Promise<MarketsResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/markets`, {
+): Promise<AssetsResponse> {
+  const url = buildUrl(`${client.config.apiUrl}/assets`, {
     provider: params.provider,
   })
-  return request<MarketsResponse>(client.config, url, {}, options)
+  return request<AssetsResponse>(client.config, url, {}, options)
 }

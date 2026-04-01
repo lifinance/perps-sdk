@@ -54,10 +54,10 @@ export type { GetActivityParams } from './services/getActivity.js'
 export { getActivity } from './services/getActivity.js'
 export type { GetFillsParams } from './services/getFills.js'
 export { getFills } from './services/getFills.js'
-export type { GetMarketParams } from './services/getMarket.js'
-export { getMarket } from './services/getMarket.js'
-export type { GetMarketsParams } from './services/getMarkets.js'
-export { getMarkets } from './services/getMarkets.js'
+export type { GetAssetParams } from './services/getMarket.js'
+export { getAsset } from './services/getMarket.js'
+export type { GetAssetsParams } from './services/getMarkets.js'
+export { getAssets } from './services/getMarkets.js'
 export type { GetOhlcvParams } from './services/getOhlcv.js'
 export { getOhlcv } from './services/getOhlcv.js'
 export type { GetOrderParams } from './services/getOrder.js'
@@ -94,7 +94,6 @@ export {
   formatOrderSize,
   getMaxPriceDecimals,
 } from './utils/hyperliquid/index.js'
-export { getAsset, getQuoteAsset, getVenue } from './utils/market.js'
 export {
   classifyFill,
   FillClassification,
