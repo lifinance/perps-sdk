@@ -16,6 +16,7 @@ export interface Asset extends AssetIdentity {
   szDecimals: number
   maxLeverage: number
   onlyIsolated: boolean
+  isMarginCollateral?: boolean
   funding: FundingInfo
   openInterest?: string
   volume24h?: string
