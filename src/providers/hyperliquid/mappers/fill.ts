@@ -6,6 +6,7 @@ import {
 } from '../../../enums.js'
 import type { Fill } from '../../../account.js'
 import type { HlUserFill } from '../types.js'
+import { assetIsSpot } from '../assetId.js'
 
 export function classifyFillFromPosition(
   startPosition: string,
@@ -67,9 +68,7 @@ export const mapFill = (fill: HlUserFill): Fill => ({
   fee: fill.fee,
   realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl,
   startPosition: fill.startPosition,
-  // TODO: Spot detection via "/" in coin name is brittle — needs a proper
-  // asset-type field from the provider or a lookup-based approach.
-  classification: fill.coin.includes('/')
+  classification: assetIsSpot(fill.coin)
     ? fill.side === 'B'
       ? FillClassification.SPOT_BUY
       : FillClassification.SPOT_SELL

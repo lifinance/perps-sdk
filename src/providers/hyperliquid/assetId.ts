@@ -1,3 +1,6 @@
+/** Spot asset IDs use the @pairIndex format (e.g. "@230"). */
+export const assetIsSpot = (assetId: string): boolean => assetId.startsWith('@')
+
 /**
  * Calculate the asset ID for a given provider index and asset index.
  *
