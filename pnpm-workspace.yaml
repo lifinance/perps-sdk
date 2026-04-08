@@ -1,2 +1,1 @@
-overrides:
-  '@lifi/perps-types': link:../perps-types
+overrides: {}
