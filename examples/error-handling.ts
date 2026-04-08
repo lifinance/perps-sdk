@@ -15,7 +15,7 @@ async function run() {
   try {
     await perps.placeOrder({
       address: '0x1234...',
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       symbol: 'BTC',
       side: OrderSide.BUY,
       type: OrderType.MARKET,
@@ -32,13 +32,13 @@ async function run() {
           console.error('Insufficient balance — deposit funds first')
           break
         case PerpsErrorCode.AgentUnauthorized:
-          console.error('Agent not authorized — run authorization flow')
+          console.error('Agent not authorized — run prerequisite flow')
           break
         case PerpsErrorCode.SDKError:
           console.error('SDK error:', error.message)
           break
         case PerpsErrorCode.ExchangeRejected:
-          console.error('DEX rejected the order:', error.message)
+          console.error('Exchange rejected the order:', error.message)
           break
         default:
           console.error(`Error ${error.code}: ${error.message}`)

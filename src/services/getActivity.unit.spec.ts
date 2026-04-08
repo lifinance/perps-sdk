@@ -17,7 +17,7 @@ describe('getActivity', () => {
 
   it('should return activity items', async () => {
     const result = await getActivity(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -29,7 +29,7 @@ describe('getActivity', () => {
 
   it('should include pagination info', async () => {
     const result = await getActivity(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -49,7 +49,7 @@ describe('getActivity', () => {
     )
 
     await getActivity(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
       startTime: 1700000000000,
       endTime: 1700100000000,
@@ -71,7 +71,7 @@ describe('getActivity', () => {
     )
 
     await getActivity(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -91,7 +91,7 @@ describe('getActivity', () => {
     )
 
     await getActivity(client, {
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       address: ADDRESS,
       limit: 10,
       cursor: '1700000000000',
@@ -109,7 +109,7 @@ describe('getActivity', () => {
     await expect(
       getActivity(
         client,
-        { dex: 'hyperliquid', address: ADDRESS },
+        { provider: 'hyperliquid', address: ADDRESS },
         { signal: controller.signal }
       )
     ).rejects.toThrow()

@@ -9,8 +9,8 @@ export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
  * Provider-specific configuration for Hyperliquid.
  */
 export interface HyperliquidConfig {
-  /** Venues to include. Filters visible assets and various API calls. */
-  venues: string[]
+  /** Markets to include. Filters visible assets and various API calls. */
+  markets: string[]
 }
 
 /**
@@ -101,7 +101,7 @@ export interface PerpsSDKClient {
  * })
  *
  * // Use with service functions
- * const { dexes } = await getDexes(client)
+ * const { providers } = await getProviders(client)
  * ```
  */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {

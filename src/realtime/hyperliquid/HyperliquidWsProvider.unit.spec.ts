@@ -1,5 +1,5 @@
 import {
-  HistoryItemStatus,
+  FillStatus,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -67,19 +67,13 @@ vi.mock('../ReconnectingWebSocket.js', () => ({
 
 // --- Test setup ---
 
-const dexKey = 'hyperliquid'
+const providerKey = 'hyperliquid'
 const subDexes = ['xyz']
-const assetIdLookup = new Map<string, number>([
-  ['BTC', 0],
-  ['ETH', 1],
-  ['xyz:BRENTOIL', 10000],
-])
 
 function createProvider(): HyperliquidWsProvider {
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
-    dexKey,
-    assetIdLookup,
+    providerKey,
     subDexes
   )
 }
@@ -169,27 +163,13 @@ describe('HyperliquidWsProvider', () => {
       const provider = createProvider()
 
       await provider.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
         vi.fn()
       )
 
       expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
         method: 'subscribe',
         subscription: { type: 'l2Book', coin: 'BTC' },
-      })
-    })
-
-    it('should map trades subscription to trades payload', async () => {
-      const provider = createProvider()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'ETH' },
-        vi.fn()
-      )
-
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'subscribe',
-        subscription: { type: 'trades', coin: 'ETH' },
       })
     })
 
@@ -200,7 +180,7 @@ describe('HyperliquidWsProvider', () => {
         {
           channel: 'candle',
           dex: 'hyperliquid',
-          symbol: 'BTC',
+          assetId: 'BTC',
           interval: '1h',
         },
         vi.fn()
@@ -315,7 +295,7 @@ describe('HyperliquidWsProvider', () => {
 
       expect(listener).toHaveBeenCalledWith({
         channel: 'prices',
-        data: { prices: { BTC: '95000', ETH: '3400' } },
+        data: { BTC: '95000', ETH: '3400' },
       })
     })
 
@@ -349,12 +329,10 @@ describe('HyperliquidWsProvider', () => {
       expect(lastEvent).toEqual({
         channel: 'prices',
         data: {
-          prices: {
-            BTC: '95000',
-            ETH: '3400',
-            BRENTOIL: '70.50',
-            GOLD: '2300',
-          },
+          BTC: '95000',
+          ETH: '3400',
+          BRENTOIL: '70.50',
+          GOLD: '2300',
         },
       })
     })
@@ -364,7 +342,7 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
         listener
       )
 
@@ -385,99 +363,13 @@ describe('HyperliquidWsProvider', () => {
       expect(listener).toHaveBeenCalledWith({
         channel: 'orderbook',
         data: {
-          dex: 'hyperliquid',
-          symbol: 'BTC',
+          provider: 'hyperliquid',
+          assetId: 'BTC',
           bids: [{ price: '94999', size: '1.5' }],
           asks: [{ price: '95001', size: '1.0' }],
           timestamp: 1704067200000,
         },
       })
-    })
-
-    it('should emit trades event for trades channel', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'BTC' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'trades',
-          data: [
-            {
-              coin: 'BTC',
-              side: 'B',
-              px: '95000',
-              sz: '0.1',
-              time: 1704067200000,
-              tid: 12345,
-            },
-          ],
-        })
-      )
-
-      expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.channel).toBe('trades')
-      expect(event.data).toHaveLength(1)
-      expect(event.data[0]).toMatchObject({
-        id: '12345',
-        symbol: 'BTC',
-        assetId: 0,
-        dex: 'hyperliquid',
-        side: OrderSide.BUY,
-        type: OrderType.MARKET,
-        size: '0.1',
-        price: '95000',
-        status: HistoryItemStatus.FILLED,
-      })
-    })
-
-    it('should emit sell side for trades with side A', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'ETH' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'trades',
-          data: [
-            {
-              coin: 'ETH',
-              side: 'A',
-              px: '3400',
-              sz: '1.0',
-              time: 1704067200000,
-              tid: 99,
-            },
-          ],
-        })
-      )
-
-      expect(listener.mock.calls[0][0].data[0].side).toBe(OrderSide.SELL)
-    })
-
-    it('should not emit for empty trades array', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'trades', dex: 'hyperliquid', symbol: 'BTC' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({ channel: 'trades', data: [] })
-      )
-
-      expect(listener).not.toHaveBeenCalled()
     })
 
     it('should emit candle event for candle channel', async () => {
@@ -488,7 +380,7 @@ describe('HyperliquidWsProvider', () => {
         {
           channel: 'candle',
           dex: 'hyperliquid',
-          symbol: 'BTC',
+          assetId: 'BTC',
           interval: '1h',
         },
         listener
@@ -571,7 +463,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data).toHaveLength(1)
       expect(event.data[0]).toMatchObject({
         orderId: '100',
-        symbol: 'BTC',
+        asset: { assetId: 'BTC' },
         side: OrderSide.BUY,
         type: OrderType.LIMIT,
         status: OrderStatus.OPEN,
@@ -604,6 +496,7 @@ describe('HyperliquidWsProvider', () => {
                 fee: '4.70',
                 closedPnl: '0',
                 time: 1704067200000,
+                startPosition: '0.0',
               },
             ],
           },
@@ -616,13 +509,12 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data).toHaveLength(1)
       expect(event.data[0]).toMatchObject({
         id: '555',
-        symbol: 'BTC',
-        dex: 'hyperliquid',
+        asset: { assetId: 'BTC' },
         side: OrderSide.BUY,
         price: '94000',
         size: '0.1',
         fee: '4.70',
-        status: HistoryItemStatus.FILLED,
+        status: FillStatus.FILLED,
       })
     })
 
@@ -667,8 +559,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event1.channel).toBe('positions')
       expect(event1.data).toHaveLength(1)
       expect(event1.data[0]).toMatchObject({
-        symbol: 'BTC',
-        dex: 'hyperliquid',
+        asset: { assetId: 'BTC' },
         size: '0.1',
         entryPrice: '94000',
         leverage: 10,
@@ -705,8 +596,10 @@ describe('HyperliquidWsProvider', () => {
       const event2 = listener.mock.calls[1][0]
       expect(event2.channel).toBe('positions')
       expect(event2.data).toHaveLength(2)
-      expect(event2.data.map((p: any) => p.symbol)).toContain('BTC')
-      expect(event2.data.map((p: any) => p.symbol)).toContain('xyz:BRENTOIL')
+      expect(event2.data.map((p: any) => p.asset.assetId)).toContain('BTC')
+      expect(event2.data.map((p: any) => p.asset.assetId)).toContain(
+        'xyz:BRENTOIL'
+      )
     })
 
     it('should ignore pong messages', async () => {
@@ -814,11 +707,11 @@ describe('HyperliquidWsProvider', () => {
       const ethListener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
         btcListener
       )
       await provider.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'ETH' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'ETH' },
         ethListener
       )
 
@@ -850,7 +743,7 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
       await provider.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', symbol: 'BTC' },
+        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
         vi.fn()
       )
 

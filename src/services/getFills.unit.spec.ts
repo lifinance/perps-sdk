@@ -1,34 +1,34 @@
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { mockHistory, server } from '../../test/handlers.js'
+import { mockFills, server } from '../../test/handlers.js'
 import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
-import { getHistory } from './getHistory.js'
+import { getFills } from './getFills.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
-describe('getHistory', () => {
+describe('getFills', () => {
   const client = createPerpsClient({
     integrator: 'test-app',
     apiKey: 'test-key',
   })
 
-  it('should return history items', async () => {
-    const result = await getHistory(client, {
-      dex: 'hyperliquid',
+  it('should return fill items', async () => {
+    const result = await getFills(client, {
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
-    expect(result).toEqual(mockHistory)
+    expect(result).toEqual(mockFills)
     expect(result.items).toHaveLength(1)
     expect(result.items[0].symbol).toBe('BTC')
   })
 
   it('should include pagination info', async () => {
-    const result = await getHistory(client, {
-      dex: 'hyperliquid',
+    const result = await getFills(client, {
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -41,14 +41,14 @@ describe('getHistory', () => {
     let capturedUrl: URL | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/history`, ({ request }) => {
+      http.get(`${DEFAULT_API_URL}/fills`, ({ request }) => {
         capturedUrl = new URL(request.url)
-        return HttpResponse.json(mockHistory)
+        return HttpResponse.json(mockFills)
       })
     )
 
-    await getHistory(client, {
-      dex: 'hyperliquid',
+    await getFills(client, {
+      provider: 'hyperliquid',
       address: ADDRESS,
       startTime: 1700000000000,
       endTime: 1700100000000,
@@ -63,14 +63,14 @@ describe('getHistory', () => {
     let capturedUrl: URL | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/history`, ({ request }) => {
+      http.get(`${DEFAULT_API_URL}/fills`, ({ request }) => {
         capturedUrl = new URL(request.url)
-        return HttpResponse.json(mockHistory)
+        return HttpResponse.json(mockFills)
       })
     )
 
-    await getHistory(client, {
-      dex: 'hyperliquid',
+    await getFills(client, {
+      provider: 'hyperliquid',
       address: ADDRESS,
     })
 
@@ -83,14 +83,14 @@ describe('getHistory', () => {
     let capturedUrl: URL | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/history`, ({ request }) => {
+      http.get(`${DEFAULT_API_URL}/fills`, ({ request }) => {
         capturedUrl = new URL(request.url)
-        return HttpResponse.json(mockHistory)
+        return HttpResponse.json(mockFills)
       })
     )
 
-    await getHistory(client, {
-      dex: 'hyperliquid',
+    await getFills(client, {
+      provider: 'hyperliquid',
       address: ADDRESS,
       limit: 10,
       cursor: 'abc123',
@@ -106,9 +106,9 @@ describe('getHistory', () => {
     controller.abort()
 
     await expect(
-      getHistory(
+      getFills(
         client,
-        { dex: 'hyperliquid', address: ADDRESS },
+        { provider: 'hyperliquid', address: ADDRESS },
         { signal: controller.signal }
       )
     ).rejects.toThrow()

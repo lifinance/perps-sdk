@@ -1,10 +1,10 @@
 import {
-  cancelOrder,
-  createOrder,
+  ActionType,
+  createAction,
   createPerpsClient,
+  executeAction,
   OrderSide,
   OrderType,
-  submitOrder,
   TimeInForce,
 } from '@lifi/perps-sdk'
 
@@ -15,16 +15,19 @@ async function run() {
   })
 
   // Create order payloads
-  const { actions } = await createOrder(client, {
-    dex: 'hyperliquid',
+  const { actions } = await createAction(client, {
+    provider: 'hyperliquid',
     address: '0x1234...',
-    symbol: 'BTC',
-    side: OrderSide.BUY,
-    type: OrderType.LIMIT,
-    size: '0.1',
-    price: '94000.00',
-    leverage: 10,
-    timeInForce: TimeInForce.GTC,
+    action: ActionType.PLACE_ORDER,
+    params: {
+      symbol: 'BTC',
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      size: '0.1',
+      price: '94000.00',
+      leverage: 10,
+      timeInForce: TimeInForce.GTC,
+    },
   })
 
   // Sign each action with the user's wallet
@@ -37,18 +40,22 @@ async function run() {
   )
 
   // Submit the signed order
-  const result = await submitOrder(client, {
-    dex: 'hyperliquid',
+  const result = await executeAction(client, {
+    provider: 'hyperliquid',
     address: '0x1234...',
+    action: ActionType.PLACE_ORDER,
     actions: signedActions,
   })
   console.log('Order result:', result)
 
   // Cancel orders
-  const { actions: cancelActions } = await cancelOrder(client, {
-    dex: 'hyperliquid',
+  const { actions: cancelActions } = await createAction(client, {
+    provider: 'hyperliquid',
     address: '0x1234...',
-    ids: ['order1', 'order2'],
+    action: ActionType.CANCEL_ORDER,
+    params: {
+      ids: ['order1', 'order2'],
+    },
   })
 
   const signedCancelActions = await Promise.all(
@@ -59,9 +66,10 @@ async function run() {
     }))
   )
 
-  const cancelResult = await submitOrder(client, {
-    dex: 'hyperliquid',
+  const cancelResult = await executeAction(client, {
+    provider: 'hyperliquid',
     address: '0x1234...',
+    action: ActionType.CANCEL_ORDER,
     actions: signedCancelActions,
   })
   console.log('Cancel result:', cancelResult)

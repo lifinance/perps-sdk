@@ -6,14 +6,16 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetAccountParams {
-  /** DEX to get account from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get account from (e.g., 'hyperliquid') */
+  provider: string
   /** Wallet address */
   address: Address
 }
 
 /**
- * Get account information including balances, positions, and open orders.
+ * Get account information including balances and margin details.
+ *
+ * Use {@link getPositions} and {@link getOrders} to fetch positions and orders separately.
  *
  * @param client - The SDK client instance
  * @param params - Request parameters
@@ -26,12 +28,10 @@ export interface GetAccountParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const account = await getAccount(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   address: '0x1234...'
  * })
  * console.log(account.balances) // [{ currency: 'USDC', amount: '10000.00' }]
- * console.log(account.positions) // [{ symbol: 'BTC', side: 'LONG', ... }]
- * console.log(account.openOrders) // [{ id: '123', symbol: 'BTC', ... }]
  * ```
  */
 export async function getAccount(
@@ -40,7 +40,7 @@ export async function getAccount(
   options?: SDKRequestOptions
 ): Promise<AccountResponse> {
   const url = buildUrl(`${client.config.apiUrl}/account`, {
-    dex: params.dex,
+    provider: params.provider,
     address: params.address,
   })
   return request<AccountResponse>(client.config, url, {}, options)

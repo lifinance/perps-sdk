@@ -1,7 +1,6 @@
 import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
-import { getDexes } from '../services/getDexes.js'
-import { getMarkets } from '../services/getMarkets.js'
+import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
 import type { EventForSubscription, SubscriptionListener } from './types.js'
 
@@ -18,7 +17,8 @@ export class PerpsWsClient {
     sub: S,
     listener: (event: EventForSubscription<S>) => void
   ): Promise<() => void> {
-    const provider = await this.getOrCreateProvider(sub.dex)
+    const providerKey = sub.dex
+    const provider = await this.getOrCreateProvider(providerKey)
     return provider.subscribe(sub, listener as SubscriptionListener)
   }
 
@@ -31,53 +31,46 @@ export class PerpsWsClient {
   }
 
   private async getOrCreateProvider(
-    dex: string
+    provider: string
   ): Promise<HyperliquidWsProvider> {
-    const existing = this.providers.get(dex)
+    const existing = this.providers.get(provider)
     if (existing) {
       return existing
     }
 
-    let initPromise = this.initPromises.get(dex)
+    let initPromise = this.initPromises.get(provider)
     if (!initPromise) {
-      initPromise = this.initProvider(dex)
-      this.initPromises.set(dex, initPromise)
+      initPromise = this.initProvider(provider)
+      this.initPromises.set(provider, initPromise)
     }
     return initPromise
   }
 
-  private async initProvider(dex: string): Promise<HyperliquidWsProvider> {
-    const [{ dexes }, { markets }] = await Promise.all([
-      getDexes(this.client),
-      getMarkets(this.client, { dex }),
-    ])
+  private async initProvider(provider: string): Promise<HyperliquidWsProvider> {
+    const { providers } = await getProviders(this.client)
 
-    const dexInfo = dexes.find((d) => d.key === dex)
-    if (!dexInfo?.wsUrl) {
-      throw new Error(`No WebSocket URL found for dex: ${dex}`)
+    const providerInfo = providers.find((d) => d.key === provider)
+    if (!providerInfo?.wsUrl) {
+      throw new Error(`No WebSocket URL found for provider: ${provider}`)
     }
 
-    const assetIdLookup = new Map<string, number>()
-    for (const m of markets) {
-      assetIdLookup.set(m.symbol, m.assetId)
-    }
-
-    const allVenues = (dexInfo.extraData?.venues ?? []) as Array<{
-      name: string
+    const allMarkets = (providerInfo.markets ?? []) as Array<{
+      id: string
     }>
-    const configuredVenues = this.client.config.providers?.hyperliquid?.venues
-    const filteredVenues = configuredVenues
-      ? allVenues.filter((v) => configuredVenues.includes(v.name))
-      : allVenues
-    const subDexes = filteredVenues.map((v) => v.name).filter((n) => n !== '')
+    const configuredMarkets = this.client.config.providers?.hyperliquid?.markets
+    const filteredMarkets = configuredMarkets
+      ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
+      : allMarkets
+    const subProviders = filteredMarkets
+      .map((m) => m.id)
+      .filter((id) => id !== 'hyperliquid' && id !== 'spot')
 
-    const provider = new HyperliquidWsProvider(
-      dexInfo.wsUrl,
-      dex,
-      assetIdLookup,
-      subDexes
+    const wsProvider = new HyperliquidWsProvider(
+      providerInfo.wsUrl,
+      provider,
+      subProviders
     )
-    this.providers.set(dex, provider)
-    return provider
+    this.providers.set(provider, wsProvider)
+    return wsProvider
   }
 }

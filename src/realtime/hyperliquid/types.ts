@@ -21,15 +21,6 @@ export type HlWsAllMidsData = {
 
 export type HlWsL2BookData = HlL2Book & { coin: string }
 
-export type HlWsTrade = {
-  coin: string
-  side: string
-  px: string
-  sz: string
-  time: number
-  tid: number
-}
-
 export type HlWsCandleData = HlCandle & {
   T: number
   s: string

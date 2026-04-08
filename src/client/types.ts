@@ -1,15 +1,15 @@
 import type {
+  ActionStep,
   Address,
-  AuthorizationAction,
-  AuthorizationInput,
-  AuthorizationsResponse,
+  AssetIdentity,
+  ExecuteActionResponse,
   ModifyOrderInput,
   OrderSide,
   OrderType,
-  SignedAuthorization,
+  SignedActionStep,
   TimeInForce,
   TriggerOrderInput,
-  WithdrawalInput,
+  WithdrawalParams,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
@@ -53,29 +53,27 @@ export interface PerpsClientOptions {
 }
 
 /**
- * Parameters for building authorization payloads.
+ * Parameters for checking prerequisites (previously: building authorization payloads).
  */
-export interface BuildAuthorizationParams {
-  /** DEX to authorize */
-  dex: string
+export interface CheckPrerequisitesParams {
+  /** Provider to check prerequisites for */
+  provider: string
   /** User wallet address */
   address: Address
   /** Address of the signer (auto-set in USER_AGENT mode) */
   signerAddress?: Address
-  /** Authorizations to create */
-  authorizations: AuthorizationInput[]
 }
 
 /**
  * Parameters for placing an order.
  */
 export interface PlaceOrderParams {
-  /** DEX to place order on */
-  dex: string
+  /** Provider to place order on */
+  provider: string
   /** User wallet address */
   address: Address
-  /** Market symbol */
-  symbol: string
+  /** Asset identity */
+  asset: AssetIdentity
   /** Order side */
   side: OrderSide
   /** Order type */
@@ -96,37 +94,39 @@ export interface PlaceOrderParams {
   takeProfit?: TriggerOrderInput
   /** Stop loss trigger */
   stopLoss?: TriggerOrderInput
-  /** Market type: 'spot' or 'perps' (defaults to 'perps') */
-  market?: 'spot' | 'perps'
 }
 
 /**
  * Parameters for placing trigger-only orders (TP/SL on existing positions).
  * Sends a TRIGGER_ONLY order that skips the main order wire.
  */
-export type PlaceTriggerOrderParams = Pick<
-  PlaceOrderParams,
-  'dex' | 'address' | 'symbol' | 'side' | 'size' | 'takeProfit' | 'stopLoss'
->
+export interface PlaceTriggerOrderParams {
+  provider: string
+  address: Address
+  asset: AssetIdentity
+  side: OrderSide
+  takeProfit?: TriggerOrderInput
+  stopLoss?: TriggerOrderInput
+}
 
 /**
  * Parameters for building a withdrawal payload.
  */
 export interface BuildWithdrawalParams {
-  /** DEX to withdraw from */
-  dex: string
+  /** Provider to withdraw from */
+  provider: string
   /** User wallet address (account owner) */
   address: Address
   /** Withdrawal details */
-  withdrawal: WithdrawalInput
+  withdrawal: WithdrawalParams
 }
 
 /**
  * Parameters for canceling orders.
  */
 export interface CancelOrdersParams {
-  /** DEX to cancel orders on */
-  dex: string
+  /** Provider to cancel orders on */
+  provider: string
   /** User wallet address */
   address: Address
   /** Order IDs to cancel */
@@ -137,60 +137,58 @@ export interface CancelOrdersParams {
  * Parameters for modifying orders.
  */
 export interface ModifyOrdersParams {
-  /** DEX to modify orders on */
-  dex: string
+  /** Provider to modify orders on */
+  provider: string
   /** User wallet address */
   address: Address
-  /** Market symbol */
-  symbol: string
-  /** Order side */
-  side: OrderSide
   /** Modifications to apply */
   modifications: ModifyOrderInput[]
 }
 
 /**
- * Parameters for getRequiredAuthorizations().
+ * Parameters for checkPrerequisites().
  */
-export interface GetRequiredAuthorizationsParams {
-  /** DEX to check authorizations for */
-  dex: string
+export interface GetPrerequisitesParams {
+  /** Provider to check prerequisites for */
+  provider: string
   /** User wallet address */
   address: Address
 }
 
 /**
- * Result from getRequiredAuthorizations().
+ * Result from checkPrerequisites().
  */
-export interface RequiredAuthorizationsResult {
-  /** Authorization actions requiring user wallet signature (with typed data for signing) */
-  userAuthorizations: AuthorizationAction[]
-  /** Authorization actions the SDK auto-signs with the agent (with typed data) */
-  agentAuthorizations: AuthorizationAction[]
-  /** Whether all authorizations are already satisfied (ready to trade) */
+export interface PrerequisitesResult {
+  /** Prerequisite steps requiring user wallet signature */
+  userPrerequisites: ActionStep[]
+  /** Prerequisite steps the SDK auto-signs with the agent */
+  agentPrerequisites: ActionStep[]
+  /** Whether all prerequisites are already satisfied (ready to trade) */
   isReady: boolean
 }
 
 /**
- * Parameters for executeAuthorizations().
+ * Parameters for executePrerequisites().
  */
-export interface ExecuteAuthorizationsParams {
-  /** DEX to authorize */
-  dex: string
+export interface ExecutePrerequisitesParams {
+  /** Provider to authorize */
+  provider: string
   /** User wallet address */
   address: Address
-  /** The result from getRequiredAuthorizations() */
-  required: RequiredAuthorizationsResult
-  /** User-signed actions corresponding to required.userAuthorizations */
-  userSignedActions: SignedAuthorization[]
+  /** The result from checkPrerequisites() */
+  required: PrerequisitesResult
+  /** User-signed actions corresponding to required.userPrerequisites */
+  userSignedActions: SignedActionStep[]
 }
 
 /**
- * Result from executeAuthorizations().
+ * Result from executePrerequisites().
  */
-export interface ExecuteAuthorizationsResult {
-  /** Results from user-signed authorization submission */
-  userResults: AuthorizationsResponse
-  /** Results from agent-signed authorization submission (if any) */
-  agentResults?: AuthorizationsResponse
+export interface ExecutePrerequisitesResult {
+  /** Results from user-signed prerequisite submission */
+  userResults: ExecuteActionResponse
+  /** Results from agent-signed prerequisite submission (if any) */
+  agentResults?: ExecuteActionResponse
+  /** Fallback user prerequisites when agent prerequisites fail (e.g. USER_SET_ABSTRACTION when AGENT_SET_ABSTRACTION cannot upgrade from dexAbstraction) */
+  fallbackUserPrerequisites?: ActionStep[]
 }

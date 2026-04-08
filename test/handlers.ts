@@ -1,24 +1,23 @@
 import type {
   AccountResponse,
   ActivitiesResponse,
-  AuthorizationsResponse,
-  CancelOrderPayloadResponse,
-  CreateAuthorizationResponse,
-  CreateOrderResponse,
-  DexesResponse,
-  HistoryResponse,
+  CreateActionResponse,
+  ExecuteActionResponse,
+  FillsResponse,
   MarketsResponse,
   OhlcvResponse,
   Order,
   OrderbookResponse,
+  OrdersResponse,
+  PositionsResponse,
   PricesResponse,
-  SubmitOrderResponse,
+  ProvidersResponse,
 } from '@lifi/perps-types'
 import {
+  ActionType,
   ActivityType,
-  HistoryItemStatus,
+  FillStatus,
   MarginMode,
-  OrderActionType,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -31,35 +30,31 @@ import { DEFAULT_API_URL } from '../src/client/createPerpsClient.js'
 
 const BASE_URL = DEFAULT_API_URL
 
-export const mockDexes: DexesResponse = {
-  dexes: [
+export const mockProviders: ProvidersResponse = {
+  providers: [
     {
       key: 'hyperliquid',
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
-      authorizations: [
+      prepareAccountActions: [
         {
-          key: 'ApproveAgent',
-          name: 'Approve Agent',
-          signer: PerpsSigner.USER,
-          params: [{ name: 'agentAddress', type: 'string', required: true }],
+          type: ActionType.APPROVE_AGENT,
+          signers: [PerpsSigner.USER],
         },
         {
-          key: 'ApproveBuilderFee',
-          name: 'Approve Builder Fee',
-          signer: PerpsSigner.USER,
+          type: ActionType.APPROVE_BUILDER_FEE,
+          signers: [PerpsSigner.USER],
         },
         {
-          key: 'UserSetAbstraction',
-          name: 'Set User Abstraction',
-          signer: PerpsSigner.USER,
+          type: ActionType.USER_SET_ABSTRACTION,
+          signers: [PerpsSigner.USER],
         },
         {
-          key: 'AgentSetAbstraction',
-          name: 'Set User Abstraction (Agent)',
-          signer: PerpsSigner.AGENT,
+          type: ActionType.AGENT_SET_ABSTRACTION,
+          signers: [PerpsSigner.AGENT],
         },
       ],
+      actions: [],
     },
   ],
 }
@@ -71,7 +66,7 @@ export const mockMarkets: MarketsResponse = {
       name: 'Bitcoin',
       logoURI: 'https://example.com/btc.png',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
@@ -83,7 +78,7 @@ export const mockMarkets: MarketsResponse = {
       name: 'Ethereum',
       logoURI: 'https://example.com/eth.png',
       assetId: 1,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       szDecimals: 4,
       maxLeverage: 50,
       onlyIsolated: false,
@@ -101,7 +96,7 @@ export const mockPrices: PricesResponse = {
 }
 
 export const mockOhlcv: OhlcvResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   symbol: 'BTC',
   interval: '1h',
   candles: [
@@ -125,7 +120,7 @@ export const mockOhlcv: OhlcvResponse = {
 }
 
 export const mockOrderbook: OrderbookResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   symbol: 'BTC',
   bids: [
     { price: '94999.50', size: '1.5' },
@@ -139,17 +134,22 @@ export const mockOrderbook: OrderbookResponse = {
 }
 
 export const mockAccount: AccountResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   address: '0x1234567890123456789012345678901234567890',
   balances: [{ currency: 'USDC', amount: '10000.00' }],
   marginUsed: '500.00',
   unrealizedPnl: '125.50',
   feeTier: { maker: '0.0002', taker: '0.0005' },
+  config: {},
+}
+
+export const mockPositions: PositionsResponse = {
+  provider: 'hyperliquid',
   positions: [
     {
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: PositionSide.LONG,
       size: '0.1',
       entryPrice: '94000.00',
@@ -161,12 +161,17 @@ export const mockAccount: AccountResponse = {
       marginMode: MarginMode.CROSS,
     },
   ],
+  pagination: { limit: 100, hasMore: false },
+}
+
+export const mockOrders: OrdersResponse = {
+  provider: 'hyperliquid',
   openOrders: [
     {
       id: 'order1',
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       size: '0.05',
@@ -176,22 +181,23 @@ export const mockAccount: AccountResponse = {
       createdAt: '2024-01-01T00:00:00Z',
     },
   ],
-  config: {},
+  triggerOrders: [],
+  pagination: { limit: 100, hasMore: false },
 }
 
-export const mockHistory: HistoryResponse = {
-  dex: 'hyperliquid',
+export const mockFills: FillsResponse = {
+  provider: 'hyperliquid',
   items: [
     {
       id: 'hist1',
       symbol: 'BTC',
       assetId: 0,
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       side: OrderSide.BUY,
       type: OrderType.MARKET,
       size: '0.1',
       price: '94000.00',
-      status: HistoryItemStatus.FILLED,
+      status: FillStatus.FILLED,
       filledSize: '0.1',
       fee: '4.70',
       realizedPnl: null,
@@ -202,18 +208,18 @@ export const mockHistory: HistoryResponse = {
 }
 
 export const mockActivity: ActivitiesResponse = {
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   items: [
     {
       id: '0xdep1',
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       timestamp: '2024-01-01T00:00:00.000Z',
       type: ActivityType.DEPOSIT,
       amount: '5000.00',
     },
     {
       id: '0xfund1',
-      dex: 'hyperliquid',
+      provider: 'hyperliquid',
       timestamp: '2023-12-31T23:00:00.000Z',
       type: ActivityType.FUNDING,
       symbol: 'BTC',
@@ -239,12 +245,10 @@ export const mockOrder: Order = {
   updatedAt: '2024-01-01T00:00:00Z',
 }
 
-export const mockCreateAuthResponse: CreateAuthorizationResponse = {
+export const mockCreateAuthResponse: CreateActionResponse = {
   actions: [
     {
-      action: 'ApproveAgent',
-      description: 'Approve agent wallet',
-      signer: PerpsSigner.USER,
+      action: ActionType.APPROVE_AGENT,
       typedData: {
         domain: { name: 'Hyperliquid', chainId: 1 },
         types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
@@ -255,15 +259,14 @@ export const mockCreateAuthResponse: CreateAuthorizationResponse = {
   ],
 }
 
-export const mockAuthResponse: AuthorizationsResponse = {
-  results: [{ action: 'ApproveAgent', success: true }],
+export const mockAuthResponse: ExecuteActionResponse = {
+  results: [{ action: ActionType.APPROVE_AGENT, success: true }],
 }
 
-export const mockCreateOrderResponse: CreateOrderResponse = {
+export const mockCreateOrderResponse: CreateActionResponse = {
   actions: [
     {
-      action: OrderActionType.PLACE_ORDER,
-      description: 'Place limit order',
+      action: ActionType.PLACE_ORDER,
       typedData: {
         domain: {
           name: 'Exchange',
@@ -288,11 +291,10 @@ export const mockCreateOrderResponse: CreateOrderResponse = {
   ],
 }
 
-export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
+export const mockCancelOrderResponse: CreateActionResponse = {
   actions: [
     {
-      action: OrderActionType.CANCEL_ORDER,
-      description: 'Cancel order',
+      action: ActionType.CANCEL_ORDER,
       typedData: {
         domain: {
           name: 'Exchange',
@@ -317,10 +319,10 @@ export const mockCancelOrderResponse: CancelOrderPayloadResponse = {
   ],
 }
 
-export const mockSubmitOrderResponse: SubmitOrderResponse = {
+export const mockSubmitOrderResponse: ExecuteActionResponse = {
   results: [
     {
-      action: OrderActionType.PLACE_ORDER,
+      action: ActionType.PLACE_ORDER,
       success: true,
       orderId: 'neworder123',
     },
@@ -329,7 +331,7 @@ export const mockSubmitOrderResponse: SubmitOrderResponse = {
 
 export const handlers = [
   // Market data
-  http.get(`${BASE_URL}/dexes`, () => HttpResponse.json(mockDexes)),
+  http.get(`${BASE_URL}/providers`, () => HttpResponse.json(mockProviders)),
 
   http.get(`${BASE_URL}/markets`, () => HttpResponse.json(mockMarkets)),
 
@@ -352,31 +354,22 @@ export const handlers = [
   // Account
   http.get(`${BASE_URL}/account`, () => HttpResponse.json(mockAccount)),
 
-  http.get(`${BASE_URL}/history`, () => HttpResponse.json(mockHistory)),
+  http.get(`${BASE_URL}/positions`, () => HttpResponse.json(mockPositions)),
+
+  http.get(`${BASE_URL}/orders`, () => HttpResponse.json(mockOrders)),
+
+  http.get(`${BASE_URL}/fills`, () => HttpResponse.json(mockFills)),
 
   http.get(`${BASE_URL}/activity`, () => HttpResponse.json(mockActivity)),
 
   http.get(`${BASE_URL}/order/:id`, () => HttpResponse.json(mockOrder)),
 
-  // Authorization
-  http.post(`${BASE_URL}/createAuthorization`, () =>
-    HttpResponse.json(mockCreateAuthResponse)
-  ),
-
-  http.post(`${BASE_URL}/authorization`, () =>
-    HttpResponse.json(mockAuthResponse)
-  ),
-
-  // Trading
-  http.post(`${BASE_URL}/createOrder`, () =>
+  // Actions (create & execute)
+  http.post(`${BASE_URL}/createAction`, () =>
     HttpResponse.json(mockCreateOrderResponse)
   ),
 
-  http.post(`${BASE_URL}/cancelOrder`, () =>
-    HttpResponse.json(mockCancelOrderResponse)
-  ),
-
-  http.post(`${BASE_URL}/order`, () =>
+  http.post(`${BASE_URL}/executeAction`, () =>
     HttpResponse.json(mockSubmitOrderResponse)
   ),
 ]

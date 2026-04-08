@@ -1,4 +1,4 @@
-import type { DexesResponse } from '@lifi/perps-types'
+import type { ProvidersResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
@@ -6,28 +6,28 @@ import type {
 import { request } from '../utils/request.js'
 
 /**
- * Get all available DEXes.
+ * Get all available providers.
  *
  * @param client - The SDK client instance
  * @param options - Request options (e.g., AbortSignal)
- * @returns List of supported DEXes with their authorization requirements
+ * @returns List of supported providers with their authorization requirements
  * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
- * const { dexes } = await getDexes(client)
- * console.log(dexes) // [{ key: 'hyperliquid', name: 'Hyperliquid', ... }]
+ * const { providers } = await getProviders(client)
+ * console.log(providers) // [{ key: 'hyperliquid', name: 'Hyperliquid', ... }]
  * ```
  */
-export async function getDexes(
+export async function getProviders(
   client: PerpsSDKClient,
   options?: SDKRequestOptions
-): Promise<DexesResponse> {
-  return request<DexesResponse>(
+): Promise<ProvidersResponse> {
+  return request<ProvidersResponse>(
     client.config,
-    `${client.config.apiUrl}/dexes`,
+    `${client.config.apiUrl}/providers`,
     {},
     options
   )

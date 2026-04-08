@@ -3,14 +3,13 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
-import { HistoryItemStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
 } from '@lifi/perps-types/providers/hyperliquid'
 import {
-  mapHistoryItem,
+  mapFill,
   mapOrder,
   mapPosition,
 } from '@lifi/perps-types/providers/hyperliquid'
@@ -23,7 +22,6 @@ import type {
   HlWsL2BookData,
   HlWsMessage,
   HlWsSpotClearinghouseStateData,
-  HlWsTrade,
   HlWsUserFillsData,
 } from './types.js'
 
@@ -31,20 +29,13 @@ export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
-  private readonly dexKey: string
-  private readonly assetIdLookup: Map<string, number>
+  private readonly providerKey: string
   private readonly subDexes: string[]
   private positionsBySubDex = new Map<string, Position[]>()
   private midsBySubDex = new Map<string, Record<string, string>>()
 
-  constructor(
-    wsUrl: string,
-    dexKey: string,
-    assetIdLookup: Map<string, number>,
-    subDexes: string[]
-  ) {
-    this.dexKey = dexKey
-    this.assetIdLookup = assetIdLookup
+  constructor(wsUrl: string, providerKey: string, subDexes: string[]) {
+    this.providerKey = providerKey
     this.subDexes = subDexes
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
@@ -229,11 +220,9 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'prices':
         return 'allMids'
       case 'orderbook':
-        return `l2Book:${sub.symbol}`
-      case 'trades':
-        return `trades:${sub.symbol}`
+        return `l2Book:${sub.assetId}`
       case 'candle':
-        return `candle:${sub.symbol}:${sub.interval}`
+        return `candle:${sub.assetId}:${sub.interval}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -254,13 +243,15 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'orderbook':
         return {
           type: 'l2Book',
-          coin: sub.symbol,
+          coin: sub.assetId,
           ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
         }
-      case 'trades':
-        return { type: 'trades', coin: sub.symbol }
       case 'candle':
-        return { type: 'candle', coin: sub.symbol, interval: sub.interval }
+        return {
+          type: 'candle',
+          coin: sub.assetId,
+          interval: sub.interval,
+        }
       case 'orderUpdates':
         return { type: 'orderUpdates', user: sub.address }
       case 'fills':
@@ -316,9 +307,6 @@ export class HyperliquidWsProvider implements WsProvider {
         case 'l2Book':
           this.handleL2Book(msg.data as HlWsL2BookData)
           break
-        case 'trades':
-          this.handleTrades(msg.data as HlWsTrade[])
-          break
         case 'candle':
           this.handleCandle(msg.data as HlWsCandleData)
           break
@@ -352,41 +340,20 @@ export class HyperliquidWsProvider implements WsProvider {
       Object.assign(merged, mids)
     }
 
-    this.emit('allMids', { channel: 'prices', data: { prices: merged } })
+    this.emit('allMids', { channel: 'prices', data: merged })
   }
 
   private handleL2Book(data: HlWsL2BookData) {
     this.emit(`l2Book:${data.coin}`, {
       channel: 'orderbook',
       data: {
-        dex: this.dexKey,
-        symbol: data.coin,
+        provider: this.providerKey,
+        assetId: data.coin,
         bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
         asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
       },
     })
-  }
-
-  private handleTrades(data: HlWsTrade[]) {
-    if (data.length === 0) {
-      return
-    }
-    const coin = data[0].coin
-    const items = data.map((t) => ({
-      id: String(t.tid),
-      symbol: t.coin,
-      assetId: this.assetIdLookup.get(t.coin) ?? -1,
-      dex: this.dexKey,
-      side: t.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-      type: OrderType.MARKET,
-      size: t.sz,
-      price: t.px,
-      status: HistoryItemStatus.FILLED,
-      filledSize: t.sz,
-      createdAt: new Date(t.time).toISOString(),
-    }))
-    this.emit(`trades:${coin}`, { channel: 'trades', data: items })
   }
 
   private handleCandle(data: HlWsCandleData) {
@@ -412,16 +379,14 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.map((f) =>
-      mapHistoryItem(f as HlUserFill, this.dexKey, this.assetIdLookup)
-    )
+    const items = data.fills.map((f) => mapFill(f as HlUserFill))
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(ap as HlAssetPosition, this.dexKey, this.assetIdLookup)
+      mapPosition(ap as HlAssetPosition)
     )
     this.positionsBySubDex.set(subDexKey, positions)
 

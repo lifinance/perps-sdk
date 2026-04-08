@@ -32,13 +32,13 @@ Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
 ### Fetch Market Data
 
 ```typescript
-import { createPerpsClient, getDexes, getMarkets, getPrices } from '@lifi/perps-sdk'
+import { createPerpsClient, getProviders, getMarkets, getPrices } from '@lifi/perps-sdk'
 
 const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
 
-const { dexes } = await getDexes(client)
-const { markets } = await getMarkets(client, { dex: 'hyperliquid' })
-const { prices } = await getPrices(client, { dex: 'hyperliquid', symbols: ['BTC', 'ETH'] })
+const { providers } = await getProviders(client)
+const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+const { prices } = await getPrices(client, { provider: 'hyperliquid', symbols: ['BTC', 'ETH'] })
 ```
 
 ### Trade with PerpsClient
@@ -53,7 +53,7 @@ await perps.setSigningMode(address, 'hyperliquid', 'USER_AGENT')
 
 // Place orders without wallet popups
 const result = await perps.placeOrder({
-  dex: 'hyperliquid',
+  provider: 'hyperliquid',
   address,
   symbol: 'BTC',
   side: 'BUY',

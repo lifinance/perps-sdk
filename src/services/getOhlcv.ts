@@ -6,8 +6,8 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetOhlcvParams {
-  /** DEX to get OHLCV from (e.g., 'hyperliquid') */
-  dex: string
+  /** Provider to get OHLCV from (e.g., 'hyperliquid') */
+  provider: string
   /** Market symbol (e.g., 'BTC') */
   symbol: string
   /** Candle interval */
@@ -34,7 +34,7 @@ export interface GetOhlcvParams {
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { candles } = await getOhlcv(client, {
- *   dex: 'hyperliquid',
+ *   provider: 'hyperliquid',
  *   symbol: 'BTC',
  *   interval: '1h',
  *   limit: 100
@@ -48,7 +48,7 @@ export async function getOhlcv(
   options?: SDKRequestOptions
 ): Promise<OhlcvResponse> {
   const url = buildUrl(`${client.config.apiUrl}/ohlcv/${params.symbol}`, {
-    dex: params.dex,
+    provider: params.provider,
     interval: params.interval,
     startTime: params.startTime,
     endTime: params.endTime,
