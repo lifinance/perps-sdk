@@ -72,7 +72,8 @@ export function calculateAccountSummary(
   account: AccountResponse,
   positions: Position[],
   prices: Record<string, string>,
-  assets?: Asset[]
+  assets?: Asset[],
+  collateralCurrencies?: ReadonlySet<string>
 ): AccountSummary {
   let marginUsed = 0
   let unrealizedPnl = 0
@@ -83,14 +84,21 @@ export function calculateAccountSummary(
 
   const spotCoinPrices = buildSpotCoinPrices(assets ?? [], prices)
 
-  let spotValue = 0
+  // Split spot into margin-eligible (quote assets) and non-margin (HYPE, PURR etc.)
+  let spotMarginValue = 0
+  let spotNonMarginValue = 0
   let perpsBalance = 0
   for (const [key, entries] of Object.entries(account.balances)) {
     if (key === 'spot') {
       for (const b of entries) {
-        spotValue +=
+        const value =
           stringToFloat(b.amount) *
           getSpotPrice(b.currency, prices, spotCoinPrices)
+        if (!collateralCurrencies || collateralCurrencies.has(b.currency)) {
+          spotMarginValue += value
+        } else {
+          spotNonMarginValue += value
+        }
       }
     } else {
       for (const b of entries) {
@@ -104,13 +112,13 @@ export function calculateAccountSummary(
 
   // Unified: spot balances are total token holdings (margin is NOT subtracted).
   // Disabled: perps venue balances are free margin (margin IS already subtracted).
-  const totalCollateral = isUnified
-    ? spotValue + perpsBalance
-    : spotValue + perpsBalance + marginUsed
+  const marginCollateral = isUnified
+    ? spotMarginValue + perpsBalance
+    : spotMarginValue + perpsBalance + marginUsed
 
   return {
-    portfolioValue: totalCollateral + unrealizedPnl,
-    availableMargin: totalCollateral - marginUsed,
+    portfolioValue: marginCollateral + spotNonMarginValue + unrealizedPnl,
+    availableMargin: marginCollateral - marginUsed,
     marginUsed,
     unrealizedPnl,
   }
