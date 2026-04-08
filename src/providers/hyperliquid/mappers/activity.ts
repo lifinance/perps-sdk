@@ -15,12 +15,12 @@ import type { HlLedgerUpdate, HlFundingUpdate } from '../types.js'
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
-  dexKey: string
+  providerKey: string
 ): ActivityItem | null => {
   const { delta } = entry
   const base = {
     id: entry.hash,
-    dex: dexKey,
+    provider: providerKey,
     timestamp: new Date(entry.time).toISOString(),
   }
 
@@ -55,7 +55,12 @@ export const mapLedgerEntry = (
         accountValue: d.accountValue,
         leverageType: d.leverageType,
         liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
-          symbol: p.coin,
+          asset: {
+            assetId: p.coin,
+            market: '',
+            displaySymbol: p.coin,
+            displayQuote: null,
+          },
           size: p.szi,
         })),
       } satisfies LiquidationActivity
@@ -71,13 +76,18 @@ export const mapLedgerEntry = (
  */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
-  dexKey: string
+  providerKey: string
 ): FundingActivity => ({
   id: entry.hash,
-  dex: dexKey,
+  provider: providerKey,
   timestamp: new Date(entry.time).toISOString(),
   type: ActivityType.FUNDING,
-  symbol: entry.delta.coin,
+  asset: {
+    assetId: entry.delta.coin,
+    market: '',
+    displaySymbol: entry.delta.coin,
+    displayQuote: null,
+  },
   amount: entry.delta.usdc,
   positionSize: entry.delta.szi,
   fundingRate: entry.delta.fundingRate,

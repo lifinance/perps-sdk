@@ -1,7 +1,9 @@
 import type { Address } from './typedData.js'
+import type { AssetDisplay } from './asset.js'
 import type {
   ActivityType,
-  HistoryItemStatus,
+  FillClassification,
+  FillStatus,
   MarginMode,
   OrderSide,
   OrderType,
@@ -14,9 +16,7 @@ export interface FeeTier {
 }
 
 export interface Position {
-  symbol: string
-  assetId: number
-  dex: string
+  asset: AssetDisplay
   side: PositionSide
   size: string
   entryPrice: string
@@ -30,16 +30,14 @@ export interface Position {
 
 export interface OpenOrder {
   id: string
-  symbol: string
-  assetId: number
-  dex: string
+  asset: AssetDisplay
   side: OrderSide
   type: OrderType
   size: string
   price: string
   filledSize: string
   reduceOnly: boolean
-  providerData?: Record<string, unknown>
+  label?: string
   createdAt: string
 }
 
@@ -49,30 +47,52 @@ export interface Balance {
 }
 
 export interface AccountResponse {
-  dex: string
+  provider: string
   address: Address
   balances: Record<string, Balance[]>
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
-  positions: Position[]
-  openOrders: OpenOrder[]
   config: Record<string, unknown>
 }
 
-export interface HistoryItem {
+export interface TriggerOrder {
   id: string
-  symbol: string
-  assetId: number
-  dex: string
+  asset: AssetDisplay
+  type: OrderType
+  size: string
+  triggerPrice: string
+  limitPrice?: string
+  label?: string
+  createdAt: string
+}
+
+export interface PositionsResponse {
+  provider: string
+  positions: Position[]
+  pagination: Pagination
+}
+
+export interface OrdersResponse {
+  provider: string
+  openOrders: OpenOrder[]
+  triggerOrders: TriggerOrder[]
+  pagination: Pagination
+}
+
+export interface Fill {
+  id: string
+  asset: AssetDisplay
   side: OrderSide
   type: OrderType
   size: string
   price: string
-  status: HistoryItemStatus
+  status: FillStatus
   filledSize?: string
   fee?: string
   realizedPnl?: string | null
+  startPosition?: string
+  classification: FillClassification
   createdAt: string
 }
 
@@ -83,9 +103,9 @@ export interface Pagination {
   nextUrl?: string
 }
 
-export interface HistoryResponse {
-  dex: string
-  items: HistoryItem[]
+export interface FillsResponse {
+  provider: string
+  items: Fill[]
   pagination: Pagination
 }
 
@@ -95,7 +115,7 @@ export interface HistoryResponse {
 
 export interface BaseActivity {
   id: string
-  dex: string
+  provider: string
   timestamp: string
 }
 
@@ -111,7 +131,7 @@ export interface WithdrawalActivity extends BaseActivity {
 }
 
 export interface LiquidatedPosition {
-  symbol: string
+  asset: AssetDisplay
   size: string
 }
 
@@ -125,7 +145,7 @@ export interface LiquidationActivity extends BaseActivity {
 
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
-  symbol: string
+  asset: AssetDisplay
   amount: string
   positionSize: string
   fundingRate: string
@@ -138,7 +158,7 @@ export type ActivityItem =
   | FundingActivity
 
 export interface ActivitiesResponse {
-  dex: string
+  provider: string
   items: ActivityItem[]
   pagination: Pagination
 }

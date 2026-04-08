@@ -1,26 +1,32 @@
+/** Spot asset IDs use the @pairIndex format (e.g. "@230"). */
+export const assetIsSpot = (assetId: string): boolean => assetId.startsWith('@')
+
 /**
- * Calculate the asset ID for a given DEX index and asset index.
+ * Calculate the asset ID for a given provider index and asset index.
  *
- * Main DEX (dex = ''): assetId = indexInDex
- * HIP-3 DEXes (dex = 'xyz'): assetId = 100_000 + perpDexIndex * 10_000 + indexInDex
+ * Main provider (provider = ''): assetId = indexInProvider
+ * HIP-3 providers (provider = 'xyz'): assetId = 100_000 + perpDexIndex * 10_000 + indexInProvider
  */
 export const calculateAssetId = (
-  dexIndex: number,
-  indexInDex: number
+  providerIndex: number,
+  indexInProvider: number
 ): number => {
-  if (dexIndex === 0) {
-    return indexInDex
+  if (providerIndex === 0) {
+    return indexInProvider
   }
-  return 100_000 + dexIndex * 10_000 + indexInDex
+  return 100_000 + providerIndex * 10_000 + indexInProvider
 }
 
 /**
- * Get the DEX index from the given list of dex names.
+ * Get the provider index from the given list of provider names.
  */
-export const getDexIndex = (dex: string, dexNames: string[]): number => {
-  const index = dexNames.indexOf(dex)
+export const getProviderIndex = (
+  provider: string,
+  providerNames: string[]
+): number => {
+  const index = providerNames.indexOf(provider)
   if (index === -1) {
-    throw new Error(`Unknown sub-dex: ${dex}`)
+    throw new Error(`Unknown sub-provider: ${provider}`)
   }
   return index
 }

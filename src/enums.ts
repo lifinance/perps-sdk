@@ -39,6 +39,10 @@ export enum OrderSide {
 export enum OrderType {
   MARKET = 'MARKET',
   LIMIT = 'LIMIT',
+  STOP_MARKET = 'STOP_MARKET',
+  STOP_LIMIT = 'STOP_LIMIT',
+  TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
+  TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
   TRIGGER_ONLY = 'TRIGGER_ONLY',
 }
 
@@ -70,23 +74,26 @@ export enum OrderStatus {
   TRIGGERED = 'TRIGGERED',
 }
 
-export enum HistoryItemStatus {
+export enum FillStatus {
   FILLED = 'FILLED',
   PARTIALLY_FILLED = 'PARTIALLY_FILLED',
   CANCELLED = 'CANCELLED',
   REJECTED = 'REJECTED',
 }
 
-export enum OrderActionType {
-  UPDATE_LEVERAGE = 'updateLeverage',
+export enum ActionType {
+  APPROVE_AGENT = 'approveAgent',
+  APPROVE_BUILDER_FEE = 'approveBuilderFee',
+  USER_SET_ABSTRACTION = 'userSetAbstraction',
+  AGENT_SET_ABSTRACTION = 'agentSetAbstraction',
+  SEND_ASSET = 'sendAsset',
+  WITHDRAWAL = 'withdrawal',
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
   CANCEL_ORDER = 'cancelOrder',
   MODIFY_ORDER = 'modifyOrder',
-}
-
-export enum PositionActionType {
-  UPDATE_MARGIN = 'updatePositionMargin',
+  UPDATE_LEVERAGE = 'updateLeverage',
+  UPDATE_POSITION_MARGIN = 'updatePositionMargin',
 }
 
 export enum TriggerCondition {
@@ -111,6 +118,40 @@ export enum ActivityType {
   LIQUIDATION = 'LIQUIDATION',
   FUNDING = 'FUNDING',
 }
+
+export enum FillClassification {
+  OPENED_LONG = 'Opened Long',
+  OPENED_SHORT = 'Opened Short',
+  INCREASED_LONG = 'Increased Long',
+  INCREASED_SHORT = 'Increased Short',
+  REDUCED_LONG = 'Reduced Long',
+  REDUCED_SHORT = 'Reduced Short',
+  CLOSED_LONG = 'Closed Long',
+  CLOSED_SHORT = 'Closed Short',
+  SWITCHED_LONG = 'Switched Long',
+  SWITCHED_SHORT = 'Switched Short',
+  SPOT_BUY = 'Spot Buy',
+  SPOT_SELL = 'Spot Sell',
+}
+
+export enum LiquidationClassification {
+  LIQUIDATED = 'Liquidated',
+}
+
+export enum FundingClassification {
+  FUNDING = 'Funding',
+}
+
+export enum TransferClassification {
+  DEPOSIT = 'Deposit',
+  WITHDRAWAL = 'Withdrawal',
+}
+
+export type ActivityClassification =
+  | FillClassification
+  | LiquidationClassification
+  | FundingClassification
+  | TransferClassification
 
 export enum PerpsSigner {
   USER = 'USER',

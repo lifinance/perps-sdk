@@ -4,38 +4,74 @@ import {
   OrderType,
   TimeInForce,
 } from '../../../enums.js'
-import type { OpenOrder } from '../../../account.js'
-import type { Order } from '../../../trading.js'
+import type { OpenOrder, TriggerOrder } from '../../../account.js'
+import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
 
-import { resolveAssetIdFromLookup } from './shared.js'
+/** Map a Hyperliquid orderType string to the OrderType enum. */
+export const mapOrderType = (orderType: string): OrderType => {
+  switch (orderType) {
+    case 'Take Profit Market':
+      return OrderType.TAKE_PROFIT_MARKET
+    case 'Take Profit Limit':
+      return OrderType.TAKE_PROFIT_LIMIT
+    case 'Stop Market':
+      return OrderType.STOP_MARKET
+    case 'Stop Limit':
+      return OrderType.STOP_LIMIT
+    case 'Market':
+      return OrderType.MARKET
+    default:
+      return OrderType.LIMIT
+  }
+}
 
-export const mapOpenOrder = (
-  o: HlFrontendOpenOrder,
-  dexKey: string,
-  assetIdLookup: Map<string, number>
-): OpenOrder => ({
+export const isTriggerType = (type: OrderType): boolean =>
+  type === OrderType.TAKE_PROFIT_MARKET ||
+  type === OrderType.TAKE_PROFIT_LIMIT ||
+  type === OrderType.STOP_MARKET ||
+  type === OrderType.STOP_LIMIT
+
+export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   id: String(o.oid),
-  symbol: o.coin,
-  assetId: resolveAssetIdFromLookup(assetIdLookup, o.coin),
-  dex: dexKey,
+  asset: {
+    assetId: o.coin,
+    market: '',
+    displaySymbol: o.coin,
+    displayQuote: null,
+  },
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-  type: o.orderType.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
+  type: mapOrderType(o.orderType),
   size: o.sz,
   price: o.limitPx,
   filledSize: o.origSz
     ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
     : '0',
   reduceOnly: o.reduceOnly ?? false,
-  providerData: {
-    label: o.orderType,
-    isTrigger: o.isTrigger,
-    isPositionTpsl: o.isPositionTpsl,
-    triggerPrice: o.triggerPx,
-    triggerCondition: o.triggerCondition,
-  },
+  label: o.isTrigger ? o.triggerCondition : undefined,
   createdAt: new Date(o.timestamp).toISOString(),
 })
+
+export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
+  const type = mapOrderType(o.orderType)
+  const isLimit =
+    type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
+  return {
+    id: String(o.oid),
+    asset: {
+      assetId: o.coin,
+      market: '',
+      displaySymbol: o.coin,
+      displayQuote: null,
+    },
+    type,
+    size: o.sz,
+    triggerPrice: o.triggerPx,
+    ...(isLimit ? { limitPrice: o.limitPx } : {}),
+    label: o.triggerCondition,
+    createdAt: new Date(o.timestamp).toISOString(),
+  }
+}
 
 const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
@@ -77,9 +113,14 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
 
   return {
     orderId: String(o.oid),
-    symbol: o.coin,
+    asset: {
+      assetId: o.coin,
+      market: '',
+      displaySymbol: o.coin,
+      displayQuote: null,
+    },
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-    type: o.orderType.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
+    type: mapOrderType(o.orderType),
     price: o.limitPx,
     originalSize: o.origSz,
     remainingSize: o.sz,

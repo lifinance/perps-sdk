@@ -20,6 +20,7 @@ export type HlAssetCtx = {
   funding: string
   openInterest: string
   dayNtlVlm: string
+  prevDayPx: string
   markPx: string
 }
 
@@ -127,7 +128,7 @@ export type HlFrontendOpenOrder = {
   isPositionTpsl: boolean
   triggerCondition: string
   triggerPx: string
-  children: unknown[]
+  children: HlFrontendOpenOrder[]
   tif: string | null
   cloid: string | null
 }
@@ -150,6 +151,7 @@ export type HlUserFill = {
   fee: string
   closedPnl: string
   time: number
+  startPosition: string
 }
 
 export type HlUserFills = HlUserFill[]
