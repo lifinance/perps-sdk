@@ -1,4 +1,4 @@
-import type { AccountResponse, Position } from '@lifi/perps-types'
+import type { AccountResponse, Asset, Position } from '@lifi/perps-types'
 // biome-ignore lint/correctness/useImportExtensions: package subpath export
 import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 import { stringToFloat } from './parse.js'
@@ -15,29 +15,51 @@ export interface AccountSummary {
 }
 
 /**
+ * Build a map of coin name → USD price from spot assets and allMids.
+ * Spot assets have displaySymbol "BASE/QUOTE" and assetId "@N" which keys into prices.
+ */
+function buildSpotCoinPrices(
+  assets: Asset[],
+  prices: Record<string, string>
+): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const asset of assets) {
+    if (asset.market !== 'spot') {
+      continue
+    }
+    const price = prices[asset.assetId]
+    if (!price) {
+      continue
+    }
+    const slashIdx = asset.displaySymbol.indexOf('/')
+    if (slashIdx < 0) {
+      continue
+    }
+    const base = asset.displaySymbol.slice(0, slashIdx)
+    map.set(base, stringToFloat(price))
+  }
+  return map
+}
+
+/**
  * Resolve the USD price of a spot balance currency.
  *
- * Spot balances only contain venue quote assets (stablecoins like USDC, USDE,
- * USDT0, USDH). These are all pegged to ~$1. HL's allMids doesn't carry
- * price entries for them, so we fall back to $1 when no market price is found.
+ * Looks up the coin in the spot mid prices map first, then tries an exact
+ * match in allMids (e.g. a perps-listed stablecoin). Falls back to $1 for
+ * stablecoins with no market price entry.
  */
 function getSpotPrice(
   currency: string,
-  prices: Record<string, string>
+  prices: Record<string, string>,
+  spotCoinPrices: Map<string, number>
 ): number {
-  // Try exact match first (e.g. a perps-listed stablecoin)
+  const spotPrice = spotCoinPrices.get(currency)
+  if (spotPrice !== undefined) {
+    return spotPrice
+  }
   if (prices[currency] !== undefined) {
     return stringToFloat(prices[currency])
   }
-  // Try colon-prefixed match (e.g. "USDE:0x..." spot pair key)
-  const prefix = `${currency}:`
-  for (const key of Object.keys(prices)) {
-    if (key.startsWith(prefix)) {
-      return stringToFloat(prices[key]!)
-    }
-  }
-  // All spot balance currencies are venue quote assets (dollar stablecoins).
-  // Default to $1 when no market price exists.
   return 1
 }
 
@@ -49,7 +71,8 @@ const UNIFIED_STATUSES: ReadonlySet<string> = new Set([
 export function calculateAccountSummary(
   account: AccountResponse,
   positions: Position[],
-  prices: Record<string, string>
+  prices: Record<string, string>,
+  assets?: Asset[]
 ): AccountSummary {
   let marginUsed = 0
   let unrealizedPnl = 0
@@ -58,12 +81,16 @@ export function calculateAccountSummary(
     unrealizedPnl += stringToFloat(p.unrealizedPnl)
   }
 
+  const spotCoinPrices = buildSpotCoinPrices(assets ?? [], prices)
+
   let spotValue = 0
   let perpsBalance = 0
   for (const [key, entries] of Object.entries(account.balances)) {
     if (key === 'spot') {
       for (const b of entries) {
-        spotValue += stringToFloat(b.amount) * getSpotPrice(b.currency, prices)
+        spotValue +=
+          stringToFloat(b.amount) *
+          getSpotPrice(b.currency, prices, spotCoinPrices)
       }
     } else {
       for (const b of entries) {
