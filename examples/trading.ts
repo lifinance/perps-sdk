@@ -20,7 +20,7 @@ async function run() {
     address: '0x1234...',
     action: ActionType.PLACE_ORDER,
     params: {
-      symbol: 'BTC',
+      asset: { assetId: 'BTC', market: 'hyperliquid' },
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       size: '0.1',

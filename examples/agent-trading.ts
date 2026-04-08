@@ -45,7 +45,7 @@ async function run() {
   const result = await perps.placeOrder({
     address: userAddress,
     provider: 'hyperliquid',
-    symbol: 'BTC',
+    asset: { assetId: 'BTC', market: 'hyperliquid' },
     side: OrderSide.BUY,
     type: OrderType.MARKET,
     size: '0.1',

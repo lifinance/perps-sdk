@@ -1,7 +1,7 @@
 import {
   createPerpsClient,
-  getMarket,
-  getMarkets,
+  getAsset,
+  getAssets,
   getOhlcv,
   getOrderbook,
   getPrices,
@@ -18,16 +18,16 @@ async function run() {
   const { providers } = await getProviders(client)
   console.log('Providers:', providers)
 
-  // Get markets for a provider
-  const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
-  console.log('Markets:', markets)
+  // Get all assets for a provider
+  const { assets } = await getAssets(client, { provider: 'hyperliquid' })
+  console.log('Assets:', assets)
 
-  // Get a specific market
-  const market = await getMarket(client, {
+  // Get a specific asset
+  const asset = await getAsset(client, {
     provider: 'hyperliquid',
     symbol: 'BTC',
   })
-  console.log('Market:', market)
+  console.log('Asset:', asset)
 
   // Get prices
   const { prices } = await getPrices(client, { provider: 'hyperliquid' })
