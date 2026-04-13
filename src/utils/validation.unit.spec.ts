@@ -18,13 +18,13 @@ describe('validateMargin', () => {
     expect(validateMargin(500, 10, null, 0.00035, 10)).toBe('')
   })
 
-  it('should return below-minimum when margin minus fees is below minimum', () => {
-    // margin=10, leverage=10, feeRate=0.01 → fee = 10*10*0.01 = 1 → net = 9 < 10
-    expect(validateMargin(10, 10, 1000, 0.01, 10)).toBe('below-minimum')
+  it('should return below-minimum when margin is below minimum', () => {
+    expect(validateMargin(9.99, 10, 1000, 0.01, 10)).toBe('below-minimum')
   })
 
-  it('should skip fee check when feeRate is null', () => {
-    expect(validateMargin(10, 10, 1000, null, 10)).toBe('')
+  it('should accept margin exactly at minimum regardless of fees', () => {
+    // margin=10 equals minMarginUsd=10, should pass even with non-zero fees
+    expect(validateMargin(10, 10, 1000, 0.01, 10)).toBe('')
   })
 
   it('should return empty string when all checks pass', () => {

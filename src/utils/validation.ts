@@ -2,8 +2,6 @@
  * Order validation utilities.
  */
 
-import { estimateFees } from './calculations.js'
-
 /**
  * Validate margin input against available balance and exchange minimums.
  *
@@ -29,8 +27,7 @@ export function validateMargin(
     return 'insufficient'
   }
 
-  const fee = feeRate !== null ? estimateFees(margin * leverage, feeRate) : 0
-  if (margin - fee < minMarginUsd) {
+  if (margin < minMarginUsd) {
     return 'below-minimum'
   }
 
