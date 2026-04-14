@@ -2,12 +2,16 @@ import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
 import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
-import type { EventForSubscription, SubscriptionListener } from './types.js'
+import type {
+  EventForSubscription,
+  SubscriptionListener,
+  WsProvider,
+} from './types.js'
 
 export class PerpsWsClient {
   private readonly client: PerpsSDKClient
-  private providers = new Map<string, HyperliquidWsProvider>()
-  private initPromises = new Map<string, Promise<HyperliquidWsProvider>>()
+  private providers = new Map<string, WsProvider>()
+  private initPromises = new Map<string, Promise<WsProvider>>()
 
   constructor(client: PerpsSDKClient) {
     this.client = client
@@ -30,9 +34,7 @@ export class PerpsWsClient {
     this.initPromises.clear()
   }
 
-  private async getOrCreateProvider(
-    provider: string
-  ): Promise<HyperliquidWsProvider> {
+  private async getOrCreateProvider(provider: string): Promise<WsProvider> {
     const existing = this.providers.get(provider)
     if (existing) {
       return existing
@@ -46,7 +48,7 @@ export class PerpsWsClient {
     return initPromise
   }
 
-  private async initProvider(provider: string): Promise<HyperliquidWsProvider> {
+  private async initProvider(provider: string): Promise<WsProvider> {
     const { providers } = await getProviders(this.client)
 
     const providerInfo = providers.find((d) => d.key === provider)
@@ -57,20 +59,31 @@ export class PerpsWsClient {
     const allMarkets = (providerInfo.markets ?? []) as Array<{
       id: string
     }>
-    const configuredMarkets = this.client.config.providers?.hyperliquid?.markets
+    const providerConfig = this.client.config.providers?.[provider]
+    const configuredMarkets = providerConfig?.markets
     const filteredMarkets = configuredMarkets
       ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
       : allMarkets
     const subProviders = filteredMarkets
       .map((m) => m.id)
-      .filter((id) => id !== 'hyperliquid' && id !== 'spot')
+      .filter((id) => id !== provider && id !== 'spot')
 
-    const wsProvider = new HyperliquidWsProvider(
-      providerInfo.wsUrl,
+    const wsProvider = this.createWsProvider(
       provider,
+      providerInfo.wsUrl,
       subProviders
     )
     this.providers.set(provider, wsProvider)
     return wsProvider
+  }
+
+  private createWsProvider(
+    provider: string,
+    wsUrl: string,
+    subProviders: string[]
+  ): WsProvider {
+    // Currently only Hyperliquid has a WS implementation.
+    // Future providers can be added here with their own WsProvider classes.
+    return new HyperliquidWsProvider(wsUrl, provider, subProviders)
   }
 }

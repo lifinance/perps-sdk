@@ -34,6 +34,7 @@ export type {
   PlaceOrderParams as ClientPlaceOrderParams,
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
   PrerequisitesResult,
+  ProviderConfig,
   ProviderConfigs,
 } from './client/types.js'
 export { SigningMode } from './client/types.js'

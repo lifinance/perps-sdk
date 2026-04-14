@@ -6,18 +6,24 @@ import { PerpsError } from '../errors/PerpsError.js'
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
 
 /**
- * Provider-specific configuration for Hyperliquid.
+ * Per-provider configuration.
  */
-export interface HyperliquidConfig {
+export interface ProviderConfig {
   /** Markets to include. Filters visible assets and various API calls. */
-  markets: string[]
+  markets?: string[]
 }
+
+/**
+ * Provider-specific configuration for Hyperliquid.
+ * @deprecated Use ProviderConfig instead — this alias exists for backwards compatibility.
+ */
+export type HyperliquidConfig = ProviderConfig
 
 /**
  * Provider-specific configurations keyed by provider name.
  */
 export interface ProviderConfigs {
-  hyperliquid?: HyperliquidConfig
+  [provider: string]: ProviderConfig | undefined
 }
 
 /**

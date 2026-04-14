@@ -20,6 +20,7 @@ export type {
   PerpsBaseConfig,
   PerpsConfig,
   PerpsSDKClient,
+  ProviderConfig,
   ProviderConfigs,
   RequestInterceptor,
   SDKRequestOptions,
