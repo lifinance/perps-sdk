@@ -110,7 +110,8 @@
     {
       "includes": [
         "src/realtime/hyperliquid/HyperliquidWsProvider.ts",
-        "src/realtime/hyperliquid/types.ts"
+        "src/realtime/hyperliquid/types.ts",
+        "src/utils/accountSummary.ts"
       ],
       "linter": {
         "rules": {

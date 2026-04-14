@@ -1,5 +1,4 @@
 import type { AccountResponse, Asset, Position } from '@lifi/perps-types'
-// biome-ignore lint/correctness/useImportExtensions: package subpath export
 import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 import { stringToFloat } from './parse.js'
 
