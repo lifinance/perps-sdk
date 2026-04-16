@@ -11,18 +11,58 @@ import type { AssetIdentity, AssetDisplay } from './asset.js'
 
 // ---------------------------------------------------------------------------
 // Action step types (create → sign → execute flow)
+//
+// Union by structural shape — the SDK knows which variant to expect based
+// on the provider's `signingMethod` from the /providers response.
+//
+//   Eip712    – Hyperliquid and future EVM dexes (EIP-712 typed data + ECDSA sig)
+//   WasmBlob  – Lighter and zk-rollup dexes (WASM signer → {txType, txInfo, txHash})
+//   EvmTx     – plain EVM transaction (reserved for future use)
 // ---------------------------------------------------------------------------
 
-export interface ActionStep {
+export interface Eip712ActionStep {
   action: ActionType
   typedData: PerpsTypedData
 }
 
-export interface SignedActionStep {
+export interface WasmBlobActionStep {
+  action: ActionType
+  wasmSignParams: Record<string, unknown>
+}
+
+export interface EvmTxActionStep {
+  action: ActionType
+  txParams: Record<string, unknown>
+}
+
+export type ActionStep = Eip712ActionStep | WasmBlobActionStep | EvmTxActionStep
+
+export interface Eip712SignedActionStep {
   action: ActionType
   typedData: PerpsTypedData
   signature: Hex
 }
+
+export interface WasmBlobSignedActionStep {
+  action: ActionType
+  wasmSignParams: Record<string, unknown>
+  signedTx: {
+    txType: number
+    txInfo: string
+    txHash: string
+  }
+}
+
+export interface EvmTxSignedActionStep {
+  action: ActionType
+  txParams: Record<string, unknown>
+  txHash: string
+}
+
+export type SignedActionStep =
+  | Eip712SignedActionStep
+  | WasmBlobSignedActionStep
+  | EvmTxSignedActionStep
 
 export interface ActionResult {
   action: ActionType
@@ -138,6 +178,18 @@ export interface SendAssetParams {
 // ActionParamsMap — compile-time type resolution for SDK
 // ---------------------------------------------------------------------------
 
+export interface CancelAllOrdersParams {
+  /** 0=immediate (cancel GTC), 1=scheduled, 2=abort scheduled */
+  timeInForce: number
+  /** Unix timestamp in milliseconds (required for scheduled cancels) */
+  timestampMs?: number
+}
+
+export interface RegisterApiKeyParams {
+  /** The API key slot index to register (0-255). Reusing a fixed slot overwrites the old key. */
+  apiKeyIndex: number
+}
+
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
@@ -148,9 +200,11 @@ export interface ActionParamsMap {
   [ActionType.PLACE_ORDER]: PlaceOrderParams
   [ActionType.PLACE_TRIGGER_ORDER]: PlaceTriggerOrderParams
   [ActionType.CANCEL_ORDER]: CancelOrderParams
+  [ActionType.CANCEL_ALL_ORDERS]: CancelAllOrdersParams
   [ActionType.MODIFY_ORDER]: ModifyOrderParams
   [ActionType.UPDATE_LEVERAGE]: UpdateLeverageParams
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
+  [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
 }
 
 // ---------------------------------------------------------------------------

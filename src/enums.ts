@@ -91,9 +91,11 @@ export enum ActionType {
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
   CANCEL_ORDER = 'cancelOrder',
+  CANCEL_ALL_ORDERS = 'cancelAllOrders',
   MODIFY_ORDER = 'modifyOrder',
   UPDATE_LEVERAGE = 'updateLeverage',
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
+  REGISTER_API_KEY = 'registerApiKey',
 }
 
 export enum TriggerCondition {
@@ -156,4 +158,10 @@ export type ActivityClassification =
 export enum PerpsSigner {
   USER = 'USER',
   AGENT = 'AGENT',
+}
+
+export enum SigningMethod {
+  EIP712 = 'eip712',
+  WASM_BLOB = 'wasmBlob',
+  EVM_TX = 'evmTx',
 }
