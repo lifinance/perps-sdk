@@ -43,6 +43,16 @@
         "default": "./src/_cjs/providers/hyperliquid/index.js"
       }
     },
+    "./providers/lighter": {
+      "import": {
+        "types": "./src/_types/providers/lighter/index.d.ts",
+        "default": "./src/_esm/providers/lighter/index.js"
+      },
+      "require": {
+        "types": "./src/_types/providers/lighter/index.d.ts",
+        "default": "./src/_cjs/providers/lighter/index.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "main": "./src/_cjs/index.js",
@@ -53,6 +63,9 @@
     "*": {
       "providers/hyperliquid": [
         "./src/_types/providers/hyperliquid/index.d.ts"
+      ],
+      "providers/lighter": [
+        "./src/_types/providers/lighter/index.d.ts"
       ]
     }
   },
