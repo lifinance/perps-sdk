@@ -18,6 +18,7 @@ export enum PerpsErrorCode {
   MarketNotFound = 2023,
   OrderNotFound = 2024,
   PositionNotFound = 2025,
+  AccountNotFound = 2026,
 
   // Nonce errors (2040-2049)
   InvalidNonce = 2040,
