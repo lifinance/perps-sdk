@@ -278,3 +278,30 @@ export type HlExchangeResponse = {
         }
       }
 }
+
+// ---------------------------------------------------------------------------
+// Hyperliquid EIP-712 primary type constants
+// ---------------------------------------------------------------------------
+
+export const HL_PRIMARY_TYPE_APPROVE_AGENT =
+  'HyperliquidTransaction:ApproveAgent' as const
+export const HL_PRIMARY_TYPE_APPROVE_BUILDER_FEE =
+  'HyperliquidTransaction:ApproveBuilderFee' as const
+export const HL_PRIMARY_TYPE_USER_SET_ABSTRACTION =
+  'HyperliquidTransaction:UserSetAbstraction' as const
+export const HL_PRIMARY_TYPE_AGENT_SET_ABSTRACTION =
+  'HyperliquidTransaction:AgentSetAbstraction' as const
+export const HL_PRIMARY_TYPE_WITHDRAW =
+  'HyperliquidTransaction:Withdraw' as const
+export const HL_PRIMARY_TYPE_SEND_ASSET =
+  'HyperliquidTransaction:SendAsset' as const
+export const HL_PRIMARY_TYPE_AGENT = 'Agent' as const
+
+export type HlPrimaryType =
+  | typeof HL_PRIMARY_TYPE_APPROVE_AGENT
+  | typeof HL_PRIMARY_TYPE_APPROVE_BUILDER_FEE
+  | typeof HL_PRIMARY_TYPE_USER_SET_ABSTRACTION
+  | typeof HL_PRIMARY_TYPE_AGENT_SET_ABSTRACTION
+  | typeof HL_PRIMARY_TYPE_WITHDRAW
+  | typeof HL_PRIMARY_TYPE_SEND_ASSET
+  | typeof HL_PRIMARY_TYPE_AGENT

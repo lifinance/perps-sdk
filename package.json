@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-types",
-  "version": "0.1.1-alpha.21",
+  "version": "0.1.1-alpha.22",
   "description": "Shared types for the LI.FI perps stack",
   "keywords": [
     "lifi",
@@ -101,8 +101,7 @@
     ]
   },
   "dependencies": {
-    "@lifi/types": "^17.57.0",
-    "viem": "^2.33.2"
+    "viem": "2.46.3"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

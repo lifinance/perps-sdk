@@ -96,6 +96,7 @@ export enum ActionType {
   UPDATE_LEVERAGE = 'updateLeverage',
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
   REGISTER_API_KEY = 'registerApiKey',
+  DEPOSIT = 'deposit',
 }
 
 export enum TriggerCondition {

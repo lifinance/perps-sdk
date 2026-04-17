@@ -158,6 +158,15 @@ export interface WithdrawalParams {
   amount: string
 }
 
+export interface DepositParams {
+  /** Amount of the token to deposit (human-readable, e.g. "100.5"). */
+  amount: string
+  /** ERC-20 token address on the source chain. */
+  tokenAddress: Address
+  /** Chain ID of the source chain (e.g. 1 for Ethereum, 42161 for Arbitrum). */
+  chainId: number
+}
+
 export interface ApproveAgentParams {
   agentAddress: string
   agentTtlMs?: number
@@ -205,6 +214,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_LEVERAGE]: UpdateLeverageParams
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.DEPOSIT]: DepositParams
 }
 
 // ---------------------------------------------------------------------------

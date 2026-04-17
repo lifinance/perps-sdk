@@ -1,4 +1,4 @@
-import type { ActionType, PerpsSigner } from './enums.js'
+import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 
 export interface ActionDescriptor {
   type: ActionType
@@ -14,6 +14,7 @@ export interface Provider {
   key: string
   name: string
   logoURI: string
+  signingMethod: SigningMethod
   prepareAccountActions: ActionDescriptor[]
   actions: ActionDescriptor[]
   markets: ProviderMarketInfo[]
