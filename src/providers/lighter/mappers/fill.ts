@@ -1,0 +1,45 @@
+import {
+  FillClassification,
+  FillStatus,
+  OrderSide,
+  OrderType,
+} from '../../../enums.js'
+import type { Fill } from '../../../account.js'
+import type { LtTrade } from '../apiTypes.js'
+
+const classifyFill = (isBuy: boolean): FillClassification =>
+  isBuy ? FillClassification.OPENED_LONG : FillClassification.OPENED_SHORT
+
+/**
+ * Map a raw Lighter trade to the generic Fill type.
+ * @param trade - Raw trade from REST or WS
+ * @param accountIndex - The viewer's Lighter account index (to determine buy/sell side)
+ * @param symbol - Resolved symbol (market_id → symbol lookup)
+ */
+export const mapFill = (
+  trade: LtTrade,
+  accountIndex: number,
+  symbol: string
+): Fill => {
+  const isBuyer = trade.bid_account_id === accountIndex
+  const isMaker =
+    (trade.is_maker_ask && !isBuyer) || (!trade.is_maker_ask && isBuyer)
+
+  return {
+    id: trade.trade_id.toString(),
+    asset: {
+      assetId: symbol,
+      market: 'lighter',
+      displaySymbol: symbol,
+      displayQuote: 'USDC',
+    },
+    side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
+    type: OrderType.LIMIT,
+    size: trade.size,
+    price: trade.price,
+    status: FillStatus.FILLED,
+    fee: isMaker ? trade.maker_fee.toString() : trade.taker_fee.toString(),
+    classification: classifyFill(isBuyer),
+    createdAt: new Date(trade.timestamp * 1000).toISOString(),
+  }
+}
