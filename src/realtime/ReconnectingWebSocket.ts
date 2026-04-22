@@ -8,8 +8,35 @@ type WsEventMap = {
 type WsEvent = keyof WsEventMap
 
 export interface ReconnectingWebSocketOptions {
+  /**
+   * Maximum number of reconnect attempts before giving up. Defaults to 10,
+   * which covers ~49s of cumulative backoff with the default timing — enough
+   * to ride out a typical short-lived network blip. The previous default of
+   * 3 surrendered after ~1s, which is too aggressive for a realtime client.
+   */
   maxRetries?: number
+  /**
+   * Interval between heartbeat pings in milliseconds. Defaults to 30_000.
+   */
   pingIntervalMs?: number
+  /**
+   * Base delay for the exponential backoff in milliseconds. The nth
+   * reconnect attempt waits up to `(2 ** n) * baseDelayMs`, capped at
+   * `maxDelayMs`. Defaults to 150.
+   */
+  baseDelayMs?: number
+  /**
+   * Maximum delay between reconnect attempts in milliseconds. Defaults to
+   * 10_000.
+   */
+  maxDelayMs?: number
+  /**
+   * Apply equal-jitter to reconnect delays to avoid a thundering-herd when
+   * many clients reconnect after the same server event. When enabled
+   * (default), the actual delay is uniformly distributed in `[base/2, base)`.
+   * Set to false for deterministic timing (e.g. in tests).
+   */
+  jitter?: boolean
 }
 
 export class ReconnectingWebSocket {
@@ -17,6 +44,9 @@ export class ReconnectingWebSocket {
   private readonly url: string
   private readonly maxRetries: number
   private readonly pingIntervalMs: number
+  private readonly baseDelayMs: number
+  private readonly maxDelayMs: number
+  private readonly jitter: boolean
   private attempt = 0
   private closed = false
   private buffer: string[] = []
@@ -34,8 +64,11 @@ export class ReconnectingWebSocket {
 
   constructor(url: string, options?: ReconnectingWebSocketOptions) {
     this.url = url
-    this.maxRetries = options?.maxRetries ?? 3
+    this.maxRetries = options?.maxRetries ?? 10
     this.pingIntervalMs = options?.pingIntervalMs ?? 30_000
+    this.baseDelayMs = options?.baseDelayMs ?? 150
+    this.maxDelayMs = options?.maxDelayMs ?? 10_000
+    this.jitter = options?.jitter ?? true
     this.connect()
   }
 
@@ -87,7 +120,13 @@ export class ReconnectingWebSocket {
       this.readyResolvers = []
       return
     }
-    const delay = Math.min((1 << this.attempt) * 150, 10_000)
+    const base = Math.min(
+      (1 << this.attempt) * this.baseDelayMs,
+      this.maxDelayMs
+    )
+    // Equal-jitter: delay ∈ [base/2, base). Spreads reconnect timing across
+    // clients so a common disconnect event doesn't produce a reconnect storm.
+    const delay = this.jitter ? base / 2 + Math.random() * (base / 2) : base
     this.attempt++
     setTimeout(() => {
       if (!this.closed) {

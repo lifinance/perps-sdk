@@ -66,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
   globalThis.WebSocket = originalWebSocket
 })
 
@@ -203,7 +204,10 @@ describe('ReconnectingWebSocket', () => {
 
   describe('reconnection', () => {
     it('should reconnect on unexpected close', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 3 })
+      new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 3,
+        jitter: false,
+      })
       const firstWs = latestWs()
       firstWs.simulateOpen()
       firstWs.simulateClose(1006, 'abnormal')
@@ -215,7 +219,10 @@ describe('ReconnectingWebSocket', () => {
     })
 
     it('should use exponential backoff for reconnection', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 5 })
+      new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 5,
+        jitter: false,
+      })
       const firstWs = latestWs()
       firstWs.simulateOpen()
 
@@ -245,7 +252,10 @@ describe('ReconnectingWebSocket', () => {
     })
 
     it('should stop reconnecting after max retries', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 2 })
+      new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 2,
+        jitter: false,
+      })
 
       // Close without ever opening (attempt stays at 0)
       latestWs().simulateClose()
@@ -264,7 +274,10 @@ describe('ReconnectingWebSocket', () => {
     })
 
     it('should reset attempt counter on successful open', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 2 })
+      new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 2,
+        jitter: false,
+      })
       latestWs().simulateOpen()
 
       // Close triggers reconnect attempt 0
@@ -279,6 +292,82 @@ describe('ReconnectingWebSocket', () => {
       latestWs().simulateClose()
       vi.advanceTimersByTime(150)
       expect(MockWebSocket.instances).toHaveLength(3)
+    })
+  })
+
+  describe('jitter', () => {
+    it('applies equal-jitter: min delay (base/2) when random is 0', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+      new ReconnectingWebSocket('wss://example.com')
+      latestWs().simulateClose()
+
+      // base=150, random=0 → delay = 75
+      vi.advanceTimersByTime(74)
+      expect(MockWebSocket.instances).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(MockWebSocket.instances).toHaveLength(2)
+    })
+
+    it('applies equal-jitter: max delay (base) when random is 1', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1)
+      new ReconnectingWebSocket('wss://example.com')
+      latestWs().simulateClose()
+
+      // base=150, random=1 → delay = 150
+      vi.advanceTimersByTime(149)
+      expect(MockWebSocket.instances).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(MockWebSocket.instances).toHaveLength(2)
+    })
+
+    it('does not call Math.random when jitter is disabled', () => {
+      const randomSpy = vi.spyOn(Math, 'random')
+      new ReconnectingWebSocket('wss://example.com', { jitter: false })
+      latestWs().simulateClose()
+
+      // No jitter: delay = base = 150 exactly
+      vi.advanceTimersByTime(149)
+      expect(MockWebSocket.instances).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(MockWebSocket.instances).toHaveLength(2)
+      expect(randomSpy).not.toHaveBeenCalled()
+    })
+
+    it('respects custom baseDelayMs', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+      new ReconnectingWebSocket('wss://example.com', { baseDelayMs: 1000 })
+      latestWs().simulateClose()
+
+      // base=1000, random=0 → delay = 500
+      vi.advanceTimersByTime(499)
+      expect(MockWebSocket.instances).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(MockWebSocket.instances).toHaveLength(2)
+    })
+
+    it('caps backoff base at maxDelayMs', () => {
+      new ReconnectingWebSocket('wss://example.com', {
+        baseDelayMs: 1000,
+        maxDelayMs: 2000,
+        jitter: false,
+      })
+
+      // attempt=0: (1<<0)*1000 = 1000
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(1000)
+      expect(MockWebSocket.instances).toHaveLength(2)
+
+      // attempt=1: (1<<1)*1000 = 2000 (at cap)
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(2000)
+      expect(MockWebSocket.instances).toHaveLength(3)
+
+      // attempt=2: (1<<2)*1000 = 4000 → capped at 2000
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(1999)
+      expect(MockWebSocket.instances).toHaveLength(3)
+      vi.advanceTimersByTime(1)
+      expect(MockWebSocket.instances).toHaveLength(4)
     })
   })
 
