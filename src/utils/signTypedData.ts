@@ -1,31 +1,34 @@
 import type { Hex, PerpsTypedData } from '@lifi/perps-types'
+import type { Account, WalletClient } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 /**
- * Sign EIP-712 typed data with a private key.
- *
- * @param privateKey - The private key to sign with
- * @param typedData - The typed data to sign
- * @returns The signature as a hex string
- *
- * @example
- * ```ts
- * const signature = await signTypedData(agentPrivateKey, typedData)
- * ```
+ * Sign EIP-712 typed data with an agent private key (USER_AGENT mode).
  */
 export async function signTypedData(
   privateKey: Hex,
   typedData: PerpsTypedData
 ): Promise<Hex> {
-  const account = privateKeyToAccount(privateKey)
-
-  // viem's signTypedData expects the typed data in a specific format
-  const signature = await account.signTypedData({
+  return privateKeyToAccount(privateKey).signTypedData({
     domain: typedData.domain,
     types: typedData.types,
     primaryType: typedData.primaryType,
     message: typedData.message,
   })
+}
 
-  return signature
+/**
+ * Sign EIP-712 typed data with an externally-provided WalletClient (USER mode).
+ * Works with browser wallets (wagmi), private keys, mnemonics — any viem WalletClient.
+ */
+export async function signTypedDataWithSigner(
+  signer: WalletClient<any, any, Account>,
+  typedData: PerpsTypedData
+): Promise<Hex> {
+  return signer.signTypedData({
+    domain: typedData.domain,
+    types: typedData.types,
+    primaryType: typedData.primaryType,
+    message: typedData.message,
+  })
 }
