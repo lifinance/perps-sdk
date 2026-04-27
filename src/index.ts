@@ -72,6 +72,25 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+// Signers
+export type {
+  ApiKeyPair,
+  ChangePubKeyResult,
+  LighterApiKey,
+  LighterSignedBlob,
+  LighterSignerConfig,
+  LighterSignerContext,
+  LighterWasmExports,
+  LoadLighterWasmOptions,
+} from './signers/lighter/index.js'
+export {
+  DEFAULT_API_KEY_INDEX,
+  LIGHTER_PROVIDER_KEY,
+  LighterKeyStore,
+  LighterSigner,
+  loadLighterWasm,
+  resetLighterWasmCache,
+} from './signers/lighter/index.js'
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
