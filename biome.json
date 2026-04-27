@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/*.md", "!**/*.lock", "!**/*.json"]
+    "includes": ["**", "!**/*.md", "!**/*.lock", "!**/*.json", "!wasm"]
   },
   "formatter": {
     "enabled": true,
@@ -83,7 +83,8 @@
       "includes": [
         "src/index.ts",
         "src/utils/orderFormatting.ts",
-        "src/utils/hyperliquid/index.ts"
+        "src/utils/hyperliquid/index.ts",
+        "src/signers/lighter/index.ts"
       ],
       "linter": {
         "rules": {
