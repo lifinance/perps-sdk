@@ -124,7 +124,13 @@ describe('LighterSigner', () => {
   })
 
   it('signChangePubKey returns txInfo with empty L1Sig and an EIP-191 message', async () => {
-    const result = await signer.signChangePubKey(keypair.publicKey, 0, 1, 42)
+    const result = await signer.signChangePubKey(
+      keypair.publicKey,
+      keypair.privateKey,
+      0,
+      1,
+      42
+    )
     const parsed = JSON.parse(result.txInfo)
     expect(parsed.L1Sig).toBe('')
     expect(parsed.ApiKeyIndex).toBe(1)
@@ -134,7 +140,13 @@ describe('LighterSigner', () => {
   })
 
   it('embedL1Signature injects the signature into txInfo JSON', async () => {
-    const result = await signer.signChangePubKey(keypair.publicKey, 0, 1, 42)
+    const result = await signer.signChangePubKey(
+      keypair.publicKey,
+      keypair.privateKey,
+      0,
+      1,
+      42
+    )
     const withSig = signer.embedL1Signature(result.txInfo, '0xdeadbeef')
     const parsed = JSON.parse(withSig)
     expect(parsed.L1Sig).toBe('0xdeadbeef')

@@ -63,6 +63,7 @@ export class LighterSigner {
     this.loaderOptions = {
       wasmBinaryUrl: config.wasmBinaryUrl,
       wasmExecJsUrl: config.wasmExecJsUrl,
+      wasmExecJsSource: config.wasmExecJsSource,
     }
   }
 
@@ -118,16 +119,34 @@ export class LighterSigner {
    * Step 1 of the REGISTER_API_KEY flow. Generates the WASM blob for a
    * ChangePubKey tx with `L1Sig` left empty, plus the canonical EIP-191
    * message the L1 Ethereum wallet must sign next.
+   *
+   * Requires the freshly-generated `privateKey` (returned by
+   * {@link generateAPIKey}) — the Go WASM signer registers a per-slot client
+   * keyed on `(apiKeyIndex, accountIndex)` before it'll sign anything for
+   * that slot, including the ChangePubKey that's about to register the key
+   * on-chain. This is purely client-side bookkeeping; it does not touch the
+   * Lighter API.
    */
   async signChangePubKey(
     pubKeyHex: string,
+    privateKey: string,
     nonce: number,
     apiKeyIndex: number,
     accountIndex: number
   ): Promise<ChangePubKeyResult> {
     const wasm = await this.ensureLoaded()
+    await this.ensureClient({
+      apiKeyPrivateKey: privateKey,
+      apiKeyIndex,
+      accountIndex,
+    })
+    // 5-arg call (matches lighter-python's signer wrapper). `skipNonce=0`
+    // means "embed the supplied nonce" — the value we just fetched from
+    // Lighter's authoritative /nextNonce.
+    const SKIP_NONCE_OFF = 0
     const result = wasm.SignChangePubKey(
       pubKeyHex,
+      SKIP_NONCE_OFF,
       nonce,
       apiKeyIndex,
       accountIndex

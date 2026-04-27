@@ -59,6 +59,14 @@ export interface LoadLighterWasmOptions {
   wasmBinaryUrl?: string | URL
   /** Override URL for Go's `wasm_exec.js` runtime. */
   wasmExecJsUrl?: string | URL
+  /**
+   * Pre-fetched source of Go's `wasm_exec.js`. Preferred over
+   * `wasmExecJsUrl` for bundlers (Vite/webpack) that may transform a `.js`
+   * URL on serve, breaking the IIFE that installs `globalThis.Go`. Pass via
+   * a `?raw` import (Vite) or equivalent so the original source survives
+   * intact.
+   */
+  wasmExecJsSource?: string
 }
 
 export interface LighterWasmExports {
@@ -80,8 +88,17 @@ export interface LighterWasmExports {
     apiKeyIndex: number,
     accountIndex: number
   ) => { token?: string; error?: string }
+  /**
+   * Signature mirrors lighter-python's `signer.SignChangePubKey(...)` call —
+   * 5 positional args including `skipNonce` (use 0 to embed our supplied
+   * nonce; 1 to leave it out for server-fill scenarios). Earlier versions
+   * here had only 4 args, which silently shifted all arguments by one and
+   * produced txInfo with garbage AccountIndex / ApiKeyIndex fields →
+   * Lighter rejected with code 20001 "invalid param".
+   */
   SignChangePubKey: (
     pubKeyHex: string,
+    skipNonce: number,
     nonce: number,
     apiKeyIndex: number,
     accountIndex: number
@@ -138,8 +155,25 @@ async function readNodeFile(url: URL): Promise<Uint8Array> {
   return readFile(fileURLToPath(url))
 }
 
+/**
+ * Resolve a possibly-relative URL string against the current document/page
+ * origin. Bundlers like Vite hand out absolute paths (e.g. `/node_modules/…`)
+ * for `?url` imports, which `new URL(string)` rejects without a base.
+ */
+function toResolvedUrl(url: string | URL): URL {
+  if (url instanceof URL) {
+    return url
+  }
+  const base =
+    typeof globalThis !== 'undefined' &&
+    (globalThis as { location?: { href?: string } }).location?.href
+      ? (globalThis as { location: { href: string } }).location.href
+      : undefined
+  return new URL(url, base)
+}
+
 async function readUrlBytes(url: string | URL): Promise<ArrayBuffer> {
-  const u = url instanceof URL ? url : new URL(url)
+  const u = toResolvedUrl(url)
   if (u.protocol === 'file:') {
     const buf = await readNodeFile(u)
     // Copy the view into a fresh ArrayBuffer — `Buffer.buffer` is a shared
@@ -156,7 +190,7 @@ async function readUrlBytes(url: string | URL): Promise<ArrayBuffer> {
 }
 
 async function readUrlText(url: string | URL): Promise<string> {
-  const u = url instanceof URL ? url : new URL(url)
+  const u = toResolvedUrl(url)
   if (u.protocol === 'file:') {
     const buf = await readNodeFile(u)
     return new TextDecoder('utf-8').decode(buf)
@@ -189,11 +223,17 @@ async function doLoad(
 ): Promise<LighterWasmExports> {
   const wasmBinaryUrl =
     options?.wasmBinaryUrl ?? defaultAssetUrl('lighter-signer.wasm')
-  const wasmExecJsUrl =
-    options?.wasmExecJsUrl ?? defaultAssetUrl('wasm_exec.js')
+
+  // Prefer a pre-fetched source string (bundler `?raw` imports) over a URL —
+  // bundlers may transform a `.js` URL on serve, breaking the IIFE that sets
+  // `globalThis.Go`.
+  const wasmExecSourcePromise: Promise<string> =
+    options?.wasmExecJsSource !== undefined
+      ? Promise.resolve(options.wasmExecJsSource)
+      : readUrlText(options?.wasmExecJsUrl ?? defaultAssetUrl('wasm_exec.js'))
 
   const [wasmExecSource, wasmBytes] = await Promise.all([
-    readUrlText(wasmExecJsUrl),
+    wasmExecSourcePromise,
     readUrlBytes(wasmBinaryUrl),
   ])
 

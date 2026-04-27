@@ -512,6 +512,7 @@ export class PerpsClient {
     const keypair = await signer.generateAPIKey()
     const changePubKey = await signer.signChangePubKey(
       keypair.publicKey,
+      keypair.privateKey,
       nonce,
       apiKeyIndex,
       accountIndex
