@@ -5,19 +5,38 @@ import type {
   Address,
   AssetIdentity,
   CreateActionResponse,
+  Eip712ActionStep,
+  Eip712SignedActionStep,
   ExecuteActionResponse,
   Provider,
   SignedActionStep,
+  WasmBlobActionStep,
+  WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { localStorageAdapter } from '../agent/storage.js'
 import type { StorageAdapter } from '../agent/types.js'
-import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
+import { getAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
-import { signTypedData } from '../utils/signTypedData.js'
+import {
+  DEFAULT_API_KEY_INDEX,
+  type LighterApiKey,
+  LighterKeyStore,
+  LighterSigner,
+  type LighterSignerConfig,
+} from '../signers/lighter/index.js'
+import {
+  signTypedData,
+  signTypedDataWithSigner,
+} from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import {
   type BuildWithdrawalParams,
@@ -39,15 +58,48 @@ export class PerpsClient {
   private storage: StorageAdapter
   private signingModes: Map<string, SigningMode> = new Map()
   private providerMetadataCache: Map<string, Provider> = new Map()
+  private _signer: PerpsSDKClient['signer'] | undefined
+  private readonly lighterConfig: LighterSignerConfig | undefined
+  private _lighterSigner: LighterSigner | undefined
+  private _lighterKeyStore: LighterKeyStore | undefined
 
   constructor(options: PerpsClientOptions) {
     this.storage = options.storage ?? localStorageAdapter
+    this.lighterConfig = options.lighter
     this.sdkClient = createPerpsClient({
       integrator: options.integrator,
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
       storage: this.storage,
       providers: options.providers,
+    })
+  }
+
+  private getLighterSigner(): LighterSigner {
+    if (!this._lighterSigner) {
+      this._lighterSigner = new LighterSigner(this.lighterConfig)
+    }
+    return this._lighterSigner
+  }
+
+  private getLighterKeyStore(): LighterKeyStore {
+    if (!this._lighterKeyStore) {
+      this._lighterKeyStore = new LighterKeyStore(this.storage)
+    }
+    return this._lighterKeyStore
+  }
+
+  /**
+   * Set or update the wallet signer for USER-mode signing.
+   * Call this when the user connects their wallet (e.g. from wagmi's useWalletClient).
+   * Pass undefined to clear the signer when the wallet disconnects.
+   */
+  setSigner(signer: PerpsSDKClient['signer']): void {
+    this._signer = signer
+    // Override the signer on the sdkClient
+    Object.defineProperty(this.sdkClient, 'signer', {
+      get: () => this._signer,
+      configurable: true,
     })
   }
 
@@ -145,41 +197,234 @@ export class PerpsClient {
     return agent.address
   }
 
-  private requireAgentMode(address: Address, provider: string, method: string) {
-    const mode = this.getSigningMode(address, provider)
-    if (mode !== SigningMode.USER_AGENT) {
-      const error = new PerpsError(
-        PerpsErrorCode.SDKError,
-        `${PerpsErrorMessage.InvalidSigningMode} ${method} requires USER_AGENT mode.`
-      )
-      error.tool = '@lifi/perps-sdk'
-      throw error
-    }
-  }
-
   private async autoSignAndExecute(
     provider: string,
     address: Address,
     action: ActionType,
-    actions: ActionStep[]
+    actions: ActionStep[],
+    signingMethod: SigningMethod
   ): Promise<ExecuteActionResponse> {
-    const agent = await this.sdkClient.agentManager.getAgent(address, provider)
+    const mode = this.getSigningMode(address, provider)
 
-    const signedActions: SignedActionStep[] = await Promise.all(
-      actions.map(async (a) => ({
-        action: a.action,
-        typedData: a.typedData,
-        signature: await signTypedData(agent.privateKey, a.typedData),
-      }))
+    switch (signingMethod) {
+      case SigningMethod.EIP712: {
+        const eip712Actions = actions as Eip712ActionStep[]
+
+        if (mode === SigningMode.USER_AGENT) {
+          // USER_AGENT: sign with the stored agent private key
+          const agent = await this.sdkClient.agentManager.getAgent(
+            address,
+            provider
+          )
+          const signedActions: SignedActionStep[] = await Promise.all(
+            eip712Actions.map(
+              async (a) =>
+                ({
+                  action: a.action,
+                  typedData: a.typedData,
+                  signature: await signTypedData(agent.privateKey, a.typedData),
+                }) satisfies Eip712SignedActionStep
+            )
+          )
+          return executeAction(this.sdkClient, {
+            provider,
+            address,
+            signerAddress: agent.address,
+            action,
+            actions: signedActions,
+          })
+        }
+
+        // USER: sign with the externally-provided signer (wagmi WalletClient,
+        // privateKeyToAccount, mnemonicToAccount — any viem-compatible signer).
+        // We use signer.account.signTypedData which accepts primaryType: string,
+        // matching PerpsTypedData without requiring strict generic inference.
+        if (!this.sdkClient.signer) {
+          throw new Error(
+            'USER signing mode requires a signer. Pass a WalletClient to createPerpsClient({ signer }).'
+          )
+        }
+        const { signer } = this.sdkClient
+        const signedUserActions: SignedActionStep[] = await Promise.all(
+          eip712Actions.map(
+            async (a): Promise<Eip712SignedActionStep> => ({
+              action: a.action,
+              typedData: a.typedData,
+              signature: await signTypedDataWithSigner(signer, a.typedData),
+            })
+          )
+        )
+        return executeAction(this.sdkClient, {
+          provider,
+          address,
+          signerAddress: address,
+          action,
+          actions: signedUserActions,
+        })
+      }
+
+      case SigningMethod.WASM_BLOB: {
+        const wasmActions = actions as WasmBlobActionStep[]
+        const signedActions = await this.signWasmBlobActions(
+          provider,
+          address,
+          wasmActions
+        )
+        return executeAction(this.sdkClient, {
+          provider,
+          address,
+          signerAddress: address,
+          action,
+          actions: signedActions,
+        })
+      }
+
+      case SigningMethod.EVM_TX:
+        throw new Error(
+          'EVM_TX signing not yet implemented — requires wallet signer'
+        )
+
+      default:
+        throw new Error(`Unknown signingMethod: ${signingMethod}`)
+    }
+  }
+
+  /**
+   * Sign a batch of WASM_BLOB action steps (Lighter). Ensures the user's
+   * Lighter API keypair is registered first — generating one and running the
+   * REGISTER_API_KEY hybrid flow via the L1 signer if not — then feeds each
+   * subsequent step through the WASM signer and returns signed blobs.
+   */
+  private async signWasmBlobActions(
+    provider: string,
+    address: Address,
+    actions: WasmBlobActionStep[]
+  ): Promise<WasmBlobSignedActionStep[]> {
+    const signed: WasmBlobSignedActionStep[] = []
+    for (const step of actions) {
+      if (step.action === ActionType.REGISTER_API_KEY) {
+        signed.push(await this.signRegisterApiKey(provider, address, step))
+      } else {
+        signed.push(await this.signStandardWasmAction(provider, address, step))
+      }
+    }
+    return signed
+  }
+
+  private async signStandardWasmAction(
+    provider: string,
+    address: Address,
+    step: WasmBlobActionStep
+  ): Promise<WasmBlobSignedActionStep> {
+    const apiKey = await this.getLighterKeyStore().get(address)
+    if (!apiKey) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `No Lighter API key registered for ${address}. ` +
+          'Run prepareAccount / REGISTER_API_KEY first.'
+      )
+    }
+    const signer = this.getLighterSigner()
+    const signedTx = await signer.sign(step.action, step.wasmSignParams, {
+      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
+      apiKeyIndex: apiKey.apiKeyIndex,
+      accountIndex: apiKey.accountIndex,
+    })
+    void provider
+    return {
+      action: step.action,
+      wasmSignParams: step.wasmSignParams,
+      signedTx,
+    }
+  }
+
+  /**
+   * REGISTER_API_KEY flow:
+   *   1. Look up the user's Lighter accountIndex from getAccount()
+   *   2. Generate a fresh Lighter API keypair via the WASM signer
+   *   3. Call SignChangePubKey to produce the WASM blob + EIP-191 message
+   *   4. Have the user's L1 Ethereum wallet sign the message
+   *   5. Inject the L1 signature into the ChangePubKey txInfo JSON
+   *   6. Persist the keypair and return the signed blob
+   *
+   * Requires a USER wallet signer to be set via `setSigner` or passed at
+   * construction — the L1 signature is the user's consent to rotate keys.
+   */
+  private async signRegisterApiKey(
+    provider: string,
+    address: Address,
+    step: WasmBlobActionStep
+  ): Promise<WasmBlobSignedActionStep> {
+    if (!this.sdkClient.signer) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'REGISTER_API_KEY requires a wallet signer — pass `signer` to ' +
+          'createPerpsClient or call setSigner(walletClient).'
+      )
+    }
+
+    const params = step.wasmSignParams as {
+      api_key_index?: number
+      nonce?: number
+    }
+    const apiKeyIndex = params.api_key_index ?? DEFAULT_API_KEY_INDEX
+    const nonce = params.nonce
+    if (typeof nonce !== 'number') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'REGISTER_API_KEY wasmSignParams is missing `nonce`.'
+      )
+    }
+
+    const account = await getAccount(this.sdkClient, { provider, address })
+    const accountIndex = (account.config as { accountIndex?: number })
+      .accountIndex
+    if (typeof accountIndex !== 'number') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Lighter getAccount response is missing config.accountIndex for ${address}.`
+      )
+    }
+
+    const signer = this.getLighterSigner()
+    const keypair = await signer.generateAPIKey()
+    const changePubKey = await signer.signChangePubKey(
+      keypair.publicKey,
+      nonce,
+      apiKeyIndex,
+      accountIndex
     )
 
-    return executeAction(this.sdkClient, {
-      provider,
-      address,
-      signerAddress: agent.address,
-      action,
-      actions: signedActions,
+    const l1Signature = await this.sdkClient.signer.signMessage({
+      account: this.sdkClient.signer.account,
+      message: changePubKey.messageToSign,
     })
+
+    const txInfoWithL1Sig = signer.embedL1Signature(
+      changePubKey.txInfo,
+      l1Signature
+    )
+
+    const apiKey: LighterApiKey = {
+      accountIndex,
+      apiKeyIndex,
+      apiKeyPrivateKey: keypair.privateKey,
+      apiKeyPublicKey: keypair.publicKey,
+    }
+    await this.getLighterKeyStore().set(address, apiKey)
+
+    return {
+      action: step.action,
+      wasmSignParams: {
+        ...step.wasmSignParams,
+        new_public_key: keypair.publicKey,
+      },
+      signedTx: {
+        txType: changePubKey.txType,
+        txInfo: txInfoWithL1Sig,
+        txHash: changePubKey.txHash,
+      },
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -435,11 +680,17 @@ export class PerpsClient {
       )
 
       const signedAgentActions: SignedActionStep[] = await Promise.all(
-        required.agentPrerequisites.map(async (action) => ({
-          action: action.action,
-          typedData: action.typedData,
-          signature: await signTypedData(agent.privateKey, action.typedData),
-        }))
+        (required.agentPrerequisites as Eip712ActionStep[]).map(
+          async (action) =>
+            ({
+              action: action.action,
+              typedData: action.typedData,
+              signature: await signTypedData(
+                agent.privateKey,
+                action.typedData
+              ),
+            }) satisfies Eip712SignedActionStep
+        )
       )
 
       const firstAction = required.agentPrerequisites[0]?.action as string
@@ -609,65 +860,29 @@ export class PerpsClient {
   // ---------------------------------------------------------------------------
 
   async placeOrder(params: PlaceOrderParams): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
-    this.requireAgentMode(params.address, params.provider, 'placeOrder()')
-
-    const { actions } = await this.buildOrder(params)
-    return this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      ActionType.PLACE_ORDER,
-      actions
-    )
+    return this.execute({ ...params, action: ActionType.PLACE_ORDER, params })
   }
 
   async placeTriggerOrder(
     params: PlaceTriggerOrderParams
   ): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
-    this.requireAgentMode(
-      params.address,
-      params.provider,
-      'placeTriggerOrder()'
-    )
-
-    const { actions } = await this.buildTriggerOrder(params)
-    return this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      ActionType.PLACE_TRIGGER_ORDER,
-      actions
-    )
+    return this.execute({
+      ...params,
+      action: ActionType.PLACE_TRIGGER_ORDER,
+      params,
+    })
   }
 
   async cancelOrders(
     params: CancelOrdersParams
   ): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
-    this.requireAgentMode(params.address, params.provider, 'cancelOrders()')
-
-    const { actions } = await this.buildCancelOrder(params)
-    return this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      ActionType.CANCEL_ORDER,
-      actions
-    )
+    return this.execute({ ...params, action: ActionType.CANCEL_ORDER, params })
   }
 
   async modifyOrders(
     params: ModifyOrdersParams
   ): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
-    this.requireAgentMode(params.address, params.provider, 'modifyOrders()')
-
-    const { actions } = await this.buildModifyOrder(params)
-    return this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      ActionType.MODIFY_ORDER,
-      actions
-    )
+    return this.execute({ ...params, action: ActionType.MODIFY_ORDER, params })
   }
 
   async updatePositionMargin(params: {
@@ -677,19 +892,38 @@ export class PerpsClient {
     action: 'add' | 'remove'
     amount: string
   }): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
-    this.requireAgentMode(
-      params.address,
-      params.provider,
-      'updatePositionMargin()'
-    )
+    return this.execute({
+      ...params,
+      action: ActionType.UPDATE_POSITION_MARGIN,
+      params,
+    })
+  }
 
-    const { actions } = await this.buildPositionMargin(params)
+  /**
+   * Execute any action type through the SDK's signing pipeline.
+   * Handles both USER and USER_AGENT signing modes automatically.
+   * Use this for action types without dedicated high-level methods.
+   */
+  async execute<T extends ActionType>(params: {
+    provider: string
+    address: Address
+    signerAddress?: Address
+    action: T
+    params: ActionParamsMap[T]
+  }): Promise<ExecuteActionResponse> {
+    await this.loadSigningMode(params.address, params.provider)
+    const { signingMethod } = await this.getProviderMetadata(params.provider)
+    const { actions } = await this.buildAction(params.action, {
+      provider: params.provider,
+      address: params.address,
+      params: params.params,
+    })
     return this.autoSignAndExecute(
       params.provider,
       params.address,
-      ActionType.UPDATE_POSITION_MARGIN,
-      actions
+      params.action,
+      actions,
+      signingMethod
     )
   }
 }

@@ -1,4 +1,4 @@
-import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType } from '@lifi/perps-types'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMemoryStorage } from '../agent/storage.js'
 import { PerpsClient } from './PerpsClient.js'
@@ -72,7 +72,7 @@ describe('PerpsClient', () => {
   })
 
   describe('placeOrder', () => {
-    it('should throw in USER mode', async () => {
+    it('should throw in USER mode without a signer configured', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER)
       try {
         await client.placeOrder({
@@ -86,8 +86,7 @@ describe('PerpsClient', () => {
         })
         expect.fail('Should have thrown')
       } catch (error: any) {
-        expect(error.code).toBe(PerpsErrorCode.SDKError)
-        expect(error.message).toContain('USER_AGENT mode')
+        expect(error.message).toContain('signer')
       }
     })
 
@@ -111,7 +110,7 @@ describe('PerpsClient', () => {
   })
 
   describe('cancelOrders', () => {
-    it('should throw in USER mode', async () => {
+    it('should throw in USER mode without a signer configured', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER)
       try {
         await client.cancelOrders({
@@ -121,7 +120,7 @@ describe('PerpsClient', () => {
         })
         expect.fail('Should have thrown')
       } catch (error: any) {
-        expect(error.code).toBe(PerpsErrorCode.SDKError)
+        expect(error.message).toContain('signer')
       }
     })
 

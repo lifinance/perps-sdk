@@ -23,6 +23,7 @@ import {
   OrderType,
   PerpsSigner,
   PositionSide,
+  SigningMethod,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
@@ -36,6 +37,7 @@ export const mockProviders: ProvidersResponse = {
       key: 'hyperliquid',
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
+      signingMethod: SigningMethod.EIP712,
       prepareAccountActions: [
         {
           type: ActionType.APPROVE_AGENT,
