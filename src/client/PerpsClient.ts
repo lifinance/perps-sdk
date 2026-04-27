@@ -550,6 +550,33 @@ export class PerpsClient {
     }
   }
 
+  /**
+   * Mint a Lighter auth token for read endpoints (getOrders, getOrder,
+   * getActivity, getFills) by signing a CreateAuthToken WASM blob with the
+   * user's registered API key. Returns `undefined` if no API key has been
+   * registered for `address` — callers can fall back to public reads.
+   *
+   * `deadlineSeconds` is a Unix timestamp; defaults to 1h from now (Lighter
+   * caps tokens at 8h). Tokens are not persisted by the SDK — callers
+   * cache/refresh them as needed.
+   */
+  async createLighterAuthToken(
+    address: Address,
+    deadlineSeconds?: number
+  ): Promise<string | undefined> {
+    const apiKey = await this.getLighterKeyStore().get(address)
+    if (!apiKey) {
+      return undefined
+    }
+    const deadline = deadlineSeconds ?? Math.floor(Date.now() / 1000) + 60 * 60
+    const signer = this.getLighterSigner()
+    return signer.createAuthToken(deadline, {
+      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
+      apiKeyIndex: apiKey.apiKeyIndex,
+      accountIndex: apiKey.accountIndex,
+    })
+  }
+
   // ---------------------------------------------------------------------------
   // Generic action helpers
   // ---------------------------------------------------------------------------
