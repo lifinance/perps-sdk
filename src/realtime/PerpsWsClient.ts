@@ -2,20 +2,35 @@ import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
 import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
-import { LighterWsProvider } from './lighter/LighterWsProvider.js'
+import {
+  type LighterAuthProvider,
+  LighterWsProvider,
+} from './lighter/LighterWsProvider.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
   WsProvider,
 } from './types.js'
 
+export interface PerpsWsClientOptions {
+  /**
+   * Async function that mints a Lighter auth token for an L1 address. When
+   * provided, authenticated Lighter channels (orderUpdates, positions) will
+   * use the returned token. The provider is invoked on each subscribe send,
+   * including reconnects, so callers can transparently rotate tokens.
+   */
+  lighterAuthProvider?: LighterAuthProvider
+}
+
 export class PerpsWsClient {
   private readonly client: PerpsSDKClient
+  private readonly options: PerpsWsClientOptions
   private providers = new Map<string, WsProvider>()
   private initPromises = new Map<string, Promise<WsProvider>>()
 
-  constructor(client: PerpsSDKClient) {
+  constructor(client: PerpsSDKClient, options: PerpsWsClientOptions = {}) {
     this.client = client
+    this.options = options
   }
 
   async subscribe<S extends Subscription>(
@@ -84,7 +99,9 @@ export class PerpsWsClient {
     subProviders: string[]
   ): WsProvider {
     if (provider === 'lighter') {
-      return new LighterWsProvider(wsUrl, provider)
+      return new LighterWsProvider(wsUrl, provider, {
+        authProvider: this.options.lighterAuthProvider,
+      })
     }
     return new HyperliquidWsProvider(wsUrl, provider, subProviders)
   }

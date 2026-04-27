@@ -69,3 +69,37 @@ export type LtOrderBookDetailsResponse = {
   code: number
   order_book_details: LtOrderBookDetail[]
 }
+
+/**
+ * `/api/v1/account?by=l1_address` response. The provider only consumes the
+ * `index` field — everything else is intentionally typed as unknown.
+ */
+export type LtWsAccountByL1Response = {
+  code: number
+  accounts?: Array<{ index: number; [k: string]: unknown }>
+}
+
+/**
+ * Auth-channel payloads. Lighter sends raw arrays at the top level of the
+ * subscribed-snapshot frame (`{type: 'subscribed/account_all_orders',
+ * channel: 'account_all_orders/42', orders: [...]}`) and may also nest the
+ * same arrays under `data` for `update/...` frames depending on version.
+ * The provider's collector tolerates both.
+ */
+export type LtWsAccountAllOrdersMessage = LtWsMessage & {
+  type: 'subscribed/account_all_orders' | 'update/account_all_orders'
+  orders?: unknown[]
+  data?: { orders?: unknown[] }
+}
+
+export type LtWsAccountAllTradesMessage = LtWsMessage & {
+  type: 'subscribed/account_all_trades' | 'update/account_all_trades'
+  trades?: unknown[]
+  data?: { trades?: unknown[] }
+}
+
+export type LtWsAccountAllPositionsMessage = LtWsMessage & {
+  type: 'subscribed/account_all_positions' | 'update/account_all_positions'
+  positions?: unknown[]
+  data?: { positions?: unknown[] }
+}

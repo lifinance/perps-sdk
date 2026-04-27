@@ -27,23 +27,6 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
-  it('rejects authenticated channels until phase 2', async () => {
-    const provider = makeProvider()
-    for (const channel of ['orderUpdates', 'fills', 'positions'] as const) {
-      await expect(
-        provider.subscribe(
-          {
-            channel,
-            dex: 'lighter',
-            address: '0x1234567890123456789012345678901234567890',
-          },
-          () => {}
-        )
-      ).rejects.toThrow(/does not support channel/)
-    }
-    provider.close()
-  })
-
   it('rejects orderbook subscription for unknown assets', async () => {
     const provider = makeProvider()
     await expect(

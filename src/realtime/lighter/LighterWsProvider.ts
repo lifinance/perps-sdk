@@ -1,9 +1,30 @@
-import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  Address,
+  Fill,
+  Order,
+  Position,
+  Subscription,
+  SubscriptionEvent,
+} from '@lifi/perps-types'
+import type {
+  LtAccountPosition,
+  LtOrder,
+  LtTrade,
+} from '@lifi/perps-types/providers/lighter'
+import {
+  mapFill,
+  mapOrderDetail,
+  mapPosition,
+} from '@lifi/perps-types/providers/lighter'
 import { ReconnectingWebSocket } from '../ReconnectingWebSocket.js'
 import type { SubscriptionListener, WsProvider } from '../types.js'
 import type {
   LtOrderBookDetail,
   LtOrderBookDetailsResponse,
+  LtWsAccountAllOrdersMessage,
+  LtWsAccountAllPositionsMessage,
+  LtWsAccountAllTradesMessage,
+  LtWsAccountByL1Response,
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
@@ -14,9 +35,21 @@ import type {
 // ---------------------------------------------------------------------------
 // LighterWsProvider
 //
-// Public-channel only: `prices` (market_stats/all) and `orderbook`
-// (order_book/{market_id}). Authenticated channels — orderUpdates, fills,
-// positions — require a WASM-signed CreateAuthToken and are a later phase.
+// Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
+// Authenticated channels (require an `authProvider` option):
+//   - orderUpdates → account_all_orders/{account_index}
+//   - fills        → account_all_trades/{account_index}
+//   - positions    → account_all_positions/{account_index}
+//
+// Auth pattern (per Lighter WS spec): the subscribe payload carries the
+// token directly — `{ type: "subscribe", channel: "...", auth: "<token>" }`.
+// Tokens are minted via the Lighter WASM signer (CreateAuthToken) by the
+// caller; we re-request a fresh token on every subscribe send so reconnects
+// after the original token expires automatically pick up a new one.
+//
+// account_index is resolved per-address via `/api/v1/account?by=l1_address`
+// and cached for the lifetime of the provider — Lighter's account index is
+// stable for a given L1 wallet.
 //
 // Symbol → market_id mapping is fetched once from Lighter's public
 // `/api/v1/orderBookDetails` endpoint. The UI's assetId IS Lighter's symbol
@@ -30,11 +63,31 @@ const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
 const KEEPALIVE_INTERVAL_MS = 30_000
 
+const LIGHTER_AUTH_CHANNEL = {
+  orderUpdates: 'account_all_orders',
+  fills: 'account_all_trades',
+  positions: 'account_all_positions',
+} as const
+
+/**
+ * Mints a fresh Lighter auth token for the given L1 address, or returns
+ * `undefined` if no API key is registered. Called both on initial subscribe
+ * and on every reconnect, so it must always return a token valid for at
+ * least the next few minutes.
+ */
+export type LighterAuthProvider = (
+  address: Address
+) => Promise<string | undefined>
+
 interface SubState {
   /** Ref count — we send unsubscribe when this drops to zero. */
   count: number
-  /** Raw Lighter WS channel name (e.g. `order_book/5`). */
+  /** Raw Lighter WS channel name (e.g. `order_book/5`, `account_all_orders/42`). */
   channel: string
+  /** L1 address that triggered this sub (auth channels only). */
+  address?: Address
+  /** Whether this channel needs an `auth` field on each subscribe send. */
+  needsAuth: boolean
 }
 
 interface OrderbookState {
@@ -48,12 +101,19 @@ export interface LighterWsProviderOptions {
   restUrl?: string
   /** Pre-populated symbol→market_id map to skip the REST call. */
   symbolMap?: Record<string, number>
+  /**
+   * Async function returning a Lighter auth token for an address. Required
+   * for authenticated channels (orderUpdates, positions). Without it those
+   * subscriptions will throw at subscribe time.
+   */
+  authProvider?: LighterAuthProvider
 }
 
 export class LighterWsProvider implements WsProvider {
   private readonly rws: ReconnectingWebSocket
   private readonly restUrl: string
   private readonly providerKey: string
+  private readonly authProvider: LighterAuthProvider | undefined
 
   private readonly subs = new Map<string, SubState>()
   private readonly listeners = new Map<string, Set<SubscriptionListener>>()
@@ -64,6 +124,9 @@ export class LighterWsProvider implements WsProvider {
   private marketIdToSymbol: Map<number, string>
   private marketMetadataPromise: Promise<void> | undefined
 
+  private readonly accountIndexCache = new Map<string, number>()
+  private readonly accountIndexPromises = new Map<string, Promise<number>>()
+
   private keepaliveTimer: ReturnType<typeof setInterval> | undefined
 
   constructor(
@@ -73,6 +136,7 @@ export class LighterWsProvider implements WsProvider {
   ) {
     this.providerKey = providerKey
     this.restUrl = options.restUrl ?? DEFAULT_REST_URL
+    this.authProvider = options.authProvider
     this.symbolToMarketId = new Map(Object.entries(options.symbolMap ?? {}))
     this.marketIdToSymbol = new Map(
       [...this.symbolToMarketId].map(([s, m]) => [m, s])
@@ -80,7 +144,9 @@ export class LighterWsProvider implements WsProvider {
 
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
-    this.rws.on('open', () => this.onOpen())
+    this.rws.on('open', () => {
+      void this.onOpen()
+    })
     this.rws.on('close', () => this.stopKeepalive())
   }
 
@@ -90,20 +156,20 @@ export class LighterWsProvider implements WsProvider {
   ): Promise<() => void> {
     await this.ensureMarketMetadata()
 
+    const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
     if (!this.listeners.has(key)) {
       this.listeners.set(key, new Set())
     }
     this.listeners.get(key)?.add(listener)
 
-    const channel = this.toLighterChannel(sub)
     const existing = this.subs.get(key)
     if (existing) {
       existing.count++
     } else {
-      this.subs.set(key, { count: 1, channel })
+      this.subs.set(key, { count: 1, channel, needsAuth, address })
       await this.rws.ready()
-      this.rws.send(JSON.stringify({ type: 'subscribe', channel }))
+      await this.sendSubscribe(channel, needsAuth, address)
     }
 
     return () => {
@@ -138,11 +204,37 @@ export class LighterWsProvider implements WsProvider {
     this.lastPricesByAssetId = {}
   }
 
-  private onOpen(): void {
+  private async onOpen(): Promise<void> {
     this.startKeepalive()
     for (const [, s] of this.subs) {
-      this.rws.send(JSON.stringify({ type: 'subscribe', channel: s.channel }))
+      await this.sendSubscribe(s.channel, s.needsAuth, s.address)
     }
+  }
+
+  private async sendSubscribe(
+    channel: string,
+    needsAuth: boolean,
+    address: Address | undefined
+  ): Promise<void> {
+    const payload: { type: 'subscribe'; channel: string; auth?: string } = {
+      type: 'subscribe',
+      channel,
+    }
+    if (needsAuth) {
+      if (!this.authProvider || !address) {
+        throw new Error(
+          `Lighter WS channel '${channel}' requires authentication but no authProvider was supplied.`
+        )
+      }
+      const token = await this.authProvider(address)
+      if (!token) {
+        throw new Error(
+          `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
+        )
+      }
+      payload.auth = token
+    }
+    this.rws.send(JSON.stringify(payload))
   }
 
   private startKeepalive(): void {
@@ -165,21 +257,25 @@ export class LighterWsProvider implements WsProvider {
         return 'prices'
       case 'orderbook':
         return `orderbook:${sub.assetId}`
-      case 'candle':
       case 'orderUpdates':
+        return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
+        return `fills:${sub.address.toLowerCase()}`
       case 'positions':
+        return `positions:${sub.address.toLowerCase()}`
+      case 'candle':
       case 'spotBalances':
-        throw new Error(
-          `Lighter WS does not support channel: ${sub.channel}. ` +
-            'Candle/auth channels will be added in a later phase.'
-        )
+        throw new Error(`Lighter WS does not support channel: ${sub.channel}.`)
     }
   }
 
-  private toLighterChannel(sub: Subscription): string {
+  private async resolveChannel(sub: Subscription): Promise<{
+    channel: string
+    needsAuth: boolean
+    address?: Address
+  }> {
     if (sub.channel === 'prices') {
-      return 'market_stats/all'
+      return { channel: 'market_stats/all', needsAuth: false }
     }
     if (sub.channel === 'orderbook') {
       const id = this.symbolToMarketId.get(sub.assetId)
@@ -189,9 +285,63 @@ export class LighterWsProvider implements WsProvider {
             'Is the symbol mapping out of date?'
         )
       }
-      return `order_book/${id}`
+      return { channel: `order_book/${id}`, needsAuth: false }
     }
-    throw new Error(`Unsupported Lighter WS subscription: ${sub.channel}`)
+    if (
+      sub.channel === 'orderUpdates' ||
+      sub.channel === 'fills' ||
+      sub.channel === 'positions'
+    ) {
+      const accountIndex = await this.resolveAccountIndex(sub.address)
+      const lighterChannel = LIGHTER_AUTH_CHANNEL[sub.channel]
+      // `account_all_trades` is publicly readable per the Lighter WS spec —
+      // an auth token only filters events to the user's own account, which
+      // we don't currently use to scope further. Skip the token here so a
+      // user without a registered API key still gets their fill stream.
+      const needsAuth = sub.channel !== 'fills'
+      return {
+        channel: `${lighterChannel}/${accountIndex}`,
+        needsAuth,
+        address: sub.address,
+      }
+    }
+    throw new Error(
+      `Lighter WS does not support channel: ${(sub as { channel: string }).channel}.`
+    )
+  }
+
+  private async resolveAccountIndex(address: Address): Promise<number> {
+    const lc = address.toLowerCase()
+    const cached = this.accountIndexCache.get(lc)
+    if (cached !== undefined) {
+      return cached
+    }
+    let p = this.accountIndexPromises.get(lc)
+    if (!p) {
+      p = this.fetchAccountIndex(address).finally(() => {
+        this.accountIndexPromises.delete(lc)
+      })
+      this.accountIndexPromises.set(lc, p)
+    }
+    const idx = await p
+    this.accountIndexCache.set(lc, idx)
+    return idx
+  }
+
+  private async fetchAccountIndex(address: Address): Promise<number> {
+    const url = `${this.restUrl}/api/v1/account?by=l1_address&value=${encodeURIComponent(address)}`
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(
+        `Failed to resolve Lighter account for ${address}: ${response.status}`
+      )
+    }
+    const body = (await response.json()) as LtWsAccountByL1Response
+    const idx = body.accounts?.[0]?.index
+    if (typeof idx !== 'number') {
+      throw new Error(`No Lighter account found for ${address}`)
+    }
+    return idx
   }
 
   private async ensureMarketMetadata(): Promise<void> {
@@ -253,6 +403,119 @@ export class LighterWsProvider implements WsProvider {
       )
       return
     }
+
+    if (
+      msg.type === 'subscribed/account_all_orders' ||
+      msg.type === 'update/account_all_orders'
+    ) {
+      this.handleAccountOrders(msg as LtWsAccountAllOrdersMessage)
+      return
+    }
+
+    if (
+      msg.type === 'subscribed/account_all_trades' ||
+      msg.type === 'update/account_all_trades'
+    ) {
+      this.handleAccountTrades(msg as LtWsAccountAllTradesMessage)
+      return
+    }
+
+    if (
+      msg.type === 'subscribed/account_all_positions' ||
+      msg.type === 'update/account_all_positions'
+    ) {
+      this.handleAccountPositions(msg as LtWsAccountAllPositionsMessage)
+      return
+    }
+  }
+
+  private handleAccountOrders(msg: LtWsAccountAllOrdersMessage): void {
+    const address = this.addressFromChannel(msg.channel, 'account_all_orders')
+    if (!address) {
+      return
+    }
+    const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
+    const orders: Order[] = raw.map((o) =>
+      mapOrderDetail(
+        o,
+        this.marketIdToSymbol.get(o.market_index) ?? `market_${o.market_index}`
+      )
+    )
+    this.emit(`orderUpdates:${address}`, {
+      channel: 'orderUpdates',
+      data: orders,
+    })
+  }
+
+  private handleAccountTrades(msg: LtWsAccountAllTradesMessage): void {
+    const address = this.addressFromChannel(msg.channel, 'account_all_trades')
+    if (!address) {
+      return
+    }
+    const accountIndex = this.accountIndexCache.get(address)
+    if (accountIndex === undefined) {
+      return
+    }
+    const raw = collectAuthChannelItems<LtTrade>(msg, 'trades')
+    const fills: Fill[] = raw.map((t) =>
+      mapFill(
+        t,
+        accountIndex,
+        this.marketIdToSymbol.get(t.market_id) ?? `market_${t.market_id}`
+      )
+    )
+    this.emit(`fills:${address}`, { channel: 'fills', data: fills })
+  }
+
+  private handleAccountPositions(msg: LtWsAccountAllPositionsMessage): void {
+    const address = this.addressFromChannel(
+      msg.channel,
+      'account_all_positions'
+    )
+    if (!address) {
+      return
+    }
+    const raw = collectAuthChannelItems<LtAccountPosition>(msg, 'positions')
+    const positions: Position[] = raw.map((p) =>
+      mapPosition(
+        p,
+        this.marketIdToSymbol.get(p.market_id) ??
+          p.symbol ??
+          `market_${p.market_id}`
+      )
+    )
+    this.emit(`positions:${address}`, {
+      channel: 'positions',
+      data: positions,
+    })
+  }
+
+  /**
+   * Reverse-lookup the L1 address from an auth-channel message: the channel
+   * field arrives as `<lighter_channel>/<account_index>` so we strip the
+   * prefix and find the address in our account_index cache.
+   */
+  private addressFromChannel(
+    channel: string | undefined,
+    prefix: string
+  ): string | null {
+    if (!channel) {
+      return null
+    }
+    const expected = `${prefix}/`
+    if (!channel.startsWith(expected)) {
+      return null
+    }
+    const idx = Number(channel.slice(expected.length))
+    if (!Number.isFinite(idx)) {
+      return null
+    }
+    for (const [addr, cachedIdx] of this.accountIndexCache) {
+      if (cachedIdx === idx) {
+        return addr
+      }
+    }
+    return null
   }
 
   private handleMarketStats(msg: LtWsMarketStatsAllMessage): void {
@@ -362,4 +625,24 @@ function mapToLevels(
   const levels = [...book].map(([price, size]) => ({ price, size }))
   levels.sort(compare)
   return levels
+}
+
+/**
+ * Auth-channel payloads put items either at the top level (for the
+ * `subscribed/<channel>` snapshot) or nested under `data` (for `update/...`).
+ * Tolerate both shapes — Lighter has changed this between versions.
+ */
+function collectAuthChannelItems<T>(
+  msg: { [k: string]: unknown },
+  field: string
+): T[] {
+  const direct = msg[field]
+  if (Array.isArray(direct)) {
+    return direct as T[]
+  }
+  const nested = (msg.data as { [k: string]: unknown } | undefined)?.[field]
+  if (Array.isArray(nested)) {
+    return nested as T[]
+  }
+  return []
 }
