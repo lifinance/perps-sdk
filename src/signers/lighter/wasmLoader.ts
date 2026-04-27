@@ -28,16 +28,20 @@ function currentModuleUrl(): string {
   // Stack frames look like one of:
   //   "    at currentModuleUrl (file:///abs/path/wasmLoader.js:29:10)"
   //   "    at currentModuleUrl (/abs/path/wasmLoader.js:29:10)"
-  //   "    at currentModuleUrl (file:///abs/path/wasmLoader.ts:29:10)"  (vite)
-  // The .ts variant only shows up under source-map-aware runners (vitest);
-  // built bundles always see the .js file name.
+  //   "    at currentModuleUrl (file:///abs/path/wasmLoader.ts:29:10)"  (vitest)
+  //   "    at currentModuleUrl (http://localhost:5173/.../wasmLoader.ts?v=…:29:10)" (vite dev)
   const match = stack.match(/\(([^)]+wasmLoader\.[tj]s[^)]*)\)/)
   const frame = match?.[1] ?? ''
   const withoutPos = frame.replace(/:\d+:\d+$/, '')
-  if (withoutPos.startsWith('file://')) {
+  if (
+    withoutPos.startsWith('file://') ||
+    withoutPos.startsWith('http://') ||
+    withoutPos.startsWith('https://')
+  ) {
     return withoutPos
   }
   if (withoutPos.length > 0) {
+    // Bare absolute path (Node CJS without `file://` prefix in some runners).
     return `file://${withoutPos}`
   }
   throw new Error(

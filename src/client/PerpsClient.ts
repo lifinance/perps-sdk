@@ -321,6 +321,49 @@ export class PerpsClient {
   }
 
   /**
+   * Sign a single prerequisite step using whichever signing path matches the
+   * step's shape — EIP-712 typed data, WASM blob (with the hybrid EIP-191 +
+   * WASM flow for REGISTER_API_KEY), or EVM transaction. Lets consumers
+   * (e.g. the widget's PrerequisitesContext) collect signed prereqs without
+   * embedding per-method signing logic.
+   */
+  async signPrerequisite(
+    provider: string,
+    address: Address,
+    step: ActionStep
+  ): Promise<SignedActionStep> {
+    if ('typedData' in step) {
+      if (!this.sdkClient.signer) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'EIP-712 prerequisite signing requires a wallet signer. Pass ' +
+            '`signer` to createPerpsClient or call setSigner(walletClient).'
+        )
+      }
+      return {
+        action: step.action,
+        typedData: step.typedData,
+        signature: await signTypedDataWithSigner(
+          this.sdkClient.signer,
+          step.typedData
+        ),
+      } satisfies Eip712SignedActionStep
+    }
+    if ('wasmSignParams' in step) {
+      const [signed] = await this.signWasmBlobActions(provider, address, [step])
+      return signed
+    }
+    if ('txParams' in step) {
+      const [signed] = await this.signEvmTxActions([step])
+      return signed
+    }
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'Unknown ActionStep shape — expected typedData, wasmSignParams, or txParams.'
+    )
+  }
+
+  /**
    * Sign and broadcast a sequence of EVM transactions via the user's wallet
    * client. Used today for Lighter DEPOSIT (approve + deposit on Ethereum
    * mainnet) — submitted serially so the deposit can rely on the approve
