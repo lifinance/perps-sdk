@@ -2,6 +2,7 @@ import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
 import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
+import { LighterWsProvider } from './lighter/LighterWsProvider.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
@@ -82,8 +83,9 @@ export class PerpsWsClient {
     wsUrl: string,
     subProviders: string[]
   ): WsProvider {
-    // Currently only Hyperliquid has a WS implementation.
-    // Future providers can be added here with their own WsProvider classes.
+    if (provider === 'lighter') {
+      return new LighterWsProvider(wsUrl, provider)
+    }
     return new HyperliquidWsProvider(wsUrl, provider, subProviders)
   }
 }
