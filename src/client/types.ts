@@ -12,6 +12,7 @@ import type {
   WithdrawalParams,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
+import type { LighterSignerConfig } from '../signers/lighter/index.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
 // Re-export the SDK client types from createPerpsClient
@@ -51,6 +52,12 @@ export interface PerpsClientOptions {
   storage?: StorageAdapter
   /** Provider-specific configuration */
   providers?: ProviderConfigs
+  /**
+   * Optional Lighter WASM signer configuration. Override the REST URL, chain
+   * ID, or WASM asset locations. Omit to accept defaults (mainnet, chain 304,
+   * WASM assets bundled with the package).
+   */
+  lighter?: LighterSignerConfig
 }
 
 /**

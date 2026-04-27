@@ -1,115 +1,72 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
+import type { Account, WalletClient } from 'viem'
 import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
 
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
 
-/**
- * Per-provider configuration.
- */
 export interface ProviderConfig {
-  /** Markets to include. Filters visible assets and various API calls. */
   markets?: string[]
 }
 
-/**
- * Provider-specific configuration for Hyperliquid.
- * @deprecated Use ProviderConfig instead — this alias exists for backwards compatibility.
- */
+/** @deprecated Use ProviderConfig */
 export type HyperliquidConfig = ProviderConfig
 
-/**
- * Provider-specific configurations keyed by provider name.
- */
 export interface ProviderConfigs {
   [provider: string]: ProviderConfig | undefined
 }
 
-/**
- * Configuration options for creating a Perps SDK client.
- */
 export interface PerpsConfig {
-  /** Integrator identifier (required) */
   integrator: string
-  /** API key for authenticated requests (get one at https://portal.li.fi/) */
   apiKey: string
-  /** Base API URL. Defaults to DEFAULT_API_URL */
   apiUrl?: string
-  /** Disable version update check in development mode */
   disableVersionCheck?: boolean
-  /** Custom storage adapter for agent keys. Defaults to localStorage. */
   storage?: StorageAdapter
-  /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
-  /** Provider-specific configuration */
   providers?: ProviderConfigs
+  /**
+   * Wallet signer for USER-mode signing (EIP-712 typed data, EVM transactions).
+   * Accepts any viem-compatible WalletClient:
+   *   - Browser wallet: wagmi's useWalletClient() result
+   *   - Private key:    createWalletClient({ account: privateKeyToAccount('0x...'), transport: http() })
+   *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })
+   */
+  signer?: WalletClient<any, any, Account>
 }
 
-/**
- * Resolved configuration with required fields.
- */
 export interface PerpsBaseConfig {
-  /** Integrator identifier (required) */
   integrator: string
-  /** API key for authenticated requests */
   apiKey: string
-  /** Resolved API URL (always set) */
   apiUrl: string
-  /** Disable version update check in development mode */
   disableVersionCheck?: boolean
-  /** Optional request interceptor for custom handling */
   requestInterceptor?: RequestInterceptor
-  /** Provider-specific configuration */
   providers?: ProviderConfigs
 }
 
-/**
- * Request interceptor function type.
- * Called before each request is made, allowing modification of fetch options.
- */
 export type RequestInterceptor = (
   url: string,
   options: RequestInit
 ) => RequestInit | Promise<RequestInit>
 
-/**
- * Options passed to service functions for request control.
- */
 export interface SDKRequestOptions {
-  /** AbortSignal to cancel the request */
   signal?: AbortSignal
+  /**
+   * Lighter auth token for authenticated read endpoints (getOrders, getOrder,
+   * getActivity). Mint via `lighterSigner.createAuthToken(deadline, context)`.
+   * Forwarded as `Authorization: Bearer <token>` and never persisted by the
+   * backend — read-only by design (8h max TTL, cannot authorize writes).
+   */
+  lighterAuthToken?: string
 }
 
-/**
- * The Perps SDK client instance.
- * Holds configuration and agent manager for making API requests.
- */
 export interface PerpsSDKClient {
-  /** SDK configuration */
   readonly config: PerpsBaseConfig
-  /** Agent manager for USER_AGENT signing mode */
   readonly agentManager: AgentManager
+  /** Wallet signer — accepts any viem WalletClient (browser, private key, mnemonic). */
+  readonly signer?: WalletClient<any, any, Account>
 }
 
-/**
- * Create a new Perps SDK client.
- *
- * @param options - Configuration options
- * @returns A new SDK client instance
- * @throws {PerpsError} If integrator is not provided
- *
- * @example
- * ```ts
- * const client = createPerpsClient({
- *   integrator: 'my-app',
- *   apiKey: 'your-api-key',
- * })
- *
- * // Use with service functions
- * const { providers } = await getProviders(client)
- * ```
- */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   if (!options.integrator) {
     const error = new PerpsError(
@@ -139,6 +96,9 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     },
     get agentManager() {
       return agentManager
+    },
+    get signer() {
+      return options.signer
     },
   }
 }
