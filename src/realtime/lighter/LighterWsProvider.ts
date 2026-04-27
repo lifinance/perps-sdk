@@ -154,6 +154,15 @@ export class LighterWsProvider implements WsProvider {
     sub: Subscription,
     listener: SubscriptionListener
   ): Promise<() => void> {
+    // Lighter has no live OHLC channel — there's nothing to subscribe to.
+    // Return a no-op unsubscribe so the caller's UX (chart still rendering
+    // from REST history + price-tick mid line) is unaffected, instead of
+    // throwing and surfacing a console error on every chart mount.
+    if (sub.channel === 'candle') {
+      void listener
+      return () => {}
+    }
+
     await this.ensureMarketMetadata()
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
