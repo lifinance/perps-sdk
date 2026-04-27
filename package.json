@@ -33,6 +33,7 @@
       "import": "./dist/esm/utils/hyperliquid/index.js",
       "default": "./dist/cjs/utils/hyperliquid/index.js"
     },
+    "./wasm/*": "./wasm/*",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -80,6 +81,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pnpm": {
+    "overrides": {
+      "@lifi/perps-types": "link:../perps-types"
+    }
   },
   "files": [
     "dist/**",
