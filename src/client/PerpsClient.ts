@@ -7,6 +7,8 @@ import type {
   CreateActionResponse,
   Eip712ActionStep,
   Eip712SignedActionStep,
+  EvmTxActionStep,
+  EvmTxSignedActionStep,
   ExecuteActionResponse,
   Provider,
   SignedActionStep,
@@ -19,6 +21,7 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
+import { parseAbi } from 'viem'
 import { localStorageAdapter } from '../agent/storage.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
@@ -52,6 +55,27 @@ import {
   type PrerequisitesResult,
   SigningMode,
 } from './types.js'
+
+/**
+ * Look up an action's descriptor in the provider's metadata. Throws if the
+ * action isn't declared — defensive: better to fail loudly than to mis-sign.
+ */
+function findActionDescriptor(
+  metadata: Provider,
+  action: ActionType
+): ActionDescriptor {
+  const descriptor = [
+    ...metadata.prepareAccountActions,
+    ...metadata.actions,
+  ].find((d) => d.type === action)
+  if (!descriptor) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Provider '${metadata.key}' does not declare action '${action}'.`
+    )
+  }
+  return descriptor
+}
 
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
@@ -279,14 +303,69 @@ export class PerpsClient {
         })
       }
 
-      case SigningMethod.EVM_TX:
-        throw new Error(
-          'EVM_TX signing not yet implemented — requires wallet signer'
-        )
+      case SigningMethod.EVM_TX: {
+        const evmActions = actions as EvmTxActionStep[]
+        const signedActions = await this.signEvmTxActions(evmActions)
+        return executeAction(this.sdkClient, {
+          provider,
+          address,
+          signerAddress: address,
+          action,
+          actions: signedActions,
+        })
+      }
 
       default:
         throw new Error(`Unknown signingMethod: ${signingMethod}`)
     }
+  }
+
+  /**
+   * Sign and broadcast a sequence of EVM transactions via the user's wallet
+   * client. Used today for Lighter DEPOSIT (approve + deposit on Ethereum
+   * mainnet) — submitted serially so the deposit can rely on the approve
+   * having mined. Each step's `txParams` carries chainId, target, function
+   * name, args, and a human-readable abi from the backend.
+   */
+  private async signEvmTxActions(
+    actions: EvmTxActionStep[]
+  ): Promise<EvmTxSignedActionStep[]> {
+    if (!this.sdkClient.signer) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'EVM_TX signing requires a wallet signer. Pass `signer` to ' +
+          'createPerpsClient or call setSigner(walletClient).'
+      )
+    }
+    const { signer } = this.sdkClient
+    const signed: EvmTxSignedActionStep[] = []
+
+    for (const step of actions) {
+      const params = step.txParams as {
+        chainId: number
+        to: Address
+        functionName: string
+        args: readonly unknown[]
+        abi: readonly string[]
+      }
+
+      const txHash = await signer.writeContract({
+        address: params.to,
+        abi: parseAbi(params.abi),
+        functionName: params.functionName,
+        args: params.args,
+        chain: signer.chain,
+        account: signer.account,
+      })
+
+      signed.push({
+        action: step.action,
+        txParams: step.txParams,
+        txHash,
+      })
+    }
+
+    return signed
   }
 
   /**
@@ -912,7 +991,8 @@ export class PerpsClient {
     params: ActionParamsMap[T]
   }): Promise<ExecuteActionResponse> {
     await this.loadSigningMode(params.address, params.provider)
-    const { signingMethod } = await this.getProviderMetadata(params.provider)
+    const metadata = await this.getProviderMetadata(params.provider)
+    const descriptor = findActionDescriptor(metadata, params.action)
     const { actions } = await this.buildAction(params.action, {
       provider: params.provider,
       address: params.address,
@@ -923,7 +1003,7 @@ export class PerpsClient {
       params.address,
       params.action,
       actions,
-      signingMethod
+      descriptor.signingMethod
     )
   }
 }

@@ -42,21 +42,46 @@ export const mockProviders: ProvidersResponse = {
         {
           type: ActionType.APPROVE_AGENT,
           signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
           signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.USER_SET_ABSTRACTION,
           signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.AGENT_SET_ABSTRACTION,
           signers: [PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
         },
       ],
-      actions: [],
+      actions: [
+        {
+          type: ActionType.PLACE_ORDER,
+          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
+        },
+        {
+          type: ActionType.CANCEL_ORDER,
+          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
+        },
+        {
+          type: ActionType.MODIFY_ORDER,
+          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
+        },
+        {
+          type: ActionType.UPDATE_POSITION_MARGIN,
+          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
+        },
+      ],
     },
   ],
 }
