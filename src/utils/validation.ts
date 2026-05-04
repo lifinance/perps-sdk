@@ -6,17 +6,17 @@
  * Validate margin input against available balance and exchange minimums.
  *
  * @param margin - Margin amount in USD
- * @param leverage - Position leverage
+ * @param _leverage - Position leverage (reserved for future use)
  * @param availableBalance - Available balance, or null if unknown
- * @param feeRate - Fee rate as decimal, or null if unknown
+ * @param _feeRate - Fee rate as decimal, or null if unknown (reserved for future use)
  * @param minMarginUsd - Minimum margin requirement in USD (exchange-specific)
  * @returns Error code: 'insufficient' | 'below-minimum' | '' (valid)
  */
 export function validateMargin(
   margin: number,
-  leverage: number,
+  _leverage: number,
   availableBalance: number | null,
-  feeRate: number | null,
+  _feeRate: number | null,
   minMarginUsd: number
 ): string {
   if (margin <= 0) {

@@ -45,7 +45,7 @@ export async function request<T>(
   }
 
   if (sdkOptions?.lighterAuthToken) {
-    headers['Authorization'] = `Bearer ${sdkOptions.lighterAuthToken}`
+    headers.Authorization = `Bearer ${sdkOptions.lighterAuthToken}`
   }
 
   // Merge signal from sdkOptions into options
