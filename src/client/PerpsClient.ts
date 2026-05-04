@@ -56,6 +56,8 @@ import {
   SigningMode,
 } from './types.js'
 
+const MAX_NONCE_RETRIES = 3
+
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the
  * action isn't declared — defensive: better to fail loudly than to mis-sign.
@@ -209,7 +211,10 @@ export class PerpsClient {
       return undefined
     }
 
-    // Check if this action supports agent signing
+    // Only AGENT-signed actions surface a distinct signerAddress on the wire.
+    // API_KEY signers (e.g. Lighter's LighterKeyStore) are managed per-provider
+    // and don't have an EVM address — the backend identifies the action by the
+    // L1 `address` instead.
     const metadata = await this.getProviderMetadata(provider)
     const allActions = [...metadata.prepareAccountActions, ...metadata.actions]
     const descriptor = allActions.find((d) => d.type === action)
@@ -219,6 +224,17 @@ export class PerpsClient {
 
     const agent = await this.sdkClient.agentManager.getAgent(address, provider)
     return agent.address
+  }
+
+  /**
+   * True if any descriptor for the provider lists `PerpsSigner.AGENT`. Used to
+   * gate EVM-agent creation: providers like Lighter sign with their own
+   * keystore and never need an AgentManager-managed agent.
+   */
+  private async providerUsesAgent(provider: string): Promise<boolean> {
+    const metadata = await this.getProviderMetadata(provider)
+    const all = [...metadata.prepareAccountActions, ...metadata.actions]
+    return all.some((d) => d.signers.includes(PerpsSigner.AGENT))
   }
 
   private async autoSignAndExecute(
@@ -622,7 +638,10 @@ export class PerpsClient {
     const key = this.modeKey(address, provider)
     this.signingModes.set(key, mode)
     await this.storage.set(this.signingModeStorageKey(address, provider), mode)
-    if (mode === SigningMode.USER_AGENT) {
+    if (
+      mode === SigningMode.USER_AGENT &&
+      (await this.providerUsesAgent(provider))
+    ) {
       await this.sdkClient.agentManager.getOrCreateAgent(address, provider)
     }
   }
@@ -696,8 +715,14 @@ export class PerpsClient {
     const { provider, address } = params
     const mode = await this.loadSigningMode(address, provider)
 
+    const metadata = await this.getProviderMetadata(provider)
+    const usesAgent = [
+      ...metadata.prepareAccountActions,
+      ...metadata.actions,
+    ].some((d) => d.signers.includes(PerpsSigner.AGENT))
+
     let agentAddress: Address | undefined
-    if (mode === SigningMode.USER_AGENT) {
+    if (mode === SigningMode.USER_AGENT && usesAgent) {
       const agent = await this.sdkClient.agentManager.getOrCreateAgent(
         address,
         provider
@@ -705,7 +730,6 @@ export class PerpsClient {
       agentAddress = agent.address
     }
 
-    const metadata = await this.getProviderMetadata(provider)
     const allInputs = this.buildPrerequisiteInputs(
       metadata.prepareAccountActions,
       mode,
@@ -1064,17 +1088,33 @@ export class PerpsClient {
     await this.loadSigningMode(params.address, params.provider)
     const metadata = await this.getProviderMetadata(params.provider)
     const descriptor = findActionDescriptor(metadata, params.action)
-    const { actions } = await this.buildAction(params.action, {
-      provider: params.provider,
-      address: params.address,
-      params: params.params,
-    })
-    return this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      params.action,
-      actions,
-      descriptor.signingMethod
-    )
+
+    let lastError: unknown
+    for (let attempt = 0; attempt < MAX_NONCE_RETRIES; attempt++) {
+      const { actions } = await this.buildAction(params.action, {
+        provider: params.provider,
+        address: params.address,
+        params: params.params,
+      })
+      try {
+        return await this.autoSignAndExecute(
+          params.provider,
+          params.address,
+          params.action,
+          actions,
+          descriptor.signingMethod
+        )
+      } catch (err) {
+        if (
+          err instanceof PerpsError &&
+          err.code === PerpsErrorCode.InvalidNonce
+        ) {
+          lastError = err
+          continue
+        }
+        throw err
+      }
+    }
+    throw lastError
   }
 }
