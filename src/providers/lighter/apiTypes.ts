@@ -44,8 +44,12 @@ export type LtTrade = {
   is_maker_ask: boolean
   block_height: number
   timestamp: number
-  taker_fee: number
-  maker_fee: number
+  // Lighter's OpenAPI spec marks these as required `StrictInt`, but the live
+  // /api/v1/trades endpoint omits them on some `type: "trade"` rows (observed
+  // on older trades). Treat as optional and let the mapper produce `undefined`
+  // for Fill.fee (already optional) when missing.
+  taker_fee?: number
+  maker_fee?: number
   transaction_time: number
 }
 

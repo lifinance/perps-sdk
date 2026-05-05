@@ -38,8 +38,8 @@ export const mapFill = (
     size: trade.size,
     price: trade.price,
     status: FillStatus.FILLED,
-    fee: isMaker ? trade.maker_fee.toString() : trade.taker_fee.toString(),
+    fee: isMaker ? trade.maker_fee?.toString() : trade.taker_fee?.toString(),
     classification: classifyFill(isBuyer),
-    createdAt: new Date(trade.timestamp * 1000).toISOString(),
+    createdAt: new Date(trade.timestamp).toISOString(),
   }
 }
