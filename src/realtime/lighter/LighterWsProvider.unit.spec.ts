@@ -55,7 +55,7 @@ const RAW_TRADE = {
 const RAW_POSITION = {
   market_id: 0,
   symbol: 'BTC',
-  initial_margin_fraction: '0.05',
+  initial_margin_fraction: '5.00',
   open_order_count: 0,
   pending_order_count: 0,
   position_tied_order_count: 0,
@@ -297,6 +297,7 @@ describe('LighterWsProvider', () => {
       expect(event.channel).toBe('positions')
       expect(event.data).toHaveLength(1)
       expect(event.data[0].entryPrice).toBe('50000')
+      expect(event.data[0].leverage).toBe(20)
       p.close()
     })
 

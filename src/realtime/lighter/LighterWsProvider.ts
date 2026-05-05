@@ -485,14 +485,16 @@ export class LighterWsProvider implements WsProvider {
       return
     }
     const raw = collectAuthChannelItems<LtAccountPosition>(msg, 'positions')
-    const positions: Position[] = raw.map((p) =>
-      mapPosition(
-        p,
-        this.marketIdToSymbol.get(p.market_id) ??
-          p.symbol ??
-          `market_${p.market_id}`
+    const positions: Position[] = raw
+      .filter((p) => parseFloat(p.position) !== 0)
+      .map((p) =>
+        mapPosition(
+          p,
+          this.marketIdToSymbol.get(p.market_id) ??
+            p.symbol ??
+            `market_${p.market_id}`
+        )
       )
-    )
     this.emit(`positions:${address}`, {
       channel: 'positions',
       data: positions,
