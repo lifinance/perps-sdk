@@ -160,6 +160,7 @@ export type ActivityClassification =
 export enum PerpsSigner {
   USER = 'USER',
   AGENT = 'AGENT',
+  API_KEY = 'API_KEY',
 }
 
 export enum SigningMethod {
