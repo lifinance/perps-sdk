@@ -32,7 +32,7 @@ export const mapPosition = (
     unrealizedPnl: pos.unrealized_pnl,
     leverage:
       parseFloat(pos.initial_margin_fraction) > 0
-        ? Math.round(10_000 / parseFloat(pos.initial_margin_fraction))
+        ? Math.round(100 / parseFloat(pos.initial_margin_fraction))
         : 1,
     marginUsed: pos.allocated_margin,
     marginMode:
