@@ -80,26 +80,42 @@ export type LtWsAccountByL1Response = {
 }
 
 /**
- * Auth-channel payloads. Lighter sends raw arrays at the top level of the
- * subscribed-snapshot frame (`{type: 'subscribed/account_all_orders',
- * channel: 'account_all_orders/42', orders: [...]}`) and may also nest the
- * same arrays under `data` for `update/...` frames depending on version.
- * The provider's collector tolerates both.
+ * Auth-channel payloads.
+ *
+ * The response `channel` field uses `:` as separator (e.g.
+ * `account_all_orders:42`) while the subscribe payload uses `/`.
+ *
+ * Per the Lighter WS spec:
+ *   - orders/trades: object indexed by market index, each value an array
+ *     (`{ "0": [Order], "1": [Order] }`)
+ *   - positions: object indexed by market index, each value a single object
+ *     (`{ "0": Position }`)
+ *   - initial `account_all_trades` snapshot may send an empty flat array
+ *
+ * The provider uses `collectAuthChannelItems` to normalise all three shapes
+ * into a flat T[].
  */
 export type LtWsAccountAllOrdersMessage = LtWsMessage & {
   type: 'subscribed/account_all_orders' | 'update/account_all_orders'
-  orders?: unknown[]
-  data?: { orders?: unknown[] }
+  orders?: Record<string, unknown[]> | unknown[]
+  data?: { orders?: Record<string, unknown[]> | unknown[] }
 }
 
 export type LtWsAccountAllTradesMessage = LtWsMessage & {
   type: 'subscribed/account_all_trades' | 'update/account_all_trades'
-  trades?: unknown[]
-  data?: { trades?: unknown[] }
+  trades?: Record<string, unknown[]> | unknown[]
+  total_volume?: number
+  monthly_volume?: number
+  weekly_volume?: number
+  daily_volume?: number
+  data?: { trades?: Record<string, unknown[]> | unknown[] }
 }
 
 export type LtWsAccountAllPositionsMessage = LtWsMessage & {
   type: 'subscribed/account_all_positions' | 'update/account_all_positions'
-  positions?: unknown[]
-  data?: { positions?: unknown[] }
+  positions?: Record<string, unknown>
+  shares?: unknown[]
+  last_funding_round?: Record<string, string>
+  last_funding_discount?: Record<string, string>
+  data?: { positions?: Record<string, unknown> }
 }

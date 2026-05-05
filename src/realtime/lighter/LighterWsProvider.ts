@@ -500,22 +500,24 @@ export class LighterWsProvider implements WsProvider {
   }
 
   /**
-   * Reverse-lookup the L1 address from an auth-channel message: the channel
-   * field arrives as `<lighter_channel>/<account_index>` so we strip the
-   * prefix and find the address in our account_index cache.
+   * Reverse-lookup the L1 address from an auth-channel message. The subscribe
+   * payload uses `/` (e.g. `account_all_orders/42`) but the server sends
+   * responses with `:` (e.g. `account_all_orders:42`) — both forms are
+   * accepted here so reconnect resubscriptions and live updates both route
+   * correctly.
    */
   private addressFromChannel(
     channel: string | undefined,
     prefix: string
   ): string | null {
-    if (!channel) {
+    if (!channel || !channel.startsWith(prefix)) {
       return null
     }
-    const expected = `${prefix}/`
-    if (!channel.startsWith(expected)) {
+    const sep = channel[prefix.length]
+    if (sep !== '/' && sep !== ':') {
       return null
     }
-    const idx = Number(channel.slice(expected.length))
+    const idx = Number(channel.slice(prefix.length + 1))
     if (!Number.isFinite(idx)) {
       return null
     }
@@ -637,21 +639,42 @@ function mapToLevels(
 }
 
 /**
- * Auth-channel payloads put items either at the top level (for the
- * `subscribed/<channel>` snapshot) or nested under `data` (for `update/...`).
- * Tolerate both shapes — Lighter has changed this between versions.
+ * Extract items from an auth-channel payload field. The field may be:
+ *   - a flat array (e.g. `trades: []` on the initial subscribed snapshot)
+ *   - an object indexed by market index with array values
+ *     (e.g. `orders: { "0": [Order] }` on update messages)
+ *   - an object indexed by market index with single-object values
+ *     (e.g. `positions: { "0": Position }` — one position per market)
+ *
+ * All three shapes are flattened to a single T[] for uniform downstream
+ * handling. Returns undefined when the field is absent, so the caller can
+ * fall back to a nested `data` wrapper (kept for compatibility with older
+ * Lighter WS versions).
  */
+function extractItems<T>(value: unknown): T[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  if (Array.isArray(value)) {
+    return value as T[]
+  }
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap((v) =>
+      Array.isArray(v) ? (v as T[]) : [v as T]
+    )
+  }
+  return undefined
+}
+
 function collectAuthChannelItems<T>(
   msg: { [k: string]: unknown },
   field: string
 ): T[] {
-  const direct = msg[field]
-  if (Array.isArray(direct)) {
-    return direct as T[]
-  }
-  const nested = (msg.data as { [k: string]: unknown } | undefined)?.[field]
-  if (Array.isArray(nested)) {
-    return nested as T[]
-  }
-  return []
+  return (
+    extractItems<T>(msg[field]) ??
+    extractItems<T>(
+      (msg.data as Record<string, unknown> | undefined)?.[field]
+    ) ??
+    []
+  )
 }
