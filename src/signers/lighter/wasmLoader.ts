@@ -83,11 +83,17 @@ export interface LighterWasmExports {
     accountIndex: number
   ) => { error?: string }
   CheckClient: (apiKeyIndex: number, accountIndex: number) => { error?: string }
+  /**
+   * Returns `{authToken}` on success — note the field name is `authToken`,
+   * NOT `token`. Reading the wrong field silently fails (Go sets nothing
+   * else on the result), which is why early code paths returned undefined
+   * tokens with no error.
+   */
   CreateAuthToken: (
     deadline: number,
     apiKeyIndex: number,
     accountIndex: number
-  ) => { token?: string; error?: string }
+  ) => { authToken?: string; error?: string }
   /**
    * Signature mirrors lighter-python's `signer.SignChangePubKey(...)` call —
    * 5 positional args including `skipNonce` (use 0 to embed our supplied

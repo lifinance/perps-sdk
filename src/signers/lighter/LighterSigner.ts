@@ -207,10 +207,10 @@ export class LighterSigner {
     if (result.error) {
       throw new Error(`Lighter CreateAuthToken failed: ${result.error}`)
     }
-    if (!result.token) {
+    if (!result.authToken) {
       throw new Error('Lighter CreateAuthToken returned no token')
     }
-    return result.token
+    return result.authToken
   }
 
   private async ensureLoaded(): Promise<LighterWasmExports> {
