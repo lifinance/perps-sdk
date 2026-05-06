@@ -82,6 +82,11 @@ export enum FillStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum LiquidityRole {
+  MAKER = 'maker',
+  TAKER = 'taker',
+}
+
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',

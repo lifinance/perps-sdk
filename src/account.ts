@@ -4,6 +4,7 @@ import type {
   ActivityType,
   FillClassification,
   FillStatus,
+  LiquidityRole,
   MarginMode,
   OrderSide,
   OrderType,
@@ -82,12 +83,14 @@ export interface OrdersResponse {
 
 export interface Fill {
   id: string
+  orderId: string
   asset: AssetDisplay
   side: OrderSide
   type: OrderType
   size: string
   price: string
   status: FillStatus
+  liquidity: LiquidityRole
   filledSize?: string
   fee?: string
   realizedPnl?: string | null
