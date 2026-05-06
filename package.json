@@ -72,7 +72,8 @@
   "sideEffects": false,
   "files": [
     "src",
-    "!src/**/*.tsbuildinfo"
+    "!src/**/*.tsbuildinfo",
+    "!src/**/*.unit.spec.ts"
   ],
   "scripts": {
     "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types",
