@@ -63,7 +63,7 @@
   },
   "dependencies": {
     "@lifi/perps-types": "0.1.1-alpha.21",
-    "viem": "2.46.3"
+    "viem": "2.48.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
