@@ -143,6 +143,7 @@ export type HlExtraAgents = Record<string, unknown>[]
 
 export type HlUserFill = {
   tid: number
+  oid: number
   coin: string
   side: string
   sz: string
@@ -150,6 +151,7 @@ export type HlUserFill = {
   dir: string
   fee: string
   closedPnl: string
+  crossed: boolean
   time: number
   startPosition: string
 }

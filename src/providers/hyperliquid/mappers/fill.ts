@@ -1,6 +1,7 @@
 import {
   FillClassification,
   FillStatus,
+  LiquidityRole,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
@@ -53,6 +54,7 @@ export function classifyFillFromPosition(
 
 export const mapFill = (fill: HlUserFill): Fill => ({
   id: String(fill.tid),
+  orderId: String(fill.oid),
   asset: {
     assetId: fill.coin,
     market: '',
@@ -64,6 +66,7 @@ export const mapFill = (fill: HlUserFill): Fill => ({
   size: fill.sz,
   price: fill.px,
   status: FillStatus.FILLED,
+  liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
   filledSize: fill.sz,
   fee: fill.fee,
   realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl,

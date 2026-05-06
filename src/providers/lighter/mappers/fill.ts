@@ -1,6 +1,7 @@
 import {
   FillClassification,
   FillStatus,
+  LiquidityRole,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
@@ -27,6 +28,7 @@ export const mapFill = (
 
   return {
     id: trade.trade_id.toString(),
+    orderId: String(isBuyer ? trade.bid_id : trade.ask_id),
     asset: {
       assetId: symbol,
       market: 'lighter',
@@ -38,6 +40,7 @@ export const mapFill = (
     size: trade.size,
     price: trade.price,
     status: FillStatus.FILLED,
+    liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     fee: isMaker ? trade.maker_fee?.toString() : trade.taker_fee?.toString(),
     classification: classifyFill(isBuyer),
     createdAt: new Date(trade.timestamp).toISOString(),
