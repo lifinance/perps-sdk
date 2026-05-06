@@ -40,9 +40,12 @@ export async function getOrder(
   params: GetOrderParams,
   options?: SDKRequestOptions
 ): Promise<Order> {
-  const url = buildUrl(`${client.config.apiUrl}/order/${params.id}`, {
-    provider: params.provider,
-    address: params.address,
-  })
+  const url = buildUrl(
+    `${client.config.apiUrl}/order/${encodeURIComponent(params.id)}`,
+    {
+      provider: params.provider,
+      address: params.address,
+    }
+  )
   return request<Order>(client.config, url, {}, options)
 }

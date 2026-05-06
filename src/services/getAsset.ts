@@ -27,8 +27,11 @@ export async function getAsset(
   params: GetAssetParams,
   options?: SDKRequestOptions
 ): Promise<Asset> {
-  const url = buildUrl(`${client.config.apiUrl}/assets/${params.symbol}`, {
-    provider: params.provider,
-  })
+  const url = buildUrl(
+    `${client.config.apiUrl}/assets/${encodeURIComponent(params.symbol)}`,
+    {
+      provider: params.provider,
+    }
+  )
   return request<Asset>(client.config, url, {}, options)
 }

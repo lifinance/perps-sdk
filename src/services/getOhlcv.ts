@@ -47,12 +47,15 @@ export async function getOhlcv(
   params: GetOhlcvParams,
   options?: SDKRequestOptions
 ): Promise<OhlcvResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/ohlcv/${params.symbol}`, {
-    provider: params.provider,
-    interval: params.interval,
-    startTime: params.startTime,
-    endTime: params.endTime,
-    limit: params.limit,
-  })
+  const url = buildUrl(
+    `${client.config.apiUrl}/ohlcv/${encodeURIComponent(params.symbol)}`,
+    {
+      provider: params.provider,
+      interval: params.interval,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      limit: params.limit,
+    }
+  )
   return request<OhlcvResponse>(client.config, url, {}, options)
 }

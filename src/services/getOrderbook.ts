@@ -41,9 +41,12 @@ export async function getOrderbook(
   params: GetOrderbookParams,
   options?: SDKRequestOptions
 ): Promise<OrderbookResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/orderbook/${params.symbol}`, {
-    provider: params.provider,
-    depth: params.depth,
-  })
+  const url = buildUrl(
+    `${client.config.apiUrl}/orderbook/${encodeURIComponent(params.symbol)}`,
+    {
+      provider: params.provider,
+      depth: params.depth,
+    }
+  )
   return request<OrderbookResponse>(client.config, url, {}, options)
 }
