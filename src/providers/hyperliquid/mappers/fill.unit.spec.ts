@@ -15,6 +15,7 @@ import { classifyFillFromPosition, mapFill } from './fill.js'
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   tid: 12345,
+  oid: 67890,
   coin: 'ETH',
   side: 'B',
   sz: '1',
@@ -22,6 +23,7 @@ const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   dir: 'Open Long',
   fee: '0.5',
   closedPnl: '0',
+  crossed: true,
   time: 1_700_000_000_000,
   startPosition: '0',
   ...overrides,
