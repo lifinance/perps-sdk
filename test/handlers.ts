@@ -38,7 +38,7 @@ export const mockProviders: ProvidersResponse = {
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
       signingMethod: SigningMethod.EIP712,
-      prepareAccountActions: [
+      accountConfiguration: [
         {
           type: ActionType.APPROVE_AGENT,
           signers: [PerpsSigner.USER],

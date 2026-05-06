@@ -67,7 +67,7 @@ function findActionDescriptor(
   action: ActionType
 ): ActionDescriptor {
   const descriptor = [
-    ...metadata.prepareAccountActions,
+    ...metadata.accountConfiguration,
     ...metadata.actions,
   ].find((d) => d.type === action)
   if (!descriptor) {
@@ -216,7 +216,7 @@ export class PerpsClient {
     // and don't have an EVM address — the backend identifies the action by the
     // L1 `address` instead.
     const metadata = await this.getProviderMetadata(provider)
-    const allActions = [...metadata.prepareAccountActions, ...metadata.actions]
+    const allActions = [...metadata.accountConfiguration, ...metadata.actions]
     const descriptor = allActions.find((d) => d.type === action)
     if (!descriptor?.signers.includes(PerpsSigner.AGENT)) {
       return undefined
@@ -233,7 +233,7 @@ export class PerpsClient {
    */
   private async providerUsesAgent(provider: string): Promise<boolean> {
     const metadata = await this.getProviderMetadata(provider)
-    const all = [...metadata.prepareAccountActions, ...metadata.actions]
+    const all = [...metadata.accountConfiguration, ...metadata.actions]
     return all.some((d) => d.signers.includes(PerpsSigner.AGENT))
   }
 
@@ -717,7 +717,7 @@ export class PerpsClient {
 
     const metadata = await this.getProviderMetadata(provider)
     const usesAgent = [
-      ...metadata.prepareAccountActions,
+      ...metadata.accountConfiguration,
       ...metadata.actions,
     ].some((d) => d.signers.includes(PerpsSigner.AGENT))
 
@@ -731,7 +731,7 @@ export class PerpsClient {
     }
 
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.prepareAccountActions,
+      metadata.accountConfiguration,
       mode,
       agentAddress
     )
@@ -742,7 +742,7 @@ export class PerpsClient {
 
     // Build a signer lookup from action descriptors
     const signersByAction = new Map<string, PerpsSigner[]>()
-    for (const desc of metadata.prepareAccountActions) {
+    for (const desc of metadata.accountConfiguration) {
       signersByAction.set(desc.type, desc.signers)
     }
 
@@ -790,7 +790,7 @@ export class PerpsClient {
 
     const metadata = await this.getProviderMetadata(params.provider)
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.prepareAccountActions,
+      metadata.accountConfiguration,
       mode,
       signerAddress
     )
