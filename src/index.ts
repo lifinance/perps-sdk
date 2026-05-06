@@ -121,7 +121,20 @@ export {
   isTakeProfitOrder,
   isTpSlOrder,
 } from './utils/orderClassification.js'
+export {
+  expectedRealizedPnlForOpenOrder,
+  expectedRealizedPnlForTriggerOrder,
+  findMatchingPosition,
+  resolveCloseSize,
+} from './utils/orderMath.js'
 export { stringToFloat } from './utils/parse.js'
+export {
+  directionSign,
+  predictAverageEntryPrice,
+  predictNewLeverage,
+  predictUnrealizedPnl,
+  realizedPnlOnClose,
+} from './utils/positionMath.js'
 export { signTypedData } from './utils/signTypedData.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
