@@ -206,6 +206,7 @@ export interface ActionParamsMap {
   [ActionType.AGENT_SET_ABSTRACTION]: SetAbstractionParams
   [ActionType.SEND_ASSET]: SendAssetParams
   [ActionType.WITHDRAWAL]: WithdrawalParams
+  [ActionType.TRANSFER]: Record<string, never>
   [ActionType.PLACE_ORDER]: PlaceOrderParams
   [ActionType.PLACE_TRIGGER_ORDER]: PlaceTriggerOrderParams
   [ActionType.CANCEL_ORDER]: CancelOrderParams

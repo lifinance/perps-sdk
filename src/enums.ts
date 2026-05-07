@@ -94,6 +94,7 @@ export enum ActionType {
   AGENT_SET_ABSTRACTION = 'agentSetAbstraction',
   SEND_ASSET = 'sendAsset',
   WITHDRAWAL = 'withdrawal',
+  TRANSFER = 'transfer',
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
   CANCEL_ORDER = 'cancelOrder',
