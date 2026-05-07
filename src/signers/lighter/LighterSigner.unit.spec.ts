@@ -79,6 +79,76 @@ describe('LighterSigner', () => {
     expect(signed.txInfo).toBeTruthy()
   })
 
+  // The Go signer reads `memo` via `Value.String()` and copies its UTF-8
+  // bytes directly into a `[32]byte`. In practice that means: send 32 ASCII
+  // characters. Multibyte chars or wrong length → "memo expected to be 32
+  // bytes long".
+  const MEMO_32_BYTES = 'a'.repeat(32)
+
+  it('signs TRANSFER (fastwithdraw signed-transfer flow)', async () => {
+    const signed = await signer.sign(
+      ActionType.TRANSFER,
+      {
+        to_account: 7,
+        usdc_amount: 250_000,
+        fee: 100,
+        memo: MEMO_32_BYTES,
+        nonce: 12,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(12)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    // The signer must thread our context (api key + account) AND the
+    // backend-supplied transfer params into the signed blob without renaming
+    // anything. The asserted field names come from Lighter's
+    // L2TransferTxInfo struct.
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.FromAccountIndex).toBe(42)
+    expect(parsed.ToAccountIndex).toBe(7)
+    expect(parsed.USDCAmount).toBe(250_000)
+    expect(parsed.Fee).toBe(100)
+    expect(parsed.Nonce).toBe(12)
+    // Memo is serialized as a byte array — every entry should be 0x61 ('a').
+    expect(parsed.Memo).toHaveLength(32)
+    expect(parsed.Memo.every((b: number) => b === 0x61)).toBe(true)
+  })
+
+  it('TRANSFER rejects missing numeric param with a clear error', async () => {
+    await expect(
+      signer.sign(
+        ActionType.TRANSFER,
+        // missing usdc_amount
+        { to_account: 7, fee: 100, memo: MEMO_32_BYTES, nonce: 12 },
+        ctx()
+      )
+    ).rejects.toThrow(/usdc_amount/)
+  })
+
+  it('TRANSFER rejects missing memo (string field) with a clear error', async () => {
+    await expect(
+      signer.sign(
+        ActionType.TRANSFER,
+        // missing memo
+        { to_account: 7, usdc_amount: 250_000, fee: 100, nonce: 12 },
+        ctx()
+      )
+    ).rejects.toThrow(/memo/)
+  })
+
+  it('rejects unsupported action types with a clear error', async () => {
+    await expect(
+      signer.sign(
+        // DEPOSIT has no Lighter WASM binding — exercises the dispatch
+        // default branch.
+        ActionType.DEPOSIT,
+        { nonce: 1 },
+        ctx()
+      )
+    ).rejects.toThrow(/does not support action/)
+  })
+
   it('signs UPDATE_LEVERAGE', async () => {
     const signed = await signer.sign(
       ActionType.UPDATE_LEVERAGE,

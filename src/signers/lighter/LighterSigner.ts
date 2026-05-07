@@ -324,6 +324,27 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      case ActionType.TRANSFER:
+        // Lighter's SignTransfer (used by the fastwithdraw signed-transfer
+        // flow) takes 7 positional args, in the order the Go binding declares
+        // them: `toAccount, usdcAmount, fee, memo, nonce, apiKeyIndex,
+        // accountIndex`. Mirrors the WITHDRAWAL plumbing — same nonce/api-key
+        // sourcing, same fall-through on bad params. `memo` is a 32-byte
+        // identifier that the Go signer reads via `Value.String()` and copies
+        // directly into a `[32]byte`, so the backend MUST send a JS string
+        // whose UTF-8 byte length is exactly 32 (in practice: 32 ASCII
+        // characters). Anything else fails with "memo expected to be 32 bytes
+        // long". The other args are u64s coerced via numberField, same as
+        // every other Sign* dispatch.
+        return wasm.SignTransfer(
+          numberField(p, 'to_account'),
+          numberField(p, 'usdc_amount'),
+          numberField(p, 'fee'),
+          stringField(p, 'memo'),
+          nonce,
+          ctx.apiKeyIndex,
+          ctx.accountIndex
+        )
       default:
         throw new Error(
           `Lighter WASM signer does not support action: ${action}`
@@ -365,5 +386,15 @@ function numberField(p: Record<string, unknown>, key: string): number {
   }
   throw new Error(
     `Lighter sign params missing numeric field '${key}' (got ${typeof v})`
+  )
+}
+
+function stringField(p: Record<string, unknown>, key: string): string {
+  const v = p[key]
+  if (typeof v === 'string' && v !== '') {
+    return v
+  }
+  throw new Error(
+    `Lighter sign params missing string field '${key}' (got ${typeof v})`
   )
 }
