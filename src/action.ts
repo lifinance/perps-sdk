@@ -1,4 +1,4 @@
-import type { OrderType } from './enums.js'
+import type { MarginMode, OrderType } from './enums.js'
 import {
   type ActionType,
   type OrderSide,
@@ -120,6 +120,12 @@ export interface PlaceOrderParams {
   size: string
   price?: string
   leverage?: number
+  /**
+   * Margin mode to use for the position. When omitted, the backend falls back
+   * to the provider's default (currently CROSS for both Hyperliquid and
+   * Lighter). Callers should set this explicitly when they need ISOLATED.
+   */
+  marginMode?: MarginMode
   reduceOnly?: boolean
   timeInForce?: TimeInForce
   expiresAt?: string
@@ -145,6 +151,12 @@ export interface ModifyOrderParams {
 export interface UpdateLeverageParams {
   asset: AssetIdentity
   leverage: number
+  /**
+   * Margin mode to use for the position. When omitted, the backend falls back
+   * to the provider's default (currently CROSS for both Hyperliquid and
+   * Lighter). Callers should set this explicitly when they need ISOLATED.
+   */
+  marginMode?: MarginMode
 }
 
 export interface UpdatePositionMarginParams {

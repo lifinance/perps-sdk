@@ -85,13 +85,16 @@
     "postinstall": "husky",
     "postpack": "pinst --enable",
     "pre-commit": "lint-staged",
-    "pre-push": "pnpm build",
+    "pre-push": "pnpm typecheck && pnpm test:unit && pnpm build",
     "prepack": "pinst --disable",
     "prepublishOnly": "pnpm node scripts/prepublishOnly.js",
     "release": "standard-version -a",
     "release:alpha": "standard-version -a --prerelease alpha --skip.changelog",
     "release:beta": "standard-version -a --prerelease beta --skip.changelog",
     "prettier:fix": "prettier --write ./src/.",
+    "test": "vitest --run",
+    "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
@@ -118,7 +121,8 @@
     "pinst": "^3.0.0",
     "prettier": "^3.6.2",
     "standard-version": "^9.5.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.8"
   },
   "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748",
   "publishConfig": {
