@@ -127,6 +127,7 @@ export enum ActivityType {
   WITHDRAWAL = 'WITHDRAWAL',
   LIQUIDATION = 'LIQUIDATION',
   FUNDING = 'FUNDING',
+  TRANSFER = 'TRANSFER',
 }
 
 export enum FillClassification {
