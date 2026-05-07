@@ -154,11 +154,26 @@ export interface FundingActivity extends BaseActivity {
   fundingRate: string
 }
 
+/**
+ * Internal transfer between two accounts on the same L2 (e.g. Lighter
+ * `/api/v1/transfer/history`). Direction is relative to the queried
+ * account; `counterpartyAccountIndex` identifies the other side.
+ */
+export interface TransferActivity extends BaseActivity {
+  type: ActivityType.TRANSFER
+  direction: 'IN' | 'OUT'
+  counterpartyAccountIndex: number
+  asset: string
+  amount: string
+  meta?: Record<string, unknown>
+}
+
 export type ActivityItem =
   | DepositActivity
   | WithdrawalActivity
   | LiquidationActivity
   | FundingActivity
+  | TransferActivity
 
 export interface ActivitiesResponse {
   provider: string
