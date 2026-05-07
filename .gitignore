@@ -7,3 +7,4 @@ src/_types/
 # Claude Code (local config)
 CLAUDE.local.md
 .claude/
+.worktrees/
