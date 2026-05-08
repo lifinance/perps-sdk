@@ -59,6 +59,12 @@ export interface Provider {
   actions: ActionDescriptor[]
   markets: ProviderMarketInfo[]
   wsUrl?: string
+  /**
+   * Minimum deposit amount in USD that the provider's deposit path will
+   * accept. Absent means no minimum is advertised — clients should not
+   * gate the deposit UX on a value they don't have.
+   */
+  minDepositUsd?: number
 }
 
 export interface ProvidersResponse {
