@@ -14,6 +14,47 @@ export interface ActionDescriptor {
 }
 
 /**
+ * One selectable value on a `multi-option` account configuration control.
+ *
+ * `value` is the opaque per-provider identifier the SDK passes back to the
+ * backend in the corresponding `ACCOUNT_MODE` / `ACCOUNT_TYPE` action params.
+ * `label` is the user-facing string the widget renders. `default: true` flags
+ * the suggested choice for new accounts — there should be at most one default
+ * per descriptor.
+ */
+export interface AccountConfigurationOption {
+  value: string
+  label: string
+  default?: boolean
+}
+
+/**
+ * Discriminator describing how the widget renders the control associated
+ * with an `AccountConfigurationItem`.
+ *
+ * - `user-approval` — single user signature (e.g. `APPROVE_AGENT`,
+ *   `APPROVE_BUILDER_FEE`, `REGISTER_API_KEY`). The widget renders a
+ *   button; the descriptor carries no extra metadata.
+ * - `multi-option` — a fixed set of mutually-exclusive choices (e.g.
+ *   account mode, account type tier). The widget renders a select-style
+ *   control populated from `values`; the current selection comes from
+ *   account state (`GET /perps/account`), not from the descriptor.
+ *   `readOnly: true` means the control is rendered disabled — typically
+ *   used when the provider exposes the value but does not allow the user
+ *   to change it from this surface.
+ *
+ * Always discriminated on the literal `type` field, so consumers narrow
+ * without runtime checks.
+ */
+export type AccountConfigurationControl =
+  | { type: 'user-approval' }
+  | {
+      type: 'multi-option'
+      values: ReadonlyArray<AccountConfigurationOption>
+      readOnly?: boolean
+    }
+
+/**
  * Self-documenting account-setup step the user must (or may) fulfill before
  * trading with a given provider. Mirrors a single entry of the `config`
  * object returned by `GET /perps/account` — that endpoint reports the
@@ -27,6 +68,12 @@ export interface ActionDescriptor {
  *
  * `optional: false` means the item must be fulfilled before the user can
  * proceed; `optional: true` means the user may skip it.
+ *
+ * `control` tells the widget which control component to render — a button
+ * (`user-approval`) or a multi-option selector (`multi-option`). All
+ * existing items (`APPROVE_AGENT`, `APPROVE_BUILDER_FEE`, etc.) are
+ * `user-approval`; the new generic `ACCOUNT_MODE` / `ACCOUNT_TYPE` items
+ * are `multi-option`. Backends tag the discriminator at construction time.
  */
 export interface AccountConfigurationItem extends ActionDescriptor {
   /** User-facing row title rendered in the onboarding overlay. */
@@ -35,6 +82,8 @@ export interface AccountConfigurationItem extends ActionDescriptor {
   description: string
   /** When true the user may skip the item; when false it gates the trade flow. */
   optional: boolean
+  /** Control-type discriminator; see `AccountConfigurationControl`. */
+  control: AccountConfigurationControl
 }
 
 export interface ProviderMarketInfo {

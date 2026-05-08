@@ -14,6 +14,7 @@
  */
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type {
+  AccountConfigurationControl,
   AccountConfigurationItem,
   ActionDescriptor,
   Provider,
@@ -28,6 +29,7 @@ const approveAgentItem: AccountConfigurationItem = {
   optional: false,
   signers: [PerpsSigner.USER],
   signingMethod: SigningMethod.EIP712,
+  control: { type: 'user-approval' },
 }
 
 // Fixture: a second required item, exercising the array-of-multiple case.
@@ -39,24 +41,66 @@ const approveBuilderFeeItem: AccountConfigurationItem = {
   optional: false,
   signers: [PerpsSigner.USER],
   signingMethod: SigningMethod.EIP712,
+  control: { type: 'user-approval' },
 }
 
-// Fixture: a genuinely optional item — the widget and backend operate
-// regardless of which abstraction mode the user is in (portfolioMargin is
-// out of scope), so the user may proceed without enabling agent-managed
-// abstraction.
-const agentSetAbstractionItem: AccountConfigurationItem = {
-  type: ActionType.AGENT_SET_ABSTRACTION,
-  title: 'Enable agent-managed abstraction',
+// Fixture: a register-api-key item — Lighter's third user-approval entry.
+const registerApiKeyItem: AccountConfigurationItem = {
+  type: ActionType.REGISTER_API_KEY,
+  title: 'Register session API key',
   description:
-    'Lets the LI.FI session signer manage abstraction settings without an additional wallet prompt each time.',
+    'Registers a Lighter API key so the session signer can place orders.',
+  optional: false,
+  signers: [PerpsSigner.USER],
+  signingMethod: SigningMethod.WASM_BLOB,
+  control: { type: 'user-approval' },
+}
+
+// Fixture: an ACCOUNT_MODE multi-option item — the HL abstraction selector.
+// The user-facing label is provider-agnostic; the values are the opaque
+// per-provider identifiers the backend resolves to its wire enum.
+const hlAccountModeItem: AccountConfigurationItem = {
+  type: ActionType.ACCOUNT_MODE,
+  title: 'Account mode',
+  description:
+    'Choose how this account interacts with Hyperliquid. Defaults to dexAbstraction.',
   optional: true,
   signers: [PerpsSigner.AGENT],
   signingMethod: SigningMethod.EIP712,
+  control: {
+    type: 'multi-option',
+    values: [
+      { value: 'disabled', label: 'Standard' },
+      { value: 'dexAbstraction', label: 'Dex abstraction', default: true },
+      { value: 'unifiedAccount', label: 'Unified account' },
+    ],
+  },
+}
+
+// Fixture: a Lighter ACCOUNT_TYPE multi-option item using `readOnly: true`.
+// Demonstrates the disabled-control branch — the descriptor surfaces the
+// account's tier but the widget renders the control inert (e.g. because
+// upgrade requires going through Lighter's UI directly).
+const lighterAccountTypeItem: AccountConfigurationItem = {
+  type: ActionType.ACCOUNT_TYPE,
+  title: 'Account tier',
+  description:
+    'Premium tier reduces fees and improves matching priority on Lighter.',
+  optional: true,
+  signers: [PerpsSigner.USER],
+  signingMethod: SigningMethod.WASM_BLOB,
+  control: {
+    type: 'multi-option',
+    values: [
+      { value: 'standard', label: 'Standard', default: true },
+      { value: 'premium', label: 'Premium' },
+    ],
+    readOnly: true,
+  },
 }
 
 // Fixture: a Provider exercising `accountConfiguration` with both required
-// and optional entries.
+// and optional entries, mixing user-approval and multi-option controls.
 const providerFixture: Provider = {
   key: 'hyperliquid',
   name: 'Hyperliquid',
@@ -66,7 +110,7 @@ const providerFixture: Provider = {
   accountConfiguration: [
     approveAgentItem,
     approveBuilderFeeItem,
-    agentSetAbstractionItem,
+    hlAccountModeItem,
   ],
   actions: [
     {
@@ -137,13 +181,21 @@ type _ActiveIsRequired = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'active'>, 'active'>
 >
 
-// `AccountConfigurationItem` is `ActionDescriptor` plus the three metadata fields.
-// Catches accidental optional-marker drift or rename of any field on either type.
+// `AccountConfigurationItem` is `ActionDescriptor` plus the four metadata
+// fields (title / description / optional / control). Catches accidental
+// optional-marker drift or rename of any field on either type.
 type _AccountConfigurationItemKeys = Expect<
   Equals<
     keyof AccountConfigurationItem,
-    keyof ActionDescriptor | 'title' | 'description' | 'optional'
+    keyof ActionDescriptor | 'title' | 'description' | 'optional' | 'control'
   >
+>
+
+// `control` is a required key on `AccountConfigurationItem`. Backends MUST
+// tag every item; the widget can't fall back to a default render because
+// the control type changes the component, not just its props.
+type _ControlIsRequired = Expect<
+  Equals<Extract<RequiredKeys<AccountConfigurationItem>, 'control'>, 'control'>
 >
 
 // Each AccountConfigurationItem is assignable to ActionDescriptor (the SDK relies
@@ -152,6 +204,33 @@ type _IsActionDescriptorSuperset = Expect<
   Equals<AccountConfigurationItem extends ActionDescriptor ? true : false, true>
 >
 
+// The discriminator narrows on `type` without runtime checks. Both branches
+// are reachable; narrowing to `'multi-option'` exposes `values` and (optionally)
+// `readOnly`; narrowing to `'user-approval'` does NOT expose those fields.
+type _UserApprovalNarrows = Expect<
+  Equals<
+    Extract<AccountConfigurationControl, { type: 'user-approval' }>,
+    { type: 'user-approval' }
+  >
+>
+
+type _MultiOptionNarrows = Expect<
+  Equals<
+    Extract<AccountConfigurationControl, { type: 'multi-option' }>['values'],
+    ReadonlyArray<{ value: string; label: string; default?: boolean }>
+  >
+>
+
+// Compile-time assertion that the multi-option branch's `readOnly` field
+// is optional. Treating it as required would force every Hyperliquid
+// descriptor to set `readOnly: false` explicitly even when the control
+// is editable — a needless ceremony the AC explicitly rejects.
+const _editableMultiOption: AccountConfigurationControl = {
+  type: 'multi-option',
+  values: [{ value: 'a', label: 'A' }],
+}
+void _editableMultiOption
+
 // Re-export the fixtures so the file is not flagged as an unused-locals island
 // by the project's strict `noUnusedLocals` rule. Consumers MUST NOT depend on
 // these — the file is excluded from the published build via
@@ -159,7 +238,9 @@ type _IsActionDescriptorSuperset = Expect<
 export const _fixtures = {
   approveAgentItem,
   approveBuilderFeeItem,
-  agentSetAbstractionItem,
+  registerApiKeyItem,
+  hlAccountModeItem,
+  lighterAccountTypeItem,
   providerFixture,
   providerWithNoConfigurationFixture,
   announcedProviderFixture,
@@ -171,5 +252,8 @@ export type _TypeAssertions = [
   _ActiveFieldShape,
   _ActiveIsRequired,
   _AccountConfigurationItemKeys,
+  _ControlIsRequired,
   _IsActionDescriptorSuperset,
+  _UserApprovalNarrows,
+  _MultiOptionNarrows,
 ]
