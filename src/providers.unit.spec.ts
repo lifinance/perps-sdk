@@ -62,6 +62,7 @@ const providerFixture: Provider = {
   name: 'Hyperliquid',
   logoURI: 'https://example.invalid/hyperliquid.svg',
   signingMethod: SigningMethod.EIP712,
+  active: true,
   accountConfiguration: [
     approveAgentItem,
     approveBuilderFeeItem,
@@ -83,6 +84,21 @@ const providerWithNoConfigurationFixture: Provider = {
   name: 'No-op',
   logoURI: 'https://example.invalid/noop.svg',
   signingMethod: SigningMethod.EVM_TX,
+  active: true,
+  accountConfiguration: [],
+  actions: [],
+  markets: [],
+}
+
+// Fixture: announced-but-not-yet-launched provider (`active: false`) — the
+// widget greys these out with a "Coming Soon" subtitle, but they still
+// round-trip through the type without any other field changes.
+const announcedProviderFixture: Provider = {
+  key: 'announced',
+  name: 'Announced',
+  logoURI: 'https://example.invalid/announced.svg',
+  signingMethod: SigningMethod.EIP712,
+  active: false,
   accountConfiguration: [],
   actions: [],
   markets: [],
@@ -111,6 +127,16 @@ type _AccountConfigurationIsRequired = Expect<
   >
 >
 
+// `Provider.active` is exactly `boolean` (catches accidental widening to
+// `boolean | undefined` or narrowing to a literal).
+type _ActiveFieldShape = Expect<Equals<Provider['active'], boolean>>
+
+// `active` is a required key on `Provider` (not optional). The backend MUST
+// declare every provider's launch state explicitly.
+type _ActiveIsRequired = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'active'>, 'active'>
+>
+
 // `AccountConfigurationItem` is `ActionDescriptor` plus the three metadata fields.
 // Catches accidental optional-marker drift or rename of any field on either type.
 type _AccountConfigurationItemKeys = Expect<
@@ -136,11 +162,14 @@ export const _fixtures = {
   agentSetAbstractionItem,
   providerFixture,
   providerWithNoConfigurationFixture,
+  announcedProviderFixture,
 }
 
 export type _TypeAssertions = [
   _AccountConfigurationFieldShape,
   _AccountConfigurationIsRequired,
+  _ActiveFieldShape,
+  _ActiveIsRequired,
   _AccountConfigurationItemKeys,
   _IsActionDescriptorSuperset,
 ]

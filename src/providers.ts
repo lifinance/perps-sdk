@@ -47,6 +47,8 @@ export interface Provider {
   name: string
   logoURI: string
   signingMethod: SigningMethod
+  /** When false, the provider is announced but not yet selectable in clients. */
+  active: boolean
   /**
    * Account-setup items required (or optional) for trading with this
    * provider. Replaces the previous `prepareAccountActions: ActionDescriptor[]`:
