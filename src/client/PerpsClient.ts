@@ -42,7 +42,6 @@ import {
 } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import {
-  type BuildWithdrawalParams,
   type CancelOrdersParams,
   type CheckPrerequisitesParams,
   type ExecutePrerequisitesParams,
@@ -244,62 +243,34 @@ export class PerpsClient {
     actions: ActionStep[],
     signingMethod: SigningMethod
   ): Promise<ExecuteActionResponse> {
-    const mode = this.getSigningMode(address, provider)
-
     switch (signingMethod) {
       case SigningMethod.EIP712: {
         const eip712Actions = actions as Eip712ActionStep[]
 
-        if (mode === SigningMode.USER_AGENT) {
-          // USER_AGENT: sign with the stored agent private key
-          const agent = await this.sdkClient.agentManager.getAgent(
-            address,
-            provider
-          )
-          const signedActions: SignedActionStep[] = await Promise.all(
-            eip712Actions.map(
-              async (a) =>
-                ({
-                  action: a.action,
-                  typedData: a.typedData,
-                  signature: await signTypedData(agent.privateKey, a.typedData),
-                }) satisfies Eip712SignedActionStep
-            )
-          )
-          return executeAction(this.sdkClient, {
-            provider,
-            address,
-            signerAddress: agent.address,
-            action,
-            actions: signedActions,
-          })
-        }
-
-        // USER: sign with the externally-provided signer (wagmi WalletClient,
-        // privateKeyToAccount, mnemonicToAccount — any viem-compatible signer).
-        // We use signer.account.signTypedData which accepts primaryType: string,
-        // matching PerpsTypedData without requiring strict generic inference.
-        if (!this.sdkClient.signer) {
-          throw new Error(
-            'USER signing mode requires a signer. Pass a WalletClient to createPerpsClient({ signer }).'
-          )
-        }
-        const { signer } = this.sdkClient
-        const signedUserActions: SignedActionStep[] = await Promise.all(
+        // Trades are always agent-signed; the user-wallet trade-signing path
+        // was removed (every supported provider's recommended path is the
+        // agent). Setup actions still flow through `signPrerequisite` /
+        // `executePrerequisites`, which handle user-wallet signing directly.
+        const agent = await this.sdkClient.agentManager.getAgent(
+          address,
+          provider
+        )
+        const signedActions: SignedActionStep[] = await Promise.all(
           eip712Actions.map(
-            async (a): Promise<Eip712SignedActionStep> => ({
-              action: a.action,
-              typedData: a.typedData,
-              signature: await signTypedDataWithSigner(signer, a.typedData),
-            })
+            async (a) =>
+              ({
+                action: a.action,
+                typedData: a.typedData,
+                signature: await signTypedData(agent.privateKey, a.typedData),
+              }) satisfies Eip712SignedActionStep
           )
         )
         return executeAction(this.sdkClient, {
           provider,
           address,
-          signerAddress: address,
+          signerAddress: agent.address,
           action,
-          actions: signedUserActions,
+          actions: signedActions,
         })
       }
 
@@ -615,17 +586,6 @@ export class PerpsClient {
     })
   }
 
-  async submitSignedAction(
-    action: ActionType,
-    params: {
-      provider: string
-      address: Address
-      actions: SignedActionStep[]
-    }
-  ): Promise<ExecuteActionResponse> {
-    return executeAction(this.sdkClient, { ...params, action })
-  }
-
   // ---------------------------------------------------------------------------
   // Signing mode management
   // ---------------------------------------------------------------------------
@@ -909,128 +869,7 @@ export class PerpsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Trading — build (USER mode) methods
-  // ---------------------------------------------------------------------------
-
-  async buildOrder(params: PlaceOrderParams): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.PLACE_ORDER, {
-      provider: params.provider,
-      address: params.address,
-      params: {
-        asset: params.asset,
-        side: params.side,
-        type: params.type,
-        size: params.size,
-        price: params.price,
-        leverage: params.leverage,
-        reduceOnly: params.reduceOnly,
-        timeInForce: params.timeInForce,
-        expiresAt: params.expiresAt,
-        takeProfit: params.takeProfit,
-        stopLoss: params.stopLoss,
-      },
-    })
-  }
-
-  async buildTriggerOrder(
-    params: PlaceTriggerOrderParams
-  ): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.PLACE_TRIGGER_ORDER, {
-      provider: params.provider,
-      address: params.address,
-      params: {
-        asset: params.asset,
-        side: params.side,
-        takeProfit: params.takeProfit,
-        stopLoss: params.stopLoss,
-      },
-    })
-  }
-
-  async buildCancelOrder(
-    params: CancelOrdersParams
-  ): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.CANCEL_ORDER, {
-      provider: params.provider,
-      address: params.address,
-      params: { ids: params.ids },
-    })
-  }
-
-  async buildModifyOrder(
-    params: ModifyOrdersParams
-  ): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.MODIFY_ORDER, {
-      provider: params.provider,
-      address: params.address,
-      params: {
-        modifications: params.modifications,
-      },
-    })
-  }
-
-  async buildPositionMargin(params: {
-    provider: string
-    address: Address
-    asset: AssetIdentity
-    action: 'add' | 'remove'
-    amount: string
-  }): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.UPDATE_POSITION_MARGIN, {
-      provider: params.provider,
-      address: params.address,
-      params: {
-        asset: params.asset,
-        action: params.action,
-        amount: params.amount,
-      },
-    })
-  }
-
-  async buildWithdrawal(
-    params: BuildWithdrawalParams
-  ): Promise<CreateActionResponse> {
-    return this.buildAction(ActionType.WITHDRAWAL, {
-      provider: params.provider,
-      address: params.address,
-      params: params.withdrawal,
-    })
-  }
-
-  // ---------------------------------------------------------------------------
-  // Trading — submit signed actions (USER mode)
-  // ---------------------------------------------------------------------------
-
-  async submitSignedOrder(params: {
-    provider: string
-    address: Address
-    actions: SignedActionStep[]
-  }): Promise<ExecuteActionResponse> {
-    return this.submitSignedAction(ActionType.PLACE_ORDER, params)
-  }
-
-  async submitSignedPosition(params: {
-    provider: string
-    address: Address
-    actions: SignedActionStep[]
-  }): Promise<ExecuteActionResponse> {
-    return this.submitSignedAction(ActionType.UPDATE_POSITION_MARGIN, params)
-  }
-
-  async submitWithdrawal(params: {
-    provider: string
-    address: Address
-    action: SignedActionStep
-  }): Promise<ExecuteActionResponse> {
-    return this.submitSignedAction(ActionType.WITHDRAWAL, {
-      provider: params.provider,
-      address: params.address,
-      actions: [params.action],
-    })
-  }
-
-  // ---------------------------------------------------------------------------
-  // Trading — auto-sign (USER_AGENT mode)
+  // Trading — auto-sign with the in-memory agent keypair
   // ---------------------------------------------------------------------------
 
   async placeOrder(params: PlaceOrderParams): Promise<ExecuteActionResponse> {
@@ -1075,7 +914,8 @@ export class PerpsClient {
 
   /**
    * Execute any action type through the SDK's signing pipeline.
-   * Handles both USER and USER_AGENT signing modes automatically.
+   * Trades are auto-signed by the in-memory agent keypair (USER_AGENT path);
+   * EVM_TX and WASM_BLOB actions sign via the user's wallet / Lighter API key.
    * Use this for action types without dedicated high-level methods.
    */
   async execute<T extends ActionType>(params: {
