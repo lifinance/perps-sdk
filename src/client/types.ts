@@ -197,6 +197,11 @@ export interface ExecutePrerequisitesResult {
   userResults: ExecuteActionResponse
   /** Results from agent-signed prerequisite submission (if any) */
   agentResults?: ExecuteActionResponse
-  /** Fallback user prerequisites when agent prerequisites fail (e.g. USER_SET_ABSTRACTION when AGENT_SET_ABSTRACTION cannot upgrade from dexAbstraction) */
+  /**
+   * Fallback user-wallet prerequisites surfaced when an agent-signed
+   * `ACCOUNT_MODE` dispatch fails (e.g. Hyperliquid refuses to upgrade
+   * from a non-default abstraction variant without a user signature).
+   * The widget should re-sign these with the user's wallet.
+   */
   fallbackUserPrerequisites?: ActionStep[]
 }
