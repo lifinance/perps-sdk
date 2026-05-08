@@ -12,7 +12,7 @@
 [**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) is a TypeScript SDK for trading perpetuals across multiple DEXes through a unified interface.
 
 - Unified interface across perpetual DEXes (Hyperliquid and more)
-- Two signing modes: **USER** (wallet signs each action) and **USER_AGENT** (agent auto-signs, no popups)
+- Agent-based trade signing — the SDK provisions a per-user signing agent so trades execute without wallet popups (one-time wallet signature for setup)
 - Low-level service functions and high-level `PerpsClient`
 - Real-time WebSocket subscriptions for prices, orderbook, and fills
 - Full TypeScript support with all types exported
