@@ -188,6 +188,30 @@ export interface SetAbstractionParams {
   abstraction?: string
 }
 
+/**
+ * Params for `ActionType.ACCOUNT_MODE` — switch the account's operating
+ * mode (e.g. HL abstraction variant, Lighter UTA / Simple). The string
+ * is opaque per-provider; the authoritative enumeration of valid values
+ * lives on the descriptor's `control.values` array (see
+ * `AccountConfigurationItem` in `providers.ts`). The SDK and backend are
+ * responsible for validating `mode` against that array — `@lifi/perps-types`
+ * intentionally does not encode the per-provider value list here, so a
+ * provider can add a new mode without a types release.
+ */
+export interface AccountModeParams {
+  mode: string
+}
+
+/**
+ * Params for `ActionType.ACCOUNT_TYPE` — switch the account's fee/latency
+ * tier (e.g. Lighter standard / premium). Providers without tiering omit
+ * the action entirely; the descriptor's `control.values` array enumerates
+ * the valid tiers for providers that do support it.
+ */
+export interface AccountTypeParams {
+  tier: string
+}
+
 export interface SendAssetParams {
   collateral: string
   sourceDex: string
@@ -214,7 +238,11 @@ export interface RegisterApiKeyParams {
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
+  [ActionType.ACCOUNT_MODE]: AccountModeParams
+  [ActionType.ACCOUNT_TYPE]: AccountTypeParams
+  /** @deprecated Use `ActionType.ACCOUNT_MODE`. */
   [ActionType.USER_SET_ABSTRACTION]: SetAbstractionParams
+  /** @deprecated Use `ActionType.ACCOUNT_MODE`. */
   [ActionType.AGENT_SET_ABSTRACTION]: SetAbstractionParams
   [ActionType.SEND_ASSET]: SendAssetParams
   [ActionType.WITHDRAWAL]: WithdrawalParams
