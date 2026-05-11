@@ -26,7 +26,11 @@ export interface PerpsConfig {
   requestInterceptor?: RequestInterceptor
   providers?: ProviderConfigs
   /**
-   * Wallet signer for USER-mode signing (EIP-712 typed data, EVM transactions).
+   * Wallet signer used for one-time setup actions only — `APPROVE_AGENT`,
+   * `APPROVE_BUILDER_FEE`, the L1 half of `REGISTER_API_KEY`, and `DEPOSIT`.
+   * Trades themselves are signed by the SDK-managed agent and never reach
+   * this signer.
+   *
    * Accepts any viem-compatible WalletClient:
    *   - Browser wallet: wagmi's useWalletClient() result
    *   - Private key:    createWalletClient({ account: privateKeyToAccount('0x...'), transport: http() })
@@ -63,7 +67,7 @@ export interface SDKRequestOptions {
 export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
   readonly agentManager: AgentManager
-  /** Wallet signer — accepts any viem WalletClient (browser, private key, mnemonic). */
+  /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
   readonly signer?: WalletClient<any, any, Account>
 }
 
