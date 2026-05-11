@@ -38,26 +38,46 @@ export const mockProviders: ProvidersResponse = {
       name: 'Hyperliquid',
       logoURI: 'https://example.com/hl.png',
       signingMethod: SigningMethod.EIP712,
+      active: true,
       accountConfiguration: [
         {
           type: ActionType.APPROVE_AGENT,
+          title: 'Approve agent wallet',
+          description:
+            'Authorises the SDK session signer to place orders on your behalf.',
+          optional: false,
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
+          control: { type: 'user-approval' },
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
+          title: 'Approve builder fee',
+          description: 'Authorises the LI.FI builder fee for this provider.',
+          optional: false,
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
+          control: { type: 'user-approval' },
         },
         {
-          type: ActionType.USER_SET_ABSTRACTION,
-          signers: [PerpsSigner.USER],
-          signingMethod: SigningMethod.EIP712,
-        },
-        {
-          type: ActionType.AGENT_SET_ABSTRACTION,
+          type: ActionType.ACCOUNT_MODE,
+          title: 'Account mode',
+          description: 'Choose how this account interacts with Hyperliquid.',
+          optional: true,
           signers: [PerpsSigner.AGENT],
           signingMethod: SigningMethod.EIP712,
+          control: {
+            type: 'multi-option',
+            values: [
+              { value: 'disabled', label: 'Standard' },
+              {
+                value: 'dexAbstraction',
+                label: 'Dex abstraction',
+                default: true,
+              },
+              { value: 'unifiedAccount', label: 'Unified account' },
+            ],
+          },
         },
       ],
       actions: [
@@ -82,6 +102,7 @@ export const mockProviders: ProvidersResponse = {
           signingMethod: SigningMethod.EIP712,
         },
       ],
+      markets: [],
     },
   ],
 }

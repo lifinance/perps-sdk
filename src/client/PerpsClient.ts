@@ -164,6 +164,17 @@ export class PerpsClient {
     return metadata
   }
 
+  /**
+   * Action types that require explicit user input (a chosen mode or tier)
+   * and therefore cannot be bulk-staged through `buildPrerequisites` with
+   * empty params. The widget renders a control for these and dispatches
+   * them via `execute(...)` once the user picks a value; the post-
+   * `APPROVE_AGENT` auto-upgrade path also dispatches `ACCOUNT_MODE`
+   * directly with `mode: 'unifiedAccount'`.
+   */
+  private static readonly EXPLICIT_INPUT_PREREQUISITES: ReadonlySet<ActionType> =
+    new Set([ActionType.ACCOUNT_MODE, ActionType.ACCOUNT_TYPE])
+
   private buildPrerequisiteInputs(
     prerequisites: ActionDescriptor[],
     mode: SigningMode,
@@ -171,7 +182,15 @@ export class PerpsClient {
   ): Array<{ key: string; params?: Record<string, unknown> }> {
     return prerequisites
       .filter((p) => {
+        // ACCOUNT_MODE / ACCOUNT_TYPE require explicit params; they're
+        // dispatched separately via `execute(...)` (or the post-APPROVE_AGENT
+        // auto-upgrade chain) rather than bulk-staged.
+        if (PerpsClient.EXPLICIT_INPUT_PREREQUISITES.has(p.type)) {
+          return false
+        }
         if (mode === SigningMode.USER) {
+          // USER mode: only items the user can sign, and never APPROVE_AGENT
+          // (no agent is created in this mode).
           if (!p.signers.includes(PerpsSigner.USER)) {
             return false
           }
@@ -180,13 +199,7 @@ export class PerpsClient {
           }
           return true
         }
-        if (
-          p.signers.includes(PerpsSigner.USER) &&
-          !p.signers.includes(PerpsSigner.AGENT) &&
-          p.type === ActionType.USER_SET_ABSTRACTION
-        ) {
-          return false
-        }
+        // USER_AGENT mode: include every remaining declared prerequisite.
         return true
       })
       .map((p) => {
@@ -812,6 +825,110 @@ export class PerpsClient {
     return { actions: allActions }
   }
 
+  /**
+   * Default mode the SDK auto-applies after `APPROVE_AGENT` on a provider
+   * whose `accountConfiguration` exposes a writable `ACCOUNT_MODE` (today
+   * Hyperliquid). The widget can subsequently override this through the
+   * radio control.
+   */
+  private static readonly DEFAULT_ACCOUNT_MODE = 'unifiedAccount'
+
+  /**
+   * Build, agent-sign, and submit a single `ACCOUNT_MODE` action. Returns
+   * the execute response and, on failure, a user-wallet fallback step
+   * the caller can surface to the widget for manual signing — preserving
+   * the historical `AGENT_SET_ABSTRACTION` → `USER_SET_ABSTRACTION` fallback
+   * semantics under the new generic action type.
+   *
+   * Idempotent: if the account is already in the requested mode, the
+   * backend's per-mode early-exit returns zero actions and this method
+   * returns an empty results envelope.
+   */
+  private async dispatchAgentAccountMode(
+    provider: string,
+    address: Address,
+    mode: string
+  ): Promise<{
+    results: ExecuteActionResponse
+    fallback?: ActionStep[]
+  }> {
+    const agent = await this.sdkClient.agentManager.getAgent(address, provider)
+
+    const { actions } = await createAction(this.sdkClient, {
+      provider,
+      address,
+      signerAddress: agent.address,
+      action: ActionType.ACCOUNT_MODE,
+      params: { mode } satisfies ActionParamsMap[ActionType.ACCOUNT_MODE],
+    })
+
+    if (actions.length === 0) {
+      // Idempotent no-op (already in the requested mode).
+      return { results: { results: [] } }
+    }
+
+    const signedActions: SignedActionStep[] = await Promise.all(
+      (actions as Eip712ActionStep[]).map(
+        async (a): Promise<Eip712SignedActionStep> => ({
+          action: a.action,
+          typedData: a.typedData,
+          signature: await signTypedData(agent.privateKey, a.typedData),
+        })
+      )
+    )
+
+    const results = await executeAction(this.sdkClient, {
+      provider,
+      address,
+      signerAddress: agent.address,
+      action: ActionType.ACCOUNT_MODE,
+      actions: signedActions,
+    })
+
+    const failed = results.results.some(
+      (r) => !r.success && r.action === ActionType.ACCOUNT_MODE
+    )
+
+    if (!failed) {
+      return { results }
+    }
+
+    // Agent dispatch failed (e.g. HL refuses to upgrade the abstraction
+    // variant of a non-default mode without a user signature). Build the
+    // user-wallet fallback action so the caller can surface it to the
+    // widget for manual signing.
+    const { actions: fallbackActions } = await createAction(this.sdkClient, {
+      provider,
+      address,
+      action: ActionType.ACCOUNT_MODE,
+      params: { mode } satisfies ActionParamsMap[ActionType.ACCOUNT_MODE],
+    })
+
+    return {
+      results,
+      fallback: fallbackActions.length > 0 ? fallbackActions : undefined,
+    }
+  }
+
+  /**
+   * `accountConfiguration` test: the provider exposes an `ACCOUNT_MODE`
+   * descriptor whose control is a writable multi-option select. Used to
+   * gate the post-`APPROVE_AGENT` auto-upgrade — providers that omit
+   * `ACCOUNT_MODE` (Lighter today) or expose it read-only skip the chain.
+   */
+  private static hasWritableAccountMode(metadata: Provider): boolean {
+    const item = metadata.accountConfiguration.find(
+      (i) => i.type === ActionType.ACCOUNT_MODE
+    )
+    if (!item) {
+      return false
+    }
+    if (item.control.type !== 'multi-option') {
+      return false
+    }
+    return !item.control.readOnly
+  }
+
   async executePrerequisites(
     params: ExecutePrerequisitesParams
   ): Promise<ExecutePrerequisitesResult> {
@@ -843,7 +960,41 @@ export class PerpsClient {
       }
     }
 
-    // 2. Auto-sign and submit agent prerequisites
+    // 2. Auto-upgrade ACCOUNT_MODE after APPROVE_AGENT.
+    //
+    // When the user-signed prerequisites included a successful APPROVE_AGENT,
+    // the freshly approved agent is now authorised to sign account-level
+    // actions. If the provider exposes a writable `ACCOUNT_MODE` descriptor
+    // (Hyperliquid today), the SDK chains an agent-signed dispatch with the
+    // SDK's preferred default — giving new accounts unifiedAccount mode with
+    // zero extra clicks. The chain is fire-and-forget on success; on failure
+    // it surfaces a user-wallet fallback step but does NOT abort onboarding
+    // because `ACCOUNT_MODE` is `optional: true` in the descriptor.
+    let agentResults: ExecuteActionResponse | undefined
+    let fallbackUserPrerequisites: ActionStep[] | undefined
+    if (mode === SigningMode.USER_AGENT) {
+      const justApprovedAgent = userResults.results.some(
+        (r) => r.success && r.action === ActionType.APPROVE_AGENT
+      )
+      if (justApprovedAgent) {
+        const metadata = await this.getProviderMetadata(provider)
+        if (PerpsClient.hasWritableAccountMode(metadata)) {
+          const upgrade = await this.dispatchAgentAccountMode(
+            provider,
+            address,
+            PerpsClient.DEFAULT_ACCOUNT_MODE
+          )
+          agentResults = upgrade.results
+          fallbackUserPrerequisites = upgrade.fallback
+        }
+      }
+    }
+
+    // 3. Sign and submit any pre-staged agent prerequisites returned by the
+    //    backend's `buildPrerequisites` call. ACCOUNT_MODE is filtered out of
+    //    bulk staging (it requires explicit `mode` params), so this block
+    //    today only runs for legacy backends still emitting AGENT_SET_ABSTRACTION
+    //    or for future agent-signed steps the backend chooses to stage.
     if (
       required.agentPrerequisites.length > 0 &&
       mode === SigningMode.USER_AGENT
@@ -868,44 +1019,25 @@ export class PerpsClient {
       )
 
       const firstAction = required.agentPrerequisites[0]?.action as string
-      const agentResults = await executeAction(this.sdkClient, {
+      const stagedResults = await executeAction(this.sdkClient, {
         provider,
         address,
         signerAddress: agent.address,
-        action: (firstAction ?? ActionType.AGENT_SET_ABSTRACTION) as ActionType,
+        action: (firstAction ?? ActionType.ACCOUNT_MODE) as ActionType,
         actions: signedAgentActions,
       })
 
-      // If AGENT_SET_ABSTRACTION failed (e.g. dexAbstraction → unified upgrade),
-      // fall back to USER_SET_ABSTRACTION so the user can sign it manually.
-      const abstractionFailed = agentResults.results.some(
-        (r) => !r.success && r.action === ActionType.AGENT_SET_ABSTRACTION
-      )
-
-      if (abstractionFailed) {
-        const { actions: fallbackActions } = await createAction(
-          this.sdkClient,
-          {
-            provider,
-            address,
-            action: ActionType.USER_SET_ABSTRACTION,
-            params: {} as ActionParamsMap[ActionType.USER_SET_ABSTRACTION],
-          }
-        )
-
-        if (fallbackActions.length > 0) {
-          return {
-            userResults,
-            agentResults,
-            fallbackUserPrerequisites: fallbackActions,
-          }
-        }
+      // Merge staged-prereq results with any auto-upgrade results from step 2.
+      agentResults = {
+        results: [...(agentResults?.results ?? []), ...stagedResults.results],
       }
-
-      return { userResults, agentResults }
     }
 
-    return { userResults }
+    return {
+      userResults,
+      ...(agentResults ? { agentResults } : {}),
+      ...(fallbackUserPrerequisites ? { fallbackUserPrerequisites } : {}),
+    }
   }
 
   // ---------------------------------------------------------------------------

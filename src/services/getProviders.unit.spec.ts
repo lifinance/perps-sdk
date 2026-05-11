@@ -21,7 +21,7 @@ describe('getProviders', () => {
     const result = await getProviders(client)
 
     expect(result.providers[0].accountConfiguration).toBeDefined()
-    expect(result.providers[0].accountConfiguration).toHaveLength(4)
+    expect(result.providers[0].accountConfiguration).toHaveLength(3)
   })
 
   it('should support AbortSignal', async () => {
