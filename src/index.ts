@@ -22,7 +22,6 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export type {
-  BuildWithdrawalParams,
   CancelOrdersParams,
   CheckPrerequisitesParams,
   ExecutePrerequisitesParams,

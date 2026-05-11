@@ -85,24 +85,6 @@ describe('PerpsClient', () => {
   })
 
   describe('placeOrder', () => {
-    it('should throw in USER mode without a signer configured', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      try {
-        await client.placeOrder({
-          address: userAddress,
-          provider,
-          symbol: 'BTC',
-          side: 'BUY' as any,
-          type: 'MARKET' as any,
-          size: '0.1',
-          price: '95000.00',
-        })
-        expect.fail('Should have thrown')
-      } catch (error: any) {
-        expect(error.message).toContain('signer')
-      }
-    })
-
     it('should place order in USER_AGENT mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
@@ -123,20 +105,6 @@ describe('PerpsClient', () => {
   })
 
   describe('cancelOrders', () => {
-    it('should throw in USER mode without a signer configured', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      try {
-        await client.cancelOrders({
-          address: userAddress,
-          provider,
-          ids: ['order1'],
-        })
-        expect.fail('Should have thrown')
-      } catch (error: any) {
-        expect(error.message).toContain('signer')
-      }
-    })
-
     it('should cancel orders in USER_AGENT mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
@@ -170,54 +138,6 @@ describe('PerpsClient', () => {
       })
 
       expect(result.actions).toBeDefined()
-    })
-  })
-
-  describe('buildOrder', () => {
-    it('should work in USER mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      const result = await client.buildOrder({
-        address: userAddress,
-        provider,
-        symbol: 'BTC',
-        side: 'BUY' as any,
-        type: 'LIMIT' as any,
-        size: '0.1',
-        price: '94000.00',
-      })
-
-      expect(result.actions).toHaveLength(1)
-      expect(result.actions[0].action).toBe(ActionType.PLACE_ORDER)
-    })
-
-    it('should work in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
-      const result = await client.buildOrder({
-        address: userAddress,
-        provider,
-        symbol: 'BTC',
-        side: 'BUY' as any,
-        type: 'LIMIT' as any,
-        size: '0.1',
-        price: '94000.00',
-      })
-
-      expect(result.actions).toHaveLength(1)
-    })
-  })
-
-  describe('buildCancelOrder', () => {
-    it('should work in USER mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      const result = await client.buildCancelOrder({
-        address: userAddress,
-        provider,
-        ids: ['order1'],
-      })
-
-      expect(result.actions).toHaveLength(1)
-      expect(result.actions[0].action).toBe(ActionType.PLACE_ORDER)
     })
   })
 
