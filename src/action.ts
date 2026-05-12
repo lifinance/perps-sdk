@@ -184,10 +184,6 @@ export interface ApproveAgentParams {
   agentTtlMs?: number
 }
 
-export interface SetAbstractionParams {
-  abstraction?: string
-}
-
 /**
  * Params for `ActionType.ACCOUNT_MODE` — switch the account's operating
  * mode (e.g. HL abstraction variant, Lighter UTA / Simple). The string
@@ -240,10 +236,6 @@ export interface ActionParamsMap {
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
   [ActionType.ACCOUNT_MODE]: AccountModeParams
   [ActionType.ACCOUNT_TYPE]: AccountTypeParams
-  /** @deprecated Use `ActionType.ACCOUNT_MODE`. */
-  [ActionType.USER_SET_ABSTRACTION]: SetAbstractionParams
-  /** @deprecated Use `ActionType.ACCOUNT_MODE`. */
-  [ActionType.AGENT_SET_ABSTRACTION]: SetAbstractionParams
   [ActionType.SEND_ASSET]: SendAssetParams
   [ActionType.WITHDRAWAL]: WithdrawalParams
   [ActionType.TRANSFER]: Record<string, never>
