@@ -83,22 +83,27 @@ export const mockProviders: ProvidersResponse = {
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signers: [PerpsSigner.AGENT],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.CANCEL_ORDER,
-          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signers: [PerpsSigner.AGENT],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.MODIFY_ORDER,
-          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signers: [PerpsSigner.AGENT],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.UPDATE_POSITION_MARGIN,
-          signers: [PerpsSigner.USER, PerpsSigner.AGENT],
+          signers: [PerpsSigner.AGENT],
+          signingMethod: SigningMethod.EIP712,
+        },
+        {
+          type: ActionType.WITHDRAWAL,
+          signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
         },
       ],
@@ -373,6 +378,46 @@ export const mockSubmitOrderResponse: ExecuteActionResponse = {
       action: ActionType.PLACE_ORDER,
       success: true,
       orderId: 'neworder123',
+    },
+  ],
+}
+
+export const mockCreateWithdrawalResponse: CreateActionResponse = {
+  actions: [
+    {
+      action: ActionType.WITHDRAWAL,
+      typedData: {
+        domain: {
+          name: 'HyperliquidSignTransaction',
+          version: '1',
+          chainId: 42161,
+          verifyingContract: '0x0000000000000000000000000000000000000000',
+        },
+        types: {
+          'HyperliquidTransaction:Withdraw': [
+            { name: 'hyperliquidChain', type: 'string' },
+            { name: 'destination', type: 'string' },
+            { name: 'amount', type: 'string' },
+            { name: 'time', type: 'uint64' },
+          ],
+        },
+        primaryType: 'HyperliquidTransaction:Withdraw',
+        message: {
+          hyperliquidChain: 'Mainnet',
+          destination: '0x1234567890123456789012345678901234567890',
+          amount: '10',
+          time: 1700000000000,
+        },
+      },
+    },
+  ],
+}
+
+export const mockSubmitWithdrawalResponse: ExecuteActionResponse = {
+  results: [
+    {
+      action: ActionType.WITHDRAWAL,
+      success: true,
     },
   ],
 }

@@ -9,6 +9,7 @@ import type {
   SignedActionStep,
   TimeInForce,
   TriggerOrderInput,
+  WithdrawalParams,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
 import type { LighterSignerConfig } from '../signers/lighter/index.js'
@@ -114,6 +115,18 @@ export interface PlaceTriggerOrderParams {
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
+}
+
+/**
+ * Parameters for withdrawing funds.
+ */
+export interface WithdrawParams {
+  /** Provider to withdraw from */
+  provider: string
+  /** User wallet address (account owner) */
+  address: Address
+  /** Withdrawal details */
+  withdrawal: WithdrawalParams
 }
 
 /**

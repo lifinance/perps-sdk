@@ -4,14 +4,20 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
+  Hex,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
+import { createWalletClient, http as viemHttp } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   mockAccount,
   mockCreateOrderResponse,
+  mockCreateWithdrawalResponse,
   mockSubmitOrderResponse,
+  mockSubmitWithdrawalResponse,
   server,
 } from '../../test/handlers.js'
 import { createMemoryStorage } from '../agent/storage.js'
@@ -103,6 +109,68 @@ describe('PerpsClient', () => {
       expect(result.results).toHaveLength(1)
       expect(result.results[0].success).toBe(true)
       expect(result.results[0].orderId).toBe('neworder123')
+    })
+  })
+
+  describe('withdraw — descriptor-driven user-wallet signing', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const userPrivateKey =
+      `0x${'11'.repeat(32)}` as Hex
+    const account = privateKeyToAccount(userPrivateKey)
+
+    it('signs with the configured WalletClient and posts with signerAddress=user', async () => {
+      const signer = createWalletClient({
+        account,
+        chain: mainnet,
+        transport: viemHttp(),
+      })
+
+      const withdrawClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+      })
+      withdrawClient.setSigner(signer)
+
+      let capturedRequest: ExecuteActionRequest | undefined
+
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(mockCreateWithdrawalResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          capturedRequest = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json(mockSubmitWithdrawalResponse)
+        })
+      )
+
+      const result = await withdrawClient.withdraw({
+        provider,
+        address: account.address,
+        withdrawal: { destination: account.address, amount: '10' },
+      })
+
+      expect(result.results[0].success).toBe(true)
+      expect(capturedRequest).toBeDefined()
+      expect(capturedRequest!.action).toBe(ActionType.WITHDRAWAL)
+      expect(capturedRequest!.signerAddress).toBe(account.address)
+      expect(capturedRequest!.actions[0].signature).toMatch(/^0x[0-9a-f]+$/i)
+    })
+
+    it('throws a clear error when no signer is configured', async () => {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(mockCreateWithdrawalResponse)
+        )
+      )
+
+      await expect(
+        client.withdraw({
+          provider,
+          address: userAddress,
+          withdrawal: { destination: userAddress, amount: '10' },
+        })
+      ).rejects.toThrow(/no signer was configured/i)
     })
   })
 
