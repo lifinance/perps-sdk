@@ -53,6 +53,7 @@ import {
   type PlaceTriggerOrderParams,
   type PrerequisitesResult,
   SigningMode,
+  type WithdrawParams,
 } from './types.js'
 
 const MAX_NONCE_RETRIES = 3
@@ -115,9 +116,8 @@ export class PerpsClient {
   }
 
   /**
-   * Set or update the wallet signer for USER-mode signing.
-   * Call this when the user connects their wallet (e.g. from wagmi's useWalletClient).
-   * Pass undefined to clear the signer when the wallet disconnects.
+   * Set or update the wallet signer. Used whenever an action's descriptor
+   * names the user wallet in its `signers` list. Pass undefined to clear.
    */
   setSigner(signer: PerpsSDKClient['signer']): void {
     this._signer = signer
@@ -254,37 +254,67 @@ export class PerpsClient {
     address: Address,
     action: ActionType,
     actions: ActionStep[],
-    signingMethod: SigningMethod
+    descriptor: ActionDescriptor
   ): Promise<ExecuteActionResponse> {
-    switch (signingMethod) {
+    switch (descriptor.signingMethod) {
       case SigningMethod.EIP712: {
         const eip712Actions = actions as Eip712ActionStep[]
 
-        // Trades are always agent-signed; the user-wallet trade-signing path
-        // was removed (every supported provider's recommended path is the
-        // agent). Setup actions still flow through `signPrerequisite` /
-        // `executePrerequisites`, which handle user-wallet signing directly.
-        const agent = await this.sdkClient.agentManager.getAgent(
-          address,
-          provider
-        )
-        const signedActions: SignedActionStep[] = await Promise.all(
-          eip712Actions.map(
-            async (a) =>
-              ({
-                action: a.action,
-                typedData: a.typedData,
-                signature: await signTypedData(agent.privateKey, a.typedData),
-              }) satisfies Eip712SignedActionStep
+        if (descriptor.signers.includes(PerpsSigner.AGENT)) {
+          const agent = await this.sdkClient.agentManager.getAgent(
+            address,
+            provider
           )
+          const signedActions: SignedActionStep[] = await Promise.all(
+            eip712Actions.map(
+              async (a) =>
+                ({
+                  action: a.action,
+                  typedData: a.typedData,
+                  signature: await signTypedData(agent.privateKey, a.typedData),
+                }) satisfies Eip712SignedActionStep
+            )
+          )
+          return executeAction(this.sdkClient, {
+            provider,
+            address,
+            signerAddress: agent.address,
+            action,
+            actions: signedActions,
+          })
+        }
+
+        if (descriptor.signers.includes(PerpsSigner.USER)) {
+          const signer = this.sdkClient.signer
+          if (!signer) {
+            throw new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Action '${action}' requires a user-wallet signature, but no signer was configured. Pass a WalletClient to createPerpsClient({ signer }).`
+            )
+          }
+          const signedActions: SignedActionStep[] = await Promise.all(
+            eip712Actions.map(
+              async (a) =>
+                ({
+                  action: a.action,
+                  typedData: a.typedData,
+                  signature: await signTypedDataWithSigner(signer, a.typedData),
+                }) satisfies Eip712SignedActionStep
+            )
+          )
+          return executeAction(this.sdkClient, {
+            provider,
+            address,
+            signerAddress: address,
+            action,
+            actions: signedActions,
+          })
+        }
+
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `Action '${action}' descriptor names no supported signer (signers=[${descriptor.signers.join(', ')}]).`
         )
-        return executeAction(this.sdkClient, {
-          provider,
-          address,
-          signerAddress: agent.address,
-          action,
-          actions: signedActions,
-        })
       }
 
       case SigningMethod.WASM_BLOB: {
@@ -316,7 +346,7 @@ export class PerpsClient {
       }
 
       default:
-        throw new Error(`Unknown signingMethod: ${signingMethod}`)
+        throw new Error(`Unknown signingMethod: ${descriptor.signingMethod}`)
     }
   }
 
@@ -1017,7 +1047,7 @@ export class PerpsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Trading — auto-sign with the in-memory agent keypair
+  // Typed action helpers
   // ---------------------------------------------------------------------------
 
   async placeOrder(params: PlaceOrderParams): Promise<ExecuteActionResponse> {
@@ -1060,11 +1090,20 @@ export class PerpsClient {
     })
   }
 
+  async withdraw(params: WithdrawParams): Promise<ExecuteActionResponse> {
+    return this.execute({
+      provider: params.provider,
+      address: params.address,
+      action: ActionType.WITHDRAWAL,
+      params: params.withdrawal,
+    })
+  }
+
   /**
-   * Execute any action type through the SDK's signing pipeline.
-   * Trades are auto-signed by the in-memory agent keypair (USER_AGENT path);
-   * EVM_TX and WASM_BLOB actions sign via the user's wallet / Lighter API key.
-   * Use this for action types without dedicated high-level methods.
+   * Execute any action through the SDK's signing pipeline. Signing is routed
+   * by the action's descriptor in provider metadata — the agent keypair, the
+   * configured WalletClient signer, the Lighter API key, or an EVM tx — as
+   * the descriptor's `signers` and `signingMethod` dictate.
    */
   async execute<T extends ActionType>(params: {
     provider: string
@@ -1090,7 +1129,7 @@ export class PerpsClient {
           params.address,
           params.action,
           actions,
-          descriptor.signingMethod
+          descriptor
         )
       } catch (err) {
         if (

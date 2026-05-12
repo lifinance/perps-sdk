@@ -26,12 +26,8 @@ export interface PerpsConfig {
   requestInterceptor?: RequestInterceptor
   providers?: ProviderConfigs
   /**
-   * Wallet signer used for one-time setup actions only — `APPROVE_AGENT`,
-   * `APPROVE_BUILDER_FEE`, the L1 half of `REGISTER_API_KEY`, and `DEPOSIT`.
-   * Trades themselves are signed by the SDK-managed agent and never reach
-   * this signer.
-   *
-   * Accepts any viem-compatible WalletClient:
+   * Wallet signer used whenever an action's descriptor names the user wallet
+   * in its `signers` list. Accepts any viem-compatible WalletClient:
    *   - Browser wallet: wagmi's useWalletClient() result
    *   - Private key:    createWalletClient({ account: privateKeyToAccount('0x...'), transport: http() })
    *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })

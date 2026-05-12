@@ -45,3 +45,6 @@ Thumbs.db
 # Claude Code (local config)
 CLAUDE.local.md
 .claude/
+
+# Git worktrees
+.worktrees/
