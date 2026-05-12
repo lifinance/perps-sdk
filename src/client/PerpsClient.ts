@@ -794,69 +794,85 @@ export class PerpsClient {
   private static readonly DEFAULT_ACCOUNT_MODE = 'unifiedAccount'
 
   /**
-   * Build, agent-sign, and submit a single `ACCOUNT_MODE` action. Returns
-   * the execute response and, on failure, a user-wallet fallback step
-   * the caller can surface to the widget for manual signing — preserving
-   * the historical `AGENT_SET_ABSTRACTION` → `USER_SET_ABSTRACTION` fallback
-   * semantics under the new generic action type.
+   * Prepare an `ACCOUNT_MODE` change by proactively reading the account's
+   * current `abstractionStatus` and routing to the correct signer:
    *
-   * Idempotent: if the account is already in the requested mode, the
-   * backend's per-mode early-exit returns zero actions and this method
-   * returns an empty results envelope.
+   * - `abstractionStatus == null` (never set, e.g. a fresh HL account):
+   *   the change MAY be performed by the agent signer. Build, sign with
+   *   the agent key, and dispatch. Returns `{ results }`.
+   * - `abstractionStatus === mode`: idempotent no-op. Returns an empty
+   *   results envelope without contacting `/createAction` or `/executeAction`.
+   * - `abstractionStatus` set to any other value: HL requires a user-wallet
+   *   signature to change the abstraction once it has been set. Build the
+   *   action unsigned and return it as `{ fallback }` so the caller can
+   *   surface a wallet prompt via `fallbackUserPrerequisites`.
+   *
+   * Network errors from `/account` propagate — we never guess the signer.
    */
-  private async dispatchAgentAccountMode(
+  private async prepareAccountModeChange(
     provider: string,
     address: Address,
     mode: string
   ): Promise<{
-    results: ExecuteActionResponse
+    results?: ExecuteActionResponse
     fallback?: ActionStep[]
   }> {
-    const agent = await this.sdkClient.agentManager.getAgent(address, provider)
+    const account = await getAccount(this.sdkClient, { provider, address })
+    const currentStatus = account.config?.abstractionStatus as
+      | string
+      | null
+      | undefined
 
-    const { actions } = await createAction(this.sdkClient, {
-      provider,
-      address,
-      signerAddress: agent.address,
-      action: ActionType.ACCOUNT_MODE,
-      params: { mode } satisfies ActionParamsMap[ActionType.ACCOUNT_MODE],
-    })
-
-    if (actions.length === 0) {
-      // Idempotent no-op (already in the requested mode).
-      return { results: { results: [] } }
+    // Idempotent short-circuit: already in the requested mode.
+    if (currentStatus === mode) {
+      return {}
     }
 
-    const signedActions: SignedActionStep[] = await Promise.all(
-      (actions as Eip712ActionStep[]).map(
-        async (a): Promise<Eip712SignedActionStep> => ({
-          action: a.action,
-          typedData: a.typedData,
-          signature: await signTypedData(agent.privateKey, a.typedData),
-        })
+    // Never set → the agent is authorised to perform the change.
+    if (currentStatus == null) {
+      const agent = await this.sdkClient.agentManager.getAgent(
+        address,
+        provider
       )
-    )
 
-    const results = await executeAction(this.sdkClient, {
-      provider,
-      address,
-      signerAddress: agent.address,
-      action: ActionType.ACCOUNT_MODE,
-      actions: signedActions,
-    })
+      const { actions } = await createAction(this.sdkClient, {
+        provider,
+        address,
+        signerAddress: agent.address,
+        action: ActionType.ACCOUNT_MODE,
+        params: { mode } satisfies ActionParamsMap[ActionType.ACCOUNT_MODE],
+      })
 
-    const failed = results.results.some(
-      (r) => !r.success && r.action === ActionType.ACCOUNT_MODE
-    )
+      if (actions.length === 0) {
+        // Backend's per-mode early-exit (defensive — shouldn't fire given
+        // the short-circuit above, but covers a race between our /account
+        // read and the backend's view of the current status).
+        return { results: { results: [] } }
+      }
 
-    if (!failed) {
+      const signedActions: SignedActionStep[] = await Promise.all(
+        (actions as Eip712ActionStep[]).map(
+          async (a): Promise<Eip712SignedActionStep> => ({
+            action: a.action,
+            typedData: a.typedData,
+            signature: await signTypedData(agent.privateKey, a.typedData),
+          })
+        )
+      )
+
+      const results = await executeAction(this.sdkClient, {
+        provider,
+        address,
+        signerAddress: agent.address,
+        action: ActionType.ACCOUNT_MODE,
+        actions: signedActions,
+      })
+
       return { results }
     }
 
-    // Agent dispatch failed (e.g. HL refuses to upgrade the abstraction
-    // variant of a non-default mode without a user signature). Build the
-    // user-wallet fallback action so the caller can surface it to the
-    // widget for manual signing.
+    // Already set to a different mode → HL requires a user-wallet signature.
+    // Build the action unsigned and surface it as a fallback for the widget.
     const { actions: fallbackActions } = await createAction(this.sdkClient, {
       provider,
       address,
@@ -865,7 +881,6 @@ export class PerpsClient {
     })
 
     return {
-      results,
       fallback: fallbackActions.length > 0 ? fallbackActions : undefined,
     }
   }
@@ -924,12 +939,13 @@ export class PerpsClient {
     //
     // When the user-signed prerequisites included a successful APPROVE_AGENT,
     // the freshly approved agent is now authorised to sign account-level
-    // actions. If the provider exposes a writable `ACCOUNT_MODE` descriptor
-    // (Hyperliquid today), the SDK chains an agent-signed dispatch with the
-    // SDK's preferred default — giving new accounts unifiedAccount mode with
-    // zero extra clicks. The chain is fire-and-forget on success; on failure
-    // it surfaces a user-wallet fallback step but does NOT abort onboarding
-    // because `ACCOUNT_MODE` is `optional: true` in the descriptor.
+    // actions for accounts whose abstraction has never been set. If the
+    // provider exposes a writable `ACCOUNT_MODE` descriptor (Hyperliquid
+    // today), the SDK reads `account.config.abstractionStatus` to decide
+    // the signer: `null` → agent-dispatch silently to the SDK's preferred
+    // default; non-null → return a wallet-signing fallback step. Either
+    // way the chain does NOT abort onboarding because `ACCOUNT_MODE` is
+    // `optional: true` in the descriptor.
     let agentResults: ExecuteActionResponse | undefined
     let fallbackUserPrerequisites: ActionStep[] | undefined
     if (mode === SigningMode.USER_AGENT) {
@@ -939,7 +955,7 @@ export class PerpsClient {
       if (justApprovedAgent) {
         const metadata = await this.getProviderMetadata(provider)
         if (PerpsClient.hasWritableAccountMode(metadata)) {
-          const upgrade = await this.dispatchAgentAccountMode(
+          const upgrade = await this.prepareAccountModeChange(
             provider,
             address,
             PerpsClient.DEFAULT_ACCOUNT_MODE
@@ -953,8 +969,8 @@ export class PerpsClient {
     // 3. Sign and submit any pre-staged agent prerequisites returned by the
     //    backend's `buildPrerequisites` call. ACCOUNT_MODE is filtered out of
     //    bulk staging (it requires explicit `mode` params), so this block
-    //    today only runs for legacy backends still emitting AGENT_SET_ABSTRACTION
-    //    or for future agent-signed steps the backend chooses to stage.
+    //    today only runs for future agent-signed steps the backend chooses
+    //    to stage.
     if (
       required.agentPrerequisites.length > 0 &&
       mode === SigningMode.USER_AGENT
