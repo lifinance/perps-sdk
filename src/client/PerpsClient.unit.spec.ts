@@ -114,8 +114,7 @@ describe('PerpsClient', () => {
 
   describe('withdraw — descriptor-driven user-wallet signing', () => {
     const BASE_URL = DEFAULT_API_URL
-    const userPrivateKey =
-      `0x${'11'.repeat(32)}` as Hex
+    const userPrivateKey = `0x${'11'.repeat(32)}` as Hex
     const account = privateKeyToAccount(userPrivateKey)
 
     it('signs with the configured WalletClient and posts with signerAddress=user', async () => {

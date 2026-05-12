@@ -52,8 +52,8 @@ import {
   type PlaceOrderParams,
   type PlaceTriggerOrderParams,
   type PrerequisitesResult,
-  type WithdrawParams,
   SigningMode,
+  type WithdrawParams,
 } from './types.js'
 
 const MAX_NONCE_RETRIES = 3
