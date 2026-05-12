@@ -155,18 +155,30 @@ export interface FundingActivity extends BaseActivity {
 }
 
 /**
- * Internal transfer between two accounts on the same L2 (e.g. Lighter
- * `/api/v1/transfer/history`). Direction is relative to the queried
- * account; `counterpartyAccountIndex` identifies the other side.
+ * Internal transfer between two accounts on the same provider (e.g. Lighter
+ * `/api/v1/transfer/history`, Hyperliquid `spotTransfer` ledger entry).
+ * Direction is relative to the queried account.
+ *
+ * The counterparty is identified by either an account index (integer L2
+ * account identifier — Lighter) or a wallet address (Hyperliquid, where
+ * accounts ARE addresses). The type is a discriminated union over these two
+ * shapes: at least one of `counterpartyAccountIndex` / `counterpartyAddress`
+ * MUST be present, and either may appear alone or alongside the other.
+ *
+ * Consumers that render counterparties should prefer `counterpartyAccountIndex`
+ * when present (it's the canonical handle on index-based providers) and fall
+ * back to a truncated `counterpartyAddress` otherwise.
  */
-export interface TransferActivity extends BaseActivity {
+export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
-  counterpartyAccountIndex: number
   asset: string
   amount: string
   meta?: Record<string, unknown>
-}
+} & (
+    | { counterpartyAccountIndex: number; counterpartyAddress?: string }
+    | { counterpartyAccountIndex?: number; counterpartyAddress: string }
+  )
 
 export type ActivityItem =
   | DepositActivity
