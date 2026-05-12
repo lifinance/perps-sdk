@@ -7,18 +7,20 @@ import type {
   FundingActivity,
   TransferActivity,
 } from '../../../account.js'
-import { isSpotTransferDelta } from '../types.js'
+import { isSendAssetDelta, isSpotTransferDelta } from '../types.js'
 import type { HlLedgerUpdate, HlFundingUpdate } from '../types.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
  *
- * Direction for `spotTransfer` is derived from `queriedAddress`: if it
- * matches the delta's `user`, the queried account is the sender (`OUT`);
- * if it matches `destination`, it's the recipient (`IN`).
+ * Direction for `spotTransfer` and `sendAsset` is derived from
+ * `queriedAddress`: if it matches the delta's `user`, the queried account
+ * is the sender (`OUT`); if it matches `destination`, it's the recipient
+ * (`IN`).
  *
  * Returns null for currently-unsupported delta types
- * (accountClassTransfer, internalTransfer, subAccountTransfer).
+ * (accountClassTransfer, internalTransfer, subAccountTransfer), and also
+ * for same-user `sendAsset` dex moves (see that branch's comment).
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
@@ -56,6 +58,52 @@ export const mapLedgerEntry = (
     }
     if (delta.nonce !== undefined) {
       meta.nonce = delta.nonce
+    }
+    return {
+      ...base,
+      type: ActivityType.TRANSFER,
+      direction,
+      counterpartyAddress,
+      asset: delta.token,
+      amount: delta.amount,
+      meta,
+    } satisfies TransferActivity
+  }
+
+  // `sendAsset` (wire delta `type === 'send'`) covers two distinct flows:
+  //   1. Cross-user transfer (possibly across dexes) — modeled as TRANSFER,
+  //      direction derived from queried address match, exactly like
+  //      spotTransfer.
+  //   2. Same-user dex move (user moving their own assets between their own
+  //      dexes, e.g. perp -> spot). Here `user === destination === queried`;
+  //      it isn't a wallet IN/OUT in any meaningful sense. We return `null`
+  //      and let a follow-up issue introduce a dedicated ActivityType (e.g.
+  //      `DEX_TRANSFER`) if same-user dex moves need surfacing. Overloading
+  //      `TRANSFER` for this would lie about direction.
+  //
+  // Same pre-switch reasoning as spotTransfer: the catch-all arm of
+  // `HlLedgerDelta` prevents narrowing off the discriminant alone.
+  if (isSendAssetDelta(delta)) {
+    const queried = queriedAddress.toLowerCase()
+    const sender = delta.user.toLowerCase()
+    const recipient = delta.destination.toLowerCase()
+
+    // Same-user dex move — skip from TRANSFER stream entirely.
+    if (sender === recipient && sender === queried) {
+      return null
+    }
+
+    const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
+    const counterpartyAddress = direction === 'OUT' ? recipient : sender
+    const meta: Record<string, unknown> = {
+      transferType: 'sendAsset',
+      sourceDex: delta.sourceDex,
+      destinationDex: delta.destinationDex,
+      usdcValue: delta.usdcValue,
+      fee: delta.fee,
+      nativeTokenFee: delta.nativeTokenFee,
+      feeToken: delta.feeToken,
+      nonce: delta.nonce,
     }
     return {
       ...base,
