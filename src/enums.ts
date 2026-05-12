@@ -92,10 +92,8 @@ export enum ActionType {
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
   /**
    * Generic account-level operating mode (e.g. Hyperliquid abstraction
-   * variants, Lighter UTA / Simple). Replaces the provider-specific
-   * `USER_SET_ABSTRACTION` / `AGENT_SET_ABSTRACTION` action pair on the
-   * public surface; HL maps it to the appropriate EIP-712 typed-data
-   * builder internally.
+   * variants, Lighter UTA / Simple). HL maps it to the appropriate
+   * EIP-712 typed-data builder internally.
    */
   ACCOUNT_MODE = 'accountMode',
   /**
@@ -104,18 +102,6 @@ export enum ActionType {
    * action from their descriptor list.
    */
   ACCOUNT_TYPE = 'accountType',
-  /**
-   * @deprecated Use `ACCOUNT_MODE` instead. Retained as an alias to keep
-   * the consumer surface (perps-sdk, lifi-perps-backend, perps-dex-widget)
-   * compiling while ORD-265/266/267 migrate to the generic action. Will
-   * be removed once those land — see the follow-up issue filed against
-   * this PR.
-   */
-  USER_SET_ABSTRACTION = 'userSetAbstraction',
-  /**
-   * @deprecated Use `ACCOUNT_MODE` instead. See `USER_SET_ABSTRACTION`.
-   */
-  AGENT_SET_ABSTRACTION = 'agentSetAbstraction',
   SEND_ASSET = 'sendAsset',
   WITHDRAWAL = 'withdrawal',
   TRANSFER = 'transfer',
