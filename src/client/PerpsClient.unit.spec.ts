@@ -1,4 +1,5 @@
 import type {
+  AccountResponse,
   CreateActionRequest,
   CreateActionResponse,
   ExecuteActionRequest,
@@ -8,6 +9,7 @@ import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  mockAccount,
   mockCreateOrderResponse,
   mockSubmitOrderResponse,
   server,
@@ -278,19 +280,68 @@ describe('PerpsClient', () => {
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch (ORD-265)
   // ---------------------------------------------------------------------------
 
-  describe('executePrerequisites — auto-upgrade ACCOUNT_MODE after APPROVE_AGENT', () => {
+  describe('executePrerequisites — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
     const BASE_URL = DEFAULT_API_URL
+
+    /**
+     * Build a minimal `APPROVE_AGENT` user-prereq envelope. The widget would
+     * normally re-sign this typed data with the user's wallet; in tests we
+     * just supply a placeholder signature.
+     */
+    const APPROVE_AGENT_TYPED_DATA = {
+      domain: { name: 'HL', chainId: 1 },
+      types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
+      primaryType: 'ApproveAgent' as const,
+      message: { agent: '0xabcd' },
+    }
+    const approveAgentPrereqs = {
+      required: {
+        userPrerequisites: [
+          {
+            action: ActionType.APPROVE_AGENT,
+            typedData: APPROVE_AGENT_TYPED_DATA,
+          },
+        ],
+        agentPrerequisites: [],
+        isReady: false,
+      },
+      userSignedActions: [
+        {
+          action: ActionType.APPROVE_AGENT,
+          typedData: APPROVE_AGENT_TYPED_DATA,
+          signature: '0xsig',
+        },
+      ],
+    }
+
+    /**
+     * Configure the `/account` mock with a custom `abstractionStatus` for the
+     * duration of the test. The new flow reads this up front to choose the
+     * signer for `ACCOUNT_MODE` — `null/undefined` routes to the agent,
+     * anything else routes to the user-wallet fallback.
+     */
+    function mockAbstractionStatus(status: string | null) {
+      const account: AccountResponse = {
+        ...mockAccount,
+        config: { ...mockAccount.config, abstractionStatus: status },
+      }
+      server.use(
+        http.get(`${BASE_URL}/account`, () => HttpResponse.json(account))
+      )
+    }
 
     /**
      * MSW handler factory: respond to `/createAction` with an action step
      * matching the requested `action` type, and to `/executeAction` with a
      * configurable result. Tracks call counts per action type so tests can
-     * assert the auto-upgrade chain fires exactly once.
+     * assert the dispatch fires (or doesn't) as expected.
      */
-    function setupActionHandlers(opts: {
-      executeResult?: (req: ExecuteActionRequest) => ExecuteActionResponse
-      createActions?: Partial<Record<ActionType, CreateActionResponse>>
-    }) {
+    function setupActionHandlers(
+      opts: {
+        executeResult?: (req: ExecuteActionRequest) => ExecuteActionResponse
+        createActions?: Partial<Record<ActionType, CreateActionResponse>>
+      } = {}
+    ) {
       const counts = {
         create: new Map<ActionType, number>(),
         execute: new Map<ActionType, number>(),
@@ -334,17 +385,14 @@ describe('PerpsClient', () => {
       return counts
     }
 
-    it('chains agent-signed ACCOUNT_MODE with mode=unifiedAccount after APPROVE_AGENT succeeds', async () => {
+    it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionStatus is null', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      mockAbstractionStatus(null)
 
       let observedAccountModeRequest: CreateActionRequest | undefined
-      const counts = setupActionHandlers({
-        executeResult: (req) => ({
-          results: [{ action: req.action, success: true }],
-        }),
-      })
+      const counts = setupActionHandlers()
       // Capture the createAction request for ACCOUNT_MODE so we can assert
-      // the SDK supplied `mode: 'unifiedAccount'`.
+      // the SDK supplied `mode: 'unifiedAccount'` and routed via the agent.
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -372,33 +420,7 @@ describe('PerpsClient', () => {
       const result = await client.executePrerequisites({
         provider,
         address: userAddress,
-        required: {
-          userPrerequisites: [
-            {
-              action: ActionType.APPROVE_AGENT,
-              typedData: {
-                domain: { name: 'HL', chainId: 1 },
-                types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-                primaryType: 'ApproveAgent',
-                message: { agent: '0xabcd' },
-              },
-            },
-          ],
-          agentPrerequisites: [],
-          isReady: false,
-        },
-        userSignedActions: [
-          {
-            action: ActionType.APPROVE_AGENT,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-              primaryType: 'ApproveAgent',
-              message: { agent: '0xabcd' },
-            },
-            signature: '0xsig',
-          },
-        ],
+        ...approveAgentPrereqs,
       })
 
       expect(result.userResults.results).toEqual([
@@ -411,119 +433,25 @@ describe('PerpsClient', () => {
       expect(observedAccountModeRequest?.params).toEqual({
         mode: 'unifiedAccount',
       })
+      // Agent-signed: `signerAddress` is the agent address, NOT the user.
+      expect(observedAccountModeRequest?.signerAddress).toBeDefined()
+      expect(observedAccountModeRequest?.signerAddress).not.toBe(userAddress)
       // Auto-upgrade fired exactly once on top of the user-signed APPROVE_AGENT.
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBe(1)
       expect(counts.execute.get(ActionType.APPROVE_AGENT)).toBe(1)
-      void counts
     })
 
-    it('records failure but does not abort onboarding when ACCOUNT_MODE auto-upgrade fails (surfaces user-wallet fallback)', async () => {
+    it('returns fallbackUserPrerequisites (no agent dispatch) when abstractionStatus is already set to a different mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      mockAbstractionStatus('dexAbstraction')
 
-      // First /createAction call for ACCOUNT_MODE (agent path) returns a step;
-      // executeAction then fails for ACCOUNT_MODE; second /createAction call
-      // (the user-fallback) returns a step the SDK surfaces back to the caller.
-      let accountModeCreateCount = 0
-      server.use(
-        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
-          const body = (await request.json()) as CreateActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            accountModeCreateCount += 1
-          }
-          return HttpResponse.json({
-            actions: [
-              {
-                action: body.action,
-                typedData: {
-                  domain: { name: 'Test', chainId: 1 },
-                  types: { Approve: [{ name: 'who', type: 'address' }] },
-                  primaryType: 'Approve',
-                  message: {
-                    who: '0x0000000000000000000000000000000000000000',
-                  },
-                },
-              },
-            ],
-          })
-        }),
-        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
-          const body = (await request.json()) as ExecuteActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            return HttpResponse.json({
-              results: [
-                {
-                  action: ActionType.ACCOUNT_MODE,
-                  success: false,
-                  error:
-                    'cannot upgrade dexAbstraction without a user signature',
-                },
-              ],
-            })
-          }
-          return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
-          })
-        })
-      )
-
-      const result = await client.executePrerequisites({
-        provider,
-        address: userAddress,
-        required: {
-          userPrerequisites: [
-            {
-              action: ActionType.APPROVE_AGENT,
-              typedData: {
-                domain: { name: 'HL', chainId: 1 },
-                types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-                primaryType: 'ApproveAgent',
-                message: { agent: '0xabcd' },
-              },
-            },
-          ],
-          agentPrerequisites: [],
-          isReady: false,
-        },
-        userSignedActions: [
-          {
-            action: ActionType.APPROVE_AGENT,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-              primaryType: 'ApproveAgent',
-              message: { agent: '0xabcd' },
-            },
-            signature: '0xsig',
-          },
-        ],
-      })
-
-      // Onboarding result: user prereq succeeded, agent ACCOUNT_MODE recorded
-      // as failed, and a user-wallet fallback step is surfaced.
-      expect(result.userResults.results[0].success).toBe(true)
-      expect(result.agentResults?.results[0]).toMatchObject({
-        action: ActionType.ACCOUNT_MODE,
-        success: false,
-      })
-      expect(result.fallbackUserPrerequisites).toHaveLength(1)
-      expect(result.fallbackUserPrerequisites?.[0].action).toBe(
-        ActionType.ACCOUNT_MODE
-      )
-      // Two createAction calls for ACCOUNT_MODE: first agent attempt, then
-      // the user fallback build.
-      expect(accountModeCreateCount).toBe(2)
-    })
-
-    it('treats backend per-mode early-exit (zero actions) as an idempotent no-op', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
+      const accountModeCreateRequests: CreateActionRequest[] = []
       let accountModeExecuteCount = 0
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           if (body.action === ActionType.ACCOUNT_MODE) {
-            // Account already in unifiedAccount → backend returns no actions.
-            return HttpResponse.json({ actions: [] })
+            accountModeCreateRequests.push(body)
           }
           return HttpResponse.json({
             actions: [
@@ -555,45 +483,51 @@ describe('PerpsClient', () => {
       const result = await client.executePrerequisites({
         provider,
         address: userAddress,
-        required: {
-          userPrerequisites: [
-            {
-              action: ActionType.APPROVE_AGENT,
-              typedData: {
-                domain: { name: 'HL', chainId: 1 },
-                types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-                primaryType: 'ApproveAgent',
-                message: { agent: '0xabcd' },
-              },
-            },
-          ],
-          agentPrerequisites: [],
-          isReady: false,
-        },
-        userSignedActions: [
-          {
-            action: ActionType.APPROVE_AGENT,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
-              primaryType: 'ApproveAgent',
-              message: { agent: '0xabcd' },
-            },
-            signature: '0xsig',
-          },
-        ],
+        ...approveAgentPrereqs,
       })
 
       expect(result.userResults.results[0].success).toBe(true)
-      // No execute call for ACCOUNT_MODE — the empty-actions response is
-      // treated as a no-op rather than dispatched.
+      // No agent dispatch attempted — `executeAction` was never called for
+      // ACCOUNT_MODE; the SDK knew up front that the change requires a
+      // user-wallet signature.
+      expect(result.agentResults).toBeUndefined()
       expect(accountModeExecuteCount).toBe(0)
-      expect(result.agentResults?.results).toEqual([])
+      // The unsigned ACCOUNT_MODE step is surfaced to the widget.
+      expect(result.fallbackUserPrerequisites).toHaveLength(1)
+      expect(result.fallbackUserPrerequisites?.[0].action).toBe(
+        ActionType.ACCOUNT_MODE
+      )
+      // Only one /createAction call for ACCOUNT_MODE — no agent attempt first.
+      expect(accountModeCreateRequests).toHaveLength(1)
+      // The fallback build call must NOT pass a signerAddress (it's a
+      // user-wallet action, not an agent-signed one).
+      expect(accountModeCreateRequests[0].signerAddress).toBeUndefined()
+    })
+
+    it('short-circuits to a no-op when abstractionStatus already equals the requested mode', async () => {
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      mockAbstractionStatus('unifiedAccount')
+
+      const counts = setupActionHandlers()
+
+      const result = await client.executePrerequisites({
+        provider,
+        address: userAddress,
+        ...approveAgentPrereqs,
+      })
+
+      expect(result.userResults.results[0].success).toBe(true)
+      // The status read short-circuits before any /createAction or
+      // /executeAction call for ACCOUNT_MODE.
+      expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
+      expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
+      expect(result.agentResults).toBeUndefined()
       expect(result.fallbackUserPrerequisites).toBeUndefined()
     })
 
     it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user prereqs', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      mockAbstractionStatus(null)
 
       let accountModeCreateCount = 0
       server.use(
@@ -661,6 +595,28 @@ describe('PerpsClient', () => {
       expect(result.userResults.results[0].success).toBe(true)
       expect(accountModeCreateCount).toBe(0)
       expect(result.agentResults).toBeUndefined()
+    })
+
+    it('propagates /account network errors rather than guessing the signer', async () => {
+      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+
+      server.use(
+        http.get(`${BASE_URL}/account`, () =>
+          HttpResponse.json(
+            { code: PerpsErrorCode.ProviderError, message: 'upstream down' },
+            { status: 502 }
+          )
+        )
+      )
+      setupActionHandlers()
+
+      await expect(
+        client.executePrerequisites({
+          provider,
+          address: userAddress,
+          ...approveAgentPrereqs,
+        })
+      ).rejects.toThrow()
     })
   })
 
