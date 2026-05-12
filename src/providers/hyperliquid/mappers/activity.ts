@@ -5,23 +5,67 @@ import type {
   WithdrawalActivity,
   LiquidationActivity,
   FundingActivity,
+  TransferActivity,
 } from '../../../account.js'
+import { isSpotTransferDelta } from '../types.js'
 import type { HlLedgerUpdate, HlFundingUpdate } from '../types.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
- * Returns null for unsupported delta types (accountClassTransfer,
- * internalTransfer, subAccountTransfer, spotTransfer).
+ *
+ * Direction for `spotTransfer` is derived from `queriedAddress`: if it
+ * matches the delta's `user`, the queried account is the sender (`OUT`);
+ * if it matches `destination`, it's the recipient (`IN`).
+ *
+ * Returns null for currently-unsupported delta types
+ * (accountClassTransfer, internalTransfer, subAccountTransfer).
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
-  providerKey: string
+  providerKey: string,
+  queriedAddress: string
 ): ActivityItem | null => {
   const { delta } = entry
   const base = {
     id: entry.hash,
     provider: providerKey,
     timestamp: new Date(entry.time).toISOString(),
+  }
+
+  // `spotTransfer` is handled before the switch because the catch-all arm of
+  // `HlLedgerDelta` (`{ type: string; [key: string]: unknown }`) is a
+  // structural supertype, so switching on `delta.type` cannot narrow to the
+  // concrete `HlSpotTransferDelta`. The user-defined type guard does narrow.
+  if (isSpotTransferDelta(delta)) {
+    const queried = queriedAddress.toLowerCase()
+    const sender = delta.user.toLowerCase()
+    const recipient = delta.destination.toLowerCase()
+    const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
+    const counterpartyAddress = direction === 'OUT' ? recipient : sender
+    const meta: Record<string, unknown> = {
+      transferType: 'spotTransfer',
+    }
+    if (delta.usdcValue !== undefined) {
+      meta.usdcValue = delta.usdcValue
+    }
+    if (delta.fee !== undefined) {
+      meta.fee = delta.fee
+    }
+    if (delta.nativeTokenFee !== undefined) {
+      meta.nativeTokenFee = delta.nativeTokenFee
+    }
+    if (delta.nonce !== undefined) {
+      meta.nonce = delta.nonce
+    }
+    return {
+      ...base,
+      type: ActivityType.TRANSFER,
+      direction,
+      counterpartyAddress,
+      asset: delta.token,
+      amount: delta.amount,
+      meta,
+    } satisfies TransferActivity
   }
 
   switch (delta.type) {

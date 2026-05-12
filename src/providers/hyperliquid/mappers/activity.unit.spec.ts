@@ -1,0 +1,271 @@
+import { describe, expect, it } from 'vitest'
+
+import { ActivityType } from '../../../enums.js'
+import type {
+  DepositActivity,
+  LiquidationActivity,
+  TransferActivity,
+  WithdrawalActivity,
+} from '../../../account.js'
+import type {
+  HlFundingUpdate,
+  HlLedgerUpdate,
+  HlSpotTransferDelta,
+} from '../types.js'
+import { mapFundingActivity, mapLedgerEntry } from './activity.js'
+
+// ---------------------------------------------------------------------------
+// Fixture builders
+// ---------------------------------------------------------------------------
+
+const PROVIDER = 'hyperliquid'
+const QUERIED = '0x1111111111111111111111111111111111111111'
+const COUNTERPARTY = '0x2222222222222222222222222222222222222222'
+
+const spotTransferUpdate = (
+  delta: Partial<HlSpotTransferDelta> & {
+    user: HlSpotTransferDelta['user']
+    destination: HlSpotTransferDelta['destination']
+  },
+  time = 1_700_000_000_000,
+  hash = '0xhash-spot'
+): HlLedgerUpdate => ({
+  time,
+  hash,
+  delta: {
+    type: 'spotTransfer',
+    token: 'USDC',
+    amount: '12.5',
+    usdcValue: '12.5',
+    fee: '0.01',
+    nativeTokenFee: '0.0001',
+    nonce: 42,
+    ...delta,
+  },
+})
+
+// ---------------------------------------------------------------------------
+// mapLedgerEntry — spotTransfer
+// ---------------------------------------------------------------------------
+
+describe('mapLedgerEntry — spotTransfer', () => {
+  it('maps an OUT transfer (queried address is the sender)', () => {
+    const entry = spotTransferUpdate({
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    expect(result).not.toBeNull()
+    const t = result as TransferActivity
+    expect(t.type).toBe(ActivityType.TRANSFER)
+    expect(t.direction).toBe('OUT')
+    expect(t.counterpartyAddress).toBe(COUNTERPARTY.toLowerCase())
+    expect(t.counterpartyAccountIndex).toBeUndefined()
+    expect(t.asset).toBe('USDC')
+    expect(t.amount).toBe('12.5')
+    expect(t.provider).toBe(PROVIDER)
+    expect(t.id).toBe('0xhash-spot')
+    expect(t.timestamp).toBe(new Date(1_700_000_000_000).toISOString())
+  })
+
+  it('maps an IN transfer (queried address is the recipient)', () => {
+    const entry = spotTransferUpdate({
+      user: COUNTERPARTY as HlSpotTransferDelta['user'],
+      destination: QUERIED as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    const t = result as TransferActivity
+    expect(t.direction).toBe('IN')
+    expect(t.counterpartyAddress).toBe(COUNTERPARTY.toLowerCase())
+  })
+
+  it('lower-cases the counterparty address regardless of the input casing', () => {
+    const upperCounterparty = `0x${'A'.repeat(40)}`
+    const entry = spotTransferUpdate({
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: upperCounterparty as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    const t = result as TransferActivity
+    expect(t.counterpartyAddress).toBe(upperCounterparty.toLowerCase())
+    // Sanity: the original input was upper-case so the lower-casing actually did something.
+    expect(t.counterpartyAddress).not.toBe(upperCounterparty)
+  })
+
+  it('matches the queried address case-insensitively when deriving direction', () => {
+    // Queried passed as upper-case, delta `user` is lower-case — should still
+    // resolve as OUT because the addresses are equivalent.
+    const upperQueried = QUERIED.toUpperCase()
+    const entry = spotTransferUpdate({
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, upperQueried)
+
+    const t = result as TransferActivity
+    expect(t.direction).toBe('OUT')
+  })
+
+  it('passes the token symbol through as the asset', () => {
+    const entry = spotTransferUpdate({
+      token: 'HYPE',
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    const t = result as TransferActivity
+    expect(t.asset).toBe('HYPE')
+  })
+
+  it('preserves spotTransfer metadata fields when present', () => {
+    const entry = spotTransferUpdate({
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      usdcValue: '12.5',
+      fee: '0.01',
+      nativeTokenFee: '0.0001',
+      nonce: 7,
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    const t = result as TransferActivity
+    expect(t.meta).toEqual({
+      transferType: 'spotTransfer',
+      usdcValue: '12.5',
+      fee: '0.01',
+      nativeTokenFee: '0.0001',
+      nonce: 7,
+    })
+  })
+
+  it('omits optional meta fields when not present on the delta', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xhash-minimal',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '1',
+        usdcValue: '1',
+        user: QUERIED as HlSpotTransferDelta['user'],
+        destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      },
+    }
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED)
+
+    const t = result as TransferActivity
+    expect(t.meta).toEqual({
+      transferType: 'spotTransfer',
+      usdcValue: '1',
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// mapLedgerEntry — existing branches (regression coverage)
+// ---------------------------------------------------------------------------
+
+describe('mapLedgerEntry — non-transfer branches', () => {
+  it('maps a deposit', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xdep',
+      delta: { type: 'deposit', usdc: '100' },
+    }
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED) as DepositActivity
+    expect(result.type).toBe(ActivityType.DEPOSIT)
+    expect(result.amount).toBe('100')
+  })
+
+  it('maps a withdrawal', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xwdr',
+      delta: { type: 'withdraw', usdc: '50', fee: '0.5' },
+    }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED
+    ) as WithdrawalActivity
+    expect(result.type).toBe(ActivityType.WITHDRAWAL)
+    expect(result.amount).toBe('50')
+    expect(result.fee).toBe('0.5')
+  })
+
+  it('maps a liquidation', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '1000',
+        accountValue: '500',
+        leverageType: 'cross',
+        liquidatedPositions: [{ coin: 'ETH', szi: '-1.5' }],
+      },
+    }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED
+    ) as LiquidationActivity
+    expect(result.type).toBe(ActivityType.LIQUIDATION)
+    expect(result.liquidatedNotionalPosition).toBe('1000')
+    expect(result.liquidatedPositions[0].asset.assetId).toBe('ETH')
+  })
+
+  it('returns null for unsupported delta types', () => {
+    const types = [
+      'accountClassTransfer',
+      'internalTransfer',
+      'subAccountTransfer',
+      'somethingNew',
+    ]
+    for (const type of types) {
+      const entry: HlLedgerUpdate = {
+        time: 1_700_000_000_000,
+        hash: `0xnull-${type}`,
+        delta: { type, usdc: '1' },
+      }
+      expect(mapLedgerEntry(entry, PROVIDER, QUERIED)).toBeNull()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// mapFundingActivity (smoke regression — signature unchanged)
+// ---------------------------------------------------------------------------
+
+describe('mapFundingActivity', () => {
+  it('maps a funding entry', () => {
+    const entry: HlFundingUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xfund',
+      delta: {
+        type: 'funding',
+        coin: 'BTC',
+        usdc: '0.5',
+        szi: '0.1',
+        fundingRate: '0.0001',
+      },
+    }
+    const result = mapFundingActivity(entry, PROVIDER)
+    expect(result.type).toBe(ActivityType.FUNDING)
+    expect(result.asset.assetId).toBe('BTC')
+    expect(result.fundingRate).toBe('0.0001')
+    expect(result.amount).toBe('0.5')
+    expect(result.positionSize).toBe('0.1')
+  })
+})

@@ -1,3 +1,5 @@
+import type { Address } from 'viem'
+
 // ---------------------------------------------------------------------------
 // Hyperliquid /info response types
 // ---------------------------------------------------------------------------
@@ -193,11 +195,41 @@ export type HlOrderStatusResponse =
 
 // -- userNonFundingLedgerUpdates --------------------------------------------
 
-export type HlLedgerDelta = {
-  type: string
-  usdc?: string
-  [key: string]: unknown
+/**
+ * Hyperliquid `spotTransfer` ledger delta. Emitted for transfers of spot
+ * tokens between Hyperliquid accounts. `user` is the sender, `destination`
+ * the recipient; direction is derived at the call site from the queried
+ * address.
+ */
+export type HlSpotTransferDelta = {
+  type: 'spotTransfer'
+  token: string
+  amount: string
+  usdcValue: string
+  user: Address
+  destination: Address
+  fee?: string
+  nativeTokenFee?: string
+  nonce?: number
 }
+
+export type HlLedgerDelta =
+  | HlSpotTransferDelta
+  | {
+      type: string
+      usdc?: string
+      [key: string]: unknown
+    }
+
+/**
+ * Type guard for `HlSpotTransferDelta` — TypeScript cannot narrow off the
+ * `type` discriminant alone because the catch-all arm of `HlLedgerDelta` has
+ * `type: string` (a supertype of the literal `'spotTransfer'`). Use this at
+ * call sites that need the strongly-typed shape.
+ */
+export const isSpotTransferDelta = (
+  delta: HlLedgerDelta
+): delta is HlSpotTransferDelta => delta.type === 'spotTransfer'
 
 export type HlLedgerUpdate = {
   time: number

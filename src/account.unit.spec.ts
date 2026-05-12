@@ -58,6 +58,44 @@ describe('TransferActivity', () => {
     expect(item.meta).toEqual({ txHash: '0xabc', memo: 'rebalance' })
   })
 
+  it('accepts a counterpartyAddress-only fixture (HL spotTransfer shape)', () => {
+    const item: TransferActivity = {
+      id: 'transfer-hl-1',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:01:30.000Z',
+      type: ActivityType.TRANSFER,
+      direction: 'IN',
+      counterpartyAddress: '0xabcdef0123456789abcdef0123456789abcdef01',
+      asset: 'USDC',
+      amount: '5',
+      meta: { transferType: 'spotTransfer' },
+    }
+
+    expect(item.counterpartyAddress).toBe(
+      '0xabcdef0123456789abcdef0123456789abcdef01'
+    )
+    expect(item.counterpartyAccountIndex).toBeUndefined()
+  })
+
+  it('accepts a fixture with BOTH counterparty fields populated', () => {
+    const item: TransferActivity = {
+      id: 'transfer-both-1',
+      provider: 'hybrid',
+      timestamp: '2026-05-07T12:01:45.000Z',
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAccountIndex: 99,
+      counterpartyAddress: '0xffff000000000000000000000000000000000001',
+      asset: 'USDC',
+      amount: '10',
+    }
+
+    expect(item.counterpartyAccountIndex).toBe(99)
+    expect(item.counterpartyAddress).toBe(
+      '0xffff000000000000000000000000000000000001'
+    )
+  })
+
   it('participates in the ActivityItem discriminated union and narrows on type', () => {
     const item: ActivityItem = {
       id: 'transfer-3',
@@ -118,9 +156,11 @@ describe('TransferActivity', () => {
       amount: '1',
     }
 
-    // Missing required field counterpartyAccountIndex — TS2741 attaches to
-    // the object literal opening brace, so place the directive there.
-    // @ts-expect-error counterpartyAccountIndex is required
+    // Missing BOTH counterparty fields — `TransferActivity` is a union that
+    // requires at least one of `counterpartyAccountIndex` / `counterpartyAddress`.
+    // TS2322 attaches to the object literal opening brace, so place the
+    // directive there.
+    // @ts-expect-error at least one of counterpartyAccountIndex / counterpartyAddress is required
     const missingCounterparty: TransferActivity = {
       id: 't',
       provider: 'lighter',
