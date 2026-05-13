@@ -1,5 +1,4 @@
 import {
-  FillClassification,
   FillStatus,
   LiquidityRole,
   OrderSide,
@@ -7,9 +6,7 @@ import {
 } from '../../../enums.js'
 import type { Fill } from '../../../account.js'
 import type { LtTrade } from '../apiTypes.js'
-
-const classifyFill = (isBuy: boolean): FillClassification =>
-  isBuy ? FillClassification.OPENED_LONG : FillClassification.OPENED_SHORT
+import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
 
 /**
  * Map a raw Lighter trade to the generic Fill type.
@@ -25,6 +22,15 @@ export const mapFill = (
   const isBuyer = trade.bid_account_id === accountIndex
   const isMaker =
     (trade.is_maker_ask && !isBuyer) || (!trade.is_maker_ask && isBuyer)
+
+  // Pick the position-before snapshot that corresponds to the viewer's role
+  // on this fill. Lighter publishes both counterparties' snapshots on every
+  // trade row (see `LtTrade` comments); reading the wrong one would
+  // mis-classify whenever the maker and taker are in different position
+  // states (e.g. counterparty long, viewer flat).
+  const startPosition = isMaker
+    ? trade.maker_position_size_before
+    : trade.taker_position_size_before
 
   return {
     id: trade.trade_id.toString(),
@@ -42,7 +48,16 @@ export const mapFill = (
     status: FillStatus.FILLED,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     fee: isMaker ? trade.maker_fee?.toString() : trade.taker_fee?.toString(),
-    classification: classifyFill(isBuyer),
+    startPosition,
+    // Hyperliquid-style classification: the shared helper consumes a signed
+    // `startPosition` and an HL-encoded side (`'B'` = buy, anything else =
+    // sell). Both providers reuse it so the Open/Close/Increase/Reduce/
+    // Switch taxonomy stays consistent across the activity feed.
+    classification: classifyFillFromPosition(
+      startPosition,
+      isBuyer ? 'B' : 'A',
+      trade.size
+    ),
     createdAt: new Date(trade.timestamp).toISOString(),
   }
 }
