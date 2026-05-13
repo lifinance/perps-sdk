@@ -30,6 +30,9 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   taker_fee: 0.7,
   maker_fee: 0.3,
   transaction_time: 1_700_000_000_000,
+  // Default both counterparties flat — overrides set the side under test.
+  taker_position_size_before: '0',
+  maker_position_size_before: '0',
   ...overrides,
 })
 
@@ -137,23 +140,265 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  // ---------------------------------------------------------------------------
+  // Classification — exercises the full Open/Close/Increase/Reduce/Switch
+  // taxonomy by feeding the viewer's `*_position_size_before` (signed) into
+  // the shared `classifyFillFromPosition`. The mapper picks the field that
+  // matches the viewer's maker/taker role on the fill. Regression for
+  // ORD-281: trunk would classify any SELL as OPENED_SHORT.
+  // ---------------------------------------------------------------------------
   describe('classification', () => {
-    it('marks viewer-as-buyer trades as OPENED_LONG', () => {
+    it('opens a long when a flat viewer buys', () => {
       const fill = mapFill(
-        baseTrade({ bid_account_id: ACCOUNT_INDEX, ask_account_id: 0 }),
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer is taker (the bidder)
+          size: '1',
+          taker_position_size_before: '0',
+          maker_position_size_before: '5', // counterparty — irrelevant here
+        }),
         ACCOUNT_INDEX,
         SYMBOL
       )
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)
     })
 
-    it('marks viewer-as-seller trades as OPENED_SHORT', () => {
+    it('opens a short when a flat viewer sells', () => {
       const fill = mapFill(
-        baseTrade({ ask_account_id: ACCOUNT_INDEX, bid_account_id: 0 }),
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false, // viewer is taker (the asker)
+          size: '1',
+          taker_position_size_before: '0',
+          maker_position_size_before: '-5',
+        }),
         ACCOUNT_INDEX,
         SYMBOL
       )
       expect(fill.classification).toBe(FillClassification.OPENED_SHORT)
+    })
+
+    it('closes a long when a viewer sells the exact long size', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false, // viewer is taker (the asker)
+          size: '1',
+          taker_position_size_before: '1', // long before, fully unwinding
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.CLOSED_LONG)
+    })
+
+    it('closes a short when a viewer buys the exact short size', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer is taker (the bidder)
+          size: '1',
+          taker_position_size_before: '-1', // short before, fully unwinding
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.CLOSED_SHORT)
+    })
+
+    it('reduces a long on a partial sell', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          taker_position_size_before: '2', // long before, only half sold
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.REDUCED_LONG)
+    })
+
+    it('reduces a short on a partial buy', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          taker_position_size_before: '-2', // short before, only half bought back
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.REDUCED_SHORT)
+    })
+
+    it('increases a long when an already-long viewer buys more', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          taker_position_size_before: '1',
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
+    })
+
+    it('increases a short when an already-short viewer sells more', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          taker_position_size_before: '-1',
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.INCREASED_SHORT)
+    })
+
+    it('switches long → short when a long viewer over-sells', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '2',
+          taker_position_size_before: '1', // long 1, sell 2 → short 1
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.SWITCHED_SHORT)
+    })
+
+    it('switches short → long when a short viewer over-buys', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '2',
+          taker_position_size_before: '-1', // short 1, buy 2 → long 1
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.SWITCHED_LONG)
+    })
+
+    // -------------------------------------------------------------------------
+    // Maker/taker role MUST select the corresponding `*_position_size_before`.
+    // Reading the wrong side would mis-classify when the counterparty's
+    // position is in a different state from the viewer's.
+    // -------------------------------------------------------------------------
+    it('reads taker_position_size_before when the viewer is the taker', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer (bidder) is taker
+          size: '1',
+          taker_position_size_before: '1', // viewer is already long
+          maker_position_size_before: '0', // counterparty was flat
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
+    })
+
+    it('reads maker_position_size_before when the viewer is the maker', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false, // viewer (bidder) is maker
+          size: '1',
+          taker_position_size_before: '0', // counterparty was flat
+          maker_position_size_before: '-2', // viewer was short 2
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.classification).toBe(FillClassification.REDUCED_SHORT)
+    })
+
+    // -------------------------------------------------------------------------
+    // End-to-end sequence: replays the smallest failing case from ORD-281 —
+    // buy 1, then sell 1 — through the mapper and asserts the second fill
+    // is CLOSED_LONG (not OPENED_SHORT).
+    // -------------------------------------------------------------------------
+    it('classifies the closing fill in an OPEN→CLOSE sequence as CLOSED_LONG', () => {
+      // Fill 1: viewer buys 1 from flat → OPENED_LONG
+      const open = mapFill(
+        baseTrade({
+          trade_id: 1,
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer (bidder) is taker
+          size: '1',
+          taker_position_size_before: '0',
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(open.classification).toBe(FillClassification.OPENED_LONG)
+
+      // Fill 2: viewer sells 1, now long 1 → CLOSED_LONG (not OPENED_SHORT)
+      const close = mapFill(
+        baseTrade({
+          trade_id: 2,
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false, // viewer (asker) is taker
+          size: '1',
+          taker_position_size_before: '1',
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(close.classification).toBe(FillClassification.CLOSED_LONG)
+    })
+
+    it('classifies the second fill in an OPEN→OVERSELL sequence as SWITCHED_SHORT', () => {
+      const switchSell = mapFill(
+        baseTrade({
+          trade_id: 2,
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '2', // sells 2 while long 1
+          taker_position_size_before: '1',
+          maker_position_size_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(switchSell.classification).toBe(FillClassification.SWITCHED_SHORT)
     })
   })
 
