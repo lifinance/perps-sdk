@@ -13,6 +13,21 @@ export const mapPosition = (
   symbol: string
 ): Position => {
   const size = parseFloat(pos.position)
+  const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
+
+  // Lighter only writes `allocated_margin` for isolated positions — on a cross
+  // account margin is implicit and the field is always "0". For cross
+  // positions, derive margin the way Lighter's own UI does:
+  //   margin = position_value × initial_margin_fraction / 100
+  // (IMF is reported in percent units, so imf=2.00 ⇒ 2% ⇒ 50× leverage).
+  // Verified against /api/v1/account for cross accounts 5, 24, 80 and the
+  // isolated USDJPY position on account 24 (where allocated_margin is the
+  // source of truth and may exceed pv × imf / 100 due to over-collateralization).
+  const positionValue = Math.abs(parseFloat(pos.position_value))
+  const imf = parseFloat(pos.initial_margin_fraction)
+  const marginUsed = isIsolated
+    ? pos.allocated_margin
+    : ((positionValue * imf) / 100).toString()
 
   return {
     asset: {
@@ -30,14 +45,8 @@ export const mapPosition = (
         : (parseFloat(pos.position_value) / Math.abs(size)).toString(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
-    leverage:
-      parseFloat(pos.initial_margin_fraction) > 0
-        ? Math.round(100 / parseFloat(pos.initial_margin_fraction))
-        : 1,
-    marginUsed: pos.allocated_margin,
-    marginMode:
-      pos.margin_mode === LT_MARGIN_MODE_ISOLATED
-        ? MarginMode.ISOLATED
-        : MarginMode.CROSS,
+    leverage: imf > 0 ? Math.round(100 / imf) : 1,
+    marginUsed,
+    marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }
 }
