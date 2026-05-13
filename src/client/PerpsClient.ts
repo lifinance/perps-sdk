@@ -446,6 +446,16 @@ export class PerpsClient {
    * Lighter API keypair is registered first — generating one and running the
    * REGISTER_API_KEY hybrid flow via the L1 signer if not — then feeds each
    * subsequent step through the WASM signer and returns signed blobs.
+   *
+   * `ACCOUNT_TYPE` (Lighter `/api/v1/changeAccountTier`) is dispatched as a
+   * WASM_BLOB envelope by the backend but is NOT a wasm-signed transaction —
+   * Lighter authenticates the endpoint with an auth token and enforces
+   * anti-replay server-side (24h cooldown, no open positions). The signer
+   * mints a Lighter auth token via the same WASM `CreateAuthToken` the read
+   * endpoints use and parks it in `signedTx.txInfo`; the backend's
+   * `executeChangeAccountTier` consumes that field as the `auth` form
+   * parameter. `txType`/`txHash` are unused for this action — they carry
+   * placeholder values to satisfy the `WasmBlobSignedActionStep` shape.
    */
   private async signWasmBlobActions(
     provider: string,
@@ -456,6 +466,8 @@ export class PerpsClient {
     for (const step of actions) {
       if (step.action === ActionType.REGISTER_API_KEY) {
         signed.push(await this.signRegisterApiKey(provider, address, step))
+      } else if (step.action === ActionType.ACCOUNT_TYPE) {
+        signed.push(await this.signAccountTierChange(address, step))
       } else {
         signed.push(await this.signStandardWasmAction(provider, address, step))
       }
@@ -576,6 +588,58 @@ export class PerpsClient {
         txType: changePubKey.txType,
         txInfo: txInfoWithL1Sig,
         txHash: changePubKey.txHash,
+      },
+    }
+  }
+
+  /**
+   * Sign an `ACCOUNT_TYPE` step (Lighter `changeAccountTier`).
+   *
+   * Lighter's `/api/v1/changeAccountTier` is an HTTP-only mutation —
+   * Lighter does NOT consume a wasm-signed transaction here; it
+   * authenticates the request with the same auth token its read endpoints
+   * use, and enforces anti-replay business rules server-side. The backend
+   * therefore declares the step as a `WasmBlobActionStep` with
+   * `wasmSignParams.kind = 'changeAccountTier'` and expects the SDK to
+   * mint an auth token in lieu of a transaction signature. That contract
+   * is documented in `lifi-perps-backend/src/providers/lighter/actions/
+   * lighter.actions.accountType.ts` and consumed by `executeChangeAccountTier`.
+   *
+   * The auth-token deadline mirrors {@link createLighterAuthToken}'s 1h
+   * default — Lighter caps tokens at 8h hard, and the backend's executor
+   * runs `verifyPendingAction` then a single `/changeAccountTier` POST,
+   * which completes well inside an hour.
+   */
+  private async signAccountTierChange(
+    address: Address,
+    step: WasmBlobActionStep
+  ): Promise<WasmBlobSignedActionStep> {
+    const apiKey = await this.getLighterKeyStore().get(address)
+    if (!apiKey) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `No Lighter API key registered for ${address}. ` +
+          'Run prepareAccount / REGISTER_API_KEY first.'
+      )
+    }
+    const signer = this.getLighterSigner()
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 60
+    const authToken = await signer.createAuthToken(deadline, {
+      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
+      apiKeyIndex: apiKey.apiKeyIndex,
+      accountIndex: apiKey.accountIndex,
+    })
+    return {
+      action: step.action,
+      wasmSignParams: step.wasmSignParams,
+      signedTx: {
+        // `txType` / `txHash` are unused by `/changeAccountTier` (the
+        // backend's `executeChangeAccountTier` only reads `signedTx.txInfo`
+        // as the auth token). Zero / empty satisfy the envelope shape
+        // without leaking a meaningless value into observability.
+        txType: 0,
+        txInfo: authToken,
+        txHash: '',
       },
     }
   }
