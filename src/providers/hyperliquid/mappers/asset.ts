@@ -1,5 +1,6 @@
 import type { Asset } from '../../../asset.js'
 import type { HlAssetCtx, HlUniverseItem } from '../types.js'
+import { deriveMarket } from './_market.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
@@ -13,7 +14,7 @@ export const mapAsset = (
 
   return {
     assetId: universe.name,
-    market: '',
+    market: deriveMarket(universe.name),
     displaySymbol: universe.name,
     displayQuote: null,
     logoURI: `https://app.hyperliquid.xyz/coins/${universe.name}.svg`,
