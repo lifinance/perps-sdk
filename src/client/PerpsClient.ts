@@ -41,17 +41,19 @@ import {
   signTypedDataWithSigner,
 } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
+import { projectAccountConfigSettings } from './projectAccountConfigSettings.js'
 import {
   type CancelOrdersParams,
   type CheckPrerequisitesParams,
-  type ExecutePrerequisitesParams,
-  type ExecutePrerequisitesResult,
-  type GetPrerequisitesParams,
+  type GetAccountResult,
+  type GetSetupParams,
   type ModifyOrdersParams,
   type PerpsClientOptions,
   type PlaceOrderParams,
   type PlaceTriggerOrderParams,
-  type PrerequisitesResult,
+  type SatisfySetupParams,
+  type SatisfySetupResult,
+  type SetupResult,
   SigningMode,
   type WithdrawParams,
 } from './types.js'
@@ -67,7 +69,8 @@ function findActionDescriptor(
   action: ActionType
 ): ActionDescriptor {
   const descriptor = [
-    ...metadata.accountConfiguration,
+    ...metadata.setup,
+    ...metadata.options,
     ...metadata.actions,
   ].find((d) => d.type === action)
   if (!descriptor) {
@@ -228,7 +231,11 @@ export class PerpsClient {
     // and don't have an EVM address — the backend identifies the action by the
     // L1 `address` instead.
     const metadata = await this.getProviderMetadata(provider)
-    const allActions = [...metadata.accountConfiguration, ...metadata.actions]
+    const allActions = [
+      ...metadata.setup,
+      ...metadata.options,
+      ...metadata.actions,
+    ]
     const descriptor = allActions.find((d) => d.type === action)
     if (!descriptor?.signers.includes(PerpsSigner.AGENT)) {
       return undefined
@@ -245,7 +252,7 @@ export class PerpsClient {
    */
   private async providerUsesAgent(provider: string): Promise<boolean> {
     const metadata = await this.getProviderMetadata(provider)
-    const all = [...metadata.accountConfiguration, ...metadata.actions]
+    const all = [...metadata.setup, ...metadata.options, ...metadata.actions]
     return all.some((d) => d.signers.includes(PerpsSigner.AGENT))
   }
 
@@ -541,14 +548,14 @@ export class PerpsClient {
     }
 
     const account = await getAccount(this.sdkClient, { provider, address })
-    const accountIndex = (account.config as { accountIndex?: number })
-      .accountIndex
-    if (typeof accountIndex !== 'number') {
+    if (account.config.provider !== 'lighter') {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Lighter getAccount response is missing config.accountIndex for ${address}.`
+        `REGISTER_API_KEY requires a Lighter account, but getAccount ` +
+          `returned config for provider '${account.config.provider}'.`
       )
     }
+    const accountIndex = account.config.accountIndex
 
     const signer = this.getLighterSigner()
     const keypair = await signer.generateAPIKey()
@@ -773,18 +780,82 @@ export class PerpsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Prerequisites (was: authorizations)
+  // Account
   // ---------------------------------------------------------------------------
 
-  async checkPrerequisites(
-    params: GetPrerequisitesParams
-  ): Promise<PrerequisitesResult> {
+  /**
+   * Fetch the user's account state from the backend and attach the
+   * SDK-projected `settings` array — one `AccountConfigSetting` per
+   * descriptor on `Provider.setup` + `Provider.options`, computed by the
+   * dispatcher in `projectAccountConfigSettings`.
+   *
+   * The projection is done once per response so widget hooks can read
+   * `result.settings` directly without re-deriving values from the typed
+   * `AccountConfig`. The widget never calls the per-provider mappers.
+   */
+  async getAccount(params: {
+    provider: string
+    address: Address
+  }): Promise<GetAccountResult> {
+    const [response, metadata] = await Promise.all([
+      getAccount(this.sdkClient, params),
+      this.getProviderMetadata(params.provider),
+    ])
+    const settings = projectAccountConfigSettings(
+      response.config,
+      metadata.setup,
+      metadata.options
+    )
+    return { ...response, settings }
+  }
+
+  /**
+   * Thin existence check for a provider account at `address`. Returns
+   * `true` when `getAccount` resolves, `false` when the backend reports
+   * `PerpsErrorCode.AccountNotFound`, and re-throws on any other error
+   * (transport failures, validation errors, server errors).
+   *
+   * Powers the widget's deposit-gate layer — the existing
+   * `accountNotInitialized` plumbing in PrerequisitesContext becomes a
+   * `useAccountExists` TanStack Query hook over this method.
+   */
+  async accountExists(provider: string, address: Address): Promise<boolean> {
+    try {
+      await getAccount(this.sdkClient, { provider, address })
+      return true
+    } catch (err) {
+      if (
+        err instanceof PerpsError &&
+        err.code === PerpsErrorCode.AccountNotFound
+      ) {
+        return false
+      }
+      throw err
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Setup (was: prerequisites / authorizations)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Return the unsatisfied entries on `Provider.setup` for this account,
+   * split by signer role. The widget renders these in `<SetupModal />`;
+   * trading is gated on `isReady === true`.
+   *
+   * `Provider.options` descriptors are NEVER returned here — options are
+   * post-setup tunables (rendered behind a cog icon) and never gate
+   * trading. The widget queries option state via `getAccount().settings`,
+   * not via this method.
+   */
+  async checkSetup(params: GetSetupParams): Promise<SetupResult> {
     const { provider, address } = params
     const mode = await this.loadSigningMode(address, provider)
 
     const metadata = await this.getProviderMetadata(provider)
     const usesAgent = [
-      ...metadata.accountConfiguration,
+      ...metadata.setup,
+      ...metadata.options,
       ...metadata.actions,
     ].some((d) => d.signers.includes(PerpsSigner.AGENT))
 
@@ -798,7 +869,7 @@ export class PerpsClient {
     }
 
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.accountConfiguration,
+      metadata.setup,
       mode,
       agentAddress
     )
@@ -807,9 +878,9 @@ export class PerpsClient {
       return { userPrerequisites: [], agentPrerequisites: [], isReady: true }
     }
 
-    // Build a signer lookup from action descriptors
+    // Build a signer lookup from setup descriptors.
     const signersByAction = new Map<string, PerpsSigner[]>()
-    for (const desc of metadata.accountConfiguration) {
+    for (const desc of metadata.setup) {
       signersByAction.set(desc.type, desc.signers)
     }
 
@@ -857,7 +928,7 @@ export class PerpsClient {
 
     const metadata = await this.getProviderMetadata(params.provider)
     const allInputs = this.buildPrerequisiteInputs(
-      metadata.accountConfiguration,
+      metadata.setup,
       mode,
       signerAddress
     )
@@ -881,7 +952,7 @@ export class PerpsClient {
 
   /**
    * Default mode the SDK auto-applies after `APPROVE_AGENT` on a provider
-   * whose `accountConfiguration` exposes a writable `ACCOUNT_MODE` (today
+   * whose `options` array exposes a writable `ACCOUNT_MODE` (today
    * Hyperliquid). The widget can subsequently override this through the
    * radio control.
    */
@@ -889,19 +960,22 @@ export class PerpsClient {
 
   /**
    * Prepare an `ACCOUNT_MODE` change by proactively reading the account's
-   * current `abstractionStatus` and routing to the correct signer:
+   * current `config.abstractionMode` and routing to the correct signer:
    *
-   * - `abstractionStatus == null` (never set, e.g. a fresh HL account):
+   * - `abstractionMode == null` (never set, e.g. a fresh HL account):
    *   the change MAY be performed by the agent signer. Build, sign with
    *   the agent key, and dispatch. Returns `{ results }`.
-   * - `abstractionStatus === mode`: idempotent no-op. Returns an empty
+   * - `abstractionMode === mode`: idempotent no-op. Returns an empty
    *   results envelope without contacting `/createAction` or `/executeAction`.
-   * - `abstractionStatus` set to any other value: HL requires a user-wallet
+   * - `abstractionMode` set to any other value: HL requires a user-wallet
    *   signature to change the abstraction once it has been set. Build the
    *   action unsigned and return it as `{ fallback }` so the caller can
    *   surface a wallet prompt via `fallbackUserPrerequisites`.
    *
    * Network errors from `/account` propagate — we never guess the signer.
+   * `account.config.provider !== 'hyperliquid'` also throws: this helper
+   * is HL-specific and the dispatcher should never reach it for another
+   * provider (gated by `hasWritableAccountMode`).
    */
   private async prepareAccountModeChange(
     provider: string,
@@ -912,10 +986,15 @@ export class PerpsClient {
     fallback?: ActionStep[]
   }> {
     const account = await getAccount(this.sdkClient, { provider, address })
-    const currentStatus = account.config?.abstractionStatus as
-      | string
-      | null
-      | undefined
+    if (account.config.provider !== 'hyperliquid') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `prepareAccountModeChange is Hyperliquid-specific, but ` +
+          `getAccount returned config for provider ` +
+          `'${account.config.provider}'.`
+      )
+    }
+    const currentStatus = account.config.abstractionMode
 
     // Idempotent short-circuit: already in the requested mode.
     if (currentStatus === mode) {
@@ -980,27 +1059,47 @@ export class PerpsClient {
   }
 
   /**
-   * `accountConfiguration` test: the provider exposes an `ACCOUNT_MODE`
-   * descriptor whose control is a writable multi-option select. Used to
-   * gate the post-`APPROVE_AGENT` auto-upgrade — providers that omit
-   * `ACCOUNT_MODE` (Lighter today) or expose it read-only skip the chain.
+   * Descriptor test: the provider exposes an `ACCOUNT_MODE` descriptor
+   * (in `setup` or `options`) whose `mode` Param has a writable
+   * enumeration of values. Used to gate the post-`APPROVE_AGENT`
+   * auto-upgrade — providers that omit `ACCOUNT_MODE` (Lighter today) or
+   * expose it as a read-only / free-form input skip the chain.
    */
   private static hasWritableAccountMode(metadata: Provider): boolean {
-    const item = metadata.accountConfiguration.find(
+    const item = [...metadata.setup, ...metadata.options].find(
       (i) => i.type === ActionType.ACCOUNT_MODE
     )
     if (!item) {
       return false
     }
-    if (item.control.type !== 'multi-option') {
+    const modeParam = item.params.find((p) => p.name === 'mode')
+    if (!modeParam) {
       return false
     }
-    return !item.control.readOnly
+    // Writable multi-option: `values` enumerates choices and `readOnly`
+    // is not set (treat absence as writable, matching the descriptor
+    // contract in `Param`).
+    if (!modeParam.values || modeParam.values.length === 0) {
+      return false
+    }
+    return !modeParam.readOnly
   }
 
-  async executePrerequisites(
-    params: ExecutePrerequisitesParams
-  ): Promise<ExecutePrerequisitesResult> {
+  /**
+   * Submit the signed setup steps returned by `checkSetup` (and seeded
+   * with user-wallet signatures by the caller). Internally splits into:
+   *
+   *   1. Submit user-signed setup actions.
+   *   2. After a successful `APPROVE_AGENT`, auto-upgrade `ACCOUNT_MODE`
+   *      to the SDK's default when the provider exposes a writable
+   *      `ACCOUNT_MODE` Param (Hyperliquid today). The SDK reads
+   *      `account.config.abstractionMode` to choose the signer: `null` →
+   *      agent dispatch; non-null → wallet fallback returned in
+   *      `fallbackUserPrerequisites`.
+   *   3. Sign and submit any pre-staged agent-side setup actions the
+   *      backend returned alongside the user-signed ones.
+   */
+  async satisfySetup(params: SatisfySetupParams): Promise<SatisfySetupResult> {
     const { provider, address, required, userSignedActions } = params
     const mode = await this.loadSigningMode(address, provider)
 
@@ -1031,15 +1130,16 @@ export class PerpsClient {
 
     // 2. Auto-upgrade ACCOUNT_MODE after APPROVE_AGENT.
     //
-    // When the user-signed prerequisites included a successful APPROVE_AGENT,
-    // the freshly approved agent is now authorised to sign account-level
+    // When the user-signed setup included a successful APPROVE_AGENT, the
+    // freshly approved agent is now authorised to sign account-level
     // actions for accounts whose abstraction has never been set. If the
     // provider exposes a writable `ACCOUNT_MODE` descriptor (Hyperliquid
-    // today), the SDK reads `account.config.abstractionStatus` to decide
+    // today), the SDK reads `account.config.abstractionMode` to decide
     // the signer: `null` → agent-dispatch silently to the SDK's preferred
     // default; non-null → return a wallet-signing fallback step. Either
-    // way the chain does NOT abort onboarding because `ACCOUNT_MODE` is
-    // `optional: true` in the descriptor.
+    // way the chain does NOT abort onboarding — `ACCOUNT_MODE` lives on
+    // `Provider.options`, not `Provider.setup`, and so does not gate
+    // trading.
     let agentResults: ExecuteActionResponse | undefined
     let fallbackUserPrerequisites: ActionStep[] | undefined
     if (mode === SigningMode.USER_AGENT) {

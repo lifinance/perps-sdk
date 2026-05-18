@@ -10,20 +10,20 @@ async function run() {
   // 1. Set up agent signing (USER_AGENT mode)
   await perps.setSigningMode(userAddress, 'hyperliquid', 'USER_AGENT')
 
-  // 2. Check which prerequisites are needed
-  const required = await perps.checkPrerequisites({
+  // 2. Check which setup gates are unsatisfied
+  const required = await perps.checkSetup({
     provider: 'hyperliquid',
     address: userAddress,
   })
 
   if (!required.isReady) {
-    // 3. Build prerequisite payloads for the user to sign
+    // 3. Build setup payloads for the user to sign
     const { actions } = await perps.buildPrerequisites({
       provider: 'hyperliquid',
       address: userAddress,
     })
 
-    // 4. User signs the prerequisites with their wallet
+    // 4. User signs the setup steps with their wallet
     const signedActions = await Promise.all(
       actions.map(async (a) => ({
         action: a.action,
@@ -32,8 +32,8 @@ async function run() {
       }))
     )
 
-    // 5. Submit user-signed actions (+ auto-signs agent prerequisites)
-    await perps.executePrerequisites({
+    // 5. Submit user-signed setup (+ auto-signs agent setup steps)
+    await perps.satisfySetup({
       provider: 'hyperliquid',
       address: userAddress,
       required,

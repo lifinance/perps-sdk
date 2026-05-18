@@ -348,7 +348,7 @@ describe('PerpsClient', () => {
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch (ORD-265)
   // ---------------------------------------------------------------------------
 
-  describe('executePrerequisites — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
+  describe('satisfySetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
     const BASE_URL = DEFAULT_API_URL
 
     /**
@@ -383,15 +383,19 @@ describe('PerpsClient', () => {
     }
 
     /**
-     * Configure the `/account` mock with a custom `abstractionStatus` for the
+     * Configure the `/account` mock with a custom `abstractionMode` for the
      * duration of the test. The new flow reads this up front to choose the
-     * signer for `ACCOUNT_MODE` — `null/undefined` routes to the agent,
-     * anything else routes to the user-wallet fallback.
+     * signer for `ACCOUNT_MODE` — `null` routes to the agent, anything else
+     * routes to the user-wallet fallback.
      */
     function mockAbstractionStatus(status: string | null) {
       const account: AccountResponse = {
         ...mockAccount,
-        config: { ...mockAccount.config, abstractionStatus: status },
+        config: {
+          provider: 'hyperliquid',
+          abstractionMode: status,
+          agents: [],
+        },
       }
       server.use(
         http.get(`${BASE_URL}/account`, () => HttpResponse.json(account))
@@ -453,7 +457,7 @@ describe('PerpsClient', () => {
       return counts
     }
 
-    it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionStatus is null', async () => {
+    it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionMode is null', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
       mockAbstractionStatus(null)
 
@@ -485,7 +489,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.executePrerequisites({
+      const result = await client.satisfySetup({
         provider,
         address: userAddress,
         ...approveAgentPrereqs,
@@ -509,7 +513,7 @@ describe('PerpsClient', () => {
       expect(counts.execute.get(ActionType.APPROVE_AGENT)).toBe(1)
     })
 
-    it('returns fallbackUserPrerequisites (no agent dispatch) when abstractionStatus is already set to a different mode', async () => {
+    it('returns fallbackUserPrerequisites (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
       mockAbstractionStatus('dexAbstraction')
 
@@ -548,7 +552,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.executePrerequisites({
+      const result = await client.satisfySetup({
         provider,
         address: userAddress,
         ...approveAgentPrereqs,
@@ -572,13 +576,13 @@ describe('PerpsClient', () => {
       expect(accountModeCreateRequests[0].signerAddress).toBeUndefined()
     })
 
-    it('short-circuits to a no-op when abstractionStatus already equals the requested mode', async () => {
+    it('short-circuits to a no-op when abstractionMode already equals the requested mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
       mockAbstractionStatus('unifiedAccount')
 
       const counts = setupActionHandlers()
 
-      const result = await client.executePrerequisites({
+      const result = await client.satisfySetup({
         provider,
         address: userAddress,
         ...approveAgentPrereqs,
@@ -628,7 +632,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.executePrerequisites({
+      const result = await client.satisfySetup({
         provider,
         address: userAddress,
         required: {
@@ -679,7 +683,7 @@ describe('PerpsClient', () => {
       setupActionHandlers()
 
       await expect(
-        client.executePrerequisites({
+        client.satisfySetup({
           provider,
           address: userAddress,
           ...approveAgentPrereqs,
@@ -819,6 +823,123 @@ describe('PerpsClient', () => {
       expect(observedActions).toContain(ActionType.APPROVE_BUILDER_FEE)
       expect(observedActions).not.toContain(ActionType.ACCOUNT_MODE)
       expect(observedActions).not.toContain(ActionType.ACCOUNT_TYPE)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // getAccount — projects AccountConfigSetting[] onto the response (ORD-293)
+  // ---------------------------------------------------------------------------
+
+  describe('getAccount — settings projection', () => {
+    it('attaches one AccountConfigSetting per setup + options descriptor', async () => {
+      // mockProviders.hyperliquid declares 2 setup + 1 options descriptor.
+      // The projection over `mockAccount.config` (abstractionMode: null)
+      // produces 3 settings — one per descriptor.
+      const result = await client.getAccount({ provider, address: userAddress })
+
+      expect(result.settings).toHaveLength(3)
+      expect(result.settings.map((s) => s.type)).toEqual([
+        ActionType.APPROVE_AGENT,
+        ActionType.APPROVE_BUILDER_FEE,
+        ActionType.ACCOUNT_MODE,
+      ])
+      // APPROVE_AGENT / APPROVE_BUILDER_FEE: zero-param descriptors → []
+      expect(result.settings[0].values).toEqual([])
+      expect(result.settings[1].values).toEqual([])
+      // ACCOUNT_MODE: mockAccount has abstractionMode = null
+      expect(result.settings[2]).toEqual({
+        type: ActionType.ACCOUNT_MODE,
+        values: [{ name: 'mode', value: null }],
+      })
+    })
+
+    it('passes through the backend AccountResponse fields unchanged', async () => {
+      const result = await client.getAccount({ provider, address: userAddress })
+      // Non-`settings` fields are the verbatim AccountResponse payload.
+      expect(result.provider).toBe('hyperliquid')
+      expect(result.address).toBe(mockAccount.address)
+      expect(result.config).toEqual(mockAccount.config)
+      expect(result.marginUsed).toBe(mockAccount.marginUsed)
+    })
+
+    it('reflects config values in the projection', async () => {
+      const customAccount: AccountResponse = {
+        ...mockAccount,
+        config: {
+          provider: 'hyperliquid',
+          abstractionMode: 'unifiedAccount',
+          agents: [],
+        },
+      }
+      server.use(
+        http.get(`${DEFAULT_API_URL}/account`, () =>
+          HttpResponse.json(customAccount)
+        )
+      )
+
+      const result = await client.getAccount({ provider, address: userAddress })
+      const modeSetting = result.settings.find(
+        (s) => s.type === ActionType.ACCOUNT_MODE
+      )
+      expect(modeSetting?.values).toEqual([
+        { name: 'mode', value: 'unifiedAccount' },
+      ])
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // accountExists — boolean wrapper over getAccount + AccountNotFound (ORD-293)
+  // ---------------------------------------------------------------------------
+
+  describe('accountExists', () => {
+    it('returns true on a successful 200 response', async () => {
+      // Default handler in test/handlers.ts answers /account 200 with mockAccount.
+      await expect(client.accountExists(provider, userAddress)).resolves.toBe(
+        true
+      )
+    })
+
+    it('returns false when the backend reports AccountNotFound', async () => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/account`, () =>
+          HttpResponse.json(
+            {
+              code: PerpsErrorCode.AccountNotFound,
+              message: 'account not found',
+            },
+            { status: 404 }
+          )
+        )
+      )
+      await expect(client.accountExists(provider, userAddress)).resolves.toBe(
+        false
+      )
+    })
+
+    it('rethrows on any other PerpsError code', async () => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/account`, () =>
+          HttpResponse.json(
+            {
+              code: PerpsErrorCode.ServerError,
+              message: 'upstream down',
+            },
+            { status: 502 }
+          )
+        )
+      )
+      await expect(
+        client.accountExists(provider, userAddress)
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('rethrows on network / transport failures', async () => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/account`, () => HttpResponse.error())
+      )
+      await expect(
+        client.accountExists(provider, userAddress)
+      ).rejects.toThrow()
     })
   })
 })

@@ -1,4 +1,6 @@
 import type {
+  AccountConfigSetting,
+  AccountResponse,
   ActionStep,
   Address,
   AssetIdentity,
@@ -61,10 +63,12 @@ export interface PerpsClientOptions {
 }
 
 /**
- * Parameters for checking prerequisites (previously: building authorization payloads).
+ * Parameters for the internal `buildPrerequisites` helper (used by
+ * `checkSetup` to materialise typed-data envelopes for the setup
+ * descriptors). The widget never calls this directly.
  */
 export interface CheckPrerequisitesParams {
-  /** Provider to check prerequisites for */
+  /** Provider to build setup actions for */
   provider: string
   /** User wallet address */
   address: Address
@@ -154,54 +158,81 @@ export interface ModifyOrdersParams {
 }
 
 /**
- * Parameters for checkPrerequisites().
+ * Parameters for {@link PerpsClient.checkSetup}.
  */
-export interface GetPrerequisitesParams {
-  /** Provider to check prerequisites for */
+export interface GetSetupParams {
+  /** Provider to check setup for */
   provider: string
   /** User wallet address */
   address: Address
 }
 
 /**
- * Result from checkPrerequisites().
+ * Result from {@link PerpsClient.checkSetup}.
+ *
+ * Reports the unsatisfied entries on `Provider.setup` for the queried
+ * account, split by the signer role the descriptor declares. The widget
+ * pairs `userPrerequisites` with a wallet-signature prompt and submits
+ * everything back through {@link PerpsClient.satisfySetup}.
+ *
+ * `Provider.options` items are NEVER included here — they don't gate
+ * trading and the widget consumes them via `getAccount().settings`.
  */
-export interface PrerequisitesResult {
-  /** Prerequisite steps requiring user wallet signature */
+export interface SetupResult {
+  /** Setup steps requiring user wallet signature */
   userPrerequisites: ActionStep[]
-  /** Prerequisite steps the SDK auto-signs with the agent */
+  /** Setup steps the SDK auto-signs with the agent */
   agentPrerequisites: ActionStep[]
-  /** Whether all prerequisites are already satisfied (ready to trade) */
+  /** Whether all setup items are already satisfied (ready to trade) */
   isReady: boolean
 }
 
 /**
- * Parameters for executePrerequisites().
+ * Parameters for {@link PerpsClient.satisfySetup}.
  */
-export interface ExecutePrerequisitesParams {
-  /** Provider to authorize */
+export interface SatisfySetupParams {
+  /** Provider to satisfy setup for */
   provider: string
   /** User wallet address */
   address: Address
-  /** The result from checkPrerequisites() */
-  required: PrerequisitesResult
+  /** The result from checkSetup() */
+  required: SetupResult
   /** User-signed actions corresponding to required.userPrerequisites */
   userSignedActions: SignedActionStep[]
 }
 
 /**
- * Result from executePrerequisites().
+ * Result from {@link PerpsClient.satisfySetup}.
  */
-export interface ExecutePrerequisitesResult {
-  /** Results from user-signed prerequisite submission */
+export interface SatisfySetupResult {
+  /** Results from user-signed setup submission */
   userResults: ExecuteActionResponse
-  /** Results from agent-signed prerequisite submission (if any) */
+  /** Results from agent-signed setup submission (if any) */
   agentResults?: ExecuteActionResponse
   /**
-   * Fallback user-wallet prerequisites surfaced when an agent-signed
-   * `ACCOUNT_MODE` dispatch fails (e.g. Hyperliquid refuses to upgrade
-   * from a non-default abstraction variant without a user signature).
-   * The widget should re-sign these with the user's wallet.
+   * Fallback user-wallet setup steps surfaced when an agent-signed
+   * `ACCOUNT_MODE` dispatch is not authorised (e.g. Hyperliquid refuses
+   * to upgrade from a non-default abstraction variant without a user
+   * signature). The widget should re-sign these with the user's wallet.
    */
   fallbackUserPrerequisites?: ActionStep[]
+}
+
+/**
+ * Result envelope returned by {@link PerpsClient.getAccount} — wraps the
+ * backend's `AccountResponse` with a single SDK-projected
+ * `settings` array.
+ *
+ * `settings` contains exactly one `AccountConfigSetting` per descriptor
+ * on `Provider.setup` + `Provider.options` (in that order). The widget
+ * indexes the projection by `setting.type === descriptor.type` and reads
+ * `setting.values[i].value` for each `Param` the descriptor declared.
+ *
+ * The projection is computed once per `getAccount` response by the
+ * dispatcher in `client/projectAccountConfigSettings.ts`; the widget
+ * never calls the per-provider mappers directly.
+ */
+export interface GetAccountResult extends AccountResponse {
+  /** SDK-projected current state of every setup + options descriptor. */
+  settings: AccountConfigSetting[]
 }

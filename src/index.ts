@@ -21,25 +21,29 @@ export {
   DEFAULT_API_URL,
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
+export { projectAccountConfigSettings } from './client/projectAccountConfigSettings.js'
 export type {
   CancelOrdersParams,
   CheckPrerequisitesParams,
-  ExecutePrerequisitesParams,
-  ExecutePrerequisitesResult,
-  GetPrerequisitesParams,
+  GetAccountResult,
+  GetSetupParams,
   HyperliquidConfig,
   ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams as ClientPlaceOrderParams,
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
-  PrerequisitesResult,
   ProviderConfig,
   ProviderConfigs,
+  SatisfySetupParams,
+  SatisfySetupResult,
+  SetupResult,
 } from './client/types.js'
 export { SigningMode } from './client/types.js'
 // Errors
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
+export { projectHyperliquidConfigSettings } from './providers/hyperliquid/accountConfig.js'
+export { projectLighterConfigSettings } from './providers/lighter/accountConfig.js'
 // Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
 export type { EventForSubscription } from './realtime/types.js'

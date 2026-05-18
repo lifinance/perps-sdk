@@ -106,7 +106,13 @@ export function calculateAccountSummary(
     }
   }
 
-  const status = account.config?.abstractionStatus as string | undefined
+  // `abstractionMode` is HL-only; for any other provider variant (today
+  // Lighter) the unified-collateral semantics don't apply, so fall back
+  // to `undefined` and let the non-unified branch below run.
+  const status =
+    account.config.provider === 'hyperliquid'
+      ? (account.config.abstractionMode ?? undefined)
+      : undefined
   const isUnified = UNIFIED_STATUSES.has(status ?? '')
 
   // Unified: spot balances are total token holdings (margin is NOT subtracted).
