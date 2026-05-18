@@ -1,6 +1,7 @@
 import type { Address } from './typedData.js'
 import type { AssetDisplay } from './asset.js'
 import type {
+  ActionType,
   ActivityType,
   FillClassification,
   FillStatus,
@@ -54,7 +55,14 @@ export interface AccountResponse {
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
-  config: Record<string, unknown>
+  /**
+   * Per-provider account state, strongly typed and discriminated on
+   * `config.provider`. Consumers narrow with `config.provider === 'hyperliquid'`
+   * etc. to get access to the provider-specific fields. There is no untyped
+   * escape hatch — fields specific to a future provider belong on a new
+   * variant of `AccountConfig`, not on a generic `Record<string, unknown>`.
+   */
+  config: AccountConfig
 }
 
 export interface TriggerOrder {
@@ -191,4 +199,119 @@ export interface ActivitiesResponse {
   provider: string
   items: ActivityItem[]
   pagination: Pagination
+}
+
+// ---------------------------------------------------------------------------
+// Account configuration state — typed `AccountResponse.config`
+// ---------------------------------------------------------------------------
+
+/**
+ * Hyperliquid record describing one authorised agent wallet on the
+ * `userExtraAgents` response. Shape mirrors what the Hyperliquid info API
+ * returns; the backend forwards the entries verbatim. The widget renders the
+ * count / expiry on the `APPROVE_AGENT` setup descriptor.
+ */
+export type HyperliquidAgent = Record<string, unknown>
+
+/**
+ * Hyperliquid builder-fee approval state. Surfaced by the backend after
+ * comparing the user's `maxBuilderFee` against the configured LI.FI builder
+ * fee for this dex. The widget uses `approved: false` to badge
+ * `APPROVE_BUILDER_FEE` as outstanding.
+ */
+export interface HyperliquidBuilderFeeApproval {
+  builderAddress: string
+  /** Maximum fee rate the user must approve, in basis points as a string. */
+  maxFeeRate: string
+  approved: boolean
+}
+
+/**
+ * Hyperliquid-specific account configuration state.
+ *
+ * `abstractionMode` collapses what the previous untyped shape emitted as
+ * the duplicated `accountMode` + `abstractionStatus` pair: both fields
+ * always carried the same value (the active abstraction variant), so the
+ * typed surface keeps a single canonical key. `null` means abstraction
+ * has never been set (the user is in the unannotated default state); the
+ * widget falls back to the descriptor's `default` `ParamOption` when so.
+ *
+ * `agents` enumerates the currently-authorised agent wallets; the
+ * `APPROVE_AGENT` setup descriptor consults this to detect expiry.
+ *
+ * `builderFeeApproval` is absent on providers / configurations that don't
+ * have a builder configured; present means the LI.FI buildercode is in
+ * play and `approved` reports whether the user has signed the maximum
+ * builder fee.
+ */
+export interface HyperliquidAccountConfig {
+  provider: 'hyperliquid'
+  abstractionMode: string | null
+  agents: HyperliquidAgent[]
+  builderFeeApproval?: HyperliquidBuilderFeeApproval
+}
+
+/**
+ * Lighter-specific account configuration state.
+ *
+ * `accountIndex` is the L2 integer account identifier — used by the SDK
+ * for WASM signing and by the widget when rendering transfer counterparties.
+ *
+ * `apiKeyIndex` is the slot the SDK has registered (or will register) the
+ * session API key in; `apiKeyRegistered` reports whether a key is currently
+ * live in that slot. The `REGISTER_API_KEY` setup descriptor consults this
+ * to gate trading.
+ *
+ * `accountType` is the raw integer fee/latency tier from Lighter's
+ * `/api/v1/account.account_type`. Decoding to a human label is the
+ * widget's responsibility once Lighter publishes the numeric→string
+ * mapping; the SDK projector forwards the raw integer to the
+ * `ACCOUNT_TYPE` options descriptor as the current `value`.
+ */
+export interface LighterAccountConfig {
+  provider: 'lighter'
+  accountIndex: number
+  apiKeyIndex: number
+  apiKeyRegistered: boolean
+  accountType: number
+}
+
+/**
+ * Discriminated union of per-provider account configuration state.
+ * Narrow with `config.provider === '<key>'` to access provider-specific
+ * fields. Adding a new provider means adding a new variant, NOT widening
+ * to a record-keyed shape.
+ */
+export type AccountConfig = HyperliquidAccountConfig | LighterAccountConfig
+
+/**
+ * The current value of a single descriptor parameter, as projected by the
+ * SDK from the typed `AccountConfig` for widget consumption.
+ *
+ * `name` matches `Param.name` on the descriptor that produced it; `value`
+ * is the current state in the primitive shape the descriptor declared.
+ * `null` indicates "no current value" (the user has not made a selection
+ * yet, or the provider has not surfaced one), and the widget should fall
+ * back to the descriptor's `default` `ParamOption` (when present) or
+ * render the control with no highlight.
+ */
+export interface AccountConfigValue {
+  name: string
+  value: string | number | boolean | null
+}
+
+/**
+ * SDK projection of `AccountConfig` against a single descriptor — one
+ * `AccountConfigSetting` per descriptor on `Provider.setup` /
+ * `Provider.options`. `values` carries the current state for each `Param`
+ * the descriptor declared.
+ *
+ * Produced by the per-provider mappers in `perps-sdk` (see ORD-293) and
+ * consumed by the widget's `useProviderSetup` / `useProviderOptions`
+ * hooks (see ORD-294). The widget never reads `AccountConfig` directly —
+ * by design, so a new provider variant doesn't require widget changes.
+ */
+export interface AccountConfigSetting {
+  type: ActionType
+  values: AccountConfigValue[]
 }
