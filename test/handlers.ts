@@ -39,45 +39,50 @@ export const mockProviders: ProvidersResponse = {
       logoURI: 'https://example.com/hl.png',
       signingMethod: SigningMethod.EIP712,
       active: true,
-      accountConfiguration: [
+      // `setup` gates trading — Hyperliquid requires the user to authorise
+      // the SDK session signer and the LI.FI builder fee before placing
+      // orders. Both are zero-parameter user-approval descriptors.
+      setup: [
         {
           type: ActionType.APPROVE_AGENT,
           title: 'Approve agent wallet',
           description:
             'Authorises the SDK session signer to place orders on your behalf.',
-          optional: false,
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
-          control: { type: 'user-approval' },
+          params: [],
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
           title: 'Approve builder fee',
           description: 'Authorises the LI.FI builder fee for this provider.',
-          optional: false,
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
-          control: { type: 'user-approval' },
+          params: [],
         },
+      ],
+      // `options` exposes post-setup tunables — Hyperliquid's account-mode
+      // selector. Agent-signed so the SDK can auto-upgrade after
+      // APPROVE_AGENT when abstraction has never been set.
+      options: [
         {
           type: ActionType.ACCOUNT_MODE,
           title: 'Account mode',
           description: 'Choose how this account interacts with Hyperliquid.',
-          optional: true,
           signers: [PerpsSigner.AGENT],
           signingMethod: SigningMethod.EIP712,
-          control: {
-            type: 'multi-option',
-            values: [
-              { value: 'disabled', label: 'Standard' },
-              {
-                value: 'dexAbstraction',
-                label: 'Dex abstraction',
-                default: true,
-              },
-              { value: 'unifiedAccount', label: 'Unified account' },
-            ],
-          },
+          params: [
+            {
+              name: 'mode',
+              type: 'string',
+              values: [
+                { value: 'disabled', label: 'Standard' },
+                { value: 'dexAbstraction', label: 'Dex abstraction' },
+                { value: 'unifiedAccount', label: 'Unified account' },
+              ],
+              default: { value: 'dexAbstraction', label: 'Dex abstraction' },
+            },
+          ],
         },
       ],
       actions: [
@@ -189,11 +194,21 @@ export const mockOrderbook: OrderbookResponse = {
 export const mockAccount: AccountResponse = {
   provider: 'hyperliquid',
   address: '0x1234567890123456789012345678901234567890',
-  balances: [{ currency: 'USDC', amount: '10000.00' }],
+  // `balances` is now keyed by venue/category — tests target the
+  // `hyperliquid` perps venue.
+  balances: { hyperliquid: [{ currency: 'USDC', amount: '10000.00' }] },
   marginUsed: '500.00',
   unrealizedPnl: '125.50',
   feeTier: { maker: '0.0002', taker: '0.0005' },
-  config: {},
+  // Typed Hyperliquid account-config. `abstractionMode: null` means
+  // abstraction has never been set (a fresh account) — most tests
+  // override this via `mockAbstractionStatus` to exercise specific
+  // branches.
+  config: {
+    provider: 'hyperliquid',
+    abstractionMode: null,
+    agents: [],
+  },
 }
 
 export const mockPositions: PositionsResponse = {

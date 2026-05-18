@@ -17,11 +17,16 @@ describe('getProviders', () => {
     expect(result.providers[0].key).toBe('hyperliquid')
   })
 
-  it('should include accountConfiguration for each provider', async () => {
+  it('should include setup + options descriptors for each provider', async () => {
     const result = await getProviders(client)
 
-    expect(result.providers[0].accountConfiguration).toBeDefined()
-    expect(result.providers[0].accountConfiguration).toHaveLength(3)
+    // Hyperliquid: two setup gates (APPROVE_AGENT + APPROVE_BUILDER_FEE)
+    // and one option (ACCOUNT_MODE) — matches the new `Provider.setup` /
+    // `Provider.options` split introduced in ORD-291.
+    expect(result.providers[0].setup).toBeDefined()
+    expect(result.providers[0].setup).toHaveLength(2)
+    expect(result.providers[0].options).toBeDefined()
+    expect(result.providers[0].options).toHaveLength(1)
   })
 
   it('should support AbortSignal', async () => {
