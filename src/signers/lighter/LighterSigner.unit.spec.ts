@@ -209,6 +209,19 @@ describe('LighterSigner', () => {
     expect(result.messageToSign).toContain(keypair.publicKey)
   })
 
+  it('createAuthToken returns a non-empty token (used by /changeAccountTier ACCOUNT_TYPE)', async () => {
+    // ACCOUNT_TYPE is dispatched as a WASM_BLOB action by the backend but is
+    // an HTTP-only mutation against `/api/v1/changeAccountTier` — the SDK's
+    // "signature" for it is the same Lighter auth token the read endpoints
+    // consume, not a wasm-signed transaction blob. Asserting the primitive
+    // here pins the contract the orchestration layer in PerpsClient relies
+    // on (see PerpsClient.signAccountTierChange).
+    const deadline = Math.floor(Date.now() / 1000) + 60
+    const token = await signer.createAuthToken(deadline, ctx())
+    expect(typeof token).toBe('string')
+    expect(token.length).toBeGreaterThan(0)
+  })
+
   it('embedL1Signature injects the signature into txInfo JSON', async () => {
     const result = await signer.signChangePubKey(
       keypair.publicKey,

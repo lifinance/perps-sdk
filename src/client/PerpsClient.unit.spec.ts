@@ -21,6 +21,7 @@ import {
   server,
 } from '../../test/handlers.js'
 import { createMemoryStorage } from '../agent/storage.js'
+import { LighterKeyStore, LighterSigner } from '../signers/lighter/index.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
 import { SigningMode } from './types.js'
@@ -684,6 +685,100 @@ describe('PerpsClient', () => {
           ...approveAgentPrereqs,
         })
       ).rejects.toThrow()
+    })
+  })
+
+  describe('signPrerequisite(ACCOUNT_TYPE)', () => {
+    // Lighter's backend declares ACCOUNT_TYPE as `signingMethod: WASM_BLOB`
+    // with `wasmSignParams.kind = 'changeAccountTier'`. There is no
+    // corresponding WASM signer export for it — `/api/v1/changeAccountTier`
+    // is an HTTP-only mutation authenticated with a Lighter auth token.
+    // The SDK satisfies that contract by minting a token via the WASM
+    // signer's `CreateAuthToken` and shipping it inside the
+    // WasmBlobSignedActionStep envelope (`signedTx.txInfo = <auth>`,
+    // `txType/txHash` unused). Regression for ORD-287.
+    it('routes Lighter changeAccountTier to an auth token, not a wasm tx signature', async () => {
+      const lighterAddress =
+        '0x2222222222222222222222222222222222222222' as const
+      const storage = createMemoryStorage()
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage,
+      })
+
+      // Seed a registered Lighter API key for `lighterAddress` so the
+      // orchestration can mint an auth token without running the
+      // REGISTER_API_KEY hybrid flow.
+      const wasmSigner = new LighterSigner()
+      const keypair = await wasmSigner.generateAPIKey(`0x${'22'.repeat(32)}`)
+      const keyStore = new LighterKeyStore(storage)
+      await keyStore.set(lighterAddress, {
+        accountIndex: 7,
+        apiKeyIndex: 1,
+        apiKeyPrivateKey: keypair.privateKey,
+        apiKeyPublicKey: keypair.publicKey,
+      })
+
+      const signed = await lighterClient.signPrerequisite(
+        'lighter',
+        lighterAddress,
+        {
+          action: ActionType.ACCOUNT_TYPE,
+          wasmSignParams: {
+            kind: 'changeAccountTier',
+            account_index: 7,
+            new_tier: 'premium',
+            nonce: -1,
+          },
+        }
+      )
+
+      expect(signed.action).toBe(ActionType.ACCOUNT_TYPE)
+      if (!('signedTx' in signed)) {
+        // Narrow `signed` to WasmBlobSignedActionStep and fail loudly if
+        // the orchestration routed to the wrong envelope (e.g. EIP-712).
+        throw new Error('expected WasmBlobSignedActionStep')
+      }
+      // The "signature" is the Lighter auth token, carried in `txInfo`.
+      // The backend's `executeChangeAccountTier` reads exactly this field
+      // and forwards it as the `auth` form parameter.
+      expect(typeof signed.signedTx.txInfo).toBe('string')
+      expect(signed.signedTx.txInfo.length).toBeGreaterThan(0)
+      // `txType`/`txHash` are unused by `/changeAccountTier` — the
+      // executor never reads them. The envelope still carries placeholder
+      // values to satisfy the `WasmBlobSignedActionStep` shape.
+      expect(typeof signed.signedTx.txType).toBe('number')
+      expect(typeof signed.signedTx.txHash).toBe('string')
+      // wasmSignParams round-trips so the backend executor can read
+      // `kind` / `account_index` / `new_tier` / `nonce`.
+      expect(signed.wasmSignParams).toMatchObject({
+        kind: 'changeAccountTier',
+        account_index: 7,
+        new_tier: 'premium',
+      })
+    })
+
+    it('throws a clear error when no Lighter API key has been registered yet', async () => {
+      const lighterAddress =
+        '0x3333333333333333333333333333333333333333' as const
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+      })
+
+      await expect(
+        lighterClient.signPrerequisite('lighter', lighterAddress, {
+          action: ActionType.ACCOUNT_TYPE,
+          wasmSignParams: {
+            kind: 'changeAccountTier',
+            account_index: 7,
+            new_tier: 'premium',
+            nonce: -1,
+          },
+        })
+      ).rejects.toThrow(/No Lighter API key registered/)
     })
   })
 
