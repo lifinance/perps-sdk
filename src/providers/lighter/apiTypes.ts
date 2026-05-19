@@ -46,24 +46,12 @@ export type LtTrade = {
   timestamp: number
   // Lighter's OpenAPI spec marks these as required `StrictInt`, but the live
   // /api/v1/trades endpoint omits them on some `type: "trade"` rows (observed
-  // on older trades). Treat as optional and let the mapper produce `undefined`
-  // for Fill.fee (already optional) when missing.
+  // on older trades) — keep optional and let the mapper emit `undefined`.
   taker_fee?: number
   maker_fee?: number
   transaction_time: number
-  // Per-fill position snapshot BEFORE the trade is applied, scoped to each
-  // counterparty. Signed strings — positive = long, negative = short,
-  // "0" (or "0.00000") = flat. Used to reconstruct the Hyperliquid-style
-  // Open/Close/Increase/Reduce/Switch classification deterministically:
-  // pick the field that matches the viewer's maker/taker role on this fill,
-  // then feed it into the shared `classifyFillFromPosition` with the
-  // viewer's buy/sell side.
-  //
-  // Both are marked required because Lighter's OpenAPI spec lists them as
-  // mandatory `StrictStr` on the trade row, and the live /api/v1/trades
-  // endpoint includes them on every observed row. Validation at the API
-  // boundary (AJV) will surface a missing field as a third-party regression
-  // rather than silently producing wrong classifications.
+  // Per-counterparty position snapshot BEFORE the trade is applied. Signed
+  // strings: positive = long, negative = short, "0" / "0.00000" = flat.
   taker_position_size_before: string
   maker_position_size_before: string
 }

@@ -52,10 +52,9 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
-  // Regression guard (ORD-305): the HL mapper fix derives `market` from the
-  // assetId, but Lighter must continue to emit the literal `'lighter'`
-  // taxonomy entry — there's no per-symbol distinction on Lighter.
-  it("emits market: 'lighter' regardless of symbol shape (ORD-305)", () => {
+  // Lighter has no per-symbol market distinction — every fill carries the
+  // literal `'lighter'` taxonomy entry regardless of the symbol shape.
+  it("emits market: 'lighter' regardless of symbol shape", () => {
     for (const symbol of ['BTC', 'ETH', 'PURR', 'USDJPY']) {
       expect(mapFill(baseTrade(), ACCOUNT_INDEX, symbol).asset.market).toBe(
         'lighter'
@@ -78,13 +77,8 @@ describe('mapFill (Lighter)', () => {
     expect(fill.createdAt).toBe(new Date(1_700_000_000_000).toISOString())
   })
 
-  // -------------------------------------------------------------------------
-  // is_maker_ask × isBuyer truth table — drives both side and fee selection.
-  //
-  // isBuyer is derived from `bid_account_id === accountIndex`. The `isMaker`
-  // expression `(is_maker_ask && !isBuyer) || (!is_maker_ask && isBuyer)`
-  // collapses to: maker iff the viewer is on the resting side of the trade.
-  // -------------------------------------------------------------------------
+  // is_maker_ask × isBuyer: viewer is maker iff they are on the resting side
+  // of the trade (bid_account_id === accountIndex XOR is_maker_ask).
   describe('side + maker/taker truth table', () => {
     it('viewer on bid + is_maker_ask=true → BUY taker → taker fee', () => {
       const fill = mapFill(
@@ -151,13 +145,6 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
-  // ---------------------------------------------------------------------------
-  // Classification — exercises the full Open/Close/Increase/Reduce/Switch
-  // taxonomy by feeding the viewer's `*_position_size_before` (signed) into
-  // the shared `classifyFillFromPosition`. The mapper picks the field that
-  // matches the viewer's maker/taker role on the fill. Regression for
-  // ORD-281: trunk would classify any SELL as OPENED_SHORT.
-  // ---------------------------------------------------------------------------
   describe('classification', () => {
     it('opens a long when a flat viewer buys', () => {
       const fill = mapFill(
@@ -319,11 +306,9 @@ describe('mapFill (Lighter)', () => {
       expect(fill.classification).toBe(FillClassification.SWITCHED_LONG)
     })
 
-    // -------------------------------------------------------------------------
-    // Maker/taker role MUST select the corresponding `*_position_size_before`.
-    // Reading the wrong side would mis-classify when the counterparty's
-    // position is in a different state from the viewer's.
-    // -------------------------------------------------------------------------
+    // The viewer's maker/taker role on the fill selects which
+    // `*_position_size_before` to read; the counterparty's snapshot can be in
+    // a different position state.
     it('reads taker_position_size_before when the viewer is the taker', () => {
       const fill = mapFill(
         baseTrade({
@@ -356,11 +341,6 @@ describe('mapFill (Lighter)', () => {
       expect(fill.classification).toBe(FillClassification.REDUCED_SHORT)
     })
 
-    // -------------------------------------------------------------------------
-    // End-to-end sequence: replays the smallest failing case from ORD-281 —
-    // buy 1, then sell 1 — through the mapper and asserts the second fill
-    // is CLOSED_LONG (not OPENED_SHORT).
-    // -------------------------------------------------------------------------
     it('classifies the closing fill in an OPEN→CLOSE sequence as CLOSED_LONG', () => {
       // Fill 1: viewer buys 1 from flat → OPENED_LONG
       const open = mapFill(

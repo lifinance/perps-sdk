@@ -38,7 +38,7 @@ export interface ParamOption {
  *
  * `type` describes the primitive shape of the value. Currently only
  * `'string'` is admitted — numeric / boolean primitives are deferred until
- * a real descriptor needs them (see ORD-290 § Out of Scope).
+ * a real descriptor needs them.
  *
  * `values` is present iff the parameter has a fixed enumeration of
  * admissible values (e.g. Hyperliquid abstraction modes, Lighter account

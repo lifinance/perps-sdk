@@ -3,21 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { MarginMode, OrderSide, OrderType } from './enums.js'
 import type { PlaceOrderParams, UpdateLeverageParams } from './action.js'
 
-// ---------------------------------------------------------------------------
-// Type-only assertions for ORD-210.
-//
-// These tests intentionally don't exercise runtime behaviour — `PlaceOrderParams`
-// and `UpdateLeverageParams` are pure structural types with no associated
-// runtime code. The point is to lock in that:
-//
-//   1. `marginMode` is optional (fixtures omit it and still typecheck), and
-//   2. `marginMode` accepts both `MarginMode.CROSS` and `MarginMode.ISOLATED`.
-//
-// Vitest still runs these so the `.unit.spec.ts` glob finds them and a
-// regression that broke the type would fail `pnpm test:unit` via tsc rather
-// than silently shipping a breaking type change.
-// ---------------------------------------------------------------------------
-
+// Locks in that `marginMode` is optional on `PlaceOrderParams` /
+// `UpdateLeverageParams` and accepts both `MarginMode.CROSS` and
+// `MarginMode.ISOLATED`. Pure type-level assertions; vitest still picks the
+// file up via the `.unit.spec.ts` glob.
 describe('PlaceOrderParams', () => {
   it('accepts a fixture without marginMode (optional field)', () => {
     const params: PlaceOrderParams = {

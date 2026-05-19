@@ -9,17 +9,11 @@ import {
 import type { Address, Hex, PerpsTypedData } from './typedData.js'
 import type { AssetIdentity, AssetDisplay } from './asset.js'
 
-// ---------------------------------------------------------------------------
-// Action step types (create → sign → execute flow)
-//
-// Union by structural shape — the SDK knows which variant to expect based
-// on the provider's `signingMethod` from the /providers response.
-//
-//   Eip712    – Hyperliquid and future EVM dexes (EIP-712 typed data + ECDSA sig)
-//   WasmBlob  – Lighter and zk-rollup dexes (WASM signer → {txType, txInfo, txHash})
-//   EvmTx     – plain EVM transaction (reserved for future use)
-// ---------------------------------------------------------------------------
-
+// ActionStep variants (create → sign → execute). The SDK picks the variant
+// from the provider's `signingMethod` on `/providers`:
+//   Eip712   — EIP-712 typed data + ECDSA signature
+//   WasmBlob — WASM signer output ({txType, txInfo, txHash})
+//   EvmTx    — plain EVM transaction
 export interface Eip712ActionStep {
   action: ActionType
   typedData: PerpsTypedData
@@ -255,16 +249,9 @@ export interface ActionParamsMap {
 // ---------------------------------------------------------------------------
 
 /**
- * Distributed (discriminated) request shape. Selecting an `action` literal
- * narrows `params` to exactly the matching entry in `ActionParamsMap` — so
- * the backend's Fastify body type (and any caller typing a request directly
- * as `CreateActionRequest`) gets the same level of safety the SDK's
- * `buildAction<T extends ActionType>` provides via its generic.
- *
- * Mapped over `ActionType` so adding a new action automatically yields a
- * new branch — no manual list to keep in sync.
- *
- * See ORD-304.
+ * Distributed discriminated request shape: selecting an `action` literal
+ * narrows `params` to exactly the matching entry in `ActionParamsMap`.
+ * Mapped over `ActionType` so a new action automatically yields a new branch.
  */
 export type CreateActionRequest = {
   [K in ActionType]: {
@@ -281,9 +268,9 @@ export interface CreateActionResponse {
 }
 
 /**
- * Distributed (discriminated) execute-request shape. Narrowing on `action`
- * pins the action kind to a single `ActionType`; `actions` remains the
- * already-discriminated `SignedActionStep[]` union from above. See ORD-304.
+ * Distributed discriminated execute-request shape: narrowing on `action`
+ * pins the action kind to a single `ActionType`; `actions` is the
+ * already-discriminated `SignedActionStep[]` union above.
  */
 export type ExecuteActionRequest = {
   [K in ActionType]: {

@@ -1,20 +1,12 @@
 /**
- * Compile-time regression tests for ORD-304.
- *
- * `CreateActionRequest` and `ExecuteActionRequest` used to declare
- * `params: ActionParamsMap[ActionType]`, which distributed the indexed
- * access over the *union* of every `ActionType` and resolved to the
- * union of every param shape — meaning any param shape was assignable
- * regardless of the `action` field. The fix re-shapes both requests as
- * discriminated unions over `action`, so narrowing on `action` narrows
+ * Compile-time regression tests for `CreateActionRequest` and
+ * `ExecuteActionRequest`: selecting an `action` literal must narrow
  * `params` to exactly the matching entry in `ActionParamsMap`.
  *
- * `@lifi/perps-types` is a types-only package; the assertions below are
- * verified at typecheck time (`pnpm typecheck` / `tsc --noEmit`). Vitest
- * still picks the file up via the `*.unit.spec.ts` glob so a structural
- * regression also surfaces in `pnpm test:unit`.
- *
- * Mirrors the style of `providers.unit.spec.ts` and `account.unit.spec.ts`.
+ * `@lifi/perps-types` is types-only — the assertions below are verified at
+ * typecheck time (`tsc --noEmit`). Vitest still picks the file up via the
+ * `*.unit.spec.ts` glob so a structural regression surfaces in
+ * `pnpm test:unit` too.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -29,11 +21,6 @@ import type { Address } from './typedData.js'
 
 const SOME_ADDRESS: Address = '0x0000000000000000000000000000000000000001'
 const DESTINATION: Address = '0x0000000000000000000000000000000000000002'
-
-// ---------------------------------------------------------------------------
-// Positive fixtures — selecting an `action` literal must permit the matching
-// params shape (and only the matching shape, see negative section below).
-// ---------------------------------------------------------------------------
 
 const placeOrderCreate: CreateActionRequest = {
   provider: 'hyperliquid',
@@ -92,18 +79,11 @@ const withdrawalExecute: ExecuteActionRequest = {
   actions: [],
 }
 
-// ---------------------------------------------------------------------------
-// Negative assertions — mis-matched param shapes must NOT typecheck.
-// `@ts-expect-error` triggers a compile error if the line *would* typecheck,
-// so the assertions below double as a regression guard: if someone reverts
-// the discriminated-union shape, these `@ts-expect-error` directives will
-// turn into "unused" errors and break the build.
-// ---------------------------------------------------------------------------
-
-// Use pre-built typed payloads so the negative assignments produce a single
-// error on the assignment line (which is where the `@ts-expect-error` lives)
-// rather than surfacing as nested "object literal may only specify known
-// properties" errors on the param literal's inner lines.
+// Negative assertions: mis-matched param shapes must NOT typecheck. The
+// `@ts-expect-error` directives below double as a regression guard — they
+// flip into "unused" errors if the discriminated-union shape is reverted.
+// Pre-built typed payloads keep the negative assignments to a single error
+// on the assignment line where the directive lives.
 const placeOrderParams: PlaceOrderParams = {
   asset: { assetId: 'BTC', market: 'hyperliquid' },
   side: OrderSide.BUY,
@@ -114,7 +94,7 @@ const withdrawalParams: WithdrawalParams = {
   amount: '100',
 }
 
-// PLACE_ORDER + WithdrawalParams must fail (the exact bug in ORD-304).
+// PLACE_ORDER + WithdrawalParams must fail.
 // @ts-expect-error params shape must match action literal
 const badPlaceOrderWithWithdrawalParams: CreateActionRequest = {
   provider: 'hyperliquid',
@@ -151,13 +131,9 @@ const badExecuteActionLiteral: ExecuteActionRequest = {
   actions: [],
 }
 
-// ---------------------------------------------------------------------------
-// Structural assertions — narrowing on `action` must yield exactly the
-// matching `params` shape (Equals catches both "too wide" and "too narrow"
-// regressions). Mirrors the `Expect<Equals<...>>` style used in
-// providers.unit.spec.ts.
-// ---------------------------------------------------------------------------
-
+// Structural assertions: narrowing on `action` must yield exactly the
+// matching `params` shape. `Equals` catches both "too wide" and "too narrow"
+// regressions.
 type Expect<T extends true> = T
 type Equals<X, Y> =
   (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2
@@ -178,8 +154,8 @@ type _CreateWithdrawalParams = Expect<
   >
 >
 
-// `Record<string, never>` for the no-params actions — locks in that the
-// distribution preserved the empty-object marker rather than widening it.
+// `Record<string, never>` for the no-params actions — distribution must
+// preserve the empty-object marker rather than widen it.
 type _CreateTransferParams = Expect<
   Equals<
     Extract<CreateActionRequest, { action: ActionType.TRANSFER }>['params'],
@@ -218,7 +194,7 @@ type _CreateActionFieldNarrows = Expect<
 
 // ExecuteActionRequest carries the same discriminator behaviour at the top
 // level; its `actions` field remains the already-discriminated
-// `SignedActionStep[]`, which we don't re-assert here (ORD-304 § Out of Scope).
+// `SignedActionStep[]`, which is not re-asserted here.
 type _ExecuteActionFieldNarrows = Expect<
   Equals<
     Extract<ExecuteActionRequest, { action: ActionType.WITHDRAWAL }>['action'],
@@ -226,10 +202,7 @@ type _ExecuteActionFieldNarrows = Expect<
   >
 >
 
-// Re-export the fixtures so `noUnusedLocals` doesn't flag them. The negative
-// fixtures are intentionally `unknown`-typed at use to keep the structural
-// information visible to TS while signalling to readers that the runtime
-// values are placeholders.
+// Re-export the fixtures so `noUnusedLocals` doesn't flag them.
 export const _fixtures = {
   placeOrderCreate,
   withdrawalCreate,
@@ -253,13 +226,9 @@ export type _TypeAssertions = [
   _ExecuteActionFieldNarrows,
 ]
 
-// ---------------------------------------------------------------------------
-// Runtime smoke assertions — the `.unit.spec.ts` glob runs vitest too, so
-// surface the fixtures' discriminator values at runtime as a belt-and-braces
-// guard against a regression that somehow slips past tsc.
-// ---------------------------------------------------------------------------
-
-describe('CreateActionRequest discriminated union (ORD-304)', () => {
+// Runtime smoke assertions back the type-level assertions for the
+// `.unit.spec.ts` glob's vitest pass.
+describe('CreateActionRequest discriminated union', () => {
   it('narrows params to PlaceOrderParams on action === PLACE_ORDER', () => {
     if (placeOrderCreate.action === ActionType.PLACE_ORDER) {
       expect(placeOrderCreate.params.size).toBe('0.1')
@@ -289,7 +258,7 @@ describe('CreateActionRequest discriminated union (ORD-304)', () => {
   })
 })
 
-describe('ExecuteActionRequest discriminated union (ORD-304)', () => {
+describe('ExecuteActionRequest discriminated union', () => {
   it('narrows on action field at the top level', () => {
     if (placeOrderExecute.action === ActionType.PLACE_ORDER) {
       expect(placeOrderExecute.actions).toEqual([])

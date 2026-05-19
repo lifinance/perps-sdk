@@ -8,18 +8,10 @@ import type {
   WithdrawalActivity,
 } from './account.js'
 
-// ---------------------------------------------------------------------------
-// Type-only assertions for ORD-220.
-//
-// These tests lock in the structural shape of the new `TransferActivity`
-// variant, that the `ActivityItem` discriminated union narrows correctly off
-// `type`, and that misshaped variants are rejected by the type system.
-//
-// Vitest still runs the file so the `.unit.spec.ts` glob picks it up and a
-// regression that broke the discriminant or shape would fail `pnpm test:unit`
-// via tsc rather than silently shipping a breaking type change.
-// ---------------------------------------------------------------------------
-
+// Type-level coverage for `TransferActivity`: the structural shape, narrowing
+// off the `type` discriminator, and rejection of misshaped variants. Vitest
+// runs the file via the `.unit.spec.ts` glob so a regression also fails
+// `pnpm test:unit` via tsc.
 describe('TransferActivity', () => {
   it('accepts a minimal IN-direction fixture', () => {
     const item: TransferActivity = {

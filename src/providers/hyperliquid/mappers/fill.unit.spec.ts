@@ -9,10 +9,6 @@ import {
 import type { HlUserFill } from '../types.js'
 import { classifyFillFromPosition, mapFill } from './fill.js'
 
-// ---------------------------------------------------------------------------
-// Test fixture builder — keeps each spec focused on the field under test.
-// ---------------------------------------------------------------------------
-
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   tid: 12345,
   oid: 67890,
@@ -28,10 +24,6 @@ const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   startPosition: '0',
   ...overrides,
 })
-
-// ---------------------------------------------------------------------------
-// classifyFillFromPosition — covers each branch of the position-delta logic.
-// ---------------------------------------------------------------------------
 
 describe('classifyFillFromPosition', () => {
   describe('starting flat (start === 0)', () => {
@@ -100,10 +92,6 @@ describe('classifyFillFromPosition', () => {
     })
   })
 })
-
-// ---------------------------------------------------------------------------
-// mapFill — converts raw Hyperliquid fills into the shared Fill shape.
-// ---------------------------------------------------------------------------
 
 describe('mapFill (Hyperliquid)', () => {
   it('stringifies the numeric tid into Fill.id', () => {
@@ -180,7 +168,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
   })
 
-  describe('asset.market (ORD-305)', () => {
+  describe('asset.market', () => {
     it('maps a bare coin (main perp dex) to market "hyperliquid"', () => {
       expect(mapFill(baseFill({ coin: 'BTC' })).asset.market).toBe(
         'hyperliquid'

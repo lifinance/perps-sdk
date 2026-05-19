@@ -1,16 +1,11 @@
 /**
  * Type-level fixtures for `Provider.setup` / `Provider.options` and the
- * shared `ProviderActionDescriptor` shape (ORD-291).
+ * shared `ProviderActionDescriptor` shape.
  *
- * `@lifi/perps-types` is a types-only package; the structural assertions
- * below are verified at typecheck time (`pnpm typecheck` / `tsc --noEmit`).
- * Vitest still picks the file up via the `*.unit.spec.ts` glob so a
- * runtime structural regression also fails `pnpm test:unit`.
- *
- * The fixtures double as the inline regression test the AC asks for:
- * shapes here match what the backend will emit once ORD-292 lands, so
- * once that PR merges these become structurally compatible with the
- * live `/perps/providers` and `/perps/account` payloads.
+ * `@lifi/perps-types` is types-only — the structural assertions below are
+ * verified at typecheck time (`tsc --noEmit`). Vitest also picks the file up
+ * via the `*.unit.spec.ts` glob, so a runtime structural regression fails
+ * `pnpm test:unit`.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -304,8 +299,8 @@ type _DescriptorKeys = Expect<
   >
 >
 
-// `Param.type` is the literal `'string'` (numeric / boolean primitives
-// deferred per ORD-290 § Out of Scope).
+// `Param.type` is the literal `'string'` — numeric / boolean primitives
+// are deferred until a real descriptor needs them.
 type _ParamTypeIsString = Expect<Equals<Param['type'], 'string'>>
 
 // `AccountConfig` narrows on `provider`. The widget never reads the union

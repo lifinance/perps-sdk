@@ -32,17 +32,13 @@ const basePosition = (
 
 describe('mapPosition (Lighter)', () => {
   describe('marginUsed', () => {
-    // -------------------------------------------------------------------------
-    // Cross-margin: Lighter never pre-allocates margin per position on a cross
-    // account, so `/api/v1/account` returns `allocated_margin: "0"`. Derive
-    // margin from `position_value × initial_margin_fraction / 100`, the same
-    // formula Lighter's own UI uses (verified against accounts 5, 24, 80 on
-    // mainnet.zklighter.elliot.ai). IMF is reported in percent units, so
-    // e.g. imf=2.00 ⇒ 2% maintenance ⇒ 50× leverage.
-    // -------------------------------------------------------------------------
+    // Cross-margin: Lighter never pre-allocates margin per position so
+    // `allocated_margin` is always "0" on a cross account; derive margin as
+    // `position_value × imf / 100` (imf is in percent units). Snapshots below
+    // were captured from accounts 5, 24, 80 on mainnet.zklighter.elliot.ai.
     it('derives non-zero marginUsed for a cross-margin position with allocated_margin="0"', () => {
-      // Real /api/v1/account snapshot from account 5: BTC cross position,
-      // size 0.00106, notional 83.961964 USDC, imf 2.00 (50× leverage).
+      // Account 5: BTC cross position, size 0.00106, notional 83.961964 USDC,
+      // imf 2.00 (50× leverage).
       const result = mapPosition(
         basePosition({
           margin_mode: LT_MARGIN_MODE_CROSS,
@@ -59,8 +55,8 @@ describe('mapPosition (Lighter)', () => {
     })
 
     it('derives marginUsed for a short cross-margin position', () => {
-      // Real snapshot from account 24: ETH short cross position,
-      // size 30, notional 67548.300000 USDC, imf 2.00.
+      // Account 24: ETH short cross, size 30, notional 67548.300000 USDC,
+      // imf 2.00.
       const result = mapPosition(
         basePosition({
           symbol: 'ETH',
@@ -81,10 +77,9 @@ describe('mapPosition (Lighter)', () => {
     })
 
     it('uses allocated_margin verbatim for isolated-margin positions', () => {
-      // Real snapshot from account 24: USDJPY isolated long. Note alloc_margin
-      // (1046.077285) is NOT equal to position_value × imf / 100 (47.354) —
-      // isolated positions can be over-collateralized, so the on-chain
-      // `allocated_margin` is the source of truth, not a derivation.
+      // Account 24: USDJPY isolated long. allocated_margin (1046.077285) ≠
+      // position_value × imf / 100 (47.354) because isolated positions can
+      // be over-collateralized — the on-chain field is the source of truth.
       const result = mapPosition(
         basePosition({
           symbol: 'USDJPY',
@@ -102,10 +97,9 @@ describe('mapPosition (Lighter)', () => {
     })
 
     it('falls back to "0" for a cross position with zero notional (closed/empty)', () => {
-      // Lighter's API returns a row per market regardless of whether the user
-      // has an open position; closed slots have position=0 and
-      // position_value="-0.000000". The derivation must collapse to "0"
-      // without producing NaN or a negative number.
+      // Closed market slots return position=0 and position_value="-0.000000";
+      // the derivation must collapse to "0" without producing NaN or a
+      // negative number.
       const result = mapPosition(
         basePosition({
           margin_mode: LT_MARGIN_MODE_CROSS,
@@ -121,7 +115,7 @@ describe('mapPosition (Lighter)', () => {
     })
   })
 
-  describe('other invariants (regression guards)', () => {
+  describe('other invariants', () => {
     it('maps sign>=0 to LONG and sign<0 to SHORT', () => {
       expect(mapPosition(basePosition({ sign: 1 }), SYMBOL).side).toBe(
         PositionSide.LONG
