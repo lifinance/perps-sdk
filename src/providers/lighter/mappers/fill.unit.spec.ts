@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FillClassification,
   FillStatus,
+  LiquidityRole,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
@@ -390,6 +391,59 @@ describe('mapFill (Lighter)', () => {
         SYMBOL
       )
       expect(switchSell.classification).toBe(FillClassification.SWITCHED_SHORT)
+    })
+  })
+
+  describe('liquidity role from derived isMaker', () => {
+    it.each([
+      // viewer on bid + is_maker_ask=false → viewer is maker
+      [false, LiquidityRole.MAKER],
+      // viewer on bid + is_maker_ask=true → viewer is taker
+      [true, LiquidityRole.TAKER],
+    ])(
+      'viewer on bid with is_maker_ask: %s → liquidity: %s',
+      (is_maker_ask, expected) => {
+        const fill = mapFill(
+          baseTrade({
+            bid_account_id: ACCOUNT_INDEX,
+            ask_account_id: 0,
+            is_maker_ask,
+          }),
+          ACCOUNT_INDEX,
+          SYMBOL
+        )
+        expect(fill.liquidity).toBe(expected)
+      }
+    )
+  })
+
+  describe('orderId selects bid_id / ask_id by viewer side', () => {
+    it('buyer path: viewer on bid → orderId from bid_id', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          bid_id: 42,
+          ask_id: 99,
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.orderId).toBe('42')
+    })
+
+    it('seller path: viewer on ask → orderId from ask_id', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          bid_id: 42,
+          ask_id: 77,
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.orderId).toBe('77')
     })
   })
 
