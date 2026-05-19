@@ -254,25 +254,46 @@ export interface ActionParamsMap {
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-export interface CreateActionRequest {
-  provider: string
-  address: Address
-  signerAddress?: Address
-  action: ActionType
-  params: ActionParamsMap[ActionType]
-}
+/**
+ * Distributed (discriminated) request shape. Selecting an `action` literal
+ * narrows `params` to exactly the matching entry in `ActionParamsMap` — so
+ * the backend's Fastify body type (and any caller typing a request directly
+ * as `CreateActionRequest`) gets the same level of safety the SDK's
+ * `buildAction<T extends ActionType>` provides via its generic.
+ *
+ * Mapped over `ActionType` so adding a new action automatically yields a
+ * new branch — no manual list to keep in sync.
+ *
+ * See ORD-304.
+ */
+export type CreateActionRequest = {
+  [K in ActionType]: {
+    provider: string
+    address: Address
+    signerAddress?: Address
+    action: K
+    params: ActionParamsMap[K]
+  }
+}[ActionType]
 
 export interface CreateActionResponse {
   actions: ActionStep[]
 }
 
-export interface ExecuteActionRequest {
-  provider: string
-  address: Address
-  signerAddress?: Address
-  action: ActionType
-  actions: SignedActionStep[]
-}
+/**
+ * Distributed (discriminated) execute-request shape. Narrowing on `action`
+ * pins the action kind to a single `ActionType`; `actions` remains the
+ * already-discriminated `SignedActionStep[]` union from above. See ORD-304.
+ */
+export type ExecuteActionRequest = {
+  [K in ActionType]: {
+    provider: string
+    address: Address
+    signerAddress?: Address
+    action: K
+    actions: SignedActionStep[]
+  }
+}[ActionType]
 
 export interface ExecuteActionResponse {
   results: ActionResult[]
