@@ -25,7 +25,7 @@ export interface LighterSignerContext {
 }
 
 export interface LighterSignerConfig extends LoadLighterWasmOptions {
-  /** Lighter REST API base URL used by CheckClient/CreateAuthToken network calls. */
+  /** Lighter REST API base URL. */
   apiUrl?: string
   /** Lighter chain ID (304 = mainnet). */
   chainId?: number
@@ -325,17 +325,12 @@ export class LighterSigner {
           ctx.accountIndex
         )
       case ActionType.TRANSFER:
-        // Lighter's SignTransfer (used by the fastwithdraw signed-transfer
-        // flow) takes 7 positional args, in the order the Go binding declares
-        // them: `toAccount, usdcAmount, fee, memo, nonce, apiKeyIndex,
-        // accountIndex`. Mirrors the WITHDRAWAL plumbing — same nonce/api-key
-        // sourcing, same fall-through on bad params. `memo` is a 32-byte
-        // identifier that the Go signer reads via `Value.String()` and copies
-        // directly into a `[32]byte`, so the backend MUST send a JS string
-        // whose UTF-8 byte length is exactly 32 (in practice: 32 ASCII
-        // characters). Anything else fails with "memo expected to be 32 bytes
-        // long". The other args are u64s coerced via numberField, same as
-        // every other Sign* dispatch.
+        // SignTransfer's 7 positional args follow the Go binding order:
+        // `toAccount, usdcAmount, fee, memo, nonce, apiKeyIndex,
+        // accountIndex`. `memo` is copied directly into a `[32]byte`, so the
+        // backend MUST send a JS string whose UTF-8 byte length is exactly
+        // 32 (in practice: 32 ASCII characters) — anything else fails with
+        // "memo expected to be 32 bytes long".
         return wasm.SignTransfer(
           numberField(p, 'to_account'),
           numberField(p, 'usdc_amount'),

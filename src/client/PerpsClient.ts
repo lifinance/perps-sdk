@@ -169,10 +169,9 @@ export class PerpsClient {
   /**
    * Action types that require explicit user input (a chosen mode or tier)
    * and therefore cannot be bulk-staged through `buildPrerequisites` with
-   * empty params. The widget renders a control for these and dispatches
-   * them via `execute(...)` once the user picks a value; the post-
-   * `APPROVE_AGENT` auto-upgrade path also dispatches `ACCOUNT_MODE`
-   * directly with `mode: 'unifiedAccount'`.
+   * empty params. Callers must dispatch these via `execute(...)` once a
+   * value is picked. The post-`APPROVE_AGENT` auto-upgrade path also
+   * dispatches `ACCOUNT_MODE` directly with `mode: 'unifiedAccount'`.
    */
   private static readonly EXPLICIT_INPUT_PREREQUISITES: ReadonlySet<ActionType> =
     new Set([ActionType.ACCOUNT_MODE, ActionType.ACCOUNT_TYPE])
@@ -246,9 +245,9 @@ export class PerpsClient {
   }
 
   /**
-   * True if any descriptor for the provider lists `PerpsSigner.AGENT`. Used to
-   * gate EVM-agent creation: providers like Lighter sign with their own
-   * keystore and never need an AgentManager-managed agent.
+   * True if any descriptor for the provider lists `PerpsSigner.AGENT`.
+   * Providers like Lighter sign with their own keystore and never need an
+   * AgentManager-managed agent.
    */
   private async providerUsesAgent(provider: string): Promise<boolean> {
     const metadata = await this.getProviderMetadata(provider)
@@ -361,8 +360,7 @@ export class PerpsClient {
    * Sign a single prerequisite step using whichever signing path matches the
    * step's shape — EIP-712 typed data, WASM blob (with the hybrid EIP-191 +
    * WASM flow for REGISTER_API_KEY), or EVM transaction. Lets consumers
-   * (e.g. the widget's PrerequisitesContext) collect signed prereqs without
-   * embedding per-method signing logic.
+   * collect signed prereqs without embedding per-method signing logic.
    */
   async signPrerequisite(
     provider: string,
@@ -402,10 +400,10 @@ export class PerpsClient {
 
   /**
    * Sign and broadcast a sequence of EVM transactions via the user's wallet
-   * client. Used today for Lighter DEPOSIT (approve + deposit on Ethereum
-   * mainnet) — submitted serially so the deposit can rely on the approve
-   * having mined. Each step's `txParams` carries chainId, target, function
-   * name, args, and a human-readable abi from the backend.
+   * client. Steps are submitted serially so a later step (e.g. deposit) can
+   * rely on an earlier step (e.g. approve) having mined. Each step's
+   * `txParams` carries chainId, target, function name, args, and a
+   * human-readable abi from the backend.
    */
   private async signEvmTxActions(
     actions: EvmTxActionStep[]
@@ -640,10 +638,8 @@ export class PerpsClient {
       action: step.action,
       wasmSignParams: step.wasmSignParams,
       signedTx: {
-        // `txType` / `txHash` are unused by `/changeAccountTier` (the
-        // backend's `executeChangeAccountTier` only reads `signedTx.txInfo`
-        // as the auth token). Zero / empty satisfy the envelope shape
-        // without leaking a meaningless value into observability.
+        // `/changeAccountTier` reads only `txInfo` (the auth token); `txType`
+        // and `txHash` are placeholders to satisfy the envelope shape.
         txType: 0,
         txInfo: authToken,
         txHash: '',
@@ -786,12 +782,9 @@ export class PerpsClient {
   /**
    * Fetch the user's account state from the backend and attach the
    * SDK-projected `settings` array — one `AccountConfigSetting` per
-   * descriptor on `Provider.setup` + `Provider.options`, computed by the
-   * dispatcher in `projectAccountConfigSettings`.
-   *
-   * The projection is done once per response so widget hooks can read
+   * descriptor on `Provider.setup` + `Provider.options`. Callers read
    * `result.settings` directly without re-deriving values from the typed
-   * `AccountConfig`. The widget never calls the per-provider mappers.
+   * `AccountConfig`.
    */
   async getAccount(params: {
     provider: string
@@ -814,10 +807,6 @@ export class PerpsClient {
    * `true` when `getAccount` resolves, `false` when the backend reports
    * `PerpsErrorCode.AccountNotFound`, and re-throws on any other error
    * (transport failures, validation errors, server errors).
-   *
-   * Powers the widget's deposit-gate layer — the existing
-   * `accountNotInitialized` plumbing in PrerequisitesContext becomes a
-   * `useAccountExists` TanStack Query hook over this method.
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
     try {
@@ -835,18 +824,16 @@ export class PerpsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Setup (was: prerequisites / authorizations)
+  // Setup
   // ---------------------------------------------------------------------------
 
   /**
    * Return the unsatisfied entries on `Provider.setup` for this account,
-   * split by signer role. The widget renders these in `<SetupModal />`;
-   * trading is gated on `isReady === true`.
+   * split by signer role. Trading is gated on `isReady === true`.
    *
    * `Provider.options` descriptors are NEVER returned here — options are
-   * post-setup tunables (rendered behind a cog icon) and never gate
-   * trading. The widget queries option state via `getAccount().settings`,
-   * not via this method.
+   * post-setup tunables and never gate trading. Option state is surfaced
+   * separately via `getAccount().settings`.
    */
   async checkSetup(params: GetSetupParams): Promise<SetupResult> {
     const { provider, address } = params
@@ -953,8 +940,8 @@ export class PerpsClient {
   /**
    * Default mode the SDK auto-applies after `APPROVE_AGENT` on a provider
    * whose `options` array exposes a writable `ACCOUNT_MODE` (today
-   * Hyperliquid). The widget can subsequently override this through the
-   * radio control.
+   * Hyperliquid). Callers can override this through a subsequent
+   * `ACCOUNT_MODE` dispatch.
    */
   private static readonly DEFAULT_ACCOUNT_MODE = 'unifiedAccount'
 
@@ -1045,7 +1032,7 @@ export class PerpsClient {
     }
 
     // Already set to a different mode → HL requires a user-wallet signature.
-    // Build the action unsigned and surface it as a fallback for the widget.
+    // Build the action unsigned and surface it as a fallback to the caller.
     const { actions: fallbackActions } = await createAction(this.sdkClient, {
       provider,
       address,
@@ -1059,11 +1046,10 @@ export class PerpsClient {
   }
 
   /**
-   * Descriptor test: the provider exposes an `ACCOUNT_MODE` descriptor
-   * (in `setup` or `options`) whose `mode` Param has a writable
-   * enumeration of values. Used to gate the post-`APPROVE_AGENT`
-   * auto-upgrade — providers that omit `ACCOUNT_MODE` (Lighter today) or
-   * expose it as a read-only / free-form input skip the chain.
+   * True when the provider exposes an `ACCOUNT_MODE` descriptor (in `setup`
+   * or `options`) whose `mode` Param has a writable enumeration of values.
+   * Providers that omit `ACCOUNT_MODE` or expose it as read-only / free-form
+   * input return false.
    */
   private static hasWritableAccountMode(metadata: Provider): boolean {
     const item = [...metadata.setup, ...metadata.options].find(

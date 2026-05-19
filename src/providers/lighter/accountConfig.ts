@@ -13,26 +13,18 @@ import { assertNever } from '../../utils/assertNever.js'
  * Project a single Lighter descriptor against the typed
  * `LighterAccountConfig` into an `AccountConfigSetting`.
  *
- * The switch is exhaustive over `ActionType`: adding a new variant to the
- * enum forces a corresponding `case` here (otherwise `assertNever` raises a
- * compile error in the `default` arm). ActionTypes that are NOT valid on
- * `Provider.setup` / `Provider.options` throw at runtime — they should
- * never reach this code path because the backend only emits descriptors
- * for the documented account-level actions.
- *
- * Mapping table (Lighter):
+ * Mapping table:
  *
  * | descriptor.type    | projected values
  * |--------------------|-------------------------------------------------
  * | REGISTER_API_KEY   | []                  (no parameters)
- * | ACCOUNT_MODE       | [{ name: 'mode', value: null }]  (always null —
- * |                    |  Lighter has no abstraction-mode equivalent;
- * |                    |  the descriptor is read-only on this provider)
+ * | ACCOUNT_MODE       | [{ name: 'mode', value: null }]  (Lighter has no
+ * |                    |  abstraction-mode equivalent; read-only here)
  * | ACCOUNT_TYPE       | [{ name: 'tier', value: config.accountType }]
  *
- * Any other ActionType on a Lighter setup/options descriptor is a
- * descriptor-emission bug — the descriptor doesn't have a defined
- * projection on this provider.
+ * The switch is exhaustive over `ActionType` so enum additions force a
+ * compile error in the `default` arm. ActionTypes that are not valid on
+ * `Provider.setup` / `Provider.options` throw at runtime.
  */
 function projectLighterDescriptor(
   descriptor: ProviderActionDescriptor,
@@ -45,29 +37,23 @@ function projectLighterDescriptor(
     case ActionType.REGISTER_API_KEY:
       return { type: descriptor.type, values: [] }
 
-    // Lighter exposes no abstraction-mode equivalent — if a future
-    // backend descriptor surfaces ACCOUNT_MODE on Lighter (e.g. as a
-    // read-only display), it always projects `null`. The widget then
-    // falls back to the descriptor's `default` ParamOption.
+    // Lighter exposes no abstraction-mode equivalent; if a backend descriptor
+    // surfaces ACCOUNT_MODE on Lighter it always projects `null` and callers
+    // fall back to the descriptor's `default` ParamOption.
     case ActionType.ACCOUNT_MODE:
       return {
         type: descriptor.type,
         values: [{ name: 'mode', value: null }],
       }
 
-    // ACCOUNT_TYPE: the descriptor's `tier` Param maps to
-    // `config.accountType` — the raw integer Lighter publishes. Decoding
-    // to a human label is the widget's responsibility once Lighter
-    // publishes the integer→label table.
+    // `tier` maps to the raw integer `config.accountType` Lighter publishes;
+    // decoding to a human label is the caller's responsibility.
     case ActionType.ACCOUNT_TYPE:
       return {
         type: descriptor.type,
         values: [{ name: 'tier', value: config.accountType }],
       }
 
-    // The remainder of `ActionType` is enumerated explicitly so the
-    // exhaustiveness check below catches enum additions at compile time.
-    // None of these should appear on a Lighter setup/options descriptor.
     case ActionType.APPROVE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
     case ActionType.SEND_ASSET:
@@ -94,10 +80,10 @@ function projectLighterDescriptor(
 }
 
 /**
- * Project the union of Lighter setup + options descriptors against the
- * typed `LighterAccountConfig` for widget consumption. Produces exactly
- * one `AccountConfigSetting` per descriptor, in `setup`-then-`options`
- * order (preserving the order in which the backend emits them).
+ * Project the union of Lighter setup + options descriptors against the typed
+ * `LighterAccountConfig`. Produces exactly one `AccountConfigSetting` per
+ * descriptor, in `setup`-then-`options` order (preserving the order in which
+ * the backend emits them).
  *
  * @param config Typed account state for the Lighter account.
  * @param setup  `Provider.setup` array as emitted by `/providers`.

@@ -21,8 +21,7 @@ describe('getProviders', () => {
     const result = await getProviders(client)
 
     // Hyperliquid: two setup gates (APPROVE_AGENT + APPROVE_BUILDER_FEE)
-    // and one option (ACCOUNT_MODE) — matches the new `Provider.setup` /
-    // `Provider.options` split introduced in ORD-291.
+    // and one option (ACCOUNT_MODE).
     expect(result.providers[0].setup).toBeDefined()
     expect(result.providers[0].setup).toHaveLength(2)
     expect(result.providers[0].options).toBeDefined()

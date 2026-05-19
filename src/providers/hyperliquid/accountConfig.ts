@@ -13,14 +13,7 @@ import { assertNever } from '../../utils/assertNever.js'
  * Project a single Hyperliquid descriptor against the typed
  * `HyperliquidAccountConfig` into an `AccountConfigSetting`.
  *
- * The switch is exhaustive over `ActionType`: adding a new variant to the
- * enum forces a corresponding `case` here (otherwise `assertNever` raises a
- * compile error in the `default` arm). ActionTypes that are NOT valid on
- * `Provider.setup` / `Provider.options` throw at runtime — they should
- * never reach this code path because the backend only emits descriptors
- * for the documented account-level actions.
- *
- * Mapping table (Hyperliquid):
+ * Mapping table:
  *
  * | descriptor.type          | projected values
  * |--------------------------|-----------------------------------------------
@@ -28,9 +21,9 @@ import { assertNever } from '../../utils/assertNever.js'
  * | APPROVE_BUILDER_FEE      | []                  (no parameters)
  * | ACCOUNT_MODE             | [{ name: 'mode', value: config.abstractionMode }]
  *
- * Any other ActionType on a Hyperliquid setup/options descriptor is a
- * descriptor-emission bug — the descriptor doesn't have a defined
- * projection on this provider.
+ * The switch is exhaustive over `ActionType` so enum additions force a
+ * compile error in the `default` arm. ActionTypes that are not valid on
+ * `Provider.setup` / `Provider.options` throw at runtime.
  */
 function projectHyperliquidDescriptor(
   descriptor: ProviderActionDescriptor,
@@ -44,21 +37,14 @@ function projectHyperliquidDescriptor(
     case ActionType.APPROVE_BUILDER_FEE:
       return { type: descriptor.type, values: [] }
 
-    // ACCOUNT_MODE: the descriptor's `mode` Param maps to
-    // `config.abstractionMode`. `null` means abstraction has never been
-    // set; the widget falls back to the descriptor's `default` ParamOption.
+    // `config.abstractionMode === null` means abstraction has never been set;
+    // callers fall back to the descriptor's `default` ParamOption.
     case ActionType.ACCOUNT_MODE:
       return {
         type: descriptor.type,
         values: [{ name: 'mode', value: config.abstractionMode }],
       }
 
-    // The remainder of `ActionType` is enumerated explicitly so the
-    // exhaustiveness check below catches enum additions at compile time.
-    // None of these should appear on a Hyperliquid setup/options
-    // descriptor — they're trading actions (or actions that the provider
-    // doesn't declare here, e.g. ACCOUNT_TYPE / REGISTER_API_KEY are
-    // Lighter-only).
     case ActionType.ACCOUNT_TYPE:
     case ActionType.SEND_ASSET:
     case ActionType.WITHDRAWAL:
@@ -86,13 +72,9 @@ function projectHyperliquidDescriptor(
 
 /**
  * Project the union of Hyperliquid setup + options descriptors against the
- * typed `HyperliquidAccountConfig` for widget consumption. Produces exactly
- * one `AccountConfigSetting` per descriptor, in `setup`-then-`options`
- * order (preserving the order in which the backend emits them).
- *
- * The widget consumes the returned settings against the same descriptors
- * (paired by `AccountConfigSetting.type === descriptor.type`) and reads
- * `values[i].value` for each `Param` the descriptor declared.
+ * typed `HyperliquidAccountConfig`. Produces exactly one
+ * `AccountConfigSetting` per descriptor, in `setup`-then-`options` order
+ * (preserving the order in which the backend emits them).
  *
  * @param config Typed account state for the Hyperliquid account.
  * @param setup  `Provider.setup` array as emitted by `/providers`.
