@@ -1,15 +1,3 @@
-/**
- * Expected realised PnL on open orders.
- *
- * Each row of the Orders tab can preview the rPnL the user would lock in if
- * the order filled at its limit / trigger price against the matching position
- * on the same asset. Orders that open or add to a position have no defined
- * rPnL and return `null` (rendered as "—" by the UI).
- *
- * Sign convention and the close-side maths live in `positionMath.ts` —
- * `directionSign` and `realizedPnlOnClose` are imported and reused so the two
- * helpers stay in lockstep.
- */
 import {
   type OpenOrder,
   OrderSide,
@@ -35,7 +23,7 @@ export function findMatchingPosition(
 /**
  * Resolve the close-size against a position, applying the spec's cap rules:
  *  - `orderSize === 0` is the Hyperliquid convention for "close entire
- *    position" used by trigger orders → close the full position size.
+ *    position" → close the full position size.
  *  - Otherwise cap at the absolute position size; an order larger than the
  *    position can only close what's open.
  *

@@ -345,7 +345,7 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // ACCOUNT_MODE / ACCOUNT_TYPE dispatch (ORD-265)
+  // ACCOUNT_MODE / ACCOUNT_TYPE dispatch
   // ---------------------------------------------------------------------------
 
   describe('satisfySetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
@@ -693,14 +693,11 @@ describe('PerpsClient', () => {
   })
 
   describe('signPrerequisite(ACCOUNT_TYPE)', () => {
-    // Lighter's backend declares ACCOUNT_TYPE as `signingMethod: WASM_BLOB`
-    // with `wasmSignParams.kind = 'changeAccountTier'`. There is no
-    // corresponding WASM signer export for it — `/api/v1/changeAccountTier`
-    // is an HTTP-only mutation authenticated with a Lighter auth token.
-    // The SDK satisfies that contract by minting a token via the WASM
-    // signer's `CreateAuthToken` and shipping it inside the
-    // WasmBlobSignedActionStep envelope (`signedTx.txInfo = <auth>`,
-    // `txType/txHash` unused). Regression for ORD-287.
+    // Lighter declares ACCOUNT_TYPE as `signingMethod: WASM_BLOB` but
+    // `/api/v1/changeAccountTier` is an HTTP-only mutation authenticated with
+    // a Lighter auth token. The SDK mints a token via `CreateAuthToken` and
+    // ships it as `signedTx.txInfo` inside the WasmBlobSignedActionStep
+    // envelope; `txType` / `txHash` are unread by the backend.
     it('routes Lighter changeAccountTier to an auth token, not a wasm tx signature', async () => {
       const lighterAddress =
         '0x2222222222222222222222222222222222222222' as const
@@ -740,22 +737,12 @@ describe('PerpsClient', () => {
 
       expect(signed.action).toBe(ActionType.ACCOUNT_TYPE)
       if (!('signedTx' in signed)) {
-        // Narrow `signed` to WasmBlobSignedActionStep and fail loudly if
-        // the orchestration routed to the wrong envelope (e.g. EIP-712).
         throw new Error('expected WasmBlobSignedActionStep')
       }
-      // The "signature" is the Lighter auth token, carried in `txInfo`.
-      // The backend's `executeChangeAccountTier` reads exactly this field
-      // and forwards it as the `auth` form parameter.
       expect(typeof signed.signedTx.txInfo).toBe('string')
       expect(signed.signedTx.txInfo.length).toBeGreaterThan(0)
-      // `txType`/`txHash` are unused by `/changeAccountTier` — the
-      // executor never reads them. The envelope still carries placeholder
-      // values to satisfy the `WasmBlobSignedActionStep` shape.
       expect(typeof signed.signedTx.txType).toBe('number')
       expect(typeof signed.signedTx.txHash).toBe('string')
-      // wasmSignParams round-trips so the backend executor can read
-      // `kind` / `account_index` / `new_tier` / `nonce`.
       expect(signed.wasmSignParams).toMatchObject({
         kind: 'changeAccountTier',
         account_index: 7,
@@ -827,7 +814,7 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // getAccount — projects AccountConfigSetting[] onto the response (ORD-293)
+  // getAccount — projects AccountConfigSetting[] onto the response
   // ---------------------------------------------------------------------------
 
   describe('getAccount — settings projection', () => {
@@ -888,7 +875,7 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // accountExists — boolean wrapper over getAccount + AccountNotFound (ORD-293)
+  // accountExists — boolean wrapper over getAccount + AccountNotFound
   // ---------------------------------------------------------------------------
 
   describe('accountExists', () => {

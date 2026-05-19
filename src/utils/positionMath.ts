@@ -1,7 +1,6 @@
 /**
  * Pure-function helpers for predicting how a perp position changes after a
- * fill. Used by the add-to-position and partial-close preview blocks to show
- * users what their post-fill values will look like.
+ * fill.
  *
  * Sign convention: long = +1, short = -1. Sizes passed to these helpers are
  * always non-negative magnitudes; direction is carried by `isLong`.

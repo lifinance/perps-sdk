@@ -63,9 +63,8 @@ export interface PerpsClientOptions {
 }
 
 /**
- * Parameters for the internal `buildPrerequisites` helper (used by
- * `checkSetup` to materialise typed-data envelopes for the setup
- * descriptors). The widget never calls this directly.
+ * Parameters for the internal `buildPrerequisites` helper that materialises
+ * typed-data envelopes for the setup descriptors.
  */
 export interface CheckPrerequisitesParams {
   /** Provider to build setup actions for */
@@ -171,12 +170,10 @@ export interface GetSetupParams {
  * Result from {@link PerpsClient.checkSetup}.
  *
  * Reports the unsatisfied entries on `Provider.setup` for the queried
- * account, split by the signer role the descriptor declares. The widget
- * pairs `userPrerequisites` with a wallet-signature prompt and submits
- * everything back through {@link PerpsClient.satisfySetup}.
+ * account, split by the signer role the descriptor declares.
  *
- * `Provider.options` items are NEVER included here — they don't gate
- * trading and the widget consumes them via `getAccount().settings`.
+ * `Provider.options` items are NEVER included here — they don't gate trading
+ * and are surfaced separately via `getAccount().settings`.
  */
 export interface SetupResult {
   /** Setup steps requiring user wallet signature */
@@ -211,26 +208,21 @@ export interface SatisfySetupResult {
   agentResults?: ExecuteActionResponse
   /**
    * Fallback user-wallet setup steps surfaced when an agent-signed
-   * `ACCOUNT_MODE` dispatch is not authorised (e.g. Hyperliquid refuses
-   * to upgrade from a non-default abstraction variant without a user
-   * signature). The widget should re-sign these with the user's wallet.
+   * `ACCOUNT_MODE` dispatch is not authorised (e.g. Hyperliquid refuses to
+   * upgrade from a non-default abstraction variant without a user signature).
+   * Caller must re-sign these with the user's wallet.
    */
   fallbackUserPrerequisites?: ActionStep[]
 }
 
 /**
  * Result envelope returned by {@link PerpsClient.getAccount} — wraps the
- * backend's `AccountResponse` with a single SDK-projected
- * `settings` array.
+ * backend's `AccountResponse` with a single SDK-projected `settings` array.
  *
- * `settings` contains exactly one `AccountConfigSetting` per descriptor
- * on `Provider.setup` + `Provider.options` (in that order). The widget
- * indexes the projection by `setting.type === descriptor.type` and reads
+ * `settings` contains exactly one `AccountConfigSetting` per descriptor on
+ * `Provider.setup` + `Provider.options` (in that order). Index the
+ * projection by `setting.type === descriptor.type` and read
  * `setting.values[i].value` for each `Param` the descriptor declared.
- *
- * The projection is computed once per `getAccount` response by the
- * dispatcher in `client/projectAccountConfigSettings.ts`; the widget
- * never calls the per-provider mappers directly.
  */
 export interface GetAccountResult extends AccountResponse {
   /** SDK-projected current state of every setup + options descriptor. */
