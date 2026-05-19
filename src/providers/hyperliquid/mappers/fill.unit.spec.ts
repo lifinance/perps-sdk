@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FillClassification,
   FillStatus,
+  LiquidityRole,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
@@ -181,6 +182,23 @@ describe('mapFill (Hyperliquid)', () => {
 
     it('maps an @-prefixed spot coin to market "spot"', () => {
       expect(mapFill(baseFill({ coin: '@142' })).asset.market).toBe('spot')
+    })
+  })
+
+  describe('liquidity role from crossed flag', () => {
+    it.each([
+      [true, LiquidityRole.TAKER],
+      [false, LiquidityRole.MAKER],
+    ])('maps crossed: %s to liquidity: %s', (crossed, expected) => {
+      expect(mapFill(baseFill({ crossed })).liquidity).toBe(expected)
+    })
+  })
+
+  describe('orderId from oid', () => {
+    it('stringifies the numeric oid into Fill.orderId', () => {
+      const fill = mapFill(baseFill({ oid: 12345 }))
+      expect(fill.orderId).toBe('12345')
+      expect(typeof fill.orderId).toBe('string')
     })
   })
 
