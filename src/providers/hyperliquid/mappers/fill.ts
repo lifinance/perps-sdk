@@ -9,6 +9,7 @@ import type { Fill } from '../../../account.js'
 import type { HlUserFill } from '../types.js'
 import { assetIsSpot } from '../assetId.js'
 import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
+import { deriveMarket } from './_market.js'
 
 // Re-exported for backwards compatibility — the helper now lives in
 // `_shared/fillClassification.ts` so the Lighter mapper can reuse the same
@@ -20,7 +21,7 @@ export const mapFill = (fill: HlUserFill): Fill => ({
   orderId: String(fill.oid),
   asset: {
     assetId: fill.coin,
-    market: '',
+    market: deriveMarket(fill.coin),
     displaySymbol: fill.coin,
     displayQuote: null,
   },

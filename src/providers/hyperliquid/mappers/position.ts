@@ -1,6 +1,7 @@
 import { MarginMode, PositionSide } from '../../../enums.js'
 import type { Position } from '../../../account.js'
 import type { HlAssetPosition } from '../types.js'
+import { deriveMarket } from './_market.js'
 
 export const mapPosition = (ap: HlAssetPosition): Position => {
   const pos = ap.position
@@ -9,7 +10,7 @@ export const mapPosition = (ap: HlAssetPosition): Position => {
   return {
     asset: {
       assetId: pos.coin,
-      market: '',
+      market: deriveMarket(pos.coin),
       displaySymbol: pos.coin,
       displayQuote: null,
     },

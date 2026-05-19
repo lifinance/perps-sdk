@@ -7,6 +7,7 @@ import {
 import type { OpenOrder, TriggerOrder } from '../../../account.js'
 import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
+import { deriveMarket } from './_market.js'
 
 /** Map a Hyperliquid orderType string to the OrderType enum. */
 export const mapOrderType = (orderType: string): OrderType => {
@@ -36,7 +37,7 @@ export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   id: String(o.oid),
   asset: {
     assetId: o.coin,
-    market: '',
+    market: deriveMarket(o.coin),
     displaySymbol: o.coin,
     displayQuote: null,
   },
@@ -60,7 +61,7 @@ export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
     id: String(o.oid),
     asset: {
       assetId: o.coin,
-      market: '',
+      market: deriveMarket(o.coin),
       displaySymbol: o.coin,
       displayQuote: null,
     },
@@ -115,7 +116,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
     orderId: String(o.oid),
     asset: {
       assetId: o.coin,
-      market: '',
+      market: deriveMarket(o.coin),
       displaySymbol: o.coin,
       displayQuote: null,
     },

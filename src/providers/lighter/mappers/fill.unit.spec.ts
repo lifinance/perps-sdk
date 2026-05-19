@@ -52,6 +52,17 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  // Regression guard (ORD-305): the HL mapper fix derives `market` from the
+  // assetId, but Lighter must continue to emit the literal `'lighter'`
+  // taxonomy entry — there's no per-symbol distinction on Lighter.
+  it("emits market: 'lighter' regardless of symbol shape (ORD-305)", () => {
+    for (const symbol of ['BTC', 'ETH', 'PURR', 'USDJPY']) {
+      expect(mapFill(baseTrade(), ACCOUNT_INDEX, symbol).asset.market).toBe(
+        'lighter'
+      )
+    }
+  })
+
   it('always reports type LIMIT and status FILLED', () => {
     const fill = mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL)
     expect(fill.type).toBe(OrderType.LIMIT)

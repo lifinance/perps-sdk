@@ -174,9 +174,25 @@ describe('mapFill (Hyperliquid)', () => {
     const fill = mapFill(baseFill({ coin: 'ETH' }))
     expect(fill.asset).toEqual({
       assetId: 'ETH',
-      market: '',
+      market: 'hyperliquid',
       displaySymbol: 'ETH',
       displayQuote: null,
+    })
+  })
+
+  describe('asset.market (ORD-305)', () => {
+    it('maps a bare coin (main perp dex) to market "hyperliquid"', () => {
+      expect(mapFill(baseFill({ coin: 'BTC' })).asset.market).toBe(
+        'hyperliquid'
+      )
+    })
+
+    it('maps a sub-dex prefixed coin (e.g. "xyz:PURR") to the sub-dex name', () => {
+      expect(mapFill(baseFill({ coin: 'xyz:PURR' })).asset.market).toBe('xyz')
+    })
+
+    it('maps an @-prefixed spot coin to market "spot"', () => {
+      expect(mapFill(baseFill({ coin: '@142' })).asset.market).toBe('spot')
     })
   })
 

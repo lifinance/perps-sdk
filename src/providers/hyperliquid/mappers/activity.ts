@@ -9,6 +9,7 @@ import type {
 } from '../../../account.js'
 import { isSendAssetDelta, isSpotTransferDelta } from '../types.js'
 import type { HlLedgerUpdate, HlFundingUpdate } from '../types.js'
+import { deriveMarket } from './_market.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
@@ -149,7 +150,7 @@ export const mapLedgerEntry = (
         liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
           asset: {
             assetId: p.coin,
-            market: '',
+            market: deriveMarket(p.coin),
             displaySymbol: p.coin,
             displayQuote: null,
           },
@@ -176,7 +177,7 @@ export const mapFundingActivity = (
   type: ActivityType.FUNDING,
   asset: {
     assetId: entry.delta.coin,
-    market: '',
+    market: deriveMarket(entry.delta.coin),
     displaySymbol: entry.delta.coin,
     displayQuote: null,
   },
