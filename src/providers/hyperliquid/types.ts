@@ -214,30 +214,17 @@ export type HlSpotTransferDelta = {
 }
 
 /**
- * Hyperliquid ledger delta emitted for the `sendAsset` exchange action.
+ * Hyperliquid ledger delta emitted for the `sendAsset` exchange action. The
+ * wire `type` literal is `'send'` (NOT `'sendAsset'`); the TS name retains
+ * the `SendAsset` prefix to match `HL_PRIMARY_TYPE_SEND_ASSET`.
  *
- * Note the delta `type` literal is `'send'` (NOT `'sendAsset'`) — that's the
- * shape Hyperliquid emits from `userNonFundingLedgerUpdates` for sendAsset
- * action outcomes. The perps-types name retains the `SendAsset` prefix
- * because it's the human-meaningful name aligned with the exchange action
- * and matches `HL_PRIMARY_TYPE_SEND_ASSET`.
- *
- * Field shape verified against the official @nktkas/hyperliquid SDK
- * `userNonFundingLedgerUpdates` response schema (the upstream Hyperliquid
- * info-API docs do not enumerate every delta variant — nktkas's SDK is the
- * de-facto reference for these shapes).
- *
- * Semantics:
- * - `user` is the initiator (sender) address.
- * - `destination` is the recipient address. For same-user dex moves
- *   (e.g. moving USDC from perp to spot on one's own account) `user`
- *   and `destination` will both equal the queried address.
+ * - `user` is the sender, `destination` the recipient. For same-user dex
+ *   moves both equal the queried address.
  * - `sourceDex` / `destinationDex` use `""` for the main USDC perp DEX,
  *   `"spot"` for spot, or the perp DEX name otherwise.
  * - `token` is a wire token identifier (e.g. `"USDC"` or `"TOKEN:0x..."`).
- * - `nonce` is the wire nonce (ms timestamp). Per upstream schema this is
- *   always present on `send` deltas (unlike `spotTransfer` where it may be
- *   null).
+ * - `nonce` is the wire nonce (ms timestamp); always present on `send`
+ *   deltas, unlike `spotTransfer` where it may be null.
  */
 export type HlSendAssetDelta = {
   type: 'send'
@@ -274,10 +261,9 @@ export const isSpotTransferDelta = (
 ): delta is HlSpotTransferDelta => delta.type === 'spotTransfer'
 
 /**
- * Type guard for `HlSendAssetDelta`. The ledger delta `type` literal is
- * `'send'` (Hyperliquid's wire-level name for sendAsset action outcomes);
- * see the `HlSendAssetDelta` JSDoc for the naming-vs-wire-format rationale.
- * Same catch-all-arm caveat applies as for `isSpotTransferDelta`.
+ * Type guard for `HlSendAssetDelta`. The wire `type` literal is `'send'`;
+ * see `HlSendAssetDelta` for the naming-vs-wire-format rationale. Same
+ * catch-all-arm caveat as `isSpotTransferDelta`.
  */
 export const isSendAssetDelta = (
   delta: HlLedgerDelta

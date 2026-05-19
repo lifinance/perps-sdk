@@ -4,17 +4,10 @@ import { FillClassification } from '../../enums.js'
  * Classify a perpetual fill into the Open/Close/Increase/Reduce/Switch
  * taxonomy from `FillClassification`.
  *
- * Inputs are intentionally provider-agnostic so this helper can be shared
- * across providers that surface enough information per fill:
- * - `startPosition`: signed quantity held in the market BEFORE this fill
- *   (`> 0` long, `< 0` short, `0` flat).
- * - `side`: Hyperliquid-style `'B'` for buy / anything else for sell. The
- *   `'B'`/`'A'` literal predates this extraction and is preserved so that
- *   the Hyperliquid path stays byte-identical.
- * - `sz`: unsigned fill size, parsed with `parseFloat`.
- *
- * Returns the classification matching the (start, end) sign transition,
- * where `end = start + signedDelta`. Pure / deterministic.
+ * @param startPosition Signed position held BEFORE this fill (`> 0` long,
+ *   `< 0` short, `0` flat).
+ * @param side Hyperliquid-style: `'B'` for buy, anything else for sell.
+ * @param sz Unsigned fill size, parsed with `parseFloat`.
  */
 export function classifyFillFromPosition(
   startPosition: string,
@@ -25,14 +18,12 @@ export function classifyFillFromPosition(
   const delta = side === 'B' ? parseFloat(sz) : -parseFloat(sz)
   const end = start + delta
 
-  // Position was flat → opening
   if (start === 0) {
     return end > 0
       ? FillClassification.OPENED_LONG
       : FillClassification.OPENED_SHORT
   }
 
-  // Position was long
   if (start > 0) {
     if (end === 0) {
       return FillClassification.CLOSED_LONG
@@ -46,7 +37,6 @@ export function classifyFillFromPosition(
     return FillClassification.REDUCED_LONG
   }
 
-  // Position was short (start < 0)
   if (end === 0) {
     return FillClassification.CLOSED_SHORT
   }

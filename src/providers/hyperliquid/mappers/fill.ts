@@ -11,9 +11,6 @@ import { assetIsSpot } from '../assetId.js'
 import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
 import { deriveMarket } from './_market.js'
 
-// Re-exported for backwards compatibility — the helper now lives in
-// `_shared/fillClassification.ts` so the Lighter mapper can reuse the same
-// position-delta logic. See ORD-281.
 export { classifyFillFromPosition }
 
 export const mapFill = (fill: HlUserFill): Fill => ({

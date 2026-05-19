@@ -1,10 +1,6 @@
-// ---------------------------------------------------------------------------
-// Lighter WASM signer parameter types
-//
-// These define the exact shapes that `wasmSignParams` takes for each Lighter
-// action type. The backend populates these; the SDK passes them to the WASM
-// signer along with SDK-managed fields (nonce, account_index, api_key_index).
-// ---------------------------------------------------------------------------
+// Lighter WASM signer parameter types — shapes of `wasmSignParams` per
+// action. The backend populates these and the SDK passes them to the WASM
+// signer alongside SDK-managed fields (nonce, account_index, api_key_index).
 
 /** Backend-provided params for SignCreateOrder. */
 export type LtCreateOrderWasmParams = {
@@ -73,10 +69,10 @@ export type LtCancelAllOrdersWasmParams = {
 /**
  * Backend-provided params for SignChangePubKey (REGISTER_API_KEY).
  *
- * NOTE: `new_public_key` is a placeholder here — the SDK generates the actual
- * keypair via the WASM signer and fills this in before calling SignChangePubKey.
- * This action also requires an L1 Ethereum signature (the user's wallet signs
- * the ChangePubKey message), so it is a hybrid: WASM blob + EIP-191 eth_sign.
+ * Hybrid signing: this action requires both a WASM blob and an L1 Ethereum
+ * signature (the user's wallet signs the ChangePubKey message). The SDK
+ * generates the keypair via the WASM signer and fills in `new_public_key`
+ * before invoking SignChangePubKey.
  */
 export type LtChangePubKeyWasmParams = {
   /** API key slot index to register (0-255). SDK fills in the generated public key. */

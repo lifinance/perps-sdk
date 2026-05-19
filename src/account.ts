@@ -229,20 +229,12 @@ export interface HyperliquidBuilderFeeApproval {
 /**
  * Hyperliquid-specific account configuration state.
  *
- * `abstractionMode` collapses what the previous untyped shape emitted as
- * the duplicated `accountMode` + `abstractionStatus` pair: both fields
- * always carried the same value (the active abstraction variant), so the
- * typed surface keeps a single canonical key. `null` means abstraction
- * has never been set (the user is in the unannotated default state); the
- * widget falls back to the descriptor's `default` `ParamOption` when so.
+ * `abstractionMode: null` means abstraction has never been set; consumers
+ * should fall back to the descriptor's `default` `ParamOption`.
  *
- * `agents` enumerates the currently-authorised agent wallets; the
- * `APPROVE_AGENT` setup descriptor consults this to detect expiry.
- *
- * `builderFeeApproval` is absent on providers / configurations that don't
- * have a builder configured; present means the LI.FI buildercode is in
- * play and `approved` reports whether the user has signed the maximum
- * builder fee.
+ * `builderFeeApproval` is absent when no builder is configured for this
+ * provider; when present, `approved` reports whether the user has signed the
+ * maximum builder fee.
  */
 export interface HyperliquidAccountConfig {
   provider: 'hyperliquid'
@@ -254,19 +246,15 @@ export interface HyperliquidAccountConfig {
 /**
  * Lighter-specific account configuration state.
  *
- * `accountIndex` is the L2 integer account identifier — used by the SDK
- * for WASM signing and by the widget when rendering transfer counterparties.
+ * `accountIndex` is the L2 integer account identifier.
  *
- * `apiKeyIndex` is the slot the SDK has registered (or will register) the
- * session API key in; `apiKeyRegistered` reports whether a key is currently
- * live in that slot. The `REGISTER_API_KEY` setup descriptor consults this
- * to gate trading.
+ * `apiKeyRegistered` reports whether a key is currently live in the
+ * `apiKeyIndex` slot; the `REGISTER_API_KEY` setup descriptor gates trading
+ * on this.
  *
  * `accountType` is the raw integer fee/latency tier from Lighter's
- * `/api/v1/account.account_type`. Decoding to a human label is the
- * widget's responsibility once Lighter publishes the numeric→string
- * mapping; the SDK projector forwards the raw integer to the
- * `ACCOUNT_TYPE` options descriptor as the current `value`.
+ * `/api/v1/account.account_type` — decoding to a human label is left to the
+ * consumer.
  */
 export interface LighterAccountConfig {
   provider: 'lighter'
@@ -306,10 +294,8 @@ export interface AccountConfigValue {
  * `Provider.options`. `values` carries the current state for each `Param`
  * the descriptor declared.
  *
- * Produced by the per-provider mappers in `perps-sdk` (see ORD-293) and
- * consumed by the widget's `useProviderSetup` / `useProviderOptions`
- * hooks (see ORD-294). The widget never reads `AccountConfig` directly —
- * by design, so a new provider variant doesn't require widget changes.
+ * Consumers must NOT read `AccountConfig` directly — narrow through this
+ * projection so a new provider variant doesn't require widget changes.
  */
 export interface AccountConfigSetting {
   type: ActionType

@@ -2,11 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { deriveMarket } from './_market.js'
 
-// ---------------------------------------------------------------------------
-// deriveMarket — translates the HL canonical `assetId` to the
-// `/providers.markets[].id` taxonomy. Regression coverage for ORD-305.
-// ---------------------------------------------------------------------------
-
 describe('deriveMarket (Hyperliquid)', () => {
   it('maps a bare perp coin to "hyperliquid" (main USDC perp dex)', () => {
     expect(deriveMarket('BTC')).toBe('hyperliquid')

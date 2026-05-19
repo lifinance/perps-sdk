@@ -59,7 +59,6 @@ const mapOrderStatus = (status: string): OrderStatus => {
 
 /**
  * Map a raw Lighter order to the generic OpenOrder type.
- * @param order - Raw order from REST or WS
  * @param symbol - Resolved symbol (market_index → symbol lookup)
  */
 export const mapOrder = (order: LtOrder, symbol: string): OpenOrder => ({
@@ -80,8 +79,8 @@ export const mapOrder = (order: LtOrder, symbol: string): OpenOrder => ({
 })
 
 /**
- * Map a raw Lighter order to the rich Order type used by getOrder.
- * Includes status, time-in-force, and remaining/filled sizes.
+ * Map a raw Lighter order to the rich Order type — adds status, time-in-force
+ * and remaining/filled sizes on top of the OpenOrder fields.
  */
 export const mapOrderDetail = (order: LtOrder, symbol: string): Order => ({
   orderId: order.order_id,

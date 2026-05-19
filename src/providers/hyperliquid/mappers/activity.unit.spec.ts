@@ -361,7 +361,7 @@ describe('mapLedgerEntry — sendAsset', () => {
 })
 
 // ---------------------------------------------------------------------------
-// mapLedgerEntry — existing branches (regression coverage)
+// mapLedgerEntry — non-transfer branches
 // ---------------------------------------------------------------------------
 
 describe('mapLedgerEntry — non-transfer branches', () => {
@@ -433,7 +433,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
 })
 
 // ---------------------------------------------------------------------------
-// mapFundingActivity (smoke regression — signature unchanged)
+// mapFundingActivity
 // ---------------------------------------------------------------------------
 
 describe('mapFundingActivity', () => {
