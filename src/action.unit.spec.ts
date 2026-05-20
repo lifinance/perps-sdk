@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { MarginMode, OrderSide, OrderType } from './enums.js'
-import type { PlaceOrderParams, UpdateLeverageParams } from './action.js'
+import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
+import type {
+  ActionResult,
+  PlaceOrderParams,
+  UpdateLeverageParams,
+} from './action.js'
 
 // Locks in that `marginMode` is optional on `PlaceOrderParams` /
 // `UpdateLeverageParams` and accepts both `MarginMode.CROSS` and
@@ -71,5 +75,85 @@ describe('UpdateLeverageParams', () => {
     }
 
     expect(params.marginMode).toBe(MarginMode.CROSS)
+  })
+})
+
+describe('ActionResult', () => {
+  it('accepts a success fixture with orderId; success branch has no error/providerError', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: true,
+      orderId: 'lighter-12345',
+    }
+
+    if (result.success) {
+      expect(result.orderId).toBe('lighter-12345')
+      // @ts-expect-error — `error` is not present on the success variant
+      result.error
+      // @ts-expect-error — `providerError` is not present on the success variant
+      result.providerError
+    } else {
+      throw new Error('expected success branch')
+    }
+  })
+
+  it('accepts a failure fixture without providerError (optional field)', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'order rejected',
+    }
+
+    if (!result.success) {
+      expect(result.error).toBe('order rejected')
+      expect(result.providerError).toBeUndefined()
+    } else {
+      throw new Error('expected failure branch')
+    }
+  })
+
+  it('accepts a failure fixture with providerError carrying Lighter-shape { code, message }', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'invalid nonce',
+      providerError: {
+        code: 21100,
+        message: 'invalid nonce: expected 42, got 41',
+      },
+    }
+
+    if (!result.success) {
+      expect(result.providerError?.code).toBe(21100)
+      expect(result.providerError?.message).toBe(
+        'invalid nonce: expected 42, got 41'
+      )
+      // @ts-expect-error — `orderId` is not present on the failure variant
+      result.orderId
+    } else {
+      throw new Error('expected failure branch')
+    }
+  })
+
+  it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
+    const results: ActionResult[] = [
+      {
+        action: ActionType.PLACE_ORDER,
+        success: true,
+        orderId: 'hl-1',
+      },
+      {
+        action: ActionType.PLACE_ORDER,
+        success: false,
+        error: 'rejected',
+        providerError: { code: 21100, message: 'invalid nonce' },
+      },
+    ]
+
+    const codes = results.flatMap((r) =>
+      r.success ? [] : [r.providerError?.code]
+    )
+
+    expect(codes).toEqual([21100])
   })
 })
