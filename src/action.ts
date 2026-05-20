@@ -58,12 +58,33 @@ export type SignedActionStep =
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
 
-export interface ActionResult {
-  action: ActionType
-  success: boolean
-  orderId?: string
-  error?: string
-}
+export type ActionResult =
+  | {
+      action: ActionType
+      success: true
+      orderId?: string
+    }
+  | {
+      action: ActionType
+      success: false
+      error: string
+      /**
+       * Structured passthrough of the upstream provider's rejection payload.
+       * Shape mirrors Lighter's `{ code, message }` REST response convention
+       * (e.g. `LtSendTxResponse`); providers without a numeric-code error
+       * surface (Hyperliquid today) leave this unset.
+       *
+       * Diagnostic-grade content: not localized, not curated for end-user
+       * display. SDK consumers should switch on the numeric `code` for
+       * programmatic behaviour (e.g. nonce-conflict retry vs hard-fail) and
+       * avoid surfacing `message` verbatim in user-facing UX — `error` is
+       * the field intended for display.
+       */
+      providerError?: {
+        code: number
+        message: string
+      }
+    }
 
 // ---------------------------------------------------------------------------
 // Shared data types
