@@ -98,6 +98,15 @@ export interface Order {
   triggerPrice?: string
   triggerCondition?: TriggerCondition
   status: OrderStatus
+  /**
+   * Human-readable English sentence describing *why* the order ended in a
+   * terminal non-FILLED state (e.g. slippage exceeded, reduce-only would
+   * not reduce, expiry). Populated only when the provider exposes a
+   * specific cancellation/rejection reason; `undefined` for non-terminal
+   * statuses, plain `filled`, and bare cancels/rejects with no actionable
+   * detail.
+   */
+  statusReason?: string
   averagePrice?: string
   createdAt: string
   updatedAt: string

@@ -95,6 +95,37 @@ const mapOrderStatus = (status: string): OrderStatus => {
   }
 }
 
+/**
+ * Map a raw Hyperliquid order status to a short English sentence
+ * describing *why* the order ended in a terminal non-FILLED state. Bare
+ * `canceled`/`cancelled`/`rejected` carry no actionable detail and
+ * return `undefined`; so do non-terminal and unknown values.
+ */
+export const mapStatusReason = (status: string): string | undefined => {
+  switch (status) {
+    case 'iocCanceled':
+      return 'Order cancelled: not enough liquidity to fill immediately.'
+    case 'reduceOnlyCanceled':
+      return 'Order cancelled: would not reduce your position.'
+    case 'marginCanceled':
+      return 'Order cancelled: insufficient margin.'
+    case 'liquidatedCanceled':
+      return 'Order cancelled: account was liquidated.'
+    case 'siblingFilledCanceled':
+      return 'Order cancelled: sibling OCO order filled first.'
+    case 'selfTradeCanceled':
+      return 'Order cancelled: would self-trade against your own resting order.'
+    case 'tickRejected':
+      return 'Order rejected: price did not match the tick size.'
+    case 'minTradeNtlRejected':
+      return 'Order rejected: notional value below the minimum trade size.'
+    case 'delistedRejected':
+      return 'Order rejected: market has been delisted.'
+    default:
+      return undefined
+  }
+}
+
 const mapTimeInForce = (tif: string | undefined): TimeInForce | undefined => {
   switch (tif) {
     case 'Gtc':
@@ -131,6 +162,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
     isTrigger: o.triggerCondition !== undefined && o.triggerCondition !== 'N/A',
     triggerPrice: o.triggerPx ?? undefined,
     status: mapOrderStatus(detail.status),
+    statusReason: mapStatusReason(detail.status),
     createdAt: new Date(o.timestamp).toISOString(),
     updatedAt: new Date(detail.statusTimestamp).toISOString(),
   }
