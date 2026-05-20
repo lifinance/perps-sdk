@@ -58,6 +58,44 @@ const mapOrderStatus = (status: string): OrderStatus => {
 }
 
 /**
+ * Map a raw Lighter order status to a short English sentence describing
+ * *why* the order ended in a terminal non-FILLED state. Non-terminal
+ * statuses, plain `filled`, and unknown values return `undefined`.
+ */
+export const mapStatusReason = (status: string): string | undefined => {
+  switch (status) {
+    case 'canceled':
+      return 'Order cancelled.'
+    case 'canceled-post-only':
+      return 'Order cancelled: post-only order would have crossed the book.'
+    case 'canceled-reduce-only':
+      return 'Order cancelled: would not reduce your position.'
+    case 'canceled-position-not-allowed':
+      return 'Order cancelled: position not allowed.'
+    case 'canceled-margin-not-allowed':
+      return 'Order cancelled: insufficient margin.'
+    case 'canceled-too-much-slippage':
+      return 'Order cancelled: slippage exceeded tolerance.'
+    case 'canceled-not-enough-liquidity':
+      return 'Order cancelled: not enough liquidity to fill.'
+    case 'canceled-self-trade':
+      return 'Order cancelled: would self-trade against your own resting order.'
+    case 'canceled-expired':
+      return 'Order expired.'
+    case 'canceled-oco':
+      return 'Order cancelled: sibling OCO order filled or cancelled first.'
+    case 'canceled-child':
+      return 'Order cancelled: parent order was cancelled.'
+    case 'canceled-liquidation':
+      return 'Order cancelled: account was liquidated.'
+    case 'canceled-invalid-balance':
+      return 'Order cancelled: invalid balance.'
+    default:
+      return undefined
+  }
+}
+
+/**
  * Map a raw Lighter order to the generic OpenOrder type.
  * @param symbol - Resolved symbol (market_index → symbol lookup)
  */
@@ -99,6 +137,7 @@ export const mapOrderDetail = (order: LtOrder, symbol: string): Order => ({
   timeInForce: mapTimeInForce(order.time_in_force),
   reduceOnly: order.reduce_only,
   status: mapOrderStatus(order.status),
+  statusReason: mapStatusReason(order.status),
   createdAt: new Date(order.created_at * 1000).toISOString(),
   updatedAt: new Date(order.updated_at * 1000).toISOString(),
 })
