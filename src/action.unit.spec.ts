@@ -79,7 +79,7 @@ describe('UpdateLeverageParams', () => {
 })
 
 describe('ActionResult', () => {
-  it('accepts a success fixture with orderId; success branch has no error/providerError', () => {
+  it('accepts a success fixture with orderId; success branch has no error', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
       success: true,
@@ -90,14 +90,12 @@ describe('ActionResult', () => {
       expect(result.orderId).toBe('lighter-12345')
       // @ts-expect-error — `error` is not present on the success variant
       result.error
-      // @ts-expect-error — `providerError` is not present on the success variant
-      result.providerError
     } else {
       throw new Error('expected success branch')
     }
   })
 
-  it('accepts a failure fixture without providerError (optional field)', () => {
+  it('accepts a failure fixture with required error', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
       success: false,
@@ -106,28 +104,6 @@ describe('ActionResult', () => {
 
     if (!result.success) {
       expect(result.error).toBe('order rejected')
-      expect(result.providerError).toBeUndefined()
-    } else {
-      throw new Error('expected failure branch')
-    }
-  })
-
-  it('accepts a failure fixture with providerError carrying Lighter-shape { code, message }', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      success: false,
-      error: 'invalid nonce',
-      providerError: {
-        code: 21100,
-        message: 'invalid nonce: expected 42, got 41',
-      },
-    }
-
-    if (!result.success) {
-      expect(result.providerError?.code).toBe(21100)
-      expect(result.providerError?.message).toBe(
-        'invalid nonce: expected 42, got 41'
-      )
       // @ts-expect-error — `orderId` is not present on the failure variant
       result.orderId
     } else {
@@ -146,14 +122,11 @@ describe('ActionResult', () => {
         action: ActionType.PLACE_ORDER,
         success: false,
         error: 'rejected',
-        providerError: { code: 21100, message: 'invalid nonce' },
       },
     ]
 
-    const codes = results.flatMap((r) =>
-      r.success ? [] : [r.providerError?.code]
-    )
+    const errors = results.flatMap((r) => (r.success ? [] : [r.error]))
 
-    expect(codes).toEqual([21100])
+    expect(errors).toEqual(['rejected'])
   })
 })
