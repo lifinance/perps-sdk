@@ -254,6 +254,7 @@ export class LighterSigner {
     const nonce = numberField(p, 'nonce')
     switch (action) {
       case ActionType.PLACE_ORDER:
+      case ActionType.PLACE_TRIGGER_ORDER:
         return wasm.SignCreateOrder(
           numberField(p, 'market_index'),
           numberField(p, 'client_order_index'),
