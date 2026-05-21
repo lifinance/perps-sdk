@@ -3,12 +3,11 @@
     "scripts/**",
     "examples/**",
     "**/version.ts",
-    "wasm/**",
-    "src/**",
-    "test/**",
-    "vitest.config.ts",
+    "packages/*/wasm/**",
     "packages/*/src/**",
-    "packages/*/scripts/**"
+    "packages/*/test/**",
+    "packages/*/scripts/**",
+    "packages/*/vitest.config.ts"
   ],
   "ignoreDependencies": ["@vitest/coverage-v8", "@types/fs-extra", "fs-extra"]
 }

@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/*.md", "!**/*.lock", "!**/*.json", "!wasm"]
+    "includes": [
+      "**",
+      "!**/*.md",
+      "!**/*.lock",
+      "!**/*.json",
+      "!**/wasm",
+      "!**/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -81,10 +88,10 @@
     },
     {
       "includes": [
-        "src/index.ts",
-        "src/utils/orderFormatting.ts",
-        "src/utils/hyperliquid/index.ts",
-        "src/signers/lighter/index.ts"
+        "packages/perps-sdk/src/index.ts",
+        "packages/perps-sdk/src/utils/orderFormatting.ts",
+        "packages/perps-sdk/src/utils/hyperliquid/index.ts",
+        "packages/perps-sdk/src/signers/lighter/index.ts"
       ],
       "linter": {
         "rules": {
@@ -110,9 +117,9 @@
     },
     {
       "includes": [
-        "src/realtime/hyperliquid/HyperliquidWsProvider.ts",
-        "src/realtime/hyperliquid/types.ts",
-        "src/utils/accountSummary.ts"
+        "packages/perps-sdk/src/realtime/hyperliquid/HyperliquidWsProvider.ts",
+        "packages/perps-sdk/src/realtime/hyperliquid/types.ts",
+        "packages/perps-sdk/src/utils/accountSummary.ts"
       ],
       "linter": {
         "rules": {
