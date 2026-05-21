@@ -216,6 +216,19 @@ const lighterConfig: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  readOnlyTokenApproved: false,
+}
+
+// RO-token approved state: expiry + scope populated alongside the flag.
+const lighterConfigRoApproved: LighterAccountConfig = {
+  provider: 'lighter',
+  accountIndex: 42,
+  apiKeyIndex: 1,
+  apiKeyRegistered: true,
+  accountType: 0,
+  readOnlyTokenApproved: true,
+  readOnlyTokenExpiry: 1_999_999_999,
+  readOnlyTokenScope: 'all',
 }
 
 const hyperliquidAccountResponse: AccountResponse = {
@@ -341,6 +354,7 @@ export const _fixtures = {
   hyperliquidConfig,
   hyperliquidConfigUnset,
   lighterConfig,
+  lighterConfigRoApproved,
   hyperliquidAccountResponse,
   lighterAccountResponse,
   hyperliquidModeSetting,
@@ -439,6 +453,18 @@ describe('AccountConfig discriminated union', () => {
 
   it('admits abstractionMode: null (account never had abstraction set)', () => {
     expect(hyperliquidConfigUnset.abstractionMode).toBeNull()
+  })
+
+  it('defaults the RO token to unapproved with expiry/scope absent', () => {
+    expect(lighterConfig.readOnlyTokenApproved).toBe(false)
+    expect(lighterConfig.readOnlyTokenExpiry).toBeUndefined()
+    expect(lighterConfig.readOnlyTokenScope).toBeUndefined()
+  })
+
+  it('carries RO token expiry and scope when approved', () => {
+    expect(lighterConfigRoApproved.readOnlyTokenApproved).toBe(true)
+    expect(lighterConfigRoApproved.readOnlyTokenExpiry).toBe(1_999_999_999)
+    expect(lighterConfigRoApproved.readOnlyTokenScope).toBe('all')
   })
 
   it('admits builderFeeApproval being absent (no builder configured)', () => {

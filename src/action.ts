@@ -239,6 +239,28 @@ export interface RegisterApiKeyParams {
   apiKeyIndex: number
 }
 
+/**
+ * Params for `ActionType.APPROVE_READ_ONLY_TOKEN` — mint a long-lived
+ * read-only token Lighter recognises for query-only access (positions,
+ * fills, balances). The token format on the wire is
+ * `ro:{accountIndex}:{scope}:{expiry}:{rand}`; this type carries only the
+ * inputs needed to construct that token, not the token itself.
+ *
+ * `expirySeconds` is the absolute unix-seconds expiry. Lighter constrains
+ * the lifetime to a minimum of 1 day and a maximum of 10 years from now;
+ * the SDK and backend are responsible for enforcing those bounds.
+ *
+ * `scope` mirrors Lighter's documented `single | all` literal:
+ * - `'single'` — token authorises read access to one account only.
+ * - `'all'` — token authorises read access to every account owned by the
+ *   signer. Default for the perps stack today.
+ */
+export interface ApproveReadOnlyTokenParams {
+  accountIndex: number
+  expirySeconds: number
+  scope: 'single' | 'all'
+}
+
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
@@ -255,6 +277,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_LEVERAGE]: UpdateLeverageParams
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.DEPOSIT]: DepositParams
 }
 
