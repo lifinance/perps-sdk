@@ -1,8 +1,8 @@
 # build
 dist
-cjs
-esm
-types
+**/dist/cjs/
+**/dist/esm/
+**/dist/types/
 _esm/
 _cjs/
 _types/

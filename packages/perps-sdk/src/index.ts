@@ -107,6 +107,20 @@ export {
   resetLighterWasmCache,
   walletClientSigner,
 } from './signers/lighter/index.js'
+// Core provider plugin interface
+export type {
+  PerpsProvider,
+  ProviderGetAccountParams,
+  ProviderGetActivityParams,
+  ProviderGetAssetParams,
+  ProviderGetFillsParams,
+  ProviderGetOhlcvParams,
+  ProviderGetOrderbookParams,
+  ProviderGetOrderParams,
+  ProviderGetOrdersParams,
+  ProviderGetPositionsParams,
+  ProviderGetPricesParams,
+} from './types/core.js'
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'

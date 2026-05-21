@@ -79,4 +79,14 @@ describe('createPerpsClient', () => {
 
     expect(config1).toBe(config2)
   })
+
+  it('should expose an empty providers list when none are supplied', () => {
+    const client = createPerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+    })
+
+    expect(client.providers).toEqual([])
+    expect(client.getProvider('hyperliquid')).toBeUndefined()
+  })
 })

@@ -3,19 +3,29 @@ import type { Account, WalletClient } from 'viem'
 import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import type {
+  PerpsBaseConfig,
+  PerpsProvider,
+  PerpsSDKClient,
+  ProviderConfigs,
+  RequestInterceptor,
+} from '../types/core.js'
+
+// Re-export the shared client/provider types so existing callers that
+// import them from this module keep working. The canonical definitions
+// live in `../types/core.js`.
+export type {
+  HyperliquidConfig,
+  PerpsBaseConfig,
+  PerpsProvider,
+  PerpsSDKClient,
+  ProviderConfig,
+  ProviderConfigs,
+  RequestInterceptor,
+  SDKRequestOptions,
+} from '../types/core.js'
 
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
-
-export interface ProviderConfig {
-  markets?: string[]
-}
-
-/** @deprecated Use ProviderConfig */
-export type HyperliquidConfig = ProviderConfig
-
-export interface ProviderConfigs {
-  [provider: string]: ProviderConfig | undefined
-}
 
 export interface PerpsConfig {
   integrator: string
@@ -24,7 +34,21 @@ export interface PerpsConfig {
   disableVersionCheck?: boolean
   storage?: StorageAdapter
   requestInterceptor?: RequestInterceptor
-  providers?: ProviderConfigs
+  /**
+   * Provider plugins or per-provider config. Two shapes are accepted:
+   *
+   * - `PerpsProvider[]` — plugin objects implementing the read surface
+   *   for one DEX each. Look them up at runtime via
+   *   `client.getProvider(key)`. Modelled on `@lifi/sdk`'s
+   *   `providers: SDKProvider[]`.
+   * - `ProviderConfigs` — keyed config object (e.g.
+   *   `{ hyperliquid: { markets: [...] } }`). Used internally by
+   *   `PerpsWsClient` to filter which markets are subscribed to.
+   *
+   * Both may be supplied during the migration to provider packages;
+   * the array form is preferred for new code.
+   */
+  providers?: PerpsProvider[] | ProviderConfigs
   /**
    * Wallet signer used whenever an action's descriptor names the user wallet
    * in its `signers` list. Accepts any viem-compatible WalletClient:
@@ -33,38 +57,6 @@ export interface PerpsConfig {
    *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })
    */
   signer?: WalletClient<any, any, Account>
-}
-
-export interface PerpsBaseConfig {
-  integrator: string
-  apiKey: string
-  apiUrl: string
-  disableVersionCheck?: boolean
-  requestInterceptor?: RequestInterceptor
-  providers?: ProviderConfigs
-}
-
-export type RequestInterceptor = (
-  url: string,
-  options: RequestInit
-) => RequestInit | Promise<RequestInit>
-
-export interface SDKRequestOptions {
-  signal?: AbortSignal
-  /**
-   * Lighter auth token for authenticated read endpoints (getOrders, getOrder,
-   * getActivity). Mint via `lighterSigner.createAuthToken(deadline, context)`.
-   * Forwarded as `Authorization: Bearer <token>` and never persisted by the
-   * backend — read-only by design (8h max TTL, cannot authorize writes).
-   */
-  lighterAuthToken?: string
-}
-
-export interface PerpsSDKClient {
-  readonly config: PerpsBaseConfig
-  readonly agentManager: AgentManager
-  /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
-  readonly signer?: WalletClient<any, any, Account>
 }
 
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
@@ -78,6 +70,7 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   }
 
   const apiUrl = options.apiUrl ?? DEFAULT_API_URL
+  const { providerPlugins, providerConfigs } = splitProviders(options.providers)
 
   const config: PerpsBaseConfig = {
     integrator: options.integrator,
@@ -85,7 +78,7 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     apiUrl,
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,
-    providers: options.providers,
+    providers: providerConfigs,
   }
 
   const agentManager = new AgentManager(options.storage)
@@ -100,5 +93,30 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     get signer() {
       return options.signer
     },
+    get providers() {
+      return providerPlugins
+    },
+    getProvider(key: string): PerpsProvider | undefined {
+      return providerPlugins.find((p) => p.type === key)
+    },
   }
+}
+
+/**
+ * Split the overloaded `providers` option into its two shapes — the
+ * plugin array used by {@link PerpsSDKClient.getProvider}, and the
+ * keyed `ProviderConfigs` consumed internally by `PerpsWsClient` for
+ * markets filtering.
+ */
+function splitProviders(input: PerpsProvider[] | ProviderConfigs | undefined): {
+  providerPlugins: PerpsProvider[]
+  providerConfigs?: ProviderConfigs
+} {
+  if (input === undefined) {
+    return { providerPlugins: [] }
+  }
+  if (Array.isArray(input)) {
+    return { providerPlugins: input }
+  }
+  return { providerPlugins: [], providerConfigs: input }
 }
