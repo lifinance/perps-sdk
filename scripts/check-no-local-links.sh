@@ -1,14 +1,16 @@
 #!/usr/bin/env sh
-# Reject staged package.json / lockfile changes that add `link:` path entries.
-# Local `link:../foo` paths are dev-only filesystem overrides and must never
-# land on a branch.
+# Reject staged package.json changes that add `link:` path entries — those
+# are dev-only filesystem overrides and must never land on a branch.
+#
+# pnpm-lock.yaml legitimately materialises workspace deps as `link:../foo`
+# entries; that file is intentionally excluded.
 #
 # Bypass with `git commit --no-verify` if you really mean it.
 
 set -e
 
 files=$(git diff --cached --name-only --diff-filter=ACM \
-  | grep -E '(^|/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$' \
+  | grep -E '(^|/)package\.json$' \
   || true)
 
 [ -z "$files" ] && exit 0

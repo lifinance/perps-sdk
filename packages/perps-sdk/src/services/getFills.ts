@@ -50,6 +50,10 @@ export interface GetFillsParams {
  *   })
  * }
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getFills(client, { address, ... })`.
  */
 export async function getFills(
   client: PerpsSDKClient,

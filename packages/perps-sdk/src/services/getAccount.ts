@@ -33,6 +33,10 @@ export interface GetAccountParams {
  * })
  * console.log(account.balances) // [{ currency: 'USDC', amount: '10000.00' }]
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getAccount(client, { address })`.
  */
 export async function getAccount(
   client: PerpsSDKClient,

@@ -1,16 +1,16 @@
-import type { Address, OrdersResponse } from '@lifi/perps-types'
+import type { Address, PositionsResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
-export interface GetOrdersParams {
+export interface GetPositionsParams {
   /** Provider (e.g., 'hyperliquid') */
   provider: string
   /** Wallet address */
   address: Address
-  /** Optional symbol to filter orders by market */
+  /** Optional symbol to filter to a single position */
   symbol?: string
   /** Maximum number of results */
   limit?: number
@@ -19,27 +19,31 @@ export interface GetOrdersParams {
 }
 
 /**
- * Get open orders and trigger orders for an account.
+ * Get open positions for an account.
  *
  * @example
  * ```ts
- * const { openOrders, triggerOrders } = await getOrders(client, {
+ * const { positions } = await getPositions(client, {
  *   provider: 'hyperliquid',
  *   address: '0x1234...',
  * })
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getPositions(client, { address, ... })`.
  */
-export async function getOrders(
+export async function getPositions(
   client: PerpsSDKClient,
-  params: GetOrdersParams,
+  params: GetPositionsParams,
   options?: SDKRequestOptions
-): Promise<OrdersResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/orders`, {
+): Promise<PositionsResponse> {
+  const url = buildUrl(`${client.config.apiUrl}/positions`, {
     provider: params.provider,
     address: params.address,
     ...(params.symbol ? { symbol: params.symbol } : {}),
     ...(params.limit ? { limit: String(params.limit) } : {}),
     ...(params.cursor ? { cursor: params.cursor } : {}),
   })
-  return request<OrdersResponse>(client.config, url, {}, options)
+  return request<PositionsResponse>(client.config, url, {}, options)
 }
