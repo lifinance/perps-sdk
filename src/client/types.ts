@@ -14,7 +14,10 @@ import type {
   WithdrawalParams,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
-import type { LighterSignerConfig } from '../signers/lighter/index.js'
+import type {
+  LighterReadOnlyTokenManagerOptions,
+  LighterSignerConfig,
+} from '../signers/lighter/index.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
 // Re-export the SDK client types from createPerpsClient
@@ -60,6 +63,13 @@ export interface PerpsClientOptions {
    * WASM assets bundled with the package).
    */
   lighter?: LighterSignerConfig
+  /**
+   * Optional Lighter read-only token manager configuration. Override the
+   * Lighter REST URL, inject a custom HTTP fetcher, or pin a clock for
+   * tests. `storage` is shared with the rest of the client unless explicitly
+   * overridden here. Omit to accept the manager's defaults.
+   */
+  lighterReadOnlyToken?: LighterReadOnlyTokenManagerOptions
 }
 
 /**

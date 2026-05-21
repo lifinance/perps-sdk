@@ -57,6 +57,7 @@ function projectHyperliquidDescriptor(
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:
     case ActionType.REGISTER_API_KEY:
+    case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.DEPOSIT:
       throw new PerpsError(
         PerpsErrorCode.SDKError,

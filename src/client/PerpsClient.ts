@@ -3,6 +3,7 @@ import type {
   ActionParamsMap,
   ActionStep,
   Address,
+  ApproveReadOnlyTokenParams,
   AssetIdentity,
   CreateActionResponse,
   Eip712ActionStep,
@@ -30,11 +31,15 @@ import { executeAction } from '../services/executeAction.js'
 import { getAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
 import {
+  type ApproveReadOnlyTokenResult,
   DEFAULT_API_KEY_INDEX,
   type LighterApiKey,
   LighterKeyStore,
+  LighterReadOnlyTokenManager,
+  type LighterReadOnlyTokenManagerOptions,
   LighterSigner,
   type LighterSignerConfig,
+  walletClientSigner,
 } from '../signers/lighter/index.js'
 import {
   signTypedData,
@@ -89,12 +94,17 @@ export class PerpsClient {
   private providerMetadataCache: Map<string, Provider> = new Map()
   private _signer: PerpsSDKClient['signer'] | undefined
   private readonly lighterConfig: LighterSignerConfig | undefined
+  private readonly lighterReadOnlyTokenOptions:
+    | LighterReadOnlyTokenManagerOptions
+    | undefined
   private _lighterSigner: LighterSigner | undefined
   private _lighterKeyStore: LighterKeyStore | undefined
+  private _lighterReadOnlyTokenManager: LighterReadOnlyTokenManager | undefined
 
   constructor(options: PerpsClientOptions) {
     this.storage = options.storage ?? localStorageAdapter
     this.lighterConfig = options.lighter
+    this.lighterReadOnlyTokenOptions = options.lighterReadOnlyToken
     this.sdkClient = createPerpsClient({
       integrator: options.integrator,
       apiKey: options.apiKey,
@@ -116,6 +126,16 @@ export class PerpsClient {
       this._lighterKeyStore = new LighterKeyStore(this.storage)
     }
     return this._lighterKeyStore
+  }
+
+  private getLighterReadOnlyTokenManager(): LighterReadOnlyTokenManager {
+    if (!this._lighterReadOnlyTokenManager) {
+      this._lighterReadOnlyTokenManager = new LighterReadOnlyTokenManager({
+        storage: this.storage,
+        ...this.lighterReadOnlyTokenOptions,
+      })
+    }
+    return this._lighterReadOnlyTokenManager
   }
 
   /**
@@ -648,20 +668,42 @@ export class PerpsClient {
   }
 
   /**
-   * Mint a Lighter auth token for read endpoints (getOrders, getOrder,
-   * getActivity, getFills) by signing a CreateAuthToken WASM blob with the
-   * user's registered API key. Returns `undefined` if no API key has been
-   * registered for `address` — callers can fall back to public reads.
+   * Return a bearer token that authenticates Lighter's read endpoints
+   * (getOrders, getOrder, getActivity, getFills).
    *
-   * `deadlineSeconds` is a Unix timestamp; defaults to 1h from now (Lighter
-   * caps tokens at 8h). Tokens are not persisted by the SDK — callers
-   * cache/refresh them as needed.
+   * Resolution order:
+   *   1. The long-lived read-only token persisted by `approveReadOnlyToken`,
+   *      when one is stored for this `(address, accountIndex)` AND has not
+   *      passed its recorded `expiry`. The SDK never returns an expired
+   *      stored token.
+   *   2. A freshly minted 8h Lighter auth token, signed off the user's
+   *      Lighter API key. Requires `REGISTER_API_KEY` to have completed.
+   *   3. `undefined` — caller falls back to public reads.
+   *
+   * `accountIndex` lets callers in pure read-only mode (no API key
+   * registered) target the RO token. When omitted, the SDK derives it from
+   * the user's registered API key.
+   *
+   * `deadlineSeconds` only affects the standard-token fallback (Lighter caps
+   * those tokens at 8h). Read-only tokens carry their own mint-time expiry
+   * recorded by {@link approveReadOnlyToken}.
    */
   async createLighterAuthToken(
     address: Address,
-    deadlineSeconds?: number
+    deadlineSeconds?: number,
+    accountIndex?: number
   ): Promise<string | undefined> {
     const apiKey = await this.getLighterKeyStore().get(address)
+    const resolvedAccountIndex = accountIndex ?? apiKey?.accountIndex
+    if (resolvedAccountIndex !== undefined) {
+      const stored = await this.getLighterReadOnlyTokenManager().get(
+        address,
+        resolvedAccountIndex
+      )
+      if (stored) {
+        return stored.token
+      }
+    }
     if (!apiKey) {
       return undefined
     }
@@ -672,6 +714,64 @@ export class PerpsClient {
       apiKeyIndex: apiKey.apiKeyIndex,
       accountIndex: apiKey.accountIndex,
     })
+  }
+
+  /**
+   * Mint a long-lived Lighter read-only token via Lighter's
+   * `tokens/create` endpoint and persist it through the configured
+   * `StorageAdapter`, keyed by `(L1 address, accountIndex)`.
+   *
+   * The user's connected wallet signs an EIP-191 message describing the
+   * mint request; the resulting `Authorization` header authenticates the
+   * Lighter HTTP call. The bearer string Lighter returns is persisted
+   * alongside its `expiry` and `scope`; subsequent calls to
+   * {@link createLighterAuthToken} prefer it over the 8h standard token.
+   *
+   * `expirySeconds` is the absolute unix-seconds expiry recorded on
+   * Lighter's row. Lighter enforces 1 day ≤ lifetime ≤ 10 years
+   * server-side; the SDK does NOT pre-validate and surfaces Lighter's 400
+   * verbatim. `scope` defaults to `'all'`; the `'single'` variant is wired
+   * through but only useful when the caller has a specific reason to scope
+   * the token to one account.
+   *
+   * Requires a USER wallet signer to be set via {@link setSigner} or
+   * passed at construction — the L1 signature is the user's consent.
+   */
+  async approveReadOnlyToken(
+    address: Address,
+    params: ApproveReadOnlyTokenParams
+  ): Promise<ApproveReadOnlyTokenResult> {
+    if (!this.sdkClient.signer) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'approveReadOnlyToken requires a wallet signer — pass `signer` to ' +
+          'createPerpsClient or call setSigner(walletClient).'
+      )
+    }
+    const signer = walletClientSigner(this.sdkClient.signer)
+    return this.getLighterReadOnlyTokenManager().approve(signer, {
+      address,
+      ...params,
+    })
+  }
+
+  /**
+   * Whether the stored Lighter read-only token for `(address, accountIndex)`
+   * falls within `thresholdDays` of its `expiry`. Returns `false` when no
+   * token is stored, when the stored token has already expired, or when
+   * more than `thresholdDays` of life remain. Intended for widget renewal
+   * banners (default threshold: 30 days).
+   */
+  async isLighterReadOnlyTokenExpiringSoon(
+    address: Address,
+    accountIndex: number,
+    thresholdDays?: number
+  ): Promise<boolean> {
+    return this.getLighterReadOnlyTokenManager().isReadOnlyTokenExpiringSoon(
+      address,
+      accountIndex,
+      thresholdDays
+    )
   }
 
   // ---------------------------------------------------------------------------
