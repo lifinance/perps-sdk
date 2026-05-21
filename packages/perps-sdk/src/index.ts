@@ -46,7 +46,13 @@ export { projectHyperliquidConfigSettings } from './providers/hyperliquid/accoun
 export { projectLighterConfigSettings } from './providers/lighter/accountConfig.js'
 // Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
-export type { EventForSubscription } from './realtime/types.js'
+export type { ReconnectingWebSocketOptions } from './realtime/ReconnectingWebSocket.js'
+export { ReconnectingWebSocket } from './realtime/ReconnectingWebSocket.js'
+export type {
+  EventForSubscription,
+  SubscriptionListener,
+  WsProvider,
+} from './realtime/types.js'
 // Services
 export type { CreateActionParams } from './services/createAction.js'
 export { createAction } from './services/createAction.js'
