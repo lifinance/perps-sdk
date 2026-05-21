@@ -1,12 +1,12 @@
+import type { Fill } from '../../../account.js'
 import {
   FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
 } from '../../../enums.js'
-import type { Fill } from '../../../account.js'
-import type { LtTrade } from '../apiTypes.js'
 import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
+import type { LtTrade } from '../apiTypes.js'
 
 /**
  * Map a raw Lighter trade to the generic Fill type.

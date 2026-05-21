@@ -1,5 +1,5 @@
-import { MarginMode, PositionSide } from '../../../enums.js'
 import type { Position } from '../../../account.js'
+import { MarginMode, PositionSide } from '../../../enums.js'
 import type { HlAssetPosition } from '../types.js'
 import { deriveMarket } from './_market.js'
 

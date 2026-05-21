@@ -9,14 +9,13 @@
  * `pnpm test:unit` too.
  */
 import { describe, expect, it } from 'vitest'
-
-import { ActionType, OrderSide, OrderType, TimeInForce } from './enums.js'
 import type {
   CreateActionRequest,
   ExecuteActionRequest,
   PlaceOrderParams,
   WithdrawalParams,
 } from './action.js'
+import { ActionType, OrderSide, OrderType, TimeInForce } from './enums.js'
 import type { Address } from './typedData.js'
 
 const SOME_ADDRESS: Address = '0x0000000000000000000000000000000000000001'

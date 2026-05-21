@@ -80,58 +80,25 @@
     "build:cjs": "tsc --project ./tsconfig.build.json --module commonjs --outDir ./src/_cjs --removeComments --verbatimModuleSyntax false && printf '{\"type\":\"commonjs\"}' > ./src/_cjs/package.json",
     "build:esm": "tsc --project ./tsconfig.build.json --module es2015 --outDir ./src/_esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/_esm/package.json",
     "build:types": "tsc --project ./tsconfig.build.json --module esnext --declarationDir ./src/_types --emitDeclarationOnly --declaration --declarationMap",
+    "build:prerelease": "pnpm build && pnpm node scripts/prepublishOnly.js",
+    "check:types": "tsc --noEmit",
+    "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo src/tsconfig.build.tsbuildinfo src/_esm src/_cjs src/_types",
-    "lint:fix": "eslint --ext .tsx --ext .ts ./src --fix",
-    "package": "npm run build && npm pack",
-    "postinstall": "husky",
-    "postpack": "pinst --enable",
-    "pre-commit": "lint-staged",
-    "pre-push": "pnpm typecheck && pnpm test:unit && pnpm build",
-    "prepack": "pinst --disable",
-    "prepublishOnly": "pnpm node scripts/prepublishOnly.js",
-    "release": "standard-version -a",
-    "release:alpha": "standard-version -a --prerelease alpha --skip.changelog",
-    "release:beta": "standard-version -a --prerelease beta --skip.changelog",
-    "prettier:fix": "prettier --write ./src/.",
     "test": "vitest --run",
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
-  },
-  "lint-staged": {
-    "src/**/*.{ts,tsx}": [
-      "pnpm run lint:fix",
-      "pnpm run prettier:fix"
-    ]
+    "test:watch": "vitest"
   },
   "dependencies": {
     "viem": "2.48.8"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.1",
-    "@commitlint/config-conventional": "^19.8.1",
     "@types/fs-extra": "^11.0.4",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^8.57.1",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.5.3",
     "fs-extra": "^11.2.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.1.4",
-    "pinst": "^3.0.0",
-    "prettier": "^3.6.2",
-    "standard-version": "^9.5.0",
+    "madge": "^8.0.0",
     "typescript": "^5.9.2",
     "vitest": "^2.1.8"
   },
-  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748",
   "publishConfig": {
     "access": "public"
-  },
-  "standard-version": {
-    "scripts": {
-      "postbump": "git add ."
-    }
   }
 }

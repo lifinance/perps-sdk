@@ -1,11 +1,11 @@
+import type { OpenOrder, TriggerOrder } from '../../../account.js'
+import type { Order } from '../../../action.js'
 import {
   OrderSide,
   OrderStatus,
   OrderType,
   TimeInForce,
 } from '../../../enums.js'
-import type { OpenOrder, TriggerOrder } from '../../../account.js'
-import type { Order } from '../../../action.js'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
 import { deriveMarket } from './_market.js'
 

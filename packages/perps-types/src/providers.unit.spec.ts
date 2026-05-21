@@ -8,7 +8,14 @@
  * `pnpm test:unit`.
  */
 import { describe, expect, it } from 'vitest'
-
+import type {
+  AccountConfig,
+  AccountConfigSetting,
+  AccountConfigValue,
+  AccountResponse,
+  HyperliquidAccountConfig,
+  LighterAccountConfig,
+} from './account.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type {
   Param,
@@ -18,14 +25,6 @@ import type {
   ProviderOption,
   ProviderSetup,
 } from './providers.js'
-import type {
-  AccountConfig,
-  AccountConfigSetting,
-  AccountConfigValue,
-  AccountResponse,
-  HyperliquidAccountConfig,
-  LighterAccountConfig,
-} from './account.js'
 
 // ---------------------------------------------------------------------------
 // Provider setup / options fixtures

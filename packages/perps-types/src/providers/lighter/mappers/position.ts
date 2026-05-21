@@ -1,5 +1,5 @@
-import { MarginMode, PositionSide } from '../../../enums.js'
 import type { Position } from '../../../account.js'
+import { MarginMode, PositionSide } from '../../../enums.js'
 import type { LtAccountPosition } from '../apiTypes.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types.js'
 

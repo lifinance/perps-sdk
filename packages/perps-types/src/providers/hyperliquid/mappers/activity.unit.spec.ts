@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-
-import { ActivityType } from '../../../enums.js'
 import type {
   DepositActivity,
   LiquidationActivity,
   TransferActivity,
   WithdrawalActivity,
 } from '../../../account.js'
+import { ActivityType } from '../../../enums.js'
 import type {
   HlFundingUpdate,
   HlLedgerDelta,

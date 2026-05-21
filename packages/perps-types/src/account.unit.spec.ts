@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-
-import { ActivityType } from './enums.js'
 import type {
   ActivityItem,
   DepositActivity,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
+import { ActivityType } from './enums.js'
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest

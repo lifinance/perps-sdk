@@ -400,21 +400,18 @@ describe('mapFill (Lighter)', () => {
       [false, LiquidityRole.MAKER],
       // viewer on bid + is_maker_ask=true → viewer is taker
       [true, LiquidityRole.TAKER],
-    ])(
-      'viewer on bid with is_maker_ask: %s → liquidity: %s',
-      (is_maker_ask, expected) => {
-        const fill = mapFill(
-          baseTrade({
-            bid_account_id: ACCOUNT_INDEX,
-            ask_account_id: 0,
-            is_maker_ask,
-          }),
-          ACCOUNT_INDEX,
-          SYMBOL
-        )
-        expect(fill.liquidity).toBe(expected)
-      }
-    )
+    ])('viewer on bid with is_maker_ask: %s → liquidity: %s', (is_maker_ask, expected) => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask,
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.liquidity).toBe(expected)
+    })
   })
 
   describe('orderId selects bid_id / ask_id by viewer side', () => {

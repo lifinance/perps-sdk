@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest'
-
-import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
 import type {
   ActionParamsMap,
   ActionResult,
@@ -8,6 +6,7 @@ import type {
   PlaceOrderParams,
   UpdateLeverageParams,
 } from './action.js'
+import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
 
 // Locks in that `marginMode` is optional on `PlaceOrderParams` /
 // `UpdateLeverageParams` and accepts both `MarginMode.CROSS` and

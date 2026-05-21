@@ -1,11 +1,11 @@
+import type { OpenOrder, TriggerOrder } from '../../../account.js'
+import type { Order } from '../../../action.js'
 import {
   OrderSide,
   OrderStatus,
   OrderType,
   TimeInForce,
 } from '../../../enums.js'
-import type { OpenOrder, TriggerOrder } from '../../../account.js'
-import type { Order } from '../../../action.js'
 import type { LtOrder } from '../apiTypes.js'
 
 // Lighter's `type` enum uses hyphens in the OpenAPI spec but earlier API

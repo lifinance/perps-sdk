@@ -6,7 +6,9 @@
     "wasm/**",
     "src/**",
     "test/**",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "packages/*/src/**",
+    "packages/*/scripts/**"
   ],
-  "ignoreDependencies": ["@vitest/coverage-v8"]
+  "ignoreDependencies": ["@vitest/coverage-v8", "@types/fs-extra", "fs-extra"]
 }

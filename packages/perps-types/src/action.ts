@@ -1,13 +1,14 @@
-import type { MarginMode, OrderType } from './enums.js'
-import {
-  type ActionType,
-  type OrderSide,
-  type OrderStatus,
-  type TimeInForce,
-  type TriggerCondition,
+import type { AssetDisplay, AssetIdentity } from './asset.js'
+import type {
+  ActionType,
+  MarginMode,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  TimeInForce,
+  TriggerCondition,
 } from './enums.js'
 import type { Address, Hex, PerpsTypedData } from './typedData.js'
-import type { AssetIdentity, AssetDisplay } from './asset.js'
 
 // ActionStep variants (create → sign → execute). The SDK picks the variant
 // from the provider's `signingMethod` on `/providers`:

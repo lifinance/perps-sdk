@@ -1,4 +1,3 @@
-export { mapPosition } from './position.js'
 export { mapFill } from './fill.js'
 export {
   isTriggerType,
@@ -6,3 +5,4 @@ export {
   mapOrderDetail,
   mapTriggerOrder,
 } from './order.js'
+export { mapPosition } from './position.js'

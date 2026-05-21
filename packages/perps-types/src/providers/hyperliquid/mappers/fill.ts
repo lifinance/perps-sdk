@@ -1,3 +1,4 @@
+import type { Fill } from '../../../account.js'
 import {
   FillClassification,
   FillStatus,
@@ -5,10 +6,9 @@ import {
   OrderSide,
   OrderType,
 } from '../../../enums.js'
-import type { Fill } from '../../../account.js'
-import type { HlUserFill } from '../types.js'
-import { assetIsSpot } from '../assetId.js'
 import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
+import { assetIsSpot } from '../assetId.js'
+import type { HlUserFill } from '../types.js'
 import { deriveMarket } from './_market.js'
 
 export { classifyFillFromPosition }

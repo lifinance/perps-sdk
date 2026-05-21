@@ -1,6 +1,6 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import pkg from 'fs-extra'
-import path from 'path'
-import { fileURLToPath } from 'url'
 
 const { outputFileSync, readJsonSync, writeJsonSync } = pkg
 const __filename = fileURLToPath(import.meta.url)
@@ -62,20 +62,23 @@ function generatePackageJson() {
     const mainPath = value.require?.default ?? value.default
 
     if (!modulePath || !mainPath) {
-      throw new Error(`Export "${key}": both import and require/default paths are required.`)
+      throw new Error(
+        `Export "${key}": both import and require/default paths are required.`
+      )
     }
 
     const entries = []
     if (typesPath) {
       entries.push(`"types": "${typesPath.replace('./', prefix)}"`)
     }
-    entries.push(`"module": "${(typeof modulePath === 'string' ? modulePath : '').replace('./', prefix)}"`)
-    entries.push(`"main": "${(typeof mainPath === 'string' ? mainPath : '').replace('./', prefix)}"`)
-
-    outputFileSync(
-      `${key}/package.json`,
-      `{\n  ${entries.join(',\n  ')}\n}`
+    entries.push(
+      `"module": "${(typeof modulePath === 'string' ? modulePath : '').replace('./', prefix)}"`
     )
+    entries.push(
+      `"main": "${(typeof mainPath === 'string' ? mainPath : '').replace('./', prefix)}"`
+    )
+
+    outputFileSync(`${key}/package.json`, `{\n  ${entries.join(',\n  ')}\n}`)
     files_.push(subpath)
   }
 
