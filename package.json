@@ -1,7 +1,8 @@
 {
-  "name": "@lifi/perps-sdk",
+  "name": "perps-sdk-monorepo",
   "version": "0.2.0-alpha.0",
-  "description": "LI.FI Perps SDK for perpetuals trading",
+  "private": true,
+  "description": "LI.FI Perps SDK monorepo",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
     "url": "https://github.com/lifinance/perps-sdk/issues"
@@ -18,95 +19,51 @@
   "author": "LI.FI <dev@li.fi>",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/cjs/index.js",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/types/index.d.ts",
-  "typings": "./dist/types/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "default": "./dist/cjs/index.js"
-    },
-    "./utils/hyperliquid": {
-      "types": "./dist/types/utils/hyperliquid/index.d.ts",
-      "import": "./dist/esm/utils/hyperliquid/index.js",
-      "default": "./dist/cjs/utils/hyperliquid/index.js"
-    },
-    "./wasm/*": "./wasm/*",
-    "./package.json": "./package.json"
-  },
   "scripts": {
-    "build": "pnpm clean && pnpm build:version && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:wasm && pnpm build:clean",
-    "build:cjs": "tsc --project ./tsconfig.json --module commonjs --outDir ./dist/cjs --removeComments --verbatimModuleSyntax false && mkdir -p ./dist/cjs && printf '{\"type\":\"commonjs\"}' > ./dist/cjs/package.json",
-    "build:esm": "tsc --project ./tsconfig.json --module es2022 --outDir ./dist/esm && mkdir -p ./dist/esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./dist/esm/package.json",
-    "build:wasm": "mkdir -p ./dist/esm/wasm ./dist/cjs/wasm && cp ./wasm/lighter-signer.wasm ./wasm/wasm_exec.js ./dist/esm/wasm/ && cp ./wasm/lighter-signer.wasm ./wasm/wasm_exec.js ./dist/cjs/wasm/",
-    "build:types": "tsc --project ./tsconfig.json --module esnext --declarationDir ./dist/types --emitDeclarationOnly --declaration --declarationMap",
-    "build:clean": "rm -rf tsconfig.tsbuildinfo ./dist/tsconfig.tsbuildinfo",
-    "build:version": "node scripts/version.js",
-    "clean": "pnpm build:clean && rm -rf dist",
+    "build": "pnpm -r --parallel --filter './packages/**' build",
+    "clean": "pnpm -r --parallel --filter './packages/**' clean",
+    "clean:modules": "find . -name \"node_modules\" -type d -prune -exec rm -rf {} +",
+    "release": "pnpm release:version && pnpm build && pnpm standard-version -a -s",
+    "release:alpha": "pnpm release:version --preid alpha && pnpm build && pnpm standard-version -a -s --prerelease alpha --skip.changelog",
+    "release:beta": "pnpm release:version --preid beta && pnpm build && pnpm standard-version -a -s --prerelease beta --skip.changelog",
+    "release:version": "lerna version --no-changelog --no-push --no-git-tag-version --no-private",
+    "release:publish:build": "pnpm -r --parallel --filter './packages/**' build:prerelease",
+    "release:publish": "pnpm release:publish:build && pnpm -r --filter './packages/**' publish --access public --no-git-checks --tag latest && pnpm release:clean",
+    "release:publish:alpha": "pnpm release:publish:build && pnpm -r --filter './packages/**' publish --access public --no-git-checks --tag alpha && pnpm release:clean",
+    "release:publish:beta": "pnpm release:publish:build && pnpm -r --filter './packages/**' publish --access public --no-git-checks --tag beta && pnpm release:clean",
+    "release:clean": "pnpm -r --parallel --filter './packages/**' exec sh -c \"node ../../scripts/postrelease.js && rm -rf *.md\"",
     "check": "biome check",
     "check:write": "biome check --write",
-    "check:types": "tsc --noEmit",
-    "check:circular-deps": "madge --circular $(find ./src -name '*.ts')",
+    "check:write:unsafe": "biome check --write --unsafe",
+    "check:types": "pnpm -r --parallel --filter './packages/**' check:types",
+    "check:circular-deps": "pnpm -r --parallel --filter './packages/**' check:circular-deps",
+    "test": "pnpm -r --parallel --filter './packages/**' test",
+    "test:cov": "pnpm -r --parallel --filter './packages/**' test:cov",
+    "test:unit": "pnpm -r --parallel --filter './packages/**' test:unit",
     "knip:check": "knip --dependencies --files --no-config-hints --exclude binaries",
     "knip:write": "pnpm knip:check --fix",
-    "release": "standard-version -a -s",
-    "release:alpha": "standard-version -a -s --prerelease alpha --skip.changelog",
-    "release:beta": "standard-version -a -s --prerelease beta --skip.changelog",
-    "test": "vitest --run",
-    "test:cov": "vitest --run --coverage",
-    "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
     "pre-commit": "pnpm check && pnpm check:types && pnpm check:circular-deps && pnpm knip:check",
     "pre-push": "pnpm test:unit",
     "prepare": "husky"
   },
-  "dependencies": {
-    "@lifi/perps-types": "0.2.0-alpha.0",
-    "viem": "2.48.8"
+  "standard-version": {
+    "scripts": {
+      "prerelease": "pnpm install && git add .",
+      "postbump": "pnpm check:write && git add ."
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
     "@commitlint/cli": "^20.3.1",
     "@commitlint/config-conventional": "^20.3.1",
     "@types/node": "^25.2.3",
-    "@vitest/coverage-v8": "^2.1.8",
     "husky": "^9.1.7",
     "knip": "^5.82.1",
-    "madge": "^8.0.0",
-    "msw": "^2.7.0",
+    "lerna": "^9.0.7",
     "standard-version": "^9.5.0",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "typescript": "^5.7.2"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "files": [
-    "dist/**",
-    "!dist/**/*.tsbuildinfo",
-    "src/**/*.ts",
-    "!src/**/*.spec.ts",
-    "!src/**/*.test.ts",
-    "!src/**/*.mock.ts",
-    "!src/**/*.handlers.ts",
-    "!src/**/*.tsbuildinfo",
-    "!**/__mocks__/**",
-    "!*.tmp",
-    "!*.env",
-    "!tsconfig.json",
-    "wasm/lighter-signer.wasm",
-    "wasm/wasm_exec.js"
-  ],
-  "keywords": [
-    "perps",
-    "perpetuals",
-    "trading",
-    "defi",
-    "ethereum",
-    "lifi",
-    "sdk",
-    "viem",
-    "hyperliquid"
-  ]
+  }
 }
