@@ -28,6 +28,10 @@ export interface GetOrdersParams {
  *   address: '0x1234...',
  * })
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getOrders(client, { address, ... })`.
  */
 export async function getOrders(
   client: PerpsSDKClient,

@@ -54,6 +54,10 @@ export interface GetActivityParams {
  *   })
  * }
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getActivity(client, { address, ... })`.
  */
 export async function getActivity(
   client: PerpsSDKClient,

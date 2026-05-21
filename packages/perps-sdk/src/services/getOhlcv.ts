@@ -41,6 +41,10 @@ export interface GetOhlcvParams {
  * })
  * console.log(candles) // [{ t: 1704067200000, o: '94000', h: '95000', ... }]
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getOhlcv(client, { symbol, interval, ... })`.
  */
 export async function getOhlcv(
   client: PerpsSDKClient,

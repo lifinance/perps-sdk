@@ -21,6 +21,10 @@ export interface GetAssetParams {
  * const asset = await getAsset(client, { provider: 'hyperliquid', symbol: 'BTC' })
  * console.log(asset) // { symbol: 'BTC', markPrice: '95000.00', ... }
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getAsset(client, { symbol })`.
  */
 export async function getAsset(
   client: PerpsSDKClient,

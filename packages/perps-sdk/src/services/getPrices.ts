@@ -34,6 +34,10 @@ export interface GetPricesParams {
  *   symbols: ['BTC', 'ETH']
  * })
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getPrices(client, { symbols })`.
  */
 export async function getPrices(
   client: PerpsSDKClient,

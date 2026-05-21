@@ -34,6 +34,10 @@ export interface GetOrderParams {
  * })
  * console.log(order) // { orderId: '123456', status: 'FILLED', ... }
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getOrder(client, { address, id })`.
  */
 export async function getOrder(
   client: PerpsSDKClient,

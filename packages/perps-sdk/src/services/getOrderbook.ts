@@ -35,6 +35,10 @@ export interface GetOrderbookParams {
  * console.log(bids[0]) // { price: '94999.50', size: '1.5' }
  * console.log(asks[0]) // { price: '95000.50', size: '2.0' }
  * ```
+ *
+ * @deprecated Will move to the provider package
+ * `@lifi/perps-sdk-provider-<key>`. Migrate to
+ * `client.getProvider(provider)?.getOrderbook(client, { symbol, depth })`.
  */
 export async function getOrderbook(
   client: PerpsSDKClient,
