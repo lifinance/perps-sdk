@@ -1,0 +1,10 @@
+node_modules/
+src/_cjs/
+src/_esm/
+src/_types/
+*.tsbuildinfo
+
+# Claude Code (local config)
+CLAUDE.local.md
+.claude/
+.worktrees/

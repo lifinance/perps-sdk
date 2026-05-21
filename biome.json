@@ -121,6 +121,27 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/perps-types/src/**/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off",
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/perps-types/src/**/*.unit.spec.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExportsInTest": "off"
+          }
+        }
+      }
     }
   ]
 }
