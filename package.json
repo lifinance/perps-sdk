@@ -62,7 +62,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@lifi/perps-types": "0.1.1-alpha.21",
+    "@lifi/perps-types": "0.2.0-alpha.0",
     "viem": "2.48.8"
   },
   "devDependencies": {
@@ -81,11 +81,6 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "pnpm": {
-    "overrides": {
-      "@lifi/perps-types": "link:../perps-types"
-    }
   },
   "files": [
     "dist/**",
