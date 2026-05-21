@@ -929,4 +929,167 @@ describe('PerpsClient', () => {
       ).rejects.toThrow()
     })
   })
+
+  describe('createLighterAuthToken — read-only-token preference', () => {
+    const lighterAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
+    const accountIndex = 7
+    const apiKeyPrivateKey = `0x${'33'.repeat(32)}` as const
+    const apiKeyPublicKey = `0x${'44'.repeat(32)}` as const
+
+    it('returns the stored read-only token when it is fresh', async () => {
+      const storage = createMemoryStorage()
+      const futureExpiry = Math.floor(Date.now() / 1000) + 365 * 86_400
+      const readOnlyClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage,
+      })
+
+      await storage.set(
+        `lifi:perps:lighter:rotoken:${lighterAddress}:${accountIndex}`,
+        JSON.stringify({
+          token: 'ro:7:all:fresh:abc',
+          expiry: futureExpiry,
+          scope: 'all',
+          accountIndex,
+        })
+      )
+
+      const token = await readOnlyClient.createLighterAuthToken(
+        lighterAddress,
+        undefined,
+        accountIndex
+      )
+      expect(token).toBe('ro:7:all:fresh:abc')
+    })
+
+    it('falls back when the stored token is past its expiry (no api key, no token)', async () => {
+      const storage = createMemoryStorage()
+      const expired = Math.floor(Date.now() / 1000) - 60
+      const fallbackClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage,
+      })
+      await storage.set(
+        `lifi:perps:lighter:rotoken:${lighterAddress}:${accountIndex}`,
+        JSON.stringify({
+          token: 'ro:7:all:expired:xx',
+          expiry: expired,
+          scope: 'all',
+          accountIndex,
+        })
+      )
+
+      // No API key registered + expired RO token → undefined (caller falls
+      // back to public reads). Standard-token mint requires real WASM and is
+      // exercised separately at the LighterSigner layer.
+      const token = await fallbackClient.createLighterAuthToken(
+        lighterAddress,
+        undefined,
+        accountIndex
+      )
+      expect(token).toBeUndefined()
+    })
+
+    it('derives accountIndex from the stored API key when none is passed', async () => {
+      const storage = createMemoryStorage()
+      const futureExpiry = Math.floor(Date.now() / 1000) + 365 * 86_400
+      const derivedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage,
+      })
+
+      const keyStore = new LighterKeyStore(storage)
+      await keyStore.set(lighterAddress, {
+        accountIndex,
+        apiKeyIndex: 1,
+        apiKeyPrivateKey,
+        apiKeyPublicKey,
+      })
+      await storage.set(
+        `lifi:perps:lighter:rotoken:${lighterAddress}:${accountIndex}`,
+        JSON.stringify({
+          token: 'ro:7:all:derived:abc',
+          expiry: futureExpiry,
+          scope: 'all',
+          accountIndex,
+        })
+      )
+
+      const token = await derivedClient.createLighterAuthToken(lighterAddress)
+      expect(token).toBe('ro:7:all:derived:abc')
+    })
+
+    it('returns undefined when no API key and no read-only token are stored', async () => {
+      const emptyClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+      })
+      const token = await emptyClient.createLighterAuthToken(lighterAddress)
+      expect(token).toBeUndefined()
+    })
+  })
+
+  describe('approveReadOnlyToken — wallet signer routing', () => {
+    const lighterAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
+
+    it('throws when no wallet signer is configured', async () => {
+      const noSignerClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+      })
+      await expect(
+        noSignerClient.approveReadOnlyToken(lighterAddress, {
+          accountIndex: 7,
+          expirySeconds: Math.floor(Date.now() / 1000) + 86_400,
+          scope: 'all',
+        })
+      ).rejects.toThrow(/wallet signer/i)
+    })
+
+    it('persists the minted token through the wired manager', async () => {
+      const storage = createMemoryStorage()
+      const userPrivateKey = `0x${'22'.repeat(32)}` as Hex
+      const account = privateKeyToAccount(userPrivateKey)
+      const signer = createWalletClient({
+        account,
+        chain: mainnet,
+        transport: viemHttp(),
+      })
+
+      const expiry = Math.floor(Date.now() / 1000) + 365 * 86_400
+      const approveClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage,
+        lighterReadOnlyToken: {
+          fetcher: async (params) => ({
+            api_token: 'ro:7:all:minted:zzz',
+            account_index: params.accountIndex,
+            expiry: params.expiry,
+            scopes: params.scopes,
+          }),
+        },
+      })
+      approveClient.setSigner(signer)
+
+      const result = await approveClient.approveReadOnlyToken(account.address, {
+        accountIndex: 7,
+        expirySeconds: expiry,
+        scope: 'all',
+      })
+
+      expect(result.token.token).toBe('ro:7:all:minted:zzz')
+      const subsequent = await approveClient.createLighterAuthToken(
+        account.address,
+        undefined,
+        7
+      )
+      expect(subsequent).toBe('ro:7:all:minted:zzz')
+    })
+  })
 })

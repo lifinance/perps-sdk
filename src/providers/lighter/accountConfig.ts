@@ -15,12 +15,13 @@ import { assertNever } from '../../utils/assertNever.js'
  *
  * Mapping table:
  *
- * | descriptor.type    | projected values
- * |--------------------|-------------------------------------------------
- * | REGISTER_API_KEY   | []                  (no parameters)
- * | ACCOUNT_MODE       | [{ name: 'mode', value: null }]  (Lighter has no
- * |                    |  abstraction-mode equivalent; read-only here)
- * | ACCOUNT_TYPE       | [{ name: 'tier', value: config.accountType }]
+ * | descriptor.type           | projected values
+ * |---------------------------|--------------------------------------------------
+ * | REGISTER_API_KEY          | []                  (no parameters)
+ * | APPROVE_READ_ONLY_TOKEN   | []                  (no parameters)
+ * | ACCOUNT_MODE              | [{ name: 'mode', value: null }]  (Lighter has no
+ * |                           |  abstraction-mode equivalent; read-only here)
+ * | ACCOUNT_TYPE              | [{ name: 'tier', value: config.accountType }]
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
@@ -31,10 +32,12 @@ function projectLighterDescriptor(
   config: LighterAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
-    // Zero-parameter user-approval descriptor. The "satisfied or not"
+    // Zero-parameter user-approval descriptors. The "satisfied or not"
     // state comes from `checkSetup`'s unsatisfied list and the
-    // `config.apiKeyRegistered` flag, not from a projected value.
+    // `config.apiKeyRegistered` / `config.readOnlyTokenApproved` flags,
+    // not from a projected value.
     case ActionType.REGISTER_API_KEY:
+    case ActionType.APPROVE_READ_ONLY_TOKEN:
       return { type: descriptor.type, values: [] }
 
     // Lighter exposes no abstraction-mode equivalent; if a backend descriptor

@@ -78,21 +78,34 @@ export { getProviders } from './services/getProviders.js'
 // Signers
 export type {
   ApiKeyPair,
+  ApproveReadOnlyTokenInputs,
+  ApproveReadOnlyTokenResult,
   ChangePubKeyResult,
   LighterApiKey,
+  LighterCreateTokenResponse,
+  LighterReadOnlyToken,
+  LighterReadOnlyTokenManagerOptions,
   LighterSignedBlob,
   LighterSignerConfig,
   LighterSignerContext,
+  LighterTokenFetcher,
+  LighterWalletSigner,
   LighterWasmExports,
   LoadLighterWasmOptions,
 } from './signers/lighter/index.js'
 export {
+  buildReadOnlyTokenMessage,
   DEFAULT_API_KEY_INDEX,
+  DEFAULT_LIGHTER_API_URL,
+  DEFAULT_READ_ONLY_TOKEN_NAME,
+  defaultLighterTokenFetcher,
   LIGHTER_PROVIDER_KEY,
   LighterKeyStore,
+  LighterReadOnlyTokenManager,
   LighterSigner,
   loadLighterWasm,
   resetLighterWasmCache,
+  walletClientSigner,
 } from './signers/lighter/index.js'
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'
