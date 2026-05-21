@@ -4,7 +4,7 @@ import {
   OrderType,
   TimeInForce,
 } from '../../../enums.js'
-import type { OpenOrder } from '../../../account.js'
+import type { OpenOrder, TriggerOrder } from '../../../account.js'
 import type { Order } from '../../../action.js'
 import type { LtOrder } from '../apiTypes.js'
 
@@ -92,6 +92,47 @@ export const mapStatusReason = (status: string): string | undefined => {
       return 'Order cancelled: invalid balance.'
     default:
       return undefined
+  }
+}
+
+/**
+ * True for order types Lighter exposes as TP/SL legs. Mirrors the
+ * Hyperliquid helper of the same name so the backend can split a raw
+ * Lighter order list into the same `openOrders` / `triggerOrders`
+ * buckets the SDK declares on `OrdersResponse`.
+ */
+export const isTriggerType = (type: OrderType): boolean =>
+  type === OrderType.TAKE_PROFIT_MARKET ||
+  type === OrderType.TAKE_PROFIT_LIMIT ||
+  type === OrderType.STOP_MARKET ||
+  type === OrderType.STOP_LIMIT
+
+/**
+ * Map a raw Lighter trigger order (stop/take-profit, market or limit) to
+ * the generic `TriggerOrder` shape. For market variants the `limitPrice`
+ * field is omitted; for limit variants `order.price` is the limit and
+ * `order.trigger_price` is the activation level.
+ */
+export const mapTriggerOrder = (
+  order: LtOrder,
+  symbol: string
+): TriggerOrder => {
+  const type = mapOrderType(order.type)
+  const isLimit =
+    type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
+  return {
+    id: order.order_id,
+    asset: {
+      assetId: symbol,
+      market: 'lighter',
+      displaySymbol: symbol,
+      displayQuote: 'USDC',
+    },
+    type,
+    size: order.initial_base_amount,
+    triggerPrice: order.trigger_price,
+    ...(isLimit ? { limitPrice: order.price } : {}),
+    createdAt: new Date(order.created_at * 1000).toISOString(),
   }
 }
 
