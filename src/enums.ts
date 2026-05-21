@@ -113,6 +113,7 @@ export enum ActionType {
   UPDATE_LEVERAGE = 'updateLeverage',
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
   REGISTER_API_KEY = 'registerApiKey',
+  APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   DEPOSIT = 'deposit',
 }
 

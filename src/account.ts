@@ -255,6 +255,12 @@ export interface HyperliquidAccountConfig {
  * `accountType` is the raw integer fee/latency tier from Lighter's
  * `/api/v1/account.account_type` — decoding to a human label is left to the
  * consumer.
+ *
+ * `readOnlyTokenApproved` mirrors `apiKeyRegistered`'s shape but for the
+ * long-lived read-only token. When `true`, `readOnlyTokenExpiry` and
+ * `readOnlyTokenScope` MUST be present; when `false`, both MUST be absent.
+ * The `APPROVE_READ_ONLY_TOKEN` setup descriptor gates query-only access on
+ * this flag.
  */
 export interface LighterAccountConfig {
   provider: 'lighter'
@@ -262,6 +268,11 @@ export interface LighterAccountConfig {
   apiKeyIndex: number
   apiKeyRegistered: boolean
   accountType: number
+  readOnlyTokenApproved: boolean
+  /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
+  readOnlyTokenExpiry?: number
+  /** Lighter's documented `single | all` scope. Present iff `readOnlyTokenApproved === true`. */
+  readOnlyTokenScope?: 'single' | 'all'
 }
 
 /**

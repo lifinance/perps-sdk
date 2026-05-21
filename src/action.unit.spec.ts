@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
 import type {
+  ActionParamsMap,
   ActionResult,
+  ApproveReadOnlyTokenParams,
   PlaceOrderParams,
   UpdateLeverageParams,
 } from './action.js'
@@ -75,6 +77,39 @@ describe('UpdateLeverageParams', () => {
     }
 
     expect(params.marginMode).toBe(MarginMode.CROSS)
+  })
+})
+
+describe('ApproveReadOnlyTokenParams', () => {
+  it('accepts a fixture with scope "all"', () => {
+    const params: ApproveReadOnlyTokenParams = {
+      accountIndex: 42,
+      expirySeconds: 1_999_999_999,
+      scope: 'all',
+    }
+
+    expect(params.scope).toBe('all')
+  })
+
+  it('accepts a fixture with scope "single"', () => {
+    const params: ApproveReadOnlyTokenParams = {
+      accountIndex: 7,
+      expirySeconds: 1_900_000_000,
+      scope: 'single',
+    }
+
+    expect(params.scope).toBe('single')
+  })
+
+  it('is wired through ActionParamsMap on APPROVE_READ_ONLY_TOKEN', () => {
+    type Resolved = ActionParamsMap[ActionType.APPROVE_READ_ONLY_TOKEN]
+    const params: Resolved = {
+      accountIndex: 1,
+      expirySeconds: 1_800_000_000,
+      scope: 'all',
+    }
+
+    expect(params.accountIndex).toBe(1)
   })
 })
 
