@@ -24,6 +24,7 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/cjs/index.js"
     },
+    "./wasm/*": "./wasm/*",
     "./package.json": "./package.json"
   },
   "files": [
