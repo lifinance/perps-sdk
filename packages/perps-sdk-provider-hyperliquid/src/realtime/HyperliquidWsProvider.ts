@@ -38,7 +38,8 @@ import type {
  * aren't sub-DEX subscriptions on the HL wire). Higher-order shape mirrors
  * `lighterWsProvider(options)` so the two factories register identically.
  */
-export const hyperliquidWsProvider = (): WsProviderFactory =>
+export const hyperliquidWsProvider =
+  (): WsProviderFactory =>
   ({ provider, wsUrl, markets }) => {
     const subDexes = markets.filter((m) => m !== provider && m !== 'spot')
     return new HyperliquidWsProvider(wsUrl, provider, subDexes)

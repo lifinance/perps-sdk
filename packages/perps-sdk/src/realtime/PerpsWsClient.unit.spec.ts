@@ -131,9 +131,7 @@ describe('PerpsWsClient', () => {
 
       await expect(
         ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
-      ).rejects.toThrow(
-        "No WS provider factory registered for 'hyperliquid'."
-      )
+      ).rejects.toThrow("No WS provider factory registered for 'hyperliquid'.")
 
       ws.close()
     })

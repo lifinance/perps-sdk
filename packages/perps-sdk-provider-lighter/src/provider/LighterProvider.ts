@@ -46,7 +46,6 @@ import type {
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import { summarizeLighterAccount } from '../accountSummary.js'
 import {
   isTriggerType,
   mapFill,
@@ -56,6 +55,7 @@ import {
   mapTriggerOrder,
 } from '@lifi/perps-types/providers/lighter'
 import { projectLighterConfigSettings } from '../accountConfig.js'
+import { summarizeLighterAccount } from '../accountSummary.js'
 import { createAuthToken } from '../signers/createAuthToken.js'
 import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'
@@ -422,9 +422,7 @@ export const lighterProvider = (
       { account_index: accountIndex, market_id: marketId }
     )
 
-  const deriveOrderBearingMarketIds = (
-    account: LtDetailedAccount
-  ): number[] =>
+  const deriveOrderBearingMarketIds = (account: LtDetailedAccount): number[] =>
     account.positions
       .filter((p) => orderCountFor(p) > 0)
       .map((p) => p.market_id)
@@ -1195,9 +1193,8 @@ export const lighterProvider = (
           ? inputAccountIndex
           : (await fetchDetailedAccount(apiClient(), ctx.address)).index
 
-      const inputExpiry = (
-        ctx.params as { expirySeconds?: number } | undefined
-      )?.expirySeconds
+      const inputExpiry = (ctx.params as { expirySeconds?: number } | undefined)
+        ?.expirySeconds
       const expirySeconds =
         typeof inputExpiry === 'number'
           ? inputExpiry

@@ -33,7 +33,9 @@ export function summarizeLighterAccount(
     if (key === 'spot') {
       for (const b of entries) {
         const price =
-          prices[b.currency] !== undefined ? stringToFloat(prices[b.currency]) : 0
+          prices[b.currency] !== undefined
+            ? stringToFloat(prices[b.currency])
+            : 0
         spotValue += stringToFloat(b.amount) * price
       }
     } else {

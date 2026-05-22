@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 
 export { projectLighterConfigSettings } from './accountConfig.js'
+export { summarizeLighterAccount } from './accountSummary.js'
 // Activity cursor envelope (preserves the backend-emitted shape)
 export type { LighterActivityCursor } from './provider/activityCursor.js'
 export {
@@ -28,7 +29,6 @@ export {
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_PROVIDER_KEY,
 } from './provider/constants.js'
-export { summarizeLighterAccount } from './accountSummary.js'
 // Provider plugin + factory
 export type {
   LighterPerpsProvider,

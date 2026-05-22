@@ -694,8 +694,7 @@ function collectAuthChannelItems<T>(
  * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
  * unused — Lighter advertises a single venue, no sub-DEX filtering.
  */
-export const lighterWsProvider = (
-  options?: LighterWsProviderOptions
-): WsProviderFactory => ({ provider, wsUrl }) =>
-  new LighterWsProvider(wsUrl, provider, options)
-
+export const lighterWsProvider =
+  (options?: LighterWsProviderOptions): WsProviderFactory =>
+  ({ provider, wsUrl }) =>
+    new LighterWsProvider(wsUrl, provider, options)
