@@ -2,6 +2,7 @@ import {
   ReconnectingWebSocket,
   type SubscriptionListener,
   type WsProvider,
+  type WsProviderFactory,
 } from '@lifi/perps-sdk'
 import type {
   Address,
@@ -683,3 +684,18 @@ function collectAuthChannelItems<T>(
     []
   )
 }
+
+/**
+ * `WsProviderFactory` constructor for Lighter — pass to
+ * `new PerpsWsClient(client, { wsProviders: { lighter: lighterWsProvider({ authProvider }) } })`.
+ *
+ * Closes over the per-instance options (auth provider, symbolMap, restUrl
+ * override) so `PerpsWsClient` can call the returned factory with just
+ * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
+ * unused — Lighter advertises a single venue, no sub-DEX filtering.
+ */
+export const lighterWsProvider = (
+  options?: LighterWsProviderOptions
+): WsProviderFactory => ({ provider, wsUrl }) =>
+  new LighterWsProvider(wsUrl, provider, options)
+

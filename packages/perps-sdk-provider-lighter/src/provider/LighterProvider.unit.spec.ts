@@ -3,7 +3,7 @@ import { ActivityType } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LighterKeyStore } from '../signers/LighterKeyStore.js'
 import type { LighterSigner } from '../signers/LighterSigner.js'
-import { LighterProvider } from './LighterProvider.js'
+import { lighterProvider } from './LighterProvider.js'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -223,14 +223,14 @@ afterEach(() => {
 
 describe('LighterProvider — `type` field', () => {
   it('reports `lighter` as the provider key', () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     expect(provider.type).toBe('lighter')
   })
 })
 
 describe('LighterProvider — auth token plumbing', () => {
   it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     await provider.getAccount(
       STUB_CLIENT,
       { address: ADDRESS },
@@ -246,7 +246,7 @@ describe('LighterProvider — auth token plumbing', () => {
   })
 
   it('uses a pre-minted `authToken` from constructor when no per-call override', async () => {
-    const provider = new LighterProvider({ authToken: 'pre-minted-token' })
+    const provider = lighterProvider({ authToken: 'pre-minted-token' })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
@@ -256,7 +256,7 @@ describe('LighterProvider — auth token plumbing', () => {
 
   it('accepts an async `authToken` source function', async () => {
     let calls = 0
-    const provider = new LighterProvider({
+    const provider = lighterProvider({
       authToken: async () => {
         calls++
         return `dynamic-token-${calls}`
@@ -287,7 +287,7 @@ describe('LighterProvider — auth token plumbing', () => {
       apiKeyPrivateKey: '0xabc',
       apiKeyPublicKey: '0xdef',
     })
-    const provider = new LighterProvider({
+    const provider = lighterProvider({
       signer: signerStub,
       keyStore,
     })
@@ -318,7 +318,7 @@ describe('LighterProvider — auth token plumbing', () => {
       apiKeyPrivateKey: '0xabc',
       apiKeyPublicKey: '0xdef',
     })
-    const provider = new LighterProvider({
+    const provider = lighterProvider({
       signer: signerStub,
       keyStore,
       tokenLifetimeSeconds: 3600,
@@ -340,7 +340,7 @@ describe('LighterProvider — auth token plumbing', () => {
       createAuthToken: vi.fn(async () => 'should-not-be-called'),
     } as unknown as LighterSigner
     const keyStore = new LighterKeyStore(createMemoryStorage())
-    const provider = new LighterProvider({ signer: signerStub, keyStore })
+    const provider = lighterProvider({ signer: signerStub, keyStore })
     const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     // No API key → falls back to the unauthenticated degrade path (zero fee tier).
     expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
@@ -356,7 +356,7 @@ describe('LighterProvider — auth token plumbing', () => {
 
 describe('LighterProvider — unauthenticated degrade paths', () => {
   it('getAccount returns zero fee tier when no token is configured', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
     // accountLimits should NOT have been called
@@ -366,7 +366,7 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
   })
 
   it('getOrders returns empty arrays when no token is configured', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     const orders = await provider.getOrders(STUB_CLIENT, { address: ADDRESS })
     expect(orders.openOrders).toEqual([])
     expect(orders.triggerOrders).toEqual([])
@@ -374,7 +374,7 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
   })
 
   it('getActivity returns empty items when no token is configured', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     const activity = await provider.getActivity(STUB_CLIENT, {
       address: ADDRESS,
     })
@@ -383,7 +383,7 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
   })
 
   it('getOrder throws when no token is configured', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     await expect(
       provider.getOrder(STUB_CLIENT, { address: ADDRESS, id: 'order_1' })
     ).rejects.toThrow(/auth token/i)
@@ -392,7 +392,7 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
 
 describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
   it('hits Lighter mainnet by default', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     for (const call of recorded) {
       expect(call.url).toMatch(/^https:\/\/mainnet\.zklighter\.elliot\.ai\//)
@@ -400,7 +400,7 @@ describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
   })
 
   it('respects a custom `restUrl` override', async () => {
-    const provider = new LighterProvider({
+    const provider = lighterProvider({
       restUrl: 'https://testnet.zklighter.elliot.ai',
     })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
@@ -412,13 +412,13 @@ describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
 
 describe('LighterProvider — normalisation', () => {
   it('normalises getPrices into the AssetPrice shape', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     const result = await provider.getPrices(STUB_CLIENT, {})
     expect(result.prices).toEqual([{ assetId: 'BTC', price: '50000' }])
   })
 
   it('normalises getAssets per perps-types `Asset` shape', async () => {
-    const provider = new LighterProvider()
+    const provider = lighterProvider()
     const result = await provider.getAssets(STUB_CLIENT)
     expect(result.assets).toHaveLength(1)
     const btc = result.assets[0]
@@ -479,7 +479,7 @@ describe('LighterProvider — normalisation', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-    const provider = new LighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({ authToken: 'tok' })
     const result = await provider.getActivity(STUB_CLIENT, {
       address: ADDRESS,
       type: [ActivityType.DEPOSIT],
@@ -493,7 +493,7 @@ describe('LighterProvider — normalisation', () => {
 
 describe('LighterProvider — getOrder', () => {
   it('rejects tx-hash-shaped ids with OrderNotFound + guidance', async () => {
-    const provider = new LighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({ authToken: 'tok' })
     const txHashShape = '0'.repeat(80) // valid 80-hex shape
     await expect(
       provider.getOrder(STUB_CLIENT, { address: ADDRESS, id: txHashShape })

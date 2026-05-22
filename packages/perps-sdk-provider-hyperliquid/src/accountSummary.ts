@@ -1,17 +1,11 @@
-import type { AccountResponse, Asset, Position } from '@lifi/perps-types'
+import { stringToFloat } from '@lifi/perps-sdk'
+import type {
+  AccountResponse,
+  AccountSummary,
+  Asset,
+  Position,
+} from '@lifi/perps-types'
 import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
-import { stringToFloat } from './parse.js'
-
-export interface AccountSummary {
-  /** Total portfolio value in USD */
-  portfolioValue: number
-  /** Collateral available for new positions */
-  availableMargin: number
-  /** Margin locked in open positions */
-  marginUsed: number
-  /** Unrealized PnL across all positions */
-  unrealizedPnl: number
-}
 
 /**
  * Build a map of coin name → USD price from spot assets and allMids.
@@ -41,11 +35,10 @@ function buildSpotCoinPrices(
 }
 
 /**
- * Resolve the USD price of a spot balance currency.
- *
- * Looks up the coin in the spot mid prices map first, then tries an exact
- * match in allMids (e.g. a perps-listed stablecoin). Falls back to $1 for
- * stablecoins with no market price entry.
+ * Resolve the USD price of a spot balance currency. Looks up the coin in
+ * the spot mid prices map first, then tries an exact match in allMids (e.g.
+ * a perps-listed stablecoin). Falls back to $1 for stablecoins with no
+ * market price entry.
  */
 function getSpotPrice(
   currency: string,
@@ -67,7 +60,13 @@ const UNIFIED_STATUSES: ReadonlySet<string> = new Set([
   HlAbstractionMode.PORTFOLIO_MARGIN,
 ])
 
-export function calculateAccountSummary(
+/**
+ * Hyperliquid-flavoured account roll-up. Subtracts margin from collateral
+ * in `disabled` mode (perps venue balances are already free margin); does
+ * NOT subtract in `unifiedAccount` / `portfolioMargin` (spot balances are
+ * total token holdings).
+ */
+export function summarizeHyperliquidAccount(
   account: AccountResponse,
   positions: Position[],
   prices: Record<string, string>,
@@ -106,9 +105,6 @@ export function calculateAccountSummary(
     }
   }
 
-  // `abstractionMode` is HL-only; for any other provider variant (today
-  // Lighter) the unified-collateral semantics don't apply, so fall back
-  // to `undefined` and let the non-unified branch below run.
   const status =
     account.config.provider === 'hyperliquid'
       ? (account.config.abstractionMode ?? undefined)

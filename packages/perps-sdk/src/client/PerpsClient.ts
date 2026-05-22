@@ -30,7 +30,6 @@ import {
   signTypedDataWithSigner,
 } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
-import { projectAccountConfigSettings } from './projectAccountConfigSettings.js'
 import {
   type CancelOrdersParams,
   type CheckPrerequisitesParams,
@@ -555,11 +554,12 @@ export class PerpsClient {
     provider: string
     address: Address
   }): Promise<GetAccountResult> {
+    const plugin = this.requireProvider(params.provider)
     const [response, metadata] = await Promise.all([
       getAccount(this.sdkClient, params),
       this.getProviderMetadata(params.provider),
     ])
-    const settings = projectAccountConfigSettings(
+    const settings = plugin.projectConfig(
       response.config,
       metadata.setup,
       metadata.options

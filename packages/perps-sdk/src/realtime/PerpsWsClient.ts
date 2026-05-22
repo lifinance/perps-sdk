@@ -1,7 +1,7 @@
-import type { Subscription } from '@lifi/perps-types'
+import { PerpsErrorCode, type Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
+import { PerpsError } from '../errors/PerpsError.js'
 import { getProviders } from '../services/getProviders.js'
-import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
@@ -17,17 +17,23 @@ export type WsProviderFactory = (params: {
   provider: string
   /** WS URL discovered from `/providers`. */
   wsUrl: string
-  /** Sub-provider keys (Hyperliquid sub-dexes). */
-  subProviders: string[]
+  /**
+   * Markets visible to this provider via `/providers`, optionally filtered
+   * by the consumer's `createPerpsClient({ providers: { [key]: { markets } } })`
+   * config. Each provider interprets these its own way — Hyperliquid uses
+   * them to decide which sub-DEXes to subscribe to; Lighter ignores them.
+   */
+  markets: string[]
 }) => WsProvider
 
 export interface PerpsWsClientOptions {
   /**
-   * Per-provider WS factory overrides. Map a provider key (e.g.
-   * `'lighter'`) to a factory that returns a `WsProvider`. Without an
-   * entry the SDK falls back to its bundled `HyperliquidWsProvider` for
-   * any non-`'hyperliquid'` provider — pass an explicit factory for
-   * Lighter / future providers via this map.
+   * Per-provider WS factory map. Each key (e.g. `'hyperliquid'`,
+   * `'lighter'`) maps to a factory that returns a `WsProvider`. Concrete
+   * implementations ship with the provider packages — e.g.
+   * `@lifi/perps-sdk-provider-hyperliquid` exports `HyperliquidWsProvider`,
+   * `@lifi/perps-sdk-provider-lighter` exports `LighterWsProvider`.
+   * Subscribing to a provider key without a registered factory throws.
    */
   wsProviders?: Record<string, WsProviderFactory>
 }
@@ -75,6 +81,15 @@ export class PerpsWsClient {
   }
 
   private async initProvider(provider: string): Promise<WsProvider> {
+    const factory = this.options.wsProviders?.[provider]
+    if (factory === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `No WS provider factory registered for '${provider}'. Pass one via ` +
+          'new PerpsWsClient(client, { wsProviders: { [key]: factory } }).'
+      )
+    }
+
     const { providers } = await getProviders(this.client)
 
     const providerInfo = providers.find((d) => d.key === provider)
@@ -87,31 +102,18 @@ export class PerpsWsClient {
     }>
     const providerConfig = this.client.config.providers?.[provider]
     const configuredMarkets = providerConfig?.markets
-    const filteredMarkets = configuredMarkets
-      ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
-      : allMarkets
-    const subProviders = filteredMarkets
-      .map((m) => m.id)
-      .filter((id) => id !== provider && id !== 'spot')
+    const markets = (
+      configuredMarkets
+        ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
+        : allMarkets
+    ).map((m) => m.id)
 
-    const wsProvider = this.createWsProvider(
+    const wsProvider = factory({
       provider,
-      providerInfo.wsUrl,
-      subProviders
-    )
+      wsUrl: providerInfo.wsUrl,
+      markets,
+    })
     this.providers.set(provider, wsProvider)
     return wsProvider
-  }
-
-  private createWsProvider(
-    provider: string,
-    wsUrl: string,
-    subProviders: string[]
-  ): WsProvider {
-    const factory = this.options.wsProviders?.[provider]
-    if (factory !== undefined) {
-      return factory({ provider, wsUrl, subProviders })
-    }
-    return new HyperliquidWsProvider(wsUrl, provider, subProviders)
   }
 }

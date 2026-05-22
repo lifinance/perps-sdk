@@ -2,6 +2,7 @@ import {
   ReconnectingWebSocket,
   type SubscriptionListener,
   type WsProvider,
+  type WsProviderFactory,
 } from '@lifi/perps-sdk'
 import type {
   Position,
@@ -27,6 +28,21 @@ import type {
   HlWsSpotClearinghouseStateData,
   HlWsUserFillsData,
 } from './types.js'
+
+/**
+ * `WsProviderFactory` constructor for Hyperliquid — pass to
+ * `new PerpsWsClient(client, { wsProviders: { hyperliquid: hyperliquidWsProvider() } })`.
+ *
+ * Derives the active sub-DEX set from the `markets` list `PerpsWsClient`
+ * passes in (the provider's own key and `'spot'` are excluded — they
+ * aren't sub-DEX subscriptions on the HL wire). Higher-order shape mirrors
+ * `lighterWsProvider(options)` so the two factories register identically.
+ */
+export const hyperliquidWsProvider = (): WsProviderFactory =>
+  ({ provider, wsUrl, markets }) => {
+    const subDexes = markets.filter((m) => m !== provider && m !== 'spot')
+    return new HyperliquidWsProvider(wsUrl, provider, subDexes)
+  }
 
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket

@@ -11,16 +11,18 @@ import { HttpResponse, http } from 'msw'
 import { createWalletClient, http as viemHttp } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   mockAccount,
   mockCreateOrderResponse,
   mockCreateWithdrawalResponse,
+  mockProviders,
   mockSubmitOrderResponse,
   mockSubmitWithdrawalResponse,
   server,
 } from '../../test/handlers.js'
 import { createMemoryStorage } from '../agent/storage.js'
+import type { PerpsProvider } from '../types/core.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
 import { SigningMode } from './types.js'
@@ -736,59 +738,55 @@ describe('PerpsClient', () => {
   // ---------------------------------------------------------------------------
 
   describe('getAccount — settings projection', () => {
-    it('attaches one AccountConfigSetting per setup + options descriptor', async () => {
-      // mockProviders.hyperliquid declares 2 setup + 1 options descriptor.
-      // The projection over `mockAccount.config` (abstractionMode: null)
-      // produces 3 settings — one per descriptor.
-      const result = await client.getAccount({ provider, address: userAddress })
+    const sentinelSettings = [
+      { type: ActionType.APPROVE_AGENT, values: [] },
+    ] as const
+    const buildStubProvider = (): PerpsProvider & {
+      projectConfig: ReturnType<typeof vi.fn>
+    } =>
+      ({
+        type: 'hyperliquid',
+        projectConfig: vi.fn(() => [...sentinelSettings]),
+      }) as unknown as PerpsProvider & {
+        projectConfig: ReturnType<typeof vi.fn>
+      }
 
-      expect(result.settings).toHaveLength(3)
-      expect(result.settings.map((s) => s.type)).toEqual([
-        ActionType.APPROVE_AGENT,
-        ActionType.APPROVE_BUILDER_FEE,
-        ActionType.ACCOUNT_MODE,
-      ])
-      // APPROVE_AGENT / APPROVE_BUILDER_FEE: zero-param descriptors → []
-      expect(result.settings[0].values).toEqual([])
-      expect(result.settings[1].values).toEqual([])
-      // ACCOUNT_MODE: mockAccount has abstractionMode = null
-      expect(result.settings[2]).toEqual({
-        type: ActionType.ACCOUNT_MODE,
-        values: [{ name: 'mode', value: null }],
+    it('delegates to the registered plugin and merges its result onto the response', async () => {
+      const stub = buildStubProvider()
+      const stubbedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+        providers: [stub],
       })
-    })
 
-    it('passes through the backend AccountResponse fields unchanged', async () => {
-      const result = await client.getAccount({ provider, address: userAddress })
-      // Non-`settings` fields are the verbatim AccountResponse payload.
+      const result = await stubbedClient.getAccount({
+        provider,
+        address: userAddress,
+      })
+
+      // projectConfig was invoked with (config, setup, options) drawn from
+      // the /account response and the /providers metadata.
+      const hlMeta = mockProviders.providers.find((d) => d.key === provider)!
+      expect(stub.projectConfig).toHaveBeenCalledOnce()
+      expect(stub.projectConfig).toHaveBeenCalledWith(
+        mockAccount.config,
+        hlMeta.setup,
+        hlMeta.options
+      )
+      // The dispatcher merges projectConfig's output into the AccountResponse.
+      expect(result.settings).toEqual(sentinelSettings)
+      // Non-`settings` fields pass through unchanged.
       expect(result.provider).toBe('hyperliquid')
       expect(result.address).toBe(mockAccount.address)
       expect(result.config).toEqual(mockAccount.config)
       expect(result.marginUsed).toBe(mockAccount.marginUsed)
     })
 
-    it('reflects config values in the projection', async () => {
-      const customAccount: AccountResponse = {
-        ...mockAccount,
-        config: {
-          provider: 'hyperliquid',
-          abstractionMode: 'unifiedAccount',
-          agents: [],
-        },
-      }
-      server.use(
-        http.get(`${DEFAULT_API_URL}/account`, () =>
-          HttpResponse.json(customAccount)
-        )
-      )
-
-      const result = await client.getAccount({ provider, address: userAddress })
-      const modeSetting = result.settings.find(
-        (s) => s.type === ActionType.ACCOUNT_MODE
-      )
-      expect(modeSetting?.values).toEqual([
-        { name: 'mode', value: 'unifiedAccount' },
-      ])
+    it('throws when no plugin is registered for the provider', async () => {
+      await expect(
+        client.getAccount({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
     })
   })
 

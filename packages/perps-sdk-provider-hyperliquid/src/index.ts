@@ -1,4 +1,5 @@
 export { projectHyperliquidConfigSettings } from './accountConfig.js'
+export { summarizeHyperliquidAccount } from './accountSummary.js'
 export type { AssetEnrichmentMaps, AssetWithMeta } from './assetLookups.js'
 export {
   buildAssetEnrichmentMaps,
@@ -18,7 +19,10 @@ export {
 } from './HyperliquidProvider.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { infoRequest } from './infoClient.js'
-export { HyperliquidWsProvider } from './realtime/HyperliquidWsProvider.js'
+export {
+  HyperliquidWsProvider,
+  hyperliquidWsProvider,
+} from './realtime/HyperliquidWsProvider.js'
 export type {
   HlWsAllMidsData,
   HlWsCandleData,

@@ -1,22 +1,25 @@
-import type {
-  PerpsProvider,
-  PerpsSDKClient,
-  ProviderGetAccountParams,
-  ProviderGetActivityParams,
-  ProviderGetAssetParams,
-  ProviderGetFillsParams,
-  ProviderGetOhlcvParams,
-  ProviderGetOrderbookParams,
-  ProviderGetOrderParams,
-  ProviderGetOrdersParams,
-  ProviderGetPositionsParams,
-  ProviderGetPricesParams,
-  SDKRequestOptions,
-  SignActionsContext,
+import {
+  PerpsError,
+  type PerpsProvider,
+  type PerpsSDKClient,
+  type ProviderGetAccountParams,
+  type ProviderGetActivityParams,
+  type ProviderGetAssetParams,
+  type ProviderGetFillsParams,
+  type ProviderGetOhlcvParams,
+  type ProviderGetOrderbookParams,
+  type ProviderGetOrderParams,
+  type ProviderGetOrdersParams,
+  type ProviderGetPositionsParams,
+  type ProviderGetPricesParams,
+  type SDKRequestOptions,
+  type SignActionsContext,
 } from '@lifi/perps-sdk'
-import { PerpsError } from '@lifi/perps-sdk'
 import type {
+  AccountConfig,
+  AccountConfigSetting,
   AccountResponse,
+  AccountSummary,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
@@ -35,11 +38,14 @@ import type {
   Position,
   PositionsResponse,
   PricesResponse,
+  ProviderOption,
+  ProviderSetup,
   SignedActionStep,
   SigningMethod,
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { summarizeLighterAccount } from '../accountSummary.js'
 import {
   isTriggerType,
   mapFill,
@@ -48,6 +54,7 @@ import {
   mapPosition,
   mapTriggerOrder,
 } from '@lifi/perps-types/providers/lighter'
+import { projectLighterConfigSettings } from '../accountConfig.js'
 import { createAuthToken } from '../signers/createAuthToken.js'
 import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'
@@ -133,7 +140,7 @@ const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
 /**
- * Construction options for {@link LighterProvider}.
+ * Construction options for the Lighter {@link PerpsProvider} plugin.
  *
  * `restUrl` defaults to Lighter mainnet; pass a testnet URL or a self-hosted
  * mirror to override.
@@ -193,7 +200,9 @@ interface MintedToken {
 }
 
 /**
- * Lighter provider plugin implementing {@link PerpsProvider}.
+ * Lighter provider plugin factory. Returns an object implementing
+ * {@link PerpsProvider}, mirroring the `EthereumProvider()` / `hyperliquidProvider()`
+ * shape used by the rest of the LI.FI SDK family.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.
  * Auth-gated reads use the user-minted read-only token from
@@ -202,112 +211,56 @@ interface MintedToken {
  * API key from `keyStore`.
  *
  * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
- * {@link LighterProvider.signActions} — `PerpsClient.execute` delegates
- * those arms to the resolved provider.
+ * `signActions` — `PerpsClient.execute` delegates those arms here.
  */
-export class LighterProvider implements PerpsProvider {
-  readonly type = LIGHTER_PROVIDER_KEY
-
-  private readonly restUrl: string
-  private readonly authTokenSource: (() => string | Promise<string>) | undefined
-  private readonly signer: LighterSigner | undefined
-  private readonly keyStore: LighterKeyStore | undefined
-  private readonly readOnlyTokenManager: LighterReadOnlyTokenManager | undefined
-  private readonly tokenLifetimeSeconds: number
-  private readonly tokenRenewBufferSeconds: number
-  private readonly registry: LighterMarketRegistry
-  private mintedTokenByAddress: Map<string, MintedToken> = new Map()
-
-  constructor(options: LighterProviderOptions = {}) {
-    this.restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
-    this.authTokenSource =
-      typeof options.authToken === 'function'
-        ? options.authToken
-        : options.authToken !== undefined
-          ? () => options.authToken as string
-          : undefined
-    this.signer = options.signer
-    this.keyStore = options.keyStore
-    this.readOnlyTokenManager =
-      options.readOnlyTokenOptions !== undefined
-        ? new LighterReadOnlyTokenManager(options.readOnlyTokenOptions)
+export const lighterProvider = (
+  options: LighterProviderOptions = {}
+): PerpsProvider => {
+  const restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
+  const authTokenSource: (() => string | Promise<string>) | undefined =
+    typeof options.authToken === 'function'
+      ? options.authToken
+      : options.authToken !== undefined
+        ? () => options.authToken as string
         : undefined
-    this.tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
-    this.tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-    this.registry = new LighterMarketRegistry(
-      new LighterApiClient(this.restUrl),
-      {
-        metadataTtlMs: options.metadataTtlMs,
-        fundingsTtlMs: options.fundingsTtlMs,
-      }
-    )
-  }
+  const signer = options.signer
+  const keyStore = options.keyStore
+  const readOnlyTokenManager =
+    options.readOnlyTokenOptions !== undefined
+      ? new LighterReadOnlyTokenManager(options.readOnlyTokenOptions)
+      : undefined
+  const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
+  const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
+  const registry = new LighterMarketRegistry(new LighterApiClient(restUrl), {
+    metadataTtlMs: options.metadataTtlMs,
+    fundingsTtlMs: options.fundingsTtlMs,
+  })
+  const mintedTokenByAddress: Map<string, MintedToken> = new Map()
 
-  // -------------------------------------------------------------------------
-  // Auth-token resolution
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Internal helpers — closed-over state replaces the class's `this.X` access.
+  // ---------------------------------------------------------------------------
 
-  /**
-   * Resolve the bearer token to use on auth-gated calls. Per-call override
-   * (`options.lighterAuthToken`) wins, then a constructor-supplied token,
-   * then a stored long-lived read-only token (when the SDK was wired with a
-   * `readOnlyTokenOptions` storage and the address is known), then a
-   * freshly minted 1h token via the WASM signer + registered API key.
-   * Returns `undefined` when no source can produce a token — auth-gated
-   * reads degrade gracefully.
-   */
-  private async resolveAuthToken(
-    options: SDKRequestOptions | undefined,
-    address?: Address
-  ): Promise<string | undefined> {
-    if (options?.lighterAuthToken !== undefined) {
-      return options.lighterAuthToken
-    }
-    if (this.authTokenSource !== undefined) {
-      return this.authTokenSource()
-    }
-    if (address !== undefined && this.keyStore !== undefined) {
-      const apiKey = await this.keyStore.get(address)
-      if (apiKey === null) {
-        return undefined
-      }
-      if (this.readOnlyTokenManager !== undefined) {
-        const stored = await this.readOnlyTokenManager.get(
-          address,
-          apiKey.accountIndex
-        )
-        if (stored !== undefined) {
-          return stored.token
-        }
-      }
-      if (this.signer !== undefined) {
-        return this.mintViaSigner(address, apiKey.apiKeyPrivateKey, {
-          apiKeyIndex: apiKey.apiKeyIndex,
-          accountIndex: apiKey.accountIndex,
-        })
-      }
-    }
-    return undefined
-  }
+  const apiClient = (opts?: SDKRequestOptions): LighterApiClient =>
+    new LighterApiClient(restUrl, opts?.signal)
 
-  private async mintViaSigner(
+  const mintViaSigner = async (
     address: Address,
     apiKeyPrivateKey: string,
     indices: { apiKeyIndex: number; accountIndex: number }
-  ): Promise<string> {
-    const signer = this.signer
+  ): Promise<string> => {
     if (signer === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'LighterProvider.mintViaSigner called without a configured signer.'
+        'lighterProvider: mintViaSigner called without a configured signer.'
       )
     }
     const cacheKey = address.toLowerCase()
     const nowSec = Math.floor(Date.now() / 1000)
-    const cached = this.mintedTokenByAddress.get(cacheKey)
+    const cached = mintedTokenByAddress.get(cacheKey)
     if (
       cached !== undefined &&
-      cached.expiresAt - nowSec > this.tokenRenewBufferSeconds
+      cached.expiresAt - nowSec > tokenRenewBufferSeconds
     ) {
       return cached.token
     }
@@ -318,663 +271,60 @@ export class LighterProvider implements PerpsProvider {
         apiKeyIndex: indices.apiKeyIndex,
         accountIndex: indices.accountIndex,
       },
-      lifetimeSeconds: this.tokenLifetimeSeconds,
+      lifetimeSeconds: tokenLifetimeSeconds,
     })
-    const expiresAt = nowSec + this.tokenLifetimeSeconds
-    this.mintedTokenByAddress.set(cacheKey, { token, expiresAt })
+    const expiresAt = nowSec + tokenLifetimeSeconds
+    mintedTokenByAddress.set(cacheKey, { token, expiresAt })
     return token
   }
 
-  // -------------------------------------------------------------------------
-  // PerpsProvider — read methods
-  // -------------------------------------------------------------------------
-
-  async getAccount(
-    _client: PerpsSDKClient,
-    params: ProviderGetAccountParams,
-    options?: SDKRequestOptions
-  ): Promise<AccountResponse> {
-    const client = this.apiClient(options)
-    const account = await this.fetchDetailedAccount(client, params.address)
-    const token = await this.resolveAuthToken(options, params.address)
-
-    const [symbolLookup, registeredKey, limitsResult] = await Promise.all([
-      this.registry.marketIdToSymbol(),
-      this.fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
-      token === undefined
-        ? Promise.resolve(undefined)
-        : this.fetchAccountLimits(client, account.index, token).catch(
-            () => undefined
-          ),
-    ])
-
-    const positions: Position[] = account.positions
-      .filter((p) => Number.parseFloat(p.position) !== 0)
-      .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
-
-    const totalMarginUsed = positions.reduce(
-      (sum, p) => sum + Number.parseFloat(p.marginUsed),
-      0
-    )
-    const totalUnrealizedPnl = positions.reduce(
-      (sum, p) => sum + Number.parseFloat(p.unrealizedPnl),
-      0
-    )
-
-    const balances: Record<string, Balance[]> = {
-      [LIGHTER_PROVIDER_KEY]: [
-        { currency: 'USDC', amount: account.collateral },
-      ],
+  /**
+   * Resolve the bearer token to use on auth-gated calls. Per-call override
+   * (`options.lighterAuthToken`) wins, then a constructor-supplied token,
+   * then a stored long-lived read-only token (when wired with a
+   * `readOnlyTokenOptions` storage and the address is known), then a
+   * freshly minted 1h token via the WASM signer + registered API key.
+   * Returns `undefined` when no source can produce a token — auth-gated
+   * reads degrade gracefully.
+   */
+  const resolveAuthToken = async (
+    opts: SDKRequestOptions | undefined,
+    address?: Address
+  ): Promise<string | undefined> => {
+    if (opts?.lighterAuthToken !== undefined) {
+      return opts.lighterAuthToken
     }
-    if (account.assets.length > 0) {
-      balances.spot = account.assets.map((a) => ({
-        currency: a.symbol,
-        amount: a.balance,
-      }))
+    if (authTokenSource !== undefined) {
+      return authTokenSource()
     }
-
-    const config: LighterAccountConfig = {
-      provider: LIGHTER_PROVIDER_KEY,
-      accountIndex: account.index,
-      apiKeyIndex: DEFAULT_API_KEY_INDEX,
-      apiKeyRegistered: registeredKey !== undefined,
-      accountType: account.account_type,
-      readOnlyTokenApproved: false,
-    }
-
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      address: params.address,
-      balances,
-      marginUsed: totalMarginUsed.toString(),
-      unrealizedPnl: totalUnrealizedPnl.toString(),
-      feeTier:
-        limitsResult === undefined
-          ? ZERO_FEE_TIER
-          : projectFeeTier(limitsResult),
-      config,
-    }
-  }
-
-  async getPositions(
-    _client: PerpsSDKClient,
-    params: ProviderGetPositionsParams,
-    options?: SDKRequestOptions
-  ): Promise<PositionsResponse> {
-    const client = this.apiClient(options)
-    const account = await this.fetchDetailedAccount(client, params.address)
-    const symbolLookup = await this.registry.marketIdToSymbol()
-
-    let positions: Position[] = account.positions
-      .filter((p) => Number.parseFloat(p.position) !== 0)
-      .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
-
-    if (params.symbol !== undefined) {
-      positions = positions.filter((p) => p.asset.assetId === params.symbol)
-    }
-
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      positions,
-      pagination: { limit: params.limit ?? positions.length, hasMore: false },
-    }
-  }
-
-  async getOrders(
-    _client: PerpsSDKClient,
-    params: ProviderGetOrdersParams,
-    options?: SDKRequestOptions
-  ): Promise<OrdersResponse> {
-    const token = await this.resolveAuthToken(options, params.address)
-    if (token === undefined) {
-      return {
-        provider: LIGHTER_PROVIDER_KEY,
-        openOrders: [],
-        triggerOrders: [],
-        pagination: { limit: params.limit ?? 0, hasMore: false },
+    if (address !== undefined && keyStore !== undefined) {
+      const apiKey = await keyStore.get(address)
+      if (apiKey === null) {
+        return undefined
       }
-    }
-
-    const client = this.apiClient(options)
-    const [account, symbolLookup] = await Promise.all([
-      this.fetchDetailedAccount(client, params.address),
-      this.registry.marketIdToSymbol(),
-    ])
-
-    const marketIds =
-      params.symbol === undefined
-        ? this.deriveOrderBearingMarketIds(account)
-        : [await this.registry.resolveMarketId(params.symbol)]
-
-    const responses = await Promise.all(
-      marketIds.map((id) =>
-        this.fetchActiveOrdersForMarket(client, token, account.index, id)
-      )
-    )
-
-    const openOrders: OpenOrder[] = []
-    const triggerOrders: TriggerOrder[] = []
-    for (const response of responses) {
-      for (const raw of response.orders) {
-        const symbol = symbolLookup.get(raw.market_index) ?? ''
-        const mapped = mapOrder(raw, symbol)
-        if (isTriggerType(mapped.type)) {
-          triggerOrders.push(mapTriggerOrder(raw, symbol))
-        } else {
-          openOrders.push(mapped)
+      if (readOnlyTokenManager !== undefined) {
+        const stored = await readOnlyTokenManager.get(
+          address,
+          apiKey.accountIndex
+        )
+        if (stored !== undefined) {
+          return stored.token
         }
       }
-    }
-
-    const total = openOrders.length + triggerOrders.length
-    const limit = params.limit ?? total
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      openOrders,
-      triggerOrders,
-      pagination: { limit, hasMore: total > limit },
-    }
-  }
-
-  async getOrder(
-    _client: PerpsSDKClient,
-    params: ProviderGetOrderParams,
-    options?: SDKRequestOptions
-  ): Promise<Order> {
-    const token = await this.resolveAuthToken(options, params.address)
-    if (token === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'Lighter order lookup requires an auth token. Pass `authToken` to ' +
-          'LighterProvider, register an API key + signer for on-demand mints, or ' +
-          'forward `options.lighterAuthToken` on the call.'
-      )
-    }
-
-    const client = this.apiClient(options)
-    const [account, symbolLookup] = await Promise.all([
-      this.fetchDetailedAccount(client, params.address),
-      this.registry.marketIdToSymbol(),
-    ])
-
-    // Native `Order.order_id` route only. A tx-hash route would require
-    // mapping the caller's executeAction tx hash → wasm nonce → matching
-    // order, which the LI.FI backend did via its `UserAction` table; the SDK
-    // has no equivalent persistence, so we refuse rather than mis-resolve.
-    if (TX_HASH_PATTERN.test(params.id)) {
-      throw new PerpsError(
-        PerpsErrorCode.OrderNotFound,
-        `Lighter order id "${params.id}" looks like a tx hash. The SDK ` +
-          `resolves orders by Lighter \`order_id\` only — surface the order_id ` +
-          `from the orderUpdates / fills WS stream and pass it here.`
-      )
-    }
-    const predicate: (o: { order_id: string }) => boolean = (o) =>
-      o.order_id === params.id
-
-    const marketIds = this.deriveOrderBearingMarketIds(account)
-    const activeResponses = await Promise.all(
-      marketIds.map((id) =>
-        this.fetchActiveOrdersForMarket(client, token, account.index, id)
-      )
-    )
-
-    for (const response of activeResponses) {
-      const hit = response.orders.find(predicate as (o: unknown) => boolean)
-      if (hit !== undefined) {
-        return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
-      }
-    }
-
-    const inactive = await client.getAuthed<LtOrdersResponse>(
-      '/api/v1/accountInactiveOrders',
-      token,
-      {
-        account_index: account.index,
-        market_id: LIGHTER_ALL_MARKETS_WILDCARD,
-        limit: INACTIVE_ORDERS_LOOKUP_LIMIT,
-      }
-    )
-    const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
-    if (hit !== undefined) {
-      return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
-    }
-
-    throw new PerpsError(
-      PerpsErrorCode.OrderNotFound,
-      `Lighter order ${params.id} not found for ${params.address}`
-    )
-  }
-
-  async getFills(
-    _client: PerpsSDKClient,
-    params: ProviderGetFillsParams,
-    options?: SDKRequestOptions
-  ): Promise<FillsResponse> {
-    const client = this.apiClient(options)
-    const [account, symbolLookup, token] = await Promise.all([
-      this.fetchDetailedAccount(client, params.address),
-      this.registry.marketIdToSymbol(),
-      this.resolveAuthToken(options, params.address),
-    ])
-
-    const queryParams: Record<string, string | number | boolean> = {
-      account_index: account.index,
-      sort_by: 'timestamp',
-      sort_dir: 'desc',
-      limit: params.limit ?? DEFAULT_TRADES_LIMIT,
-    }
-    if (params.cursor !== undefined) {
-      queryParams.cursor = params.cursor
-    }
-
-    const response =
-      token !== undefined && token.length > 0
-        ? await client.getAuthed<LtTradesResponse>(
-            '/api/v1/trades',
-            token,
-            queryParams
-          )
-        : await client.get<LtTradesResponse>('/api/v1/trades', queryParams)
-
-    const items = response.trades.map((t) =>
-      mapFill(
-        t,
-        account.index,
-        symbolLookup.get(t.market_id) ?? `market_${t.market_id}`
-      )
-    )
-
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      items,
-      pagination: {
-        limit: params.limit ?? items.length,
-        hasMore: (response.next_cursor ?? '') !== '',
-        cursor: response.next_cursor || undefined,
-      },
-    }
-  }
-
-  async getActivity(
-    _client: PerpsSDKClient,
-    params: ProviderGetActivityParams,
-    options?: SDKRequestOptions
-  ): Promise<ActivitiesResponse> {
-    const token = await this.resolveAuthToken(options, params.address)
-    if (token === undefined) {
-      return {
-        provider: LIGHTER_PROVIDER_KEY,
-        items: [],
-        pagination: { limit: params.limit ?? 0, hasMore: false },
-      }
-    }
-
-    const inputCursor = decodeActivityCursor(params.cursor)
-    const client = this.apiClient(options)
-    const account = await this.fetchDetailedAccount(client, params.address)
-    const [history, marketLookup, assetLookup] = await Promise.all([
-      this.fetchAllHistory(
-        client,
-        token,
-        account.index,
-        params.address,
-        params.type,
-        inputCursor
-      ),
-      this.registry.marketIdToSymbol(),
-      this.registry.assetIdToSymbol(),
-    ])
-
-    const items: ActivityItem[] = [
-      ...history.deposits.deposits.map(
-        (d): ActivityItem => ({
-          id: d.id,
-          provider: LIGHTER_PROVIDER_KEY,
-          timestamp: toIsoFromMs(d.timestamp),
-          type: ActivityType.DEPOSIT,
-          amount: d.amount,
+      if (signer !== undefined) {
+        return mintViaSigner(address, apiKey.apiKeyPrivateKey, {
+          apiKeyIndex: apiKey.apiKeyIndex,
+          accountIndex: apiKey.accountIndex,
         })
-      ),
-      ...history.withdraws.withdraws.map(
-        (w): ActivityItem => ({
-          id: w.id,
-          provider: LIGHTER_PROVIDER_KEY,
-          timestamp: toIsoFromMs(w.timestamp),
-          type: ActivityType.WITHDRAWAL,
-          amount: w.amount,
-          fee: '0',
-        })
-      ),
-      ...history.fundings.position_fundings.map(
-        (f): ActivityItem => ({
-          id: `funding-${f.funding_id}`,
-          provider: LIGHTER_PROVIDER_KEY,
-          timestamp: toIsoFromSeconds(f.timestamp),
-          type: ActivityType.FUNDING,
-          asset: lighterAsset(marketLookup.get(f.market_id) ?? ''),
-          amount: f.change,
-          positionSize: f.position_size,
-          fundingRate: f.rate,
-        })
-      ),
-      ...history.liquidations.liquidations.map(
-        (l): ActivityItem => ({
-          id: `liquidation-${l.id}`,
-          provider: LIGHTER_PROVIDER_KEY,
-          timestamp: toIsoFromMs(l.executed_at),
-          type: ActivityType.LIQUIDATION,
-          liquidatedNotionalPosition: '0',
-          accountValue: '0',
-          leverageType: l.type,
-          liquidatedPositions: [
-            {
-              asset: lighterAsset(marketLookup.get(l.market_id) ?? ''),
-              size: '0',
-            },
-          ],
-        })
-      ),
-      ...history.transfers.transfers.map((t): ActivityItem => {
-        const direction: 'IN' | 'OUT' =
-          t.from_account_index === account.index ? 'OUT' : 'IN'
-        const counterpartyAccountIndex =
-          direction === 'OUT' ? t.to_account_index : t.from_account_index
-        return {
-          id: t.id,
-          provider: LIGHTER_PROVIDER_KEY,
-          timestamp: toIsoFromMs(t.timestamp),
-          type: ActivityType.TRANSFER,
-          direction,
-          counterpartyAccountIndex,
-          asset: assetLookup.get(t.asset_id) ?? String(t.asset_id),
-          amount: t.amount,
-          meta: {
-            transferType: t.type,
-            txHash: t.tx_hash,
-            fromRoute: t.from_route,
-            toRoute: t.to_route,
-            fee: t.fee,
-          },
-        }
-      }),
-    ]
-
-    const filtered = items.filter((it) => {
-      const ts = new Date(it.timestamp).getTime()
-      if (params.startTime !== undefined && ts < params.startTime) {
-        return false
       }
-      if (params.endTime !== undefined && ts > params.endTime) {
-        return false
-      }
-      return true
-    })
-
-    filtered.sort(
-      (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    )
-
-    const nextCursorEnvelope: LighterActivityCursor = {
-      deposits: history.deposits.cursor,
-      withdraws: history.withdraws.cursor,
-      fundings: history.fundings.next_cursor,
-      liquidations: history.liquidations.next_cursor,
-      transfers: history.transfers.cursor,
     }
-    const responseCursor = encodeActivityCursor(nextCursorEnvelope)
-    const hasMore = responseCursor !== undefined
-
-    const limit = params.limit ?? filtered.length
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      items: filtered.slice(0, limit),
-      pagination: {
-        limit,
-        hasMore,
-        ...(responseCursor === undefined ? {} : { cursor: responseCursor }),
-      },
-    }
+    return undefined
   }
 
-  async getAsset(
-    _client: PerpsSDKClient,
-    params: ProviderGetAssetParams,
-    options?: SDKRequestOptions
-  ): Promise<Asset> {
-    const all = await this.collectAssets(options)
-    const found = all.find((a) => a.assetId === params.symbol)
-    if (!found) {
-      throw new PerpsError(
-        PerpsErrorCode.MarketNotFound,
-        `Lighter asset not found: ${params.symbol}`
-      )
-    }
-    return found
-  }
-
-  async getAssets(
-    _client: PerpsSDKClient,
-    options?: SDKRequestOptions
-  ): Promise<AssetsResponse> {
-    return { assets: await this.collectAssets(options) }
-  }
-
-  async getPrices(
-    _client: PerpsSDKClient,
-    params: ProviderGetPricesParams,
-    _options?: SDKRequestOptions
-  ): Promise<PricesResponse> {
-    const [perps, spots] = await Promise.all([
-      this.registry.activePerps(),
-      this.registry.activeSpots(),
-    ])
-    const all = [...perps, ...spots].map((m) => ({
-      assetId: m.symbol,
-      price: m.last_trade_price.toString(),
-    }))
-    const filtered =
-      params.symbols === undefined
-        ? all
-        : all.filter((p) => params.symbols?.includes(p.assetId))
-    return { prices: filtered }
-  }
-
-  async getOhlcv(
-    _client: PerpsSDKClient,
-    params: ProviderGetOhlcvParams,
-    options?: SDKRequestOptions
-  ): Promise<OhlcvResponse> {
-    const client = this.apiClient(options)
-    const marketId = await this.registry.resolveMarketId(params.symbol)
-    const now = Date.now()
-    const startTime = params.startTime ?? now - DEFAULT_OHLCV_LOOKBACK_MS
-    const endTime = params.endTime ?? now
-    const limit = Math.min(
-      params.limit ?? DEFAULT_CANDLE_LIMIT,
-      MAX_CANDLE_LIMIT
-    )
-
-    const response = await client.get<{
-      code: number
-      r: string
-      c: Array<{
-        t: number
-        o: number
-        h: number
-        l: number
-        c: number
-        v: number
-      }>
-    }>('/api/v1/candles', {
-      market_id: marketId,
-      resolution: mapInterval(params.interval),
-      start_timestamp: Math.floor(startTime / 1000),
-      end_timestamp: Math.floor(endTime / 1000),
-      count_back: limit,
-    })
-
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      assetId: params.symbol,
-      interval: params.interval,
-      candles: response.c.slice(0, limit).map((c) => ({
-        t: c.t,
-        o: c.o.toString(),
-        h: c.h.toString(),
-        l: c.l.toString(),
-        c: c.c.toString(),
-        v: c.v.toString(),
-      })),
-    }
-  }
-
-  async getOrderbook(
-    _client: PerpsSDKClient,
-    params: ProviderGetOrderbookParams,
-    options?: SDKRequestOptions
-  ): Promise<OrderbookResponse> {
-    const client = this.apiClient(options)
-    const marketId = await this.registry.resolveMarketId(params.symbol)
-    const maxDepth = Math.min(
-      params.depth ?? MAX_ORDERBOOK_DEPTH,
-      MAX_ORDERBOOK_DEPTH
-    )
-
-    const response = await client.get<{
-      code: number
-      asks: Array<{ price: string; remaining_base_amount: string }>
-      bids: Array<{ price: string; remaining_base_amount: string }>
-    }>('/api/v1/orderBookOrders', {
-      market_id: marketId,
-      limit: maxDepth,
-    })
-
-    return {
-      provider: LIGHTER_PROVIDER_KEY,
-      assetId: params.symbol,
-      bids: response.bids.slice(0, maxDepth).map((o) => ({
-        price: o.price,
-        size: o.remaining_base_amount,
-      })),
-      asks: response.asks.slice(0, maxDepth).map((o) => ({
-        price: o.price,
-        size: o.remaining_base_amount,
-      })),
-      timestamp: Date.now(),
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // PerpsProvider — write delegation
-  // -------------------------------------------------------------------------
-
-  async signActions(
-    method: SigningMethod,
-    steps: ActionStep[],
-    address: Address,
-    ctx?: SignActionsContext
-  ): Promise<SignedActionStep[]> {
-    if (this.signer === undefined || this.keyStore === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'LighterProvider.signActions requires `signer` and `keyStore` to be ' +
-          'configured at construction.'
-      )
-    }
-    const signer = this.signer
-    const keyStore = this.keyStore
-    return lighterSignActions(
-      {
-        signer,
-        keyStore,
-        resolveAccountIndex: async (addr) => {
-          const apiKey = await keyStore.get(addr)
-          if (apiKey !== null) {
-            return apiKey.accountIndex
-          }
-          const account = await this.fetchDetailedAccount(
-            this.apiClient(undefined),
-            addr
-          )
-          return account.index
-        },
-      },
-      method,
-      steps,
-      address,
-      ctx
-    )
-  }
-
-  // -------------------------------------------------------------------------
-  // Internals
-  // -------------------------------------------------------------------------
-
-  private apiClient(options: SDKRequestOptions | undefined): LighterApiClient {
-    return new LighterApiClient(this.restUrl, options?.signal)
-  }
-
-  private async collectAssets(
-    _options: SDKRequestOptions | undefined
-  ): Promise<Asset[]> {
-    const [perps, spots, fundingRates, tokenLogos] = await Promise.all([
-      this.registry.activePerps(),
-      this.registry.activeSpots(),
-      this.registry.fundingRatesByMarket(),
-      this.registry.tokenLogos(),
-    ])
-
-    const assets: Asset[] = []
-    for (const m of perps) {
-      const fundingRate = fundingRates.get(m.market_id) ?? 0
-      assets.push({
-        assetId: m.symbol,
-        market: LIGHTER_PROVIDER_KEY,
-        displaySymbol: m.symbol,
-        displayQuote: 'USDC',
-        logoURI: tokenLogos.get(m.symbol) ?? '',
-        szDecimals: m.supported_size_decimals,
-        maxLeverage: marginFractionToMaxLeverage(m.min_initial_margin_fraction),
-        onlyIsolated:
-          m.market_config.market_margin_mode === LtMarginMode.ISOLATED,
-        funding: { rate: fundingRate.toString(), nextFundingTime: 0 },
-        openInterest: m.open_interest.toString(),
-        volume24h: m.daily_quote_token_volume.toString(),
-        prevDayPrice:
-          m.last_trade_price === 0
-            ? undefined
-            : (
-                m.last_trade_price /
-                (1 + m.daily_price_change / 100)
-              ).toString(),
-        markPrice: m.last_trade_price.toString(),
-      })
-    }
-    for (const m of spots) {
-      const baseSymbol = m.symbol.split('/')[0] ?? m.symbol
-      assets.push({
-        assetId: m.symbol,
-        market: 'spot',
-        displaySymbol: m.symbol,
-        displayQuote: null,
-        logoURI: tokenLogos.get(baseSymbol) ?? tokenLogos.get(m.symbol) ?? '',
-        szDecimals: m.supported_size_decimals,
-        maxLeverage: 1,
-        onlyIsolated: false,
-        funding: { rate: '0', nextFundingTime: 0 },
-        volume24h: m.daily_quote_token_volume.toString(),
-        markPrice: m.last_trade_price.toString(),
-      })
-    }
-    return assets
-  }
-
-  private async fetchDetailedAccount(
+  const fetchDetailedAccount = async (
     client: LighterApiClient,
     address: Address
-  ): Promise<LtDetailedAccount> {
+  ): Promise<LtDetailedAccount> => {
     const { status, data } = await client.getRaw<{
       code: number
       accounts?: LtDetailedAccount[]
@@ -1005,11 +355,11 @@ export class LighterProvider implements PerpsProvider {
     return accounts[0]
   }
 
-  private async fetchRegisteredApiKey(
+  const fetchRegisteredApiKey = async (
     client: LighterApiClient,
     accountIndex: number,
     apiKeyIndex: number
-  ): Promise<{ api_key_index: number } | undefined> {
+  ): Promise<{ api_key_index: number } | undefined> => {
     const response = await client.get<{
       code: number
       api_keys: Array<{ api_key_index: number }>
@@ -1017,38 +367,35 @@ export class LighterProvider implements PerpsProvider {
     return response.api_keys?.find((k) => k.api_key_index === apiKeyIndex)
   }
 
-  private async fetchAccountLimits(
+  const fetchAccountLimits = (
     client: LighterApiClient,
     accountIndex: number,
     authToken: string
-  ): Promise<LtAccountLimits> {
-    return client.getAuthed<LtAccountLimits>(
-      '/api/v1/accountLimits',
-      authToken,
-      { account_index: accountIndex }
-    )
-  }
+  ): Promise<LtAccountLimits> =>
+    client.getAuthed<LtAccountLimits>('/api/v1/accountLimits', authToken, {
+      account_index: accountIndex,
+    })
 
-  private async fetchActiveOrdersForMarket(
+  const fetchActiveOrdersForMarket = (
     client: LighterApiClient,
     authToken: string,
     accountIndex: number,
     marketId: number
-  ): Promise<LtOrdersResponse> {
-    return client.getAuthed<LtOrdersResponse>(
+  ): Promise<LtOrdersResponse> =>
+    client.getAuthed<LtOrdersResponse>(
       '/api/v1/accountActiveOrders',
       authToken,
       { account_index: accountIndex, market_id: marketId }
     )
-  }
 
-  private deriveOrderBearingMarketIds(account: LtDetailedAccount): number[] {
-    return account.positions
+  const deriveOrderBearingMarketIds = (
+    account: LtDetailedAccount
+  ): number[] =>
+    account.positions
       .filter((p) => orderCountFor(p) > 0)
       .map((p) => p.market_id)
-  }
 
-  private async fetchAllHistory(
+  const fetchAllHistory = async (
     client: LighterApiClient,
     token: string,
     accountIndex: number,
@@ -1061,7 +408,7 @@ export class LighterProvider implements PerpsProvider {
     fundings: LtPositionFundingsResponse
     liquidations: LtLiquidationsResponse
     transfers: LtTransferHistoryResponse
-  }> {
+  }> => {
     const wantsType = (t: ActivityType): boolean =>
       requested === undefined || requested.includes(t)
 
@@ -1143,15 +490,675 @@ export class LighterProvider implements PerpsProvider {
 
     return { deposits, withdraws, fundings, liquidations, transfers }
   }
+
+  const collectAssets = async (
+    _opts: SDKRequestOptions | undefined
+  ): Promise<Asset[]> => {
+    const [perps, spots, fundingRates, tokenLogos] = await Promise.all([
+      registry.activePerps(),
+      registry.activeSpots(),
+      registry.fundingRatesByMarket(),
+      registry.tokenLogos(),
+    ])
+
+    const assets: Asset[] = []
+    for (const m of perps) {
+      const fundingRate = fundingRates.get(m.market_id) ?? 0
+      assets.push({
+        assetId: m.symbol,
+        market: LIGHTER_PROVIDER_KEY,
+        displaySymbol: m.symbol,
+        displayQuote: 'USDC',
+        logoURI: tokenLogos.get(m.symbol) ?? '',
+        szDecimals: m.supported_size_decimals,
+        maxLeverage: marginFractionToMaxLeverage(m.min_initial_margin_fraction),
+        onlyIsolated:
+          m.market_config.market_margin_mode === LtMarginMode.ISOLATED,
+        funding: { rate: fundingRate.toString(), nextFundingTime: 0 },
+        openInterest: m.open_interest.toString(),
+        volume24h: m.daily_quote_token_volume.toString(),
+        prevDayPrice:
+          m.last_trade_price === 0
+            ? undefined
+            : (
+                m.last_trade_price /
+                (1 + m.daily_price_change / 100)
+              ).toString(),
+        markPrice: m.last_trade_price.toString(),
+      })
+    }
+    for (const m of spots) {
+      const baseSymbol = m.symbol.split('/')[0] ?? m.symbol
+      assets.push({
+        assetId: m.symbol,
+        market: 'spot',
+        displaySymbol: m.symbol,
+        displayQuote: null,
+        logoURI: tokenLogos.get(baseSymbol) ?? tokenLogos.get(m.symbol) ?? '',
+        szDecimals: m.supported_size_decimals,
+        maxLeverage: 1,
+        onlyIsolated: false,
+        funding: { rate: '0', nextFundingTime: 0 },
+        volume24h: m.daily_quote_token_volume.toString(),
+        markPrice: m.last_trade_price.toString(),
+      })
+    }
+    return assets
+  }
+
+  // ---------------------------------------------------------------------------
+  // PerpsProvider — public surface
+  // ---------------------------------------------------------------------------
+
+  return {
+    type: LIGHTER_PROVIDER_KEY,
+
+    async getAccount(
+      _client: PerpsSDKClient,
+      params: ProviderGetAccountParams,
+      opts?: SDKRequestOptions
+    ): Promise<AccountResponse> {
+      const client = apiClient(opts)
+      const account = await fetchDetailedAccount(client, params.address)
+      const token = await resolveAuthToken(opts, params.address)
+
+      const [symbolLookup, registeredKey, limitsResult] = await Promise.all([
+        registry.marketIdToSymbol(),
+        fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
+        token === undefined
+          ? Promise.resolve(undefined)
+          : fetchAccountLimits(client, account.index, token).catch(
+              () => undefined
+            ),
+      ])
+
+      const positions: Position[] = account.positions
+        .filter((p) => Number.parseFloat(p.position) !== 0)
+        .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
+
+      const totalMarginUsed = positions.reduce(
+        (sum, p) => sum + Number.parseFloat(p.marginUsed),
+        0
+      )
+      const totalUnrealizedPnl = positions.reduce(
+        (sum, p) => sum + Number.parseFloat(p.unrealizedPnl),
+        0
+      )
+
+      const balances: Record<string, Balance[]> = {
+        [LIGHTER_PROVIDER_KEY]: [
+          { currency: 'USDC', amount: account.collateral },
+        ],
+      }
+      if (account.assets.length > 0) {
+        balances.spot = account.assets.map((a) => ({
+          currency: a.symbol,
+          amount: a.balance,
+        }))
+      }
+
+      const config: LighterAccountConfig = {
+        provider: LIGHTER_PROVIDER_KEY,
+        accountIndex: account.index,
+        apiKeyIndex: DEFAULT_API_KEY_INDEX,
+        apiKeyRegistered: registeredKey !== undefined,
+        accountType: account.account_type,
+        readOnlyTokenApproved: false,
+      }
+
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        address: params.address,
+        balances,
+        marginUsed: totalMarginUsed.toString(),
+        unrealizedPnl: totalUnrealizedPnl.toString(),
+        feeTier:
+          limitsResult === undefined
+            ? ZERO_FEE_TIER
+            : projectFeeTier(limitsResult),
+        config,
+      }
+    },
+
+    async getPositions(
+      _client: PerpsSDKClient,
+      params: ProviderGetPositionsParams,
+      opts?: SDKRequestOptions
+    ): Promise<PositionsResponse> {
+      const client = apiClient(opts)
+      const account = await fetchDetailedAccount(client, params.address)
+      const symbolLookup = await registry.marketIdToSymbol()
+
+      let positions: Position[] = account.positions
+        .filter((p) => Number.parseFloat(p.position) !== 0)
+        .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
+
+      if (params.symbol !== undefined) {
+        positions = positions.filter((p) => p.asset.assetId === params.symbol)
+      }
+
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        positions,
+        pagination: { limit: params.limit ?? positions.length, hasMore: false },
+      }
+    },
+
+    async getOrders(
+      _client: PerpsSDKClient,
+      params: ProviderGetOrdersParams,
+      opts?: SDKRequestOptions
+    ): Promise<OrdersResponse> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        return {
+          provider: LIGHTER_PROVIDER_KEY,
+          openOrders: [],
+          triggerOrders: [],
+          pagination: { limit: params.limit ?? 0, hasMore: false },
+        }
+      }
+
+      const client = apiClient(opts)
+      const [account, symbolLookup] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        registry.marketIdToSymbol(),
+      ])
+
+      const marketIds =
+        params.symbol === undefined
+          ? deriveOrderBearingMarketIds(account)
+          : [await registry.resolveMarketId(params.symbol)]
+
+      const responses = await Promise.all(
+        marketIds.map((id) =>
+          fetchActiveOrdersForMarket(client, token, account.index, id)
+        )
+      )
+
+      const openOrders: OpenOrder[] = []
+      const triggerOrders: TriggerOrder[] = []
+      for (const response of responses) {
+        for (const raw of response.orders) {
+          const symbol = symbolLookup.get(raw.market_index) ?? ''
+          const mapped = mapOrder(raw, symbol)
+          if (isTriggerType(mapped.type)) {
+            triggerOrders.push(mapTriggerOrder(raw, symbol))
+          } else {
+            openOrders.push(mapped)
+          }
+        }
+      }
+
+      const total = openOrders.length + triggerOrders.length
+      const limit = params.limit ?? total
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        openOrders,
+        triggerOrders,
+        pagination: { limit, hasMore: total > limit },
+      }
+    },
+
+    async getOrder(
+      _client: PerpsSDKClient,
+      params: ProviderGetOrderParams,
+      opts?: SDKRequestOptions
+    ): Promise<Order> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'Lighter order lookup requires an auth token. Pass `authToken` to ' +
+            'lighterProvider, register an API key + signer for on-demand mints, or ' +
+            'forward `options.lighterAuthToken` on the call.'
+        )
+      }
+
+      const client = apiClient(opts)
+      const [account, symbolLookup] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        registry.marketIdToSymbol(),
+      ])
+
+      // Native `Order.order_id` route only. A tx-hash route would require
+      // mapping the caller's executeAction tx hash → wasm nonce → matching
+      // order, which the LI.FI backend did via its `UserAction` table; the SDK
+      // has no equivalent persistence, so we refuse rather than mis-resolve.
+      if (TX_HASH_PATTERN.test(params.id)) {
+        throw new PerpsError(
+          PerpsErrorCode.OrderNotFound,
+          `Lighter order id "${params.id}" looks like a tx hash. The SDK ` +
+            `resolves orders by Lighter \`order_id\` only — surface the order_id ` +
+            `from the orderUpdates / fills WS stream and pass it here.`
+        )
+      }
+      const predicate: (o: { order_id: string }) => boolean = (o) =>
+        o.order_id === params.id
+
+      const marketIds = deriveOrderBearingMarketIds(account)
+      const activeResponses = await Promise.all(
+        marketIds.map((id) =>
+          fetchActiveOrdersForMarket(client, token, account.index, id)
+        )
+      )
+
+      for (const response of activeResponses) {
+        const hit = response.orders.find(predicate as (o: unknown) => boolean)
+        if (hit !== undefined) {
+          return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+        }
+      }
+
+      const inactive = await client.getAuthed<LtOrdersResponse>(
+        '/api/v1/accountInactiveOrders',
+        token,
+        {
+          account_index: account.index,
+          market_id: LIGHTER_ALL_MARKETS_WILDCARD,
+          limit: INACTIVE_ORDERS_LOOKUP_LIMIT,
+        }
+      )
+      const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
+      if (hit !== undefined) {
+        return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+      }
+
+      throw new PerpsError(
+        PerpsErrorCode.OrderNotFound,
+        `Lighter order ${params.id} not found for ${params.address}`
+      )
+    },
+
+    async getFills(
+      _client: PerpsSDKClient,
+      params: ProviderGetFillsParams,
+      opts?: SDKRequestOptions
+    ): Promise<FillsResponse> {
+      const client = apiClient(opts)
+      const [account, symbolLookup, token] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        registry.marketIdToSymbol(),
+        resolveAuthToken(opts, params.address),
+      ])
+
+      const queryParams: Record<string, string | number | boolean> = {
+        account_index: account.index,
+        sort_by: 'timestamp',
+        sort_dir: 'desc',
+        limit: params.limit ?? DEFAULT_TRADES_LIMIT,
+      }
+      if (params.cursor !== undefined) {
+        queryParams.cursor = params.cursor
+      }
+
+      const response =
+        token !== undefined && token.length > 0
+          ? await client.getAuthed<LtTradesResponse>(
+              '/api/v1/trades',
+              token,
+              queryParams
+            )
+          : await client.get<LtTradesResponse>('/api/v1/trades', queryParams)
+
+      const items = response.trades.map((t) =>
+        mapFill(
+          t,
+          account.index,
+          symbolLookup.get(t.market_id) ?? `market_${t.market_id}`
+        )
+      )
+
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        items,
+        pagination: {
+          limit: params.limit ?? items.length,
+          hasMore: (response.next_cursor ?? '') !== '',
+          cursor: response.next_cursor || undefined,
+        },
+      }
+    },
+
+    async getActivity(
+      _client: PerpsSDKClient,
+      params: ProviderGetActivityParams,
+      opts?: SDKRequestOptions
+    ): Promise<ActivitiesResponse> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        return {
+          provider: LIGHTER_PROVIDER_KEY,
+          items: [],
+          pagination: { limit: params.limit ?? 0, hasMore: false },
+        }
+      }
+
+      const inputCursor = decodeActivityCursor(params.cursor)
+      const client = apiClient(opts)
+      const account = await fetchDetailedAccount(client, params.address)
+      const [history, marketLookup, assetLookup] = await Promise.all([
+        fetchAllHistory(
+          client,
+          token,
+          account.index,
+          params.address,
+          params.type,
+          inputCursor
+        ),
+        registry.marketIdToSymbol(),
+        registry.assetIdToSymbol(),
+      ])
+
+      const items: ActivityItem[] = [
+        ...history.deposits.deposits.map(
+          (d): ActivityItem => ({
+            id: d.id,
+            provider: LIGHTER_PROVIDER_KEY,
+            timestamp: toIsoFromMs(d.timestamp),
+            type: ActivityType.DEPOSIT,
+            amount: d.amount,
+          })
+        ),
+        ...history.withdraws.withdraws.map(
+          (w): ActivityItem => ({
+            id: w.id,
+            provider: LIGHTER_PROVIDER_KEY,
+            timestamp: toIsoFromMs(w.timestamp),
+            type: ActivityType.WITHDRAWAL,
+            amount: w.amount,
+            fee: '0',
+          })
+        ),
+        ...history.fundings.position_fundings.map(
+          (f): ActivityItem => ({
+            id: `funding-${f.funding_id}`,
+            provider: LIGHTER_PROVIDER_KEY,
+            timestamp: toIsoFromSeconds(f.timestamp),
+            type: ActivityType.FUNDING,
+            asset: lighterAsset(marketLookup.get(f.market_id) ?? ''),
+            amount: f.change,
+            positionSize: f.position_size,
+            fundingRate: f.rate,
+          })
+        ),
+        ...history.liquidations.liquidations.map(
+          (l): ActivityItem => ({
+            id: `liquidation-${l.id}`,
+            provider: LIGHTER_PROVIDER_KEY,
+            timestamp: toIsoFromMs(l.executed_at),
+            type: ActivityType.LIQUIDATION,
+            liquidatedNotionalPosition: '0',
+            accountValue: '0',
+            leverageType: l.type,
+            liquidatedPositions: [
+              {
+                asset: lighterAsset(marketLookup.get(l.market_id) ?? ''),
+                size: '0',
+              },
+            ],
+          })
+        ),
+        ...history.transfers.transfers.map((t): ActivityItem => {
+          const direction: 'IN' | 'OUT' =
+            t.from_account_index === account.index ? 'OUT' : 'IN'
+          const counterpartyAccountIndex =
+            direction === 'OUT' ? t.to_account_index : t.from_account_index
+          return {
+            id: t.id,
+            provider: LIGHTER_PROVIDER_KEY,
+            timestamp: toIsoFromMs(t.timestamp),
+            type: ActivityType.TRANSFER,
+            direction,
+            counterpartyAccountIndex,
+            asset: assetLookup.get(t.asset_id) ?? String(t.asset_id),
+            amount: t.amount,
+            meta: {
+              transferType: t.type,
+              txHash: t.tx_hash,
+              fromRoute: t.from_route,
+              toRoute: t.to_route,
+              fee: t.fee,
+            },
+          }
+        }),
+      ]
+
+      const filtered = items.filter((it) => {
+        const ts = new Date(it.timestamp).getTime()
+        if (params.startTime !== undefined && ts < params.startTime) {
+          return false
+        }
+        if (params.endTime !== undefined && ts > params.endTime) {
+          return false
+        }
+        return true
+      })
+
+      filtered.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+
+      const nextCursorEnvelope: LighterActivityCursor = {
+        deposits: history.deposits.cursor,
+        withdraws: history.withdraws.cursor,
+        fundings: history.fundings.next_cursor,
+        liquidations: history.liquidations.next_cursor,
+        transfers: history.transfers.cursor,
+      }
+      const responseCursor = encodeActivityCursor(nextCursorEnvelope)
+      const hasMore = responseCursor !== undefined
+
+      const limit = params.limit ?? filtered.length
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        items: filtered.slice(0, limit),
+        pagination: {
+          limit,
+          hasMore,
+          ...(responseCursor === undefined ? {} : { cursor: responseCursor }),
+        },
+      }
+    },
+
+    async getAsset(
+      _client: PerpsSDKClient,
+      params: ProviderGetAssetParams,
+      opts?: SDKRequestOptions
+    ): Promise<Asset> {
+      const all = await collectAssets(opts)
+      const found = all.find((a) => a.assetId === params.symbol)
+      if (!found) {
+        throw new PerpsError(
+          PerpsErrorCode.MarketNotFound,
+          `Lighter asset not found: ${params.symbol}`
+        )
+      }
+      return found
+    },
+
+    async getAssets(
+      _client: PerpsSDKClient,
+      opts?: SDKRequestOptions
+    ): Promise<AssetsResponse> {
+      return { assets: await collectAssets(opts) }
+    },
+
+    async getPrices(
+      _client: PerpsSDKClient,
+      params: ProviderGetPricesParams,
+      _opts?: SDKRequestOptions
+    ): Promise<PricesResponse> {
+      const [perps, spots] = await Promise.all([
+        registry.activePerps(),
+        registry.activeSpots(),
+      ])
+      const all = [...perps, ...spots].map((m) => ({
+        assetId: m.symbol,
+        price: m.last_trade_price.toString(),
+      }))
+      const filtered =
+        params.symbols === undefined
+          ? all
+          : all.filter((p) => params.symbols?.includes(p.assetId))
+      return { prices: filtered }
+    },
+
+    async getOhlcv(
+      _client: PerpsSDKClient,
+      params: ProviderGetOhlcvParams,
+      opts?: SDKRequestOptions
+    ): Promise<OhlcvResponse> {
+      const client = apiClient(opts)
+      const marketId = await registry.resolveMarketId(params.symbol)
+      const now = Date.now()
+      const startTime = params.startTime ?? now - DEFAULT_OHLCV_LOOKBACK_MS
+      const endTime = params.endTime ?? now
+      const limit = Math.min(
+        params.limit ?? DEFAULT_CANDLE_LIMIT,
+        MAX_CANDLE_LIMIT
+      )
+
+      const response = await client.get<{
+        code: number
+        r: string
+        c: Array<{
+          t: number
+          o: number
+          h: number
+          l: number
+          c: number
+          v: number
+        }>
+      }>('/api/v1/candles', {
+        market_id: marketId,
+        resolution: mapInterval(params.interval),
+        start_timestamp: Math.floor(startTime / 1000),
+        end_timestamp: Math.floor(endTime / 1000),
+        count_back: limit,
+      })
+
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        assetId: params.symbol,
+        interval: params.interval,
+        candles: response.c.slice(0, limit).map((c) => ({
+          t: c.t,
+          o: c.o.toString(),
+          h: c.h.toString(),
+          l: c.l.toString(),
+          c: c.c.toString(),
+          v: c.v.toString(),
+        })),
+      }
+    },
+
+    async getOrderbook(
+      _client: PerpsSDKClient,
+      params: ProviderGetOrderbookParams,
+      opts?: SDKRequestOptions
+    ): Promise<OrderbookResponse> {
+      const client = apiClient(opts)
+      const marketId = await registry.resolveMarketId(params.symbol)
+      const maxDepth = Math.min(
+        params.depth ?? MAX_ORDERBOOK_DEPTH,
+        MAX_ORDERBOOK_DEPTH
+      )
+
+      const response = await client.get<{
+        code: number
+        asks: Array<{ price: string; remaining_base_amount: string }>
+        bids: Array<{ price: string; remaining_base_amount: string }>
+      }>('/api/v1/orderBookOrders', {
+        market_id: marketId,
+        limit: maxDepth,
+      })
+
+      return {
+        provider: LIGHTER_PROVIDER_KEY,
+        assetId: params.symbol,
+        bids: response.bids.slice(0, maxDepth).map((o) => ({
+          price: o.price,
+          size: o.remaining_base_amount,
+        })),
+        asks: response.asks.slice(0, maxDepth).map((o) => ({
+          price: o.price,
+          size: o.remaining_base_amount,
+        })),
+        timestamp: Date.now(),
+      }
+    },
+
+    projectConfig(
+      config: AccountConfig,
+      setup: ProviderSetup[],
+      options: ProviderOption[]
+    ): AccountConfigSetting[] {
+      if (config.provider !== LIGHTER_PROVIDER_KEY) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `lighterProvider.projectConfig received config for provider ` +
+            `'${config.provider}'.`
+        )
+      }
+      return projectLighterConfigSettings(config, setup, options)
+    },
+
+    summarize(
+      account: AccountResponse,
+      positions: Position[],
+      prices: Record<string, string>,
+      assets?: Asset[],
+      collateralCurrencies?: ReadonlySet<string>
+    ): AccountSummary {
+      return summarizeLighterAccount(
+        account,
+        positions,
+        prices,
+        assets,
+        collateralCurrencies
+      )
+    },
+
+    async signActions(
+      method: SigningMethod,
+      steps: ActionStep[],
+      address: Address,
+      ctx?: SignActionsContext
+    ): Promise<SignedActionStep[]> {
+      if (signer === undefined || keyStore === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'lighterProvider.signActions requires `signer` and `keyStore` to be ' +
+            'configured at construction.'
+        )
+      }
+      const signerRef = signer
+      const keyStoreRef = keyStore
+      return lighterSignActions(
+        {
+          signer: signerRef,
+          keyStore: keyStoreRef,
+          resolveAccountIndex: async (addr) => {
+            const apiKey = await keyStoreRef.get(addr)
+            if (apiKey !== null) {
+              return apiKey.accountIndex
+            }
+            const account = await fetchDetailedAccount(apiClient(), addr)
+            return account.index
+          },
+        },
+        method,
+        steps,
+        address,
+        ctx
+      )
+    },
+  }
 }
 
 /**
- * Factory wrapper mirroring `@lifi/sdk`'s `EVM()` / `HyperliquidProvider()`
- * pattern — returns a fresh `LighterProvider` instance the caller hands to
- * `createPerpsClient({ providers: [...] })`.
+ * Alias matching `@lifi/sdk`'s capitalised factory naming (`EVM()`, `EthereumProvider()`).
  */
-export const Lighter = (options?: LighterProviderOptions): LighterProvider =>
-  new LighterProvider(options)
-
-/** Alias matching the AC's `LighterProvider()` factory naming. */
-export const lighterProvider = Lighter
+export const Lighter = lighterProvider

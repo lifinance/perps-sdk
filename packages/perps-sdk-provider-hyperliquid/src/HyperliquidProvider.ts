@@ -1,31 +1,41 @@
-import type {
-  PerpsProvider,
-  PerpsSDKClient,
-  ProviderGetAccountParams,
-  ProviderGetActivityParams,
-  ProviderGetAssetParams,
-  ProviderGetFillsParams,
-  ProviderGetOhlcvParams,
-  ProviderGetOrderbookParams,
-  ProviderGetOrderParams,
-  ProviderGetOrdersParams,
-  ProviderGetPositionsParams,
-  ProviderGetPricesParams,
-  SDKRequestOptions,
+import {
+  PerpsError,
+  type PerpsProvider,
+  type PerpsSDKClient,
+  type ProviderGetAccountParams,
+  type ProviderGetActivityParams,
+  type ProviderGetAssetParams,
+  type ProviderGetFillsParams,
+  type ProviderGetOhlcvParams,
+  type ProviderGetOrderbookParams,
+  type ProviderGetOrderParams,
+  type ProviderGetOrdersParams,
+  type ProviderGetPositionsParams,
+  type ProviderGetPricesParams,
+  type SDKRequestOptions,
 } from '@lifi/perps-sdk'
-import type {
-  AccountResponse,
-  ActivitiesResponse,
-  Asset,
-  AssetsResponse,
-  FillsResponse,
-  OhlcvResponse,
-  Order,
-  OrderbookResponse,
-  OrdersResponse,
-  PositionsResponse,
-  PricesResponse,
+import {
+  type AccountConfig,
+  type AccountConfigSetting,
+  type AccountResponse,
+  type AccountSummary,
+  type ActivitiesResponse,
+  type Asset,
+  type AssetsResponse,
+  type FillsResponse,
+  type OhlcvResponse,
+  type Order,
+  type OrderbookResponse,
+  type OrdersResponse,
+  PerpsErrorCode,
+  type Position,
+  type PositionsResponse,
+  type PricesResponse,
+  type ProviderOption,
+  type ProviderSetup,
 } from '@lifi/perps-types'
+import { projectHyperliquidConfigSettings } from './accountConfig.js'
+import { summarizeHyperliquidAccount } from './accountSummary.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
 import { getAccount } from './services/getAccount.js'
 import { getActivity } from './services/getActivity.js'
@@ -193,6 +203,36 @@ export function hyperliquidProvider(
         apiUrl,
         { symbol: params.symbol, depth: params.depth },
         { signal: opts?.signal }
+      ),
+
+    projectConfig: (
+      config: AccountConfig,
+      setup: ProviderSetup[],
+      options: ProviderOption[]
+    ): AccountConfigSetting[] => {
+      if (config.provider !== PROVIDER_KEY) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `hyperliquidProvider.projectConfig received config for provider ` +
+            `'${config.provider}'.`
+        )
+      }
+      return projectHyperliquidConfigSettings(config, setup, options)
+    },
+
+    summarize: (
+      account: AccountResponse,
+      positions: Position[],
+      prices: Record<string, string>,
+      assets?: Asset[],
+      collateralCurrencies?: ReadonlySet<string>
+    ): AccountSummary =>
+      summarizeHyperliquidAccount(
+        account,
+        positions,
+        prices,
+        assets,
+        collateralCurrencies
       ),
   }
 }

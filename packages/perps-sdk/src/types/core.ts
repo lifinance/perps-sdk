@@ -1,5 +1,8 @@
 import type {
+  AccountConfig,
+  AccountConfigSetting,
   AccountResponse,
+  AccountSummary,
   ActionStep,
   ActivitiesResponse,
   ActivityType,
@@ -12,8 +15,11 @@ import type {
   Order,
   OrderbookResponse,
   OrdersResponse,
+  Position,
   PositionsResponse,
   PricesResponse,
+  ProviderOption,
+  ProviderSetup,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -253,6 +259,42 @@ export interface PerpsProvider {
     params: ProviderGetOrderbookParams,
     options?: SDKRequestOptions
   ): Promise<OrderbookResponse>
+
+  /**
+   * Project a typed {@link AccountConfig} against the provider's `setup`
+   * + `options` descriptors into `AccountConfigSetting[]`. Used by
+   * `PerpsClient.getAccount` to attach a `settings` array to the response —
+   * one entry per descriptor, in `setup`-then-`options` order.
+   *
+   * Implementations receive the union-typed `AccountConfig` and narrow on
+   * `config.provider` themselves; the dispatcher in `PerpsClient` does not
+   * narrow before calling.
+   */
+  projectConfig(
+    config: AccountConfig,
+    setup: ProviderSetup[],
+    options: ProviderOption[]
+  ): AccountConfigSetting[]
+
+  /**
+   * Reduce the raw `AccountResponse` + positions + ambient prices into the
+   * provider-agnostic {@link AccountSummary} roll-up (portfolio value,
+   * available margin, margin used, unrealised PnL).
+   *
+   * Implementations own the venue-specific reduction rules:
+   * Hyperliquid factors in unified-account abstraction modes against spot
+   * balances; Lighter uses straight collateral. `assets` and
+   * `collateralCurrencies` are optional inputs some implementations need
+   * to value non-USD spot holdings; pass `undefined` if the provider does
+   * not require them.
+   */
+  summarize(
+    account: AccountResponse,
+    positions: Position[],
+    prices: Record<string, string>,
+    assets?: Asset[],
+    collateralCurrencies?: ReadonlySet<string>
+  ): AccountSummary
 
   /**
    * Sign a batch of unsigned {@link ActionStep}s belonging to one

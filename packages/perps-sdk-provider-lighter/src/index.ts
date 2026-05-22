@@ -28,19 +28,17 @@ export {
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_PROVIDER_KEY,
 } from './provider/constants.js'
+export { summarizeLighterAccount } from './accountSummary.js'
 // Provider plugin + factory
 export type { LighterProviderOptions } from './provider/LighterProvider.js'
-export {
-  Lighter,
-  LighterProvider,
-  lighterProvider,
-} from './provider/LighterProvider.js'
+export { Lighter, lighterProvider } from './provider/LighterProvider.js'
 export { LighterMarketRegistry } from './provider/markets.js'
 // Realtime WS provider
 export type { LighterAuthProvider } from './realtime/LighterWsProvider.js'
 export {
   LighterWsProvider,
   type LighterWsProviderOptions,
+  lighterWsProvider,
 } from './realtime/LighterWsProvider.js'
 // Signers + Lighter-owned standalone utilities
 export type {

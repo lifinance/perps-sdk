@@ -2,8 +2,6 @@
 
 // Types
 export * from '@lifi/perps-types'
-// Utils
-export { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 // Agent
 export { AgentManager } from './agent/AgentManager.js'
 export { createMemoryStorage, localStorageAdapter } from './agent/storage.js'
@@ -20,7 +18,6 @@ export {
   DEFAULT_API_URL,
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
-export { projectAccountConfigSettings } from './client/projectAccountConfigSettings.js'
 export type {
   CancelOrdersParams,
   CheckPrerequisitesParams,
@@ -41,7 +38,6 @@ export { SigningMode } from './client/types.js'
 // Errors
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
-export { projectHyperliquidConfigSettings } from './providers/hyperliquid/accountConfig.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
@@ -99,8 +95,6 @@ export type {
   ProviderGetPricesParams,
   SignActionsContext,
 } from './types/core.js'
-export type { AccountSummary } from './utils/accountSummary.js'
-export { calculateAccountSummary } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
@@ -115,13 +109,6 @@ export {
   percentFromPrice,
   priceFromPercent,
 } from './utils/calculations.js'
-export {
-  calculateLiquidationPrice,
-  calculateMaintenanceMarginRate,
-  formatOrderPrice,
-  formatOrderSize,
-  getMaxPriceDecimals,
-} from './utils/hyperliquid/index.js'
 export {
   classifyFill,
   FillClassification,

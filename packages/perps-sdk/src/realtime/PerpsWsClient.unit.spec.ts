@@ -5,25 +5,16 @@ import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
-import { PerpsWsClient } from './PerpsWsClient.js'
-
-// --- Mock HyperliquidWsProvider ---
+import { PerpsWsClient, type WsProviderFactory } from './PerpsWsClient.js'
 
 const mockSubscribe = vi.fn().mockResolvedValue(() => {})
 const mockClose = vi.fn()
 
-vi.mock('./hyperliquid/HyperliquidWsProvider.js', () => ({
-  HyperliquidWsProvider: vi.fn().mockImplementation(() => ({
+const buildHlFactory = () =>
+  vi.fn<WsProviderFactory>((_params) => ({
     subscribe: mockSubscribe,
     close: mockClose,
-  })),
-}))
-
-import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
-
-const MockedHlProvider = vi.mocked(HyperliquidWsProvider)
-
-// --- Helpers ---
+  }))
 
 const providersWithWsUrl = {
   providers: mockProviders.providers.map((d) => ({
@@ -48,43 +39,51 @@ function createClient() {
   return createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
 }
 
+function makeWs(factory: WsProviderFactory) {
+  return new PerpsWsClient(createClient(), {
+    wsProviders: { hyperliquid: factory },
+  })
+}
+
 describe('PerpsWsClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   describe('subscribe', () => {
-    it('should create a provider on first subscribe', async () => {
+    it('should call the registered factory on first subscribe', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
 
-      expect(MockedHlProvider).toHaveBeenCalledOnce()
-      expect(MockedHlProvider).toHaveBeenCalledWith(
-        'wss://api.hyperliquid.xyz/ws',
-        'hyperliquid',
-        ['xyz']
-      )
+      expect(factory).toHaveBeenCalledOnce()
+      expect(factory).toHaveBeenCalledWith({
+        provider: 'hyperliquid',
+        wsUrl: 'wss://api.hyperliquid.xyz/ws',
+        markets: ['hyperliquid', 'xyz'],
+      })
 
       ws.close()
     })
 
-    it('should pass sub-dexes from provider venues', async () => {
+    it('passes the raw market list — provider-specific filtering is the factory’s job', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
 
-      const subDexes = MockedHlProvider.mock.calls[0][2]
-      expect(subDexes).toEqual(['xyz'])
+      expect(factory.mock.calls[0][0].markets).toEqual(['hyperliquid', 'xyz'])
 
       ws.close()
     })
 
     it('should reuse cached provider for same provider', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
       await ws.subscribe(
@@ -92,14 +91,14 @@ describe('PerpsWsClient', () => {
         vi.fn()
       )
 
-      expect(MockedHlProvider).toHaveBeenCalledOnce()
+      expect(factory).toHaveBeenCalledOnce()
 
       ws.close()
     })
 
     it('should delegate subscription to the provider', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const ws = makeWs(buildHlFactory())
       const listener = vi.fn()
       const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
 
@@ -115,7 +114,7 @@ describe('PerpsWsClient', () => {
       const mockUnsub = vi.fn()
       mockSubscribe.mockResolvedValueOnce(mockUnsub)
 
-      const ws = new PerpsWsClient(createClient())
+      const ws = makeWs(buildHlFactory())
       const unsub = await ws.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
         vi.fn()
@@ -126,9 +125,22 @@ describe('PerpsWsClient', () => {
       ws.close()
     })
 
-    it('should throw when provider has no WebSocket URL', async () => {
-      // Default mock dexes have no wsUrl
+    it('should throw when no factory is registered for the provider', async () => {
+      useWsUrlHandler()
       const ws = new PerpsWsClient(createClient())
+
+      await expect(
+        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      ).rejects.toThrow(
+        "No WS provider factory registered for 'hyperliquid'."
+      )
+
+      ws.close()
+    })
+
+    it('should throw when provider has no WebSocket URL', async () => {
+      // Default mock providers have no wsUrl
+      const ws = makeWs(buildHlFactory())
 
       await expect(
         ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
@@ -139,20 +151,22 @@ describe('PerpsWsClient', () => {
 
     it('should throw for unknown provider', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const ws = makeWs(buildHlFactory())
 
       await expect(
         ws.subscribe({ channel: 'prices', dex: 'unknown-provider' }, vi.fn())
-      ).rejects.toThrow('No WebSocket URL found for provider: unknown-provider')
+      ).rejects.toThrow(
+        "No WS provider factory registered for 'unknown-provider'."
+      )
 
       ws.close()
     })
 
     it('should handle concurrent subscribes for same provider without race', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
 
-      // Fire off two subscribes concurrently
       const [_unsub1, _unsub2] = await Promise.all([
         ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn()),
         ws.subscribe(
@@ -161,8 +175,7 @@ describe('PerpsWsClient', () => {
         ),
       ])
 
-      // Should only create one provider despite concurrent calls
-      expect(MockedHlProvider).toHaveBeenCalledOnce()
+      expect(factory).toHaveBeenCalledOnce()
 
       ws.close()
     })
@@ -171,7 +184,7 @@ describe('PerpsWsClient', () => {
   describe('close', () => {
     it('should close all providers', async () => {
       useWsUrlHandler()
-      const ws = new PerpsWsClient(createClient())
+      const ws = makeWs(buildHlFactory())
 
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
 

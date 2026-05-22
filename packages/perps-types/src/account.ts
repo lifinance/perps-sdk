@@ -65,6 +65,23 @@ export interface AccountResponse {
   config: AccountConfig
 }
 
+/**
+ * Provider-agnostic account roll-up returned by `PerpsProvider.summarize(...)`.
+ * Each provider decides how its raw balances / positions reduce to these
+ * four totals (e.g. Hyperliquid factors in unified-account abstraction; Lighter
+ * uses straight collateral).
+ */
+export interface AccountSummary {
+  /** Total portfolio value in USD. */
+  portfolioValue: number
+  /** Collateral available to open new positions. */
+  availableMargin: number
+  /** Margin locked in open positions. */
+  marginUsed: number
+  /** Aggregate unrealised PnL across all positions. */
+  unrealizedPnl: number
+}
+
 export interface TriggerOrder {
   id: string
   asset: AssetDisplay
