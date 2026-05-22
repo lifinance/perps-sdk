@@ -28,7 +28,7 @@ export type {
   LighterProviderOptions,
 } from './LighterProvider.js'
 export { Lighter, lighterProvider } from './LighterProvider.js'
-export * from './mappers/index.js'
+
 export * from './signers/index.js'
 export * from './types/index.js'
 export * from './utils/index.js'

@@ -63,14 +63,6 @@ import {
   MAX_CANDLE_LIMIT,
   MAX_ORDERBOOK_DEPTH,
 } from './constants.js'
-import {
-  isTriggerType,
-  mapFill,
-  mapOrder,
-  mapOrderDetail,
-  mapPosition,
-  mapTriggerOrder,
-} from './mappers/index.js'
 import { createAuthToken } from './signers/createAuthToken.js'
 import type { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from './signers/LighterReadOnlyTokenManager.js'
@@ -98,6 +90,14 @@ import {
   type LighterActivityCursor,
 } from './utils/activityCursor.js'
 import { LighterApiClient } from './utils/apiClient.js'
+import {
+  isTriggerType,
+  mapFill,
+  mapOrder,
+  mapOrderDetail,
+  mapPosition,
+  mapTriggerOrder,
+} from './utils/index.js'
 import {
   LighterMarketRegistry,
   marginFractionToMaxLeverage,

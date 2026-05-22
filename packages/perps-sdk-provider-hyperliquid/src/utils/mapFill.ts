@@ -8,8 +8,8 @@ import {
   OrderType,
 } from '@lifi/perps-types'
 import type { HlUserFill } from '../types/index.js'
-import { assetIsSpot } from '../utils/assetId.js'
-import { deriveMarket } from './_market.js'
+import { assetIsSpot } from './assetId.js'
+import { deriveMarket } from './deriveMarket.js'
 
 export { classifyFillFromPosition }
 

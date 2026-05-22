@@ -11,7 +11,7 @@ export {
   type HyperliquidProviderOptions,
   hyperliquidProvider,
 } from './HyperliquidProvider.js'
-export * from './mappers/index.js'
+
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export type { GetActivityParams } from './services/getActivity.js'

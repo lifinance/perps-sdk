@@ -7,7 +7,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
-import { classifyFillFromPosition, mapFill } from './fill.js'
+import { classifyFillFromPosition, mapFill } from './mapFill.js'
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   tid: 12345,

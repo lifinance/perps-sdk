@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { deriveMarket } from './_market.js'
+import { deriveMarket } from './deriveMarket.js'
 
 describe('deriveMarket (Hyperliquid)', () => {
   it('maps a bare perp coin to "hyperliquid" (main USDC perp dex)', () => {

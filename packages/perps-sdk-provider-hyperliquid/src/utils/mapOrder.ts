@@ -6,7 +6,7 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
-import { deriveMarket } from './_market.js'
+import { deriveMarket } from './deriveMarket.js'
 
 /** Map a Hyperliquid orderType string to the OrderType enum. */
 export const mapOrderType = (orderType: string): OrderType => {

@@ -1,7 +1,7 @@
 import type { Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import type { HlAssetPosition } from '../types/index.js'
-import { deriveMarket } from './_market.js'
+import { deriveMarket } from './deriveMarket.js'
 
 export const mapPosition = (ap: HlAssetPosition): Position => {
   const pos = ap.position

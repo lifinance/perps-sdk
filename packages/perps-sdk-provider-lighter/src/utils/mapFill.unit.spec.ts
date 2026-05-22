@@ -7,7 +7,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtTrade } from '../types/index.js'
-import { mapFill } from './fill.js'
+import { mapFill } from './mapFill.js'
 
 const ACCOUNT_INDEX = 42
 const SYMBOL = 'ETH'

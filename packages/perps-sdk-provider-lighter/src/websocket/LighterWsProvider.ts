@@ -12,7 +12,6 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
-import { mapFill, mapOrderDetail, mapPosition } from '../mappers/index.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -29,6 +28,7 @@ import type {
   LtWsOrderBook,
   LtWsOrderBookMessage,
 } from '../types/index.js'
+import { mapFill, mapOrderDetail, mapPosition } from '../utils/index.js'
 
 // ---------------------------------------------------------------------------
 // LighterWsProvider

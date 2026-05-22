@@ -1,6 +1,6 @@
 import type { Asset } from '@lifi/perps-types'
 import type { HlAssetCtx, HlUniverseItem } from '../types/index.js'
-import { deriveMarket } from './_market.js'
+import { deriveMarket } from './deriveMarket.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 

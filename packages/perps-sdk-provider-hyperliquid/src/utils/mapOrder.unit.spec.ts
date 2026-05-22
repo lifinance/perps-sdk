@@ -1,7 +1,7 @@
 import { OrderStatus } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlOrderDetail } from '../types/index.js'
-import { mapOrder, mapStatusReason } from './order.js'
+import { mapOrder, mapStatusReason } from './mapOrder.js'
 
 const baseDetail = (
   overrides: Partial<HlOrderDetail> = {},

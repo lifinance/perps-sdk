@@ -5,7 +5,7 @@ import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from '../types/index.js'
-import { mapPosition } from './position.js'
+import { mapPosition } from './mapPosition.js'
 
 const SYMBOL = 'BTC'
 

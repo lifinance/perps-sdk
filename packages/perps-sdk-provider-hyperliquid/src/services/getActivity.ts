@@ -13,7 +13,6 @@ import {
   NINETY_DAYS_MS,
   PROVIDER_KEY,
 } from '../constants.js'
-import { mapFundingActivity, mapLedgerEntry } from '../mappers/index.js'
 import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
@@ -24,6 +23,7 @@ import {
   resolveDisplayQuote,
   resolveDisplaySymbol,
 } from '../utils/assetLookups.js'
+import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetActivityParams {

@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noBarrelFile: single re-export entry point
 // for the package's utility surface. Internal modules import per-file paths
-// (e.g. `./assetId.js`, `./infoClient.js`) directly.
+// (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
 export type { AssetEnrichmentMaps, AssetWithMeta } from './assetLookups.js'
@@ -11,12 +11,25 @@ export {
   resolveDisplayQuote,
   resolveDisplaySymbol,
 } from './assetLookups.js'
+export { deriveMarket } from './deriveMarket.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { infoRequest } from './infoClient.js'
 export {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
 } from './liquidation.js'
+export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
+export { mapAsset } from './mapAsset.js'
+export { classifyFillFromPosition, mapFill } from './mapFill.js'
+export {
+  isTriggerType,
+  mapOpenOrder,
+  mapOrder,
+  mapOrderType,
+  mapStatusReason,
+  mapTriggerOrder,
+} from './mapOrder.js'
+export { mapPosition } from './mapPosition.js'
 export {
   formatOrderPrice,
   formatOrderSize,

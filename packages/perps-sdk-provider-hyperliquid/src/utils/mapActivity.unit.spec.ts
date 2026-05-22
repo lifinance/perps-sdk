@@ -14,7 +14,7 @@ import type {
   HlSpotTransferDelta,
 } from '../types/index.js'
 import { isSendAssetDelta } from '../types/index.js'
-import { mapFundingActivity, mapLedgerEntry } from './activity.js'
+import { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
 
 // ---------------------------------------------------------------------------
 // Fixture builders

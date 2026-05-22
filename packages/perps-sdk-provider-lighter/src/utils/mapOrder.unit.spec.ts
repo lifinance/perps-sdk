@@ -1,7 +1,7 @@
 import { OrderStatus } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtOrder } from '../types/index.js'
-import { mapOrderDetail, mapStatusReason } from './order.js'
+import { mapOrderDetail, mapStatusReason } from './mapOrder.js'
 
 const SYMBOL = 'ETH'
 

@@ -2,8 +2,8 @@ import { PerpsError } from '@lifi/perps-sdk'
 import type { Asset } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
-import { mapAsset } from '../mappers/index.js'
 import { fetchAllPerpAssetsRaw } from '../utils/assetLookups.js'
+import { mapAsset } from '../utils/index.js'
 import type { InfoRequestOptions } from '../utils/infoClient.js'
 import {
   buildMarketQuoteAssetMap,

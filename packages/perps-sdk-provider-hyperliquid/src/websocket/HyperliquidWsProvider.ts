@@ -9,7 +9,6 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
-import { mapFill, mapOrder, mapPosition } from '../mappers/index.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -22,6 +21,7 @@ import type {
   HlWsSpotClearinghouseStateData,
   HlWsUserFillsData,
 } from '../types/index.js'
+import { mapFill, mapOrder, mapPosition } from '../utils/index.js'
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to

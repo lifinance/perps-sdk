@@ -1,12 +1,12 @@
 import type { Address, PositionsResponse } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
-import { mapPosition } from '../mappers/index.js'
 import type { HlClearinghouseState } from '../types/index.js'
 import {
   buildAssetEnrichmentMaps,
   resolveDisplayQuote,
   resolveDisplaySymbol,
 } from '../utils/assetLookups.js'
+import { mapPosition } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 import { getSupportedSubDexes } from '../utils/subdexes.js'
 

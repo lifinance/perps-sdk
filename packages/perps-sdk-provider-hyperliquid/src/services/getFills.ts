@@ -4,13 +4,13 @@ import {
   MAX_HISTORY_LIMIT,
   PROVIDER_KEY,
 } from '../constants.js'
-import { mapFill } from '../mappers/index.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
 import {
   buildAssetEnrichmentMaps,
   resolveDisplayQuote,
   resolveDisplaySymbol,
 } from '../utils/assetLookups.js'
+import { mapFill } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetFillsParams {

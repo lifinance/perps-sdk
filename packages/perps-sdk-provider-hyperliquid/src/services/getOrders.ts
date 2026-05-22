@@ -6,12 +6,6 @@ import type {
   TriggerOrder,
 } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
-import {
-  isTriggerType,
-  mapOpenOrder,
-  mapOrderType,
-  mapTriggerOrder,
-} from '../mappers/index.js'
 import type {
   HlFrontendOpenOrder,
   HlFrontendOpenOrders,
@@ -22,6 +16,12 @@ import {
   resolveDisplayQuote,
   resolveDisplaySymbol,
 } from '../utils/assetLookups.js'
+import {
+  isTriggerType,
+  mapOpenOrder,
+  mapOrderType,
+  mapTriggerOrder,
+} from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 import { getSupportedSubDexes } from '../utils/subdexes.js'
 

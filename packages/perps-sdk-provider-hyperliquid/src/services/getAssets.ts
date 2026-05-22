@@ -1,6 +1,6 @@
 import type { Asset, AssetsResponse } from '@lifi/perps-types'
-import { mapAsset } from '../mappers/index.js'
 import { fetchAllPerpAssetsRaw } from '../utils/assetLookups.js'
+import { mapAsset } from '../utils/index.js'
 import type { InfoRequestOptions } from '../utils/infoClient.js'
 import {
   getSpotAssetCtxs,

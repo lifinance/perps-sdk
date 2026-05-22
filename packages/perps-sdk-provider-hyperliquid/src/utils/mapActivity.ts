@@ -9,7 +9,7 @@ import type {
 import { ActivityType } from '@lifi/perps-types'
 import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
 import { isSendAssetDelta, isSpotTransferDelta } from '../types/index.js'
-import { deriveMarket } from './_market.js'
+import { deriveMarket } from './deriveMarket.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
