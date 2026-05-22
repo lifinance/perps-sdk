@@ -2,24 +2,34 @@ import type { Subscription } from '@lifi/perps-types'
 import type { PerpsSDKClient } from '../client/createPerpsClient.js'
 import { getProviders } from '../services/getProviders.js'
 import { HyperliquidWsProvider } from './hyperliquid/HyperliquidWsProvider.js'
-import {
-  type LighterAuthProvider,
-  LighterWsProvider,
-} from './lighter/LighterWsProvider.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
   WsProvider,
 } from './types.js'
 
+/**
+ * Factory for a per-provider WS plugin. Invoked once per provider key the
+ * first time `subscribe(...)` is called against it.
+ */
+export type WsProviderFactory = (params: {
+  /** Provider key (e.g. `'lighter'`, `'hyperliquid'`). */
+  provider: string
+  /** WS URL discovered from `/providers`. */
+  wsUrl: string
+  /** Sub-provider keys (Hyperliquid sub-dexes). */
+  subProviders: string[]
+}) => WsProvider
+
 export interface PerpsWsClientOptions {
   /**
-   * Async function that mints a Lighter auth token for an L1 address. When
-   * provided, authenticated Lighter channels (orderUpdates, positions) will
-   * use the returned token. The provider is invoked on each subscribe send,
-   * including reconnects, so callers can transparently rotate tokens.
+   * Per-provider WS factory overrides. Map a provider key (e.g.
+   * `'lighter'`) to a factory that returns a `WsProvider`. Without an
+   * entry the SDK falls back to its bundled `HyperliquidWsProvider` for
+   * any non-`'hyperliquid'` provider — pass an explicit factory for
+   * Lighter / future providers via this map.
    */
-  lighterAuthProvider?: LighterAuthProvider
+  wsProviders?: Record<string, WsProviderFactory>
 }
 
 export class PerpsWsClient {
@@ -98,10 +108,9 @@ export class PerpsWsClient {
     wsUrl: string,
     subProviders: string[]
   ): WsProvider {
-    if (provider === 'lighter') {
-      return new LighterWsProvider(wsUrl, provider, {
-        authProvider: this.options.lighterAuthProvider,
-      })
+    const factory = this.options.wsProviders?.[provider]
+    if (factory !== undefined) {
+      return factory({ provider, wsUrl, subProviders })
     }
     return new HyperliquidWsProvider(wsUrl, provider, subProviders)
   }

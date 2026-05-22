@@ -1,7 +1,6 @@
+import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from '@lifi/perps-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMemoryStorage } from '../../agent/storage.js'
-import type { StorageAdapter } from '../../agent/types.js'
 import {
   buildReadOnlyTokenMessage,
   type LighterCreateTokenResponse,

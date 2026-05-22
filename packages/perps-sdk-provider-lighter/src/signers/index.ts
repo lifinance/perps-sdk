@@ -1,9 +1,10 @@
-export type { LighterApiKey } from './LighterKeyStore.js'
+export type { CreateAuthTokenInputs } from './createAuthToken.js'
 export {
-  DEFAULT_API_KEY_INDEX,
-  LIGHTER_PROVIDER_KEY,
-  LighterKeyStore,
-} from './LighterKeyStore.js'
+  createAuthToken,
+  isReadOnlyTokenExpiringSoon,
+} from './createAuthToken.js'
+export type { LighterApiKey } from './LighterKeyStore.js'
+export { LighterKeyStore } from './LighterKeyStore.js'
 export type {
   ApproveReadOnlyTokenInputs,
   ApproveReadOnlyTokenResult,

@@ -91,8 +91,8 @@
         "packages/perps-sdk/src/index.ts",
         "packages/perps-sdk/src/utils/orderFormatting.ts",
         "packages/perps-sdk/src/utils/hyperliquid/index.ts",
-        "packages/perps-sdk/src/signers/lighter/index.ts",
-        "packages/perps-sdk-provider-lighter/src/index.ts"
+        "packages/perps-sdk-provider-lighter/src/index.ts",
+        "packages/perps-sdk-provider-lighter/src/signers/index.ts",
         "packages/perps-sdk-provider-hyperliquid/src/index.ts",
         "packages/perps-sdk-provider-hyperliquid/src/realtime/index.ts",
         "packages/perps-sdk-provider-hyperliquid/src/utils/index.ts"
@@ -123,8 +123,7 @@
       "includes": [
         "packages/perps-sdk/src/realtime/hyperliquid/HyperliquidWsProvider.ts",
         "packages/perps-sdk/src/realtime/hyperliquid/types.ts",
-        "packages/perps-sdk/src/utils/accountSummary.ts",
-        "packages/perps-sdk-provider-lighter/src/**/*.ts"
+        "packages/perps-sdk/src/utils/accountSummary.ts"
       ],
       "linter": {
         "rules": {

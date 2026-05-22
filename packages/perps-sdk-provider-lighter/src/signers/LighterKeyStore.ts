@@ -1,5 +1,5 @@
+import type { StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from '@lifi/perps-types'
-import type { StorageAdapter } from '../../agent/types.js'
 
 // ---------------------------------------------------------------------------
 // LighterKeyStore
@@ -13,14 +13,6 @@ import type { StorageAdapter } from '../../agent/types.js'
 // ---------------------------------------------------------------------------
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
-export const LIGHTER_PROVIDER_KEY = 'lighter'
-
-/**
- * Default API key slot. Reusing one slot is deliberate: Lighter allows 256
- * slots per account but re-registering a slot overwrites the prior key, so
- * a fixed slot keeps storage small and recovery simple.
- */
-export const DEFAULT_API_KEY_INDEX = 1
 
 export interface LighterApiKey {
   /** Lighter account index, looked up once via accountsByL1Address. */
