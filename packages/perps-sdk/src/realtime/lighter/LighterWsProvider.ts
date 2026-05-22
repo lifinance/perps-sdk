@@ -512,7 +512,7 @@ export class LighterWsProvider implements WsProvider {
     channel: string | undefined,
     prefix: string
   ): string | null {
-    if (!channel || !channel.startsWith(prefix)) {
+    if (!channel?.startsWith(prefix)) {
       return null
     }
     const sep = channel[prefix.length]
