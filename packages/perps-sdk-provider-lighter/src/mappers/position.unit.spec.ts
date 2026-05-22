@@ -1,8 +1,10 @@
+import { MarginMode, PositionSide } from '@lifi/perps-types'
+import type { LtAccountPosition } from '@lifi/perps-types/providers/lighter'
+import {
+  LT_MARGIN_MODE_CROSS,
+  LT_MARGIN_MODE_ISOLATED,
+} from '@lifi/perps-types/providers/lighter'
 import { describe, expect, it } from 'vitest'
-
-import { MarginMode, PositionSide } from '../../../enums.js'
-import type { LtAccountPosition } from '../apiTypes.js'
-import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from '../types.js'
 import { mapPosition } from './position.js'
 
 const SYMBOL = 'BTC'

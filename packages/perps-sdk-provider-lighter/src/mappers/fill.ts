@@ -1,12 +1,12 @@
-import type { Fill } from '../../../account.js'
+import { classifyFillFromPosition } from '@lifi/perps-sdk'
+import type { Fill } from '@lifi/perps-types'
 import {
   FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
-} from '../../../enums.js'
-import { classifyFillFromPosition } from '../../_shared/fillClassification.js'
-import type { LtTrade } from '../apiTypes.js'
+} from '@lifi/perps-types'
+import type { LtTrade } from '@lifi/perps-types/providers/lighter'
 
 /**
  * Map a raw Lighter trade to the generic Fill type.

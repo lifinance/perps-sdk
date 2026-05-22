@@ -15,6 +15,14 @@
 
 export { projectLighterConfigSettings } from './accountConfig.js'
 export { summarizeLighterAccount } from './accountSummary.js'
+export {
+  isTriggerType,
+  mapFill,
+  mapOrder,
+  mapOrderDetail,
+  mapPosition,
+  mapTriggerOrder,
+} from './mappers/index.js'
 // Activity cursor envelope (preserves the backend-emitted shape)
 export type { LighterActivityCursor } from './provider/activityCursor.js'
 export {

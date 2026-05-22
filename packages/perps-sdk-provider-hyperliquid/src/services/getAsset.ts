@@ -1,10 +1,10 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Asset } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { mapAsset } from '@lifi/perps-types/providers/hyperliquid'
 import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { InfoRequestOptions } from '../infoClient.js'
+import { mapAsset } from '../mappers/index.js'
 import { buildMarketQuoteAssetMap, perpsDisplaySymbol } from '../subdexes.js'
 
 export interface GetAssetParams {

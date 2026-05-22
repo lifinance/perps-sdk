@@ -1,8 +1,7 @@
 import type { Address, FillsResponse } from '@lifi/perps-types'
-import {
-  type HlUserFills,
-  type HlUserFillsByTime,
-  mapFill,
+import type {
+  HlUserFills,
+  HlUserFillsByTime,
 } from '@lifi/perps-types/providers/hyperliquid'
 import {
   buildAssetEnrichmentMaps,
@@ -15,6 +14,7 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
+import { mapFill } from '../mappers/index.js'
 
 export interface GetFillsParams {
   address: Address

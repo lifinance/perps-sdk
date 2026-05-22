@@ -110,6 +110,7 @@ export {
   percentFromPrice,
   priceFromPercent,
 } from './utils/calculations.js'
+export { classifyFillFromPosition } from './utils/fillClassification.js'
 export {
   classifyFill,
   FillClassification,

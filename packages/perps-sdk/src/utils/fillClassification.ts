@@ -1,4 +1,4 @@
-import { FillClassification } from '../../enums.js'
+import { FillClassification } from '@lifi/perps-types'
 
 /**
  * Classify a perpetual fill into the Open/Close/Increase/Reduce/Switch

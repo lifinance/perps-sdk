@@ -1,7 +1,6 @@
+import { OrderStatus } from '@lifi/perps-types'
+import type { HlOrderDetail } from '@lifi/perps-types/providers/hyperliquid'
 import { describe, expect, it } from 'vitest'
-
-import { OrderStatus } from '../../../enums.js'
-import type { HlOrderDetail } from '../types.js'
 import { mapOrder, mapStatusReason } from './order.js'
 
 const baseDetail = (

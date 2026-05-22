@@ -1,7 +1,7 @@
 import type { Asset, AssetsResponse } from '@lifi/perps-types'
-import { mapAsset } from '@lifi/perps-types/providers/hyperliquid'
 import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
 import type { InfoRequestOptions } from '../infoClient.js'
+import { mapAsset } from '../mappers/index.js'
 import {
   getSpotAssetCtxs,
   getSpotPairs,

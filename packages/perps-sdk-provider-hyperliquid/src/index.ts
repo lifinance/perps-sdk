@@ -1,10 +1,14 @@
 export { projectHyperliquidConfigSettings } from './accountConfig.js'
 export { summarizeHyperliquidAccount } from './accountSummary.js'
+export {
+  assetIsSpot,
+  calculateAssetId,
+  getProviderIndex,
+} from './assetId.js'
 export type { AssetEnrichmentMaps, AssetWithMeta } from './assetLookups.js'
 export {
   buildAssetEnrichmentMaps,
   buildAssetMarketLookup,
-  calculateAssetId,
   fetchAllPerpAssetsRaw,
   resolveDisplayQuote,
   resolveDisplaySymbol,
@@ -19,6 +23,19 @@ export {
 } from './HyperliquidProvider.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { infoRequest } from './infoClient.js'
+export {
+  classifyFillFromPosition,
+  isTriggerType,
+  mapAsset,
+  mapFill,
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapOpenOrder,
+  mapOrder,
+  mapOrderType,
+  mapPosition,
+  mapTriggerOrder,
+} from './mappers/index.js'
 export {
   HyperliquidWsProvider,
   hyperliquidWsProvider,
@@ -62,7 +79,6 @@ export type {
   SpotPairInfo,
 } from './spot.js'
 export {
-  assetIsSpot,
   buildSpotPairNameLookup,
   buildSpotTokenIdLookup,
   buildSpotTokenLookup,

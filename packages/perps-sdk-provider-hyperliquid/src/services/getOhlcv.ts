@@ -1,10 +1,8 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { OhlcvInterval, OhlcvResponse } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import {
-  assetIsSpot,
-  type HlCandleSnapshot,
-} from '@lifi/perps-types/providers/hyperliquid'
+import type { HlCandleSnapshot } from '@lifi/perps-types/providers/hyperliquid'
+import { assetIsSpot } from '../assetId.js'
 import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
 import {
   DEFAULT_CANDLE_LIMIT,

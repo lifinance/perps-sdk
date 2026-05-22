@@ -1,19 +1,19 @@
-import { describe, expect, it } from 'vitest'
 import type {
   DepositActivity,
   LiquidationActivity,
   TransferActivity,
   WithdrawalActivity,
-} from '../../../account.js'
-import { ActivityType } from '../../../enums.js'
+} from '@lifi/perps-types'
+import { ActivityType } from '@lifi/perps-types'
 import type {
   HlFundingUpdate,
   HlLedgerDelta,
   HlLedgerUpdate,
   HlSendAssetDelta,
   HlSpotTransferDelta,
-} from '../types.js'
-import { isSendAssetDelta } from '../types.js'
+} from '@lifi/perps-types/providers/hyperliquid'
+import { isSendAssetDelta } from '@lifi/perps-types/providers/hyperliquid'
+import { describe, expect, it } from 'vitest'
 import { mapFundingActivity, mapLedgerEntry } from './activity.js'
 
 // ---------------------------------------------------------------------------

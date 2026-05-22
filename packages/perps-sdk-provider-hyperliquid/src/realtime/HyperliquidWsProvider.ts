@@ -14,11 +14,7 @@ import type {
   HlOrderDetail,
   HlUserFill,
 } from '@lifi/perps-types/providers/hyperliquid'
-import {
-  mapFill,
-  mapOrder,
-  mapPosition,
-} from '@lifi/perps-types/providers/hyperliquid'
+import { mapFill, mapOrder, mapPosition } from '../mappers/index.js'
 import type {
   HlWsAllMidsData,
   HlWsCandleData,

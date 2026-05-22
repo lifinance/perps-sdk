@@ -1,13 +1,12 @@
-import { describe, expect, it } from 'vitest'
-
 import {
   FillClassification,
   FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
-} from '../../../enums.js'
-import type { LtTrade } from '../apiTypes.js'
+} from '@lifi/perps-types'
+import type { LtTrade } from '@lifi/perps-types/providers/lighter'
+import { describe, expect, it } from 'vitest'
 import { mapFill } from './fill.js'
 
 const ACCOUNT_INDEX = 42

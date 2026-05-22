@@ -1,13 +1,12 @@
-import { describe, expect, it } from 'vitest'
-
 import {
   FillClassification,
   FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
-} from '../../../enums.js'
-import type { HlUserFill } from '../types.js'
+} from '@lifi/perps-types'
+import type { HlUserFill } from '@lifi/perps-types/providers/hyperliquid'
+import { describe, expect, it } from 'vitest'
 import { classifyFillFromPosition, mapFill } from './fill.js'
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({

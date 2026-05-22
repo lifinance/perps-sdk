@@ -5,13 +5,9 @@ import type {
   OrdersResponse,
   TriggerOrder,
 } from '@lifi/perps-types'
-import {
-  type HlFrontendOpenOrder,
-  type HlFrontendOpenOrders,
-  isTriggerType,
-  mapOpenOrder,
-  mapOrderType,
-  mapTriggerOrder,
+import type {
+  HlFrontendOpenOrder,
+  HlFrontendOpenOrders,
 } from '@lifi/perps-types/providers/hyperliquid'
 import {
   type AssetEnrichmentMaps,
@@ -21,6 +17,12 @@ import {
 } from '../assetLookups.js'
 import { PROVIDER_KEY } from '../constants.js'
 import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
+import {
+  isTriggerType,
+  mapOpenOrder,
+  mapOrderType,
+  mapTriggerOrder,
+} from '../mappers/index.js'
 import { getSupportedSubDexes } from '../subdexes.js'
 
 export interface GetOrdersParams {

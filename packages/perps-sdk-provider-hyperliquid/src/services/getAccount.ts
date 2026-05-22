@@ -11,7 +11,6 @@ import {
   type HlExtraAgents,
   type HlSpotClearinghouseState,
   type HlUserFees,
-  mapPosition,
 } from '@lifi/perps-types/providers/hyperliquid'
 import {
   buildAssetEnrichmentMaps,
@@ -20,6 +19,7 @@ import {
 } from '../assetLookups.js'
 import { PROVIDER_KEY } from '../constants.js'
 import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
+import { mapPosition } from '../mappers/index.js'
 import { buildMarketQuoteAssetMap, getSupportedSubDexes } from '../subdexes.js'
 
 export interface GetAccountParams {

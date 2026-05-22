@@ -17,16 +17,6 @@ import {
   toProviderMarketId,
 } from './subdexes.js'
 
-/**
- * Hyperliquid-internal numeric asset ID. Main perps DEX entries use the bare
- * universe index; HIP-3 sub-dex entries are offset by `100_000 + dexIndex * 10_000`.
- */
-export const calculateAssetId = (
-  dexIndex: number,
-  indexInDex: number
-): number =>
-  dexIndex === 0 ? indexInDex : 100_000 + dexIndex * 10_000 + indexInDex
-
 export interface AssetWithMeta {
   universe: HlUniverseItem
   assetCtx: HlAssetCtx

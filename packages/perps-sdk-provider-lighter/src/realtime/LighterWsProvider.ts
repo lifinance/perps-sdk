@@ -17,11 +17,7 @@ import type {
   LtOrder,
   LtTrade,
 } from '@lifi/perps-types/providers/lighter'
-import {
-  mapFill,
-  mapOrderDetail,
-  mapPosition,
-} from '@lifi/perps-types/providers/lighter'
+import { mapFill, mapOrderDetail, mapPosition } from '../mappers/index.js'
 import type {
   LtOrderBookDetail,
   LtOrderBookDetailsResponse,

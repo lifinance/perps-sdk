@@ -5,10 +5,16 @@ import type {
   LiquidationActivity,
   TransferActivity,
   WithdrawalActivity,
-} from '../../../account.js'
-import { ActivityType } from '../../../enums.js'
-import type { HlFundingUpdate, HlLedgerUpdate } from '../types.js'
-import { isSendAssetDelta, isSpotTransferDelta } from '../types.js'
+} from '@lifi/perps-types'
+import { ActivityType } from '@lifi/perps-types'
+import type {
+  HlFundingUpdate,
+  HlLedgerUpdate,
+} from '@lifi/perps-types/providers/hyperliquid'
+import {
+  isSendAssetDelta,
+  isSpotTransferDelta,
+} from '@lifi/perps-types/providers/hyperliquid'
 import { deriveMarket } from './_market.js'
 
 /**

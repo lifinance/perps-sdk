@@ -46,6 +46,8 @@ import type {
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { projectLighterConfigSettings } from '../accountConfig.js'
+import { summarizeLighterAccount } from '../accountSummary.js'
 import {
   isTriggerType,
   mapFill,
@@ -53,9 +55,7 @@ import {
   mapOrderDetail,
   mapPosition,
   mapTriggerOrder,
-} from '@lifi/perps-types/providers/lighter'
-import { projectLighterConfigSettings } from '../accountConfig.js'
-import { summarizeLighterAccount } from '../accountSummary.js'
+} from '../mappers/index.js'
 import { createAuthToken } from '../signers/createAuthToken.js'
 import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'

@@ -1,12 +1,14 @@
-import type { OpenOrder, TriggerOrder } from '../../../account.js'
-import type { Order } from '../../../action.js'
+import type { OpenOrder, Order, TriggerOrder } from '@lifi/perps-types'
 import {
   OrderSide,
   OrderStatus,
   OrderType,
   TimeInForce,
-} from '../../../enums.js'
-import type { HlFrontendOpenOrder, HlOrderDetail } from '../types.js'
+} from '@lifi/perps-types'
+import type {
+  HlFrontendOpenOrder,
+  HlOrderDetail,
+} from '@lifi/perps-types/providers/hyperliquid'
 import { deriveMarket } from './_market.js'
 
 /** Map a Hyperliquid orderType string to the OrderType enum. */

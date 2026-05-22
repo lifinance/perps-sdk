@@ -1,6 +1,5 @@
+import { FillClassification } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-
-import { FillClassification } from '../../enums.js'
 import { classifyFillFromPosition } from './fillClassification.js'
 
 /**
