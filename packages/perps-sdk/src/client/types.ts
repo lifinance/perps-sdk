@@ -14,6 +14,7 @@ import type {
   WithdrawalParams,
 } from '@lifi/perps-types'
 import type { StorageAdapter } from '../agent/types.js'
+import type { PerpsProvider } from '../types/core.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
 // Re-export the SDK client types from createPerpsClient
@@ -51,8 +52,12 @@ export interface PerpsClientOptions {
   apiUrl?: string
   /** Custom storage adapter for agent keys. Defaults to localStorage. */
   storage?: StorageAdapter
-  /** Provider-specific configuration */
-  providers?: ProviderConfigs
+  /**
+   * Provider plugins or per-provider config. Accepts the same two shapes as
+   * {@link PerpsConfig.providers}: an array of `PerpsProvider` plugins or a
+   * keyed `ProviderConfigs` map.
+   */
+  providers?: PerpsProvider[] | ProviderConfigs
 }
 
 /**
