@@ -1,18 +1,8 @@
+// biome-ignore-all lint/performance/noBarrelFile: package public entry point.
+// biome-ignore-all lint/performance/noReExportAll: package public entry point.
+
 export { projectHyperliquidConfigSettings } from './accountConfig.js'
 export { summarizeHyperliquidAccount } from './accountSummary.js'
-export {
-  assetIsSpot,
-  calculateAssetId,
-  getProviderIndex,
-} from './assetId.js'
-export type { AssetEnrichmentMaps, AssetWithMeta } from './assetLookups.js'
-export {
-  buildAssetEnrichmentMaps,
-  buildAssetMarketLookup,
-  fetchAllPerpAssetsRaw,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from './assetLookups.js'
 export {
   DEFAULT_HYPERLIQUID_API_URL,
   PROVIDER_KEY as HYPERLIQUID_PROVIDER_KEY,
@@ -21,34 +11,7 @@ export {
   type HyperliquidProviderOptions,
   hyperliquidProvider,
 } from './HyperliquidProvider.js'
-export type { InfoRequestOptions } from './infoClient.js'
-export { infoRequest } from './infoClient.js'
-export {
-  classifyFillFromPosition,
-  isTriggerType,
-  mapAsset,
-  mapFill,
-  mapFundingActivity,
-  mapLedgerEntry,
-  mapOpenOrder,
-  mapOrder,
-  mapOrderType,
-  mapPosition,
-  mapTriggerOrder,
-} from './mappers/index.js'
-export {
-  HyperliquidWsProvider,
-  hyperliquidWsProvider,
-} from './realtime/HyperliquidWsProvider.js'
-export type {
-  HlWsAllMidsData,
-  HlWsCandleData,
-  HlWsClearinghouseStateData,
-  HlWsL2BookData,
-  HlWsMessage,
-  HlWsSpotClearinghouseStateData,
-  HlWsUserFillsData,
-} from './realtime/types.js'
+export * from './mappers/index.js'
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export type { GetActivityParams } from './services/getActivity.js'
@@ -70,36 +33,9 @@ export type { GetPositionsParams } from './services/getPositions.js'
 export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
-export type {
-  HlSpotAssetCtx,
-  HlSpotMeta,
-  HlSpotMetaAndAssetCtxs,
-  HlSpotToken,
-  HlSpotUniverseEntry,
-  SpotPairInfo,
-} from './spot.js'
+export * from './types/index.js'
+export * from './utils/index.js'
 export {
-  buildSpotPairNameLookup,
-  buildSpotTokenIdLookup,
-  buildSpotTokenLookup,
-  getSpotAssetCtxs,
-  getSpotPairs,
-  purrSpotOverride,
-  resolveSpotPair,
-  spotPairAssetId,
-} from './spot.js'
-export type { ProviderMarket } from './subdexes.js'
-export {
-  buildMarketQuoteAssetMap,
-  getProviderMarkets,
-  getSupportedSubDexes,
-  perpsDisplaySymbol,
-  toProviderMarketId,
-} from './subdexes.js'
-export {
-  calculateLiquidationPrice,
-  calculateMaintenanceMarginRate,
-  formatOrderPrice,
-  formatOrderSize,
-  getMaxPriceDecimals,
-} from './utils/index.js'
+  HyperliquidWsProvider,
+  hyperliquidWsProvider,
+} from './websocket/HyperliquidWsProvider.js'

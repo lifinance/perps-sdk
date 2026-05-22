@@ -12,15 +12,13 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
+import { mapFill, mapOrderDetail, mapPosition } from '../mappers/index.js'
 import type {
   LtAccountPosition,
   LtOrder,
-  LtTrade,
-} from '@lifi/perps-types/providers/lighter'
-import { mapFill, mapOrderDetail, mapPosition } from '../mappers/index.js'
-import type {
-  LtOrderBookDetail,
   LtOrderBookDetailsResponse,
+  LtPerpsOrderBookDetail,
+  LtTrade,
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
   LtWsAccountAllTradesMessage,
@@ -30,7 +28,7 @@ import type {
   LtWsMessage,
   LtWsOrderBook,
   LtWsOrderBookMessage,
-} from './types.js'
+} from '../types/index.js'
 
 // ---------------------------------------------------------------------------
 // LighterWsProvider
@@ -376,7 +374,7 @@ export class LighterWsProvider implements WsProvider {
     }
   }
 
-  private registerMarket(d: LtOrderBookDetail): void {
+  private registerMarket(d: LtPerpsOrderBookDetail): void {
     this.symbolToMarketId.set(d.symbol, d.market_id)
     this.marketIdToSymbol.set(d.market_id, d.symbol)
   }

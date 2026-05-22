@@ -1,17 +1,17 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { OhlcvInterval, OhlcvResponse } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { HlCandleSnapshot } from '@lifi/perps-types/providers/hyperliquid'
-import { assetIsSpot } from '../assetId.js'
-import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
 import {
   DEFAULT_CANDLE_LIMIT,
   DEFAULT_OHLCV_LOOKBACK_MS,
   MAX_CANDLE_LIMIT,
   PROVIDER_KEY,
 } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { purrSpotOverride, resolveSpotPair } from '../spot.js'
+import type { HlCandleSnapshot } from '../types/index.js'
+import { assetIsSpot } from '../utils/assetId.js'
+import { fetchAllPerpAssetsRaw } from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { purrSpotOverride, resolveSpotPair } from '../utils/spot.js'
 
 export interface GetOhlcvParams {
   symbol: string

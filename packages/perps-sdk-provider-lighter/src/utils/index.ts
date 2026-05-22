@@ -1,0 +1,12 @@
+// biome-ignore-all lint/performance/noBarrelFile: single re-export entry point
+// for the package's utility surface. Internal modules import per-file paths
+// (e.g. `./apiClient.js`) directly.
+
+export type { LighterActivityCursor } from './activityCursor.js'
+export {
+  decodeActivityCursor,
+  encodeActivityCursor,
+} from './activityCursor.js'
+export { LighterApiClient } from './apiClient.js'
+export { LighterMarketRegistry } from './markets.js'
+export { mapInterval } from './ohlcvInterval.js'

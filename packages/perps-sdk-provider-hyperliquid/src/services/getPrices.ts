@@ -1,7 +1,7 @@
 import type { AssetPrice, PricesResponse } from '@lifi/perps-types'
-import type { HlAllMids } from '@lifi/perps-types/providers/hyperliquid'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { getSupportedSubDexes } from '../subdexes.js'
+import type { HlAllMids } from '../types/index.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetPricesParams {
   /** Optional client-side filter against the merged `assetId` set. */

@@ -1,3 +1,5 @@
+// biome-ignore-all lint/performance/noBarrelFile: package-internal barrel.
+
 export type { CreateAuthTokenInputs } from './createAuthToken.js'
 export {
   createAuthToken,

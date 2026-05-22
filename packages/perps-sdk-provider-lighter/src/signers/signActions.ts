@@ -10,7 +10,7 @@ import type {
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import { parseAbi } from 'viem'
-import { DEFAULT_API_KEY_INDEX } from '../provider/constants.js'
+import { DEFAULT_API_KEY_INDEX } from '../constants.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
 

@@ -1,15 +1,15 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Address, Order } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { HlOrderStatusResponse } from '@lifi/perps-types/providers/hyperliquid'
+import { PROVIDER_KEY } from '../constants.js'
+import { mapOrder } from '../mappers/index.js'
+import type { HlOrderStatusResponse } from '../types/index.js'
 import {
   buildAssetEnrichmentMaps,
   resolveDisplayQuote,
   resolveDisplaySymbol,
-} from '../assetLookups.js'
-import { PROVIDER_KEY } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { mapOrder } from '../mappers/index.js'
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetOrderParams {
   address: Address

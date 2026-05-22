@@ -1,9 +1,9 @@
 import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LighterKeyStore } from '../signers/LighterKeyStore.js'
-import type { LighterSigner } from '../signers/LighterSigner.js'
 import { lighterProvider } from './LighterProvider.js'
+import { LighterKeyStore } from './signers/LighterKeyStore.js'
+import type { LighterSigner } from './signers/LighterSigner.js'
 
 // ---------------------------------------------------------------------------
 // Test fixtures

@@ -7,24 +7,24 @@ import type {
   LiquidationActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
-import type {
-  HlUserFunding,
-  HlUserNonFundingLedgerUpdates,
-} from '@lifi/perps-types/providers/hyperliquid'
-import {
-  type AssetEnrichmentMaps,
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../assetLookups.js'
 import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,
   NINETY_DAYS_MS,
   PROVIDER_KEY,
 } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
 import { mapFundingActivity, mapLedgerEntry } from '../mappers/index.js'
+import type {
+  HlUserFunding,
+  HlUserNonFundingLedgerUpdates,
+} from '../types/index.js'
+import {
+  type AssetEnrichmentMaps,
+  buildAssetEnrichmentMaps,
+  resolveDisplayQuote,
+  resolveDisplaySymbol,
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetActivityParams {
   address: Address

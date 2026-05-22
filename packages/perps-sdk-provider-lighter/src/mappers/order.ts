@@ -5,7 +5,7 @@ import {
   OrderType,
   TimeInForce,
 } from '@lifi/perps-types'
-import type { LtOrder } from '@lifi/perps-types/providers/lighter'
+import type { LtOrder } from '../types/index.js'
 
 // Lighter's `type` enum uses hyphens in the OpenAPI spec but earlier API
 // versions emitted underscores. Tolerate both so we don't silently fall

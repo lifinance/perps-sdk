@@ -1,11 +1,13 @@
 import type { Address, Hex, TypedDataDomain, TypedDataParameter } from 'viem'
-import type { HlPrimaryType } from './providers/hyperliquid/types.js'
 
 /**
- * All known EIP-712 primaryType values across supported providers.
- * Extend this union when adding a new EIP-712 provider.
+ * EIP-712 primaryType value. Provider-agnostic at the types layer — each
+ * provider package exports its own narrow union of literals (e.g.
+ * `HlPrimaryType` in `@lifi/perps-sdk-provider-hyperliquid`); consumers
+ * that need to validate against a closed set should import the
+ * provider-specific union directly.
  */
-export type PerpsPrimaryType = HlPrimaryType
+export type PerpsPrimaryType = string
 
 export type PerpsTypedData = {
   domain: TypedDataDomain

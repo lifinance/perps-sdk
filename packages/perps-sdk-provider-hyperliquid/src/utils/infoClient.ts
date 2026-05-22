@@ -1,6 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { PROVIDER_KEY } from './constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 
 export interface InfoRequestOptions {
   signal?: AbortSignal

@@ -1,20 +1,17 @@
 import type { Address, FillsResponse } from '@lifi/perps-types'
-import type {
-  HlUserFills,
-  HlUserFillsByTime,
-} from '@lifi/perps-types/providers/hyperliquid'
-import {
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../assetLookups.js'
 import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,
   PROVIDER_KEY,
 } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
 import { mapFill } from '../mappers/index.js'
+import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
+import {
+  buildAssetEnrichmentMaps,
+  resolveDisplayQuote,
+  resolveDisplaySymbol,
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetFillsParams {
   address: Address

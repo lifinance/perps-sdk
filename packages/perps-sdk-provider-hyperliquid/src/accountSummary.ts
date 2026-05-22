@@ -5,7 +5,7 @@ import type {
   Asset,
   Position,
 } from '@lifi/perps-types'
-import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
+import { HlAbstractionMode } from './types/index.js'
 
 /**
  * Build a map of coin name → USD price from spot assets and allMids.

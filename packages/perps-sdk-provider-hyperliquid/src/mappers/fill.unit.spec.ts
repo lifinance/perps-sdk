@@ -5,8 +5,8 @@ import {
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
-import type { HlUserFill } from '@lifi/perps-types/providers/hyperliquid'
 import { describe, expect, it } from 'vitest'
+import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './fill.js'
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({

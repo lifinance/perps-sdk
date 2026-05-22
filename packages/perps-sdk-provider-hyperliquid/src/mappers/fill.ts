@@ -7,8 +7,8 @@ import {
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
-import type { HlUserFill } from '@lifi/perps-types/providers/hyperliquid'
-import { assetIsSpot } from '../assetId.js'
+import type { HlUserFill } from '../types/index.js'
+import { assetIsSpot } from '../utils/assetId.js'
 import { deriveMarket } from './_market.js'
 
 export { classifyFillFromPosition }

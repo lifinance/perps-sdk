@@ -46,43 +46,8 @@ import type {
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import { projectLighterConfigSettings } from '../accountConfig.js'
-import { summarizeLighterAccount } from '../accountSummary.js'
-import {
-  isTriggerType,
-  mapFill,
-  mapOrder,
-  mapOrderDetail,
-  mapPosition,
-  mapTriggerOrder,
-} from '../mappers/index.js'
-import { createAuthToken } from '../signers/createAuthToken.js'
-import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
-import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'
-import {
-  LighterReadOnlyTokenManager,
-  walletClientSigner,
-} from '../signers/LighterReadOnlyTokenManager.js'
-import type { LighterSigner } from '../signers/LighterSigner.js'
-import { lighterSignActions } from '../signers/signActions.js'
-import {
-  decodeActivityCursor,
-  encodeActivityCursor,
-  type LighterActivityCursor,
-} from './activityCursor.js'
-import { LighterApiClient } from './apiClient.js'
-import type {
-  LtAccountLimits,
-  LtDepositHistoryResponse,
-  LtDetailedAccount,
-  LtDetailedAccountPosition,
-  LtLiquidationsResponse,
-  LtOrdersResponse,
-  LtPositionFundingsResponse,
-  LtTradesResponse,
-  LtTransferHistoryResponse,
-  LtWithdrawHistoryResponse,
-} from './apiTypes.js'
+import { projectLighterConfigSettings } from './accountConfig.js'
+import { summarizeLighterAccount } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_CANDLE_LIMIT,
@@ -99,10 +64,45 @@ import {
   MAX_ORDERBOOK_DEPTH,
 } from './constants.js'
 import {
+  isTriggerType,
+  mapFill,
+  mapOrder,
+  mapOrderDetail,
+  mapPosition,
+  mapTriggerOrder,
+} from './mappers/index.js'
+import { createAuthToken } from './signers/createAuthToken.js'
+import type { LighterKeyStore } from './signers/LighterKeyStore.js'
+import type { LighterReadOnlyTokenManagerOptions } from './signers/LighterReadOnlyTokenManager.js'
+import {
+  LighterReadOnlyTokenManager,
+  walletClientSigner,
+} from './signers/LighterReadOnlyTokenManager.js'
+import type { LighterSigner } from './signers/LighterSigner.js'
+import { lighterSignActions } from './signers/signActions.js'
+import type {
+  LtAccountLimits,
+  LtDepositHistoryResponse,
+  LtDetailedAccount,
+  LtDetailedAccountPosition,
+  LtLiquidationsResponse,
+  LtOrdersResponse,
+  LtPositionFundingsResponse,
+  LtTradesResponse,
+  LtTransferHistoryResponse,
+  LtWithdrawHistoryResponse,
+} from './types/index.js'
+import {
+  decodeActivityCursor,
+  encodeActivityCursor,
+  type LighterActivityCursor,
+} from './utils/activityCursor.js'
+import { LighterApiClient } from './utils/apiClient.js'
+import {
   LighterMarketRegistry,
   marginFractionToMaxLeverage,
-} from './markets.js'
-import { mapInterval } from './ohlcvInterval.js'
+} from './utils/markets.js'
+import { mapInterval } from './utils/ohlcvInterval.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 

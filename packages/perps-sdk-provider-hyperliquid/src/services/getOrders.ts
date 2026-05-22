@@ -5,25 +5,25 @@ import type {
   OrdersResponse,
   TriggerOrder,
 } from '@lifi/perps-types'
-import type {
-  HlFrontendOpenOrder,
-  HlFrontendOpenOrders,
-} from '@lifi/perps-types/providers/hyperliquid'
-import {
-  type AssetEnrichmentMaps,
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../assetLookups.js'
 import { PROVIDER_KEY } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
 import {
   isTriggerType,
   mapOpenOrder,
   mapOrderType,
   mapTriggerOrder,
 } from '../mappers/index.js'
-import { getSupportedSubDexes } from '../subdexes.js'
+import type {
+  HlFrontendOpenOrder,
+  HlFrontendOpenOrders,
+} from '../types/index.js'
+import {
+  type AssetEnrichmentMaps,
+  buildAssetEnrichmentMaps,
+  resolveDisplayQuote,
+  resolveDisplaySymbol,
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetOrdersParams {
   address: Address

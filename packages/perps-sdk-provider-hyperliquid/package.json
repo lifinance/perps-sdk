@@ -65,7 +65,8 @@
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests"
   },
   "dependencies": {
-    "@lifi/perps-types": "workspace:*"
+    "@lifi/perps-types": "workspace:*",
+    "viem": "2.48.8"
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:*"

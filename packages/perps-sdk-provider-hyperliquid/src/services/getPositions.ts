@@ -1,14 +1,14 @@
 import type { Address, PositionsResponse } from '@lifi/perps-types'
-import type { HlClearinghouseState } from '@lifi/perps-types/providers/hyperliquid'
+import { PROVIDER_KEY } from '../constants.js'
+import { mapPosition } from '../mappers/index.js'
+import type { HlClearinghouseState } from '../types/index.js'
 import {
   buildAssetEnrichmentMaps,
   resolveDisplayQuote,
   resolveDisplaySymbol,
-} from '../assetLookups.js'
-import { PROVIDER_KEY } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { mapPosition } from '../mappers/index.js'
-import { getSupportedSubDexes } from '../subdexes.js'
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetPositionsParams {
   address: Address

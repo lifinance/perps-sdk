@@ -66,6 +66,9 @@ importers:
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
+      viem:
+        specifier: 2.48.8
+        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:*

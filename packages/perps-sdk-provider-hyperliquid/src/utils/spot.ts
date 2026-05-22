@@ -1,7 +1,7 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import { PROVIDER_KEY } from '../constants.js'
 import { assetIsSpot } from './assetId.js'
-import { PROVIDER_KEY } from './constants.js'
 import { type InfoRequestOptions, infoRequest } from './infoClient.js'
 
 export interface HlSpotToken {

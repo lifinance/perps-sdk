@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Lighter WebSocket message types
+// Lighter WebSocket message types.
 //
 // The Lighter stream server sends JSON messages of shape:
 //   { type: 'subscribed/<channel>' | 'update/<channel>' | 'ping',
@@ -55,19 +55,6 @@ export type LtWsOrderBook = {
 export type LtWsOrderBookMessage = LtWsMessage & {
   type: 'subscribed/order_book' | 'update/order_book'
   order_book: LtWsOrderBook
-}
-
-export type LtOrderBookDetail = {
-  symbol: string
-  market_id: number
-  market_type: string
-  supported_price_decimals: number
-  supported_size_decimals: number
-}
-
-export type LtOrderBookDetailsResponse = {
-  code: number
-  order_book_details: LtOrderBookDetail[]
 }
 
 /**

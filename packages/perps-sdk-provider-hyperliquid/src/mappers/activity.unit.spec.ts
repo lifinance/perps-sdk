@@ -5,15 +5,15 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
+import { describe, expect, it } from 'vitest'
 import type {
   HlFundingUpdate,
   HlLedgerDelta,
   HlLedgerUpdate,
   HlSendAssetDelta,
   HlSpotTransferDelta,
-} from '@lifi/perps-types/providers/hyperliquid'
-import { isSendAssetDelta } from '@lifi/perps-types/providers/hyperliquid'
-import { describe, expect, it } from 'vitest'
+} from '../types/index.js'
+import { isSendAssetDelta } from '../types/index.js'
 import { mapFundingActivity, mapLedgerEntry } from './activity.js'
 
 // ---------------------------------------------------------------------------

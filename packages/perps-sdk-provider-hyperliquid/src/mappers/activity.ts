@@ -7,14 +7,8 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
-import type {
-  HlFundingUpdate,
-  HlLedgerUpdate,
-} from '@lifi/perps-types/providers/hyperliquid'
-import {
-  isSendAssetDelta,
-  isSpotTransferDelta,
-} from '@lifi/perps-types/providers/hyperliquid'
+import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
+import { isSendAssetDelta, isSpotTransferDelta } from '../types/index.js'
 import { deriveMarket } from './_market.js'
 
 /**

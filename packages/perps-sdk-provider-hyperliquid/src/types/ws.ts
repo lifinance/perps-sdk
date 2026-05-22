@@ -1,13 +1,10 @@
-// Hyperliquid WebSocket incoming message types
-// Derived from @lifi/perps-types where possible to avoid duplication.
+// ---------------------------------------------------------------------------
+// Hyperliquid WebSocket incoming message types.
+// ---------------------------------------------------------------------------
 
-import type {
-  HlAllMids,
-  HlCandle,
-  HlClearinghouseState,
-  HlL2Book,
-  HlUserFill,
-} from '@lifi/perps-types/providers/hyperliquid'
+import type { HlClearinghouseState } from './account.js'
+import type { HlAllMids, HlCandle, HlL2Book } from './asset.js'
+import type { HlUserFill } from './fill.js'
 
 export type HlWsMessage = {
   channel: string

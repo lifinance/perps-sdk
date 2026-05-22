@@ -1,6 +1,6 @@
 import { OrderStatus } from '@lifi/perps-types'
-import type { HlOrderDetail } from '@lifi/perps-types/providers/hyperliquid'
 import { describe, expect, it } from 'vitest'
+import type { HlOrderDetail } from '../types/index.js'
 import { mapOrder, mapStatusReason } from './order.js'
 
 const baseDetail = (

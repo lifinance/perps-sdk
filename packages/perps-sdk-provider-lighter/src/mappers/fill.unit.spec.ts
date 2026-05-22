@@ -5,8 +5,8 @@ import {
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
-import type { LtTrade } from '@lifi/perps-types/providers/lighter'
 import { describe, expect, it } from 'vitest'
+import type { LtTrade } from '../types/index.js'
 import { mapFill } from './fill.js'
 
 const ACCOUNT_INDEX = 42

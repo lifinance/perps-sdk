@@ -1,10 +1,10 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { OrderbookResponse } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { HlL2Book } from '@lifi/perps-types/providers/hyperliquid'
 import { MAX_ORDERBOOK_DEPTH, PROVIDER_KEY } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { purrSpotOverride } from '../spot.js'
+import type { HlL2Book } from '../types/index.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { purrSpotOverride } from '../utils/spot.js'
 
 export interface GetOrderbookParams {
   symbol: string

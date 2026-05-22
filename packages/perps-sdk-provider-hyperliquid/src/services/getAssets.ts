@@ -1,14 +1,17 @@
 import type { Asset, AssetsResponse } from '@lifi/perps-types'
-import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
-import type { InfoRequestOptions } from '../infoClient.js'
 import { mapAsset } from '../mappers/index.js'
+import { fetchAllPerpAssetsRaw } from '../utils/assetLookups.js'
+import type { InfoRequestOptions } from '../utils/infoClient.js'
 import {
   getSpotAssetCtxs,
   getSpotPairs,
   type HlSpotAssetCtx,
   type SpotPairInfo,
-} from '../spot.js'
-import { buildMarketQuoteAssetMap, perpsDisplaySymbol } from '../subdexes.js'
+} from '../utils/spot.js'
+import {
+  buildMarketQuoteAssetMap,
+  perpsDisplaySymbol,
+} from '../utils/subdexes.js'
 
 const mapSpotAsset = (
   pair: SpotPairInfo,

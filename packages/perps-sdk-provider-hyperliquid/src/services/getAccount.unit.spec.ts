@@ -1,4 +1,3 @@
-import { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_CLEARINGHOUSE_STATE,
@@ -11,6 +10,7 @@ import {
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
+import { HlAbstractionMode } from '../types/index.js'
 import { getAccount } from './getAccount.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const

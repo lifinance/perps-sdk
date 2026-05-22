@@ -1,11 +1,14 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Asset } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { fetchAllPerpAssetsRaw } from '../assetLookups.js'
 import { PROVIDER_KEY } from '../constants.js'
-import type { InfoRequestOptions } from '../infoClient.js'
 import { mapAsset } from '../mappers/index.js'
-import { buildMarketQuoteAssetMap, perpsDisplaySymbol } from '../subdexes.js'
+import { fetchAllPerpAssetsRaw } from '../utils/assetLookups.js'
+import type { InfoRequestOptions } from '../utils/infoClient.js'
+import {
+  buildMarketQuoteAssetMap,
+  perpsDisplaySymbol,
+} from '../utils/subdexes.js'
 
 export interface GetAssetParams {
   symbol: string

@@ -2,7 +2,7 @@ import type {
   HlAssetCtx,
   HlMetaAndAssetCtxs,
   HlUniverseItem,
-} from '@lifi/perps-types/providers/hyperliquid'
+} from '../types/index.js'
 import { type InfoRequestOptions, infoRequest } from './infoClient.js'
 import {
   buildSpotPairNameLookup,

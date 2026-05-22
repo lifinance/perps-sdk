@@ -1,6 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
+import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { infoRequest } from './infoClient.js'
 
 describe('infoRequest', () => {

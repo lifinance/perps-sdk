@@ -1,5 +1,5 @@
-import type { HlPerpDexs } from '@lifi/perps-types/providers/hyperliquid'
-import { MAIN_DEX_NAME, MAIN_MARKET_ID, SPOT_MARKET_ID } from './constants.js'
+import { MAIN_DEX_NAME, MAIN_MARKET_ID, SPOT_MARKET_ID } from '../constants.js'
+import type { HlPerpDexs } from '../types/index.js'
 import { type InfoRequestOptions, infoRequest } from './infoClient.js'
 import { buildSpotTokenByIndex } from './spot.js'
 

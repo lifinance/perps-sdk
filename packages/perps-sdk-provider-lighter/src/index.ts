@@ -1,3 +1,6 @@
+// biome-ignore-all lint/performance/noBarrelFile: package public entry point.
+// biome-ignore-all lint/performance/noReExportAll: package public entry point.
+
 // ---------------------------------------------------------------------------
 // @lifi/perps-sdk-provider-lighter
 //
@@ -16,71 +19,22 @@
 export { projectLighterConfigSettings } from './accountConfig.js'
 export { summarizeLighterAccount } from './accountSummary.js'
 export {
-  isTriggerType,
-  mapFill,
-  mapOrder,
-  mapOrderDetail,
-  mapPosition,
-  mapTriggerOrder,
-} from './mappers/index.js'
-// Activity cursor envelope (preserves the backend-emitted shape)
-export type { LighterActivityCursor } from './provider/activityCursor.js'
-export {
-  decodeActivityCursor,
-  encodeActivityCursor,
-} from './provider/activityCursor.js'
-// REST primitives — exported for callers building their own caches
-export { LighterApiClient } from './provider/apiClient.js'
-// Constants — re-exported for advanced callers
-export {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_PROVIDER_KEY,
-} from './provider/constants.js'
-// Provider plugin + factory
+} from './constants.js'
 export type {
   LighterPerpsProvider,
   LighterProviderOptions,
-} from './provider/LighterProvider.js'
-export { Lighter, lighterProvider } from './provider/LighterProvider.js'
-export { LighterMarketRegistry } from './provider/markets.js'
-// Realtime WS provider
-export type { LighterAuthProvider } from './realtime/LighterWsProvider.js'
+} from './LighterProvider.js'
+export { Lighter, lighterProvider } from './LighterProvider.js'
+export * from './mappers/index.js'
+export * from './signers/index.js'
+export * from './types/index.js'
+export * from './utils/index.js'
+export type { LighterAuthProvider } from './websocket/LighterWsProvider.js'
 export {
   LighterWsProvider,
   type LighterWsProviderOptions,
   lighterWsProvider,
-} from './realtime/LighterWsProvider.js'
-// Signers + Lighter-owned standalone utilities
-export type {
-  ApiKeyPair,
-  ApproveReadOnlyTokenInputs,
-  ApproveReadOnlyTokenResult,
-  ChangePubKeyResult,
-  CreateAuthTokenInputs,
-  LighterApiKey,
-  LighterCreateTokenResponse,
-  LighterReadOnlyToken,
-  LighterReadOnlyTokenManagerOptions,
-  LighterSignedBlob,
-  LighterSignerConfig,
-  LighterSignerContext,
-  LighterTokenFetcher,
-  LighterWalletSigner,
-  LighterWasmExports,
-  LoadLighterWasmOptions,
-} from './signers/index.js'
-export {
-  buildReadOnlyTokenMessage,
-  createAuthToken,
-  DEFAULT_LIGHTER_API_URL,
-  DEFAULT_READ_ONLY_TOKEN_NAME,
-  defaultLighterTokenFetcher,
-  isReadOnlyTokenExpiringSoon,
-  LighterKeyStore,
-  LighterReadOnlyTokenManager,
-  LighterSigner,
-  loadLighterWasm,
-  resetLighterWasmCache,
-  walletClientSigner,
-} from './signers/index.js'
+} from './websocket/LighterWsProvider.js'

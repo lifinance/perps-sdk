@@ -1,6 +1,8 @@
+// ---------------------------------------------------------------------------
 // Lighter WASM signer parameter types — shapes of `wasmSignParams` per
 // action. The backend populates these and the SDK passes them to the WASM
 // signer alongside SDK-managed fields (nonce, account_index, api_key_index).
+// ---------------------------------------------------------------------------
 
 /** Backend-provided params for SignCreateOrder. */
 export type LtCreateOrderWasmParams = {

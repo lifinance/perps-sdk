@@ -1,6 +1,10 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { LighterApiClient } from './apiClient.js'
+import {
+  LIGHTER_LOGO_BASE_URL,
+  LIGHTER_PROVIDER_KEY,
+  MARKET_STATUS_ACTIVE,
+} from '../constants.js'
 import type {
   LtAssetDetailsResponse,
   LtFundingRatesResponse,
@@ -8,12 +12,8 @@ import type {
   LtPerpsOrderBookDetail,
   LtSpotOrderBookDetail,
   LtTokenListResponse,
-} from './apiTypes.js'
-import {
-  LIGHTER_LOGO_BASE_URL,
-  LIGHTER_PROVIDER_KEY,
-  MARKET_STATUS_ACTIVE,
-} from './constants.js'
+} from '../types/index.js'
+import type { LighterApiClient } from './apiClient.js'
 
 /**
  * Per-instance metadata cache for Lighter market reference data. The same

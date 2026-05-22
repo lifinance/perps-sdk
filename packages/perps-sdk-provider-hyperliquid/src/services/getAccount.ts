@@ -5,22 +5,25 @@ import type {
   HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
+import { PROVIDER_KEY } from '../constants.js'
+import { mapPosition } from '../mappers/index.js'
 import {
   HlAbstractionMode,
   type HlClearinghouseState,
   type HlExtraAgents,
   type HlSpotClearinghouseState,
   type HlUserFees,
-} from '@lifi/perps-types/providers/hyperliquid'
+} from '../types/index.js'
 import {
   buildAssetEnrichmentMaps,
   resolveDisplayQuote,
   resolveDisplaySymbol,
-} from '../assetLookups.js'
-import { PROVIDER_KEY } from '../constants.js'
-import { type InfoRequestOptions, infoRequest } from '../infoClient.js'
-import { mapPosition } from '../mappers/index.js'
-import { buildMarketQuoteAssetMap, getSupportedSubDexes } from '../subdexes.js'
+} from '../utils/assetLookups.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import {
+  buildMarketQuoteAssetMap,
+  getSupportedSubDexes,
+} from '../utils/subdexes.js'
 
 export interface GetAccountParams {
   address: Address
