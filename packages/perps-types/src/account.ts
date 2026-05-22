@@ -324,8 +324,17 @@ export interface AccountConfigValue {
  *
  * Consumers must NOT read `AccountConfig` directly — narrow through this
  * projection so a new provider variant doesn't require widget changes.
+ *
+ * `satisfied` is populated by the per-provider `projectConfig` for setup
+ * descriptors whose satisfaction state lives in the typed `AccountConfig`
+ * itself (rather than in a backend prerequisite step). Today only Lighter
+ * populates it — `APPROVE_READ_ONLY_TOKEN` flips to `true` once the typed
+ * `LighterAccountConfig.readOnlyTokenApproved` is set. `undefined` means
+ * "this descriptor's satisfaction is tracked elsewhere" (e.g. the backend's
+ * `checkSetup` response); widgets should fold both signals together.
  */
 export interface AccountConfigSetting {
   type: ActionType
   values: AccountConfigValue[]
+  satisfied?: boolean
 }

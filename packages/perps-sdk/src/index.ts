@@ -93,6 +93,7 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetPricesParams,
+  SatisfyClientSetupContext,
   SignActionsContext,
 } from './types/core.js'
 export type { ExpectedPnl } from './utils/calculations.js'

@@ -30,7 +30,10 @@ export {
 } from './provider/constants.js'
 export { summarizeLighterAccount } from './accountSummary.js'
 // Provider plugin + factory
-export type { LighterProviderOptions } from './provider/LighterProvider.js'
+export type {
+  LighterPerpsProvider,
+  LighterProviderOptions,
+} from './provider/LighterProvider.js'
 export { Lighter, lighterProvider } from './provider/LighterProvider.js'
 export { LighterMarketRegistry } from './provider/markets.js'
 // Realtime WS provider

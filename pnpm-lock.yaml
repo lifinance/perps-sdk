@@ -63,13 +63,13 @@ importers:
 
   packages/perps-sdk-provider-hyperliquid:
     dependencies:
-      '@lifi/perps-sdk':
-        specifier: workspace:*
-        version: link:../perps-sdk
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
     devDependencies:
+      '@lifi/perps-sdk':
+        specifier: workspace:*
+        version: link:../perps-sdk
       '@vitest/coverage-v8':
         specifier: ^2.1.8
         version: 2.1.9(vitest@2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3)))

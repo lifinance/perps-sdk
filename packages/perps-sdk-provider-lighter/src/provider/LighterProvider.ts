@@ -12,6 +12,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
+  type SatisfyClientSetupContext,
   type SDKRequestOptions,
   type SignActionsContext,
 } from '@lifi/perps-sdk'
@@ -44,7 +45,7 @@ import type {
   SigningMethod,
   TriggerOrder,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import { summarizeLighterAccount } from '../accountSummary.js'
 import {
   isTriggerType,
@@ -58,7 +59,10 @@ import { projectLighterConfigSettings } from '../accountConfig.js'
 import { createAuthToken } from '../signers/createAuthToken.js'
 import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'
-import { LighterReadOnlyTokenManager } from '../signers/LighterReadOnlyTokenManager.js'
+import {
+  LighterReadOnlyTokenManager,
+  walletClientSigner,
+} from '../signers/LighterReadOnlyTokenManager.js'
 import type { LighterSigner } from '../signers/LighterSigner.js'
 import { lighterSignActions } from '../signers/signActions.js'
 import {
@@ -140,6 +144,18 @@ const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
 /**
+ * Default expiry for the read-only token Lighter mints in
+ * `satisfyClientSetup(APPROVE_READ_ONLY_TOKEN)`. 10 years — Lighter caps
+ * read-only tokens at the venue's maximum, which is a multi-year horizon
+ * for read-scope tokens.
+ */
+const DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS = 10 * 365 * 24 * 60 * 60
+
+const LIGHTER_CLIENT_SETUP_ACTIONS: ReadonlySet<ActionType> = new Set([
+  ActionType.APPROVE_READ_ONLY_TOKEN,
+])
+
+/**
  * Construction options for the Lighter {@link PerpsProvider} plugin.
  *
  * `restUrl` defaults to Lighter mainnet; pass a testnet URL or a self-hosted
@@ -200,6 +216,24 @@ interface MintedToken {
 }
 
 /**
+ * Lighter provider plugin extended with a public `resolveAuthToken` so the
+ * WS layer can share the same token-resolution closure that the read methods
+ * use internally. The base {@link PerpsProvider} contract stays
+ * provider-agnostic — this extension is opt-in for callers that explicitly
+ * type against it.
+ */
+export interface LighterPerpsProvider extends PerpsProvider {
+  /**
+   * Resolve a Lighter auth token for `address` using the same priority chain
+   * as the plugin's read methods: per-call override (n/a here) → constructor
+   * `authToken` → stored long-lived read-only token → freshly minted 1h token
+   * via the WASM signer + registered API key. Returns `undefined` when no
+   * source can produce a token — callers degrade gracefully.
+   */
+  resolveAuthToken(address: Address): Promise<string | undefined>
+}
+
+/**
  * Lighter provider plugin factory. Returns an object implementing
  * {@link PerpsProvider}, mirroring the `EthereumProvider()` / `hyperliquidProvider()`
  * shape used by the rest of the LI.FI SDK family.
@@ -215,7 +249,7 @@ interface MintedToken {
  */
 export const lighterProvider = (
   options: LighterProviderOptions = {}
-): PerpsProvider => {
+): LighterPerpsProvider => {
   const restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
@@ -552,6 +586,10 @@ export const lighterProvider = (
 
   return {
     type: LIGHTER_PROVIDER_KEY,
+
+    resolveAuthToken(address: Address): Promise<string | undefined> {
+      return resolveAuthToken(undefined, address)
+    },
 
     async getAccount(
       _client: PerpsSDKClient,
@@ -1119,6 +1157,59 @@ export const lighterProvider = (
         assets,
         collateralCurrencies
       )
+    },
+
+    clientSetupActions: LIGHTER_CLIENT_SETUP_ACTIONS,
+
+    async satisfyClientSetup(
+      action: ActionType,
+      _client: PerpsSDKClient,
+      ctx: SatisfyClientSetupContext
+    ): Promise<void> {
+      if (action !== ActionType.APPROVE_READ_ONLY_TOKEN) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `lighterProvider.satisfyClientSetup does not handle action '${action}'.`
+        )
+      }
+      if (readOnlyTokenManager === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'lighterProvider.satisfyClientSetup(APPROVE_READ_ONLY_TOKEN) requires ' +
+            '`readOnlyTokenOptions` to be configured.'
+        )
+      }
+      if (ctx.signer === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'lighterProvider.satisfyClientSetup(APPROVE_READ_ONLY_TOKEN) requires ' +
+            'a wallet signer. Call PerpsClient.setSigner(walletClient) first.'
+        )
+      }
+
+      const inputAccountIndex = (
+        ctx.params as { accountIndex?: number } | undefined
+      )?.accountIndex
+      const accountIndex =
+        typeof inputAccountIndex === 'number'
+          ? inputAccountIndex
+          : (await fetchDetailedAccount(apiClient(), ctx.address)).index
+
+      const inputExpiry = (
+        ctx.params as { expirySeconds?: number } | undefined
+      )?.expirySeconds
+      const expirySeconds =
+        typeof inputExpiry === 'number'
+          ? inputExpiry
+          : Math.floor(Date.now() / 1000) +
+            DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS
+
+      await readOnlyTokenManager.approve(walletClientSigner(ctx.signer), {
+        address: ctx.address,
+        accountIndex,
+        expirySeconds,
+        scope: 'all',
+      })
     },
 
     async signActions(

@@ -37,13 +37,19 @@ function projectLighterDescriptor(
   config: LighterAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
-    // Zero-parameter user-approval descriptors. The "satisfied or not"
-    // state comes from `checkSetup`'s unsatisfied list and the
-    // `config.apiKeyRegistered` / `config.readOnlyTokenApproved` flags,
-    // not from a projected value.
+    // `REGISTER_API_KEY` satisfaction is driven by the backend's `checkSetup`
+    // staging — leave `satisfied` undefined and let callers fold both signals.
     case ActionType.REGISTER_API_KEY:
-    case ActionType.APPROVE_READ_ONLY_TOKEN:
       return { type: descriptor.type, values: [] }
+    // `APPROVE_READ_ONLY_TOKEN` is a client-only flow that never reaches
+    // the backend, so its satisfaction state lives entirely in the typed
+    // `LighterAccountConfig` projection.
+    case ActionType.APPROVE_READ_ONLY_TOKEN:
+      return {
+        type: descriptor.type,
+        values: [],
+        satisfied: config.readOnlyTokenApproved,
+      }
 
     // Lighter exposes no abstraction-mode equivalent; if a backend descriptor
     // surfaces ACCOUNT_MODE on Lighter it always projects `null` and callers

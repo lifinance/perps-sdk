@@ -961,6 +961,76 @@ export class PerpsClient {
     }
   }
 
+  /**
+   * Unified entry point for satisfying a single setup descriptor end-to-end.
+   *
+   * Dispatch rule:
+   *   1. If the plugin lists this action in `clientSetupActions`, route to
+   *      the plugin's `satisfyClientSetup` — fully client-side flow, no
+   *      backend prerequisite step (today: Lighter `APPROVE_READ_ONLY_TOKEN`).
+   *   2. Otherwise, refresh `checkSetup`, find the matching step, sign it
+   *      via `signPrerequisite` (user-prereqs only), and submit via
+   *      `satisfySetup` with a single-step `required` payload.
+   *
+   * No-op when the action isn't currently a prerequisite (e.g. already
+   * satisfied) — callers should follow up with `invalidateQueries` to
+   * resync UI state regardless.
+   */
+  async satisfy(params: {
+    provider: string
+    address: Address
+    action: ActionType
+    params?: Record<string, unknown>
+  }): Promise<void> {
+    const { provider, address, action } = params
+
+    const plugin = this.requireProvider(provider)
+    if (plugin.clientSetupActions?.has(action)) {
+      if (!plugin.satisfyClientSetup) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `Provider '${provider}' declares '${action}' as client-only but ` +
+            `does not implement satisfyClientSetup.`
+        )
+      }
+      await plugin.satisfyClientSetup(action, this.sdkClient, {
+        address,
+        signer: this.sdkClient.signer,
+        params: params.params,
+      })
+      return
+    }
+
+    const required = await this.checkSetup({ provider, address })
+    const userStep = required.userPrerequisites.find((s) => s.action === action)
+    const agentStep = required.agentPrerequisites.find(
+      (s) => s.action === action
+    )
+    const step = userStep ?? agentStep
+    if (!step) {
+      // Already satisfied or not staged — caller invalidates queries to resync.
+      return
+    }
+
+    let userSignedActions: SignedActionStep[] = []
+    if (userStep) {
+      const signed = await this.signPrerequisite(provider, address, step)
+      userSignedActions = [signed]
+    }
+
+    const singleStep: SetupResult = {
+      userPrerequisites: userStep ? [step] : [],
+      agentPrerequisites: agentStep ? [step] : [],
+      isReady: false,
+    }
+    await this.satisfySetup({
+      provider,
+      address,
+      required: singleStep,
+      userSignedActions,
+    })
+  }
+
   // ---------------------------------------------------------------------------
   // Typed action helpers
   // ---------------------------------------------------------------------------
