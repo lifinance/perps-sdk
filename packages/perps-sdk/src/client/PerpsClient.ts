@@ -3,18 +3,13 @@ import type {
   ActionParamsMap,
   ActionStep,
   Address,
-  ApproveReadOnlyTokenParams,
   AssetIdentity,
   CreateActionResponse,
   Eip712ActionStep,
   Eip712SignedActionStep,
-  EvmTxActionStep,
-  EvmTxSignedActionStep,
   ExecuteActionResponse,
   Provider,
   SignedActionStep,
-  WasmBlobActionStep,
-  WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -22,7 +17,6 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
-import { parseAbi } from 'viem'
 import { localStorageAdapter } from '../agent/storage.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
@@ -30,17 +24,7 @@ import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
-import {
-  type ApproveReadOnlyTokenResult,
-  DEFAULT_API_KEY_INDEX,
-  type LighterApiKey,
-  LighterKeyStore,
-  LighterReadOnlyTokenManager,
-  type LighterReadOnlyTokenManagerOptions,
-  LighterSigner,
-  type LighterSignerConfig,
-  walletClientSigner,
-} from '../signers/lighter/index.js'
+import type { PerpsProvider, SignActionsContext } from '../types/core.js'
 import {
   signTypedData,
   signTypedDataWithSigner,
@@ -93,18 +77,9 @@ export class PerpsClient {
   private signingModes: Map<string, SigningMode> = new Map()
   private providerMetadataCache: Map<string, Provider> = new Map()
   private _signer: PerpsSDKClient['signer'] | undefined
-  private readonly lighterConfig: LighterSignerConfig | undefined
-  private readonly lighterReadOnlyTokenOptions:
-    | LighterReadOnlyTokenManagerOptions
-    | undefined
-  private _lighterSigner: LighterSigner | undefined
-  private _lighterKeyStore: LighterKeyStore | undefined
-  private _lighterReadOnlyTokenManager: LighterReadOnlyTokenManager | undefined
 
   constructor(options: PerpsClientOptions) {
     this.storage = options.storage ?? localStorageAdapter
-    this.lighterConfig = options.lighter
-    this.lighterReadOnlyTokenOptions = options.lighterReadOnlyToken
     this.sdkClient = createPerpsClient({
       integrator: options.integrator,
       apiKey: options.apiKey,
@@ -112,30 +87,6 @@ export class PerpsClient {
       storage: this.storage,
       providers: options.providers,
     })
-  }
-
-  private getLighterSigner(): LighterSigner {
-    if (!this._lighterSigner) {
-      this._lighterSigner = new LighterSigner(this.lighterConfig)
-    }
-    return this._lighterSigner
-  }
-
-  private getLighterKeyStore(): LighterKeyStore {
-    if (!this._lighterKeyStore) {
-      this._lighterKeyStore = new LighterKeyStore(this.storage)
-    }
-    return this._lighterKeyStore
-  }
-
-  private getLighterReadOnlyTokenManager(): LighterReadOnlyTokenManager {
-    if (!this._lighterReadOnlyTokenManager) {
-      this._lighterReadOnlyTokenManager = new LighterReadOnlyTokenManager({
-        storage: this.storage,
-        ...this.lighterReadOnlyTokenOptions,
-      })
-    }
-    return this._lighterReadOnlyTokenManager
   }
 
   /**
@@ -275,6 +226,42 @@ export class PerpsClient {
     return all.some((d) => d.signers.includes(PerpsSigner.AGENT))
   }
 
+  /**
+   * Resolve the registered provider plugin for `provider`, throwing a
+   * `PerpsError` when the caller has not registered one via the SDK's
+   * `providers` option. The plugin is the only owner of write-side signing
+   * for `WASM_BLOB` and `EVM_TX` action arms.
+   */
+  private requireProvider(provider: string): PerpsProvider {
+    const plugin = this.sdkClient.getProvider(provider)
+    if (plugin === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Provider plugin not registered: '${provider}'. Pass it to ` +
+          'createPerpsClient({ providers: [...] }).'
+      )
+    }
+    return plugin
+  }
+
+  private async delegateSignActions(
+    provider: string,
+    address: Address,
+    method: SigningMethod,
+    actions: ActionStep[],
+    ctx: SignActionsContext
+  ): Promise<SignedActionStep[]> {
+    const plugin = this.requireProvider(provider)
+    if (typeof plugin.signActions !== 'function') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Provider '${provider}' does not implement signActions for ` +
+          `signingMethod '${method}'.`
+      )
+    }
+    return plugin.signActions(method, actions, address, ctx)
+  }
+
   private async autoSignAndExecute(
     provider: string,
     address: Address,
@@ -343,25 +330,20 @@ export class PerpsClient {
         )
       }
 
-      case SigningMethod.WASM_BLOB: {
-        const wasmActions = actions as WasmBlobActionStep[]
-        const signedActions = await this.signWasmBlobActions(
-          provider,
-          address,
-          wasmActions
-        )
-        return executeAction(this.sdkClient, {
-          provider,
-          address,
-          signerAddress: address,
-          action,
-          actions: signedActions,
-        })
-      }
-
+      case SigningMethod.WASM_BLOB:
       case SigningMethod.EVM_TX: {
-        const evmActions = actions as EvmTxActionStep[]
-        const signedActions = await this.signEvmTxActions(evmActions)
+        const ctx = await this.buildSignActionsContext(
+          provider,
+          address,
+          descriptor
+        )
+        const signedActions = await this.delegateSignActions(
+          provider,
+          address,
+          descriptor.signingMethod,
+          actions,
+          ctx
+        )
         return executeAction(this.sdkClient, {
           provider,
           address,
@@ -374,6 +356,33 @@ export class PerpsClient {
       default:
         throw new Error(`Unknown signingMethod: ${descriptor.signingMethod}`)
     }
+  }
+
+  /**
+   * Assemble the per-call context the provider plugin needs in order to
+   * sign. Today this is the wallet signer (when configured) and the
+   * agent keypair (when the descriptor includes `PerpsSigner.AGENT` and
+   * the signing mode requires it).
+   */
+  private async buildSignActionsContext(
+    provider: string,
+    address: Address,
+    descriptor: ActionDescriptor
+  ): Promise<SignActionsContext> {
+    const ctx: SignActionsContext = {}
+    if (this.sdkClient.signer !== undefined) {
+      ctx.signer = this.sdkClient.signer
+    }
+    if (descriptor.signers.includes(PerpsSigner.AGENT)) {
+      const mode = await this.loadSigningMode(address, provider)
+      if (mode === SigningMode.USER_AGENT) {
+        ctx.agent = await this.sdkClient.agentManager.getAgent(
+          address,
+          provider
+        )
+      }
+    }
+    return ctx
   }
 
   /**
@@ -404,374 +413,30 @@ export class PerpsClient {
         ),
       } satisfies Eip712SignedActionStep
     }
-    if ('wasmSignParams' in step) {
-      const [signed] = await this.signWasmBlobActions(provider, address, [step])
-      return signed
-    }
-    if ('txParams' in step) {
-      const [signed] = await this.signEvmTxActions([step])
-      return signed
-    }
-    throw new PerpsError(
-      PerpsErrorCode.SDKError,
-      'Unknown ActionStep shape — expected typedData, wasmSignParams, or txParams.'
-    )
-  }
-
-  /**
-   * Sign and broadcast a sequence of EVM transactions via the user's wallet
-   * client. Steps are submitted serially so a later step (e.g. deposit) can
-   * rely on an earlier step (e.g. approve) having mined. Each step's
-   * `txParams` carries chainId, target, function name, args, and a
-   * human-readable abi from the backend.
-   */
-  private async signEvmTxActions(
-    actions: EvmTxActionStep[]
-  ): Promise<EvmTxSignedActionStep[]> {
-    if (!this.sdkClient.signer) {
+    const method =
+      'wasmSignParams' in step
+        ? SigningMethod.WASM_BLOB
+        : 'txParams' in step
+          ? SigningMethod.EVM_TX
+          : undefined
+    if (method === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'EVM_TX signing requires a wallet signer. Pass `signer` to ' +
-          'createPerpsClient or call setSigner(walletClient).'
+        'Unknown ActionStep shape — expected typedData, wasmSignParams, or txParams.'
       )
     }
-    const { signer } = this.sdkClient
-    const signed: EvmTxSignedActionStep[] = []
-
-    for (const step of actions) {
-      const params = step.txParams as {
-        chainId: number
-        to: Address
-        functionName: string
-        args: readonly unknown[]
-        abi: readonly string[]
-      }
-
-      const txHash = await signer.writeContract({
-        address: params.to,
-        abi: parseAbi(params.abi),
-        functionName: params.functionName,
-        args: params.args,
-        chain: signer.chain,
-        account: signer.account,
-      })
-
-      signed.push({
-        action: step.action,
-        txParams: step.txParams,
-        txHash,
-      })
+    const ctx: SignActionsContext = {}
+    if (this.sdkClient.signer !== undefined) {
+      ctx.signer = this.sdkClient.signer
     }
-
-    return signed
-  }
-
-  /**
-   * Sign a batch of WASM_BLOB action steps (Lighter). Ensures the user's
-   * Lighter API keypair is registered first — generating one and running the
-   * REGISTER_API_KEY hybrid flow via the L1 signer if not — then feeds each
-   * subsequent step through the WASM signer and returns signed blobs.
-   *
-   * `ACCOUNT_TYPE` (Lighter `/api/v1/changeAccountTier`) is dispatched as a
-   * WASM_BLOB envelope by the backend but is NOT a wasm-signed transaction —
-   * Lighter authenticates the endpoint with an auth token and enforces
-   * anti-replay server-side (24h cooldown, no open positions). The signer
-   * mints a Lighter auth token via the same WASM `CreateAuthToken` the read
-   * endpoints use and parks it in `signedTx.txInfo`; the backend's
-   * `executeChangeAccountTier` consumes that field as the `auth` form
-   * parameter. `txType`/`txHash` are unused for this action — they carry
-   * placeholder values to satisfy the `WasmBlobSignedActionStep` shape.
-   */
-  private async signWasmBlobActions(
-    provider: string,
-    address: Address,
-    actions: WasmBlobActionStep[]
-  ): Promise<WasmBlobSignedActionStep[]> {
-    const signed: WasmBlobSignedActionStep[] = []
-    for (const step of actions) {
-      if (step.action === ActionType.REGISTER_API_KEY) {
-        signed.push(await this.signRegisterApiKey(provider, address, step))
-      } else if (step.action === ActionType.ACCOUNT_TYPE) {
-        signed.push(await this.signAccountTierChange(address, step))
-      } else {
-        signed.push(await this.signStandardWasmAction(provider, address, step))
-      }
-    }
-    return signed
-  }
-
-  private async signStandardWasmAction(
-    provider: string,
-    address: Address,
-    step: WasmBlobActionStep
-  ): Promise<WasmBlobSignedActionStep> {
-    const apiKey = await this.getLighterKeyStore().get(address)
-    if (!apiKey) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `No Lighter API key registered for ${address}. ` +
-          'Run prepareAccount / REGISTER_API_KEY first.'
-      )
-    }
-    const signer = this.getLighterSigner()
-    const signedTx = await signer.sign(step.action, step.wasmSignParams, {
-      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
-      apiKeyIndex: apiKey.apiKeyIndex,
-      accountIndex: apiKey.accountIndex,
-    })
-    void provider
-    return {
-      action: step.action,
-      wasmSignParams: step.wasmSignParams,
-      signedTx,
-    }
-  }
-
-  /**
-   * REGISTER_API_KEY flow:
-   *   1. Look up the user's Lighter accountIndex from getAccount()
-   *   2. Generate a fresh Lighter API keypair via the WASM signer
-   *   3. Call SignChangePubKey to produce the WASM blob + EIP-191 message
-   *   4. Have the user's L1 Ethereum wallet sign the message
-   *   5. Inject the L1 signature into the ChangePubKey txInfo JSON
-   *   6. Persist the keypair and return the signed blob
-   *
-   * Requires a USER wallet signer to be set via `setSigner` or passed at
-   * construction — the L1 signature is the user's consent to rotate keys.
-   */
-  private async signRegisterApiKey(
-    provider: string,
-    address: Address,
-    step: WasmBlobActionStep
-  ): Promise<WasmBlobSignedActionStep> {
-    if (!this.sdkClient.signer) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'REGISTER_API_KEY requires a wallet signer — pass `signer` to ' +
-          'createPerpsClient or call setSigner(walletClient).'
-      )
-    }
-
-    const params = step.wasmSignParams as {
-      api_key_index?: number
-      nonce?: number
-    }
-    const apiKeyIndex = params.api_key_index ?? DEFAULT_API_KEY_INDEX
-    const nonce = params.nonce
-    if (typeof nonce !== 'number') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'REGISTER_API_KEY wasmSignParams is missing `nonce`.'
-      )
-    }
-
-    const account = await getAccount(this.sdkClient, { provider, address })
-    if (account.config.provider !== 'lighter') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `REGISTER_API_KEY requires a Lighter account, but getAccount ` +
-          `returned config for provider '${account.config.provider}'.`
-      )
-    }
-    const accountIndex = account.config.accountIndex
-
-    const signer = this.getLighterSigner()
-    const keypair = await signer.generateAPIKey()
-    const changePubKey = await signer.signChangePubKey(
-      keypair.publicKey,
-      keypair.privateKey,
-      nonce,
-      apiKeyIndex,
-      accountIndex
-    )
-
-    const l1Signature = await this.sdkClient.signer.signMessage({
-      account: this.sdkClient.signer.account,
-      message: changePubKey.messageToSign,
-    })
-
-    const txInfoWithL1Sig = signer.embedL1Signature(
-      changePubKey.txInfo,
-      l1Signature
-    )
-
-    const apiKey: LighterApiKey = {
-      accountIndex,
-      apiKeyIndex,
-      apiKeyPrivateKey: keypair.privateKey,
-      apiKeyPublicKey: keypair.publicKey,
-    }
-    await this.getLighterKeyStore().set(address, apiKey)
-
-    return {
-      action: step.action,
-      wasmSignParams: {
-        ...step.wasmSignParams,
-        new_public_key: keypair.publicKey,
-      },
-      signedTx: {
-        txType: changePubKey.txType,
-        txInfo: txInfoWithL1Sig,
-        txHash: changePubKey.txHash,
-      },
-    }
-  }
-
-  /**
-   * Sign an `ACCOUNT_TYPE` step (Lighter `changeAccountTier`).
-   *
-   * Lighter's `/api/v1/changeAccountTier` is an HTTP-only mutation —
-   * Lighter does NOT consume a wasm-signed transaction here; it
-   * authenticates the request with the same auth token its read endpoints
-   * use, and enforces anti-replay business rules server-side. The backend
-   * therefore declares the step as a `WasmBlobActionStep` with
-   * `wasmSignParams.kind = 'changeAccountTier'` and expects the SDK to
-   * mint an auth token in lieu of a transaction signature. That contract
-   * is documented in `lifi-perps-backend/src/providers/lighter/actions/
-   * lighter.actions.accountType.ts` and consumed by `executeChangeAccountTier`.
-   *
-   * The auth-token deadline mirrors {@link createLighterAuthToken}'s 1h
-   * default — Lighter caps tokens at 8h hard, and the backend's executor
-   * runs `verifyPendingAction` then a single `/changeAccountTier` POST,
-   * which completes well inside an hour.
-   */
-  private async signAccountTierChange(
-    address: Address,
-    step: WasmBlobActionStep
-  ): Promise<WasmBlobSignedActionStep> {
-    const apiKey = await this.getLighterKeyStore().get(address)
-    if (!apiKey) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `No Lighter API key registered for ${address}. ` +
-          'Run prepareAccount / REGISTER_API_KEY first.'
-      )
-    }
-    const signer = this.getLighterSigner()
-    const deadline = Math.floor(Date.now() / 1000) + 60 * 60
-    const authToken = await signer.createAuthToken(deadline, {
-      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
-      apiKeyIndex: apiKey.apiKeyIndex,
-      accountIndex: apiKey.accountIndex,
-    })
-    return {
-      action: step.action,
-      wasmSignParams: step.wasmSignParams,
-      signedTx: {
-        // `/changeAccountTier` reads only `txInfo` (the auth token); `txType`
-        // and `txHash` are placeholders to satisfy the envelope shape.
-        txType: 0,
-        txInfo: authToken,
-        txHash: '',
-      },
-    }
-  }
-
-  /**
-   * Return a bearer token that authenticates Lighter's read endpoints
-   * (getOrders, getOrder, getActivity, getFills).
-   *
-   * Resolution order:
-   *   1. The long-lived read-only token persisted by `approveReadOnlyToken`,
-   *      when one is stored for this `(address, accountIndex)` AND has not
-   *      passed its recorded `expiry`. The SDK never returns an expired
-   *      stored token.
-   *   2. A freshly minted 8h Lighter auth token, signed off the user's
-   *      Lighter API key. Requires `REGISTER_API_KEY` to have completed.
-   *   3. `undefined` — caller falls back to public reads.
-   *
-   * `accountIndex` lets callers in pure read-only mode (no API key
-   * registered) target the RO token. When omitted, the SDK derives it from
-   * the user's registered API key.
-   *
-   * `deadlineSeconds` only affects the standard-token fallback (Lighter caps
-   * those tokens at 8h). Read-only tokens carry their own mint-time expiry
-   * recorded by {@link approveReadOnlyToken}.
-   */
-  async createLighterAuthToken(
-    address: Address,
-    deadlineSeconds?: number,
-    accountIndex?: number
-  ): Promise<string | undefined> {
-    const apiKey = await this.getLighterKeyStore().get(address)
-    const resolvedAccountIndex = accountIndex ?? apiKey?.accountIndex
-    if (resolvedAccountIndex !== undefined) {
-      const stored = await this.getLighterReadOnlyTokenManager().get(
-        address,
-        resolvedAccountIndex
-      )
-      if (stored) {
-        return stored.token
-      }
-    }
-    if (!apiKey) {
-      return undefined
-    }
-    const deadline = deadlineSeconds ?? Math.floor(Date.now() / 1000) + 60 * 60
-    const signer = this.getLighterSigner()
-    return signer.createAuthToken(deadline, {
-      apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
-      apiKeyIndex: apiKey.apiKeyIndex,
-      accountIndex: apiKey.accountIndex,
-    })
-  }
-
-  /**
-   * Mint a long-lived Lighter read-only token via Lighter's
-   * `tokens/create` endpoint and persist it through the configured
-   * `StorageAdapter`, keyed by `(L1 address, accountIndex)`.
-   *
-   * The user's connected wallet signs an EIP-191 message describing the
-   * mint request; the resulting `Authorization` header authenticates the
-   * Lighter HTTP call. The bearer string Lighter returns is persisted
-   * alongside its `expiry` and `scope`; subsequent calls to
-   * {@link createLighterAuthToken} prefer it over the 8h standard token.
-   *
-   * `expirySeconds` is the absolute unix-seconds expiry recorded on
-   * Lighter's row. Lighter enforces 1 day ≤ lifetime ≤ 10 years
-   * server-side; the SDK does NOT pre-validate and surfaces Lighter's 400
-   * verbatim. `scope` defaults to `'all'`; the `'single'` variant is wired
-   * through but only useful when the caller has a specific reason to scope
-   * the token to one account.
-   *
-   * Requires a USER wallet signer to be set via {@link setSigner} or
-   * passed at construction — the L1 signature is the user's consent.
-   */
-  async approveReadOnlyToken(
-    address: Address,
-    params: ApproveReadOnlyTokenParams
-  ): Promise<ApproveReadOnlyTokenResult> {
-    if (!this.sdkClient.signer) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'approveReadOnlyToken requires a wallet signer — pass `signer` to ' +
-          'createPerpsClient or call setSigner(walletClient).'
-      )
-    }
-    const signer = walletClientSigner(this.sdkClient.signer)
-    return this.getLighterReadOnlyTokenManager().approve(signer, {
+    const [signed] = await this.delegateSignActions(
+      provider,
       address,
-      ...params,
-    })
-  }
-
-  /**
-   * Whether the stored Lighter read-only token for `(address, accountIndex)`
-   * falls within `thresholdDays` of its `expiry`. Returns `false` when no
-   * token is stored, when the stored token has already expired, or when
-   * more than `thresholdDays` of life remain. Intended for widget renewal
-   * banners (default threshold: 30 days).
-   */
-  async isLighterReadOnlyTokenExpiringSoon(
-    address: Address,
-    accountIndex: number,
-    thresholdDays?: number
-  ): Promise<boolean> {
-    return this.getLighterReadOnlyTokenManager().isReadOnlyTokenExpiringSoon(
-      address,
-      accountIndex,
-      thresholdDays
+      method,
+      [step],
+      ctx
     )
+    return signed
   }
 
   // ---------------------------------------------------------------------------
@@ -1350,10 +1015,11 @@ export class PerpsClient {
   }
 
   /**
-   * Execute any action through the SDK's signing pipeline. Signing is routed
-   * by the action's descriptor in provider metadata — the agent keypair, the
-   * configured WalletClient signer, the Lighter API key, or an EVM tx — as
-   * the descriptor's `signers` and `signingMethod` dictate.
+   * Execute any action through the SDK's signing pipeline. The
+   * action's descriptor in provider metadata picks the route:
+   * `EIP712` is signed inside `PerpsClient` against the agent or user
+   * wallet; `WASM_BLOB` and `EVM_TX` are delegated to the provider
+   * plugin's {@link PerpsProvider.signActions}.
    */
   async execute<T extends ActionType>(params: {
     provider: string

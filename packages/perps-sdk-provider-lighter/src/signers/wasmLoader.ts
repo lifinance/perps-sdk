@@ -6,8 +6,8 @@
 // etc.) onto `globalThis` when `go.run(instance)` starts the main goroutine.
 //
 // The default asset URLs resolve relative to this module's emitted JS file:
-//   src/signers/lighter/../../../wasm/lighter-signer.wasm  → repo-root wasm/
-//   dist/{esm,cjs}/signers/lighter/../../../wasm/…         → dist/{esm,cjs}/wasm/
+//   src/signers/../../wasm/lighter-signer.wasm     → package-root wasm/
+//   dist/{esm,cjs}/signers/../../wasm/…            → dist/wasm/ (shared)
 //
 // The build script copies the wasm assets into both dist subtrees so the same
 // relative path resolves at runtime regardless of which bundle is loaded.
@@ -51,7 +51,7 @@ function currentModuleUrl(): string {
 }
 
 function defaultAssetUrl(filename: string): URL {
-  return new URL(`../../../wasm/${filename}`, currentModuleUrl())
+  return new URL(`../../wasm/${filename}`, currentModuleUrl())
 }
 
 export interface LoadLighterWasmOptions {

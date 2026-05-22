@@ -1,6 +1,8 @@
-import type { PerpsSDKClient } from '@lifi/perps-sdk'
+import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LighterKeyStore } from '../signers/LighterKeyStore.js'
+import type { LighterSigner } from '../signers/LighterSigner.js'
 import { LighterProvider } from './LighterProvider.js'
 
 // ---------------------------------------------------------------------------
@@ -268,7 +270,7 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=dynamic-token-1')
   })
 
-  it('mints tokens via the WASM signer when `signerContext` is provided', async () => {
+  it('mints tokens via the WASM signer when `signer` + `keyStore` are provided', async () => {
     const mintedTokens: string[] = []
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => {
@@ -276,27 +278,27 @@ describe('LighterProvider — auth token plumbing', () => {
         mintedTokens.push(t)
         return t
       }),
-    }
+    } as unknown as LighterSigner
+    const storage = createMemoryStorage()
+    const keyStore = new LighterKeyStore(storage)
+    await keyStore.set(ADDRESS, {
+      accountIndex: 100,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xabc',
+      apiKeyPublicKey: '0xdef',
+    })
     const provider = new LighterProvider({
-      signerContext: {
-        signer: signerStub as unknown as Parameters<
-          ConstructorParameters<typeof LighterProvider>[0] extends infer T
-            ? T extends { signerContext?: infer S }
-              ? S extends { signer: infer Sg }
-                ? (sg: Sg) => Sg
-                : never
-              : never
-            : never
-        >[0],
-        context: {
-          apiKeyPrivateKey: '0xabc',
-          apiKeyIndex: 42,
-          accountIndex: 100,
-        },
-      },
+      signer: signerStub,
+      keyStore,
     })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
-    expect(signerStub.createAuthToken).toHaveBeenCalledTimes(1)
+    expect(
+      (
+        signerStub as unknown as {
+          createAuthToken: { mock: { calls: unknown[] } }
+        }
+      ).createAuthToken.mock.calls.length
+    ).toBe(1)
     expect(mintedTokens.length).toBe(1)
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
@@ -307,47 +309,48 @@ describe('LighterProvider — auth token plumbing', () => {
   it('reuses a cached signer-minted token across calls until near expiry', async () => {
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => `tok-${deadline}`),
-    }
+    } as unknown as LighterSigner
+    const storage = createMemoryStorage()
+    const keyStore = new LighterKeyStore(storage)
+    await keyStore.set(ADDRESS, {
+      accountIndex: 100,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xabc',
+      apiKeyPublicKey: '0xdef',
+    })
     const provider = new LighterProvider({
-      signerContext: {
-        signer: signerStub as unknown as Parameters<
-          ConstructorParameters<typeof LighterProvider>[0] extends infer T
-            ? T extends { signerContext?: infer S }
-              ? S extends { signer: infer Sg }
-                ? (sg: Sg) => Sg
-                : never
-              : never
-            : never
-        >[0],
-        context: {
-          apiKeyPrivateKey: '0xabc',
-          apiKeyIndex: 42,
-          accountIndex: 100,
-        },
-        lifetimeSeconds: 3600,
-        renewBufferSeconds: 60,
-      },
+      signer: signerStub,
+      keyStore,
+      tokenLifetimeSeconds: 3600,
+      tokenRenewBufferSeconds: 60,
     })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
-    expect(signerStub.createAuthToken).toHaveBeenCalledTimes(1)
+    expect(
+      (
+        signerStub as unknown as {
+          createAuthToken: { mock: { calls: unknown[] } }
+        }
+      ).createAuthToken.mock.calls.length
+    ).toBe(1)
   })
 
-  it('rejects when both authToken and signerContext are supplied', () => {
+  it('skips on-demand minting when no API key is registered for the address', async () => {
+    const signerStub = {
+      createAuthToken: vi.fn(async () => 'should-not-be-called'),
+    } as unknown as LighterSigner
+    const keyStore = new LighterKeyStore(createMemoryStorage())
+    const provider = new LighterProvider({ signer: signerStub, keyStore })
+    const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    // No API key → falls back to the unauthenticated degrade path (zero fee tier).
+    expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
     expect(
-      () =>
-        new LighterProvider({
-          authToken: 'x',
-          signerContext: {
-            signer: {} as never,
-            context: {
-              apiKeyPrivateKey: '0x',
-              apiKeyIndex: 1,
-              accountIndex: 1,
-            },
-          },
-        })
-    ).toThrow(/either.*authToken.*or.*signerContext/i)
+      (
+        signerStub as unknown as {
+          createAuthToken: { mock: { calls: unknown[] } }
+        }
+      ).createAuthToken.mock.calls.length
+    ).toBe(0)
   })
 })
 

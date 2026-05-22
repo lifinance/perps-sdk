@@ -1,3 +1,4 @@
+import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   LighterAccountConfig,
@@ -6,8 +7,12 @@ import type {
   ProviderSetup,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
-import { PerpsError } from '../../errors/PerpsError.js'
-import { assertNever } from '../../utils/assertNever.js'
+
+function assertNever(value: never): never {
+  throw new Error(
+    `Unreachable: exhaustiveness check failed for value ${JSON.stringify(value)}`
+  )
+}
 
 /**
  * Project a single Lighter descriptor against the typed

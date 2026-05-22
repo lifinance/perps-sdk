@@ -1,3 +1,8 @@
+import {
+  ReconnectingWebSocket,
+  type SubscriptionListener,
+  type WsProvider,
+} from '@lifi/perps-sdk'
 import type {
   Address,
   Fill,
@@ -16,8 +21,6 @@ import {
   mapOrderDetail,
   mapPosition,
 } from '@lifi/perps-types/providers/lighter'
-import { ReconnectingWebSocket } from '../ReconnectingWebSocket.js'
-import type { SubscriptionListener, WsProvider } from '../types.js'
 import type {
   LtOrderBookDetail,
   LtOrderBookDetailsResponse,

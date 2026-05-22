@@ -3,7 +3,6 @@
 // Types
 export * from '@lifi/perps-types'
 // Utils
-// biome-ignore lint/correctness/useImportExtensions: package subpath export
 export { HlAbstractionMode } from '@lifi/perps-types/providers/hyperliquid'
 // Agent
 export { AgentManager } from './agent/AgentManager.js'
@@ -43,7 +42,10 @@ export { SigningMode } from './client/types.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export { projectHyperliquidConfigSettings } from './providers/hyperliquid/accountConfig.js'
-export { projectLighterConfigSettings } from './providers/lighter/accountConfig.js'
+export type {
+  PerpsWsClientOptions,
+  WsProviderFactory,
+} from './realtime/PerpsWsClient.js'
 // Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
 export type { ReconnectingWebSocketOptions } from './realtime/ReconnectingWebSocket.js'
@@ -81,40 +83,9 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
-// Signers
-export type {
-  ApiKeyPair,
-  ApproveReadOnlyTokenInputs,
-  ApproveReadOnlyTokenResult,
-  ChangePubKeyResult,
-  LighterApiKey,
-  LighterCreateTokenResponse,
-  LighterReadOnlyToken,
-  LighterReadOnlyTokenManagerOptions,
-  LighterSignedBlob,
-  LighterSignerConfig,
-  LighterSignerContext,
-  LighterTokenFetcher,
-  LighterWalletSigner,
-  LighterWasmExports,
-  LoadLighterWasmOptions,
-} from './signers/lighter/index.js'
-export {
-  buildReadOnlyTokenMessage,
-  DEFAULT_API_KEY_INDEX,
-  DEFAULT_LIGHTER_API_URL,
-  DEFAULT_READ_ONLY_TOKEN_NAME,
-  defaultLighterTokenFetcher,
-  LIGHTER_PROVIDER_KEY,
-  LighterKeyStore,
-  LighterReadOnlyTokenManager,
-  LighterSigner,
-  loadLighterWasm,
-  resetLighterWasmCache,
-  walletClientSigner,
-} from './signers/lighter/index.js'
 // Core provider plugin interface
 export type {
+  PerpsClientSigner,
   PerpsProvider,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
@@ -126,6 +97,7 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetPricesParams,
+  SignActionsContext,
 } from './types/core.js'
 export type { AccountSummary } from './utils/accountSummary.js'
 export { calculateAccountSummary } from './utils/accountSummary.js'

@@ -5,16 +5,15 @@
 // reads (account / positions / orders / order / fills / activity / assets /
 // asset / prices / ohlcv / orderbook) by talking directly to Lighter's REST
 // API — no LI.FI backend hop. Auth-gated reads use the user's Lighter
-// read-only token (pre-minted or minted on-demand via the bundled WASM
-// signer).
+// read-only token (pre-minted, persisted, or minted on-demand via the
+// bundled WASM signer).
 //
-// Companion pieces (`LighterSigner`, `LighterKeyStore`,
-// `LighterReadOnlyTokenManager`, `LighterWsProvider`) currently live in
-// `@lifi/perps-sdk` and are re-exported here for one-stop consumption of the
-// Lighter integration. Re-exports avoid duplication; the canonical move into
-// this package is tracked as a follow-up restructure.
+// `signActions` (the `WASM_BLOB` / `EVM_TX` arms of `PerpsClient.execute`)
+// is owned here too — `LighterSigner`, `LighterKeyStore`,
+// `LighterReadOnlyTokenManager`, and the WASM blob ship with this package.
 // ---------------------------------------------------------------------------
 
+export { projectLighterConfigSettings } from './accountConfig.js'
 // Activity cursor envelope (preserves the backend-emitted shape)
 export type { LighterActivityCursor } from './provider/activityCursor.js'
 export {
@@ -37,3 +36,42 @@ export {
   lighterProvider,
 } from './provider/LighterProvider.js'
 export { LighterMarketRegistry } from './provider/markets.js'
+// Realtime WS provider
+export type { LighterAuthProvider } from './realtime/LighterWsProvider.js'
+export {
+  LighterWsProvider,
+  type LighterWsProviderOptions,
+} from './realtime/LighterWsProvider.js'
+// Signers + Lighter-owned standalone utilities
+export type {
+  ApiKeyPair,
+  ApproveReadOnlyTokenInputs,
+  ApproveReadOnlyTokenResult,
+  ChangePubKeyResult,
+  CreateAuthTokenInputs,
+  LighterApiKey,
+  LighterCreateTokenResponse,
+  LighterReadOnlyToken,
+  LighterReadOnlyTokenManagerOptions,
+  LighterSignedBlob,
+  LighterSignerConfig,
+  LighterSignerContext,
+  LighterTokenFetcher,
+  LighterWalletSigner,
+  LighterWasmExports,
+  LoadLighterWasmOptions,
+} from './signers/index.js'
+export {
+  buildReadOnlyTokenMessage,
+  createAuthToken,
+  DEFAULT_LIGHTER_API_URL,
+  DEFAULT_READ_ONLY_TOKEN_NAME,
+  defaultLighterTokenFetcher,
+  isReadOnlyTokenExpiringSoon,
+  LighterKeyStore,
+  LighterReadOnlyTokenManager,
+  LighterSigner,
+  loadLighterWasm,
+  resetLighterWasmCache,
+  walletClientSigner,
+} from './signers/index.js'

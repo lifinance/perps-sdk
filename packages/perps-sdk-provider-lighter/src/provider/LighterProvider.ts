@@ -1,6 +1,4 @@
 import type {
-  LighterSigner,
-  LighterSignerContext,
   PerpsProvider,
   PerpsSDKClient,
   ProviderGetAccountParams,
@@ -14,10 +12,12 @@ import type {
   ProviderGetPositionsParams,
   ProviderGetPricesParams,
   SDKRequestOptions,
+  SignActionsContext,
 } from '@lifi/perps-sdk'
 import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
+  ActionStep,
   ActivitiesResponse,
   ActivityItem,
   Address,
@@ -35,6 +35,8 @@ import type {
   Position,
   PositionsResponse,
   PricesResponse,
+  SignedActionStep,
+  SigningMethod,
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
@@ -46,6 +48,12 @@ import {
   mapPosition,
   mapTriggerOrder,
 } from '@lifi/perps-types/providers/lighter'
+import { createAuthToken } from '../signers/createAuthToken.js'
+import type { LighterKeyStore } from '../signers/LighterKeyStore.js'
+import type { LighterReadOnlyTokenManagerOptions } from '../signers/LighterReadOnlyTokenManager.js'
+import { LighterReadOnlyTokenManager } from '../signers/LighterReadOnlyTokenManager.js'
+import type { LighterSigner } from '../signers/LighterSigner.js'
+import { lighterSignActions } from '../signers/signActions.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -128,34 +136,50 @@ const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
  * Construction options for {@link LighterProvider}.
  *
  * `restUrl` defaults to Lighter mainnet; pass a testnet URL or a self-hosted
- * mirror to override. `authToken` (a pre-minted Lighter read-only bearer)
- * and `signerContext` (a WASM-backed `LighterSigner` plus its
- * `LighterSignerContext`) are alternatives — only one needs to be supplied
- * to unlock auth-gated reads. When BOTH are absent the auth-gated reads
- * (orders/order/activity/account limits) degrade gracefully:
+ * mirror to override.
+ *
+ * Auth-token resolution order for the auth-gated reads:
+ *   1. Per-call `options.lighterAuthToken`
+ *   2. Constructor `authToken` (string or async factory)
+ *   3. Persisted long-lived read-only token (via `readOnlyTokenOptions`'s
+ *      storage), keyed on the resolved Lighter `accountIndex`
+ *   4. Fresh 1h mint via the WASM signer + the user's registered API key
+ *      from `keyStore`
+ *
+ * When none of these yields a token the auth-gated reads degrade gracefully:
  *   - `getOrders`, `getActivity` return empty results (mirrors backend behaviour)
  *   - `getOrder` throws `Unauthorized`
  *   - `getAccount` returns zero fee tier rather than failing
  *
- * When a `signerContext` is supplied the provider mints fresh auth tokens
- * on-demand via `LighterSigner.createAuthToken`. Tokens have an 8h hard cap;
- * the provider caches the most recent token and re-mints when it's within
- * `tokenRenewBufferSeconds` of expiry.
+ * Write actions (`signActions` for the WASM_BLOB / EVM_TX arms) require
+ * `signer` and `keyStore` to be supplied.
  */
 export interface LighterProviderOptions {
   /** Lighter REST base URL. Defaults to mainnet. */
   restUrl?: string
-  /** Pre-minted Lighter read-only bearer. Mutually exclusive with `signerContext`. */
+  /** Pre-minted Lighter read-only bearer. */
   authToken?: string | (() => string | Promise<string>)
-  /** WASM signer + context for on-demand auth token minting. */
-  signerContext?: {
-    signer: LighterSigner
-    context: LighterSignerContext
-    /** Token lifetime in seconds (Lighter caps at 8h). Default 1h. */
-    lifetimeSeconds?: number
-    /** Re-mint when the cached token's remaining life is below this. Default 60s. */
-    renewBufferSeconds?: number
-  }
+  /**
+   * WASM signer instance. Required for `signActions` (write actions) and
+   * for on-demand auth-token minting from the user's API key. The default
+   * configuration loads the WASM blob shipped with this package.
+   */
+  signer?: LighterSigner
+  /**
+   * Store for the user's per-address Lighter API keypair. Required for
+   * `signActions` (write actions) and for on-demand auth-token minting.
+   */
+  keyStore?: LighterKeyStore
+  /**
+   * Options for the long-lived read-only token manager. The token (when
+   * stored) is the preferred auth token for reads — Lighter never expires
+   * it before the recorded `expiry`.
+   */
+  readOnlyTokenOptions?: LighterReadOnlyTokenManagerOptions
+  /** Token lifetime for on-demand standard-token mints (Lighter caps at 8h). Default 1h. */
+  tokenLifetimeSeconds?: number
+  /** Re-mint when the cached standard token's remaining life is below this. Default 60s. */
+  tokenRenewBufferSeconds?: number
   /** Time-to-live for `orderBookDetails`/`tokenlist`/`assetDetails` cache. */
   metadataTtlMs?: number
   /** Time-to-live for the funding-rates cache. */
@@ -172,32 +196,29 @@ interface MintedToken {
  * Lighter provider plugin implementing {@link PerpsProvider}.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.
- * Auth-gated reads use the user-minted read-only token, either pre-minted on
- * `LighterProviderOptions.authToken` or minted on-demand via the bundled
- * WASM signer when `signerContext` is supplied.
+ * Auth-gated reads use the user-minted read-only token from
+ * `readOnlyTokenOptions`'s storage, a pre-minted token on `authToken`, or
+ * an on-demand mint via the bundled WASM signer + the user's registered
+ * API key from `keyStore`.
  *
- * Write actions (`createAction`/`executeAction`) remain on the core
- * `PerpsClient` — this plugin covers reads only.
+ * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
+ * {@link LighterProvider.signActions} — `PerpsClient.execute` delegates
+ * those arms to the resolved provider.
  */
 export class LighterProvider implements PerpsProvider {
   readonly type = LIGHTER_PROVIDER_KEY
 
   private readonly restUrl: string
   private readonly authTokenSource: (() => string | Promise<string>) | undefined
-  private readonly signerCfg: LighterProviderOptions['signerContext']
+  private readonly signer: LighterSigner | undefined
+  private readonly keyStore: LighterKeyStore | undefined
+  private readonly readOnlyTokenManager: LighterReadOnlyTokenManager | undefined
+  private readonly tokenLifetimeSeconds: number
+  private readonly tokenRenewBufferSeconds: number
   private readonly registry: LighterMarketRegistry
-  private mintedToken: MintedToken | undefined
+  private mintedTokenByAddress: Map<string, MintedToken> = new Map()
 
   constructor(options: LighterProviderOptions = {}) {
-    if (
-      options.authToken !== undefined &&
-      options.signerContext !== undefined
-    ) {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
-        'LighterProvider: provide either `authToken` or `signerContext`, not both.'
-      )
-    }
     this.restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
     this.authTokenSource =
       typeof options.authToken === 'function'
@@ -205,7 +226,14 @@ export class LighterProvider implements PerpsProvider {
         : options.authToken !== undefined
           ? () => options.authToken as string
           : undefined
-    this.signerCfg = options.signerContext
+    this.signer = options.signer
+    this.keyStore = options.keyStore
+    this.readOnlyTokenManager =
+      options.readOnlyTokenOptions !== undefined
+        ? new LighterReadOnlyTokenManager(options.readOnlyTokenOptions)
+        : undefined
+    this.tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
+    this.tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
     this.registry = new LighterMarketRegistry(
       new LighterApiClient(this.restUrl),
       {
@@ -221,13 +249,16 @@ export class LighterProvider implements PerpsProvider {
 
   /**
    * Resolve the bearer token to use on auth-gated calls. Per-call override
-   * (`options.lighterAuthToken`) wins, then a pre-minted token from
-   * construction, then the WASM signer mints one on demand. Returns
-   * `undefined` when no source is configured — callers fall back to the
-   * unauthenticated degrade path (empty array / zero fee).
+   * (`options.lighterAuthToken`) wins, then a constructor-supplied token,
+   * then a stored long-lived read-only token (when the SDK was wired with a
+   * `readOnlyTokenOptions` storage and the address is known), then a
+   * freshly minted 1h token via the WASM signer + registered API key.
+   * Returns `undefined` when no source can produce a token — auth-gated
+   * reads degrade gracefully.
    */
   private async resolveAuthToken(
-    options: SDKRequestOptions | undefined
+    options: SDKRequestOptions | undefined,
+    address?: Address
   ): Promise<string | undefined> {
     if (options?.lighterAuthToken !== undefined) {
       return options.lighterAuthToken
@@ -235,32 +266,62 @@ export class LighterProvider implements PerpsProvider {
     if (this.authTokenSource !== undefined) {
       return this.authTokenSource()
     }
-    if (this.signerCfg !== undefined) {
-      return this.mintViaSigner()
+    if (address !== undefined && this.keyStore !== undefined) {
+      const apiKey = await this.keyStore.get(address)
+      if (apiKey === null) {
+        return undefined
+      }
+      if (this.readOnlyTokenManager !== undefined) {
+        const stored = await this.readOnlyTokenManager.get(
+          address,
+          apiKey.accountIndex
+        )
+        if (stored !== undefined) {
+          return stored.token
+        }
+      }
+      if (this.signer !== undefined) {
+        return this.mintViaSigner(address, apiKey.apiKeyPrivateKey, {
+          apiKeyIndex: apiKey.apiKeyIndex,
+          accountIndex: apiKey.accountIndex,
+        })
+      }
     }
     return undefined
   }
 
-  private async mintViaSigner(): Promise<string> {
-    const cfg = this.signerCfg
-    if (cfg === undefined) {
+  private async mintViaSigner(
+    address: Address,
+    apiKeyPrivateKey: string,
+    indices: { apiKeyIndex: number; accountIndex: number }
+  ): Promise<string> {
+    const signer = this.signer
+    if (signer === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'LighterProvider.mintViaSigner called without a configured signer context.'
+        'LighterProvider.mintViaSigner called without a configured signer.'
       )
     }
-    const lifetime = cfg.lifetimeSeconds ?? 60 * 60
-    const buffer = cfg.renewBufferSeconds ?? 60
+    const cacheKey = address.toLowerCase()
     const nowSec = Math.floor(Date.now() / 1000)
+    const cached = this.mintedTokenByAddress.get(cacheKey)
     if (
-      this.mintedToken !== undefined &&
-      this.mintedToken.expiresAt - nowSec > buffer
+      cached !== undefined &&
+      cached.expiresAt - nowSec > this.tokenRenewBufferSeconds
     ) {
-      return this.mintedToken.token
+      return cached.token
     }
-    const deadline = nowSec + lifetime
-    const token = await cfg.signer.createAuthToken(deadline, cfg.context)
-    this.mintedToken = { token, expiresAt: deadline }
+    const token = await createAuthToken({
+      signer,
+      apiKey: {
+        apiKeyPrivateKey,
+        apiKeyIndex: indices.apiKeyIndex,
+        accountIndex: indices.accountIndex,
+      },
+      lifetimeSeconds: this.tokenLifetimeSeconds,
+    })
+    const expiresAt = nowSec + this.tokenLifetimeSeconds
+    this.mintedTokenByAddress.set(cacheKey, { token, expiresAt })
     return token
   }
 
@@ -275,7 +336,7 @@ export class LighterProvider implements PerpsProvider {
   ): Promise<AccountResponse> {
     const client = this.apiClient(options)
     const account = await this.fetchDetailedAccount(client, params.address)
-    const token = await this.resolveAuthToken(options)
+    const token = await this.resolveAuthToken(options, params.address)
 
     const [symbolLookup, registeredKey, limitsResult] = await Promise.all([
       this.registry.marketIdToSymbol(),
@@ -364,7 +425,7 @@ export class LighterProvider implements PerpsProvider {
     params: ProviderGetOrdersParams,
     options?: SDKRequestOptions
   ): Promise<OrdersResponse> {
-    const token = await this.resolveAuthToken(options)
+    const token = await this.resolveAuthToken(options, params.address)
     if (token === undefined) {
       return {
         provider: LIGHTER_PROVIDER_KEY,
@@ -420,12 +481,12 @@ export class LighterProvider implements PerpsProvider {
     params: ProviderGetOrderParams,
     options?: SDKRequestOptions
   ): Promise<Order> {
-    const token = await this.resolveAuthToken(options)
+    const token = await this.resolveAuthToken(options, params.address)
     if (token === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         'Lighter order lookup requires an auth token. Pass `authToken` to ' +
-          'LighterProvider, mint one with LighterSigner.createAuthToken, or ' +
+          'LighterProvider, register an API key + signer for on-demand mints, or ' +
           'forward `options.lighterAuthToken` on the call.'
       )
     }
@@ -494,7 +555,7 @@ export class LighterProvider implements PerpsProvider {
     const [account, symbolLookup, token] = await Promise.all([
       this.fetchDetailedAccount(client, params.address),
       this.registry.marketIdToSymbol(),
-      this.resolveAuthToken(options),
+      this.resolveAuthToken(options, params.address),
     ])
 
     const queryParams: Record<string, string | number | boolean> = {
@@ -540,7 +601,7 @@ export class LighterProvider implements PerpsProvider {
     params: ProviderGetActivityParams,
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse> {
-    const token = await this.resolveAuthToken(options)
+    const token = await this.resolveAuthToken(options, params.address)
     if (token === undefined) {
       return {
         provider: LIGHTER_PROVIDER_KEY,
@@ -803,6 +864,48 @@ export class LighterProvider implements PerpsProvider {
       })),
       timestamp: Date.now(),
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // PerpsProvider — write delegation
+  // -------------------------------------------------------------------------
+
+  async signActions(
+    method: SigningMethod,
+    steps: ActionStep[],
+    address: Address,
+    ctx?: SignActionsContext
+  ): Promise<SignedActionStep[]> {
+    if (this.signer === undefined || this.keyStore === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'LighterProvider.signActions requires `signer` and `keyStore` to be ' +
+          'configured at construction.'
+      )
+    }
+    const signer = this.signer
+    const keyStore = this.keyStore
+    return lighterSignActions(
+      {
+        signer,
+        keyStore,
+        resolveAccountIndex: async (addr) => {
+          const apiKey = await keyStore.get(addr)
+          if (apiKey !== null) {
+            return apiKey.accountIndex
+          }
+          const account = await this.fetchDetailedAccount(
+            this.apiClient(undefined),
+            addr
+          )
+          return account.index
+        },
+      },
+      method,
+      steps,
+      address,
+      ctx
+    )
   }
 
   // -------------------------------------------------------------------------

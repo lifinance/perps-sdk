@@ -12,11 +12,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@lifi/perps-sdk": ["../perps-sdk/src/index.ts"]
-    }
+    "resolveJsonModule": true
   },
   "include": ["./src/**/*"],
   "exclude": [

@@ -1,5 +1,6 @@
 import type {
   AccountResponse,
+  ActionStep,
   ActivitiesResponse,
   ActivityType,
   Address,
@@ -13,9 +14,18 @@ import type {
   OrdersResponse,
   PositionsResponse,
   PricesResponse,
+  SignedActionStep,
+  SigningMethod,
 } from '@lifi/perps-types'
 import type { Account, WalletClient } from 'viem'
 import type { AgentManager } from '../agent/AgentManager.js'
+import type { Agent } from '../agent/types.js'
+
+/**
+ * Viem `WalletClient` shape used by `PerpsSDKClient.signer`. Aliased here so
+ * provider plugins can name the type without re-deriving the viem generics.
+ */
+export type PerpsClientSigner = WalletClient<any, any, Account>
 
 /**
  * Per-provider config — restricts which `markets` the WS client subscribes
@@ -65,11 +75,22 @@ export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
   readonly agentManager: AgentManager
   /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
-  readonly signer?: WalletClient<any, any, Account>
+  readonly signer?: PerpsClientSigner
   /** Registered provider plugins, in the order they were passed at construction. */
   readonly providers: PerpsProvider[]
   /** Look up a registered {@link PerpsProvider} by its `type` key. */
   getProvider(key: string): PerpsProvider | undefined
+}
+
+/**
+ * Per-call context passed by `PerpsClient` to a provider's {@link
+ * PerpsProvider.signActions} method. Carries the resolved wallet signer
+ * (when configured) and the resolved agent keypair (when the signing-mode +
+ * descriptor combination requires one); providers pick whichever they need.
+ */
+export interface SignActionsContext {
+  signer?: PerpsClientSigner
+  agent?: Agent
 }
 
 /**
@@ -232,4 +253,28 @@ export interface PerpsProvider {
     params: ProviderGetOrderbookParams,
     options?: SDKRequestOptions
   ): Promise<OrderbookResponse>
+
+  /**
+   * Sign a batch of unsigned {@link ActionStep}s belonging to one
+   * `SigningMethod` arm. Returns the matching {@link SignedActionStep}s in
+   * the same order — the core `PerpsClient.execute` then forwards them to
+   * `/executeAction`.
+   *
+   * Optional: providers that do not implement write actions (read-only
+   * plugins) may omit it. `PerpsClient.execute` throws `PerpsErrorCode.SDKError`
+   * when an action requires a delegated signing method but the resolved
+   * provider has no `signActions`.
+   *
+   * `method` mirrors the descriptor's `signingMethod`. `EIP712` stays on
+   * `PerpsClient` (it goes through the agent or user wallet generically);
+   * providers only need to handle the method arms they actually own
+   * (`WASM_BLOB` for Lighter, `EVM_TX` where the on-chain target is
+   * provider-specific).
+   */
+  signActions?(
+    method: SigningMethod,
+    steps: ActionStep[],
+    address: Address,
+    ctx?: SignActionsContext
+  ): Promise<SignedActionStep[]>
 }
