@@ -67,7 +67,7 @@ describe('getPositions', () => {
 
     const result = await getPositions(DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
-      symbol: 'ETH',
+      assetId: 'ETH',
     })
     expect(result.positions).toHaveLength(0)
   })

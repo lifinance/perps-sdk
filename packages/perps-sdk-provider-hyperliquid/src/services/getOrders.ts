@@ -27,7 +27,8 @@ import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetOrdersParams {
   address: Address
-  symbol?: string
+  /** Optional filter — canonical `Asset.assetId`. */
+  assetId?: string
   limit?: number
 }
 
@@ -113,10 +114,10 @@ export const getOrders = async (
       }),
   ]
 
-  if (params.symbol !== undefined) {
-    openOrders = openOrders.filter((o) => o.asset.assetId === params.symbol)
+  if (params.assetId !== undefined) {
+    openOrders = openOrders.filter((o) => o.asset.assetId === params.assetId)
     triggerOrders = triggerOrders.filter(
-      (o) => o.asset.assetId === params.symbol
+      (o) => o.asset.assetId === params.assetId
     )
   }
 

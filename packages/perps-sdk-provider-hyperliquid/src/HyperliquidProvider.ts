@@ -113,7 +113,7 @@ export function hyperliquidProvider(
         apiUrl,
         {
           address: params.address,
-          symbol: params.symbol,
+          assetId: params.assetId,
           limit: params.limit,
         },
         resolveOpts(client, opts?.signal)
@@ -128,7 +128,7 @@ export function hyperliquidProvider(
         apiUrl,
         {
           address: params.address,
-          symbol: params.symbol,
+          assetId: params.assetId,
           limit: params.limit,
         },
         resolveOpts(client, opts?.signal)
@@ -189,7 +189,7 @@ export function hyperliquidProvider(
     ): Promise<Asset> =>
       coreGetAsset(
         client,
-        { provider: PROVIDER_KEY, symbol: params.symbol },
+        { provider: PROVIDER_KEY, assetId: params.assetId },
         opts
       ),
 
@@ -206,7 +206,7 @@ export function hyperliquidProvider(
     ): Promise<PricesResponse> =>
       coreGetPrices(
         client,
-        { provider: PROVIDER_KEY, symbols: params.symbols },
+        { provider: PROVIDER_KEY, assetIds: params.assetIds },
         opts
       ),
 
@@ -219,7 +219,7 @@ export function hyperliquidProvider(
         client,
         {
           provider: PROVIDER_KEY,
-          symbol: params.symbol,
+          assetId: params.assetId,
           interval: params.interval,
           startTime: params.startTime,
           endTime: params.endTime,
@@ -237,7 +237,7 @@ export function hyperliquidProvider(
         client,
         {
           provider: PROVIDER_KEY,
-          symbol: params.symbol,
+          assetId: params.assetId,
           depth: params.depth,
         },
         opts

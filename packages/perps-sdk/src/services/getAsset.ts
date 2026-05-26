@@ -8,23 +8,24 @@ import { buildUrl, request } from '../utils/request.js'
 export interface GetAssetParams {
   /** Provider to get asset from (e.g., 'hyperliquid') */
   provider: string
-  /** Asset symbol (e.g., 'BTC') */
-  symbol: string
+  /**
+   * Canonical wire-level Asset identifier — the value of `Asset.assetId`
+   * (e.g. `"BTC"`, `"xyz:PURR"`, `"@142"` on Hyperliquid; `"0"`, `"1"` on
+   * Lighter). Pass `displaySymbol` here and lookups will 404 for providers
+   * where the two diverge.
+   */
+  assetId: string
 }
 
 /**
- * Get a specific asset by symbol.
+ * Get a specific asset by its canonical assetId.
  *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
- * const asset = await getAsset(client, { provider: 'hyperliquid', symbol: 'BTC' })
- * console.log(asset) // { symbol: 'BTC', markPrice: '95000.00', ... }
+ * const asset = await getAsset(client, { provider: 'hyperliquid', assetId: 'BTC' })
+ * console.log(asset.displaySymbol)
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getAsset(client, { symbol })`.
  */
 export async function getAsset(
   client: PerpsSDKClient,
@@ -32,7 +33,7 @@ export async function getAsset(
   options?: SDKRequestOptions
 ): Promise<Asset> {
   const url = buildUrl(
-    `${client.config.apiUrl}/assets/${encodeURIComponent(params.symbol)}`,
+    `${client.config.apiUrl}/assets/${encodeURIComponent(params.assetId)}`,
     {
       provider: params.provider,
     }

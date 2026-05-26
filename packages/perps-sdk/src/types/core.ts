@@ -126,14 +126,16 @@ export interface ProviderGetAccountParams {
 
 export interface ProviderGetPositionsParams {
   address: Address
-  symbol?: string
+  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`). */
+  assetId?: string
   limit?: number
   cursor?: string
 }
 
 export interface ProviderGetOrdersParams {
   address: Address
-  symbol?: string
+  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`). */
+  assetId?: string
   limit?: number
   cursor?: string
 }
@@ -161,15 +163,18 @@ export interface ProviderGetActivityParams {
 }
 
 export interface ProviderGetAssetParams {
-  symbol: string
+  /** Canonical `Asset.assetId` (not `displaySymbol`). */
+  assetId: string
 }
 
 export interface ProviderGetPricesParams {
-  symbols?: string[]
+  /** Optional filter — canonical `Asset.assetId`s. */
+  assetIds?: string[]
 }
 
 export interface ProviderGetOhlcvParams {
-  symbol: string
+  /** Canonical `Asset.assetId` (not `displaySymbol`). */
+  assetId: string
   interval: OhlcvInterval
   startTime?: number
   endTime?: number
@@ -177,7 +182,8 @@ export interface ProviderGetOhlcvParams {
 }
 
 export interface ProviderGetOrderbookParams {
-  symbol: string
+  /** Canonical `Asset.assetId` (not `displaySymbol`). */
+  assetId: string
   depth?: number
 }
 

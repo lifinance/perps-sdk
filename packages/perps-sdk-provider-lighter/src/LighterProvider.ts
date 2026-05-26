@@ -638,8 +638,8 @@ export const lighterProvider = (
         .filter((p) => Number.parseFloat(p.position) !== 0)
         .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
 
-      if (params.symbol !== undefined) {
-        positions = positions.filter((p) => p.asset.assetId === params.symbol)
+      if (params.assetId !== undefined) {
+        positions = positions.filter((p) => p.asset.assetId === params.assetId)
       }
 
       return {
@@ -671,9 +671,9 @@ export const lighterProvider = (
       ])
 
       const marketIds =
-        params.symbol === undefined
+        params.assetId === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [Number(params.symbol)]
+          : [Number(params.assetId)]
 
       const responses = await Promise.all(
         marketIds.map((id) =>
@@ -981,7 +981,7 @@ export const lighterProvider = (
     ): Promise<Asset> =>
       coreGetAsset(
         client,
-        { provider: LIGHTER_PROVIDER_KEY, symbol: params.symbol },
+        { provider: LIGHTER_PROVIDER_KEY, assetId: params.assetId },
         opts
       ),
 
@@ -998,7 +998,7 @@ export const lighterProvider = (
     ): Promise<PricesResponse> =>
       coreGetPrices(
         client,
-        { provider: LIGHTER_PROVIDER_KEY, symbols: params.symbols },
+        { provider: LIGHTER_PROVIDER_KEY, assetIds: params.assetIds },
         opts
       ),
 
@@ -1011,7 +1011,7 @@ export const lighterProvider = (
         client,
         {
           provider: LIGHTER_PROVIDER_KEY,
-          symbol: params.symbol,
+          assetId: params.assetId,
           interval: params.interval,
           startTime: params.startTime,
           endTime: params.endTime,
@@ -1029,7 +1029,7 @@ export const lighterProvider = (
         client,
         {
           provider: LIGHTER_PROVIDER_KEY,
-          symbol: params.symbol,
+          assetId: params.assetId,
           depth: params.depth,
         },
         opts

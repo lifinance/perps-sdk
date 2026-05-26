@@ -13,8 +13,8 @@ import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetPositionsParams {
   address: Address
-  /** Filter to a single Hyperliquid asset identifier (e.g. `'BTC'`, `'xyz:PURR'`). */
-  symbol?: string
+  /** Filter to a single canonical `Asset.assetId` (e.g. `'BTC'`, `'xyz:PURR'`). */
+  assetId?: string
   /** Page size hint surfaced on the response. Hyperliquid returns all open positions in one call, so pagination is never required. */
   limit?: number
 }
@@ -66,8 +66,8 @@ export const getPositions = async (
     }
   })
 
-  if (params.symbol !== undefined) {
-    positions = positions.filter((p) => p.asset.assetId === params.symbol)
+  if (params.assetId !== undefined) {
+    positions = positions.filter((p) => p.asset.assetId === params.assetId)
   }
 
   return {

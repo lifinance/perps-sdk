@@ -20,15 +20,15 @@ describe('getOhlcv', () => {
     apiKey: 'test-key',
   })
 
-  it('encodes the symbol so spot pairs containing "/" reach :symbol intact', async () => {
-    // Without encoding, "LINK/USDC" splits the path and Fastify's `:symbol`
+  it('encodes assetId so spot pairs containing "/" reach :assetId intact', async () => {
+    // Without encoding, "LINK/USDC" splits the path and Fastify's `:assetId`
     // captures only "LINK", leaving "USDC" as an unmatched segment → 404.
-    let capturedSymbol: string | undefined
+    let capturedAssetId: string | undefined
     let capturedRawPath: string | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/ohlcv/:symbol`, ({ params, request }) => {
-        capturedSymbol = params.symbol as string
+      http.get(`${DEFAULT_API_URL}/ohlcv/:assetId`, ({ params, request }) => {
+        capturedAssetId = params.assetId as string
         capturedRawPath = new URL(request.url).pathname
         return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'LINK/USDC' })
       })
@@ -36,19 +36,19 @@ describe('getOhlcv', () => {
 
     await getOhlcv(client, {
       provider: 'lighter',
-      symbol: 'LINK/USDC',
+      assetId: 'LINK/USDC',
       interval: '1h',
     })
 
-    expect(capturedSymbol).toBe('LINK/USDC')
+    expect(capturedAssetId).toBe('LINK/USDC')
     expect(capturedRawPath).toBe('/v1/perps/ohlcv/LINK%2FUSDC')
   })
 
-  it('passes plain perp symbols through unchanged', async () => {
+  it('passes plain perp assetIds through unchanged', async () => {
     let capturedRawPath: string | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/ohlcv/:symbol`, ({ request }) => {
+      http.get(`${DEFAULT_API_URL}/ohlcv/:assetId`, ({ request }) => {
         capturedRawPath = new URL(request.url).pathname
         return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'BTC' })
       })
@@ -56,7 +56,7 @@ describe('getOhlcv', () => {
 
     await getOhlcv(client, {
       provider: 'hyperliquid',
-      symbol: 'BTC',
+      assetId: 'BTC',
       interval: '1h',
     })
 

@@ -8,8 +8,8 @@ import { buildUrl, request } from '../utils/request.js'
 export interface GetOhlcvParams {
   /** Provider to get OHLCV from (e.g., 'hyperliquid') */
   provider: string
-  /** Market symbol (e.g., 'BTC') */
-  symbol: string
+  /** Canonical wire-level `Asset.assetId` (not `displaySymbol`). */
+  assetId: string
   /** Candle interval */
   interval: OhlcvInterval
   /** Start time (Unix timestamp in milliseconds) */
@@ -23,28 +23,15 @@ export interface GetOhlcvParams {
 /**
  * Get OHLCV (candlestick) data for a market.
  *
- * @param client - The SDK client instance
- * @param params - Request parameters
- * @param options - Request options (e.g., AbortSignal)
- * @returns OHLCV candle data
- * @throws {PerpsError} On API error responses
- * @throws {PerpsError} On network or parsing errors
- *
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
  * const { candles } = await getOhlcv(client, {
  *   provider: 'hyperliquid',
- *   symbol: 'BTC',
+ *   assetId: 'BTC',
  *   interval: '1h',
- *   limit: 100
+ *   limit: 100,
  * })
- * console.log(candles) // [{ t: 1704067200000, o: '94000', h: '95000', ... }]
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getOhlcv(client, { symbol, interval, ... })`.
  */
 export async function getOhlcv(
   client: PerpsSDKClient,
@@ -52,7 +39,7 @@ export async function getOhlcv(
   options?: SDKRequestOptions
 ): Promise<OhlcvResponse> {
   const url = buildUrl(
-    `${client.config.apiUrl}/ohlcv/${encodeURIComponent(params.symbol)}`,
+    `${client.config.apiUrl}/ohlcv/${encodeURIComponent(params.assetId)}`,
     {
       provider: params.provider,
       interval: params.interval,

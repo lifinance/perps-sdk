@@ -71,7 +71,7 @@ describe('getOrders', () => {
 
     const result = await getOrders(DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
-      symbol: 'ETH',
+      assetId: 'ETH',
     })
     expect(result.openOrders).toHaveLength(0)
     expect(result.triggerOrders).toHaveLength(0)
