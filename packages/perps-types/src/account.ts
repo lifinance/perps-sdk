@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address } from './primitives.js'
 import type { AssetDisplay } from './asset.js'
 import type {
   ActionType,

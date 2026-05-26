@@ -112,10 +112,6 @@ importers:
         version: 2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3))
 
   packages/perps-types:
-    dependencies:
-      viem:
-        specifier: 2.48.8
-        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4

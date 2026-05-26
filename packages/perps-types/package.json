@@ -58,9 +58,6 @@
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "viem": "2.48.8"
-  },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "fs-extra": "^11.2.0",
