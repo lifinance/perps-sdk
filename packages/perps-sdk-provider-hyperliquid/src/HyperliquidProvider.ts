@@ -12,6 +12,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
+  resolveRetryPolicy,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import {
@@ -48,6 +49,10 @@ import { getOrderbook } from './services/getOrderbook.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
 import { getPrices } from './services/getPrices.js'
+import {
+  HYPERLIQUID_RETRY_DEFAULTS,
+  type InfoRequestOptions,
+} from './utils/infoClient.js'
 
 export interface HyperliquidProviderOptions {
   /**
@@ -72,18 +77,35 @@ export function hyperliquidProvider(
 ): PerpsProvider {
   const apiUrl = options.apiUrl ?? DEFAULT_HYPERLIQUID_API_URL
 
+  const resolveOpts = (
+    client: PerpsSDKClient,
+    signal?: AbortSignal
+  ): InfoRequestOptions => ({
+    signal,
+    policy: resolveRetryPolicy(
+      HYPERLIQUID_RETRY_DEFAULTS,
+      client.config.retry,
+      PROVIDER_KEY
+    ),
+    fetchImpl: client.config.fetch,
+  })
+
   return {
     type: PROVIDER_KEY,
 
     getAccount: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> =>
-      getAccount(apiUrl, { address: params.address }, { signal: opts?.signal }),
+      getAccount(
+        apiUrl,
+        { address: params.address },
+        resolveOpts(client, opts?.signal)
+      ),
 
     getPositions: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> =>
@@ -94,11 +116,11 @@ export function hyperliquidProvider(
           symbol: params.symbol,
           limit: params.limit,
         },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getOrders: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
     ): Promise<OrdersResponse> =>
@@ -109,22 +131,22 @@ export function hyperliquidProvider(
           symbol: params.symbol,
           limit: params.limit,
         },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getOrder: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> =>
       getOrder(
         apiUrl,
         { address: params.address, id: params.id },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getFills: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> =>
@@ -137,11 +159,11 @@ export function hyperliquidProvider(
           startTime: params.startTime,
           endTime: params.endTime,
         },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getActivity: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> =>
@@ -155,30 +177,39 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           type: params.type,
         },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getAsset: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetAssetParams,
       opts?: SDKRequestOptions
     ): Promise<Asset> =>
-      getAsset(apiUrl, { symbol: params.symbol }, { signal: opts?.signal }),
+      getAsset(
+        apiUrl,
+        { symbol: params.symbol },
+        resolveOpts(client, opts?.signal)
+      ),
 
     getAssets: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       opts?: SDKRequestOptions
-    ): Promise<AssetsResponse> => getAssets(apiUrl, { signal: opts?.signal }),
+    ): Promise<AssetsResponse> =>
+      getAssets(apiUrl, resolveOpts(client, opts?.signal)),
 
     getPrices: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetPricesParams,
       opts?: SDKRequestOptions
     ): Promise<PricesResponse> =>
-      getPrices(apiUrl, { symbols: params.symbols }, { signal: opts?.signal }),
+      getPrices(
+        apiUrl,
+        { symbols: params.symbols },
+        resolveOpts(client, opts?.signal)
+      ),
 
     getOhlcv: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetOhlcvParams,
       opts?: SDKRequestOptions
     ): Promise<OhlcvResponse> =>
@@ -191,18 +222,18 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           limit: params.limit,
         },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     getOrderbook: (
-      _client: PerpsSDKClient,
+      client: PerpsSDKClient,
       params: ProviderGetOrderbookParams,
       opts?: SDKRequestOptions
     ): Promise<OrderbookResponse> =>
       getOrderbook(
         apiUrl,
         { symbol: params.symbol, depth: params.depth },
-        { signal: opts?.signal }
+        resolveOpts(client, opts?.signal)
       ),
 
     projectConfig: (

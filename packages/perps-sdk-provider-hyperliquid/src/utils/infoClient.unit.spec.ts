@@ -1,3 +1,4 @@
+import { DISABLED_RETRY } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -15,7 +16,11 @@ describe('infoRequest', () => {
         new Response(JSON.stringify({ ok: true }), { status: 200 })
       )
 
-    await infoRequest(DEFAULT_HYPERLIQUID_API_URL, { type: 'allMids' })
+    await infoRequest(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { type: 'allMids' },
+      { policy: DISABLED_RETRY }
+    )
 
     expect(spy).toHaveBeenCalledWith(
       `${DEFAULT_HYPERLIQUID_API_URL}/info`,
@@ -35,7 +40,11 @@ describe('infoRequest', () => {
     )
 
     await expect(
-      infoRequest(DEFAULT_HYPERLIQUID_API_URL, { type: 'allMids' })
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
     ).rejects.toMatchObject({
       code: PerpsErrorCode.ThirdPartyError,
       tool: 'hyperliquid',
@@ -46,7 +55,11 @@ describe('infoRequest', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('refused'))
 
     await expect(
-      infoRequest(DEFAULT_HYPERLIQUID_API_URL, { type: 'allMids' })
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
     ).rejects.toMatchObject({
       code: PerpsErrorCode.ServerError,
       tool: 'hyperliquid',
@@ -62,7 +75,7 @@ describe('infoRequest', () => {
     await infoRequest(
       DEFAULT_HYPERLIQUID_API_URL,
       { type: 'allMids' },
-      { signal: controller.signal }
+      { signal: controller.signal, policy: DISABLED_RETRY }
     )
 
     expect(spy.mock.calls[0][1]?.signal).toBe(controller.signal)

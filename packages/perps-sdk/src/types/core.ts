@@ -26,6 +26,7 @@ import type {
 import type { Account, Address, WalletClient } from 'viem'
 import type { AgentManager } from '../agent/AgentManager.js'
 import type { Agent } from '../agent/types.js'
+import type { RetryConfig } from '../transport/retryPolicy.js'
 
 /**
  * Viem `WalletClient` shape used by `PerpsSDKClient.signer`. Aliased here so
@@ -75,6 +76,8 @@ export interface PerpsBaseConfig {
   disableVersionCheck?: boolean
   requestInterceptor?: RequestInterceptor
   providers?: ProviderConfigs
+  retry?: RetryConfig
+  fetch?: typeof fetch
 }
 
 export interface PerpsSDKClient {

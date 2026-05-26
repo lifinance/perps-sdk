@@ -3,6 +3,7 @@ import type { Account, WalletClient } from 'viem'
 import { AgentManager } from '../agent/AgentManager.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import type { RetryConfig } from '../transport/retryPolicy.js'
 import type {
   PerpsBaseConfig,
   PerpsProvider,
@@ -57,6 +58,21 @@ export interface PerpsConfig {
    *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })
    */
   signer?: WalletClient<any, any, Account>
+  /**
+   * Retry behaviour for HTTP requests. Pass `false` to disable retries
+   * everywhere (single-shot — useful when wrapping with TanStack Query or
+   * similar consumer-side retry). Pass a flat {@link RetryPolicy} to apply
+   * one policy across providers, or a per-provider object keyed by provider
+   * type (`'lifi'`, `'hyperliquid'`, `'lighter'`) with an optional `default`
+   * fallback. Per-provider built-in defaults apply when omitted.
+   */
+  retry?: RetryConfig
+  /**
+   * Replace the global `fetch` used by the SDK and provider HTTP clients —
+   * for instrumentation, custom proxying, or test injection. Does not affect
+   * retry policy.
+   */
+  fetch?: typeof fetch
 }
 
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
@@ -79,6 +95,8 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,
     providers: providerConfigs,
+    retry: options.retry,
+    fetch: options.fetch,
   }
 
   const agentManager = new AgentManager(options.storage)

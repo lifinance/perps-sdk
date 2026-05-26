@@ -14,7 +14,7 @@ const ADDRESS = '0x1111111111111111111111111111111111111111' as const
 // Minimal client stub — the LighterProvider read functions never read from it
 // (Lighter goes direct to its REST API; the `client` param is part of the
 // `PerpsProvider` contract for cross-provider symmetry).
-const STUB_CLIENT = {} as PerpsSDKClient
+const STUB_CLIENT = { config: {} } as PerpsSDKClient
 
 const ACCOUNT_PAYLOAD = {
   code: 200,

@@ -79,6 +79,24 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+// Transport
+export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
+export { fetchWithRetry } from './transport/fetchWithRetry.js'
+export type {
+  ProviderRetryConfig,
+  ResolvedRetryPolicy,
+  RetryAttemptContext,
+  RetryClassification,
+  RetryClassifyContext,
+  RetryConfig,
+  RetryPolicy,
+} from './transport/retryPolicy.js'
+export {
+  DISABLED_RETRY,
+  LIFI_REQUEST_KEY,
+  LIFI_RETRY_DEFAULTS,
+  resolveRetryPolicy,
+} from './transport/retryPolicy.js'
 // Core provider plugin interface
 export type {
   PerpsClientSigner,

@@ -12,6 +12,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
+  resolveRetryPolicy,
   type SatisfyClientSetupContext,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -89,7 +90,7 @@ import {
   encodeActivityCursor,
   type LighterActivityCursor,
 } from './utils/activityCursor.js'
-import { LighterApiClient } from './utils/apiClient.js'
+import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from './utils/apiClient.js'
 import {
   isTriggerType,
   mapFill,
@@ -275,8 +276,21 @@ export const lighterProvider = (
   // Internal helpers — closed-over state replaces the class's `this.X` access.
   // ---------------------------------------------------------------------------
 
-  const apiClient = (opts?: SDKRequestOptions): LighterApiClient =>
-    new LighterApiClient(restUrl, opts?.signal)
+  const apiClient = (
+    sdkClient?: PerpsSDKClient,
+    opts?: SDKRequestOptions
+  ): LighterApiClient =>
+    new LighterApiClient(restUrl, {
+      signal: opts?.signal,
+      policy: sdkClient
+        ? resolveRetryPolicy(
+            LIGHTER_RETRY_DEFAULTS,
+            sdkClient.config.retry,
+            LIGHTER_PROVIDER_KEY
+          )
+        : undefined,
+      fetchImpl: sdkClient?.config.fetch,
+    })
 
   const mintViaSigner = async (
     address: Address,
@@ -590,11 +604,11 @@ export const lighterProvider = (
     },
 
     async getAccount(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
       const token = await resolveAuthToken(opts, params.address)
 
@@ -657,11 +671,11 @@ export const lighterProvider = (
     },
 
     async getPositions(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
       const symbolLookup = await registry.marketIdToSymbol()
 
@@ -681,7 +695,7 @@ export const lighterProvider = (
     },
 
     async getOrders(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
     ): Promise<OrdersResponse> {
@@ -695,7 +709,7 @@ export const lighterProvider = (
         }
       }
 
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.marketIdToSymbol(),
@@ -737,7 +751,7 @@ export const lighterProvider = (
     },
 
     async getOrder(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> {
@@ -751,7 +765,7 @@ export const lighterProvider = (
         )
       }
 
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.marketIdToSymbol(),
@@ -807,11 +821,11 @@ export const lighterProvider = (
     },
 
     async getFills(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> {
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const [account, symbolLookup, token] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.marketIdToSymbol(),
@@ -857,7 +871,7 @@ export const lighterProvider = (
     },
 
     async getActivity(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> {
@@ -871,7 +885,7 @@ export const lighterProvider = (
       }
 
       const inputCursor = decodeActivityCursor(params.cursor)
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
       const [history, marketLookup, assetLookup] = await Promise.all([
         fetchAllHistory(
@@ -999,7 +1013,7 @@ export const lighterProvider = (
     },
 
     async getAsset(
-      _client: PerpsSDKClient,
+      _sdkClient: PerpsSDKClient,
       params: ProviderGetAssetParams,
       opts?: SDKRequestOptions
     ): Promise<Asset> {
@@ -1015,14 +1029,14 @@ export const lighterProvider = (
     },
 
     async getAssets(
-      _client: PerpsSDKClient,
+      _sdkClient: PerpsSDKClient,
       opts?: SDKRequestOptions
     ): Promise<AssetsResponse> {
       return { assets: await collectAssets(opts) }
     },
 
     async getPrices(
-      _client: PerpsSDKClient,
+      _sdkClient: PerpsSDKClient,
       params: ProviderGetPricesParams,
       _opts?: SDKRequestOptions
     ): Promise<PricesResponse> {
@@ -1042,11 +1056,11 @@ export const lighterProvider = (
     },
 
     async getOhlcv(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetOhlcvParams,
       opts?: SDKRequestOptions
     ): Promise<OhlcvResponse> {
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const marketId = await registry.resolveMarketId(params.symbol)
       const now = Date.now()
       const startTime = params.startTime ?? now - DEFAULT_OHLCV_LOOKBACK_MS
@@ -1091,11 +1105,11 @@ export const lighterProvider = (
     },
 
     async getOrderbook(
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       params: ProviderGetOrderbookParams,
       opts?: SDKRequestOptions
     ): Promise<OrderbookResponse> {
-      const client = apiClient(opts)
+      const client = apiClient(sdkClient, opts)
       const marketId = await registry.resolveMarketId(params.symbol)
       const maxDepth = Math.min(
         params.depth ?? MAX_ORDERBOOK_DEPTH,
@@ -1161,7 +1175,7 @@ export const lighterProvider = (
 
     async satisfyClientSetup(
       action: ActionType,
-      _client: PerpsSDKClient,
+      sdkClient: PerpsSDKClient,
       ctx: SatisfyClientSetupContext
     ): Promise<void> {
       if (action !== ActionType.APPROVE_READ_ONLY_TOKEN) {
@@ -1191,7 +1205,8 @@ export const lighterProvider = (
       const accountIndex =
         typeof inputAccountIndex === 'number'
           ? inputAccountIndex
-          : (await fetchDetailedAccount(apiClient(), ctx.address)).index
+          : (await fetchDetailedAccount(apiClient(sdkClient), ctx.address))
+              .index
 
       const inputExpiry = (ctx.params as { expirySeconds?: number } | undefined)
         ?.expirySeconds

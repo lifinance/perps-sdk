@@ -5,39 +5,37 @@ import type {
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { fetchWithRetry } from '../transport/fetchWithRetry.js'
+import {
+  LIFI_REQUEST_KEY,
+  LIFI_RETRY_DEFAULTS,
+  type RetryPolicy,
+  resolveRetryPolicy,
+} from '../transport/retryPolicy.js'
 import { version } from '../version.js'
-import { sleep } from './sleep.js'
 
 export interface RequestOptions extends RequestInit {
-  /** Number of retries on 5xx errors. Default: 1 */
-  retries?: number
+  /** Per-call retry override. Falls back to the resolved client-level policy. */
+  retry?: RetryPolicy | false
 }
 
-const DEFAULT_RETRIES = 1
-
-/**
- * Make an HTTP request to the Perps API.
- *
- * @param config - SDK configuration
- * @param url - The full URL to request
- * @param options - Fetch options plus retries
- * @param sdkOptions - SDK-specific options (signal, etc.)
- * @returns Parsed JSON response
- * @throws {PerpsError} On non-2xx responses or network errors
- */
 export async function request<T>(
   config: PerpsBaseConfig,
   url: string,
   options: RequestOptions = {},
   sdkOptions?: SDKRequestOptions
 ): Promise<T> {
-  const retries = options.retries ?? DEFAULT_RETRIES
+  const { retry, ...fetchInit } = options
+  const policy =
+    retry !== undefined
+      ? resolveRetryPolicy(LIFI_RETRY_DEFAULTS, retry, LIFI_REQUEST_KEY)
+      : resolveRetryPolicy(LIFI_RETRY_DEFAULTS, config.retry, LIFI_REQUEST_KEY)
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-lifi-integrator': config.integrator,
     'x-lifi-perps-sdk': version,
-    ...(options.headers as Record<string, string>),
+    ...(fetchInit.headers as Record<string, string>),
   }
 
   if (config.apiKey) {
@@ -48,40 +46,29 @@ export async function request<T>(
     headers.Authorization = `Bearer ${sdkOptions.lighterAuthToken}`
   }
 
-  // Merge signal from sdkOptions into options
   let finalOptions: RequestInit = {
-    ...options,
+    ...fetchInit,
     headers,
-    signal: sdkOptions?.signal ?? options.signal,
+    signal: sdkOptions?.signal ?? fetchInit.signal,
   }
 
-  // Apply request interceptor if configured
   if (config.requestInterceptor) {
     finalOptions = await config.requestInterceptor(url, finalOptions)
   }
 
   try {
-    const response = await fetch(url, finalOptions)
+    const response = await fetchWithRetry(url, finalOptions, {
+      policy,
+      fetchImpl: config.fetch,
+      signal: sdkOptions?.signal ?? finalOptions.signal ?? undefined,
+    })
 
     if (!response.ok) {
-      // Parse the backend's error body
       let body: PerpsErrorBody | undefined
       try {
         body = await response.json()
       } catch {}
 
-      // Retry on 5xx before throwing
-      if (retries > 0 && response.status >= 500) {
-        await sleep(500)
-        return request<T>(
-          config,
-          url,
-          { ...options, retries: retries - 1 },
-          sdkOptions
-        )
-      }
-
-      // Rehydrate backend error — code/message/tool come straight from the response
       const fallbackMessage = `Request failed with status code ${response.status}`
       if (
         body &&
@@ -103,7 +90,6 @@ export async function request<T>(
       throw error
     }
 
-    // Network error or other fetch failure
     throw new PerpsError(
       PerpsErrorCode.ServerError,
       error instanceof Error ? error.message : 'Request failed'
@@ -111,13 +97,6 @@ export async function request<T>(
   }
 }
 
-/**
- * Build a URL with query parameters.
- *
- * @param baseUrl - The base URL
- * @param params - Query parameters (undefined values are filtered out)
- * @returns Full URL with query string
- */
 export function buildUrl(
   baseUrl: string,
   params: Record<string, string | number | boolean | undefined>

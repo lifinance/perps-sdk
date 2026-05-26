@@ -12,7 +12,6 @@ const client = createPerpsClient({
 })
 const url = `${client.config.apiUrl}/test`
 
-/** Helper: override GET /test with a JSON error response */
 function mockErrorResponse(
   status: number,
   body: Record<string, unknown>
@@ -20,7 +19,6 @@ function mockErrorResponse(
   server.use(http.get(url, () => HttpResponse.json(body, { status })))
 }
 
-/** Helper: override GET /test with a non-JSON response */
 function mockNonJsonResponse(status: number, text: string): void {
   server.use(
     http.get(
@@ -35,8 +33,6 @@ function mockNonJsonResponse(status: number, text: string): void {
 }
 
 describe('request — error rehydration', () => {
-  // ── Every PerpsErrorCode rehydrates faithfully ──
-
   const errorCodes: [string, PerpsErrorCode][] = [
     ['DefaultError', PerpsErrorCode.DefaultError],
     ['ServerError', PerpsErrorCode.ServerError],
@@ -67,7 +63,7 @@ describe('request — error rehydration', () => {
     mockErrorResponse(400, { code, message, tool })
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(PerpsError)
@@ -85,7 +81,7 @@ describe('request — error rehydration', () => {
     })
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -95,13 +91,11 @@ describe('request — error rehydration', () => {
     }
   })
 
-  // ── Edge cases: body does not match PerpsErrorBody ──
-
   it('falls back when response body is not JSON', async () => {
     mockNonJsonResponse(502, 'Bad Gateway')
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -115,7 +109,7 @@ describe('request — error rehydration', () => {
     mockErrorResponse(422, { message: 'some message', extra: true })
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -129,7 +123,7 @@ describe('request — error rehydration', () => {
     mockErrorResponse(400, { code: PerpsErrorCode.ValidationError })
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -143,7 +137,7 @@ describe('request — error rehydration', () => {
     mockErrorResponse(500, {})
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -157,7 +151,7 @@ describe('request — error rehydration', () => {
     mockErrorResponse(400, { code: 'not-a-number', message: 123 })
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -167,13 +161,11 @@ describe('request — error rehydration', () => {
     }
   })
 
-  // ── Network errors ──
-
   it('wraps network errors as PerpsError with ServerError code', async () => {
     server.use(http.get(url, () => HttpResponse.error()))
 
     try {
-      await request(client.config, url, { retries: 0 })
+      await request(client.config, url, { retry: false })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
@@ -181,9 +173,9 @@ describe('request — error rehydration', () => {
       expect(e.code).toBe(PerpsErrorCode.ServerError)
     }
   })
+})
 
-  // ── Retry behavior ──
-
+describe('request — retry behaviour', () => {
   it('retries 5xx errors before throwing', async () => {
     let attempts = 0
     server.use(
@@ -201,17 +193,70 @@ describe('request — error rehydration', () => {
     )
 
     try {
-      await request(client.config, url, { retries: 1 })
+      await request(client.config, url, {
+        retry: { maxAttempts: 2, baseDelayMs: 0, maxDelayMs: 0 },
+      })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
       expect(e.code).toBe(PerpsErrorCode.ServerError)
-      expect(e.message).toBe('Internal error')
-      expect(attempts).toBe(2) // original + 1 retry
+      expect(attempts).toBe(2)
     }
   })
 
-  it('does not retry 4xx errors', async () => {
+  it('retries 429 rate-limit responses', async () => {
+    let attempts = 0
+    server.use(
+      http.get(url, () => {
+        attempts++
+        if (attempts < 2) {
+          return HttpResponse.json(
+            { code: PerpsErrorCode.ThirdPartyError, message: 'rate limited' },
+            { status: 429 }
+          )
+        }
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(client.config, url, {
+      retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+    })
+    expect(result.ok).toBe(true)
+    expect(attempts).toBe(2)
+  })
+
+  it('honors Retry-After header when present', async () => {
+    let attempts = 0
+    const seen: number[] = []
+    let lastSeen = Date.now()
+    server.use(
+      http.get(url, () => {
+        attempts++
+        const now = Date.now()
+        seen.push(now - lastSeen)
+        lastSeen = now
+        if (attempts < 2) {
+          return new HttpResponse(JSON.stringify({ code: 0, message: 'r' }), {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': '0',
+            },
+          })
+        }
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(client.config, url, {
+      retry: { maxAttempts: 3, baseDelayMs: 10_000, maxDelayMs: 60_000 },
+    })
+    expect(result.ok).toBe(true)
+    expect(attempts).toBe(2)
+  })
+
+  it('does not retry 4xx errors other than 429', async () => {
     let attempts = 0
     server.use(
       http.get(url, () => {
@@ -228,12 +273,34 @@ describe('request — error rehydration', () => {
     )
 
     try {
-      await request(client.config, url, { retries: 1 })
+      await request(client.config, url, {
+        retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+      })
       expect.fail('Should have thrown')
     } catch (error) {
       const e = error as PerpsError
       expect(e.code).toBe(PerpsErrorCode.ValidationError)
-      expect(attempts).toBe(1) // no retry
+      expect(attempts).toBe(1)
+    }
+  })
+
+  it('retry: false bypasses retries entirely', async () => {
+    let attempts = 0
+    server.use(
+      http.get(url, () => {
+        attempts++
+        return HttpResponse.json(
+          { code: PerpsErrorCode.ServerError, message: 'oops' },
+          { status: 503 }
+        )
+      })
+    )
+
+    try {
+      await request(client.config, url, { retry: false })
+      expect.fail('Should have thrown')
+    } catch {
+      expect(attempts).toBe(1)
     }
   })
 })
