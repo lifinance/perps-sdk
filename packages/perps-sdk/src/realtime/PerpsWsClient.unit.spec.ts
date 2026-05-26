@@ -59,11 +59,13 @@ describe('PerpsWsClient', () => {
       await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
 
       expect(factory).toHaveBeenCalledOnce()
-      expect(factory).toHaveBeenCalledWith({
-        provider: 'hyperliquid',
-        wsUrl: 'wss://api.hyperliquid.xyz/ws',
-        markets: ['hyperliquid', 'xyz'],
-      })
+      expect(factory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'hyperliquid',
+          wsUrl: 'wss://api.hyperliquid.xyz/ws',
+          markets: ['hyperliquid', 'xyz'],
+        })
+      )
 
       ws.close()
     })

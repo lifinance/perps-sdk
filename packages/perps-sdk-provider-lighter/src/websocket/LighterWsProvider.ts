@@ -1,4 +1,6 @@
 import {
+  getAssets as coreGetAssets,
+  type PerpsSDKClient,
   ReconnectingWebSocket,
   type SubscriptionListener,
   type WsProvider,
@@ -15,8 +17,6 @@ import type { Address } from 'viem'
 import type {
   LtAccountPosition,
   LtOrder,
-  LtOrderBookDetailsResponse,
-  LtPerpsOrderBookDetail,
   LtTrade,
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
@@ -112,6 +112,7 @@ export class LighterWsProvider implements WsProvider {
   private readonly restUrl: string
   private readonly providerKey: string
   private readonly authProvider: LighterAuthProvider | undefined
+  private readonly client: PerpsSDKClient | undefined
 
   private readonly subs = new Map<string, SubState>()
   private readonly listeners = new Map<string, Set<SubscriptionListener>>()
@@ -130,11 +131,13 @@ export class LighterWsProvider implements WsProvider {
   constructor(
     wsUrl: string = DEFAULT_WS_URL,
     providerKey = 'lighter',
-    options: LighterWsProviderOptions = {}
+    options: LighterWsProviderOptions = {},
+    client?: PerpsSDKClient
   ) {
     this.providerKey = providerKey
     this.restUrl = options.restUrl ?? DEFAULT_REST_URL
     this.authProvider = options.authProvider
+    this.client = client
     this.symbolToMarketId = new Map(Object.entries(options.symbolMap ?? {}))
     this.marketIdToSymbol = new Map(
       [...this.symbolToMarketId].map(([s, m]) => [m, s])
@@ -362,21 +365,24 @@ export class LighterWsProvider implements WsProvider {
   }
 
   private async fetchMarketMetadata(): Promise<void> {
-    const response = await fetch(`${this.restUrl}/api/v1/orderBookDetails`)
-    if (!response.ok) {
+    if (this.client === undefined) {
       throw new Error(
-        `Failed to fetch Lighter orderBookDetails: ${response.status}`
+        'LighterWsProvider: PerpsSDKClient not provided; cannot fetch market metadata. ' +
+          'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
       )
     }
-    const body = (await response.json()) as LtOrderBookDetailsResponse
-    for (const d of body.order_book_details ?? []) {
-      this.registerMarket(d)
+    const { assets } = await coreGetAssets(this.client, { provider: 'lighter' })
+    for (const a of assets) {
+      if (a.market !== 'lighter') {
+        continue
+      }
+      const marketId = Number(a.assetId)
+      if (!Number.isFinite(marketId)) {
+        continue
+      }
+      this.symbolToMarketId.set(a.displaySymbol, marketId)
+      this.marketIdToSymbol.set(marketId, a.displaySymbol)
     }
-  }
-
-  private registerMarket(d: LtPerpsOrderBookDetail): void {
-    this.symbolToMarketId.set(d.symbol, d.market_id)
-    this.marketIdToSymbol.set(d.market_id, d.symbol)
   }
 
   private handleMessage(raw: string): void {
@@ -690,5 +696,5 @@ function collectAuthChannelItems<T>(
  */
 export const lighterWsProvider =
   (options?: LighterWsProviderOptions): WsProviderFactory =>
-  ({ provider, wsUrl }) =>
-    new LighterWsProvider(wsUrl, provider, options)
+  ({ provider, wsUrl, client }) =>
+    new LighterWsProvider(wsUrl, provider, options, client)

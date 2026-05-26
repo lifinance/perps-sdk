@@ -24,6 +24,12 @@ export type WsProviderFactory = (params: {
    * them to decide which sub-DEXes to subscribe to; Lighter ignores them.
    */
   markets: string[]
+  /**
+   * The SDK client. WS providers use it to call core services (e.g.
+   * `getAssets` to source the wire-id ↔ display-symbol map) without
+   * duplicating backend orchestration in the WS layer.
+   */
+  client: PerpsSDKClient
 }) => WsProvider
 
 export interface PerpsWsClientOptions {
@@ -112,6 +118,7 @@ export class PerpsWsClient {
       provider,
       wsUrl: providerInfo.wsUrl,
       markets,
+      client: this.client,
     })
     this.providers.set(provider, wsProvider)
     return wsProvider
