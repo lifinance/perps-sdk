@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  HL_ASSET_CONTEXT,
   HL_FRONTEND_OPEN_ORDERS,
-  HL_META_AND_CTXS_MAIN,
-  HL_PERP_DEXS_MAIN_ONLY,
-  HL_SPOT_META,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -12,9 +10,6 @@ import { getOrders } from './getOrders.js'
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
 const baseResponses = {
-  perpDexs: HL_PERP_DEXS_MAIN_ONLY,
-  metaAndAssetCtxs: HL_META_AND_CTXS_MAIN,
-  spotMeta: HL_SPOT_META,
   frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
 }
 
@@ -28,9 +23,11 @@ describe('getOrders', () => {
   it('splits limit and trigger orders and enriches their asset display fields', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses))
 
-    const result = await getOrders(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getOrders(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(result.provider).toBe('hyperliquid')
     expect(result.openOrders).toHaveLength(1)
@@ -56,9 +53,11 @@ describe('getOrders', () => {
       frontendOpenOrders: [parentWithChild, childOrder],
     }))
 
-    const result = await getOrders(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getOrders(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     // child oid 99 was listed at top-level too; gets dropped from openOrders…
     expect(result.openOrders.map((o) => o.id)).toEqual(['1'])
@@ -69,10 +68,11 @@ describe('getOrders', () => {
   it('filters by assetId-matching `symbol`', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses))
 
-    const result = await getOrders(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-      assetId: 'ETH',
-    })
+    const result = await getOrders(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS, assetId: 'ETH' },
+      HL_ASSET_CONTEXT
+    )
     expect(result.openOrders).toHaveLength(0)
     expect(result.triggerOrders).toHaveLength(0)
   })

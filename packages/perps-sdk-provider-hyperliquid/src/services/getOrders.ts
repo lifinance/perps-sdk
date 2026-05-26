@@ -1,21 +1,11 @@
-import type {
-  AssetDisplay,
-  OpenOrder,
-  OrdersResponse,
-  TriggerOrder,
-} from '@lifi/perps-types'
+import type { OpenOrder, OrdersResponse, TriggerOrder } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlFrontendOpenOrder,
   HlFrontendOpenOrders,
 } from '../types/index.js'
-import {
-  type AssetEnrichmentMaps,
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../utils/assetLookups.js'
+import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import {
   isTriggerType,
   mapOpenOrder,
@@ -23,7 +13,6 @@ import {
   mapTriggerOrder,
 } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
-import { getSupportedSubDexes } from '../utils/subdexes.js'
 
 export interface GetOrdersParams {
   address: Address
@@ -32,45 +21,32 @@ export interface GetOrdersParams {
   limit?: number
 }
 
-const enrichAsset = (
-  assetId: string,
-  maps: AssetEnrichmentMaps
-): AssetDisplay => ({
-  assetId,
-  market: maps.assetMarketMap.get(assetId) ?? '',
-  displaySymbol: resolveDisplaySymbol(assetId, maps),
-  displayQuote: resolveDisplayQuote(assetId, maps),
-})
-
 /**
  * Fetch open + trigger orders across every supported perps sub-dex for
  * `address`, normalised into `OrdersResponse`. Trigger orders that appear as
  * children of a parent limit order (Hyperliquid's `normalTpsl` flow) are
- * extracted and surfaced alongside top-level trigger orders.
+ * extracted and surfaced alongside top-level trigger orders. Market metadata
+ * (`ctx`) is sourced backend-side; only `frontendOpenOrders` is read direct.
  */
 export const getOrders = async (
   apiUrl: string,
   params: GetOrdersParams,
+  ctx: HlAssetContext,
   options?: InfoRequestOptions
 ): Promise<OrdersResponse> => {
-  const dexNames = await getSupportedSubDexes(apiUrl, options)
-
-  const [ordersResults, enrichmentMaps] = await Promise.all([
-    Promise.all(
-      dexNames.map((name) =>
-        infoRequest<HlFrontendOpenOrders>(
-          apiUrl,
-          {
-            type: 'frontendOpenOrders',
-            user: params.address,
-            ...(name ? { dex: name } : {}),
-          },
-          options
-        )
+  const ordersResults = await Promise.all(
+    ctx.dexNames.map((name) =>
+      infoRequest<HlFrontendOpenOrders>(
+        apiUrl,
+        {
+          type: 'frontendOpenOrders',
+          user: params.address,
+          ...(name ? { dex: name } : {}),
+        },
+        options
       )
-    ),
-    buildAssetEnrichmentMaps(apiUrl, options),
-  ])
+    )
+  )
 
   const raw: HlFrontendOpenOrder[] = ordersResults.flat()
 
@@ -89,7 +65,7 @@ export const getOrders = async (
       const order = mapOpenOrder(o)
       return {
         ...order,
-        asset: enrichAsset(order.asset.assetId, enrichmentMaps),
+        asset: enrichAsset(order.asset.assetId, ctx),
       }
     })
 
@@ -100,7 +76,7 @@ export const getOrders = async (
         const order = mapTriggerOrder(o)
         return {
           ...order,
-          asset: enrichAsset(order.asset.assetId, enrichmentMaps),
+          asset: enrichAsset(order.asset.assetId, ctx),
         }
       }),
     ...raw
@@ -109,7 +85,7 @@ export const getOrders = async (
         const order = mapTriggerOrder(o)
         return {
           ...order,
-          asset: enrichAsset(order.asset.assetId, enrichmentMaps),
+          asset: enrichAsset(order.asset.assetId, ctx),
         }
       }),
   ]

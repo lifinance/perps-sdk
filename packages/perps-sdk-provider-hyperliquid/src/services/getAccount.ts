@@ -13,17 +13,9 @@ import {
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
-import {
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../utils/assetLookups.js'
+import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import { mapPosition } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
-import {
-  buildMarketQuoteAssetMap,
-  getSupportedSubDexes,
-} from '../utils/subdexes.js'
 
 export interface GetAccountParams {
   address: Address
@@ -159,45 +151,33 @@ const buildBalances = (
 export const getAccount = async (
   apiUrl: string,
   params: GetAccountParams,
+  ctx: HlAssetContext,
   options?: InfoRequestOptions
 ): Promise<AccountResponse> => {
-  const dexNamesPromise = getSupportedSubDexes(apiUrl, options)
-
-  const [
-    dexNames,
-    marketQuoteAssets,
-    feesResult,
-    abstractionResult,
-    agentsResult,
-    spotState,
-    stateResults,
-    enrichmentMaps,
-  ] = await Promise.all([
-    dexNamesPromise,
-    buildMarketQuoteAssetMap(apiUrl, options),
-    infoRequest<HlUserFees>(
-      apiUrl,
-      { type: 'userFees', user: params.address },
-      options
-    ),
-    infoRequest<HlAbstractionMode | null>(
-      apiUrl,
-      { type: 'userAbstraction', user: params.address },
-      options
-    ).catch(() => null),
-    infoRequest<HlExtraAgents>(
-      apiUrl,
-      { type: 'extraAgents', user: params.address },
-      options
-    ).catch(() => [] as HlExtraAgents),
-    infoRequest<HlSpotClearinghouseState>(
-      apiUrl,
-      { type: 'spotClearinghouseState', user: params.address },
-      options
-    ),
-    dexNamesPromise.then((names) =>
+  const [feesResult, abstractionResult, agentsResult, spotState, stateResults] =
+    await Promise.all([
+      infoRequest<HlUserFees>(
+        apiUrl,
+        { type: 'userFees', user: params.address },
+        options
+      ),
+      infoRequest<HlAbstractionMode | null>(
+        apiUrl,
+        { type: 'userAbstraction', user: params.address },
+        options
+      ).catch(() => null),
+      infoRequest<HlExtraAgents>(
+        apiUrl,
+        { type: 'extraAgents', user: params.address },
+        options
+      ).catch(() => [] as HlExtraAgents),
+      infoRequest<HlSpotClearinghouseState>(
+        apiUrl,
+        { type: 'spotClearinghouseState', user: params.address },
+        options
+      ),
       Promise.all(
-        names.map((name) =>
+        ctx.dexNames.map((name) =>
           infoRequest<HlClearinghouseState>(
             apiUrl,
             {
@@ -208,33 +188,20 @@ export const getAccount = async (
             options
           )
         )
-      )
-    ),
-    buildAssetEnrichmentMaps(apiUrl, options),
-  ])
+      ),
+    ])
 
-  const rawPositions = stateResults.flatMap((state) =>
-    state.assetPositions
-      .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
-      .map((ap) => mapPosition(ap))
-  )
-
-  const positions: Position[] = rawPositions.map((pos) => {
-    const market = enrichmentMaps.assetMarketMap.get(pos.asset.assetId) ?? ''
-    return {
-      ...pos,
-      asset: {
-        ...pos.asset,
-        market,
-        displaySymbol: resolveDisplaySymbol(pos.asset.assetId, enrichmentMaps),
-        displayQuote: resolveDisplayQuote(pos.asset.assetId, enrichmentMaps),
-      },
-    }
-  })
+  const positions: Position[] = stateResults
+    .flatMap((state) =>
+      state.assetPositions
+        .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
+        .map((ap) => mapPosition(ap))
+    )
+    .map((pos) => ({ ...pos, asset: enrichAsset(pos.asset.assetId, ctx) }))
 
   const stateByDex = new Map<string, HlClearinghouseState>()
   stateResults.forEach((state, i) => {
-    stateByDex.set(dexNames[i], state)
+    stateByDex.set(ctx.dexNames[i], state)
   })
 
   const totalUnrealizedPnl = positions.reduce(
@@ -255,7 +222,7 @@ export const getAccount = async (
       abstractionResult,
       spotState,
       stateByDex,
-      marketQuoteAssets
+      ctx.quoteByMarket
     ),
     marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
     unrealizedPnl: totalUnrealizedPnl.toString(),

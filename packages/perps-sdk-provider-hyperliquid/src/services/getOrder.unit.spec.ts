@@ -1,11 +1,9 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  HL_META_AND_CTXS_MAIN,
+  HL_ASSET_CONTEXT,
   HL_ORDER_STATUS_FOUND,
   HL_ORDER_STATUS_UNKNOWN,
-  HL_PERP_DEXS_MAIN_ONLY,
-  HL_SPOT_META,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -13,11 +11,7 @@ import { getOrder } from './getOrder.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
-const baseResponses = {
-  perpDexs: HL_PERP_DEXS_MAIN_ONLY,
-  metaAndAssetCtxs: HL_META_AND_CTXS_MAIN,
-  spotMeta: HL_SPOT_META,
-}
+const baseResponses = {}
 
 describe('getOrder', () => {
   let restore: () => void
@@ -32,10 +26,11 @@ describe('getOrder', () => {
       orderStatus: HL_ORDER_STATUS_FOUND,
     }))
 
-    const order = await getOrder(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-      id: '1',
-    })
+    const order = await getOrder(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS, id: '1' },
+      HL_ASSET_CONTEXT
+    )
 
     expect(order.orderId).toBe('1')
     expect(order.asset.market).toBe('hyperliquid')
@@ -49,7 +44,11 @@ describe('getOrder', () => {
     }))
 
     await expect(
-      getOrder(DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS, id: '7' })
+      getOrder(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { address: ADDRESS, id: '7' },
+        HL_ASSET_CONTEXT
+      )
     ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
   })
 
@@ -60,7 +59,11 @@ describe('getOrder', () => {
     }))
 
     await expect(
-      getOrder(DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS, id: 'abc' })
+      getOrder(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { address: ADDRESS, id: 'abc' },
+        HL_ASSET_CONTEXT
+      )
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 })

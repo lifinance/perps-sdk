@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  HL_ASSET_CONTEXT,
   HL_CLEARINGHOUSE_STATE,
   HL_EXTRA_AGENTS,
-  HL_META_AND_CTXS_MAIN,
-  HL_PERP_DEXS_MAIN_ONLY,
   HL_SPOT_CLEARINGHOUSE_STATE,
-  HL_SPOT_META,
   HL_USER_FEES,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -16,9 +14,6 @@ import { getAccount } from './getAccount.js'
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
 const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
-  perpDexs: HL_PERP_DEXS_MAIN_ONLY,
-  metaAndAssetCtxs: HL_META_AND_CTXS_MAIN,
-  spotMeta: HL_SPOT_META,
   userFees: HL_USER_FEES,
   userAbstraction: abstraction,
   extraAgents: HL_EXTRA_AGENTS,
@@ -36,9 +31,11 @@ describe('getAccount', () => {
   it('normalises a single-dex account into AccountResponse with the typed config', async () => {
     ;({ restore } = installInfoFetchMock(defaultResponses()))
 
-    const result = await getAccount(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(result.provider).toBe('hyperliquid')
     expect(result.address).toBe(ADDRESS)
@@ -64,9 +61,11 @@ describe('getAccount', () => {
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {
     ;({ restore } = installInfoFetchMock(defaultResponses()))
 
-    const result = await getAccount(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(
       result.config.provider === 'hyperliquid'
@@ -80,9 +79,11 @@ describe('getAccount', () => {
       defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT)
     ))
 
-    const result = await getAccount(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(Object.keys(result.balances)).toEqual(['spot'])
     // Derived from the single position's marginUsed (940)
@@ -94,9 +95,11 @@ describe('getAccount', () => {
       defaultResponses(HlAbstractionMode.DEX_ABSTRACTION)
     ))
 
-    const result = await getAccount(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(Object.keys(result.balances).sort()).toEqual(['hyperliquid', 'spot'])
     expect(result.balances.hyperliquid).toEqual([
@@ -124,9 +127,11 @@ describe('getAccount', () => {
       })
     restore = () => spy.mockRestore()
 
-    const result = await getAccount(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(
       result.config.provider === 'hyperliquid'
@@ -139,10 +144,13 @@ describe('getAccount', () => {
     const mock = installInfoFetchMock(defaultResponses())
     restore = mock.restore
 
-    await getAccount(DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS })
+    await getAccount(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     const types = mock.requests.map((r) => r.body.type)
-    expect(types).toContain('perpDexs')
     expect(types).toContain('userFees')
     expect(types).toContain('userAbstraction')
     expect(types).toContain('extraAgents')
@@ -162,6 +170,7 @@ describe('getAccount', () => {
     await getAccount(
       DEFAULT_HYPERLIQUID_API_URL,
       { address: ADDRESS },
+      HL_ASSET_CONTEXT,
       { signal: controller.signal }
     )
 

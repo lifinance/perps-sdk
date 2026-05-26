@@ -2,15 +2,12 @@
 // for the package's utility surface. Internal modules import per-file paths
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
-export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
-export type { AssetEnrichmentMaps, AssetWithMeta } from './assetLookups.js'
 export {
-  buildAssetEnrichmentMaps,
-  buildAssetMarketLookup,
-  fetchAllPerpAssetsRaw,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from './assetLookups.js'
+  buildAssetContext,
+  enrichAsset,
+  type HlAssetContext,
+} from './assetContext.js'
+export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
 export { deriveMarket } from './deriveMarket.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { infoRequest } from './infoClient.js'
@@ -35,29 +32,3 @@ export {
   formatOrderSize,
   getMaxPriceDecimals,
 } from './orderFormatting.js'
-export type {
-  HlSpotAssetCtx,
-  HlSpotMeta,
-  HlSpotMetaAndAssetCtxs,
-  HlSpotToken,
-  HlSpotUniverseEntry,
-  SpotPairInfo,
-} from './spot.js'
-export {
-  buildSpotPairNameLookup,
-  buildSpotTokenIdLookup,
-  buildSpotTokenLookup,
-  getSpotAssetCtxs,
-  getSpotPairs,
-  purrSpotOverride,
-  resolveSpotPair,
-  spotPairAssetId,
-} from './spot.js'
-export type { ProviderMarket } from './subdexes.js'
-export {
-  buildMarketQuoteAssetMap,
-  getProviderMarkets,
-  getSupportedSubDexes,
-  perpsDisplaySymbol,
-  toProviderMarketId,
-} from './subdexes.js'

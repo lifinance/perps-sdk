@@ -1,7 +1,6 @@
 import type {
   ActivitiesResponse,
   ActivityItem,
-  AssetDisplay,
   FundingActivity,
   LiquidationActivity,
 } from '@lifi/perps-types'
@@ -17,12 +16,7 @@ import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
-import {
-  type AssetEnrichmentMaps,
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../utils/assetLookups.js'
+import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -36,25 +30,15 @@ export interface GetActivityParams {
   type?: ActivityType[]
 }
 
-const enrichAssetDisplay = (
-  assetId: string,
-  maps: AssetEnrichmentMaps
-): AssetDisplay => ({
-  assetId,
-  market: maps.assetMarketMap.get(assetId) ?? '',
-  displaySymbol: resolveDisplaySymbol(assetId, maps),
-  displayQuote: resolveDisplayQuote(assetId, maps),
-})
-
 const enrichActivityItem = (
   item: ActivityItem,
-  maps: AssetEnrichmentMaps
+  ctx: HlAssetContext
 ): ActivityItem => {
   if (item.type === ActivityType.FUNDING) {
     const funding = item as FundingActivity
     return {
       ...funding,
-      asset: enrichAssetDisplay(funding.asset.assetId, maps),
+      asset: enrichAsset(funding.asset.assetId, ctx),
     }
   }
   if (item.type === ActivityType.LIQUIDATION) {
@@ -63,7 +47,7 @@ const enrichActivityItem = (
       ...liq,
       liquidatedPositions: liq.liquidatedPositions.map((p) => ({
         ...p,
-        asset: enrichAssetDisplay(p.asset.assetId, maps),
+        asset: enrichAsset(p.asset.assetId, ctx),
       })),
     }
   }
@@ -129,6 +113,7 @@ const fetchActivityData = async (
 export const getActivity = async (
   apiUrl: string,
   params: GetActivityParams,
+  ctx: HlAssetContext,
   options?: InfoRequestOptions
 ): Promise<ActivitiesResponse> => {
   const limit = Math.min(
@@ -147,10 +132,12 @@ export const getActivity = async (
     ...(endTime === undefined ? {} : { endTime }),
   }
 
-  const [merged, enrichmentMaps] = await Promise.all([
-    fetchActivityData(apiUrl, params.type, timeParams, options),
-    buildAssetEnrichmentMaps(apiUrl, options),
-  ])
+  const merged = await fetchActivityData(
+    apiUrl,
+    params.type,
+    timeParams,
+    options
+  )
 
   // Hyperliquid's endTime is inclusive — drop boundary items so we don't
   // return the cursor row twice on the next page.
@@ -166,7 +153,7 @@ export const getActivity = async (
   const hasMore = filtered.length > limit
   const items = filtered
     .slice(0, limit)
-    .map((item) => enrichActivityItem(item, enrichmentMaps))
+    .map((item) => enrichActivityItem(item, ctx))
 
   return {
     provider: PROVIDER_KEY,

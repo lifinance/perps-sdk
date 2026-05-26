@@ -49,6 +49,7 @@ import { getFills } from './services/getFills.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
+import { buildAssetContext } from './utils/assetContext.js'
 import {
   HYPERLIQUID_RETRY_DEFAULTS,
   type InfoRequestOptions,
@@ -93,64 +94,77 @@ export function hyperliquidProvider(
   return {
     type: PROVIDER_KEY,
 
-    getAccount: (
+    getAccount: async (
       client: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
-    ): Promise<AccountResponse> =>
-      getAccount(
+    ): Promise<AccountResponse> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getAccount(
         apiUrl,
         { address: params.address },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
-    getPositions: (
+    getPositions: async (
       client: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
-    ): Promise<PositionsResponse> =>
-      getPositions(
+    ): Promise<PositionsResponse> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getPositions(
         apiUrl,
         {
           address: params.address,
           assetId: params.assetId,
           limit: params.limit,
         },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
-    getOrders: (
+    getOrders: async (
       client: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
-    ): Promise<OrdersResponse> =>
-      getOrders(
+    ): Promise<OrdersResponse> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getOrders(
         apiUrl,
         {
           address: params.address,
           assetId: params.assetId,
           limit: params.limit,
         },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
-    getOrder: (
+    getOrder: async (
       client: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
-    ): Promise<Order> =>
-      getOrder(
+    ): Promise<Order> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getOrder(
         apiUrl,
         { address: params.address, id: params.id },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
-    getFills: (
+    getFills: async (
       client: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
-    ): Promise<FillsResponse> =>
-      getFills(
+    ): Promise<FillsResponse> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getFills(
         apiUrl,
         {
           address: params.address,
@@ -159,15 +173,18 @@ export function hyperliquidProvider(
           startTime: params.startTime,
           endTime: params.endTime,
         },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
-    getActivity: (
+    getActivity: async (
       client: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
-    ): Promise<ActivitiesResponse> =>
-      getActivity(
+    ): Promise<ActivitiesResponse> => {
+      const ctx = await buildAssetContext(client, opts)
+      return getActivity(
         apiUrl,
         {
           address: params.address,
@@ -177,8 +194,10 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           type: params.type,
         },
+        ctx,
         resolveOpts(client, opts?.signal)
-      ),
+      )
+    },
 
     // Public/shared data routes through the LI.FI backend — Valkey-cached
     // server-side so one fetch serves every client. No direct HL call here.

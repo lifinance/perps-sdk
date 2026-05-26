@@ -6,11 +6,7 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
-import {
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../utils/assetLookups.js'
+import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import { mapFill } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -28,7 +24,8 @@ export interface GetFillsParams {
 /**
  * Fetch the user's fills history. When `startTime` or `endTime` is provided,
  * Hyperliquid's `userFillsByTime` endpoint is used; otherwise the unbounded
- * `userFills` endpoint returns the full history.
+ * `userFills` endpoint returns the full history. Market metadata (`ctx`) is
+ * sourced backend-side; only the fills endpoint is read direct from HL.
  *
  * Pagination is cursor-based on the fill's `tid`: results with
  * `tid < cursor` are kept and the last-page's tail `id` is returned as the
@@ -37,6 +34,7 @@ export interface GetFillsParams {
 export const getFills = async (
   apiUrl: string,
   params: GetFillsParams,
+  ctx: HlAssetContext,
   options?: InfoRequestOptions
 ): Promise<FillsResponse> => {
   const limit = Math.min(
@@ -47,27 +45,22 @@ export const getFills = async (
   const useByTime =
     params.startTime !== undefined || params.endTime !== undefined
 
-  const [allFills, enrichmentMaps] = await Promise.all([
-    useByTime
-      ? infoRequest<HlUserFillsByTime>(
-          apiUrl,
-          {
-            type: 'userFillsByTime',
-            user: params.address,
-            startTime: params.startTime ?? 0,
-            ...(params.endTime !== undefined
-              ? { endTime: params.endTime }
-              : {}),
-          },
-          options
-        )
-      : infoRequest<HlUserFills>(
-          apiUrl,
-          { type: 'userFills', user: params.address },
-          options
-        ),
-    buildAssetEnrichmentMaps(apiUrl, options),
-  ])
+  const allFills = useByTime
+    ? await infoRequest<HlUserFillsByTime>(
+        apiUrl,
+        {
+          type: 'userFillsByTime',
+          user: params.address,
+          startTime: params.startTime ?? 0,
+          ...(params.endTime !== undefined ? { endTime: params.endTime } : {}),
+        },
+        options
+      )
+    : await infoRequest<HlUserFills>(
+        apiUrl,
+        { type: 'userFills', user: params.address },
+        options
+      )
 
   const filtered =
     params.cursor === undefined
@@ -77,15 +70,7 @@ export const getFills = async (
   const hasMore = filtered.length > limit
   const items = filtered.slice(0, limit).map((f) => {
     const fill = mapFill(f)
-    return {
-      ...fill,
-      asset: {
-        ...fill.asset,
-        market: enrichmentMaps.assetMarketMap.get(fill.asset.assetId) ?? '',
-        displaySymbol: resolveDisplaySymbol(fill.asset.assetId, enrichmentMaps),
-        displayQuote: resolveDisplayQuote(fill.asset.assetId, enrichmentMaps),
-      },
-    }
+    return { ...fill, asset: enrichAsset(fill.asset.assetId, ctx) }
   })
 
   return {

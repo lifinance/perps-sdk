@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  HL_META_AND_CTXS_MAIN,
-  HL_PERP_DEXS_MAIN_ONLY,
-  HL_SPOT_META,
-  HL_USER_FILLS,
-} from '../../test/fixtures.js'
+import { HL_ASSET_CONTEXT, HL_USER_FILLS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getFills } from './getFills.js'
@@ -12,9 +7,6 @@ import { getFills } from './getFills.js'
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 
 const baseResponses = {
-  perpDexs: HL_PERP_DEXS_MAIN_ONLY,
-  metaAndAssetCtxs: HL_META_AND_CTXS_MAIN,
-  spotMeta: HL_SPOT_META,
   userFills: HL_USER_FILLS,
   userFillsByTime: HL_USER_FILLS,
 }
@@ -30,9 +22,11 @@ describe('getFills', () => {
     const mock = installInfoFetchMock(baseResponses)
     restore = mock.restore
 
-    const result = await getFills(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-    })
+    const result = await getFills(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS },
+      HL_ASSET_CONTEXT
+    )
 
     expect(result.items).toHaveLength(1)
     expect(result.items[0].asset.displayQuote).toBe('USDC')
@@ -46,11 +40,11 @@ describe('getFills', () => {
     const mock = installInfoFetchMock(baseResponses)
     restore = mock.restore
 
-    await getFills(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-      startTime: 1000,
-      endTime: 2000,
-    })
+    await getFills(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS, startTime: 1000, endTime: 2000 },
+      HL_ASSET_CONTEXT
+    )
 
     const byTime = mock.requests.find((r) => r.body.type === 'userFillsByTime')
     expect(byTime).toBeDefined()
@@ -61,10 +55,11 @@ describe('getFills', () => {
   it('drops fills at or above the cursor tid', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses))
 
-    const result = await getFills(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-      cursor: '100',
-    })
+    const result = await getFills(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS, cursor: '100' },
+      HL_ASSET_CONTEXT
+    )
     // The only fill has tid 100; cursor is exclusive so it's filtered out.
     expect(result.items).toHaveLength(0)
   })
@@ -80,10 +75,11 @@ describe('getFills', () => {
       userFills: manyFills,
     }))
 
-    const result = await getFills(DEFAULT_HYPERLIQUID_API_URL, {
-      address: ADDRESS,
-      limit: 2,
-    })
+    const result = await getFills(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { address: ADDRESS, limit: 2 },
+      HL_ASSET_CONTEXT
+    )
 
     expect(result.items).toHaveLength(2)
     expect(result.pagination.hasMore).toBe(true)

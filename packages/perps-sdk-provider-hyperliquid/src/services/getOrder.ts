@@ -4,11 +4,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
-import {
-  buildAssetEnrichmentMaps,
-  resolveDisplayQuote,
-  resolveDisplaySymbol,
-} from '../utils/assetLookups.js'
+import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import { mapOrder } from '../utils/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -20,6 +16,7 @@ export interface GetOrderParams {
 export const getOrder = async (
   apiUrl: string,
   params: GetOrderParams,
+  ctx: HlAssetContext,
   options?: InfoRequestOptions
 ): Promise<Order> => {
   const oid = Number.parseInt(params.id, 10)
@@ -48,14 +45,5 @@ export const getOrder = async (
   }
 
   const order = mapOrder(status.order)
-  const enrichmentMaps = await buildAssetEnrichmentMaps(apiUrl, options)
-  return {
-    ...order,
-    asset: {
-      ...order.asset,
-      market: enrichmentMaps.assetMarketMap.get(order.asset.assetId) ?? '',
-      displaySymbol: resolveDisplaySymbol(order.asset.assetId, enrichmentMaps),
-      displayQuote: resolveDisplayQuote(order.asset.assetId, enrichmentMaps),
-    },
-  }
+  return { ...order, asset: enrichAsset(order.asset.assetId, ctx) }
 }

@@ -11,7 +11,7 @@ import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '@lifi/perps-types/providers/hyperliquid'
-import type { HlSpotMeta, HlSpotMetaAndAssetCtxs } from '../src/spot.js'
+import type { HlAssetContext } from '../src/utils/assetContext.js'
 
 export const HL_PERP_DEXS_MAIN_ONLY: HlPerpDexs = [null]
 
@@ -79,28 +79,35 @@ export const HL_META_AND_CTXS_MAIN_WITH_COLLATERAL: unknown = [
   [],
 ]
 
-export const HL_SPOT_META: HlSpotMeta = {
-  tokens: [
-    { name: 'USDC', index: 0, tokenId: '0xusdc', szDecimals: 6 },
-    { name: 'PURR', index: 1, tokenId: '0xpurr', szDecimals: 0 },
-  ],
-  universe: [
-    { name: 'PURR/USDC', tokens: [1, 0], index: 0, isCanonical: true },
-  ],
+/**
+ * Backend-sourced asset context for account-read specs. Main perps only
+ * (`dexNames: ['']`), BTC + ETH on USDC. Mirrors what
+ * `coreGetAssets({ provider: 'hyperliquid' })` would yield.
+ */
+export const HL_ASSET_CONTEXT: HlAssetContext = {
+  dexNames: [''],
+  byAssetId: new Map([
+    [
+      'BTC',
+      {
+        assetId: 'BTC',
+        market: 'hyperliquid',
+        displaySymbol: 'BTC',
+        displayQuote: 'USDC',
+      },
+    ],
+    [
+      'ETH',
+      {
+        assetId: 'ETH',
+        market: 'hyperliquid',
+        displaySymbol: 'ETH',
+        displayQuote: 'USDC',
+      },
+    ],
+  ]),
+  quoteByMarket: new Map([['hyperliquid', 'USDC']]),
 }
-
-export const HL_SPOT_META_AND_ASSET_CTXS: HlSpotMetaAndAssetCtxs = [
-  HL_SPOT_META,
-  [
-    {
-      coin: 'PURR/USDC',
-      prevDayPx: '0.49',
-      dayNtlVlm: '200',
-      markPx: '0.5',
-      midPx: '0.5',
-    },
-  ],
-]
 
 export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {
   marginSummary: { accountValue: '10000', totalMarginUsed: '500' },
