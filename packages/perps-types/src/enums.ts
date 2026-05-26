@@ -90,17 +90,7 @@ export enum LiquidityRole {
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
-  /**
-   * Generic account-level operating mode (e.g. Hyperliquid abstraction
-   * variants, Lighter UTA / Simple). HL maps it to the appropriate
-   * EIP-712 typed-data builder internally.
-   */
   ACCOUNT_MODE = 'accountMode',
-  /**
-   * Generic account-level fee/latency tier (e.g. Lighter standard /
-   * premium). Providers that have no tiering (Hyperliquid) omit this
-   * action from their descriptor list.
-   */
   ACCOUNT_TYPE = 'accountType',
   SEND_ASSET = 'sendAsset',
   WITHDRAWAL = 'withdrawal',

@@ -1,13 +1,3 @@
-/**
- * Compile-time regression tests for `CreateActionRequest` and
- * `ExecuteActionRequest`: selecting an `action` literal must narrow
- * `params` to exactly the matching entry in `ActionParamsMap`.
- *
- * `@lifi/perps-types` is types-only — the assertions below are verified at
- * typecheck time (`tsc --noEmit`). Vitest still picks the file up via the
- * `*.unit.spec.ts` glob so a structural regression surfaces in
- * `pnpm test:unit` too.
- */
 import { describe, expect, it } from 'vitest'
 import type {
   CreateActionRequest,

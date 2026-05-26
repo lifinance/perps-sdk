@@ -55,30 +55,13 @@ export interface AccountResponse {
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
-  /**
-   * Per-provider account state, strongly typed and discriminated on
-   * `config.provider`. Consumers narrow with `config.provider === 'hyperliquid'`
-   * etc. to get access to the provider-specific fields. There is no untyped
-   * escape hatch — fields specific to a future provider belong on a new
-   * variant of `AccountConfig`, not on a generic `Record<string, unknown>`.
-   */
   config: AccountConfig
 }
 
-/**
- * Provider-agnostic account roll-up returned by `PerpsProvider.summarize(...)`.
- * Each provider decides how its raw balances / positions reduce to these
- * four totals (e.g. Hyperliquid factors in unified-account abstraction; Lighter
- * uses straight collateral).
- */
 export interface AccountSummary {
-  /** Total portfolio value in USD. */
   portfolioValue: number
-  /** Collateral available to open new positions. */
   availableMargin: number
-  /** Margin locked in open positions. */
   marginUsed: number
-  /** Aggregate unrealised PnL across all positions. */
   unrealizedPnl: number
 }
 
@@ -179,21 +162,8 @@ export interface FundingActivity extends BaseActivity {
   fundingRate: string
 }
 
-/**
- * Internal transfer between two accounts on the same provider (e.g. Lighter
- * `/api/v1/transfer/history`, Hyperliquid `spotTransfer` ledger entry).
- * Direction is relative to the queried account.
- *
- * The counterparty is identified by either an account index (integer L2
- * account identifier — Lighter) or a wallet address (Hyperliquid, where
- * accounts ARE addresses). The type is a discriminated union over these two
- * shapes: at least one of `counterpartyAccountIndex` / `counterpartyAddress`
- * MUST be present, and either may appear alone or alongside the other.
- *
- * Consumers that render counterparties should prefer `counterpartyAccountIndex`
- * when present (it's the canonical handle on index-based providers) and fall
- * back to a truncated `counterpartyAddress` otherwise.
- */
+// At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
+// present; both may appear together.
 export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
@@ -222,63 +192,23 @@ export interface ActivitiesResponse {
 // Account configuration state — typed `AccountResponse.config`
 // ---------------------------------------------------------------------------
 
-/**
- * Hyperliquid record describing one authorised agent wallet on the
- * `userExtraAgents` response. Shape mirrors what the Hyperliquid info API
- * returns; the backend forwards the entries verbatim. The widget renders the
- * count / expiry on the `APPROVE_AGENT` setup descriptor.
- */
 export type HyperliquidAgent = Record<string, unknown>
 
-/**
- * Hyperliquid builder-fee approval state. Surfaced by the backend after
- * comparing the user's `maxBuilderFee` against the configured LI.FI builder
- * fee for this dex. The widget uses `approved: false` to badge
- * `APPROVE_BUILDER_FEE` as outstanding.
- */
 export interface HyperliquidBuilderFeeApproval {
   builderAddress: string
-  /** Maximum fee rate the user must approve, in basis points as a string. */
+  /** Basis points as a string. */
   maxFeeRate: string
   approved: boolean
 }
 
-/**
- * Hyperliquid-specific account configuration state.
- *
- * `abstractionMode: null` means abstraction has never been set; consumers
- * should fall back to the descriptor's `default` `ParamOption`.
- *
- * `builderFeeApproval` is absent when no builder is configured for this
- * provider; when present, `approved` reports whether the user has signed the
- * maximum builder fee.
- */
 export interface HyperliquidAccountConfig {
   provider: 'hyperliquid'
+  /** `null` means abstraction has never been set. */
   abstractionMode: string | null
   agents: HyperliquidAgent[]
   builderFeeApproval?: HyperliquidBuilderFeeApproval
 }
 
-/**
- * Lighter-specific account configuration state.
- *
- * `accountIndex` is the L2 integer account identifier.
- *
- * `apiKeyRegistered` reports whether a key is currently live in the
- * `apiKeyIndex` slot; the `REGISTER_API_KEY` setup descriptor gates trading
- * on this.
- *
- * `accountType` is the raw integer fee/latency tier from Lighter's
- * `/api/v1/account.account_type` — decoding to a human label is left to the
- * consumer.
- *
- * `readOnlyTokenApproved` mirrors `apiKeyRegistered`'s shape but for the
- * long-lived read-only token. When `true`, `readOnlyTokenExpiry` and
- * `readOnlyTokenScope` MUST be present; when `false`, both MUST be absent.
- * The `APPROVE_READ_ONLY_TOKEN` setup descriptor gates query-only access on
- * this flag.
- */
 export interface LighterAccountConfig {
   provider: 'lighter'
   accountIndex: number
@@ -288,53 +218,21 @@ export interface LighterAccountConfig {
   readOnlyTokenApproved: boolean
   /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
   readOnlyTokenExpiry?: number
-  /** Lighter's documented `single | all` scope. Present iff `readOnlyTokenApproved === true`. */
+  /** Present iff `readOnlyTokenApproved === true`. */
   readOnlyTokenScope?: 'single' | 'all'
 }
 
-/**
- * Discriminated union of per-provider account configuration state.
- * Narrow with `config.provider === '<key>'` to access provider-specific
- * fields. Adding a new provider means adding a new variant, NOT widening
- * to a record-keyed shape.
- */
 export type AccountConfig = HyperliquidAccountConfig | LighterAccountConfig
 
-/**
- * The current value of a single descriptor parameter, as projected by the
- * SDK from the typed `AccountConfig` for widget consumption.
- *
- * `name` matches `Param.name` on the descriptor that produced it; `value`
- * is the current state in the primitive shape the descriptor declared.
- * `null` indicates "no current value" (the user has not made a selection
- * yet, or the provider has not surfaced one), and the widget should fall
- * back to the descriptor's `default` `ParamOption` (when present) or
- * render the control with no highlight.
- */
 export interface AccountConfigValue {
   name: string
+  /** `null` means no current value — consumers fall back to the descriptor default. */
   value: string | number | boolean | null
 }
 
-/**
- * SDK projection of `AccountConfig` against a single descriptor — one
- * `AccountConfigSetting` per descriptor on `Provider.setup` /
- * `Provider.options`. `values` carries the current state for each `Param`
- * the descriptor declared.
- *
- * Consumers must NOT read `AccountConfig` directly — narrow through this
- * projection so a new provider variant doesn't require widget changes.
- *
- * `satisfied` is populated by the per-provider `projectConfig` for setup
- * descriptors whose satisfaction state lives in the typed `AccountConfig`
- * itself (rather than in a backend prerequisite step). Today only Lighter
- * populates it — `APPROVE_READ_ONLY_TOKEN` flips to `true` once the typed
- * `LighterAccountConfig.readOnlyTokenApproved` is set. `undefined` means
- * "this descriptor's satisfaction is tracked elsewhere" (e.g. the backend's
- * `checkSetup` response); widgets should fold both signals together.
- */
 export interface AccountConfigSetting {
   type: ActionType
   values: AccountConfigValue[]
+  /** `undefined` means satisfaction is tracked outside `AccountConfig` (e.g. backend `checkSetup`). */
   satisfied?: boolean
 }

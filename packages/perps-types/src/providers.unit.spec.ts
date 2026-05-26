@@ -1,12 +1,3 @@
-/**
- * Type-level fixtures for `Provider.setup` / `Provider.options` and the
- * shared `ProviderActionDescriptor` shape.
- *
- * `@lifi/perps-types` is types-only — the structural assertions below are
- * verified at typecheck time (`tsc --noEmit`). Vitest also picks the file up
- * via the `*.unit.spec.ts` glob, so a runtime structural regression fails
- * `pnpm test:unit`.
- */
 import { describe, expect, it } from 'vitest'
 import type {
   AccountConfig,
