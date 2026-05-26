@@ -17,5 +17,4 @@ export {
   mapTriggerOrder,
 } from './mapOrder.js'
 export { mapPosition } from './mapPosition.js'
-export { LighterMarketRegistry } from './markets.js'
 export { mapInterval } from './ohlcvInterval.js'

@@ -99,7 +99,6 @@ import {
   mapPosition,
   mapTriggerOrder,
 } from './utils/index.js'
-import { LighterMarketRegistry } from './utils/markets.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -200,10 +199,6 @@ export interface LighterProviderOptions {
   tokenLifetimeSeconds?: number
   /** Re-mint when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
-  /** Time-to-live for `orderBookDetails`/`tokenlist`/`assetDetails` cache. */
-  metadataTtlMs?: number
-  /** Time-to-live for the funding-rates cache. */
-  fundingsTtlMs?: number
 }
 
 interface MintedToken {
@@ -262,10 +257,6 @@ export const lighterProvider = (
       : undefined
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-  const registry = new LighterMarketRegistry(new LighterApiClient(restUrl), {
-    metadataTtlMs: options.metadataTtlMs,
-    fundingsTtlMs: options.fundingsTtlMs,
-  })
   const mintedTokenByAddress: Map<string, MintedToken> = new Map()
 
   // ---------------------------------------------------------------------------
@@ -851,7 +842,7 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const [history, marketLookup, assetLookup] = await Promise.all([
+      const [history, marketLookup, assetDetails] = await Promise.all([
         fetchAllHistory(
           client,
           token,
@@ -861,8 +852,13 @@ export const lighterProvider = (
           inputCursor
         ),
         buildSymbolLookup(sdkClient, opts),
-        registry.assetIdToSymbol(),
+        client.get<{
+          asset_details: Array<{ asset_id: number; symbol: string }>
+        }>('/api/v1/assetDetails'),
       ])
+      const assetLookup = new Map(
+        assetDetails.asset_details.map((a) => [a.asset_id, a.symbol])
+      )
 
       const items: ActivityItem[] = [
         ...history.deposits.deposits.map(

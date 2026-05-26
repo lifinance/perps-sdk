@@ -24,6 +24,7 @@ describe('hyperliquidProvider', () => {
     const client = createPerpsClient({
       integrator: 'test',
       apiKey: 'k',
+      retry: false,
       providers: [hyperliquidProvider()],
     })
 
