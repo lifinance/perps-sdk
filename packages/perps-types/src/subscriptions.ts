@@ -1,7 +1,7 @@
-import type { Address } from './primitives.js'
 import type { Fill, Position } from './account.js'
 import type { Order } from './action.js'
 import type { Candle, OhlcvInterval, OrderbookResponse } from './asset.js'
+import type { Address } from './primitives.js'
 
 // --- Channels the user can subscribe to ---
 

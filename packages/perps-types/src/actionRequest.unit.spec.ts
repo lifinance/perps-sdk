@@ -1,4 +1,3 @@
-import type { Address } from './primitives.js'
 import { describe, expect, it } from 'vitest'
 import type {
   CreateActionRequest,
@@ -7,6 +6,7 @@ import type {
   WithdrawalParams,
 } from './action.js'
 import { ActionType, OrderSide, OrderType, TimeInForce } from './enums.js'
+import type { Address } from './primitives.js'
 
 const SOME_ADDRESS: Address = '0x0000000000000000000000000000000000000001'
 const DESTINATION: Address = '0x0000000000000000000000000000000000000002'
