@@ -2,7 +2,6 @@ import type {
   ActionDescriptor,
   ActionParamsMap,
   ActionStep,
-  Address,
   AssetIdentity,
   CreateActionResponse,
   Eip712ActionStep,
@@ -17,6 +16,7 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { localStorageAdapter } from '../agent/storage.js'
 import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'

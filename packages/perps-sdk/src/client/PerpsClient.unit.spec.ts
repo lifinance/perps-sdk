@@ -4,10 +4,10 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
-  Hex,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
+import type { Hex } from 'viem'
 import { createWalletClient, http as viemHttp } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'

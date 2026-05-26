@@ -4,12 +4,11 @@ import {
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import type {
-  Address,
   ApproveReadOnlyTokenParams,
   LighterAccountConfig,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { Account, WalletClient } from 'viem'
+import type { Account, Address, WalletClient } from 'viem'
 
 const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
 

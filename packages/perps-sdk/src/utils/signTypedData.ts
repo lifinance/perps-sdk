@@ -1,5 +1,5 @@
-import type { Hex, PerpsTypedData } from '@lifi/perps-types'
-import type { Account, WalletClient } from 'viem'
+import type { PerpsTypedData } from '@lifi/perps-types'
+import type { Account, Hex, WalletClient } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 /**

@@ -1,4 +1,4 @@
-import type { Address, Hex, TypedDataDomain, TypedDataParameter } from 'viem'
+import type { Hex, TypedDataDomain, TypedDataParameter } from 'viem'
 
 export type PerpsPrimaryType = string
 
@@ -13,5 +13,3 @@ export type PerpsTypedData = {
 export type PerpsSignedTypedData = PerpsTypedData & {
   signature: Hex
 }
-
-export type { Address, Hex, TypedDataDomain, TypedDataParameter }

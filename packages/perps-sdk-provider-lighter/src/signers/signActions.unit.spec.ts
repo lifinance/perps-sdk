@@ -1,10 +1,10 @@
 import { createMemoryStorage } from '@lifi/perps-sdk'
 import type {
-  Address,
   WasmBlobActionStep,
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { ActionType, SigningMethod } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { describe, expect, it, vi } from 'vitest'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'

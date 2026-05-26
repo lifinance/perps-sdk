@@ -1,3 +1,4 @@
+import type { Address, Hex } from 'viem'
 import type { AssetDisplay, AssetIdentity } from './asset.js'
 import type {
   ActionType,
@@ -8,7 +9,7 @@ import type {
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
-import type { Address, Hex, PerpsTypedData } from './typedData.js'
+import type { PerpsTypedData } from './typedData.js'
 
 export interface Eip712ActionStep {
   action: ActionType

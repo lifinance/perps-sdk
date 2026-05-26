@@ -1,5 +1,5 @@
-import type { Address, Hex } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import type { Address, Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { PerpsErrorMessage } from '../errors/constants.js'
 import { PerpsError } from '../errors/PerpsError.js'

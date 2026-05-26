@@ -24,7 +24,6 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
-  Address,
   Asset,
   AssetDisplay,
   AssetsResponse,
@@ -46,6 +45,7 @@ import type {
   TriggerOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { summarizeLighterAccount } from './accountSummary.js'
 import {

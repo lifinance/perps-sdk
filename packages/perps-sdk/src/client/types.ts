@@ -2,7 +2,6 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   ActionStep,
-  Address,
   AssetIdentity,
   ExecuteActionResponse,
   ModifyOrderInput,
@@ -13,6 +12,7 @@ import type {
   TriggerOrderInput,
   WithdrawalParams,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import type { StorageAdapter } from '../agent/types.js'
 import type { PerpsProvider } from '../types/core.js'
 import type { ProviderConfigs } from './createPerpsClient.js'

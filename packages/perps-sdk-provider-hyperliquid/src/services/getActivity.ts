@@ -1,12 +1,12 @@
 import type {
   ActivitiesResponse,
   ActivityItem,
-  Address,
   AssetDisplay,
   FundingActivity,
   LiquidationActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,

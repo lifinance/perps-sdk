@@ -1,9 +1,9 @@
 import type {
   ActionType,
-  Address,
   ExecuteActionResponse,
   SignedActionStep,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,

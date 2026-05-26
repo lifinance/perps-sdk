@@ -1,4 +1,5 @@
-import type { Address, PositionsResponse } from '@lifi/perps-types'
+import type { PositionsResponse } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlClearinghouseState } from '../types/index.js'
 import {

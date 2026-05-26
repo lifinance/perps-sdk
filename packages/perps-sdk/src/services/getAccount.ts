@@ -1,4 +1,5 @@
-import type { AccountResponse, Address } from '@lifi/perps-types'
+import type { AccountResponse } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,

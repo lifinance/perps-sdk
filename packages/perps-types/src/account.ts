@@ -1,3 +1,4 @@
+import type { Address } from 'viem'
 import type { AssetDisplay } from './asset.js'
 import type {
   ActionType,
@@ -10,7 +11,6 @@ import type {
   OrderType,
   PositionSide,
 } from './enums.js'
-import type { Address } from './typedData.js'
 
 export interface FeeTier {
   maker: string

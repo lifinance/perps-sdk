@@ -7,7 +7,6 @@ import type {
   ActionType,
   ActivitiesResponse,
   ActivityType,
-  Address,
   Asset,
   AssetsResponse,
   FillsResponse,
@@ -24,7 +23,7 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import type { Account, WalletClient } from 'viem'
+import type { Account, Address, WalletClient } from 'viem'
 import type { AgentManager } from '../agent/AgentManager.js'
 import type { Agent } from '../agent/types.js'
 

@@ -1,5 +1,5 @@
 import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
-import type { Address } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildReadOnlyTokenMessage,

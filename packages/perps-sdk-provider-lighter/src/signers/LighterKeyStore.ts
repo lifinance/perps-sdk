@@ -1,5 +1,5 @@
 import type { StorageAdapter } from '@lifi/perps-sdk'
-import type { Address } from '@lifi/perps-types'
+import type { Address } from 'viem'
 
 // ---------------------------------------------------------------------------
 // LighterKeyStore

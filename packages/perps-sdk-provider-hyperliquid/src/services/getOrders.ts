@@ -1,10 +1,10 @@
 import type {
-  Address,
   AssetDisplay,
   OpenOrder,
   OrdersResponse,
   TriggerOrder,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlFrontendOpenOrder,

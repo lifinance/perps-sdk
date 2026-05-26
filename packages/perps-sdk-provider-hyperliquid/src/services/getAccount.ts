@@ -1,10 +1,10 @@
 import type {
   AccountResponse,
-  Address,
   Balance,
   HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import {
   HlAbstractionMode,

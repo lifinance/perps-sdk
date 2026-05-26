@@ -1,4 +1,4 @@
-import type { Address, Hex } from '@lifi/perps-types'
+import type { Address, Hex } from 'viem'
 
 /**
  * Agent keypair for signing trading actions.

@@ -5,13 +5,13 @@ import {
   type WsProviderFactory,
 } from '@lifi/perps-sdk'
 import type {
-  Address,
   Fill,
   Order,
   Position,
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import type {
   LtAccountPosition,
   LtOrder,

@@ -1,4 +1,5 @@
-import type { Address, FillsResponse } from '@lifi/perps-types'
+import type { FillsResponse } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,

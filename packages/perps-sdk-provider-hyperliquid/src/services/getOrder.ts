@@ -1,6 +1,7 @@
 import { PerpsError } from '@lifi/perps-sdk'
-import type { Address, Order } from '@lifi/perps-types'
+import type { Order } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
 import {

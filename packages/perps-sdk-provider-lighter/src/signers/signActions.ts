@@ -1,7 +1,6 @@
 import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
 import type {
   ActionStep,
-  Address,
   EvmTxActionStep,
   EvmTxSignedActionStep,
   SignedActionStep,
@@ -9,6 +8,7 @@ import type {
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import type { Address } from 'viem'
 import { parseAbi } from 'viem'
 import { DEFAULT_API_KEY_INDEX } from '../constants.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
