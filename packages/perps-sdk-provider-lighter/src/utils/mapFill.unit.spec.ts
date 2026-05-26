@@ -45,7 +45,7 @@ describe('mapFill (Lighter)', () => {
 
   it('builds the Lighter asset display with USDC quote', () => {
     expect(mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL).asset).toEqual({
-      assetId: SYMBOL,
+      assetId: '1',
       market: 'lighter',
       displaySymbol: SYMBOL,
       displayQuote: 'USDC',

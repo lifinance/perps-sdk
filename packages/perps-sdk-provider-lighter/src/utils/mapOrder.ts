@@ -114,7 +114,7 @@ export const isTriggerType = (type: OrderType): boolean =>
  */
 export const mapTriggerOrder = (
   order: LtOrder,
-  symbol: string
+  displaySymbol: string
 ): TriggerOrder => {
   const type = mapOrderType(order.type)
   const isLimit =
@@ -122,9 +122,9 @@ export const mapTriggerOrder = (
   return {
     id: order.order_id,
     asset: {
-      assetId: symbol,
+      assetId: String(order.market_index),
       market: 'lighter',
-      displaySymbol: symbol,
+      displaySymbol,
       displayQuote: 'USDC',
     },
     type,
@@ -137,14 +137,14 @@ export const mapTriggerOrder = (
 
 /**
  * Map a raw Lighter order to the generic OpenOrder type.
- * @param symbol - Resolved symbol (market_index → symbol lookup)
+ * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
  */
-export const mapOrder = (order: LtOrder, symbol: string): OpenOrder => ({
+export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
   id: order.order_id,
   asset: {
-    assetId: symbol,
+    assetId: String(order.market_index),
     market: 'lighter',
-    displaySymbol: symbol,
+    displaySymbol,
     displayQuote: 'USDC',
   },
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
@@ -160,12 +160,15 @@ export const mapOrder = (order: LtOrder, symbol: string): OpenOrder => ({
  * Map a raw Lighter order to the rich Order type — adds status, time-in-force
  * and remaining/filled sizes on top of the OpenOrder fields.
  */
-export const mapOrderDetail = (order: LtOrder, symbol: string): Order => ({
+export const mapOrderDetail = (
+  order: LtOrder,
+  displaySymbol: string
+): Order => ({
   orderId: order.order_id,
   asset: {
-    assetId: symbol,
+    assetId: String(order.market_index),
     market: 'lighter',
-    displaySymbol: symbol,
+    displaySymbol,
     displayQuote: 'USDC',
   },
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,

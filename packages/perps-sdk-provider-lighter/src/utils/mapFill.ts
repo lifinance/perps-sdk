@@ -11,12 +11,12 @@ import type { LtTrade } from '../types/index.js'
 /**
  * Map a raw Lighter trade to the generic Fill type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
- * @param symbol - Resolved symbol (market_id → symbol lookup).
+ * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
  */
 export const mapFill = (
   trade: LtTrade,
   accountIndex: number,
-  symbol: string
+  displaySymbol: string
 ): Fill => {
   const isBuyer = trade.bid_account_id === accountIndex
   const isMaker =
@@ -32,9 +32,9 @@ export const mapFill = (
     id: trade.trade_id.toString(),
     orderId: String(isBuyer ? trade.bid_id : trade.ask_id),
     asset: {
-      assetId: symbol,
+      assetId: String(trade.market_id),
       market: 'lighter',
-      displaySymbol: symbol,
+      displaySymbol,
       displayQuote: 'USDC',
     },
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,

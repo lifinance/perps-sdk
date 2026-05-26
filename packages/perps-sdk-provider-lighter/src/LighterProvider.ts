@@ -288,6 +288,27 @@ export const lighterProvider = (
       fetchImpl: sdkClient?.config.fetch,
     })
 
+  /**
+   * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/assets`
+   * response. Used by every account-level read to populate `asset.displaySymbol`
+   * on mapped wire shapes. Backend response is Valkey-cached so this is cheap.
+   */
+  const buildSymbolLookup = async (
+    sdkClient: PerpsSDKClient,
+    opts?: SDKRequestOptions
+  ): Promise<Map<number, string>> => {
+    const { assets } = await coreGetAssets(
+      sdkClient,
+      { provider: LIGHTER_PROVIDER_KEY },
+      opts
+    )
+    return new Map(
+      assets
+        .filter((a) => a.market === LIGHTER_PROVIDER_KEY)
+        .map((a) => [Number(a.assetId), a.displaySymbol])
+    )
+  }
+
   const mintViaSigner = async (
     address: Address,
     apiKeyPrivateKey: string,
@@ -554,7 +575,7 @@ export const lighterProvider = (
       const token = await resolveAuthToken(opts, params.address)
 
       const [symbolLookup, registeredKey, limitsResult] = await Promise.all([
-        registry.marketIdToSymbol(),
+        buildSymbolLookup(sdkClient, opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         token === undefined
           ? Promise.resolve(undefined)
@@ -617,8 +638,10 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
       const client = apiClient(sdkClient, opts)
-      const account = await fetchDetailedAccount(client, params.address)
-      const symbolLookup = await registry.marketIdToSymbol()
+      const [account, symbolLookup] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        buildSymbolLookup(sdkClient, opts),
+      ])
 
       let positions: Position[] = account.positions
         .filter((p) => Number.parseFloat(p.position) !== 0)
@@ -653,13 +676,13 @@ export const lighterProvider = (
       const client = apiClient(sdkClient, opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        registry.marketIdToSymbol(),
+        buildSymbolLookup(sdkClient, opts),
       ])
 
       const marketIds =
         params.symbol === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [await registry.resolveMarketId(params.symbol)]
+          : [Number(params.symbol)]
 
       const responses = await Promise.all(
         marketIds.map((id) =>
@@ -709,7 +732,7 @@ export const lighterProvider = (
       const client = apiClient(sdkClient, opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        registry.marketIdToSymbol(),
+        buildSymbolLookup(sdkClient, opts),
       ])
 
       // Native `Order.order_id` route only. A tx-hash route would require
@@ -769,7 +792,7 @@ export const lighterProvider = (
       const client = apiClient(sdkClient, opts)
       const [account, symbolLookup, token] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        registry.marketIdToSymbol(),
+        buildSymbolLookup(sdkClient, opts),
         resolveAuthToken(opts, params.address),
       ])
 
@@ -837,7 +860,7 @@ export const lighterProvider = (
           params.type,
           inputCursor
         ),
-        registry.marketIdToSymbol(),
+        buildSymbolLookup(sdkClient, opts),
         registry.assetIdToSymbol(),
       ])
 

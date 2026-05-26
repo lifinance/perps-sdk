@@ -11,10 +11,29 @@ import type { LighterSigner } from './signers/LighterSigner.js'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111' as const
 
-// Minimal client stub — the LighterProvider read functions never read from it
-// (Lighter goes direct to its REST API; the `client` param is part of the
-// `PerpsProvider` contract for cross-provider symmetry).
-const STUB_CLIENT = { config: {} } as PerpsSDKClient
+// Lighter account-level methods now call backend `/perps/assets?provider=lighter`
+// to source the `market_id → displaySymbol` lookup. Stub a backend apiUrl
+// against which the fetch mock can match.
+const STUB_CLIENT = {
+  config: { apiUrl: 'https://backend.test/v1/perps' },
+} as PerpsSDKClient
+
+const ASSETS_RESPONSE = {
+  assets: [
+    {
+      assetId: '0',
+      market: 'lighter',
+      displaySymbol: 'BTC',
+      displayQuote: 'USDC',
+      logoURI: '',
+      szDecimals: 4,
+      maxLeverage: 50,
+      onlyIsolated: false,
+      funding: { rate: '0.0001', nextFundingTime: 0 },
+      markPrice: '50000',
+    },
+  ],
+}
 
 const ACCOUNT_PAYLOAD = {
   code: 200,
@@ -118,6 +137,10 @@ const respond = (body: unknown, status = 200): Response =>
 beforeEach(() => {
   recorded = []
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const urlStr = String(url)
+    if (urlStr.includes('backend.test/v1/perps/assets')) {
+      return respond(ASSETS_RESPONSE)
+    }
     const u = String(url)
     recorded.push({ url: u, init })
     if (u.includes('/api/v1/account?')) {
@@ -457,6 +480,9 @@ describe('LighterProvider — normalisation', () => {
       }
       if (u.includes('/api/v1/transfer/history')) {
         return respond({ code: 0, transfers: [] })
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
       }
       throw new Error(`Unhandled URL in test: ${u}`)
     })

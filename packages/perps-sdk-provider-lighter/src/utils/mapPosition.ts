@@ -5,11 +5,11 @@ import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 
 /**
  * Map a raw Lighter account position to the generic Position type.
- * @param symbol Resolved symbol (market_id → symbol lookup, or `pos.symbol`).
+ * @param displaySymbol Human-readable symbol for `asset.displaySymbol`.
  */
 export const mapPosition = (
   pos: LtAccountPosition,
-  symbol: string
+  displaySymbol: string
 ): Position => {
   const size = parseFloat(pos.position)
   const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
@@ -25,9 +25,9 @@ export const mapPosition = (
 
   return {
     asset: {
-      assetId: symbol,
+      assetId: String(pos.market_id),
       market: 'lighter',
-      displaySymbol: symbol,
+      displaySymbol,
       displayQuote: 'USDC',
     },
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
