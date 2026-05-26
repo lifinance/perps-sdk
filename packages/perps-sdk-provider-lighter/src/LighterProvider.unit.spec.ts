@@ -411,28 +411,10 @@ describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
 })
 
 describe('LighterProvider — normalisation', () => {
-  it('normalises getPrices into the AssetPrice shape', async () => {
-    const provider = lighterProvider()
-    const result = await provider.getPrices(STUB_CLIENT, {})
-    expect(result.prices).toEqual([{ assetId: 'BTC', price: '50000' }])
-  })
-
-  it('normalises getAssets per perps-types `Asset` shape', async () => {
-    const provider = lighterProvider()
-    const result = await provider.getAssets(STUB_CLIENT)
-    expect(result.assets).toHaveLength(1)
-    const btc = result.assets[0]
-    expect(btc).toMatchObject({
-      assetId: 'BTC',
-      market: 'lighter',
-      displaySymbol: 'BTC',
-      displayQuote: 'USDC',
-      szDecimals: 4,
-      onlyIsolated: false,
-      markPrice: '50000',
-    })
-    expect(btc.funding.rate).toBe('0.0001')
-  })
+  // getPrices / getAssets normalisation now happens server-side (LI.FI backend
+  // calls Lighter directly, maps to generic types, caches in Valkey, returns
+  // post-mapped shape). Plugin delegates these methods to the core SDK
+  // service, so there's nothing left to normalise in this package.
 
   it('emits a base64url cursor on getActivity when upstream provides one', async () => {
     // Re-stub fetch to return a deposits cursor

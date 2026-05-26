@@ -1,4 +1,9 @@
 import {
+  getAsset as coreGetAsset,
+  getAssets as coreGetAssets,
+  getOhlcv as coreGetOhlcv,
+  getOrderbook as coreGetOrderbook,
+  getPrices as coreGetPrices,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -40,15 +45,10 @@ import { summarizeHyperliquidAccount } from './accountSummary.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
 import { getAccount } from './services/getAccount.js'
 import { getActivity } from './services/getActivity.js'
-import { getAsset } from './services/getAsset.js'
-import { getAssets } from './services/getAssets.js'
 import { getFills } from './services/getFills.js'
-import { getOhlcv } from './services/getOhlcv.js'
 import { getOrder } from './services/getOrder.js'
-import { getOrderbook } from './services/getOrderbook.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
-import { getPrices } from './services/getPrices.js'
 import {
   HYPERLIQUID_RETRY_DEFAULTS,
   type InfoRequestOptions,
@@ -180,32 +180,34 @@ export function hyperliquidProvider(
         resolveOpts(client, opts?.signal)
       ),
 
+    // Public/shared data routes through the LI.FI backend — Valkey-cached
+    // server-side so one fetch serves every client. No direct HL call here.
     getAsset: (
       client: PerpsSDKClient,
       params: ProviderGetAssetParams,
       opts?: SDKRequestOptions
     ): Promise<Asset> =>
-      getAsset(
-        apiUrl,
-        { symbol: params.symbol },
-        resolveOpts(client, opts?.signal)
+      coreGetAsset(
+        client,
+        { provider: PROVIDER_KEY, symbol: params.symbol },
+        opts
       ),
 
-    getAssets: (
+    getAssets: async (
       client: PerpsSDKClient,
       opts?: SDKRequestOptions
     ): Promise<AssetsResponse> =>
-      getAssets(apiUrl, resolveOpts(client, opts?.signal)),
+      coreGetAssets(client, { provider: PROVIDER_KEY }, opts),
 
-    getPrices: (
+    getPrices: async (
       client: PerpsSDKClient,
       params: ProviderGetPricesParams,
       opts?: SDKRequestOptions
     ): Promise<PricesResponse> =>
-      getPrices(
-        apiUrl,
-        { symbols: params.symbols },
-        resolveOpts(client, opts?.signal)
+      coreGetPrices(
+        client,
+        { provider: PROVIDER_KEY, symbols: params.symbols },
+        opts
       ),
 
     getOhlcv: (
@@ -213,16 +215,17 @@ export function hyperliquidProvider(
       params: ProviderGetOhlcvParams,
       opts?: SDKRequestOptions
     ): Promise<OhlcvResponse> =>
-      getOhlcv(
-        apiUrl,
+      coreGetOhlcv(
+        client,
         {
+          provider: PROVIDER_KEY,
           symbol: params.symbol,
           interval: params.interval,
           startTime: params.startTime,
           endTime: params.endTime,
           limit: params.limit,
         },
-        resolveOpts(client, opts?.signal)
+        opts
       ),
 
     getOrderbook: (
@@ -230,10 +233,14 @@ export function hyperliquidProvider(
       params: ProviderGetOrderbookParams,
       opts?: SDKRequestOptions
     ): Promise<OrderbookResponse> =>
-      getOrderbook(
-        apiUrl,
-        { symbol: params.symbol, depth: params.depth },
-        resolveOpts(client, opts?.signal)
+      coreGetOrderbook(
+        client,
+        {
+          provider: PROVIDER_KEY,
+          symbol: params.symbol,
+          depth: params.depth,
+        },
+        opts
       ),
 
     projectConfig: (

@@ -1,4 +1,9 @@
 import {
+  getAsset as coreGetAsset,
+  getAssets as coreGetAssets,
+  getOhlcv as coreGetOhlcv,
+  getOrderbook as coreGetOrderbook,
+  getPrices as coreGetPrices,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -51,18 +56,13 @@ import { projectLighterConfigSettings } from './accountConfig.js'
 import { summarizeLighterAccount } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
-  DEFAULT_CANDLE_LIMIT,
   DEFAULT_LIGHTER_REST_URL,
-  DEFAULT_OHLCV_LOOKBACK_MS,
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_PROVIDER_KEY,
-  LtMarginMode,
-  MAX_CANDLE_LIMIT,
-  MAX_ORDERBOOK_DEPTH,
 } from './constants.js'
 import { createAuthToken } from './signers/createAuthToken.js'
 import type { LighterKeyStore } from './signers/LighterKeyStore.js'
@@ -99,11 +99,7 @@ import {
   mapPosition,
   mapTriggerOrder,
 } from './utils/index.js'
-import {
-  LighterMarketRegistry,
-  marginFractionToMaxLeverage,
-} from './utils/markets.js'
-import { mapInterval } from './utils/ohlcvInterval.js'
+import { LighterMarketRegistry } from './utils/markets.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -537,61 +533,6 @@ export const lighterProvider = (
     return { deposits, withdraws, fundings, liquidations, transfers }
   }
 
-  const collectAssets = async (
-    _opts: SDKRequestOptions | undefined
-  ): Promise<Asset[]> => {
-    const [perps, spots, fundingRates, tokenLogos] = await Promise.all([
-      registry.activePerps(),
-      registry.activeSpots(),
-      registry.fundingRatesByMarket(),
-      registry.tokenLogos(),
-    ])
-
-    const assets: Asset[] = []
-    for (const m of perps) {
-      const fundingRate = fundingRates.get(m.market_id) ?? 0
-      assets.push({
-        assetId: m.symbol,
-        market: LIGHTER_PROVIDER_KEY,
-        displaySymbol: m.symbol,
-        displayQuote: 'USDC',
-        logoURI: tokenLogos.get(m.symbol) ?? '',
-        szDecimals: m.supported_size_decimals,
-        maxLeverage: marginFractionToMaxLeverage(m.min_initial_margin_fraction),
-        onlyIsolated:
-          m.market_config.market_margin_mode === LtMarginMode.ISOLATED,
-        funding: { rate: fundingRate.toString(), nextFundingTime: 0 },
-        openInterest: m.open_interest.toString(),
-        volume24h: m.daily_quote_token_volume.toString(),
-        prevDayPrice:
-          m.last_trade_price === 0
-            ? undefined
-            : (
-                m.last_trade_price /
-                (1 + m.daily_price_change / 100)
-              ).toString(),
-        markPrice: m.last_trade_price.toString(),
-      })
-    }
-    for (const m of spots) {
-      const baseSymbol = m.symbol.split('/')[0] ?? m.symbol
-      assets.push({
-        assetId: m.symbol,
-        market: 'spot',
-        displaySymbol: m.symbol,
-        displayQuote: null,
-        logoURI: tokenLogos.get(baseSymbol) ?? tokenLogos.get(m.symbol) ?? '',
-        szDecimals: m.supported_size_decimals,
-        maxLeverage: 1,
-        onlyIsolated: false,
-        funding: { rate: '0', nextFundingTime: 0 },
-        volume24h: m.daily_quote_token_volume.toString(),
-        markPrice: m.last_trade_price.toString(),
-      })
-    }
-    return assets
-  }
-
   // ---------------------------------------------------------------------------
   // PerpsProvider — public surface
   // ---------------------------------------------------------------------------
@@ -1012,133 +953,68 @@ export const lighterProvider = (
       }
     },
 
-    async getAsset(
-      _sdkClient: PerpsSDKClient,
+    // Public/shared data routes through the LI.FI backend — Valkey-cached
+    // server-side so one fetch serves every client. No direct Lighter call here.
+    getAsset: (
+      client: PerpsSDKClient,
       params: ProviderGetAssetParams,
       opts?: SDKRequestOptions
-    ): Promise<Asset> {
-      const all = await collectAssets(opts)
-      const found = all.find((a) => a.assetId === params.symbol)
-      if (!found) {
-        throw new PerpsError(
-          PerpsErrorCode.MarketNotFound,
-          `Lighter asset not found: ${params.symbol}`
-        )
-      }
-      return found
-    },
+    ): Promise<Asset> =>
+      coreGetAsset(
+        client,
+        { provider: LIGHTER_PROVIDER_KEY, symbol: params.symbol },
+        opts
+      ),
 
-    async getAssets(
-      _sdkClient: PerpsSDKClient,
+    getAssets: (
+      client: PerpsSDKClient,
       opts?: SDKRequestOptions
-    ): Promise<AssetsResponse> {
-      return { assets: await collectAssets(opts) }
-    },
+    ): Promise<AssetsResponse> =>
+      coreGetAssets(client, { provider: LIGHTER_PROVIDER_KEY }, opts),
 
-    async getPrices(
-      _sdkClient: PerpsSDKClient,
+    getPrices: (
+      client: PerpsSDKClient,
       params: ProviderGetPricesParams,
-      _opts?: SDKRequestOptions
-    ): Promise<PricesResponse> {
-      const [perps, spots] = await Promise.all([
-        registry.activePerps(),
-        registry.activeSpots(),
-      ])
-      const all = [...perps, ...spots].map((m) => ({
-        assetId: m.symbol,
-        price: m.last_trade_price.toString(),
-      }))
-      const filtered =
-        params.symbols === undefined
-          ? all
-          : all.filter((p) => params.symbols?.includes(p.assetId))
-      return { prices: filtered }
-    },
+      opts?: SDKRequestOptions
+    ): Promise<PricesResponse> =>
+      coreGetPrices(
+        client,
+        { provider: LIGHTER_PROVIDER_KEY, symbols: params.symbols },
+        opts
+      ),
 
-    async getOhlcv(
-      sdkClient: PerpsSDKClient,
+    getOhlcv: (
+      client: PerpsSDKClient,
       params: ProviderGetOhlcvParams,
       opts?: SDKRequestOptions
-    ): Promise<OhlcvResponse> {
-      const client = apiClient(sdkClient, opts)
-      const marketId = await registry.resolveMarketId(params.symbol)
-      const now = Date.now()
-      const startTime = params.startTime ?? now - DEFAULT_OHLCV_LOOKBACK_MS
-      const endTime = params.endTime ?? now
-      const limit = Math.min(
-        params.limit ?? DEFAULT_CANDLE_LIMIT,
-        MAX_CANDLE_LIMIT
-      )
+    ): Promise<OhlcvResponse> =>
+      coreGetOhlcv(
+        client,
+        {
+          provider: LIGHTER_PROVIDER_KEY,
+          symbol: params.symbol,
+          interval: params.interval,
+          startTime: params.startTime,
+          endTime: params.endTime,
+          limit: params.limit,
+        },
+        opts
+      ),
 
-      const response = await client.get<{
-        code: number
-        r: string
-        c: Array<{
-          t: number
-          o: number
-          h: number
-          l: number
-          c: number
-          v: number
-        }>
-      }>('/api/v1/candles', {
-        market_id: marketId,
-        resolution: mapInterval(params.interval),
-        start_timestamp: Math.floor(startTime / 1000),
-        end_timestamp: Math.floor(endTime / 1000),
-        count_back: limit,
-      })
-
-      return {
-        provider: LIGHTER_PROVIDER_KEY,
-        assetId: params.symbol,
-        interval: params.interval,
-        candles: response.c.slice(0, limit).map((c) => ({
-          t: c.t,
-          o: c.o.toString(),
-          h: c.h.toString(),
-          l: c.l.toString(),
-          c: c.c.toString(),
-          v: c.v.toString(),
-        })),
-      }
-    },
-
-    async getOrderbook(
-      sdkClient: PerpsSDKClient,
+    getOrderbook: (
+      client: PerpsSDKClient,
       params: ProviderGetOrderbookParams,
       opts?: SDKRequestOptions
-    ): Promise<OrderbookResponse> {
-      const client = apiClient(sdkClient, opts)
-      const marketId = await registry.resolveMarketId(params.symbol)
-      const maxDepth = Math.min(
-        params.depth ?? MAX_ORDERBOOK_DEPTH,
-        MAX_ORDERBOOK_DEPTH
-      )
-
-      const response = await client.get<{
-        code: number
-        asks: Array<{ price: string; remaining_base_amount: string }>
-        bids: Array<{ price: string; remaining_base_amount: string }>
-      }>('/api/v1/orderBookOrders', {
-        market_id: marketId,
-        limit: maxDepth,
-      })
-
-      return {
-        provider: LIGHTER_PROVIDER_KEY,
-        assetId: params.symbol,
-        bids: response.bids.slice(0, maxDepth).map((o) => ({
-          price: o.price,
-          size: o.remaining_base_amount,
-        })),
-        asks: response.asks.slice(0, maxDepth).map((o) => ({
-          price: o.price,
-          size: o.remaining_base_amount,
-        })),
-        timestamp: Date.now(),
-      }
-    },
+    ): Promise<OrderbookResponse> =>
+      coreGetOrderbook(
+        client,
+        {
+          provider: LIGHTER_PROVIDER_KEY,
+          symbol: params.symbol,
+          depth: params.depth,
+        },
+        opts
+      ),
 
     projectConfig(
       config: AccountConfig,
