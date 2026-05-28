@@ -684,15 +684,25 @@ export class PerpsClient {
     )
 
     // The backend filters already-satisfied provider setup and returns the
-    // unsigned action steps for those still outstanding.
+    // unsigned action steps for those still outstanding. The plugin gets one
+    // chance per input to contribute params from its local state (e.g.
+    // Lighter's known local pubkey, which gates the backend's idempotency).
+    const plugin = this.sdkClient.getProvider(params.provider)
     const allActions: ActionStep[] = []
     for (const input of allInputs) {
+      const action = input.key as ActionType
+      const pluginParams = plugin?.resolveSetupParams
+        ? await plugin.resolveSetupParams(action, params.address)
+        : {}
       const { actions } = await createAction(this.sdkClient, {
         provider: params.provider,
         address: params.address,
         signerAddress,
-        action: input.key as ActionType,
-        params: (input.params ?? {}) as Record<string, never>,
+        action,
+        params: {
+          ...(input.params ?? {}),
+          ...pluginParams,
+        } as Record<string, never>,
       })
       allActions.push(...actions)
     }

@@ -48,7 +48,7 @@ import type {
   SigningMethod,
   TriggerOrder,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { summarizeLighterAccount } from './accountSummary.js'
@@ -1136,6 +1136,29 @@ export const lighterProvider = (
         assets,
         collateralCurrencies
       )
+    },
+
+    /**
+     * Hand the backend the local pubkey for REGISTER_API_KEY so its
+     * idempotency check can compare against the on-chain slot. No keystore
+     * configured, or no key stored for this address → omit the field;
+     * backend stages a fresh registration.
+     */
+    async resolveSetupParams(
+      action: ActionType,
+      address: Address
+    ): Promise<Record<string, unknown>> {
+      if (action !== ActionType.REGISTER_API_KEY) {
+        return {}
+      }
+      if (keyStore === undefined) {
+        return {}
+      }
+      const local = await keyStore.get(address)
+      if (local === null) {
+        return {}
+      }
+      return { knownPublicKey: local.apiKeyPublicKey }
     },
 
     async signActions(

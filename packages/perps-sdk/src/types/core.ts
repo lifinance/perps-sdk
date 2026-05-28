@@ -4,6 +4,7 @@ import type {
   AccountResponse,
   AccountSummary,
   ActionStep,
+  ActionType,
   ActivitiesResponse,
   ActivityType,
   Asset,
@@ -302,6 +303,19 @@ export interface PerpsProvider {
     assets?: Asset[],
     collateralCurrencies?: ReadonlySet<string>
   ): AccountSummary
+
+  /**
+   * Per-setup-action params the SDK should inject into `createAction` calls
+   * when staging the provider setup. Used for plugin-side state the backend
+   * needs to make a correct idempotency decision (e.g. Lighter's known local
+   * API public key). Returns an empty object when the plugin has no params
+   * to contribute for the action. Optional — providers without local state
+   * can omit it entirely.
+   */
+  resolveSetupParams?(
+    action: ActionType,
+    address: Address
+  ): Promise<Record<string, unknown>>
 
   /**
    * Sign a batch of unsigned {@link ActionStep}s belonging to one
