@@ -1,6 +1,7 @@
+import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  HL_ASSET_CONTEXT,
+  HL_ASSETS,
   HL_CLEARINGHOUSE_STATE,
   HL_EXTRA_AGENTS,
   HL_SPOT_CLEARINGHOUSE_STATE,
@@ -12,6 +13,11 @@ import { HlAbstractionMode } from '../types/index.js'
 import { getAccount } from './getAccount.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
+const client = createPerpsClient({
+  integrator: 'test',
+  apiKey: 'k',
+  retry: false,
+})
 
 const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
   userFees: HL_USER_FEES,
@@ -29,13 +35,11 @@ describe('getAccount', () => {
   })
 
   it('normalises a single-dex account into AccountResponse with the typed config', async () => {
-    ;({ restore } = installInfoFetchMock(defaultResponses()))
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_ASSETS))
 
-    const result = await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(result.provider).toBe('hyperliquid')
     expect(result.address).toBe(ADDRESS)
@@ -59,13 +63,11 @@ describe('getAccount', () => {
   })
 
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {
-    ;({ restore } = installInfoFetchMock(defaultResponses()))
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_ASSETS))
 
-    const result = await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(
       result.config.provider === 'hyperliquid'
@@ -76,14 +78,13 @@ describe('getAccount', () => {
 
   it('treats UNIFIED_ACCOUNT abstraction by deriving margin from positions and dropping per-dex balances', async () => {
     ;({ restore } = installInfoFetchMock(
-      defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT)
+      defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+      HL_ASSETS
     ))
 
-    const result = await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(Object.keys(result.balances)).toEqual(['spot'])
     // Derived from the single position's marginUsed (940)
@@ -92,14 +93,13 @@ describe('getAccount', () => {
 
   it('treats DEX_ABSTRACTION by aggregating per-dex account values into the hyperliquid balance bucket', async () => {
     ;({ restore } = installInfoFetchMock(
-      defaultResponses(HlAbstractionMode.DEX_ABSTRACTION)
+      defaultResponses(HlAbstractionMode.DEX_ABSTRACTION),
+      HL_ASSETS
     ))
 
-    const result = await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(Object.keys(result.balances).sort()).toEqual(['hyperliquid', 'spot'])
     expect(result.balances.hyperliquid).toEqual([
@@ -112,7 +112,12 @@ describe('getAccount', () => {
     const spy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
-        const _url = typeof input === 'string' ? input : input.toString()
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/assets')) {
+          return new Response(JSON.stringify({ assets: HL_ASSETS }), {
+            status: 200,
+          })
+        }
         const body = JSON.parse((init?.body as string) ?? '{}') as Record<
           string,
           unknown
@@ -127,11 +132,9 @@ describe('getAccount', () => {
       })
     restore = () => spy.mockRestore()
 
-    const result = await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(
       result.config.provider === 'hyperliquid'
@@ -141,14 +144,10 @@ describe('getAccount', () => {
   })
 
   it('issues the expected /info calls', async () => {
-    const mock = installInfoFetchMock(defaultResponses())
+    const mock = installInfoFetchMock(defaultResponses(), HL_ASSETS)
     restore = mock.restore
 
-    await getAccount(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS })
 
     const types = mock.requests.map((r) => r.body.type)
     expect(types).toContain('userFees')
@@ -163,14 +162,14 @@ describe('getAccount', () => {
   })
 
   it('forwards an AbortSignal to fetch', async () => {
-    const mock = installInfoFetchMock(defaultResponses())
+    const mock = installInfoFetchMock(defaultResponses(), HL_ASSETS)
     restore = mock.restore
 
     const controller = new AbortController()
     await getAccount(
+      client,
       DEFAULT_HYPERLIQUID_API_URL,
       { address: ADDRESS },
-      HL_ASSET_CONTEXT,
       { signal: controller.signal }
     )
 

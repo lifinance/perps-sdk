@@ -1,6 +1,12 @@
+import {
+  getAssets as coreGetAssets,
+  type PerpsSDKClient,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
+  Asset,
   FundingActivity,
   LiquidationActivity,
 } from '@lifi/perps-types'
@@ -16,9 +22,16 @@ import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
-import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
-import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
-import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import {
+  mapFundingActivity,
+  mapLedgerEntry,
+  requireAsset,
+} from '../utils/index.js'
+import {
+  hlInfoOptions,
+  type InfoRequestOptions,
+  infoRequest,
+} from '../utils/infoClient.js'
 
 export interface GetActivityParams {
   address: Address
@@ -32,13 +45,13 @@ export interface GetActivityParams {
 
 const enrichActivityItem = (
   item: ActivityItem,
-  ctx: HlAssetContext
+  byAssetId: Map<string, Asset>
 ): ActivityItem => {
   if (item.type === ActivityType.FUNDING) {
     const funding = item as FundingActivity
     return {
       ...funding,
-      asset: enrichAsset(funding.asset.assetId, ctx),
+      asset: requireAsset(byAssetId, funding.asset.assetId),
     }
   }
   if (item.type === ActivityType.LIQUIDATION) {
@@ -47,7 +60,7 @@ const enrichActivityItem = (
       ...liq,
       liquidatedPositions: liq.liquidatedPositions.map((p) => ({
         ...p,
-        asset: enrichAsset(p.asset.assetId, ctx),
+        asset: requireAsset(byAssetId, p.asset.assetId),
       })),
     }
   }
@@ -111,11 +124,19 @@ const fetchActivityData = async (
  * unbounded queries cheap.
  */
 export const getActivity = async (
+  client: PerpsSDKClient,
   apiUrl: string,
   params: GetActivityParams,
-  ctx: HlAssetContext,
-  options?: InfoRequestOptions
+  options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
+  const { assets } = await coreGetAssets(
+    client,
+    { provider: PROVIDER_KEY },
+    options
+  )
+  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const infoOpts = hlInfoOptions(client, options)
+
   const limit = Math.min(
     params.limit ?? DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT
@@ -136,7 +157,7 @@ export const getActivity = async (
     apiUrl,
     params.type,
     timeParams,
-    options
+    infoOpts
   )
 
   // Hyperliquid's endTime is inclusive — drop boundary items so we don't
@@ -153,7 +174,7 @@ export const getActivity = async (
   const hasMore = filtered.length > limit
   const items = filtered
     .slice(0, limit)
-    .map((item) => enrichActivityItem(item, ctx))
+    .map((item) => enrichActivityItem(item, byAssetId))
 
   return {
     provider: PROVIDER_KEY,

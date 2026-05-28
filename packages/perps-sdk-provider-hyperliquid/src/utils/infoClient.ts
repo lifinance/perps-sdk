@@ -1,7 +1,10 @@
 import {
   fetchWithRetry,
   PerpsError,
+  type PerpsSDKClient,
   type ResolvedRetryPolicy,
+  resolveRetryPolicy,
+  type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
@@ -32,6 +35,20 @@ export interface InfoRequestOptions {
   policy?: ResolvedRetryPolicy
   fetchImpl?: typeof fetch
 }
+
+/** Resolve the client's retry/fetch config into options for {@link infoRequest}. */
+export const hlInfoOptions = (
+  client: PerpsSDKClient,
+  options?: SDKRequestOptions
+): InfoRequestOptions => ({
+  signal: options?.signal,
+  policy: resolveRetryPolicy(
+    HYPERLIQUID_RETRY_DEFAULTS,
+    client.config.retry,
+    PROVIDER_KEY
+  ),
+  fetchImpl: client.config.fetch,
+})
 
 /**
  * POST to the Hyperliquid `/info` endpoint and return the parsed JSON body.

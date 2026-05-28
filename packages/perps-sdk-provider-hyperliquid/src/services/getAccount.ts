@@ -1,3 +1,8 @@
+import {
+  getAssets as coreGetAssets,
+  type PerpsSDKClient,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   Balance,
@@ -13,9 +18,8 @@ import {
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
-import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
-import { mapPosition } from '../utils/index.js'
-import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { mapPosition, perpsDexNames, requireAsset } from '../utils/index.js'
+import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetAccountParams {
   address: Address
@@ -149,35 +153,50 @@ const buildBalances = (
  * thin client-side helper that has the integrator's builder config).
  */
 export const getAccount = async (
+  client: PerpsSDKClient,
   apiUrl: string,
   params: GetAccountParams,
-  ctx: HlAssetContext,
-  options?: InfoRequestOptions
+  options?: SDKRequestOptions
 ): Promise<AccountResponse> => {
+  const { assets } = await coreGetAssets(
+    client,
+    { provider: PROVIDER_KEY },
+    options
+  )
+  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const dexNames = perpsDexNames(assets)
+  const quoteByMarket = new Map<string, string>()
+  for (const a of assets) {
+    if (a.market !== 'spot' && a.displayQuote !== null) {
+      quoteByMarket.set(a.market, a.displayQuote)
+    }
+  }
+  const infoOpts = hlInfoOptions(client, options)
+
   const [feesResult, abstractionResult, agentsResult, spotState, stateResults] =
     await Promise.all([
       infoRequest<HlUserFees>(
         apiUrl,
         { type: 'userFees', user: params.address },
-        options
+        infoOpts
       ),
       infoRequest<HlAbstractionMode | null>(
         apiUrl,
         { type: 'userAbstraction', user: params.address },
-        options
+        infoOpts
       ).catch(() => null),
       infoRequest<HlExtraAgents>(
         apiUrl,
         { type: 'extraAgents', user: params.address },
-        options
+        infoOpts
       ).catch(() => [] as HlExtraAgents),
       infoRequest<HlSpotClearinghouseState>(
         apiUrl,
         { type: 'spotClearinghouseState', user: params.address },
-        options
+        infoOpts
       ),
       Promise.all(
-        ctx.dexNames.map((name) =>
+        dexNames.map((name) =>
           infoRequest<HlClearinghouseState>(
             apiUrl,
             {
@@ -185,7 +204,7 @@ export const getAccount = async (
               user: params.address,
               ...(name ? { dex: name } : {}),
             },
-            options
+            infoOpts
           )
         )
       ),
@@ -197,11 +216,14 @@ export const getAccount = async (
         .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
         .map((ap) => mapPosition(ap))
     )
-    .map((pos) => ({ ...pos, asset: enrichAsset(pos.asset.assetId, ctx) }))
+    .map((pos) => ({
+      ...pos,
+      asset: requireAsset(byAssetId, pos.asset.assetId),
+    }))
 
   const stateByDex = new Map<string, HlClearinghouseState>()
   stateResults.forEach((state, i) => {
-    stateByDex.set(ctx.dexNames[i], state)
+    stateByDex.set(dexNames[i], state)
   })
 
   const totalUnrealizedPnl = positions.reduce(
@@ -222,7 +244,7 @@ export const getAccount = async (
       abstractionResult,
       spotState,
       stateByDex,
-      ctx.quoteByMarket
+      quoteByMarket
     ),
     marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
     unrealizedPnl: totalUnrealizedPnl.toString(),

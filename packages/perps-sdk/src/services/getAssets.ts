@@ -11,18 +11,15 @@ export interface GetAssetsParams {
 }
 
 /**
- * Get all available assets for a DEX, grouped by providerMarketId.
+ * Get all available assets for a provider. Thin pass-through to the LI.FI
+ * backend's Valkey-cached `/perps/assets` route — the canonical source of
+ * public market data for widget consumers.
  *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { assets } = await getAssets(client, { provider: 'hyperliquid' })
- * console.log(assets) // { hyperliquid: [...], xyz: [...], spot: [...] }
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getAssets(client)`.
  */
 export async function getAssets(
   client: PerpsSDKClient,

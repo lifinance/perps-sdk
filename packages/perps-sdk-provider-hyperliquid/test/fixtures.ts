@@ -1,3 +1,4 @@
+import type { Asset } from '@lifi/perps-types'
 import type {
   HlClearinghouseState,
   HlExtraAgents,
@@ -11,7 +12,6 @@ import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '@lifi/perps-types/providers/hyperliquid'
-import type { HlAssetContext } from '../src/utils/assetContext.js'
 
 export const HL_PERP_DEXS_MAIN_ONLY: HlPerpDexs = [null]
 
@@ -80,34 +80,36 @@ export const HL_META_AND_CTXS_MAIN_WITH_COLLATERAL: unknown = [
 ]
 
 /**
- * Backend-sourced asset context for account-read specs. Main perps only
- * (`dexNames: ['']`), BTC + ETH on USDC. Mirrors what
- * `coreGetAssets({ provider: 'hyperliquid' })` would yield.
+ * Backend-sourced asset list for account-read specs — what
+ * `getAssets({ provider: 'hyperliquid' })` returns. Main perps only, BTC + ETH
+ * on USDC.
  */
-export const HL_ASSET_CONTEXT: HlAssetContext = {
-  dexNames: [''],
-  byAssetId: new Map([
-    [
-      'BTC',
-      {
-        assetId: 'BTC',
-        market: 'hyperliquid',
-        displaySymbol: 'BTC',
-        displayQuote: 'USDC',
-      },
-    ],
-    [
-      'ETH',
-      {
-        assetId: 'ETH',
-        market: 'hyperliquid',
-        displaySymbol: 'ETH',
-        displayQuote: 'USDC',
-      },
-    ],
-  ]),
-  quoteByMarket: new Map([['hyperliquid', 'USDC']]),
-}
+export const HL_ASSETS: Asset[] = [
+  {
+    assetId: 'BTC',
+    market: 'hyperliquid',
+    displaySymbol: 'BTC',
+    displayQuote: 'USDC',
+    logoURI: '',
+    szDecimals: 5,
+    maxLeverage: 50,
+    onlyIsolated: false,
+    funding: { rate: '0', nextFundingTime: 0 },
+    markPrice: '95000',
+  },
+  {
+    assetId: 'ETH',
+    market: 'hyperliquid',
+    displaySymbol: 'ETH',
+    displayQuote: 'USDC',
+    logoURI: '',
+    szDecimals: 4,
+    maxLeverage: 50,
+    onlyIsolated: false,
+    funding: { rate: '0', nextFundingTime: 0 },
+    markPrice: '3400',
+  },
+]
 
 export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {
   marginSummary: { accountValue: '10000', totalMarginUsed: '500' },

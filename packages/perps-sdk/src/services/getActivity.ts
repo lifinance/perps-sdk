@@ -4,7 +4,7 @@ import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import { buildUrl, request } from '../utils/request.js'
+import { requireProvider } from '../utils/requireProvider.js'
 
 export interface GetActivityParams {
   /** Provider to get activity from (e.g., 'hyperliquid') */
@@ -25,54 +25,33 @@ export interface GetActivityParams {
 
 /**
  * Get account activity (deposits, withdrawals, liquidations, funding payments).
- *
- * @param client - The SDK client instance
- * @param params - Request parameters
- * @param options - Request options (e.g., AbortSignal)
- * @returns Activity items with pagination
- * @throws {PerpsError} On API error responses
- * @throws {PerpsError} On network or parsing errors
+ * Delegates to the registered venue plugin (direct-to-venue); requires the
+ * provider plugin to be registered on the client.
  *
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
  * const { items, pagination } = await getActivity(client, {
  *   provider: 'hyperliquid',
  *   address: '0x1234...',
- *   limit: 50
+ *   limit: 50,
  * })
- *
- * // Fetch next page
- * if (pagination.hasMore) {
- *   const nextPage = await getActivity(client, {
- *     provider: 'hyperliquid',
- *     address: '0x1234...',
- *     cursor: pagination.cursor
- *   })
- * }
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getActivity(client, { address, ... })`.
  */
 export async function getActivity(
   client: PerpsSDKClient,
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> {
-  let url = buildUrl(`${client.config.apiUrl}/activity`, {
-    provider: params.provider,
-    address: params.address,
-    limit: params.limit,
-    cursor: params.cursor,
-    startTime: params.startTime,
-    endTime: params.endTime,
-  })
-  if (params.type?.length) {
-    const sep = url.includes('?') ? '&' : '?'
-    url +=
-      sep + params.type.map((t) => `type=${encodeURIComponent(t)}`).join('&')
-  }
-  return request<ActivitiesResponse>(client.config, url, {}, options)
+  return requireProvider(client, params.provider).getActivity(
+    client,
+    {
+      address: params.address,
+      limit: params.limit,
+      cursor: params.cursor,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      type: params.type,
+    },
+    options
+  )
 }

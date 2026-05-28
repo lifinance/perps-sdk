@@ -1,3 +1,8 @@
+import {
+  getAssets as coreGetAssets,
+  type PerpsSDKClient,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type { FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
@@ -6,9 +11,8 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
-import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
-import { mapFill } from '../utils/index.js'
-import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { mapFill, requireAsset } from '../utils/index.js'
+import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetFillsParams {
   address: Address
@@ -24,19 +28,28 @@ export interface GetFillsParams {
 /**
  * Fetch the user's fills history. When `startTime` or `endTime` is provided,
  * Hyperliquid's `userFillsByTime` endpoint is used; otherwise the unbounded
- * `userFills` endpoint returns the full history. Market metadata (`ctx`) is
- * sourced backend-side; only the fills endpoint is read direct from HL.
+ * `userFills` endpoint returns the full history. The backend's enriched asset
+ * list supplies the display fields; only the fills endpoint is read direct
+ * from HL.
  *
  * Pagination is cursor-based on the fill's `tid`: results with
  * `tid < cursor` are kept and the last-page's tail `id` is returned as the
  * next cursor.
  */
 export const getFills = async (
+  client: PerpsSDKClient,
   apiUrl: string,
   params: GetFillsParams,
-  ctx: HlAssetContext,
-  options?: InfoRequestOptions
+  options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
+  const { assets } = await coreGetAssets(
+    client,
+    { provider: PROVIDER_KEY },
+    options
+  )
+  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const infoOpts = hlInfoOptions(client, options)
+
   const limit = Math.min(
     params.limit ?? DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT
@@ -54,12 +67,12 @@ export const getFills = async (
           startTime: params.startTime ?? 0,
           ...(params.endTime !== undefined ? { endTime: params.endTime } : {}),
         },
-        options
+        infoOpts
       )
     : await infoRequest<HlUserFills>(
         apiUrl,
         { type: 'userFills', user: params.address },
-        options
+        infoOpts
       )
 
   const filtered =
@@ -70,7 +83,7 @@ export const getFills = async (
   const hasMore = filtered.length > limit
   const items = filtered.slice(0, limit).map((f) => {
     const fill = mapFill(f)
-    return { ...fill, asset: enrichAsset(fill.asset.assetId, ctx) }
+    return { ...fill, asset: requireAsset(byAssetId, fill.asset.assetId) }
   })
 
   return {

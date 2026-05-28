@@ -1,12 +1,16 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import {
+  getAsset as coreGetAsset,
+  PerpsError,
+  type PerpsSDKClient,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type { Order } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
-import { enrichAsset, type HlAssetContext } from '../utils/assetContext.js'
 import { mapOrder } from '../utils/index.js'
-import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetOrderParams {
   address: Address
@@ -14,10 +18,10 @@ export interface GetOrderParams {
 }
 
 export const getOrder = async (
+  client: PerpsSDKClient,
   apiUrl: string,
   params: GetOrderParams,
-  ctx: HlAssetContext,
-  options?: InfoRequestOptions
+  options?: SDKRequestOptions
 ): Promise<Order> => {
   const oid = Number.parseInt(params.id, 10)
   if (Number.isNaN(oid)) {
@@ -32,7 +36,7 @@ export const getOrder = async (
   const status = await infoRequest<HlOrderStatusResponse>(
     apiUrl,
     { type: 'orderStatus', user: params.address, oid },
-    options
+    hlInfoOptions(client, options)
   )
 
   if (status.status !== 'order') {
@@ -45,5 +49,10 @@ export const getOrder = async (
   }
 
   const order = mapOrder(status.order)
-  return { ...order, asset: enrichAsset(order.asset.assetId, ctx) }
+  const asset = await coreGetAsset(
+    client,
+    { provider: PROVIDER_KEY, assetId: order.asset.assetId },
+    options
+  )
+  return { ...order, asset }
 }

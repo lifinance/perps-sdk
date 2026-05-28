@@ -1,13 +1,16 @@
+import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  HL_ASSET_CONTEXT,
-  HL_FRONTEND_OPEN_ORDERS,
-} from '../../test/fixtures.js'
+import { HL_ASSETS, HL_FRONTEND_OPEN_ORDERS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getOrders } from './getOrders.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
+const client = createPerpsClient({
+  integrator: 'test',
+  apiKey: 'k',
+  retry: false,
+})
 
 const baseResponses = {
   frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
@@ -21,13 +24,11 @@ describe('getOrders', () => {
   })
 
   it('splits limit and trigger orders and enriches their asset display fields', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
 
-    const result = await getOrders(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     expect(result.provider).toBe('hyperliquid')
     expect(result.openOrders).toHaveLength(1)
@@ -48,16 +49,17 @@ describe('getOrders', () => {
       ...HL_FRONTEND_OPEN_ORDERS[0],
       children: [childOrder],
     }
-    ;({ restore } = installInfoFetchMock({
-      ...baseResponses,
-      frontendOpenOrders: [parentWithChild, childOrder],
-    }))
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        frontendOpenOrders: [parentWithChild, childOrder],
+      },
+      HL_ASSETS
+    ))
 
-    const result = await getOrders(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
 
     // child oid 99 was listed at top-level too; gets dropped from openOrders…
     expect(result.openOrders.map((o) => o.id)).toEqual(['1'])
@@ -66,13 +68,12 @@ describe('getOrders', () => {
   })
 
   it('filters by assetId-matching `symbol`', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
 
-    const result = await getOrders(
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS, assetId: 'ETH' },
-      HL_ASSET_CONTEXT
-    )
+    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+      assetId: 'ETH',
+    })
     expect(result.openOrders).toHaveLength(0)
     expect(result.triggerOrders).toHaveLength(0)
   })

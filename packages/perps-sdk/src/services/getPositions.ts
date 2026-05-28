@@ -4,15 +4,15 @@ import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import { buildUrl, request } from '../utils/request.js'
+import { requireProvider } from '../utils/requireProvider.js'
 
 export interface GetPositionsParams {
   /** Provider (e.g., 'hyperliquid') */
   provider: string
   /** Wallet address */
   address: Address
-  /** Optional symbol to filter to a single position */
-  symbol?: string
+  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`) */
+  assetId?: string
   /** Maximum number of results */
   limit?: number
   /** Pagination cursor */
@@ -20,7 +20,9 @@ export interface GetPositionsParams {
 }
 
 /**
- * Get open positions for an account.
+ * Get open positions for an account. Delegates to the registered venue plugin
+ * (direct-to-venue); requires the provider plugin to be registered on the
+ * client.
  *
  * @example
  * ```ts
@@ -29,22 +31,20 @@ export interface GetPositionsParams {
  *   address: '0x1234...',
  * })
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getPositions(client, { address, ... })`.
  */
 export async function getPositions(
   client: PerpsSDKClient,
   params: GetPositionsParams,
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/positions`, {
-    provider: params.provider,
-    address: params.address,
-    ...(params.symbol ? { symbol: params.symbol } : {}),
-    ...(params.limit ? { limit: String(params.limit) } : {}),
-    ...(params.cursor ? { cursor: params.cursor } : {}),
-  })
-  return request<PositionsResponse>(client.config, url, {}, options)
+  return requireProvider(client, params.provider).getPositions(
+    client,
+    {
+      address: params.address,
+      assetId: params.assetId,
+      limit: params.limit,
+      cursor: params.cursor,
+    },
+    options
+  )
 }

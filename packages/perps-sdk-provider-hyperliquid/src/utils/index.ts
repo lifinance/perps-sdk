@@ -2,15 +2,10 @@
 // for the package's utility surface. Internal modules import per-file paths
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
-export {
-  buildAssetContext,
-  enrichAsset,
-  type HlAssetContext,
-} from './assetContext.js'
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
-export { deriveMarket } from './deriveMarket.js'
+export { deriveMarket, perpsDexNames } from './deriveMarket.js'
 export type { InfoRequestOptions } from './infoClient.js'
-export { infoRequest } from './infoClient.js'
+export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
@@ -32,3 +27,4 @@ export {
   formatOrderSize,
   getMaxPriceDecimals,
 } from './orderFormatting.js'
+export { requireAsset } from './requireAsset.js'

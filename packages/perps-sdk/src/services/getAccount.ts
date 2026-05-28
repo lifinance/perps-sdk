@@ -4,7 +4,7 @@ import type {
   PerpsSDKClient,
   SDKRequestOptions,
 } from '../client/createPerpsClient.js'
-import { buildUrl, request } from '../utils/request.js'
+import { requireProvider } from '../utils/requireProvider.js'
 
 export interface GetAccountParams {
   /** Provider to get account from (e.g., 'hyperliquid') */
@@ -14,39 +14,30 @@ export interface GetAccountParams {
 }
 
 /**
- * Get account information including balances and margin details.
+ * Get account information (balances, margin, fee tier, typed config).
+ * Delegates to the registered venue plugin (direct-to-venue); requires the
+ * provider plugin to be registered on the client.
  *
- * Use {@link getPositions} and {@link getOrders} to fetch positions and orders separately.
- *
- * @param client - The SDK client instance
- * @param params - Request parameters
- * @param options - Request options (e.g., AbortSignal)
- * @returns Account details
- * @throws {PerpsError} On API error responses
- * @throws {PerpsError} On network or parsing errors
+ * Use {@link getPositions} and {@link getOrders} to fetch positions and orders
+ * separately.
  *
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
  * const account = await getAccount(client, {
  *   provider: 'hyperliquid',
- *   address: '0x1234...'
+ *   address: '0x1234...',
  * })
- * console.log(account.balances) // [{ currency: 'USDC', amount: '10000.00' }]
+ * console.log(account.balances)
  * ```
- *
- * @deprecated Will move to the provider package
- * `@lifi/perps-sdk-provider-<key>`. Migrate to
- * `client.getProvider(provider)?.getAccount(client, { address })`.
  */
 export async function getAccount(
   client: PerpsSDKClient,
   params: GetAccountParams,
   options?: SDKRequestOptions
 ): Promise<AccountResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/account`, {
-    provider: params.provider,
-    address: params.address,
-  })
-  return request<AccountResponse>(client.config, url, {}, options)
+  return requireProvider(client, params.provider).getAccount(
+    client,
+    { address: params.address },
+    options
+  )
 }
