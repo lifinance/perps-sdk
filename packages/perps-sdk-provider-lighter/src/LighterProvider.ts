@@ -36,7 +36,6 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   OhlcvResponse,
-  OpenOrder,
   Order,
   OrderbookResponse,
   OrdersResponse,
@@ -46,7 +45,6 @@ import type {
   ProviderAction,
   SignedActionStep,
   SigningMethod,
-  TriggerOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -87,12 +85,10 @@ import {
 } from './utils/activityCursor.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from './utils/apiClient.js'
 import {
-  isTriggerType,
+  classifyAndMapOrders,
   mapFill,
-  mapOrder,
   mapOrderDetail,
   mapPosition,
-  mapTriggerOrder,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -753,19 +749,11 @@ export const lighterProvider = (
         )
       )
 
-      const openOrders: OpenOrder[] = []
-      const triggerOrders: TriggerOrder[] = []
-      for (const response of responses) {
-        for (const raw of response.orders) {
-          const symbol = symbolLookup.get(raw.market_index) ?? ''
-          const mapped = mapOrder(raw, symbol)
-          if (isTriggerType(mapped.type)) {
-            triggerOrders.push(mapTriggerOrder(raw, symbol))
-          } else {
-            openOrders.push(mapped)
-          }
-        }
-      }
+      const { openOrders, triggerOrders } = classifyAndMapOrders(
+        responses.flatMap((r) => r.orders),
+        (marketIndex) =>
+          symbolLookup.get(marketIndex) ?? `market_${marketIndex}`
+      )
 
       const total = openOrders.length + triggerOrders.length
       const limit = params.limit ?? total
@@ -798,20 +786,22 @@ export const lighterProvider = (
         buildSymbolLookup(sdkClient, opts),
       ])
 
-      // Native `Order.order_id` route only. A tx-hash route would require
-      // mapping the caller's executeAction tx hash → wasm nonce → matching
-      // order, which the LI.FI backend did via its `UserAction` table; the SDK
-      // has no equivalent persistence, so we refuse rather than mis-resolve.
+      // Native `order_index` route only. The cross-provider `Order.orderId`
+      // for Lighter is `String(order_index)` — see `mapOrder`. A tx-hash route
+      // would require mapping the caller's executeAction tx hash → wasm nonce
+      // → matching order, which the LI.FI backend did via its `UserAction`
+      // table; the SDK has no equivalent persistence, so we refuse rather
+      // than mis-resolve.
       if (TX_HASH_PATTERN.test(params.id)) {
         throw new PerpsError(
           PerpsErrorCode.OrderNotFound,
           `Lighter order id "${params.id}" looks like a tx hash. The SDK ` +
-            `resolves orders by Lighter \`order_id\` only — surface the order_id ` +
+            `resolves orders by Lighter \`order_index\` only — surface the orderId ` +
             `from the orderUpdates / fills WS stream and pass it here.`
         )
       }
-      const predicate: (o: { order_id: string }) => boolean = (o) =>
-        o.order_id === params.id
+      const predicate: (o: { order_index: number }) => boolean = (o) =>
+        String(o.order_index) === params.id
 
       const marketIds = deriveOrderBearingMarketIds(account)
       const activeResponses = await Promise.all(
@@ -914,7 +904,7 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const [history, marketLookup, assetDetails] = await Promise.all([
+      const [history, marketLookup] = await Promise.all([
         fetchAllHistory(
           client,
           token,
@@ -924,13 +914,7 @@ export const lighterProvider = (
           inputCursor
         ),
         buildSymbolLookup(sdkClient, opts),
-        client.get<{
-          asset_details: Array<{ asset_id: number; symbol: string }>
-        }>('/api/v1/assetDetails'),
       ])
-      const assetLookup = new Map(
-        assetDetails.asset_details.map((a) => [a.asset_id, a.symbol])
-      )
 
       const items: ActivityItem[] = [
         ...history.deposits.deposits.map(
@@ -993,7 +977,7 @@ export const lighterProvider = (
             type: ActivityType.TRANSFER,
             direction,
             counterpartyAccountIndex,
-            asset: assetLookup.get(t.asset_id) ?? String(t.asset_id),
+            asset: String(t.asset_id),
             amount: t.amount,
             meta: {
               transferType: t.type,

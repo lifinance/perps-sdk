@@ -4,10 +4,14 @@ import {
   type WsProvider,
   type WsProviderFactory,
 } from '@lifi/perps-sdk'
-import type {
-  Position,
-  Subscription,
-  SubscriptionEvent,
+import {
+  type OpenOrder,
+  OrderSide,
+  OrderType,
+  type Position,
+  type Subscription,
+  type SubscriptionEvent,
+  type TriggerOrder,
 } from '@lifi/perps-types'
 import type {
   HlAssetPosition,
@@ -21,7 +25,13 @@ import type {
   HlWsSpotClearinghouseStateData,
   HlWsUserFillsData,
 } from '../types/index.js'
-import { mapFill, mapOrder, mapPosition } from '../utils/index.js'
+import {
+  deriveMarket,
+  isTriggerType,
+  mapFill,
+  mapOrderType,
+  mapPosition,
+} from '../utils/index.js'
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -385,10 +395,49 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleOrderUpdates(data: HlOrderDetail[]) {
-    const orders = data.map((d) => mapOrder(d))
+    const openOrders: OpenOrder[] = []
+    const triggerOrders: TriggerOrder[] = []
+    for (const detail of data) {
+      const o = detail.order
+      const type = mapOrderType(o.orderType)
+      const asset = {
+        assetId: o.coin,
+        market: deriveMarket(o.coin),
+        displaySymbol: o.coin,
+        displayQuote: null,
+      }
+      const createdAt = new Date(o.timestamp).toISOString()
+      if (isTriggerType(type)) {
+        const isLimit =
+          type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
+        triggerOrders.push({
+          orderId: String(o.oid),
+          asset,
+          type,
+          size: o.sz,
+          triggerPrice: o.triggerPx ?? '0',
+          ...(isLimit ? { limitPrice: o.limitPx } : {}),
+          label: o.triggerCondition,
+          createdAt,
+        })
+      } else {
+        const filled = parseFloat(o.origSz) - parseFloat(o.sz)
+        openOrders.push({
+          orderId: String(o.oid),
+          asset,
+          side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+          type,
+          size: o.sz,
+          price: o.limitPx,
+          filledSize: filled.toString(),
+          reduceOnly: o.reduceOnly ?? false,
+          createdAt,
+        })
+      }
+    }
     this.emitToPrefix('orderUpdates:', {
       channel: 'orderUpdates',
-      data: orders,
+      data: { openOrders, triggerOrders },
     })
   }
 

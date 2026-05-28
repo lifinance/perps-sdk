@@ -1,5 +1,4 @@
-import type { Fill, Position } from './account.js'
-import type { Order } from './action.js'
+import type { Fill, OpenOrder, Position, TriggerOrder } from './account.js'
 import type { Candle, OhlcvInterval, OrderbookResponse } from './asset.js'
 import type { Address } from './primitives.js'
 
@@ -59,7 +58,13 @@ export interface SpotBalance {
 export type PricesEvent = { channel: 'prices'; data: Record<string, string> }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 export type CandleEvent = { channel: 'candle'; data: Candle }
-export type OrderUpdatesEvent = { channel: 'orderUpdates'; data: Order[] }
+export type OrderUpdatesEvent = {
+  channel: 'orderUpdates'
+  data: {
+    openOrders: OpenOrder[]
+    triggerOrders: TriggerOrder[]
+  }
+}
 export type FillsEvent = { channel: 'fills'; data: Fill[] }
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
 export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }

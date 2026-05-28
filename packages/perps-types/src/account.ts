@@ -31,7 +31,7 @@ export interface Position {
 }
 
 export interface OpenOrder {
-  id: string
+  orderId: string
   asset: AssetDisplay
   side: OrderSide
   type: OrderType
@@ -66,7 +66,7 @@ export interface AccountSummary {
 }
 
 export interface TriggerOrder {
-  id: string
+  orderId: string
   asset: AssetDisplay
   type: OrderType
   size: string

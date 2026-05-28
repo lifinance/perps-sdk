@@ -81,13 +81,13 @@ describe('LighterWsProvider', () => {
       // Non-resolvable URL — we never open the socket in these tests.
       'ws://127.0.0.1:1',
       'lighter',
-      { symbolMap: { BTC: 0, ETH: 1, SOL: 5 } }
+      { displaySymbolMap: { 0: 'BTC', 1: 'ETH', 5: 'SOL' } }
     )
 
   /** Pre-populate caches so handleMessage can route without a live socket. */
   const primeProvider = (p: LighterWsProvider) => {
     ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
-    ;(p as any).marketIdToSymbol.set(0, 'BTC')
+    ;(p as any).marketIdToDisplaySymbol.set(0, 'BTC')
   }
 
   /** Inject a listener directly, bypassing the subscribe WS path. */
@@ -210,15 +210,16 @@ describe('LighterWsProvider', () => {
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('orderUpdates')
-      expect(event.data).toHaveLength(1)
-      expect(event.data[0].orderId).toBe('ord1')
+      expect(event.data.openOrders).toHaveLength(1)
+      expect(event.data.triggerOrders).toHaveLength(0)
+      expect(event.data.openOrders[0].orderId).toBe('1')
       p.close()
     })
 
     it('emits orderUpdates when orders span multiple markets', () => {
       const p = makeProvider()
       primeProvider(p)
-      ;(p as any).marketIdToSymbol.set(1, 'ETH')
+      ;(p as any).marketIdToDisplaySymbol.set(1, 'ETH')
       const listener = vi.fn()
       inject(p, `orderUpdates:${TEST_ADDR}`, listener)
 
@@ -232,7 +233,8 @@ describe('LighterWsProvider', () => {
       )
 
       const event = listener.mock.calls[0][0]
-      expect(event.data).toHaveLength(2)
+      expect(event.data.openOrders).toHaveLength(2)
+      expect(event.data.triggerOrders).toHaveLength(0)
       p.close()
     })
 

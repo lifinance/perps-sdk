@@ -120,7 +120,12 @@ export const mapTriggerOrder = (
   const isLimit =
     type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
-    id: order.order_id,
+    // `order_index` is the per-(account, market) numeric id Lighter's L2
+    // mutating txs (cancel, modify) require. The matching-engine string
+    // label `order_id` is internal to the SDK provider and never crosses
+    // this boundary — combined with `asset.assetId` (=market_index), the
+    // numeric `order_index` uniquely pins a Lighter order.
+    orderId: String(order.order_index),
     asset: {
       assetId: String(order.market_index),
       market: 'lighter',
@@ -140,7 +145,7 @@ export const mapTriggerOrder = (
  * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
  */
 export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
-  id: order.order_id,
+  orderId: String(order.order_index),
   asset: {
     assetId: String(order.market_index),
     market: 'lighter',
@@ -157,6 +162,29 @@ export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
 })
 
 /**
+ * Walk a flat list of raw Lighter orders and bucket each into the
+ * `OpenOrder` / `TriggerOrder` arrays the cross-provider `OrdersResponse`
+ * declares. Called by both the REST `getOrders` service and the WS
+ * `orderUpdates` handler so classification + mapping is in one place.
+ */
+export const classifyAndMapOrders = (
+  orders: LtOrder[],
+  resolveDisplaySymbol: (marketIndex: number) => string
+): { openOrders: OpenOrder[]; triggerOrders: TriggerOrder[] } => {
+  const openOrders: OpenOrder[] = []
+  const triggerOrders: TriggerOrder[] = []
+  for (const raw of orders) {
+    const displaySymbol = resolveDisplaySymbol(raw.market_index)
+    if (isTriggerType(mapOrderType(raw.type))) {
+      triggerOrders.push(mapTriggerOrder(raw, displaySymbol))
+    } else {
+      openOrders.push(mapOrder(raw, displaySymbol))
+    }
+  }
+  return { openOrders, triggerOrders }
+}
+
+/**
  * Map a raw Lighter order to the rich Order type — adds status, time-in-force
  * and remaining/filled sizes on top of the OpenOrder fields.
  */
@@ -164,7 +192,7 @@ export const mapOrderDetail = (
   order: LtOrder,
   displaySymbol: string
 ): Order => ({
-  orderId: order.order_id,
+  orderId: String(order.order_index),
   asset: {
     assetId: String(order.market_index),
     market: 'lighter',

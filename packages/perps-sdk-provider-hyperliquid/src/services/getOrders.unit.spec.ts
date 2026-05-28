@@ -34,9 +34,9 @@ describe('getOrders', () => {
     expect(result.openOrders).toHaveLength(1)
     expect(result.openOrders[0].asset.market).toBe('hyperliquid')
     expect(result.openOrders[0].asset.displayQuote).toBe('USDC')
-    expect(result.openOrders[0].id).toBe('1')
+    expect(result.openOrders[0].orderId).toBe('1')
     expect(result.triggerOrders).toHaveLength(1)
-    expect(result.triggerOrders[0].id).toBe('2')
+    expect(result.triggerOrders[0].orderId).toBe('2')
     expect(result.triggerOrders[0].triggerPrice).toBe('90000')
   })
 
@@ -62,9 +62,9 @@ describe('getOrders', () => {
     })
 
     // child oid 99 was listed at top-level too; gets dropped from openOrders…
-    expect(result.openOrders.map((o) => o.id)).toEqual(['1'])
+    expect(result.openOrders.map((o) => o.orderId)).toEqual(['1'])
     // …and surfaced under triggerOrders.
-    expect(result.triggerOrders.map((o) => o.id)).toEqual(['99'])
+    expect(result.triggerOrders.map((o) => o.orderId)).toEqual(['99'])
   })
 
   it('filters by assetId-matching `symbol`', async () => {

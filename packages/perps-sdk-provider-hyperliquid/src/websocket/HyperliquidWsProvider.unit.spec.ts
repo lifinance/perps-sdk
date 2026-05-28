@@ -1,9 +1,4 @@
-import {
-  FillStatus,
-  OrderSide,
-  OrderStatus,
-  OrderType,
-} from '@lifi/perps-types'
+import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
 
@@ -461,13 +456,13 @@ describe('HyperliquidWsProvider', () => {
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('orderUpdates')
-      expect(event.data).toHaveLength(1)
-      expect(event.data[0]).toMatchObject({
+      expect(event.data.openOrders).toHaveLength(1)
+      expect(event.data.triggerOrders).toHaveLength(0)
+      expect(event.data.openOrders[0]).toMatchObject({
         orderId: '100',
         asset: { assetId: 'BTC' },
         side: OrderSide.BUY,
         type: OrderType.LIMIT,
-        status: OrderStatus.OPEN,
       })
     })
 

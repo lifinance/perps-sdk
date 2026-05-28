@@ -8,7 +8,6 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   Fill,
-  Order,
   Position,
   Subscription,
   SubscriptionEvent,
@@ -28,7 +27,7 @@ import type {
   LtWsOrderBook,
   LtWsOrderBookMessage,
 } from '../types/index.js'
-import { mapFill, mapOrderDetail, mapPosition } from '../utils/index.js'
+import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
 
 // ---------------------------------------------------------------------------
 // LighterWsProvider
@@ -49,9 +48,10 @@ import { mapFill, mapOrderDetail, mapPosition } from '../utils/index.js'
 // and cached for the lifetime of the provider — Lighter's account index is
 // stable for a given L1 wallet.
 //
-// Symbol → market_id mapping is fetched once from Lighter's public
-// `/api/v1/orderBookDetails` endpoint. The UI's assetId IS Lighter's symbol
-// (e.g. "BTC"), so we use it as the join key.
+// AssetId ↔ market_id mapping is sourced once from the backend's
+// `/perps/assets`. The canonical `assetId` for Lighter perps is
+// `String(market_id)` ("0", "1", …); `displaySymbol` ("BTC", "ETH") is kept
+// separately for `asset.displaySymbol` on mapped orders/fills/positions.
 //
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
@@ -95,10 +95,13 @@ interface OrderbookState {
 }
 
 export interface LighterWsProviderOptions {
-  /** REST base URL for fetching `orderBookDetails`. Defaults to mainnet. */
+  /** REST base URL for `/api/v1/account` lookups. Defaults to mainnet. */
   restUrl?: string
-  /** Pre-populated symbol→market_id map to skip the REST call. */
-  symbolMap?: Record<string, number>
+  /**
+   * Pre-populated `market_id → displaySymbol` map (e.g. `{ 0: 'BTC' }`).
+   * Skips the backend `/perps/assets` fetch — primarily for tests.
+   */
+  displaySymbolMap?: Record<number, string>
   /**
    * Async function returning a Lighter auth token for an address. Required
    * for authenticated channels (orderUpdates, positions). Without it those
@@ -119,9 +122,15 @@ export class LighterWsProvider implements WsProvider {
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
-  private symbolToMarketId: Map<string, number>
-  private marketIdToSymbol: Map<number, string>
-  private marketMetadataPromise: Promise<void> | undefined
+  /**
+   * `market_id → displaySymbol`. The canonical `assetId` for Lighter perps
+   * IS `String(market_id)` (backend `/perps/assets` emits it that way), so no
+   * id-to-id map is needed — `String(market_id)` is the wire key. We keep
+   * only the display-symbol lookup, used to populate `asset.displaySymbol`
+   * on mapped orders / fills / positions.
+   */
+  private marketIdToDisplaySymbol: Map<number, string>
+  private displaySymbolsPromise: Promise<void> | undefined
 
   private readonly accountIndexCache = new Map<string, number>()
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
@@ -138,9 +147,11 @@ export class LighterWsProvider implements WsProvider {
     this.restUrl = options.restUrl ?? DEFAULT_REST_URL
     this.authProvider = options.authProvider
     this.client = client
-    this.symbolToMarketId = new Map(Object.entries(options.symbolMap ?? {}))
-    this.marketIdToSymbol = new Map(
-      [...this.symbolToMarketId].map(([s, m]) => [m, s])
+    this.marketIdToDisplaySymbol = new Map(
+      Object.entries(options.displaySymbolMap ?? {}).map(([id, sym]) => [
+        Number(id),
+        sym,
+      ])
     )
 
     this.rws = new ReconnectingWebSocket(wsUrl)
@@ -164,7 +175,7 @@ export class LighterWsProvider implements WsProvider {
       return () => {}
     }
 
-    await this.ensureMarketMetadata()
+    await this.ensureDisplaySymbols()
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
@@ -193,8 +204,8 @@ export class LighterWsProvider implements WsProvider {
         this.subs.delete(key)
         this.listeners.delete(key)
         if (sub.channel === 'orderbook') {
-          const id = this.symbolToMarketId.get(sub.assetId)
-          if (id !== undefined) {
+          const id = Number(sub.assetId)
+          if (Number.isFinite(id)) {
             this.orderbooks.delete(id)
           }
         }
@@ -288,11 +299,11 @@ export class LighterWsProvider implements WsProvider {
       return { channel: 'market_stats/all', needsAuth: false }
     }
     if (sub.channel === 'orderbook') {
-      const id = this.symbolToMarketId.get(sub.assetId)
-      if (id === undefined) {
+      const id = Number(sub.assetId)
+      if (!Number.isFinite(id)) {
         throw new Error(
           `Lighter WS: unknown market for assetId '${sub.assetId}'. ` +
-            'Is the symbol mapping out of date?'
+            'AssetId must be a numeric market_id string.'
         )
       }
       return { channel: `order_book/${id}`, needsAuth: false }
@@ -354,20 +365,20 @@ export class LighterWsProvider implements WsProvider {
     return idx
   }
 
-  private async ensureMarketMetadata(): Promise<void> {
-    if (this.symbolToMarketId.size > 0) {
+  private async ensureDisplaySymbols(): Promise<void> {
+    if (this.marketIdToDisplaySymbol.size > 0) {
       return
     }
-    if (!this.marketMetadataPromise) {
-      this.marketMetadataPromise = this.fetchMarketMetadata()
+    if (!this.displaySymbolsPromise) {
+      this.displaySymbolsPromise = this.fetchDisplaySymbols()
     }
-    await this.marketMetadataPromise
+    await this.displaySymbolsPromise
   }
 
-  private async fetchMarketMetadata(): Promise<void> {
+  private async fetchDisplaySymbols(): Promise<void> {
     if (this.client === undefined) {
       throw new Error(
-        'LighterWsProvider: PerpsSDKClient not provided; cannot fetch market metadata. ' +
+        'LighterWsProvider: PerpsSDKClient not provided; cannot fetch display symbols. ' +
           'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
       )
     }
@@ -380,8 +391,7 @@ export class LighterWsProvider implements WsProvider {
       if (!Number.isFinite(marketId)) {
         continue
       }
-      this.symbolToMarketId.set(a.displaySymbol, marketId)
-      this.marketIdToSymbol.set(marketId, a.displaySymbol)
+      this.marketIdToDisplaySymbol.set(marketId, a.displaySymbol)
     }
   }
 
@@ -448,15 +458,14 @@ export class LighterWsProvider implements WsProvider {
       return
     }
     const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
-    const orders: Order[] = raw.map((o) =>
-      mapOrderDetail(
-        o,
-        this.marketIdToSymbol.get(o.market_index) ?? `market_${o.market_index}`
-      )
+    const data = classifyAndMapOrders(
+      raw,
+      (marketIndex) =>
+        this.marketIdToDisplaySymbol.get(marketIndex) ?? `market_${marketIndex}`
     )
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
-      data: orders,
+      data,
     })
   }
 
@@ -474,7 +483,7 @@ export class LighterWsProvider implements WsProvider {
       mapFill(
         t,
         accountIndex,
-        this.marketIdToSymbol.get(t.market_id) ?? `market_${t.market_id}`
+        this.marketIdToDisplaySymbol.get(t.market_id) ?? `market_${t.market_id}`
       )
     )
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
@@ -494,7 +503,7 @@ export class LighterWsProvider implements WsProvider {
       .map((p) =>
         mapPosition(
           p,
-          this.marketIdToSymbol.get(p.market_id) ??
+          this.marketIdToDisplaySymbol.get(p.market_id) ??
             p.symbol ??
             `market_${p.market_id}`
         )
@@ -543,11 +552,7 @@ export class LighterWsProvider implements WsProvider {
     const updates: Record<string, string> = {}
     for (const value of Object.values(stats)) {
       const entry = value as LtWsMarketStats
-      const symbol = this.marketIdToSymbol.get(entry.market_id)
-      if (!symbol) {
-        continue
-      }
-      updates[symbol] = entry.last_trade_price
+      updates[String(entry.market_id)] = entry.last_trade_price
     }
     if (Object.keys(updates).length === 0) {
       return
@@ -567,10 +572,7 @@ export class LighterWsProvider implements WsProvider {
     if (marketId === null) {
       return
     }
-    const assetId = this.marketIdToSymbol.get(marketId)
-    if (!assetId) {
-      return
-    }
+    const assetId = String(marketId)
 
     let state = this.orderbooks.get(marketId)
     if (!state || isSnapshot) {
@@ -689,7 +691,7 @@ function collectAuthChannelItems<T>(
  * `WsProviderFactory` constructor for Lighter — pass to
  * `new PerpsWsClient(client, { wsProviders: { lighter: lighterWsProvider({ authProvider }) } })`.
  *
- * Closes over the per-instance options (auth provider, symbolMap, restUrl
+ * Closes over the per-instance options (auth provider, displaySymbolMap, restUrl
  * override) so `PerpsWsClient` can call the returned factory with just
  * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
  * unused — Lighter advertises a single venue, no sub-DEX filtering.

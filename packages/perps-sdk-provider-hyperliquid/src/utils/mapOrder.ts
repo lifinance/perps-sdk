@@ -33,7 +33,7 @@ export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.STOP_LIMIT
 
 export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
-  id: String(o.oid),
+  orderId: String(o.oid),
   asset: {
     assetId: o.coin,
     market: deriveMarket(o.coin),
@@ -57,7 +57,7 @@ export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
   const isLimit =
     type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
-    id: String(o.oid),
+    orderId: String(o.oid),
     asset: {
       assetId: o.coin,
       market: deriveMarket(o.coin),
