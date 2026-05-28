@@ -34,6 +34,8 @@ import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import {
   type BuildProviderSetupParams,
   type CancelOrdersParams,
+  type ExecuteProviderSetupParams,
+  type ExecuteProviderSetupResult,
   type GetAccountResult,
   type GetSetupParams,
   type ModifyOrdersParams,
@@ -41,8 +43,6 @@ import {
   type PlaceOrderParams,
   type PlaceTriggerOrderParams,
   type ProviderSetup,
-  type SatisfySetupParams,
-  type SatisfySetupResult,
   SigningMode,
   type WithdrawParams,
 } from './types.js'
@@ -858,7 +858,9 @@ export class PerpsClient {
    *   3. Sign and submit any pre-staged agent-side setup actions the
    *      backend returned alongside the user-signed ones.
    */
-  async satisfySetup(params: SatisfySetupParams): Promise<SatisfySetupResult> {
+  async executeProviderSetup(
+    params: ExecuteProviderSetupParams
+  ): Promise<ExecuteProviderSetupResult> {
     const { provider, address, required, userSignedActions } = params
     const mode = await this.loadSigningMode(address, provider)
 
@@ -970,46 +972,50 @@ export class PerpsClient {
   }
 
   /**
-   * Unified entry point for satisfying a single setup descriptor end-to-end.
+   * Sign and submit one pre-staged setup `ActionStep` end-to-end.
    *
-   * Refreshes `checkSetup`, finds the matching step, signs it via
-   * `signProviderSetupAction` (user-setup actions only), and submits via `satisfySetup`
-   * with a single-step `required` payload.
+   * The caller is expected to have already obtained the step from a prior
+   * {@link checkSetup} call (typically cached by the widget's react-query) —
+   * we do NOT refetch. This avoids the double `createAction` round-trip and
+   * keeps the nonce that was allocated at staging time committed all the way
+   * through submit. If the cached step has gone stale (Lighter's `/nextNonce`
+   * advanced underneath us), `executeProviderSetup` will surface a nonce
+   * conflict that the caller invalidates on, refetches `checkSetup`, and
+   * retries with a fresh step.
    *
-   * No-op when the action isn't currently a provider setup action (e.g. already
-   * satisfied) — callers should follow up with `invalidateQueries` to
-   * resync UI state regardless.
+   * Signer-role split: looks up the action's setup descriptor and dispatches
+   * to `signProviderSetupAction` for user-signed steps; agent steps are
+   * auto-signed inside `executeProviderSetup`.
    */
-  async satisfy(params: {
+  async executeProviderSetupAction(params: {
     provider: string
     address: Address
-    action: ActionType
+    step: ActionStep
   }): Promise<void> {
-    const { provider, address, action } = params
+    const { provider, address, step } = params
 
-    const required = await this.checkSetup({ provider, address })
-    const userStep = required.userProviderSetup.find((s) => s.action === action)
-    const agentStep = required.agentProviderSetup.find(
-      (s) => s.action === action
-    )
-    const step = userStep ?? agentStep
-    if (!step) {
-      // Already satisfied or not staged — caller invalidates queries to resync.
-      return
+    const metadata = await this.getProviderMetadata(provider)
+    const descriptor = metadata.setup.find((d) => d.type === step.action)
+    if (!descriptor) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Action '${step.action}' is not in '${provider}'.setup`
+      )
     }
+    const isUserStep = descriptor.signers.includes(PerpsSigner.USER)
 
     let userSignedActions: SignedActionStep[] = []
-    if (userStep) {
+    if (isUserStep) {
       const signed = await this.signProviderSetupAction(provider, address, step)
       userSignedActions = [signed]
     }
 
     const singleStep: ProviderSetup = {
-      userProviderSetup: userStep ? [step] : [],
-      agentProviderSetup: agentStep ? [step] : [],
+      userProviderSetup: isUserStep ? [step] : [],
+      agentProviderSetup: isUserStep ? [] : [step],
       isReady: false,
     }
-    await this.satisfySetup({
+    await this.executeProviderSetup({
       provider,
       address,
       required: singleStep,

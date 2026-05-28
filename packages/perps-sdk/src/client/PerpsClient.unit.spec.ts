@@ -350,7 +350,7 @@ describe('PerpsClient', () => {
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch
   // ---------------------------------------------------------------------------
 
-  describe('satisfySetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
+  describe('executeProviderSetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
     const BASE_URL = DEFAULT_API_URL
 
     // Account state is read direct from the provider plugin, so register a
@@ -508,7 +508,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.satisfySetup({
+      const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -571,7 +571,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.satisfySetup({
+      const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -601,7 +601,7 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await client.satisfySetup({
+      const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -651,7 +651,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.satisfySetup({
+      const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
         required: {
@@ -697,7 +697,7 @@ describe('PerpsClient', () => {
       setupActionHandlers()
 
       await expect(
-        client.satisfySetup({
+        client.executeProviderSetup({
           provider,
           address: userAddress,
           ...approveAgentSetupAction,

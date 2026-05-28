@@ -21,6 +21,8 @@ export { PerpsClient } from './client/PerpsClient.js'
 export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
+  ExecuteProviderSetupParams,
+  ExecuteProviderSetupResult,
   GetAccountResult,
   GetSetupParams,
   HyperliquidConfig,
@@ -31,8 +33,6 @@ export type {
   ProviderConfig,
   ProviderConfigs,
   ProviderSetup,
-  SatisfySetupParams,
-  SatisfySetupResult,
 } from './client/types.js'
 export { SigningMode } from './client/types.js'
 // Errors

@@ -183,9 +183,9 @@ export interface ProviderSetup {
 }
 
 /**
- * Parameters for {@link PerpsClient.satisfySetup}.
+ * Parameters for {@link PerpsClient.executeProviderSetup}.
  */
-export interface SatisfySetupParams {
+export interface ExecuteProviderSetupParams {
   /** Provider to satisfy setup for */
   provider: string
   /** User wallet address */
@@ -197,9 +197,9 @@ export interface SatisfySetupParams {
 }
 
 /**
- * Result from {@link PerpsClient.satisfySetup}.
+ * Result from {@link PerpsClient.executeProviderSetup}.
  */
-export interface SatisfySetupResult {
+export interface ExecuteProviderSetupResult {
   /** Results from user-signed setup submission */
   userResults: ExecuteActionResponse
   /** Results from agent-signed setup submission (if any) */
