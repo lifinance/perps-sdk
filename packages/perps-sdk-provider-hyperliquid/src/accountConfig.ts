@@ -2,9 +2,7 @@ import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   HyperliquidAccountConfig,
-  ProviderActionDescriptor,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 
@@ -31,7 +29,7 @@ function assertNever(value: never): never {
  * `Provider.setup` / `Provider.options` for Hyperliquid throw at runtime.
  */
 function projectHyperliquidDescriptor(
-  descriptor: ProviderActionDescriptor,
+  descriptor: ProviderAction,
   config: HyperliquidAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
@@ -78,8 +76,8 @@ function projectHyperliquidDescriptor(
  */
 export function projectHyperliquidConfigSettings(
   config: HyperliquidAccountConfig,
-  setup: ProviderSetup[],
-  options: ProviderOption[]
+  setup: ProviderAction[],
+  options: ProviderAction[]
 ): AccountConfigSetting[] {
   return [...setup, ...options].map((descriptor) =>
     projectHyperliquidDescriptor(descriptor, config)

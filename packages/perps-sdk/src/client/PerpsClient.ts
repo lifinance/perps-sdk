@@ -1,5 +1,4 @@
 import type {
-  ActionDescriptor,
   ActionParamsMap,
   ActionStep,
   AssetIdentity,
@@ -8,6 +7,7 @@ import type {
   Eip712SignedActionStep,
   ExecuteActionResponse,
   Provider,
+  ProviderAction,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -22,9 +22,10 @@ import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
-import { getAccount } from '../services/getAccount.js'
+import { getAccount as fetchAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
 import type { PerpsProvider, SignActionsContext } from '../types/core.js'
+import { requireProvider as resolveProvider } from '../utils/requireProvider.js'
 import {
   signTypedData,
   signTypedDataWithSigner,
@@ -55,7 +56,7 @@ const MAX_NONCE_RETRIES = 3
 function findActionDescriptor(
   metadata: Provider,
   action: ActionType
-): ActionDescriptor {
+): ProviderAction {
   const descriptor = [
     ...metadata.setup,
     ...metadata.options,
@@ -147,11 +148,16 @@ export class PerpsClient {
     new Set([ActionType.ACCOUNT_MODE, ActionType.ACCOUNT_TYPE])
 
   private buildPrerequisiteInputs(
-    prerequisites: ActionDescriptor[],
+    prerequisites: ProviderAction[],
     mode: SigningMode,
     agentAddress?: Address
   ): Array<{ key: string; params?: Record<string, unknown> }> {
-    return prerequisites
+    return [...prerequisites]
+      .sort(
+        (a, b) =>
+          (a.sequence ?? Number.MAX_SAFE_INTEGER) -
+          (b.sequence ?? Number.MAX_SAFE_INTEGER)
+      )
       .filter((p) => {
         // ACCOUNT_MODE / ACCOUNT_TYPE require explicit params; they're
         // dispatched separately via `execute(...)` (or the post-APPROVE_AGENT
@@ -232,15 +238,7 @@ export class PerpsClient {
    * for `WASM_BLOB` and `EVM_TX` action arms.
    */
   private requireProvider(provider: string): PerpsProvider {
-    const plugin = this.sdkClient.getProvider(provider)
-    if (plugin === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider plugin not registered: '${provider}'. Pass it to ` +
-          'createPerpsClient({ providers: [...] }).'
-      )
-    }
-    return plugin
+    return resolveProvider(this.sdkClient, provider)
   }
 
   private async delegateSignActions(
@@ -266,7 +264,7 @@ export class PerpsClient {
     address: Address,
     action: ActionType,
     actions: ActionStep[],
-    descriptor: ActionDescriptor
+    descriptor: ProviderAction
   ): Promise<ExecuteActionResponse> {
     switch (descriptor.signingMethod) {
       case SigningMethod.EIP712: {
@@ -366,7 +364,7 @@ export class PerpsClient {
   private async buildSignActionsContext(
     provider: string,
     address: Address,
-    descriptor: ActionDescriptor
+    descriptor: ProviderAction
   ): Promise<SignActionsContext> {
     const ctx: SignActionsContext = {}
     if (this.sdkClient.signer !== undefined) {
@@ -556,7 +554,7 @@ export class PerpsClient {
   }): Promise<GetAccountResult> {
     const plugin = this.requireProvider(params.provider)
     const [response, metadata] = await Promise.all([
-      getAccount(this.sdkClient, params),
+      fetchAccount(this.sdkClient, params),
       this.getProviderMetadata(params.provider),
     ])
     const settings = plugin.projectConfig(
@@ -575,7 +573,7 @@ export class PerpsClient {
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
     try {
-      await getAccount(this.sdkClient, { provider, address })
+      await fetchAccount(this.sdkClient, { provider, address })
       return true
     } catch (err) {
       if (
@@ -685,8 +683,8 @@ export class PerpsClient {
       signerAddress
     )
 
-    // Use the first prerequisite type as the action type for the batch
-    // The backend handles all prerequisites in a single createPrerequisite call
+    // The backend filters already-satisfied prerequisites and returns the
+    // unsigned action steps for those still outstanding.
     const allActions: ActionStep[] = []
     for (const input of allInputs) {
       const { actions } = await createAction(this.sdkClient, {
@@ -737,7 +735,7 @@ export class PerpsClient {
     results?: ExecuteActionResponse
     fallback?: ActionStep[]
   }> {
-    const account = await getAccount(this.sdkClient, { provider, address })
+    const account = await fetchAccount(this.sdkClient, { provider, address })
     if (account.config.provider !== 'hyperliquid') {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
@@ -823,7 +821,7 @@ export class PerpsClient {
     if (!item) {
       return false
     }
-    const modeParam = item.params.find((p) => p.name === 'mode')
+    const modeParam = item.params?.find((p) => p.name === 'mode')
     if (!modeParam) {
       return false
     }
@@ -964,13 +962,9 @@ export class PerpsClient {
   /**
    * Unified entry point for satisfying a single setup descriptor end-to-end.
    *
-   * Dispatch rule:
-   *   1. If the plugin lists this action in `clientSetupActions`, route to
-   *      the plugin's `satisfyClientSetup` — fully client-side flow, no
-   *      backend prerequisite step (today: Lighter `APPROVE_READ_ONLY_TOKEN`).
-   *   2. Otherwise, refresh `checkSetup`, find the matching step, sign it
-   *      via `signPrerequisite` (user-prereqs only), and submit via
-   *      `satisfySetup` with a single-step `required` payload.
+   * Refreshes `checkSetup`, finds the matching step, signs it via
+   * `signPrerequisite` (user-prereqs only), and submits via `satisfySetup`
+   * with a single-step `required` payload.
    *
    * No-op when the action isn't currently a prerequisite (e.g. already
    * satisfied) — callers should follow up with `invalidateQueries` to
@@ -980,26 +974,8 @@ export class PerpsClient {
     provider: string
     address: Address
     action: ActionType
-    params?: Record<string, unknown>
   }): Promise<void> {
     const { provider, address, action } = params
-
-    const plugin = this.requireProvider(provider)
-    if (plugin.clientSetupActions?.has(action)) {
-      if (!plugin.satisfyClientSetup) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          `Provider '${provider}' declares '${action}' as client-only but ` +
-            `does not implement satisfyClientSetup.`
-        )
-      }
-      await plugin.satisfyClientSetup(action, this.sdkClient, {
-        address,
-        signer: this.sdkClient.signer,
-        params: params.params,
-      })
-      return
-    }
 
     const required = await this.checkSetup({ provider, address })
     const userStep = required.userPrerequisites.find((s) => s.action === action)

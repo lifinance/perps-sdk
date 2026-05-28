@@ -40,7 +40,7 @@ export interface LighterSignActionsDeps {
  *
  * `ACCOUNT_TYPE` (Lighter `/changeAccountTier`) is a WASM_BLOB envelope
  * authenticated with an auth token rather than a wasm tx signature —
- * minted via `LighterSigner.createAuthToken` and parked in `signedTx.txInfo`.
+ * created via `LighterSigner.createAuthToken` and parked in `signedTx.txInfo`.
  */
 export async function signWasmBlobActions(
   deps: LighterSignActionsDeps,
@@ -170,7 +170,7 @@ async function signRegisterApiKey(
  * authenticates the request with the same auth token its read endpoints
  * use, and enforces anti-replay business rules server-side. The backend
  * declares the step as a `WasmBlobActionStep` with
- * `wasmSignParams.kind = 'changeAccountTier'` and expects the SDK to mint
+ * `wasmSignParams.kind = 'changeAccountTier'` and expects the SDK to create
  * an auth token in lieu of a transaction signature; the executor reads
  * `signedTx.txInfo` as the `auth` form parameter.
  *

@@ -1,8 +1,4 @@
-import type {
-  LighterAccountConfig,
-  ProviderOption,
-  ProviderSetup,
-} from '@lifi/perps-types'
+import type { LighterAccountConfig, ProviderAction } from '@lifi/perps-types'
 import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { projectLighterConfigSettings } from './accountConfig.js'
@@ -11,7 +7,7 @@ import { projectLighterConfigSettings } from './accountConfig.js'
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const registerApiKeySetup: ProviderSetup = {
+const registerApiKeySetup: ProviderAction = {
   type: ActionType.REGISTER_API_KEY,
   title: 'Register session API key',
   description: 'Register a Lighter API key.',
@@ -20,7 +16,7 @@ const registerApiKeySetup: ProviderSetup = {
   params: [],
 }
 
-const accountTypeOption: ProviderOption = {
+const accountTypeOption: ProviderAction = {
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',
   description: 'Premium tier reduces fees.',
@@ -41,7 +37,7 @@ const accountTypeOption: ProviderOption = {
 
 // Lighter exposes no abstraction-mode equivalent; if a future backend ever
 // emits this descriptor on Lighter the projection is always null.
-const accountModeOption: ProviderOption = {
+const accountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description: 'Read-only on Lighter.',
@@ -66,13 +62,21 @@ const baseConfig: LighterAccountConfig = {
 }
 
 describe('projectLighterConfigSettings', () => {
-  it('projects REGISTER_API_KEY setup descriptor with empty values', () => {
-    const result = projectLighterConfigSettings(
-      baseConfig,
-      [registerApiKeySetup],
-      []
-    )
-    expect(result).toEqual([{ type: ActionType.REGISTER_API_KEY, values: [] }])
+  it('projects REGISTER_API_KEY satisfied from config.apiKeyRegistered', () => {
+    expect(
+      projectLighterConfigSettings(baseConfig, [registerApiKeySetup], [])
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
+    ])
+    expect(
+      projectLighterConfigSettings(
+        { ...baseConfig, apiKeyRegistered: false },
+        [registerApiKeySetup],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
+    ])
   })
 
   it('projects ACCOUNT_TYPE with value from config.accountType as a number', () => {
@@ -128,7 +132,7 @@ describe('projectLighterConfigSettings', () => {
 
   it('throws when a descriptor type is not valid on Lighter setup/options', () => {
     // APPROVE_AGENT is HL-only; on Lighter it's a descriptor-emission bug.
-    const badDescriptor: ProviderSetup = {
+    const badDescriptor: ProviderAction = {
       type: ActionType.APPROVE_AGENT,
       title: 'Approve agent',
       description: 'HL-only — should not appear here.',

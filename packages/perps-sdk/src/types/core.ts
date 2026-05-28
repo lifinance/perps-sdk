@@ -4,7 +4,6 @@ import type {
   AccountResponse,
   AccountSummary,
   ActionStep,
-  ActionType,
   ActivitiesResponse,
   ActivityType,
   Asset,
@@ -18,8 +17,7 @@ import type {
   Position,
   PositionsResponse,
   PricesResponse,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -58,7 +56,7 @@ export interface SDKRequestOptions {
   signal?: AbortSignal
   /**
    * Lighter auth token for authenticated read endpoints (getOrders, getOrder,
-   * getActivity). Mint via `lighterSigner.createAuthToken(deadline, context)`.
+   * getActivity). Create via `lighterSigner.createAuthToken(deadline, context)`.
    * Forwarded as `Authorization: Bearer <token>` and never persisted by the
    * backend — read-only by design (8h max TTL, cannot authorize writes).
    */
@@ -100,20 +98,6 @@ export interface PerpsSDKClient {
 export interface SignActionsContext {
   signer?: PerpsClientSigner
   agent?: Agent
-}
-
-/**
- * Per-call context passed to a provider's {@link
- * PerpsProvider.satisfyClientSetup} method. Provides the client and any
- * resolved L1 wallet signer the action needs (e.g. Lighter's
- * `APPROVE_READ_ONLY_TOKEN` mints via an EIP-191 personal_sign).
- */
-export interface SatisfyClientSetupContext {
-  address: Address
-  /** L1 wallet signer (viem WalletClient). Set via `PerpsClient.setSigner`. */
-  signer?: PerpsClientSigner
-  /** Optional action-specific parameters forwarded by the caller. */
-  params?: Record<string, unknown>
 }
 
 /**
@@ -295,8 +279,8 @@ export interface PerpsProvider {
    */
   projectConfig(
     config: AccountConfig,
-    setup: ProviderSetup[],
-    options: ProviderOption[]
+    setup: ProviderAction[],
+    options: ProviderAction[]
   ): AccountConfigSetting[]
 
   /**
@@ -318,27 +302,6 @@ export interface PerpsProvider {
     assets?: Asset[],
     collateralCurrencies?: ReadonlySet<string>
   ): AccountSummary
-
-  /**
-   * Set of {@link ActionType}s this plugin handles fully client-side, with
-   * no backend prerequisite staging. Today only Lighter's
-   * `APPROVE_READ_ONLY_TOKEN` qualifies (EIP-191 personal_sign + direct
-   * HTTP to Lighter's token-mint endpoint). When `PerpsClient.satisfy` is
-   * invoked with one of these, it routes to {@link satisfyClientSetup}
-   * instead of `signPrerequisite` + `satisfySetup`.
-   */
-  readonly clientSetupActions?: ReadonlySet<ActionType>
-
-  /**
-   * Run a client-only setup flow end-to-end. Required when
-   * {@link clientSetupActions} is non-empty. Implementations resolve any
-   * wallet signature / direct HTTP call internally; no backend round-trip.
-   */
-  satisfyClientSetup?(
-    action: ActionType,
-    client: PerpsSDKClient,
-    ctx: SatisfyClientSetupContext
-  ): Promise<void>
 
   /**
    * Sign a batch of unsigned {@link ActionStep}s belonging to one

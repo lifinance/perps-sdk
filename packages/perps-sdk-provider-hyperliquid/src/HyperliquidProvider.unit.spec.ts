@@ -5,8 +5,8 @@ import { hyperliquidProvider } from './HyperliquidProvider.js'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 
-// Backend asset list the plugin fetches (via core getAssets) to build the
-// enrichment context before issuing the account-specific /info calls.
+// Backend asset list the account reads fetch (via core getAssets) for the
+// sub-dex fan-out and display fields before issuing the /info calls.
 const ASSETS_RESPONSE = {
   assets: [
     {

@@ -22,6 +22,7 @@ import {
   server,
 } from '../../test/handlers.js'
 import { createMemoryStorage } from '../agent/storage.js'
+import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsProvider } from '../types/core.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
@@ -352,6 +353,25 @@ describe('PerpsClient', () => {
   describe('satisfySetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
     const BASE_URL = DEFAULT_API_URL
 
+    // Account state is read direct from the provider plugin, so register a
+    // stub whose getAccount yields the abstraction mode each test needs.
+    const stubGetAccount = vi.fn()
+    beforeEach(() => {
+      stubGetAccount.mockReset()
+      client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+        providers: [
+          {
+            type: 'hyperliquid',
+            getAccount: stubGetAccount,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProvider,
+        ],
+      })
+    })
+
     /**
      * Build a minimal `APPROVE_AGENT` user-prereq envelope. The widget would
      * normally re-sign this typed data with the user's wallet; in tests we
@@ -384,9 +404,9 @@ describe('PerpsClient', () => {
     }
 
     /**
-     * Configure the `/account` mock with a custom `abstractionMode` for the
-     * duration of the test. The new flow reads this up front to choose the
-     * signer for `ACCOUNT_MODE` — `null` routes to the agent, anything else
+     * Configure the stubbed plugin `getAccount` with a custom `abstractionMode`
+     * for the duration of the test. The new flow reads this up front to choose
+     * the signer for `ACCOUNT_MODE` — `null` routes to the agent, anything else
      * routes to the user-wallet fallback.
      */
     function mockAbstractionStatus(status: string | null) {
@@ -398,9 +418,7 @@ describe('PerpsClient', () => {
           agents: [],
         },
       }
-      server.use(
-        http.get(`${BASE_URL}/account`, () => HttpResponse.json(account))
-      )
+      stubGetAccount.mockResolvedValue(account)
     }
 
     /**
@@ -670,16 +688,11 @@ describe('PerpsClient', () => {
       expect(result.agentResults).toBeUndefined()
     })
 
-    it('propagates /account network errors rather than guessing the signer', async () => {
+    it('propagates account read errors rather than guessing the signer', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
-      server.use(
-        http.get(`${BASE_URL}/account`, () =>
-          HttpResponse.json(
-            { code: PerpsErrorCode.ProviderError, message: 'upstream down' },
-            { status: 502 }
-          )
-        )
+      stubGetAccount.mockRejectedValue(
+        new PerpsError(PerpsErrorCode.ProviderError, 'upstream down')
       )
       setupActionHandlers()
 
@@ -746,6 +759,7 @@ describe('PerpsClient', () => {
     } =>
       ({
         type: 'hyperliquid',
+        getAccount: vi.fn(async () => mockAccount),
         projectConfig: vi.fn(() => [...sentinelSettings]),
       }) as unknown as PerpsProvider & {
         projectConfig: ReturnType<typeof vi.fn>
@@ -795,53 +809,54 @@ describe('PerpsClient', () => {
   // ---------------------------------------------------------------------------
 
   describe('accountExists', () => {
-    it('returns true on a successful 200 response', async () => {
-      // Default handler in test/handlers.ts answers /account 200 with mockAccount.
-      await expect(client.accountExists(provider, userAddress)).resolves.toBe(
-        true
-      )
+    const stubGetAccount = vi.fn()
+    let stubbedClient: PerpsClient
+
+    beforeEach(() => {
+      stubGetAccount.mockReset()
+      stubbedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        storage: createMemoryStorage(),
+        providers: [
+          {
+            type: 'hyperliquid',
+            getAccount: stubGetAccount,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProvider,
+        ],
+      })
     })
 
-    it('returns false when the backend reports AccountNotFound', async () => {
-      server.use(
-        http.get(`${DEFAULT_API_URL}/account`, () =>
-          HttpResponse.json(
-            {
-              code: PerpsErrorCode.AccountNotFound,
-              message: 'account not found',
-            },
-            { status: 404 }
-          )
-        )
+    it('returns true when the plugin resolves an account', async () => {
+      stubGetAccount.mockResolvedValue(mockAccount)
+      await expect(
+        stubbedClient.accountExists(provider, userAddress)
+      ).resolves.toBe(true)
+    })
+
+    it('returns false when the plugin reports AccountNotFound', async () => {
+      stubGetAccount.mockRejectedValue(
+        new PerpsError(PerpsErrorCode.AccountNotFound, 'account not found')
       )
-      await expect(client.accountExists(provider, userAddress)).resolves.toBe(
-        false
-      )
+      await expect(
+        stubbedClient.accountExists(provider, userAddress)
+      ).resolves.toBe(false)
     })
 
     it('rethrows on any other PerpsError code', async () => {
-      server.use(
-        http.get(`${DEFAULT_API_URL}/account`, () =>
-          HttpResponse.json(
-            {
-              code: PerpsErrorCode.ServerError,
-              message: 'upstream down',
-            },
-            { status: 502 }
-          )
-        )
+      stubGetAccount.mockRejectedValue(
+        new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
       )
       await expect(
-        client.accountExists(provider, userAddress)
+        stubbedClient.accountExists(provider, userAddress)
       ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
     })
 
     it('rethrows on network / transport failures', async () => {
-      server.use(
-        http.get(`${DEFAULT_API_URL}/account`, () => HttpResponse.error())
-      )
+      stubGetAccount.mockRejectedValue(new Error('network down'))
       await expect(
-        client.accountExists(provider, userAddress)
+        stubbedClient.accountExists(provider, userAddress)
       ).rejects.toThrow()
     })
   })

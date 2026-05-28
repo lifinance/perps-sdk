@@ -18,7 +18,6 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
   resolveRetryPolicy,
-  type SatisfyClientSetupContext,
   type SDKRequestOptions,
   type SignActionsContext,
 } from '@lifi/perps-sdk'
@@ -44,13 +43,12 @@ import type {
   Position,
   PositionsResponse,
   PricesResponse,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
   SignedActionStep,
   SigningMethod,
   TriggerOrder,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { summarizeLighterAccount } from './accountSummary.js'
@@ -67,10 +65,7 @@ import {
 import { createAuthToken } from './signers/createAuthToken.js'
 import type { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from './signers/LighterReadOnlyTokenManager.js'
-import {
-  LighterReadOnlyTokenManager,
-  walletClientSigner,
-} from './signers/LighterReadOnlyTokenManager.js'
+import { LighterReadOnlyTokenManager } from './signers/LighterReadOnlyTokenManager.js'
 import type { LighterSigner } from './signers/LighterSigner.js'
 import { lighterSignActions } from './signers/signActions.js'
 import type {
@@ -140,16 +135,15 @@ const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
 /**
- * Default expiry for the read-only token Lighter mints in
- * `satisfyClientSetup(APPROVE_READ_ONLY_TOKEN)`. 10 years — Lighter caps
- * read-only tokens at the venue's maximum, which is a multi-year horizon
- * for read-scope tokens.
+ * Expiry requested when the SDK lazily creates a Lighter read-only token for
+ * authenticated reads. 10 years — Lighter caps read-only tokens at the
+ * venue's maximum, so a single token covers the account's lifetime.
  */
 const DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS = 10 * 365 * 24 * 60 * 60
 
-const LIGHTER_CLIENT_SETUP_ACTIONS: ReadonlySet<ActionType> = new Set([
-  ActionType.APPROVE_READ_ONLY_TOKEN,
-])
+/** Compare Lighter public keys irrespective of `0x` prefix / casing. */
+const normalizeLighterPublicKey = (key: string): string =>
+  key.replace(/^0x/i, '').toLowerCase()
 
 /**
  * Construction options for the Lighter {@link PerpsProvider} plugin.
@@ -162,7 +156,7 @@ const LIGHTER_CLIENT_SETUP_ACTIONS: ReadonlySet<ActionType> = new Set([
  *   2. Constructor `authToken` (string or async factory)
  *   3. Persisted long-lived read-only token (via `readOnlyTokenOptions`'s
  *      storage), keyed on the resolved Lighter `accountIndex`
- *   4. Fresh 1h mint via the WASM signer + the user's registered API key
+ *   4. Fresh 1h create via the WASM signer + the user's registered API key
  *      from `keyStore`
  *
  * When none of these yields a token the auth-gated reads degrade gracefully:
@@ -176,17 +170,17 @@ const LIGHTER_CLIENT_SETUP_ACTIONS: ReadonlySet<ActionType> = new Set([
 export interface LighterProviderOptions {
   /** Lighter REST base URL. Defaults to mainnet. */
   restUrl?: string
-  /** Pre-minted Lighter read-only bearer. */
+  /** Pre-created Lighter read-only bearer. */
   authToken?: string | (() => string | Promise<string>)
   /**
    * WASM signer instance. Required for `signActions` (write actions) and
-   * for on-demand auth-token minting from the user's API key. The default
+   * for on-demand auth-token creating from the user's API key. The default
    * configuration loads the WASM blob shipped with this package.
    */
   signer?: LighterSigner
   /**
    * Store for the user's per-address Lighter API keypair. Required for
-   * `signActions` (write actions) and for on-demand auth-token minting.
+   * `signActions` (write actions) and for on-demand auth-token creating.
    */
   keyStore?: LighterKeyStore
   /**
@@ -195,15 +189,15 @@ export interface LighterProviderOptions {
    * it before the recorded `expiry`.
    */
   readOnlyTokenOptions?: LighterReadOnlyTokenManagerOptions
-  /** Token lifetime for on-demand standard-token mints (Lighter caps at 8h). Default 1h. */
+  /** Token lifetime for on-demand standard-token creates (Lighter caps at 8h). Default 1h. */
   tokenLifetimeSeconds?: number
-  /** Re-mint when the cached standard token's remaining life is below this. Default 60s. */
+  /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
 }
 
-interface MintedToken {
+interface CachedStandardToken {
   token: string
-  /** Unix seconds — re-mint when `Date.now()/1000 + renewBuffer >= expiresAt`. */
+  /** Unix seconds — re-create when `Date.now()/1000 + renewBuffer >= expiresAt`. */
   expiresAt: number
 }
 
@@ -218,7 +212,7 @@ export interface LighterPerpsProvider extends PerpsProvider {
   /**
    * Resolve a Lighter auth token for `address` using the same priority chain
    * as the plugin's read methods: per-call override (n/a here) → constructor
-   * `authToken` → stored long-lived read-only token → freshly minted 1h token
+   * `authToken` → stored long-lived read-only token → freshly created 1h token
    * via the WASM signer + registered API key. Returns `undefined` when no
    * source can produce a token — callers degrade gracefully.
    */
@@ -231,9 +225,9 @@ export interface LighterPerpsProvider extends PerpsProvider {
  * shape used by the rest of the LI.FI SDK family.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.
- * Auth-gated reads use the user-minted read-only token from
- * `readOnlyTokenOptions`'s storage, a pre-minted token on `authToken`, or
- * an on-demand mint via the bundled WASM signer + the user's registered
+ * Auth-gated reads use the user-created read-only token from
+ * `readOnlyTokenOptions`'s storage, a pre-created token on `authToken`, or
+ * an on-demand create via the bundled WASM signer + the user's registered
  * API key from `keyStore`.
  *
  * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
@@ -257,7 +251,7 @@ export const lighterProvider = (
       : undefined
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-  const mintedTokenByAddress: Map<string, MintedToken> = new Map()
+  const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
 
   // ---------------------------------------------------------------------------
   // Internal helpers — closed-over state replaces the class's `this.X` access.
@@ -300,7 +294,7 @@ export const lighterProvider = (
     )
   }
 
-  const mintViaSigner = async (
+  const getStandardAuthToken = async (
     address: Address,
     apiKeyPrivateKey: string,
     indices: { apiKeyIndex: number; accountIndex: number }
@@ -308,12 +302,12 @@ export const lighterProvider = (
     if (signer === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'lighterProvider: mintViaSigner called without a configured signer.'
+        'lighterProvider: getStandardAuthToken called without a configured signer.'
       )
     }
     const cacheKey = address.toLowerCase()
     const nowSec = Math.floor(Date.now() / 1000)
-    const cached = mintedTokenByAddress.get(cacheKey)
+    const cached = standardTokenByAddress.get(cacheKey)
     if (
       cached !== undefined &&
       cached.expiresAt - nowSec > tokenRenewBufferSeconds
@@ -330,18 +324,23 @@ export const lighterProvider = (
       lifetimeSeconds: tokenLifetimeSeconds,
     })
     const expiresAt = nowSec + tokenLifetimeSeconds
-    mintedTokenByAddress.set(cacheKey, { token, expiresAt })
+    standardTokenByAddress.set(cacheKey, { token, expiresAt })
     return token
   }
 
   /**
-   * Resolve the bearer token to use on auth-gated calls. Per-call override
-   * (`options.lighterAuthToken`) wins, then a constructor-supplied token,
-   * then a stored long-lived read-only token (when wired with a
-   * `readOnlyTokenOptions` storage and the address is known), then a
-   * freshly minted 1h token via the WASM signer + registered API key.
-   * Returns `undefined` when no source can produce a token — auth-gated
-   * reads degrade gracefully.
+   * Resolve the bearer token for auth-gated reads. Priority:
+   *   1. Per-call override (`options.lighterAuthToken`).
+   *   2. Constructor-supplied token source.
+   *   3. A stored read-only token — preferred for reads: it is read-only, so
+   *      forwarding it (incl. to the backend) cannot authorise writes.
+   *   4. A read-only token created on first use and persisted, when a
+   *      `readOnlyTokenManager` + signer are wired.
+   *   5. A standard auth token (read+write, 8h max) as a last resort — used
+   *      both as the fallback and as the credential that authorises read-only
+   *      token creation.
+   * Returns `undefined` when no source can produce a token — reads degrade
+   * gracefully.
    */
   const resolveAuthToken = async (
     opts: SDKRequestOptions | undefined,
@@ -353,28 +352,49 @@ export const lighterProvider = (
     if (authTokenSource !== undefined) {
       return authTokenSource()
     }
-    if (address !== undefined && keyStore !== undefined) {
-      const apiKey = await keyStore.get(address)
-      if (apiKey === null) {
-        return undefined
-      }
-      if (readOnlyTokenManager !== undefined) {
-        const stored = await readOnlyTokenManager.get(
-          address,
-          apiKey.accountIndex
-        )
-        if (stored !== undefined) {
-          return stored.token
-        }
-      }
-      if (signer !== undefined) {
-        return mintViaSigner(address, apiKey.apiKeyPrivateKey, {
-          apiKeyIndex: apiKey.apiKeyIndex,
-          accountIndex: apiKey.accountIndex,
-        })
-      }
+    if (address === undefined || keyStore === undefined) {
+      return undefined
     }
-    return undefined
+    const apiKey = await keyStore.get(address)
+    if (apiKey === null || signer === undefined) {
+      return undefined
+    }
+
+    const standardToken = (): Promise<string> =>
+      getStandardAuthToken(address, apiKey.apiKeyPrivateKey, {
+        apiKeyIndex: apiKey.apiKeyIndex,
+        accountIndex: apiKey.accountIndex,
+      })
+
+    if (readOnlyTokenManager === undefined) {
+      return standardToken()
+    }
+
+    const stored = await readOnlyTokenManager.get(address, apiKey.accountIndex)
+    if (stored !== undefined) {
+      return stored.token
+    }
+
+    // No read-only token yet — create and persist one. The standard token
+    // (API-key-signed) authorises Lighter's `tokens/create`; the returned
+    // read-only bearer is what we forward on reads. Fall back to the standard
+    // token if creation fails (e.g. the API key isn't registered yet).
+    try {
+      const { token } = await readOnlyTokenManager.approve(
+        await standardToken(),
+        {
+          address,
+          accountIndex: apiKey.accountIndex,
+          expirySeconds:
+            Math.floor(Date.now() / 1000) +
+            DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS,
+          scope: 'all',
+        }
+      )
+      return token.token
+    } catch {
+      return standardToken()
+    }
   }
 
   const fetchDetailedAccount = async (
@@ -415,10 +435,10 @@ export const lighterProvider = (
     client: LighterApiClient,
     accountIndex: number,
     apiKeyIndex: number
-  ): Promise<{ api_key_index: number } | undefined> => {
+  ): Promise<{ api_key_index: number; public_key: string } | undefined> => {
     const response = await client.get<{
       code: number
-      api_keys: Array<{ api_key_index: number }>
+      api_keys: Array<{ api_key_index: number; public_key: string }>
     }>('/api/v1/apikeys', { account_index: accountIndex })
     return response.api_keys?.find((k) => k.api_key_index === apiKeyIndex)
   }
@@ -565,7 +585,13 @@ export const lighterProvider = (
       const account = await fetchDetailedAccount(client, params.address)
       const token = await resolveAuthToken(opts, params.address)
 
-      const [symbolLookup, registeredKey, limitsResult] = await Promise.all([
+      const [
+        symbolLookup,
+        registeredKey,
+        limitsResult,
+        localKey,
+        storedReadOnlyToken,
+      ] = await Promise.all([
         buildSymbolLookup(sdkClient, opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         token === undefined
@@ -573,7 +599,20 @@ export const lighterProvider = (
           : fetchAccountLimits(client, account.index, token).catch(
               () => undefined
             ),
+        keyStore ? keyStore.get(params.address) : Promise.resolve(null),
+        readOnlyTokenManager
+          ? readOnlyTokenManager.get(params.address, account.index)
+          : Promise.resolve(undefined),
       ])
+
+      // REGISTER_API_KEY is satisfied only when the locally-held keypair
+      // matches the key registered on-chain at this slot — existence alone is
+      // insufficient (a stale/rotated local key can't sign valid auth tokens).
+      const apiKeyRegistered =
+        registeredKey !== undefined &&
+        localKey !== null &&
+        normalizeLighterPublicKey(localKey.apiKeyPublicKey) ===
+          normalizeLighterPublicKey(registeredKey.public_key)
 
       const positions: Position[] = account.positions
         .filter((p) => Number.parseFloat(p.position) !== 0)
@@ -604,9 +643,13 @@ export const lighterProvider = (
         provider: LIGHTER_PROVIDER_KEY,
         accountIndex: account.index,
         apiKeyIndex: DEFAULT_API_KEY_INDEX,
-        apiKeyRegistered: registeredKey !== undefined,
+        apiKeyRegistered,
         accountType: account.account_type,
-        readOnlyTokenApproved: false,
+        // Satisfied when a non-expired read-only token is stored locally
+        // (`readOnlyTokenManager.get` filters out expired ones).
+        readOnlyTokenApproved: storedReadOnlyToken !== undefined,
+        readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
+        readOnlyTokenScope: storedReadOnlyToken?.scope,
       }
 
       return {
@@ -715,7 +758,7 @@ export const lighterProvider = (
         throw new PerpsError(
           PerpsErrorCode.SDKError,
           'Lighter order lookup requires an auth token. Pass `authToken` to ' +
-            'lighterProvider, register an API key + signer for on-demand mints, or ' +
+            'lighterProvider, register an API key + signer for on-demand creation, or ' +
             'forward `options.lighterAuthToken` on the call.'
         )
       }
@@ -1037,8 +1080,8 @@ export const lighterProvider = (
 
     projectConfig(
       config: AccountConfig,
-      setup: ProviderSetup[],
-      options: ProviderOption[]
+      setup: ProviderAction[],
+      options: ProviderAction[]
     ): AccountConfigSetting[] {
       if (config.provider !== LIGHTER_PROVIDER_KEY) {
         throw new PerpsError(
@@ -1064,59 +1107,6 @@ export const lighterProvider = (
         assets,
         collateralCurrencies
       )
-    },
-
-    clientSetupActions: LIGHTER_CLIENT_SETUP_ACTIONS,
-
-    async satisfyClientSetup(
-      action: ActionType,
-      sdkClient: PerpsSDKClient,
-      ctx: SatisfyClientSetupContext
-    ): Promise<void> {
-      if (action !== ActionType.APPROVE_READ_ONLY_TOKEN) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          `lighterProvider.satisfyClientSetup does not handle action '${action}'.`
-        )
-      }
-      if (readOnlyTokenManager === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'lighterProvider.satisfyClientSetup(APPROVE_READ_ONLY_TOKEN) requires ' +
-            '`readOnlyTokenOptions` to be configured.'
-        )
-      }
-      if (ctx.signer === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'lighterProvider.satisfyClientSetup(APPROVE_READ_ONLY_TOKEN) requires ' +
-            'a wallet signer. Call PerpsClient.setSigner(walletClient) first.'
-        )
-      }
-
-      const inputAccountIndex = (
-        ctx.params as { accountIndex?: number } | undefined
-      )?.accountIndex
-      const accountIndex =
-        typeof inputAccountIndex === 'number'
-          ? inputAccountIndex
-          : (await fetchDetailedAccount(apiClient(sdkClient), ctx.address))
-              .index
-
-      const inputExpiry = (ctx.params as { expirySeconds?: number } | undefined)
-        ?.expirySeconds
-      const expirySeconds =
-        typeof inputExpiry === 'number'
-          ? inputExpiry
-          : Math.floor(Date.now() / 1000) +
-            DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS
-
-      await readOnlyTokenManager.approve(walletClientSigner(ctx.signer), {
-        address: ctx.address,
-        accountIndex,
-        expirySeconds,
-        scope: 'all',
-      })
     },
 
     async signActions(

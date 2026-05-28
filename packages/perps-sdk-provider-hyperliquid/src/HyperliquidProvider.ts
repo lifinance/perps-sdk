@@ -17,7 +17,6 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
-  resolveRetryPolicy,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import {
@@ -37,8 +36,7 @@ import {
   type Position,
   type PositionsResponse,
   type PricesResponse,
-  type ProviderOption,
-  type ProviderSetup,
+  type ProviderAction,
 } from '@lifi/perps-types'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
 import { summarizeHyperliquidAccount } from './accountSummary.js'
@@ -49,11 +47,6 @@ import { getFills } from './services/getFills.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
-import { buildAssetContext } from './utils/assetContext.js'
-import {
-  HYPERLIQUID_RETRY_DEFAULTS,
-  type InfoRequestOptions,
-} from './utils/infoClient.js'
 
 export interface HyperliquidProviderOptions {
   /**
@@ -68,103 +61,77 @@ export interface HyperliquidProviderOptions {
 /**
  * Factory for the Hyperliquid {@link PerpsProvider} plugin.
  *
- * The returned plugin reads exclusively from `${apiUrl}/info` — there is no
- * fallback to the LI.FI backend by design. Pass to `createPerpsClient({
- * providers: [hyperliquidProvider()] })` and look up via
- * `client.getProvider('hyperliquid')`.
+ * Account-specific state is read direct from `${apiUrl}/info`; enriched asset
+ * metadata and public/shared data come from the LI.FI backend (Valkey-cached).
+ * Pass to `createPerpsClient({ providers: [hyperliquidProvider()] })` and look
+ * up via `client.getProvider('hyperliquid')`.
  */
 export function hyperliquidProvider(
   options: HyperliquidProviderOptions = {}
 ): PerpsProvider {
   const apiUrl = options.apiUrl ?? DEFAULT_HYPERLIQUID_API_URL
 
-  const resolveOpts = (
-    client: PerpsSDKClient,
-    signal?: AbortSignal
-  ): InfoRequestOptions => ({
-    signal,
-    policy: resolveRetryPolicy(
-      HYPERLIQUID_RETRY_DEFAULTS,
-      client.config.retry,
-      PROVIDER_KEY
-    ),
-    fetchImpl: client.config.fetch,
-  })
-
   return {
     type: PROVIDER_KEY,
 
-    getAccount: async (
+    getAccount: (
       client: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
-    ): Promise<AccountResponse> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getAccount(
-        apiUrl,
-        { address: params.address },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+    ): Promise<AccountResponse> =>
+      getAccount(client, apiUrl, { address: params.address }, opts),
 
-    getPositions: async (
+    getPositions: (
       client: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
-    ): Promise<PositionsResponse> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getPositions(
+    ): Promise<PositionsResponse> =>
+      getPositions(
+        client,
         apiUrl,
         {
           address: params.address,
           assetId: params.assetId,
           limit: params.limit,
         },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+        opts
+      ),
 
-    getOrders: async (
+    getOrders: (
       client: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
-    ): Promise<OrdersResponse> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getOrders(
+    ): Promise<OrdersResponse> =>
+      getOrders(
+        client,
         apiUrl,
         {
           address: params.address,
           assetId: params.assetId,
           limit: params.limit,
         },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+        opts
+      ),
 
-    getOrder: async (
+    getOrder: (
       client: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
-    ): Promise<Order> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getOrder(
+    ): Promise<Order> =>
+      getOrder(
+        client,
         apiUrl,
         { address: params.address, id: params.id },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+        opts
+      ),
 
-    getFills: async (
+    getFills: (
       client: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
-    ): Promise<FillsResponse> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getFills(
+    ): Promise<FillsResponse> =>
+      getFills(
+        client,
         apiUrl,
         {
           address: params.address,
@@ -173,18 +140,16 @@ export function hyperliquidProvider(
           startTime: params.startTime,
           endTime: params.endTime,
         },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+        opts
+      ),
 
-    getActivity: async (
+    getActivity: (
       client: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
-    ): Promise<ActivitiesResponse> => {
-      const ctx = await buildAssetContext(client, opts)
-      return getActivity(
+    ): Promise<ActivitiesResponse> =>
+      getActivity(
+        client,
         apiUrl,
         {
           address: params.address,
@@ -194,10 +159,8 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           type: params.type,
         },
-        ctx,
-        resolveOpts(client, opts?.signal)
-      )
-    },
+        opts
+      ),
 
     // Public/shared data routes through the LI.FI backend — Valkey-cached
     // server-side so one fetch serves every client. No direct HL call here.
@@ -264,8 +227,8 @@ export function hyperliquidProvider(
 
     projectConfig: (
       config: AccountConfig,
-      setup: ProviderSetup[],
-      options: ProviderOption[]
+      setup: ProviderAction[],
+      options: ProviderAction[]
     ): AccountConfigSetting[] => {
       if (config.provider !== PROVIDER_KEY) {
         throw new PerpsError(

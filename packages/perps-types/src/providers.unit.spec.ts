@@ -12,9 +12,7 @@ import type {
   Param,
   ParamOption,
   Provider,
-  ProviderActionDescriptor,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
 } from './providers.js'
 
 // ---------------------------------------------------------------------------
@@ -23,7 +21,7 @@ import type {
 
 // Hyperliquid: APPROVE_AGENT is a mandatory setup descriptor with no params —
 // the widget renders a single sign-and-submit button.
-const approveAgentSetup: ProviderSetup = {
+const approveAgentSetup: ProviderAction = {
   type: ActionType.APPROVE_AGENT,
   title: 'Approve agent wallet',
   description:
@@ -35,7 +33,7 @@ const approveAgentSetup: ProviderSetup = {
 
 // Hyperliquid: APPROVE_BUILDER_FEE is mandatory — buildercodes are how LI.FI
 // monetises the integration, so trading is gated until the user approves.
-const approveBuilderFeeSetup: ProviderSetup = {
+const approveBuilderFeeSetup: ProviderAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
   title: 'Approve builder fee',
   description:
@@ -47,7 +45,7 @@ const approveBuilderFeeSetup: ProviderSetup = {
 
 // Lighter: REGISTER_API_KEY is the sole setup descriptor — once a session API
 // key is registered, the WASM signer can produce signatures for the rest.
-const registerApiKeySetup: ProviderSetup = {
+const registerApiKeySetup: ProviderAction = {
   type: ActionType.REGISTER_API_KEY,
   title: 'Register session API key',
   description:
@@ -64,7 +62,7 @@ const dexAbstractionOption: ParamOption = {
 
 // Hyperliquid: ACCOUNT_MODE is an options-tab descriptor — the user can toggle
 // abstraction variants but trading is never blocked on the selection.
-const hlAccountModeOption: ProviderOption = {
+const hlAccountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description:
@@ -92,7 +90,7 @@ const lighterStandardTierOption: ParamOption = {
 
 // Lighter: ACCOUNT_TYPE — fee/latency tier selector. `readOnly: true`
 // demonstrates the disabled-control branch (selection happens elsewhere).
-const lighterAccountTypeOption: ProviderOption = {
+const lighterAccountTypeOption: ProviderAction = {
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',
   description:
@@ -268,19 +266,11 @@ type Equals<X, Y> =
     ? true
     : false
 
-// `Provider.setup` and `Provider.options` are exactly the descriptor arrays.
-type _SetupFieldShape = Expect<Equals<Provider['setup'], ProviderSetup[]>>
-type _OptionsFieldShape = Expect<Equals<Provider['options'], ProviderOption[]>>
-
-// `ProviderSetup` and `ProviderOption` are aliases for the same shape —
-// no category-specific fields. Categorisation lives in the array, not the item.
-type _SetupIsDescriptor = Expect<
-  Equals<ProviderSetup, ProviderActionDescriptor>
->
-type _OptionIsDescriptor = Expect<
-  Equals<ProviderOption, ProviderActionDescriptor>
->
-type _SetupEqualsOption = Expect<Equals<ProviderSetup, ProviderOption>>
+// All three provider arrays are exactly `ProviderAction[]` — categorisation
+// lives in which array an entry sits in, not in the type.
+type _SetupFieldShape = Expect<Equals<Provider['setup'], ProviderAction[]>>
+type _OptionsFieldShape = Expect<Equals<Provider['options'], ProviderAction[]>>
+type _ActionsFieldShape = Expect<Equals<Provider['actions'], ProviderAction[]>>
 
 // Both arrays are required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
@@ -293,12 +283,18 @@ type _OptionsIsRequired = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'options'>, 'options'>
 >
 
-// `ProviderActionDescriptor` keys: the three ActionDescriptor fields plus the
-// three presentation fields. Catches an accidental rename / addition.
-type _DescriptorKeys = Expect<
+// `ProviderAction` keys: the three core fields plus the optional
+// presentation / ordering hints. Catches an accidental rename / addition.
+type _ProviderActionKeys = Expect<
   Equals<
-    keyof ProviderActionDescriptor,
-    'type' | 'signers' | 'signingMethod' | 'title' | 'description' | 'params'
+    keyof ProviderAction,
+    | 'type'
+    | 'signers'
+    | 'signingMethod'
+    | 'title'
+    | 'description'
+    | 'params'
+    | 'sequence'
   >
 >
 
@@ -358,12 +354,10 @@ export const _fixtures = {
 export type _TypeAssertions = [
   _SetupFieldShape,
   _OptionsFieldShape,
-  _SetupIsDescriptor,
-  _OptionIsDescriptor,
-  _SetupEqualsOption,
+  _ActionsFieldShape,
   _SetupIsRequired,
   _OptionsIsRequired,
-  _DescriptorKeys,
+  _ProviderActionKeys,
   _ParamTypeIsString,
   _NarrowHl,
   _NarrowLighter,
@@ -397,10 +391,10 @@ describe('Provider setup / options descriptors', () => {
   })
 
   it('hl ACCOUNT_MODE param wires the descriptor through to AccountModeParams.mode', () => {
-    const param = hlAccountModeOption.params[0]
-    expect(param.name).toBe('mode')
-    expect(param.default?.value).toBe('dexAbstraction')
-    expect(param.values?.map((o) => o.value)).toEqual([
+    const param = hlAccountModeOption.params?.[0]
+    expect(param?.name).toBe('mode')
+    expect(param?.default?.value).toBe('dexAbstraction')
+    expect(param?.values?.map((o) => o.value)).toEqual([
       'disabled',
       'dexAbstraction',
       'unifiedAccount',
@@ -408,10 +402,10 @@ describe('Provider setup / options descriptors', () => {
   })
 
   it('lighter ACCOUNT_TYPE param wires through to AccountTypeParams.tier and is read-only', () => {
-    const param = lighterProvider.options[0].params[0]
-    expect(param.name).toBe('tier')
-    expect(param.readOnly).toBe(true)
-    expect(param.values?.map((o) => o.value)).toEqual(['standard', 'premium'])
+    const param = lighterProvider.options[0]?.params?.[0]
+    expect(param?.name).toBe('tier')
+    expect(param?.readOnly).toBe(true)
+    expect(param?.values?.map((o) => o.value)).toEqual(['standard', 'premium'])
   })
 
   it('admits providers with empty setup and options arrays', () => {

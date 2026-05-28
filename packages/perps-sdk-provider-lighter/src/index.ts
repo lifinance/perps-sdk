@@ -8,7 +8,7 @@
 // reads (account / positions / orders / order / fills / activity / assets /
 // asset / prices / ohlcv / orderbook) by talking directly to Lighter's REST
 // API — no LI.FI backend hop. Auth-gated reads use the user's Lighter
-// read-only token (pre-minted, persisted, or minted on-demand via the
+// read-only token (pre-created, persisted, or created on-demand via the
 // bundled WASM signer).
 //
 // `signActions` (the `WASM_BLOB` / `EVM_TX` arms of `PerpsClient.execute`)

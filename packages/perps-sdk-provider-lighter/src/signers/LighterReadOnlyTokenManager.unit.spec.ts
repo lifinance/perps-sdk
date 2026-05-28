@@ -2,15 +2,16 @@ import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  buildReadOnlyTokenMessage,
   type LighterCreateTokenResponse,
   LighterReadOnlyTokenManager,
   type LighterTokenFetcher,
-  type LighterWalletSigner,
 } from './LighterReadOnlyTokenManager.js'
 
 const ADDRESS_A: Address = '0x1111111111111111111111111111111111111111'
 const ADDRESS_B: Address = '0x2222222222222222222222222222222222222222'
+
+/** Representative standard (API-key-signed) Lighter auth token. */
+const STD_TOKEN = '1731536000:7:253:abc123'
 
 interface MakeManagerOptions {
   storage?: StorageAdapter
@@ -43,55 +44,30 @@ function makeManager(options: MakeManagerOptions = {}) {
   return { manager, storage, fetcher: fetcher as ReturnType<typeof vi.fn> }
 }
 
-function makeSigner(signature = '0xdeadbeef'): LighterWalletSigner & {
-  calls: Array<{ address: Address; message: string }>
-} {
-  const calls: Array<{ address: Address; message: string }> = []
-  const signer = vi.fn(async ({ address, message }) => {
-    calls.push({ address, message })
-    return signature
-  }) as unknown as LighterWalletSigner & {
-    calls: Array<{ address: Address; message: string }>
-  }
-  ;(signer as { calls: typeof calls }).calls = calls
-  return signer
-}
-
 describe('LighterReadOnlyTokenManager', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
   describe('approve()', () => {
-    it('signs the documented L1 message, calls Lighter, and persists the token', async () => {
+    it('authenticates tokens/create with the standard auth token and persists the token', async () => {
       const { manager, storage, fetcher } = makeManager()
-      const signer = makeSigner('0xabcdef')
 
-      const result = await manager.approve(signer, {
+      const result = await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
         scope: 'all',
       })
 
-      expect(signer.calls).toEqual([
-        {
-          address: ADDRESS_A,
-          message: buildReadOnlyTokenMessage({
-            accountIndex: 7,
-            expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
-            scope: 'all',
-          }),
-        },
-      ])
       expect(fetcher).toHaveBeenCalledWith({
         url: 'https://mainnet.zklighter.elliot.ai/api/v1/tokens/create',
-        authorization: '0xabcdef',
+        authorization: STD_TOKEN,
         name: 'LI.FI Perps',
         accountIndex: 7,
         expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
         subAccountAccess: true,
-        scopes: 'all',
+        scopes: 'read.*',
       })
       expect(result.token.token).toBe('ro:7:all:1731536000:abc')
       expect(result.config).toEqual({
@@ -118,9 +94,8 @@ describe('LighterReadOnlyTokenManager', () => {
       const { manager, fetcher } = makeManager({
         fetcherResponse: { scopes: 'single' },
       })
-      const signer = makeSigner()
 
-      await manager.approve(signer, {
+      await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 3,
         expirySeconds: ANCHOR_NOW_SECONDS + 30 * 86_400,
@@ -130,7 +105,7 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(fetcher).toHaveBeenCalledWith(
         expect.objectContaining({
           accountIndex: 3,
-          scopes: 'single',
+          scopes: 'read.*',
           subAccountAccess: false,
         })
       )
@@ -148,7 +123,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: earlyExpiry,
         },
       })
-      await first.manager.approve(makeSigner(), {
+      await first.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: earlyExpiry,
@@ -162,7 +137,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: lateExpiry,
         },
       })
-      await second.manager.approve(makeSigner(), {
+      await second.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: lateExpiry,
@@ -185,7 +160,7 @@ describe('LighterReadOnlyTokenManager', () => {
           now: () => ANCHOR_NOW_MS,
         })
         await expect(
-          manager.approve(makeSigner(), {
+          manager.approve(STD_TOKEN, {
             address: ADDRESS_A,
             accountIndex: 1,
             expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -201,7 +176,7 @@ describe('LighterReadOnlyTokenManager', () => {
   describe('get()', () => {
     it('returns the stored token when not expired', async () => {
       const { manager } = makeManager()
-      await manager.approve(makeSigner(), {
+      await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
@@ -222,7 +197,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 60,
         },
       })
-      await expired.manager.approve(makeSigner(), {
+      await expired.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 60,
@@ -249,7 +224,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 86_400,
         },
       })
-      await a.manager.approve(makeSigner(), {
+      await a.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 1,
         expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -264,7 +239,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 86_400,
         },
       })
-      await b.manager.approve(makeSigner(), {
+      await b.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 2,
         expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -287,7 +262,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 86_400,
         },
       })
-      await aSetup.manager.approve(makeSigner(), {
+      await aSetup.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -300,7 +275,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 86_400,
         },
       })
-      await bSetup.manager.approve(makeSigner(), {
+      await bSetup.manager.approve(STD_TOKEN, {
         address: ADDRESS_B,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -328,7 +303,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
         },
       })
-      await manager.approve(makeSigner(), {
+      await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
@@ -345,7 +320,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 10 * 86_400,
         },
       })
-      await manager.approve(makeSigner(), {
+      await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 10 * 86_400,
@@ -364,7 +339,7 @@ describe('LighterReadOnlyTokenManager', () => {
           expiry: ANCHOR_NOW_SECONDS + 60,
         },
       })
-      await setup.manager.approve(makeSigner(), {
+      await setup.manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 60,
@@ -384,7 +359,7 @@ describe('LighterReadOnlyTokenManager', () => {
   describe('remove()', () => {
     it('clears both cache and storage', async () => {
       const { manager, storage } = makeManager()
-      await manager.approve(makeSigner(), {
+      await manager.approve(STD_TOKEN, {
         address: ADDRESS_A,
         accountIndex: 7,
         expirySeconds: ANCHOR_NOW_SECONDS + 86_400,
@@ -397,24 +372,6 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(
         await storage.get(`lifi:perps:lighter:rotoken:${ADDRESS_A}:7`)
       ).toBeNull()
-    })
-  })
-
-  describe('buildReadOnlyTokenMessage()', () => {
-    it('produces a deterministic newline-joined template', () => {
-      const message = buildReadOnlyTokenMessage({
-        accountIndex: 7,
-        expirySeconds: 1_731_536_000,
-        scope: 'all',
-      })
-      expect(message).toBe(
-        [
-          'Lighter Read-Only Token',
-          'account_index=7',
-          'expiry=1731536000',
-          'scopes=all',
-        ].join('\n')
-      )
     })
   })
 })

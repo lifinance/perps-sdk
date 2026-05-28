@@ -21,7 +21,7 @@ export interface CreateAuthTokenInputs {
 }
 
 /**
- * Mint a fresh Lighter standard auth token via the WASM signer. Returns the
+ * Create a fresh Lighter standard auth token via the WASM signer. Returns the
  * opaque bearer string Lighter will accept on its authenticated read
  * endpoints (`getOrders`, `getOrder`, `getActivity`, etc.).
  *

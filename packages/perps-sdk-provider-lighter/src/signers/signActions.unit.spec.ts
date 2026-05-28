@@ -106,7 +106,7 @@ describe('lighterSignActions', () => {
   })
 
   describe('WASM_BLOB — REGISTER_API_KEY hybrid flow', () => {
-    it('mints a fresh keypair, calls signChangePubKey, embeds the L1 signature, and persists the keypair', async () => {
+    it('creates a fresh keypair, calls signChangePubKey, embeds the L1 signature, and persists the keypair', async () => {
       const { deps, signer, keyStore } = makeDeps()
 
       const walletStub = {
@@ -146,7 +146,7 @@ describe('lighterSignActions', () => {
         message: REGISTER_SIGNED.messageToSign,
       })
 
-      // The newly minted keypair was persisted via the keystore.
+      // The newly created keypair was persisted via the keystore.
       const stored = await keyStore.get(ADDRESS)
       expect(stored).toMatchObject({
         accountIndex: 99,
@@ -185,7 +185,7 @@ describe('lighterSignActions', () => {
   })
 
   describe('WASM_BLOB — ACCOUNT_TYPE (changeAccountTier)', () => {
-    it('mints a Lighter auth token via the WASM signer and parks it in txInfo', async () => {
+    it('creates a Lighter auth token via the WASM signer and parks it in txInfo', async () => {
       const { deps, signer, keyStore } = makeDeps()
       await keyStore.set(ADDRESS, {
         accountIndex: 99,

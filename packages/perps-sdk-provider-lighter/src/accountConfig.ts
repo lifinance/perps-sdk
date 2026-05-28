@@ -2,9 +2,7 @@ import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   LighterAccountConfig,
-  ProviderActionDescriptor,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 
@@ -33,14 +31,20 @@ function assertNever(value: never): never {
  * `Provider.setup` / `Provider.options` throw at runtime.
  */
 function projectLighterDescriptor(
-  descriptor: ProviderActionDescriptor,
+  descriptor: ProviderAction,
   config: LighterAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
-    // `REGISTER_API_KEY` satisfaction is driven by the backend's `checkSetup`
-    // staging — leave `satisfied` undefined and let callers fold both signals.
+    // `REGISTER_API_KEY` is satisfied only when the locally-held keypair
+    // matches the key registered on-chain at this slot — computed client-side
+    // in `getAccount` (the SDK owns account reads + the keystore). Backend
+    // staging is mutation-only; it never decides satisfaction.
     case ActionType.REGISTER_API_KEY:
-      return { type: descriptor.type, values: [] }
+      return {
+        type: descriptor.type,
+        values: [],
+        satisfied: config.apiKeyRegistered,
+      }
     // `APPROVE_READ_ONLY_TOKEN` is a client-only flow that never reaches
     // the backend, so its satisfaction state lives entirely in the typed
     // `LighterAccountConfig` projection.
@@ -105,8 +109,8 @@ function projectLighterDescriptor(
  */
 export function projectLighterConfigSettings(
   config: LighterAccountConfig,
-  setup: ProviderSetup[],
-  options: ProviderOption[]
+  setup: ProviderAction[],
+  options: ProviderAction[]
 ): AccountConfigSetting[] {
   return [...setup, ...options].map((descriptor) =>
     projectLighterDescriptor(descriptor, config)

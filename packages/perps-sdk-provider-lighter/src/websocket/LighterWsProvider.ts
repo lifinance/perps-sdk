@@ -41,7 +41,7 @@ import { mapFill, mapOrderDetail, mapPosition } from '../utils/index.js'
 //
 // Auth pattern (per Lighter WS spec): the subscribe payload carries the
 // token directly — `{ type: "subscribe", channel: "...", auth: "<token>" }`.
-// Tokens are minted via the Lighter WASM signer (CreateAuthToken) by the
+// Tokens are created via the Lighter WASM signer (CreateAuthToken) by the
 // caller; we re-request a fresh token on every subscribe send so reconnects
 // after the original token expires automatically pick up a new one.
 //
@@ -68,7 +68,7 @@ const LIGHTER_AUTH_CHANNEL = {
 } as const
 
 /**
- * Mints a fresh Lighter auth token for the given L1 address, or returns
+ * Creates a fresh Lighter auth token for the given L1 address, or returns
  * `undefined` if no API key is registered. Called both on initial subscribe
  * and on every reconnect, so it must always return a token valid for at
  * least the next few minutes.

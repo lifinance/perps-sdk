@@ -14,7 +14,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * don't need to know the per-endpoint shape. The encoding mirrors what the
  * LI.FI backend has emitted to widget consumers since the multi-endpoint
  * activity fan-out landed; the SDK preserves the same shape so cursors
- * minted by the old backend path remain usable post-migration.
+ * created by the old backend path remain usable post-migration.
  */
 export interface LighterActivityCursor {
   deposits?: string

@@ -1,11 +1,5 @@
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 
-export interface ActionDescriptor {
-  type: ActionType
-  signers: PerpsSigner[]
-  signingMethod: SigningMethod
-}
-
 export interface ParamOption {
   value: string
   label: string
@@ -21,15 +15,33 @@ export interface Param {
   readOnly?: boolean
 }
 
-export interface ProviderActionDescriptor extends ActionDescriptor {
-  title: string
-  description: string
-  params: Param[]
+/**
+ * A single provider action. The same shape backs `Provider.setup`,
+ * `Provider.options`, and `Provider.actions` — categorisation lives in which
+ * array it sits in, not in the type. The core three fields are always present;
+ * the rest are presentation/ordering hints provided per-action in the
+ * provider's hardcoded metadata.
+ */
+export interface ProviderAction {
+  type: ActionType
+  signers: PerpsSigner[]
+  signingMethod: SigningMethod
+  /**
+   * Human label. Drives the card heading in the setup/options modals, and may
+   * also front an in-flight trading action ("{title} is working…").
+   */
+  title?: string
+  description?: string
+  /** UI form fields the widget renders to collect input for this action. */
+  params?: Param[]
+  /**
+   * Ascending order in which the user satisfies setup steps. Cloud-init
+   * convention: 10, 20, 30, … with 99 reserved for "always last"; the gaps
+   * leave room to insert steps later without renumbering. Lower runs first;
+   * a step may depend on every lower-sequenced step already being satisfied.
+   */
+  sequence?: number
 }
-
-export type ProviderSetup = ProviderActionDescriptor
-
-export type ProviderOption = ProviderActionDescriptor
 
 export interface ProviderMarketInfo {
   id: string
@@ -43,9 +55,9 @@ export interface Provider {
   signingMethod: SigningMethod
   /** When false, the provider is announced but not yet selectable in clients. */
   active: boolean
-  setup: ProviderSetup[]
-  options: ProviderOption[]
-  actions: ActionDescriptor[]
+  setup: ProviderAction[]
+  options: ProviderAction[]
+  actions: ProviderAction[]
   markets: ProviderMarketInfo[]
   wsUrl?: string
   /** Absent means no minimum advertised. */

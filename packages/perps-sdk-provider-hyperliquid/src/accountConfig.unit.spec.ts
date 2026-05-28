@@ -1,7 +1,6 @@
 import type {
   HyperliquidAccountConfig,
-  ProviderOption,
-  ProviderSetup,
+  ProviderAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
@@ -11,7 +10,7 @@ import { projectHyperliquidConfigSettings } from './accountConfig.js'
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const approveAgentSetup: ProviderSetup = {
+const approveAgentSetup: ProviderAction = {
   type: ActionType.APPROVE_AGENT,
   title: 'Approve agent wallet',
   description: 'Authorise the SDK session signer.',
@@ -20,7 +19,7 @@ const approveAgentSetup: ProviderSetup = {
   params: [],
 }
 
-const approveBuilderFeeSetup: ProviderSetup = {
+const approveBuilderFeeSetup: ProviderAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
   title: 'Approve builder fee',
   description: 'Authorise the LI.FI builder fee.',
@@ -29,7 +28,7 @@ const approveBuilderFeeSetup: ProviderSetup = {
   params: [],
 }
 
-const accountModeOption: ProviderOption = {
+const accountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description: 'Choose how this account interacts with Hyperliquid.',
@@ -119,7 +118,7 @@ describe('projectHyperliquidConfigSettings', () => {
     // PLACE_ORDER is a trading action, never on setup/options. The mapper
     // throws rather than silently mis-projecting — this catches descriptor
     // emission bugs loudly.
-    const badDescriptor: ProviderSetup = {
+    const badDescriptor: ProviderAction = {
       type: ActionType.PLACE_ORDER,
       title: 'Place order',
       description: 'Trading action — should not appear here.',

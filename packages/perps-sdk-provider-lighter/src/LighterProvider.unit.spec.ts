@@ -268,13 +268,13 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=per-call-token')
   })
 
-  it('uses a pre-minted `authToken` from constructor when no per-call override', async () => {
-    const provider = lighterProvider({ authToken: 'pre-minted-token' })
+  it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain('auth=pre-minted-token')
+    expect(limitsCall?.url).toContain('auth=pre-created-token')
   })
 
   it('accepts an async `authToken` source function', async () => {
@@ -293,12 +293,12 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=dynamic-token-1')
   })
 
-  it('mints tokens via the WASM signer when `signer` + `keyStore` are provided', async () => {
-    const mintedTokens: string[] = []
+  it('creates tokens via the WASM signer when `signer` + `keyStore` are provided', async () => {
+    const createdTokens: string[] = []
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => {
-        const t = `minted-${deadline}`
-        mintedTokens.push(t)
+        const t = `created-${deadline}`
+        createdTokens.push(t)
         return t
       }),
     } as unknown as LighterSigner
@@ -322,14 +322,14 @@ describe('LighterProvider — auth token plumbing', () => {
         }
       ).createAuthToken.mock.calls.length
     ).toBe(1)
-    expect(mintedTokens.length).toBe(1)
+    expect(createdTokens.length).toBe(1)
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain(`auth=${mintedTokens[0]}`)
+    expect(limitsCall?.url).toContain(`auth=${createdTokens[0]}`)
   })
 
-  it('reuses a cached signer-minted token across calls until near expiry', async () => {
+  it('reuses a cached signer-created token across calls until near expiry', async () => {
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => `tok-${deadline}`),
     } as unknown as LighterSigner
@@ -358,7 +358,7 @@ describe('LighterProvider — auth token plumbing', () => {
     ).toBe(1)
   })
 
-  it('skips on-demand minting when no API key is registered for the address', async () => {
+  it('skips on-demand creating when no API key is registered for the address', async () => {
     const signerStub = {
       createAuthToken: vi.fn(async () => 'should-not-be-called'),
     } as unknown as LighterSigner

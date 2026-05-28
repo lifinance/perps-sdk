@@ -8,12 +8,12 @@ import type {
   LighterAccountConfig,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { Account, Address, WalletClient } from 'viem'
+import type { Address } from 'viem'
 
 const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
 
 /**
- * Default Lighter HTTP host the SDK posts the mint request to. Callers
+ * Default Lighter HTTP host the SDK posts the create request to. Callers
  * pointing at testnet pass an override via {@link LighterReadOnlyTokenManagerOptions.lighterApiUrl}.
  */
 export const DEFAULT_LIGHTER_API_URL = 'https://mainnet.zklighter.elliot.ai'
@@ -28,7 +28,7 @@ export const DEFAULT_READ_ONLY_TOKEN_NAME = 'LI.FI Perps'
 /**
  * Persisted shape of a Lighter read-only token. The `token` string is
  * Lighter's opaque `ro:{accountIndex}:{scope}:{expiry}:{rand}` bearer; the
- * SDK never parses it — `expiry`/`scope`/`accountIndex` are mint-time inputs
+ * SDK never parses it — `expiry`/`scope`/`accountIndex` are create-time inputs
  * we keep alongside so consumers can render expiry UX without re-fetching.
  */
 export interface LighterReadOnlyToken {
@@ -36,7 +36,7 @@ export interface LighterReadOnlyToken {
   token: string
   /** Unix seconds. The SDK's source of truth for expiry. */
   expiry: number
-  /** Lighter's `single | all` scope literal recorded at mint time. */
+  /** Lighter's `single | all` scope literal recorded at create time. */
   scope: 'single' | 'all'
   /** Lighter L2 account index the token authorises. */
   accountIndex: number
@@ -57,7 +57,7 @@ export interface LighterCreateTokenResponse {
 /**
  * Function injected for the HTTP boundary against Lighter's `tokens/create`
  * endpoint. Returning a parsed {@link LighterCreateTokenResponse} keeps the
- * mint code free of fetch/multipart plumbing and lets tests drop a fixture
+ * create code free of fetch/multipart plumbing and lets tests drop a fixture
  * in without spinning a mock server.
  */
 export type LighterTokenFetcher = (params: {
@@ -70,16 +70,6 @@ export type LighterTokenFetcher = (params: {
   scopes: string
 }) => Promise<LighterCreateTokenResponse>
 
-/**
- * Function injected for the L1 wallet signature. Signature MUST be EIP-191
- * `personal_sign`. Returning a 0x-prefixed hex string keeps the mint path
- * agnostic to whichever wallet abstraction the consumer wires up.
- */
-export type LighterWalletSigner = (params: {
-  address: Address
-  message: string
-}) => Promise<string>
-
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
   /** Lighter API host. Defaults to {@link DEFAULT_LIGHTER_API_URL}. */
@@ -91,13 +81,13 @@ export interface LighterReadOnlyTokenManagerOptions {
 }
 
 export interface ApproveReadOnlyTokenInputs extends ApproveReadOnlyTokenParams {
-  /** L1 wallet address that signs the mint message. */
+  /** L1 wallet address that signs the create message. */
   address: Address
 }
 
 export interface ApproveReadOnlyTokenResult {
   token: LighterReadOnlyToken
-  /** Projection of the post-mint Lighter account state. */
+  /** Projection of the post-create Lighter account state. */
   config: Pick<
     LighterAccountConfig,
     | 'provider'
@@ -115,7 +105,7 @@ const SECONDS_PER_DAY = 86_400
  * `(L1 address, account index)`-scoped storage adapter pattern. Mirrors
  * `AgentManager`'s injection surface so the same `StorageAdapter` powers
  * both. The token is opaque — never parsed client-side; `expiry`/`scope`
- * recorded at mint time are the source of truth.
+ * recorded at create time are the source of truth.
  *
  * The L1 wallet signer and the HTTP fetcher are both injectable so unit
  * tests don't need a real wallet or network.
@@ -218,35 +208,34 @@ export class LighterReadOnlyTokenManager {
   }
 
   /**
-   * Mint and persist a new Lighter read-only token.
+   * Create and persist a new Lighter read-only token.
    *
-   * Asks `signer` to produce an EIP-191 `personal_sign` over the
-   * `createToken`-specific L1 message, POSTs the signed payload to Lighter's
-   * `/api/v1/tokens/create` via the injected `fetcher`, and persists the
-   * returned bearer alongside its `expiry`/`scope`/`accountIndex`.
+   * POSTs to Lighter's `/api/v1/tokens/create` (via the injected `fetcher`)
+   * and persists the returned `ro:` bearer alongside its
+   * `expiry`/`scope`/`accountIndex`.
+   *
+   * `authorization` MUST be a **standard** Lighter auth token — one created by
+   * the account's API key (`createAuthToken` / the WASM signer), NOT an L1
+   * wallet signature. Lighter authenticates the create request with that token
+   * and rejects anything else as `invalid auth string` (code 20013).
    *
    * `expirySeconds` is the absolute unix-seconds expiry Lighter records on
    * the row. Lighter enforces 1 day ≤ lifetime ≤ 10 years server-side; the
    * SDK does NOT pre-validate and surfaces Lighter's 400 verbatim.
    *
-   * `scope` defaults to `'all'` (token authorises read access to every
-   * account owned by the L1 signer). `'single'` is wired through so callers
-   * who need per-account scoping can opt in.
+   * `scope` selects sub-account coverage: `'all'` sets `sub_account_access`
+   * (read access to every sub-account of the owner); `'single'` scopes to the
+   * one account. The permission set (`scopes` form field) is always read-only
+   * (`read.*`).
    *
-   * @param signer EIP-191 wallet signer for the L1 message.
-   * @param inputs Token-mint parameters plus the L1 `address` that signs.
+   * @param authorization Standard (API-key-signed) Lighter auth token.
+   * @param inputs Token-create parameters plus the owning `address`.
    */
   async approve(
-    signer: LighterWalletSigner,
+    authorization: string,
     inputs: ApproveReadOnlyTokenInputs
   ): Promise<ApproveReadOnlyTokenResult> {
     const { address, accountIndex, expirySeconds, scope } = inputs
-    const message = buildReadOnlyTokenMessage({
-      accountIndex,
-      expirySeconds,
-      scope,
-    })
-    const authorization = await signer({ address, message })
 
     const response = await this.fetcher({
       url: `${this.lighterApiUrl}/api/v1/tokens/create`,
@@ -255,7 +244,7 @@ export class LighterReadOnlyTokenManager {
       accountIndex,
       expiry: expirySeconds,
       subAccountAccess: scope === 'all',
-      scopes: scope,
+      scopes: 'read.*',
     })
 
     const token: LighterReadOnlyToken = {
@@ -280,31 +269,6 @@ export class LighterReadOnlyTokenManager {
       },
     }
   }
-}
-
-/**
- * Build the EIP-191 message the user's L1 wallet signs to authorise a
- * Lighter `tokens/create` request.
- *
- * NOTE — Lighter's public docs do not fully specify the message template
- * for the read-only token mint flow. The shape here is the SDK's best-fit
- * given (a) Lighter's UI hosts the equivalent flow at
- * `app.lighter.xyz/read-only-tokens` and (b) Lighter's `tokens/create`
- * endpoint reads `account_index`, `expiry`, and `scopes` as form fields.
- * If Lighter publishes a documented template that diverges, update this
- * builder — the test fixtures will fail loudly.
- */
-export function buildReadOnlyTokenMessage(params: {
-  accountIndex: number
-  expirySeconds: number
-  scope: 'single' | 'all'
-}): string {
-  return [
-    'Lighter Read-Only Token',
-    `account_index=${params.accountIndex}`,
-    `expiry=${params.expirySeconds}`,
-    `scopes=${params.scope}`,
-  ].join('\n')
 }
 
 /**
@@ -344,16 +308,4 @@ export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
   }
 
   return (await response.json()) as LighterCreateTokenResponse
-}
-
-/**
- * Adapter producing a {@link LighterWalletSigner} from a viem
- * `WalletClient`. Pulled out so `PerpsClient.approveReadOnlyToken` can call
- * into the manager without leaking viem types past the manager's boundary.
- */
-export function walletClientSigner(
-  client: WalletClient<any, any, Account>
-): LighterWalletSigner {
-  return ({ message }) =>
-    client.signMessage({ account: client.account, message })
 }
