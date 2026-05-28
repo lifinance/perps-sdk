@@ -79,7 +79,7 @@ describe('projectLighterConfigSettings', () => {
     ])
   })
 
-  it('projects ACCOUNT_TYPE with value from config.accountType as a number', () => {
+  it('projects ACCOUNT_TYPE = 1 as the wire string "premium"', () => {
     const result = projectLighterConfigSettings(
       { ...baseConfig, accountType: 1 },
       [],
@@ -88,9 +88,18 @@ describe('projectLighterConfigSettings', () => {
     expect(result).toEqual([
       {
         type: ActionType.ACCOUNT_TYPE,
-        values: [{ name: 'tier', value: 1 }],
+        values: [{ name: 'tier', value: 'premium' }],
       },
     ])
+  })
+
+  it('projects an unmapped account_type integer to null (drift surfaces in the widget rather than silently)', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, accountType: 99 },
+      [],
+      [accountTypeOption]
+    )
+    expect(result[0].values[0].value).toBeNull()
   })
 
   it('projects ACCOUNT_MODE with value: null on Lighter (no abstraction-mode equivalent)', () => {
@@ -105,13 +114,13 @@ describe('projectLighterConfigSettings', () => {
     })
   })
 
-  it('projects accountType = 0 (the raw integer Lighter publishes for the default tier)', () => {
+  it('projects accountType = 0 (Lighter\'s default tier integer) as the wire string "standard"', () => {
     const result = projectLighterConfigSettings(
       baseConfig,
       [],
       [accountTypeOption]
     )
-    expect(result[0].values[0].value).toBe(0)
+    expect(result[0].values[0].value).toBe('standard')
   })
 
   it('preserves setup-then-options ordering of descriptors', () => {

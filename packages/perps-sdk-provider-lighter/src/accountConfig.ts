@@ -13,6 +13,39 @@ function assertNever(value: never): never {
 }
 
 /**
+ * `account_type` on Lighter's `DetailedAccount` is a `StrictInt` in the
+ * public OpenAPI schema (`lighter-python/lighter/models/detailed_account.py`)
+ * with no documented integer ↔ name mapping in the Python or Go SDKs.
+ *
+ * The empirical mapping below follows the public docs' tier ordering
+ * (apidocs.lighter.xyz/docs/account-types lists Standard → Premium → Plus)
+ * and the Python paper client's `AccountTier` enum ordering (STANDARD
+ * first, PREMIUM next). The write side of `/changeAccountTier` accepts the
+ * lowercase strings `'standard' | 'premium'` — these are what the
+ * descriptor's `ParamOption.value` declarations carry, so this mapping
+ * round-trips cleanly with the OptionsModal selection.
+ *
+ * Lighter publishes a third "Plus" tier (likely integer `2`), but it is
+ * not currently settable via the public API, so we deliberately do not
+ * map it — a Plus account surfaces as "tier not detected" in the widget
+ * rather than offering an option that would 400 on submit. Add
+ * `LIGHTER_ACCOUNT_TYPE_PLUS` here (and to the backend descriptor) if
+ * Lighter exposes it later.
+ *
+ * Each integer is a named constant so a correction (e.g. Lighter publishing
+ * an authoritative table) is a one-line edit. An unmapped integer projects
+ * to `null` and surfaces as "tier not detected" in the widget, so drift is
+ * observable rather than silent.
+ */
+const LIGHTER_ACCOUNT_TYPE_STANDARD = 0
+const LIGHTER_ACCOUNT_TYPE_PREMIUM = 1
+
+const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
+  [LIGHTER_ACCOUNT_TYPE_STANDARD]: 'standard',
+  [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
+}
+
+/**
  * Project a single Lighter descriptor against the typed
  * `LighterAccountConfig` into an `AccountConfigSetting`.
  *
@@ -64,12 +97,20 @@ function projectLighterDescriptor(
         values: [{ name: 'mode', value: null }],
       }
 
-    // `tier` maps to the raw integer `config.accountType` Lighter publishes;
-    // decoding to a human label is the caller's responsibility.
+    // `tier` is the wire string `/changeAccountTier` accepts; we decode the
+    // raw integer `config.accountType` Lighter publishes via the mapping
+    // above so the projection matches the descriptor's enumerated values.
+    // Unrecognised integers project to `null` (surfaces as "tier not
+    // detected" — the widget still lets the user pick a value).
     case ActionType.ACCOUNT_TYPE:
       return {
         type: descriptor.type,
-        values: [{ name: 'tier', value: config.accountType }],
+        values: [
+          {
+            name: 'tier',
+            value: ACCOUNT_TYPE_INT_TO_WIRE[config.accountType] ?? null,
+          },
+        ],
       }
 
     case ActionType.APPROVE_AGENT:
