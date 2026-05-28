@@ -19,8 +19,8 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export type {
+  BuildProviderSetupParams,
   CancelOrdersParams,
-  CheckPrerequisitesParams,
   GetAccountResult,
   GetSetupParams,
   HyperliquidConfig,
@@ -30,9 +30,9 @@ export type {
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
   ProviderConfig,
   ProviderConfigs,
+  ProviderSetup,
   SatisfySetupParams,
   SatisfySetupResult,
-  SetupResult,
 } from './client/types.js'
 export { SigningMode } from './client/types.js'
 // Errors

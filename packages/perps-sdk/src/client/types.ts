@@ -61,10 +61,10 @@ export interface PerpsClientOptions {
 }
 
 /**
- * Parameters for the internal `buildPrerequisites` helper that materialises
+ * Parameters for the internal `buildProviderSetup` helper that materialises
  * typed-data envelopes for the setup descriptors.
  */
-export interface CheckPrerequisitesParams {
+export interface BuildProviderSetupParams {
   /** Provider to build setup actions for */
   provider: string
   /** User wallet address */
@@ -173,11 +173,11 @@ export interface GetSetupParams {
  * `Provider.options` items are NEVER included here — they don't gate trading
  * and are surfaced separately via `getAccount().settings`.
  */
-export interface SetupResult {
+export interface ProviderSetup {
   /** Setup steps requiring user wallet signature */
-  userPrerequisites: ActionStep[]
+  userProviderSetup: ActionStep[]
   /** Setup steps the SDK auto-signs with the agent */
-  agentPrerequisites: ActionStep[]
+  agentProviderSetup: ActionStep[]
   /** Whether all setup items are already satisfied (ready to trade) */
   isReady: boolean
 }
@@ -191,8 +191,8 @@ export interface SatisfySetupParams {
   /** User wallet address */
   address: Address
   /** The result from checkSetup() */
-  required: SetupResult
-  /** User-signed actions corresponding to required.userPrerequisites */
+  required: ProviderSetup
+  /** User-signed actions corresponding to required.userProviderSetup */
   userSignedActions: SignedActionStep[]
 }
 
@@ -210,7 +210,7 @@ export interface SatisfySetupResult {
    * upgrade from a non-default abstraction variant without a user signature).
    * Caller must re-sign these with the user's wallet.
    */
-  fallbackUserPrerequisites?: ActionStep[]
+  fallbackUserProviderSetup?: ActionStep[]
 }
 
 /**

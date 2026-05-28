@@ -190,11 +190,11 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('buildPrerequisites', () => {
+  describe('buildProviderSetup', () => {
     it('should auto-inject signerAddress in USER_AGENT mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
-      const result = await client.buildPrerequisites({
+      const result = await client.buildProviderSetup({
         provider,
         address: userAddress,
       })
@@ -204,7 +204,7 @@ describe('PerpsClient', () => {
 
     it('should work in USER mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER)
-      const result = await client.buildPrerequisites({
+      const result = await client.buildProviderSetup({
         provider,
         address: userAddress,
       })
@@ -373,7 +373,7 @@ describe('PerpsClient', () => {
     })
 
     /**
-     * Build a minimal `APPROVE_AGENT` user-prereq envelope. The widget would
+     * Build a minimal `APPROVE_AGENT` user-setup action envelope. The widget would
      * normally re-sign this typed data with the user's wallet; in tests we
      * just supply a placeholder signature.
      */
@@ -383,15 +383,15 @@ describe('PerpsClient', () => {
       primaryType: 'ApproveAgent' as const,
       message: { agent: '0xabcd' },
     }
-    const approveAgentPrereqs = {
+    const approveAgentSetupAction = {
       required: {
-        userPrerequisites: [
+        userProviderSetup: [
           {
             action: ActionType.APPROVE_AGENT,
             typedData: APPROVE_AGENT_TYPED_DATA,
           },
         ],
-        agentPrerequisites: [],
+        agentProviderSetup: [],
         isReady: false,
       },
       userSignedActions: [
@@ -511,7 +511,7 @@ describe('PerpsClient', () => {
       const result = await client.satisfySetup({
         provider,
         address: userAddress,
-        ...approveAgentPrereqs,
+        ...approveAgentSetupAction,
       })
 
       expect(result.userResults.results).toEqual([
@@ -520,7 +520,7 @@ describe('PerpsClient', () => {
       expect(result.agentResults?.results).toEqual([
         { action: ActionType.ACCOUNT_MODE, success: true },
       ])
-      expect(result.fallbackUserPrerequisites).toBeUndefined()
+      expect(result.fallbackUserProviderSetup).toBeUndefined()
       expect(observedAccountModeRequest?.params).toEqual({
         mode: 'unifiedAccount',
       })
@@ -532,7 +532,7 @@ describe('PerpsClient', () => {
       expect(counts.execute.get(ActionType.APPROVE_AGENT)).toBe(1)
     })
 
-    it('returns fallbackUserPrerequisites (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
+    it('returns fallbackUserProviderSetup (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
       mockAbstractionStatus('dexAbstraction')
 
@@ -574,7 +574,7 @@ describe('PerpsClient', () => {
       const result = await client.satisfySetup({
         provider,
         address: userAddress,
-        ...approveAgentPrereqs,
+        ...approveAgentSetupAction,
       })
 
       expect(result.userResults.results[0].success).toBe(true)
@@ -584,8 +584,8 @@ describe('PerpsClient', () => {
       expect(result.agentResults).toBeUndefined()
       expect(accountModeExecuteCount).toBe(0)
       // The unsigned ACCOUNT_MODE step is surfaced to the widget.
-      expect(result.fallbackUserPrerequisites).toHaveLength(1)
-      expect(result.fallbackUserPrerequisites?.[0].action).toBe(
+      expect(result.fallbackUserProviderSetup).toHaveLength(1)
+      expect(result.fallbackUserProviderSetup?.[0].action).toBe(
         ActionType.ACCOUNT_MODE
       )
       // Only one /createAction call for ACCOUNT_MODE — no agent attempt first.
@@ -604,7 +604,7 @@ describe('PerpsClient', () => {
       const result = await client.satisfySetup({
         provider,
         address: userAddress,
-        ...approveAgentPrereqs,
+        ...approveAgentSetupAction,
       })
 
       expect(result.userResults.results[0].success).toBe(true)
@@ -613,10 +613,10 @@ describe('PerpsClient', () => {
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(result.agentResults).toBeUndefined()
-      expect(result.fallbackUserPrerequisites).toBeUndefined()
+      expect(result.fallbackUserProviderSetup).toBeUndefined()
     })
 
-    it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user prereqs', async () => {
+    it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user setup actions', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
       mockAbstractionStatus(null)
 
@@ -655,7 +655,7 @@ describe('PerpsClient', () => {
         provider,
         address: userAddress,
         required: {
-          userPrerequisites: [
+          userProviderSetup: [
             {
               action: ActionType.APPROVE_BUILDER_FEE,
               typedData: {
@@ -666,7 +666,7 @@ describe('PerpsClient', () => {
               },
             },
           ],
-          agentPrerequisites: [],
+          agentProviderSetup: [],
           isReady: false,
         },
         userSignedActions: [
@@ -700,7 +700,7 @@ describe('PerpsClient', () => {
         client.satisfySetup({
           provider,
           address: userAddress,
-          ...approveAgentPrereqs,
+          ...approveAgentSetupAction,
         })
       ).rejects.toThrow()
     })
@@ -721,8 +721,8 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('buildPrerequisiteInputs filtering (via buildPrerequisites)', () => {
-    it('omits ACCOUNT_MODE from bulk-staged prerequisite inputs (requires explicit `mode`)', async () => {
+  describe('buildProviderSetupInputs filtering (via buildProviderSetup)', () => {
+    it('omits ACCOUNT_MODE from bulk-staged provider setup action inputs (requires explicit `mode`)', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       const observedActions: ActionType[] = []
@@ -734,7 +734,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      await client.buildPrerequisites({
+      await client.buildProviderSetup({
         provider,
         address: userAddress,
       })

@@ -252,6 +252,12 @@ export const lighterProvider = (
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
+  // Single-flight + failure-cache for lazy read-only token creation. Without
+  // these, concurrent reads on first load all race `tokens/create`, and any
+  // sustained failure (CORS preflight, body validation, etc.) is retried on
+  // every subsequent read — flooding the endpoint. Keyed by lowercase address.
+  const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
+  const readOnlyCreationFailed: Set<string> = new Set()
 
   // ---------------------------------------------------------------------------
   // Internal helpers — closed-over state replaces the class's `this.X` access.
@@ -375,26 +381,49 @@ export const lighterProvider = (
       return stored.token
     }
 
-    // No read-only token yet — create and persist one. The standard token
-    // (API-key-signed) authorises Lighter's `tokens/create`; the returned
-    // read-only bearer is what we forward on reads. Fall back to the standard
-    // token if creation fails (e.g. the API key isn't registered yet).
-    try {
-      const { token } = await readOnlyTokenManager.approve(
-        await standardToken(),
-        {
-          address,
-          accountIndex: apiKey.accountIndex,
-          expirySeconds:
-            Math.floor(Date.now() / 1000) +
-            DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS,
-          scope: 'all',
-        }
-      )
-      return token.token
-    } catch {
+    const flightKey = address.toLowerCase()
+    if (readOnlyCreationFailed.has(flightKey)) {
       return standardToken()
     }
+    const inFlight = readOnlyCreationInFlight.get(flightKey)
+    if (inFlight !== undefined) {
+      return inFlight
+    }
+
+    // No read-only token yet — create and persist one. The standard token
+    // (API-key-signed) authorises Lighter's `tokens/create`; the returned
+    // read-only bearer is what we forward on reads. On failure we mark this
+    // address as "skip ro creation for the session" so subsequent reads use
+    // the standard token directly instead of hammering `tokens/create`.
+    const attempt = (async (): Promise<string> => {
+      try {
+        const { token } = await readOnlyTokenManager.approve(
+          await standardToken(),
+          {
+            address,
+            accountIndex: apiKey.accountIndex,
+            expirySeconds:
+              Math.floor(Date.now() / 1000) +
+              DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS,
+            scope: 'all',
+          }
+        )
+        return token.token
+      } catch (err) {
+        readOnlyCreationFailed.add(flightKey)
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[lighter] read-only token creation failed; ' +
+            'falling back to standard auth tokens for this session.',
+          err
+        )
+        return standardToken()
+      } finally {
+        readOnlyCreationInFlight.delete(flightKey)
+      }
+    })()
+    readOnlyCreationInFlight.set(flightKey, attempt)
+    return attempt
   }
 
   const fetchDetailedAccount = async (

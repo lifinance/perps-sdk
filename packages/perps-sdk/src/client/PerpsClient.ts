@@ -32,17 +32,17 @@ import {
 } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import {
+  type BuildProviderSetupParams,
   type CancelOrdersParams,
-  type CheckPrerequisitesParams,
   type GetAccountResult,
   type GetSetupParams,
   type ModifyOrdersParams,
   type PerpsClientOptions,
   type PlaceOrderParams,
   type PlaceTriggerOrderParams,
+  type ProviderSetup,
   type SatisfySetupParams,
   type SatisfySetupResult,
-  type SetupResult,
   SigningMode,
   type WithdrawParams,
 } from './types.js'
@@ -139,20 +139,20 @@ export class PerpsClient {
 
   /**
    * Action types that require explicit user input (a chosen mode or tier)
-   * and therefore cannot be bulk-staged through `buildPrerequisites` with
+   * and therefore cannot be bulk-staged through `buildProviderSetup` with
    * empty params. Callers must dispatch these via `execute(...)` once a
    * value is picked. The post-`APPROVE_AGENT` auto-upgrade path also
    * dispatches `ACCOUNT_MODE` directly with `mode: 'unifiedAccount'`.
    */
-  private static readonly EXPLICIT_INPUT_PREREQUISITES: ReadonlySet<ActionType> =
+  private static readonly EXPLICIT_INPUT_SETUP_ACTIONS: ReadonlySet<ActionType> =
     new Set([ActionType.ACCOUNT_MODE, ActionType.ACCOUNT_TYPE])
 
-  private buildPrerequisiteInputs(
-    prerequisites: ProviderAction[],
+  private buildProviderSetupInputs(
+    setup: ProviderAction[],
     mode: SigningMode,
     agentAddress?: Address
   ): Array<{ key: string; params?: Record<string, unknown> }> {
-    return [...prerequisites]
+    return [...setup]
       .sort(
         (a, b) =>
           (a.sequence ?? Number.MAX_SAFE_INTEGER) -
@@ -162,7 +162,7 @@ export class PerpsClient {
         // ACCOUNT_MODE / ACCOUNT_TYPE require explicit params; they're
         // dispatched separately via `execute(...)` (or the post-APPROVE_AGENT
         // auto-upgrade chain) rather than bulk-staged.
-        if (PerpsClient.EXPLICIT_INPUT_PREREQUISITES.has(p.type)) {
+        if (PerpsClient.EXPLICIT_INPUT_SETUP_ACTIONS.has(p.type)) {
           return false
         }
         if (mode === SigningMode.USER) {
@@ -176,7 +176,7 @@ export class PerpsClient {
           }
           return true
         }
-        // USER_AGENT mode: include every remaining declared prerequisite.
+        // USER_AGENT mode: include every remaining declared provider setup action.
         return true
       })
       .map((p) => {
@@ -383,12 +383,12 @@ export class PerpsClient {
   }
 
   /**
-   * Sign a single prerequisite step using whichever signing path matches the
+   * Sign a single provider setup action step using whichever signing path matches the
    * step's shape — EIP-712 typed data, WASM blob (with the hybrid EIP-191 +
    * WASM flow for REGISTER_API_KEY), or EVM transaction. Lets consumers
-   * collect signed prereqs without embedding per-method signing logic.
+   * collect signed setup actions without embedding per-method signing logic.
    */
-  async signPrerequisite(
+  async signProviderSetupAction(
     provider: string,
     address: Address,
     step: ActionStep
@@ -397,7 +397,7 @@ export class PerpsClient {
       if (!this.sdkClient.signer) {
         throw new PerpsError(
           PerpsErrorCode.SDKError,
-          'EIP-712 prerequisite signing requires a wallet signer. Pass ' +
+          'EIP-712 provider setup action signing requires a wallet signer. Pass ' +
             '`signer` to createPerpsClient or call setSigner(walletClient).'
         )
       }
@@ -598,7 +598,7 @@ export class PerpsClient {
    * post-setup tunables and never gate trading. Option state is surfaced
    * separately via `getAccount().settings`.
    */
-  async checkSetup(params: GetSetupParams): Promise<SetupResult> {
+  async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
     const mode = await this.loadSigningMode(address, provider)
 
@@ -618,14 +618,14 @@ export class PerpsClient {
       agentAddress = agent.address
     }
 
-    const allInputs = this.buildPrerequisiteInputs(
+    const allInputs = this.buildProviderSetupInputs(
       metadata.setup,
       mode,
       agentAddress
     )
 
     if (allInputs.length === 0) {
-      return { userPrerequisites: [], agentPrerequisites: [], isReady: true }
+      return { userProviderSetup: [], agentProviderSetup: [], isReady: true }
     }
 
     // Build a signer lookup from setup descriptors.
@@ -634,36 +634,36 @@ export class PerpsClient {
       signersByAction.set(desc.type, desc.signers)
     }
 
-    // Send all to backend via createAction for the first prerequisite type
+    // Send all to backend via createAction for the first provider setup action type
     // The backend filters already-satisfied ones and returns typed data
-    const { actions } = await this.buildPrerequisites({
+    const { actions } = await this.buildProviderSetup({
       provider,
       address,
       signerAddress: agentAddress,
     })
 
     if (actions.length === 0) {
-      return { userPrerequisites: [], agentPrerequisites: [], isReady: true }
+      return { userProviderSetup: [], agentProviderSetup: [], isReady: true }
     }
 
-    const userPrerequisites = actions.filter((a) => {
+    const userProviderSetup = actions.filter((a) => {
       const signers = signersByAction.get(a.action) ?? []
       return signers.includes(PerpsSigner.USER)
     })
-    const agentPrerequisites = actions.filter((a) => {
+    const agentProviderSetup = actions.filter((a) => {
       const signers = signersByAction.get(a.action) ?? []
       return signers.includes(PerpsSigner.AGENT)
     })
 
     return {
-      userPrerequisites,
-      agentPrerequisites,
+      userProviderSetup,
+      agentProviderSetup,
       isReady: false,
     }
   }
 
-  async buildPrerequisites(
-    params: CheckPrerequisitesParams
+  async buildProviderSetup(
+    params: BuildProviderSetupParams
   ): Promise<CreateActionResponse> {
     const mode = await this.loadSigningMode(params.address, params.provider)
     let { signerAddress } = params
@@ -677,13 +677,13 @@ export class PerpsClient {
     }
 
     const metadata = await this.getProviderMetadata(params.provider)
-    const allInputs = this.buildPrerequisiteInputs(
+    const allInputs = this.buildProviderSetupInputs(
       metadata.setup,
       mode,
       signerAddress
     )
 
-    // The backend filters already-satisfied prerequisites and returns the
+    // The backend filters already-satisfied provider setup and returns the
     // unsigned action steps for those still outstanding.
     const allActions: ActionStep[] = []
     for (const input of allInputs) {
@@ -720,7 +720,7 @@ export class PerpsClient {
    * - `abstractionMode` set to any other value: HL requires a user-wallet
    *   signature to change the abstraction once it has been set. Build the
    *   action unsigned and return it as `{ fallback }` so the caller can
-   *   surface a wallet prompt via `fallbackUserPrerequisites`.
+   *   surface a wallet prompt via `fallbackUserProviderSetup`.
    *
    * Network errors from `/account` propagate — we never guess the signer.
    * `account.config.provider !== 'hyperliquid'` also throws: this helper
@@ -844,7 +844,7 @@ export class PerpsClient {
    *      `ACCOUNT_MODE` Param (Hyperliquid today). The SDK reads
    *      `account.config.abstractionMode` to choose the signer: `null` →
    *      agent dispatch; non-null → wallet fallback returned in
-   *      `fallbackUserPrerequisites`.
+   *      `fallbackUserProviderSetup`.
    *   3. Sign and submit any pre-staged agent-side setup actions the
    *      backend returned alongside the user-signed ones.
    */
@@ -852,7 +852,7 @@ export class PerpsClient {
     const { provider, address, required, userSignedActions } = params
     const mode = await this.loadSigningMode(address, provider)
 
-    // 1. Submit user-signed prerequisites
+    // 1. Submit user-signed provider setup
     let userResults: ExecuteActionResponse = { results: [] }
     if (userSignedActions.length > 0) {
       const signerAddress =
@@ -862,7 +862,7 @@ export class PerpsClient {
           : address
 
       // Submit all user-signed actions — use first action's type for routing
-      const firstAction = required.userPrerequisites[0]?.action as string
+      const firstAction = required.userProviderSetup[0]?.action as string
       userResults = await executeAction(this.sdkClient, {
         provider,
         address,
@@ -890,7 +890,7 @@ export class PerpsClient {
     // `Provider.options`, not `Provider.setup`, and so does not gate
     // trading.
     let agentResults: ExecuteActionResponse | undefined
-    let fallbackUserPrerequisites: ActionStep[] | undefined
+    let fallbackUserProviderSetup: ActionStep[] | undefined
     if (mode === SigningMode.USER_AGENT) {
       const justApprovedAgent = userResults.results.some(
         (r) => r.success && r.action === ActionType.APPROVE_AGENT
@@ -904,18 +904,18 @@ export class PerpsClient {
             PerpsClient.DEFAULT_ACCOUNT_MODE
           )
           agentResults = upgrade.results
-          fallbackUserPrerequisites = upgrade.fallback
+          fallbackUserProviderSetup = upgrade.fallback
         }
       }
     }
 
-    // 3. Sign and submit any pre-staged agent prerequisites returned by the
-    //    backend's `buildPrerequisites` call. ACCOUNT_MODE is filtered out of
+    // 3. Sign and submit any pre-staged agent provider setup returned by the
+    //    backend's `buildProviderSetup` call. ACCOUNT_MODE is filtered out of
     //    bulk staging (it requires explicit `mode` params), so this block
     //    today only runs for future agent-signed steps the backend chooses
     //    to stage.
     if (
-      required.agentPrerequisites.length > 0 &&
+      required.agentProviderSetup.length > 0 &&
       mode === SigningMode.USER_AGENT
     ) {
       const agent = await this.sdkClient.agentManager.getAgent(
@@ -924,7 +924,7 @@ export class PerpsClient {
       )
 
       const signedAgentActions: SignedActionStep[] = await Promise.all(
-        (required.agentPrerequisites as Eip712ActionStep[]).map(
+        (required.agentProviderSetup as Eip712ActionStep[]).map(
           async (action) =>
             ({
               action: action.action,
@@ -937,7 +937,7 @@ export class PerpsClient {
         )
       )
 
-      const firstAction = required.agentPrerequisites[0]?.action as string
+      const firstAction = required.agentProviderSetup[0]?.action as string
       const stagedResults = await executeAction(this.sdkClient, {
         provider,
         address,
@@ -946,7 +946,7 @@ export class PerpsClient {
         actions: signedAgentActions,
       })
 
-      // Merge staged-prereq results with any auto-upgrade results from step 2.
+      // Merge staged-setup action results with any auto-upgrade results from step 2.
       agentResults = {
         results: [...(agentResults?.results ?? []), ...stagedResults.results],
       }
@@ -955,7 +955,7 @@ export class PerpsClient {
     return {
       userResults,
       ...(agentResults ? { agentResults } : {}),
-      ...(fallbackUserPrerequisites ? { fallbackUserPrerequisites } : {}),
+      ...(fallbackUserProviderSetup ? { fallbackUserProviderSetup } : {}),
     }
   }
 
@@ -963,10 +963,10 @@ export class PerpsClient {
    * Unified entry point for satisfying a single setup descriptor end-to-end.
    *
    * Refreshes `checkSetup`, finds the matching step, signs it via
-   * `signPrerequisite` (user-prereqs only), and submits via `satisfySetup`
+   * `signProviderSetupAction` (user-setup actions only), and submits via `satisfySetup`
    * with a single-step `required` payload.
    *
-   * No-op when the action isn't currently a prerequisite (e.g. already
+   * No-op when the action isn't currently a provider setup action (e.g. already
    * satisfied) — callers should follow up with `invalidateQueries` to
    * resync UI state regardless.
    */
@@ -978,8 +978,8 @@ export class PerpsClient {
     const { provider, address, action } = params
 
     const required = await this.checkSetup({ provider, address })
-    const userStep = required.userPrerequisites.find((s) => s.action === action)
-    const agentStep = required.agentPrerequisites.find(
+    const userStep = required.userProviderSetup.find((s) => s.action === action)
+    const agentStep = required.agentProviderSetup.find(
       (s) => s.action === action
     )
     const step = userStep ?? agentStep
@@ -990,13 +990,13 @@ export class PerpsClient {
 
     let userSignedActions: SignedActionStep[] = []
     if (userStep) {
-      const signed = await this.signPrerequisite(provider, address, step)
+      const signed = await this.signProviderSetupAction(provider, address, step)
       userSignedActions = [signed]
     }
 
-    const singleStep: SetupResult = {
-      userPrerequisites: userStep ? [step] : [],
-      agentPrerequisites: agentStep ? [step] : [],
+    const singleStep: ProviderSetup = {
+      userProviderSetup: userStep ? [step] : [],
+      agentProviderSetup: agentStep ? [step] : [],
       isReady: false,
     }
     await this.satisfySetup({
