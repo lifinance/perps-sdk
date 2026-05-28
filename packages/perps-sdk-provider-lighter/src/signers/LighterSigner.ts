@@ -132,7 +132,8 @@ export class LighterSigner {
     privateKey: string,
     nonce: number,
     apiKeyIndex: number,
-    accountIndex: number
+    accountIndex: number,
+    skipNonce: 0 | 1 = 0
   ): Promise<ChangePubKeyResult> {
     const wasm = await this.ensureLoaded()
     await this.ensureClient({
@@ -140,13 +141,14 @@ export class LighterSigner {
       apiKeyIndex,
       accountIndex,
     })
-    // 5-arg call (matches lighter-python's signer wrapper). `skipNonce=0`
-    // means "embed the supplied nonce" — the value we just fetched from
-    // Lighter's authoritative /nextNonce.
-    const SKIP_NONCE_OFF = 0
+    // 5-arg call (matches lighter-python's signer wrapper). `skipNonce`:
+    //   0 — embed the supplied nonce and have Lighter enforce it on submit.
+    //   1 — embed the nonce but let Lighter pick / not enforce; used for
+    //       ChangePubKey to sidestep `/nextNonce` vs `/sendTx` disagreement
+    //       on slot re-claims.
     const result = wasm.SignChangePubKey(
       pubKeyHex,
-      SKIP_NONCE_OFF,
+      skipNonce,
       nonce,
       apiKeyIndex,
       accountIndex

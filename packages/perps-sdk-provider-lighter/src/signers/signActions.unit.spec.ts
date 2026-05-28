@@ -140,7 +140,7 @@ describe('lighterSignActions', () => {
 
       expect(
         (signer.signChangePubKey as ReturnType<typeof vi.fn>).mock.calls[0]
-      ).toEqual(['0xpub', '0xpriv', 42, 7, 99])
+      ).toEqual(['0xpub', '0xpriv', 42, 7, 99, 0])
       expect(walletStub.signMessage).toHaveBeenCalledWith({
         account: walletStub.account,
         message: REGISTER_SIGNED.messageToSign,

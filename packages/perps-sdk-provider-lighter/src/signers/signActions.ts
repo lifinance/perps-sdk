@@ -109,6 +109,7 @@ async function signRegisterApiKey(
   const params = step.wasmSignParams as {
     api_key_index?: number
     nonce?: number
+    skip_nonce?: 0 | 1
   }
   const apiKeyIndex = params.api_key_index ?? DEFAULT_API_KEY_INDEX
   const nonce = params.nonce
@@ -118,6 +119,7 @@ async function signRegisterApiKey(
       'REGISTER_API_KEY wasmSignParams is missing `nonce`.'
     )
   }
+  const skipNonce = params.skip_nonce === 1 ? 1 : 0
 
   const accountIndex = await deps.resolveAccountIndex(address)
 
@@ -127,7 +129,8 @@ async function signRegisterApiKey(
     keypair.privateKey,
     nonce,
     apiKeyIndex,
-    accountIndex
+    accountIndex,
+    skipNonce
   )
 
   const l1Signature = await walletSigner.signMessage({
