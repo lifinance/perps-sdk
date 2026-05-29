@@ -47,8 +47,6 @@ import {
   type WithdrawParams,
 } from './types.js'
 
-const MAX_NONCE_RETRIES = 3
-
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the
  * action isn't declared — defensive: better to fail loudly than to mis-sign.
@@ -503,23 +501,6 @@ export class PerpsClient {
         : SigningMode.USER_AGENT
     this.signingModes.set(key, mode)
     return mode
-  }
-
-  async loadAgentMode(address: Address, provider: string): Promise<boolean> {
-    const mode = await this.loadSigningMode(address, provider)
-    return mode === SigningMode.USER_AGENT
-  }
-
-  async setAgentMode(
-    address: Address,
-    provider: string,
-    useAgent: boolean
-  ): Promise<void> {
-    await this.setSigningMode(
-      address,
-      provider,
-      useAgent ? SigningMode.USER_AGENT : SigningMode.USER
-    )
   }
 
   async getAgentAddress(address: Address, provider: string): Promise<Address> {
@@ -1094,32 +1075,17 @@ export class PerpsClient {
     const metadata = await this.getProviderMetadata(params.provider)
     const descriptor = findActionDescriptor(metadata, params.action)
 
-    let lastError: unknown
-    for (let attempt = 0; attempt < MAX_NONCE_RETRIES; attempt++) {
-      const { actions } = await this.buildAction(params.action, {
-        provider: params.provider,
-        address: params.address,
-        params: params.params,
-      })
-      try {
-        return await this.autoSignAndExecute(
-          params.provider,
-          params.address,
-          params.action,
-          actions,
-          descriptor
-        )
-      } catch (err) {
-        if (
-          err instanceof PerpsError &&
-          err.code === PerpsErrorCode.InvalidNonce
-        ) {
-          lastError = err
-          continue
-        }
-        throw err
-      }
-    }
-    throw lastError
+    const { actions } = await this.buildAction(params.action, {
+      provider: params.provider,
+      address: params.address,
+      params: params.params,
+    })
+    return await this.autoSignAndExecute(
+      params.provider,
+      params.address,
+      params.action,
+      actions,
+      descriptor
+    )
   }
 }

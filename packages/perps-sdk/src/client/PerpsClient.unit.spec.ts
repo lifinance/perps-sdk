@@ -17,7 +17,6 @@ import {
   mockCreateOrderResponse,
   mockCreateWithdrawalResponse,
   mockProviders,
-  mockSubmitOrderResponse,
   mockSubmitWithdrawalResponse,
   server,
 } from '../../test/handlers.js'
@@ -213,53 +212,26 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('execute InvalidNonce retry', () => {
+  describe('execute InvalidNonce handling', () => {
     const BASE_URL = DEFAULT_API_URL
 
-    it('retries the full create→sign→execute cycle on InvalidNonce and succeeds', async () => {
+    it('propagates InvalidNonce to the caller and submits exactly once', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
+      let createCallCount = 0
       let executeCallCount = 0
       server.use(
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCallCount++
+          return HttpResponse.json(mockCreateOrderResponse)
+        }),
         http.post(`${BASE_URL}/executeAction`, () => {
           executeCallCount++
-          if (executeCallCount < 3) {
-            return HttpResponse.json(
-              { code: PerpsErrorCode.InvalidNonce, message: 'stale nonce' },
-              { status: 400 }
-            )
-          }
-          return HttpResponse.json(mockSubmitOrderResponse)
-        })
-      )
-
-      const result = await client.execute({
-        provider,
-        address: userAddress,
-        action: ActionType.PLACE_ORDER,
-        params: {
-          symbol: 'BTC',
-          side: 'BUY' as any,
-          type: 'MARKET' as any,
-          size: '0.1',
-          price: '95000.00',
-        },
-      })
-
-      expect(executeCallCount).toBe(3)
-      expect(result.results[0].success).toBe(true)
-    })
-
-    it('throws InvalidNonce after exhausting all retries', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
-      server.use(
-        http.post(`${BASE_URL}/executeAction`, () =>
-          HttpResponse.json(
+          return HttpResponse.json(
             { code: PerpsErrorCode.InvalidNonce, message: 'stale nonce' },
             { status: 400 }
           )
-        )
+        })
       )
 
       await expect(
@@ -276,9 +248,12 @@ describe('PerpsClient', () => {
           },
         })
       ).rejects.toMatchObject({ code: PerpsErrorCode.InvalidNonce })
+
+      expect(createCallCount).toBe(1)
+      expect(executeCallCount).toBe(1)
     })
 
-    it('does not retry on non-InvalidNonce errors', async () => {
+    it('propagates non-InvalidNonce errors and submits exactly once', async () => {
       await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
 
       let executeCallCount = 0
@@ -308,41 +283,6 @@ describe('PerpsClient', () => {
       ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
 
       expect(executeCallCount).toBe(1)
-    })
-
-    it('calls createAction once per retry attempt', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
-      let createCallCount = 0
-      server.use(
-        http.post(`${BASE_URL}/createAction`, () => {
-          createCallCount++
-          return HttpResponse.json(mockCreateOrderResponse)
-        }),
-        http.post(`${BASE_URL}/executeAction`, () =>
-          HttpResponse.json(
-            { code: PerpsErrorCode.InvalidNonce, message: 'stale nonce' },
-            { status: 400 }
-          )
-        )
-      )
-
-      await expect(
-        client.execute({
-          provider,
-          address: userAddress,
-          action: ActionType.PLACE_ORDER,
-          params: {
-            symbol: 'BTC',
-            side: 'BUY' as any,
-            type: 'MARKET' as any,
-            size: '0.1',
-            price: '95000.00',
-          },
-        })
-      ).rejects.toMatchObject({ code: PerpsErrorCode.InvalidNonce })
-
-      expect(createCallCount).toBe(3)
     })
   })
 
