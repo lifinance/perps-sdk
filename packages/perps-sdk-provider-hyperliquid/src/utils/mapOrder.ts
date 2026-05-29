@@ -32,6 +32,47 @@ export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.STOP_MARKET ||
   type === OrderType.STOP_LIMIT
 
+/**
+ * Decide whether a raw Hyperliquid order belongs in the cross-provider
+ * `triggerOrders` bucket. Single source of truth for both the REST
+ * `getOrders` path (`HlFrontendOpenOrder` payload) and the `orderUpdates`
+ * WS handler (`HlOrderDetail.order`, a strict subset).
+ *
+ * Authoritative signals, in order:
+ *   1. `isTrigger` — REST-only boolean Hyperliquid sets on
+ *      `frontendOpenOrders`. Definitive when present.
+ *   2. `isPositionTpsl` — REST-only flag for TP/SL legs attached to a
+ *      position.
+ *   3. `triggerCondition !== 'N/A'` — present on both REST and WS payloads.
+ *      Non-trigger orders carry the literal `'N/A'`.
+ *   4. `triggerPx` non-null and non-zero — present on both. The reliable
+ *      trigger signal on the WS wire when `orderType` lies (HL pushes
+ *      `'Limit'` for a freshly-placed TP/SL until REST refetch lands the
+ *      corrected type).
+ *   5. `orderType` — final fall-back via `isTriggerType`.
+ */
+export const isTriggerOrder = (
+  o: HlFrontendOpenOrder | HlOrderDetail['order']
+): boolean => {
+  if ('isTrigger' in o && o.isTrigger === true) {
+    return true
+  }
+  if ('isPositionTpsl' in o && o.isPositionTpsl === true) {
+    return true
+  }
+  if (o.triggerCondition && o.triggerCondition !== 'N/A') {
+    return true
+  }
+  if (
+    o.triggerPx != null &&
+    o.triggerPx !== '' &&
+    parseFloat(o.triggerPx) > 0
+  ) {
+    return true
+  }
+  return isTriggerType(mapOrderType(o.orderType))
+}
+
 export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   orderId: String(o.oid),
   asset: {
@@ -73,7 +114,7 @@ export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
   }
 }
 
-const mapOrderStatus = (status: string): OrderStatus => {
+export const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
     case 'open':
     case 'resting':

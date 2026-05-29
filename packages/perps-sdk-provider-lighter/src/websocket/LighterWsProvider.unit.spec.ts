@@ -23,7 +23,7 @@ const RAW_ORDER = {
   trigger_price: '0',
   order_expiry: 0,
   status: 'open',
-  trigger_status: '',
+  trigger_status: 'na',
   trigger_time: 0,
   block_height: 100,
   timestamp: 1000,

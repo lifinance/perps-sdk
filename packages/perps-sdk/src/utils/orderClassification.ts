@@ -7,7 +7,12 @@
  */
 
 import type { OpenOrder } from '@lifi/perps-types'
-import { FillClassification, OrderSide, OrderType } from '@lifi/perps-types'
+import {
+  FillClassification,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+} from '@lifi/perps-types'
 import { stringToFloat } from './parse.js'
 
 export { FillClassification }
@@ -41,6 +46,23 @@ export function isStopLossOrder(order: Pick<OpenOrder, 'type'>): boolean {
  */
 export function isTpSlOrder(order: Pick<OpenOrder, 'type'>): boolean {
   return TP_TYPES.has(order.type) || SL_TYPES.has(order.type)
+}
+
+/**
+ * Order statuses representing an order still resting on the book (visible
+ * in `openOrders` / `triggerOrders`). Anything not in this set is terminal —
+ * filled, cancelled, rejected, expired — and should be evicted from the
+ * cached orders list when seen in a WS update.
+ */
+export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
+  OrderStatus.OPEN,
+  OrderStatus.PENDING,
+  OrderStatus.PARTIALLY_FILLED,
+  OrderStatus.TRIGGERED,
+])
+
+export function isActiveOrderStatus(status: OrderStatus): boolean {
+  return ACTIVE_ORDER_STATUSES.has(status)
 }
 
 /**

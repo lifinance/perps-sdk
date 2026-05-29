@@ -61,8 +61,15 @@ export type CandleEvent = { channel: 'candle'; data: Candle }
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
   data: {
+    /** Upserts — active orders, non-trigger. */
     openOrders: OpenOrder[]
+    /** Upserts — active orders with trigger semantics (TP/SL). */
     triggerOrders: TriggerOrder[]
+    /**
+     * orderIds whose status just transitioned to terminal (filled, cancelled,
+     * rejected, expired). Consumers should evict these from both buckets.
+     */
+    terminated: string[]
   }
 }
 export type FillsEvent = { channel: 'fills'; data: Fill[] }

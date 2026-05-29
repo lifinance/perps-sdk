@@ -129,8 +129,10 @@ export {
 } from './utils/calculations.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
 export {
+  ACTIVE_ORDER_STATUSES,
   classifyFill,
   FillClassification,
+  isActiveOrderStatus,
   isStopLossOrder,
   isTakeProfitOrder,
   isTpSlOrder,

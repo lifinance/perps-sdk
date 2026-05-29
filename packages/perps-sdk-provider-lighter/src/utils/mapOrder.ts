@@ -1,3 +1,4 @@
+import { isActiveOrderStatus } from '@lifi/perps-sdk'
 import type { OpenOrder, Order, TriggerOrder } from '@lifi/perps-types'
 import {
   OrderSide,
@@ -107,6 +108,36 @@ export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.STOP_LIMIT
 
 /**
+ * Decide whether a raw Lighter order belongs in the cross-provider
+ * `triggerOrders` bucket. Single source of truth for both the REST
+ * `getOrders` path and the `account_all_orders` WS handler.
+ *
+ * Authoritative signals, in order:
+ *   1. `trigger_status` — Lighter's own enum. `'ready' | 'mark-price' |
+ *      'parent-order'` all mean "this order has trigger semantics" (TP/SL
+ *      waiting on price, or a TP/SL leg of a parent placeOrder). `'twap'`
+ *      is intentionally excluded — TWAP child orders are scheduled resting
+ *      limits, not TP/SL triggers. `'na'` is "regular order".
+ *   2. `trigger_price > 0` — catches cases where `trigger_status`
+ *      momentarily lags during state transitions (e.g. right after an OCO
+ *      sibling cancels).
+ *   3. `type` — final fallback via the mapped `OrderType`.
+ */
+export const isTriggerOrder = (raw: LtOrder): boolean => {
+  if (
+    raw.trigger_status === 'ready' ||
+    raw.trigger_status === 'mark-price' ||
+    raw.trigger_status === 'parent-order'
+  ) {
+    return true
+  }
+  if (raw.trigger_price !== '' && parseFloat(raw.trigger_price) > 0) {
+    return true
+  }
+  return isTriggerType(mapOrderType(raw.type))
+}
+
+/**
  * Map a raw Lighter trigger order (stop/take-profit, market or limit) to
  * the generic `TriggerOrder` shape. For market variants the `limitPrice`
  * field is omitted; for limit variants `order.price` is the limit and
@@ -164,24 +195,36 @@ export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
 /**
  * Walk a flat list of raw Lighter orders and bucket each into the
  * `OpenOrder` / `TriggerOrder` arrays the cross-provider `OrdersResponse`
- * declares. Called by both the REST `getOrders` service and the WS
- * `orderUpdates` handler so classification + mapping is in one place.
+ * declares, plus a `terminated` list of orderIds whose status has reached
+ * a terminal state (filled / cancelled / rejected / expired) — consumers
+ * applying WS deltas evict those from the cached buckets. REST callers
+ * see `terminated: []` because `accountActiveOrders` returns active only.
  */
 export const classifyAndMapOrders = (
   orders: LtOrder[],
   resolveDisplaySymbol: (marketIndex: number) => string
-): { openOrders: OpenOrder[]; triggerOrders: TriggerOrder[] } => {
+): {
+  openOrders: OpenOrder[]
+  triggerOrders: TriggerOrder[]
+  terminated: string[]
+} => {
   const openOrders: OpenOrder[] = []
   const triggerOrders: TriggerOrder[] = []
+  const terminated: string[] = []
   for (const raw of orders) {
+    const orderId = String(raw.order_index)
+    if (!isActiveOrderStatus(mapOrderStatus(raw.status))) {
+      terminated.push(orderId)
+      continue
+    }
     const displaySymbol = resolveDisplaySymbol(raw.market_index)
-    if (isTriggerType(mapOrderType(raw.type))) {
+    if (isTriggerOrder(raw)) {
       triggerOrders.push(mapTriggerOrder(raw, displaySymbol))
     } else {
       openOrders.push(mapOrder(raw, displaySymbol))
     }
   }
-  return { openOrders, triggerOrders }
+  return { openOrders, triggerOrders, terminated }
 }
 
 /**

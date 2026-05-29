@@ -1,4 +1,5 @@
 import {
+  isActiveOrderStatus,
   ReconnectingWebSocket,
   type SubscriptionListener,
   type WsProvider,
@@ -27,8 +28,9 @@ import type {
 } from '../types/index.js'
 import {
   deriveMarket,
-  isTriggerType,
+  isTriggerOrder,
   mapFill,
+  mapOrderStatus,
   mapOrderType,
   mapPosition,
 } from '../utils/index.js'
@@ -397,8 +399,14 @@ export class HyperliquidWsProvider implements WsProvider {
   private handleOrderUpdates(data: HlOrderDetail[]) {
     const openOrders: OpenOrder[] = []
     const triggerOrders: TriggerOrder[] = []
+    const terminated: string[] = []
     for (const detail of data) {
       const o = detail.order
+      const orderId = String(o.oid)
+      if (!isActiveOrderStatus(mapOrderStatus(detail.status))) {
+        terminated.push(orderId)
+        continue
+      }
       const type = mapOrderType(o.orderType)
       const asset = {
         assetId: o.coin,
@@ -407,11 +415,11 @@ export class HyperliquidWsProvider implements WsProvider {
         displayQuote: null,
       }
       const createdAt = new Date(o.timestamp).toISOString()
-      if (isTriggerType(type)) {
+      if (isTriggerOrder(o)) {
         const isLimit =
           type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
         triggerOrders.push({
-          orderId: String(o.oid),
+          orderId,
           asset,
           type,
           size: o.sz,
@@ -423,7 +431,7 @@ export class HyperliquidWsProvider implements WsProvider {
       } else {
         const filled = parseFloat(o.origSz) - parseFloat(o.sz)
         openOrders.push({
-          orderId: String(o.oid),
+          orderId,
           asset,
           side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
           type,
@@ -437,7 +445,7 @@ export class HyperliquidWsProvider implements WsProvider {
     }
     this.emitToPrefix('orderUpdates:', {
       channel: 'orderUpdates',
-      data: { openOrders, triggerOrders },
+      data: { openOrders, triggerOrders, terminated },
     })
   }
 

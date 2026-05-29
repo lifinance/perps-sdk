@@ -14,9 +14,11 @@ export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
 export { mapAsset } from './mapAsset.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export {
+  isTriggerOrder,
   isTriggerType,
   mapOpenOrder,
   mapOrder,
+  mapOrderStatus,
   mapOrderType,
   mapStatusReason,
   mapTriggerOrder,

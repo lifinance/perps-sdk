@@ -11,6 +11,7 @@ export { LighterApiClient } from './apiClient.js'
 export { mapFill } from './mapFill.js'
 export {
   classifyAndMapOrders,
+  isTriggerOrder,
   isTriggerType,
   mapOrder,
   mapOrderDetail,

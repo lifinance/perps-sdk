@@ -11,9 +11,8 @@ import type {
   HlFrontendOpenOrders,
 } from '../types/index.js'
 import {
-  isTriggerType,
+  isTriggerOrder,
   mapOpenOrder,
-  mapOrderType,
   mapTriggerOrder,
   perpsDexNames,
   requireAsset,
@@ -75,7 +74,7 @@ export const getOrders = async (
   const nonChild = raw.filter((o) => !childOids.has(o.oid))
 
   let openOrders: OpenOrder[] = nonChild
-    .filter((o) => !isTriggerType(mapOrderType(o.orderType)))
+    .filter((o) => !isTriggerOrder(o))
     .map((o) => {
       const order = mapOpenOrder(o)
       return {
@@ -86,7 +85,7 @@ export const getOrders = async (
 
   let triggerOrders: TriggerOrder[] = [
     ...nonChild
-      .filter((o) => isTriggerType(mapOrderType(o.orderType)))
+      .filter((o) => isTriggerOrder(o))
       .map((o) => {
         const order = mapTriggerOrder(o)
         return {
