@@ -58,11 +58,31 @@ export interface AccountResponse {
   config: AccountConfig
 }
 
+/**
+ * How a venue groups collateral for margin.
+ *
+ * - `unified`: a single cross-margin pool; spot balances ARE the margin asset
+ *   and are valued as total token holdings.
+ * - `perMarket`: collateral is held per market (spot vs each perps venue) and
+ *   free margin is tracked separately from locked margin.
+ *
+ * Provider-agnostic replacement for branching on a venue-specific abstraction
+ * enum: consumers read {@link CollateralGrouping.unified} instead of mapping
+ * Hyperliquid's `abstractionMode`.
+ */
+export type CollateralGrouping = 'unified' | 'perMarket'
+
 export interface AccountSummary {
   portfolioValue: number
   availableMargin: number
   marginUsed: number
   unrealizedPnl: number
+  /**
+   * Whether collateral is a single unified cross-margin pool (`'unified'`) or
+   * held per market (`'perMarket'`). Drives margin roll-up and collateral-section
+   * grouping without consumers branching on provider identity.
+   */
+  collateralGrouping: CollateralGrouping
 }
 
 export interface TriggerOrder {

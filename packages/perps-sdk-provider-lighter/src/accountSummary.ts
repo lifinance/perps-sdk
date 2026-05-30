@@ -50,5 +50,6 @@ export function summarizeLighterAccount(
     availableMargin: collateral - marginUsed,
     marginUsed,
     unrealizedPnl,
+    collateralGrouping: 'perMarket',
   }
 }

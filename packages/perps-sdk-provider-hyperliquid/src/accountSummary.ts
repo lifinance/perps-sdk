@@ -122,5 +122,6 @@ export function summarizeHyperliquidAccount(
     availableMargin: marginCollateral - marginUsed,
     marginUsed,
     unrealizedPnl,
+    collateralGrouping: isUnified ? 'unified' : 'perMarket',
   }
 }
