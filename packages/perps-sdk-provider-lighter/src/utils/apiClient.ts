@@ -11,6 +11,26 @@ export type ApiParams = Record<string, string | number | boolean>
 const LIGHTER_INVALID_AUTH_CODE = 20013
 
 /**
+ * Lighter body `code` values that mean success. Lighter is inconsistent per
+ * endpoint: `/api/v1/account` returns `code: 200`, most others return `code: 0`.
+ * A body with no `code` field is also success (no error channel present).
+ */
+const LIGHTER_SUCCESS_CODES = new Set([0, 200])
+
+/**
+ * Lighter signals errors on two channels: a non-2xx HTTP status, or an HTTP 200
+ * carrying an error `code` in the JSON body. Returns the body error `code` when
+ * the body advertises one that is not a success code, else `undefined`.
+ */
+const lighterBodyErrorCode = (data: unknown): number | undefined => {
+  const code = (data as { code?: number } | undefined)?.code
+  if (code === undefined || LIGHTER_SUCCESS_CODES.has(code)) {
+    return undefined
+  }
+  return code
+}
+
+/**
  * Auth-gated read whose token Lighter rejected. Distinct from a generic
  * {@link PerpsError} so callers can evict the stored read-only token and retry
  * with a freshly-created one. Lighter signals this on either channel: an HTTP
@@ -21,8 +41,7 @@ export class LighterAuthRejectedError extends PerpsError {}
 const isLighterAuthRejection = (status: number, data: unknown): boolean =>
   status === 401 ||
   status === 403 ||
-  (status === 200 &&
-    (data as { code?: number } | undefined)?.code === LIGHTER_INVALID_AUTH_CODE)
+  lighterBodyErrorCode(data) === LIGHTER_INVALID_AUTH_CODE
 
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
@@ -148,19 +167,20 @@ export class LighterApiClient {
   }
 
   private async doGet<T>(path: string, params?: ApiParams): Promise<T> {
-    const url = this.buildUrl(path, params)
-    const response = await fetchWithRetry(
-      url,
-      {},
-      { policy: this.policy, fetchImpl: this.fetchImpl, signal: this.signal }
-    )
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
+    const { status, data } = await this.getRaw<unknown>(path, params)
+    if (status < 200 || status >= 300) {
       throw new PerpsError(
         PerpsErrorCode.ThirdPartyError,
-        `Lighter API request failed: ${response.status} ${response.statusText} — ${body.slice(0, 200)}`
+        `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }
-    return (await response.json()) as T
+    const errorCode = lighterBodyErrorCode(data)
+    if (errorCode !== undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.ThirdPartyError,
+        `Lighter API error for ${path}: code ${errorCode} — ${JSON.stringify(data).slice(0, 200)}`
+      )
+    }
+    return data as T
   }
 }
