@@ -131,6 +131,7 @@ const hyperliquidProvider: Provider = {
     },
   ],
   markets: [{ id: 'BTC-PERP', quoteAsset: 'USDC' }],
+  minOrderValueUsd: 10,
 }
 
 // Provider exercising the Lighter mapping: one setup gate, two options.
@@ -150,6 +151,8 @@ const lighterProvider: Provider = {
     },
   ],
   markets: [{ id: 'BTC', quoteAsset: 'USDC' }],
+  minOrderValueUsd: 10,
+  minReduceOrderValueUsd: 1,
 }
 
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
@@ -474,6 +477,22 @@ describe('ProviderMarketInfo.tradeNotice', () => {
 
   it('keeps the message plaintext — a URL stays inline text', () => {
     expect(warnNotice.message).toContain('docs.example.invalid')
+  })
+})
+
+describe('Provider order-value minimums', () => {
+  it('carries minOrderValueUsd to feed validateMargin', () => {
+    expect(hyperliquidProvider.minOrderValueUsd).toBe(10)
+  })
+
+  it('carries an optional separate reduce-only floor', () => {
+    expect(lighterProvider.minOrderValueUsd).toBe(10)
+    expect(lighterProvider.minReduceOrderValueUsd).toBe(1)
+  })
+
+  it('admits a provider that advertises no order-value minimum', () => {
+    expect(providerWithNoDescriptors.minOrderValueUsd).toBeUndefined()
+    expect(providerWithNoDescriptors.minReduceOrderValueUsd).toBeUndefined()
   })
 })
 
