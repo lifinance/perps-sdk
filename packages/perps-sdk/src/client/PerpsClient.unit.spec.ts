@@ -286,6 +286,73 @@ describe('PerpsClient', () => {
     })
   })
 
+  describe('execute does not retry money-moving writes', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const orderParams = {
+      symbol: 'BTC',
+      side: 'BUY' as any,
+      type: 'MARKET' as any,
+      size: '0.1',
+      price: '95000.00',
+    }
+
+    it('submits executeAction exactly once on a 503 — outcome-unknown writes must not retry', async () => {
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+
+      let executeCallCount = 0
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(mockCreateOrderResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCallCount++
+          return HttpResponse.json(
+            { code: PerpsErrorCode.ServerError, message: 'upstream 503' },
+            { status: 503 }
+          )
+        })
+      )
+
+      await expect(
+        client.execute({
+          provider,
+          address: userAddress,
+          action: ActionType.PLACE_ORDER,
+          params: orderParams,
+        })
+      ).rejects.toBeInstanceOf(PerpsError)
+
+      // Without `retry: false` the 5xx would retry up to LIFI_RETRY_DEFAULTS.maxAttempts.
+      expect(executeCallCount).toBe(1)
+    })
+
+    it('submits executeAction exactly once on a dropped connection (no retry-network)', async () => {
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+
+      let executeCallCount = 0
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(mockCreateOrderResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCallCount++
+          return HttpResponse.error()
+        })
+      )
+
+      await expect(
+        client.execute({
+          provider,
+          address: userAddress,
+          action: ActionType.PLACE_ORDER,
+          params: orderParams,
+        })
+      ).rejects.toBeInstanceOf(PerpsError)
+
+      expect(executeCallCount).toBe(1)
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch
   // ---------------------------------------------------------------------------
