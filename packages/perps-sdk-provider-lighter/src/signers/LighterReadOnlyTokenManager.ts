@@ -250,11 +250,11 @@ export class LighterReadOnlyTokenManager {
     const token: LighterReadOnlyToken = {
       token: response.api_token,
       expiry: response.expiry,
-      // Lighter echoes the literal we sent; we trust ours over the wire
-      // string so we never desynchronise the persisted shape from
-      // the typed `'single' | 'all'` discriminator.
+      // Persist the values we requested, not Lighter's echoed ones: `scope`
+      // keeps the typed discriminator, and `accountIndex` must match the key
+      // `get()` looks up by, else a divergent echo orphans the token and re-creates every read.
       scope,
-      accountIndex: response.account_index,
+      accountIndex,
     }
     await this.set(address, token.accountIndex, token)
 

@@ -83,7 +83,11 @@ import {
   encodeActivityCursor,
   type LighterActivityCursor,
 } from './utils/activityCursor.js'
-import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from './utils/apiClient.js'
+import {
+  LIGHTER_RETRY_DEFAULTS,
+  LighterApiClient,
+  LighterAuthRejectedError,
+} from './utils/apiClient.js'
 import {
   classifyAndMapOrders,
   mapFill,
@@ -180,9 +184,11 @@ export interface LighterProviderOptions {
    */
   keyStore?: LighterKeyStore
   /**
-   * Options for the long-lived read-only token manager. The token (when
-   * stored) is the preferred auth token for reads — Lighter never expires
-   * it before the recorded `expiry`.
+   * Injection overrides (storage, fetcher, clock, host) for the read-only
+   * token manager, which is always active — Lighter reads create a long-lived
+   * read-only token on first use and reuse it thereafter. The host defaults to
+   * `restUrl`. This does not enable or disable the manager; it only overrides
+   * its dependencies (primarily for tests / non-browser storage).
    */
   readOnlyTokenOptions?: LighterReadOnlyTokenManagerOptions
   /** Token lifetime for on-demand standard-token creates (Lighter caps at 8h). Default 1h. */
@@ -208,9 +214,10 @@ export interface LighterPerpsProvider extends PerpsProvider {
   /**
    * Resolve a Lighter auth token for `address` using the same priority chain
    * as the plugin's read methods: per-call override (n/a here) → constructor
-   * `authToken` → stored long-lived read-only token → freshly created 1h token
-   * via the WASM signer + registered API key. Returns `undefined` when no
-   * source can produce a token — callers degrade gracefully.
+   * `authToken` → stored long-lived read-only token → read-only token created on
+   * first use via the WASM signer + registered API key → standard 1h token as a
+   * last resort. Returns `undefined` when no source can produce a token —
+   * callers degrade gracefully.
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
 }
@@ -221,10 +228,10 @@ export interface LighterPerpsProvider extends PerpsProvider {
  * shape used by the rest of the LI.FI SDK family.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.
- * Auth-gated reads use the user-created read-only token from
- * `readOnlyTokenOptions`'s storage, a pre-created token on `authToken`, or
- * an on-demand create via the bundled WASM signer + the user's registered
- * API key from `keyStore`.
+ * Auth-gated reads use, in priority order: a pre-created token on `authToken`,
+ * the stored long-lived read-only token, or — on first use — a read-only token
+ * created via the bundled WASM signer + the user's registered API key from
+ * `keyStore` and persisted for reuse.
  *
  * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
  * `signActions` — `PerpsClient.execute` delegates those arms here.
@@ -241,10 +248,10 @@ export const lighterProvider = (
         : undefined
   const signer = options.signer
   const keyStore = options.keyStore
-  const readOnlyTokenManager =
-    options.readOnlyTokenOptions !== undefined
-      ? new LighterReadOnlyTokenManager(options.readOnlyTokenOptions)
-      : undefined
+  const readOnlyTokenManager = new LighterReadOnlyTokenManager({
+    lighterApiUrl: restUrl,
+    ...options.readOnlyTokenOptions,
+  })
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
@@ -336,11 +343,11 @@ export const lighterProvider = (
    *   2. Constructor-supplied token source.
    *   3. A stored read-only token — preferred for reads: it is read-only, so
    *      forwarding it (incl. to the backend) cannot authorise writes.
-   *   4. A read-only token created on first use and persisted, when a
-   *      `readOnlyTokenManager` + signer are wired.
+   *   4. A read-only token created on first use (via signer + registered API
+   *      key) and persisted for reuse.
    *   5. A standard auth token (read+write, 8h max) as a last resort — used
-   *      both as the fallback and as the credential that authorises read-only
-   *      token creation.
+   *      both as the fallback when creation is unavailable/failed and as the
+   *      credential that authorises read-only token creation.
    * Returns `undefined` when no source can produce a token — reads degrade
    * gracefully.
    */
@@ -367,10 +374,6 @@ export const lighterProvider = (
         apiKeyIndex: apiKey.apiKeyIndex,
         accountIndex: apiKey.accountIndex,
       })
-
-    if (readOnlyTokenManager === undefined) {
-      return standardToken()
-    }
 
     const stored = await readOnlyTokenManager.get(address, apiKey.accountIndex)
     if (stored !== undefined) {
@@ -420,6 +423,44 @@ export const lighterProvider = (
     })()
     readOnlyCreationInFlight.set(flightKey, attempt)
     return attempt
+  }
+
+  const evictReadOnlyToken = async (address: Address): Promise<void> => {
+    readOnlyCreationFailed.delete(address.toLowerCase())
+    const apiKey = keyStore ? await keyStore.get(address) : null
+    if (apiKey !== null) {
+      await readOnlyTokenManager.remove(address, apiKey.accountIndex)
+    }
+  }
+
+  /**
+   * Run an auth-gated read; if Lighter rejects the token (revoked server-side —
+   * invisible to `checkSetup`, since the read-only token is a client-only
+   * concern), evict the stored read-only token and retry once with a freshly
+   * resolved one. Only self-heals tokens the SDK itself resolved — a
+   * caller-supplied `lighterAuthToken`/`authToken` source is the caller's to fix.
+   */
+  const retryOnRevoked = async <T>(
+    opts: SDKRequestOptions | undefined,
+    address: Address,
+    token: string,
+    run: (token: string) => Promise<T>
+  ): Promise<T> => {
+    try {
+      return await run(token)
+    } catch (err) {
+      const sdkOwnsToken =
+        opts?.lighterAuthToken === undefined && authTokenSource === undefined
+      if (!(err instanceof LighterAuthRejectedError) || !sdkOwnsToken) {
+        throw err
+      }
+      await evictReadOnlyToken(address)
+      const fresh = await resolveAuthToken(opts, address)
+      if (fresh === undefined || fresh === token) {
+        throw err
+      }
+      return await run(fresh)
+    }
   }
 
   const fetchDetailedAccount = async (
@@ -621,13 +662,11 @@ export const lighterProvider = (
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         token === undefined
           ? Promise.resolve(undefined)
-          : fetchAccountLimits(client, account.index, token).catch(
-              () => undefined
-            ),
+          : retryOnRevoked(opts, params.address, token, (t) =>
+              fetchAccountLimits(client, account.index, t)
+            ).catch(() => undefined),
         keyStore ? keyStore.get(params.address) : Promise.resolve(null),
-        readOnlyTokenManager
-          ? readOnlyTokenManager.get(params.address, account.index)
-          : Promise.resolve(undefined),
+        readOnlyTokenManager.get(params.address, account.index),
       ])
 
       // REGISTER_API_KEY is satisfied only when the locally-held keypair
@@ -743,9 +782,11 @@ export const lighterProvider = (
           ? deriveOrderBearingMarketIds(account)
           : [Number(params.assetId)]
 
-      const responses = await Promise.all(
-        marketIds.map((id) =>
-          fetchActiveOrdersForMarket(client, token, account.index, id)
+      const responses = await retryOnRevoked(opts, params.address, token, (t) =>
+        Promise.all(
+          marketIds.map((id) =>
+            fetchActiveOrdersForMarket(client, t, account.index, id)
+          )
         )
       )
 
@@ -804,10 +845,16 @@ export const lighterProvider = (
         String(o.order_index) === params.id
 
       const marketIds = deriveOrderBearingMarketIds(account)
-      const activeResponses = await Promise.all(
-        marketIds.map((id) =>
-          fetchActiveOrdersForMarket(client, token, account.index, id)
-        )
+      const activeResponses = await retryOnRevoked(
+        opts,
+        params.address,
+        token,
+        (t) =>
+          Promise.all(
+            marketIds.map((id) =>
+              fetchActiveOrdersForMarket(client, t, account.index, id)
+            )
+          )
       )
 
       for (const response of activeResponses) {
@@ -817,14 +864,12 @@ export const lighterProvider = (
         }
       }
 
-      const inactive = await client.getAuthed<LtOrdersResponse>(
-        '/api/v1/accountInactiveOrders',
-        token,
-        {
+      const inactive = await retryOnRevoked(opts, params.address, token, (t) =>
+        client.getAuthed<LtOrdersResponse>('/api/v1/accountInactiveOrders', t, {
           account_index: account.index,
           market_id: LIGHTER_ALL_MARKETS_WILDCARD,
           limit: INACTIVE_ORDERS_LOOKUP_LIMIT,
-        }
+        })
       )
       const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
       if (hit !== undefined) {
@@ -861,10 +906,12 @@ export const lighterProvider = (
 
       const response =
         token !== undefined && token.length > 0
-          ? await client.getAuthed<LtTradesResponse>(
-              '/api/v1/trades',
-              token,
-              queryParams
+          ? await retryOnRevoked(opts, params.address, token, (tok) =>
+              client.getAuthed<LtTradesResponse>(
+                '/api/v1/trades',
+                tok,
+                queryParams
+              )
             )
           : await client.get<LtTradesResponse>('/api/v1/trades', queryParams)
 
@@ -905,13 +952,15 @@ export const lighterProvider = (
       const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
       const [history, marketLookup] = await Promise.all([
-        fetchAllHistory(
-          client,
-          token,
-          account.index,
-          params.address,
-          params.type,
-          inputCursor
+        retryOnRevoked(opts, params.address, token, (t) =>
+          fetchAllHistory(
+            client,
+            t,
+            account.index,
+            params.address,
+            params.type,
+            inputCursor
+          )
         ),
         buildSymbolLookup(sdkClient, opts),
       ])

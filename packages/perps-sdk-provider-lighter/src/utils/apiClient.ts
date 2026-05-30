@@ -7,6 +7,23 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 
 export type ApiParams = Record<string, string | number | boolean>
 
+/** Lighter body `code` for a rejected/invalid auth token ("invalid auth string"). */
+const LIGHTER_INVALID_AUTH_CODE = 20013
+
+/**
+ * Auth-gated read whose token Lighter rejected. Distinct from a generic
+ * {@link PerpsError} so callers can evict the stored read-only token and retry
+ * with a freshly-created one. Lighter signals this on either channel: an HTTP
+ * 401/403, or an HTTP 200 carrying an error `code` in the body.
+ */
+export class LighterAuthRejectedError extends PerpsError {}
+
+const isLighterAuthRejection = (status: number, data: unknown): boolean =>
+  status === 401 ||
+  status === 403 ||
+  (status === 200 &&
+    (data as { code?: number } | undefined)?.code === LIGHTER_INVALID_AUTH_CODE)
+
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
   maxAttempts: 2,
@@ -92,7 +109,23 @@ export class LighterApiClient {
     authToken: string,
     params: ApiParams = {}
   ): Promise<T> {
-    return this.doGet<T>(path, { ...params, auth: authToken })
+    const { status, data } = await this.getRaw<unknown>(path, {
+      ...params,
+      auth: authToken,
+    })
+    if (isLighterAuthRejection(status, data)) {
+      throw new LighterAuthRejectedError(
+        PerpsErrorCode.ThirdPartyError,
+        `Lighter rejected the auth token for ${path}`
+      )
+    }
+    if (status < 200 || status >= 300) {
+      throw new PerpsError(
+        PerpsErrorCode.ThirdPartyError,
+        `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
+      )
+    }
+    return data as T
   }
 
   /**

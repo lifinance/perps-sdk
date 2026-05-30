@@ -90,6 +90,33 @@ describe('LighterReadOnlyTokenManager', () => {
       })
     })
 
+    it('keys the stored token by the requested accountIndex, not a divergent echoed account_index', async () => {
+      const { manager, storage } = makeManager({
+        fetcherResponse: {
+          api_token: 'ro:echo-mismatch',
+          account_index: 999,
+          expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
+        },
+      })
+
+      await manager.approve(STD_TOKEN, {
+        address: ADDRESS_A,
+        accountIndex: 7,
+        expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
+        scope: 'all',
+      })
+
+      // Retrievable under the index we queried with, never the echoed 999 — a
+      // mismatch here orphans the token and re-creates a 10-year token every read.
+      const found = await manager.get(ADDRESS_A, 7)
+      expect(found?.token).toBe('ro:echo-mismatch')
+      expect(found?.accountIndex).toBe(7)
+      expect(await manager.get(ADDRESS_A, 999)).toBeUndefined()
+      expect(
+        await storage.get(`lifi:perps:lighter:rotoken:${ADDRESS_A}:7`)
+      ).not.toBeNull()
+    })
+
     it("treats scope 'single' as sub_account_access=false on the wire", async () => {
       const { manager, fetcher } = makeManager({
         fetcherResponse: { scopes: 'single' },

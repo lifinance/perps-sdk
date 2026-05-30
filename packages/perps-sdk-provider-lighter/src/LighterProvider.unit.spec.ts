@@ -11,6 +11,9 @@ import type { LighterSigner } from './signers/LighterSigner.js'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111' as const
 
+/** Year ~2096 in unix seconds — a read-only token expiry far past any test clock. */
+const FAR_EXPIRY_SECONDS = 4_000_000_000
+
 // Lighter account-level methods now call backend `/perps/assets?provider=lighter`
 // to source the `market_id → displaySymbol` lookup. Stub a backend apiUrl
 // against which the fetch mock can match.
@@ -293,7 +296,7 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=dynamic-token-1')
   })
 
-  it('creates tokens via the WASM signer when `signer` + `keyStore` are provided', async () => {
+  it('creates a read-only token on first use and forwards it (never the read-write token) on auth-gated reads', async () => {
     const createdTokens: string[] = []
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => {
@@ -302,53 +305,74 @@ describe('LighterProvider — auth token plumbing', () => {
         return t
       }),
     } as unknown as LighterSigner
-    const storage = createMemoryStorage()
-    const keyStore = new LighterKeyStore(storage)
+    const keyStore = new LighterKeyStore(createMemoryStorage())
     await keyStore.set(ADDRESS, {
       accountIndex: 100,
       apiKeyIndex: 42,
       apiKeyPrivateKey: '0xabc',
       apiKeyPublicKey: '0xdef',
     })
+    const tokenFetcher = vi.fn(async () => ({
+      api_token: 'ro-readonly-lighter',
+      account_index: 100,
+      expiry: FAR_EXPIRY_SECONDS,
+      scopes: 'all',
+    }))
     const provider = lighterProvider({
       signer: signerStub,
       keyStore,
+      readOnlyTokenOptions: {
+        storage: createMemoryStorage(),
+        fetcher: tokenFetcher,
+      },
     })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
-    expect(
-      (
-        signerStub as unknown as {
-          createAuthToken: { mock: { calls: unknown[] } }
-        }
-      ).createAuthToken.mock.calls.length
-    ).toBe(1)
+    // Standard (read-write) token is signed exactly once — only to authorise
+    // the read-only token creation, never to authenticate the read itself.
     expect(createdTokens.length).toBe(1)
+    expect(tokenFetcher).toHaveBeenCalledTimes(1)
+    expect(tokenFetcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorization: createdTokens[0],
+        accountIndex: 100,
+      })
+    )
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain(`auth=${createdTokens[0]}`)
+    expect(limitsCall?.url).toContain('auth=ro-readonly-lighter')
   })
 
-  it('reuses a cached signer-created token across calls until near expiry', async () => {
+  it('creates the read-only token at most once and reuses it across reads', async () => {
     const signerStub = {
       createAuthToken: vi.fn(async (deadline: number) => `tok-${deadline}`),
     } as unknown as LighterSigner
-    const storage = createMemoryStorage()
-    const keyStore = new LighterKeyStore(storage)
+    const keyStore = new LighterKeyStore(createMemoryStorage())
     await keyStore.set(ADDRESS, {
       accountIndex: 100,
       apiKeyIndex: 42,
       apiKeyPrivateKey: '0xabc',
       apiKeyPublicKey: '0xdef',
     })
+    const tokenFetcher = vi.fn(async () => ({
+      api_token: 'ro-readonly-lighter',
+      account_index: 100,
+      expiry: FAR_EXPIRY_SECONDS,
+      scopes: 'all',
+    }))
     const provider = lighterProvider({
       signer: signerStub,
       keyStore,
-      tokenLifetimeSeconds: 3600,
-      tokenRenewBufferSeconds: 60,
+      readOnlyTokenOptions: {
+        storage: createMemoryStorage(),
+        fetcher: tokenFetcher,
+      },
     })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
     await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    // tokens/create hit exactly once across both reads; the second read reuses
+    // the persisted token and so never re-signs a standard token either.
+    expect(tokenFetcher).toHaveBeenCalledTimes(1)
     expect(
       (
         signerStub as unknown as {
@@ -356,6 +380,13 @@ describe('LighterProvider — auth token plumbing', () => {
         }
       ).createAuthToken.mock.calls.length
     ).toBe(1)
+    const limitsCalls = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    expect(limitsCalls).toHaveLength(2)
+    for (const call of limitsCalls) {
+      expect(call.url).toContain('auth=ro-readonly-lighter')
+    }
   })
 
   it('skips on-demand creating when no API key is registered for the address', async () => {
@@ -374,6 +405,156 @@ describe('LighterProvider — auth token plumbing', () => {
         }
       ).createAuthToken.mock.calls.length
     ).toBe(0)
+  })
+})
+
+describe('LighterProvider — read-only token revocation self-heal', () => {
+  const LIMITS_OK = {
+    code: 0,
+    max_llp_percentage: 0,
+    max_llp_amount: '0',
+    user_tier: 'STANDARD',
+    can_create_public_pool: false,
+    current_maker_fee_tick: 100,
+    current_taker_fee_tick: 280,
+    leased_lit: '0',
+    effective_lit_stakes: '0',
+  }
+
+  // Lighter signals a rejected token on EITHER channel — pin both.
+  it.each([
+    {
+      label: 'HTTP 401',
+      staleLimits: () => new Response('unauthorized', { status: 401 }),
+    },
+    {
+      label: 'HTTP 200 body code 20013',
+      staleLimits: () =>
+        respond({ code: 20013, message: 'invalid auth string' }),
+    },
+  ])('evicts the revoked read-only token and retries with a fresh one ($label)', async ({
+    staleLimits,
+  }) => {
+    const roStorage = createMemoryStorage()
+    const keyStore = new LighterKeyStore(createMemoryStorage())
+    await keyStore.set(ADDRESS, {
+      accountIndex: 42,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xabc',
+      apiKeyPublicKey: '0xdef',
+    })
+
+    let createCount = 0
+    const tokenFetcher = vi.fn(async () => {
+      createCount += 1
+      return {
+        api_token: createCount === 1 ? 'ro-stale' : 'ro-fresh',
+        account_index: 42,
+        expiry: FAR_EXPIRY_SECONDS,
+        scopes: 'all',
+      }
+    })
+    const signerStub = {
+      createAuthToken: vi.fn(async (d: number) => `std-${d}`),
+    } as unknown as LighterSigner
+
+    let limitsCalls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          limitsCalls += 1
+          return u.includes('auth=ro-stale')
+            ? staleLimits()
+            : respond(LIMITS_OK)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+
+    const provider = lighterProvider({
+      signer: signerStub,
+      keyStore,
+      readOnlyTokenOptions: { storage: roStorage, fetcher: tokenFetcher },
+    })
+
+    const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+
+    expect(tokenFetcher).toHaveBeenCalledTimes(2) // stale, then fresh after eviction
+    expect(limitsCalls).toBe(2) // rejected once, retried once
+    expect(account.feeTier.maker).not.toBe('0') // recovered read populated fees
+    const stored = await roStorage.get(
+      `lifi:perps:lighter:rotoken:${ADDRESS}:42`
+    )
+    expect(JSON.parse(stored as string).token).toBe('ro-fresh')
+  })
+
+  it('does NOT evict or retry when the caller supplied the auth token', async () => {
+    const keyStore = new LighterKeyStore(createMemoryStorage())
+    await keyStore.set(ADDRESS, {
+      accountIndex: 42,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xabc',
+      apiKeyPublicKey: '0xdef',
+    })
+    const tokenFetcher = vi.fn(async () => ({
+      api_token: 'ro-should-not-create',
+      account_index: 42,
+      expiry: FAR_EXPIRY_SECONDS,
+      scopes: 'all',
+    }))
+
+    let limitsCalls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          limitsCalls += 1
+          return new Response('unauthorized', { status: 401 })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+
+    const provider = lighterProvider({
+      signer: {
+        createAuthToken: vi.fn(async () => 'unused'),
+      } as unknown as LighterSigner,
+      keyStore,
+      readOnlyTokenOptions: {
+        storage: createMemoryStorage(),
+        fetcher: tokenFetcher,
+      },
+    })
+
+    await provider.getAccount(
+      STUB_CLIENT,
+      { address: ADDRESS },
+      { lighterAuthToken: 'caller-token' }
+    )
+
+    expect(tokenFetcher).toHaveBeenCalledTimes(0) // never created an SDK-owned token
+    expect(limitsCalls).toBe(1) // 401 surfaced, not retried
   })
 })
 
