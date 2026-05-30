@@ -13,6 +13,8 @@ import type {
   ParamOption,
   Provider,
   ProviderAction,
+  ProviderMarketInfo,
+  TradeNotice,
 } from './providers.js'
 
 // ---------------------------------------------------------------------------
@@ -148,6 +150,32 @@ const lighterProvider: Provider = {
     },
   ],
   markets: [{ id: 'BTC', quoteAsset: 'USDC' }],
+}
+
+// warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
+// but the type carries no provider-specific naming.
+const warnNotice: TradeNotice = {
+  level: 'warn',
+  message:
+    'This market is operated by a third-party deployer. See their docs at docs.example.invalid before trading.',
+}
+
+const infoNotice: TradeNotice = {
+  level: 'info',
+  message: 'Funding settles hourly on this market.',
+}
+
+// A market carrying a warn-level notice alongside the always-present fields.
+const marketWithWarnNotice: ProviderMarketInfo = {
+  id: 'KPEPE-PERP',
+  quoteAsset: 'USDC',
+  tradeNotice: warnNotice,
+}
+
+// tradeNotice is optional — a market may omit it entirely.
+const marketWithoutNotice: ProviderMarketInfo = {
+  id: 'BTC-PERP',
+  quoteAsset: 'USDC',
 }
 
 // Empty setup + options is valid (provider with no gates and no knobs).
@@ -302,6 +330,15 @@ type _ProviderActionKeys = Expect<
 // are deferred until a real descriptor needs them.
 type _ParamTypeIsString = Expect<Equals<Param['type'], 'string'>>
 
+// `TradeNotice.level` is the closed two-member literal union — catches an
+// accidental widening to `string` or a stray third level.
+type _TradeNoticeLevel = Expect<Equals<TradeNotice['level'], 'info' | 'warn'>>
+
+// `tradeNotice` is optional on the market — an absent notice is the common case.
+type _TradeNoticeOptional = Expect<
+  Equals<Extract<RequiredKeys<ProviderMarketInfo>, 'tradeNotice'>, never>
+>
+
 // `AccountConfig` narrows on `provider`. The widget never reads the union
 // directly without narrowing — these assertions lock that contract.
 type _NarrowHl = Expect<
@@ -335,6 +372,10 @@ export const _fixtures = {
   lighterAccountTypeOption,
   hyperliquidProvider,
   lighterProvider,
+  warnNotice,
+  infoNotice,
+  marketWithWarnNotice,
+  marketWithoutNotice,
   providerWithNoDescriptors,
   announcedProvider,
   hyperliquidConfig,
@@ -359,6 +400,8 @@ export type _TypeAssertions = [
   _OptionsIsRequired,
   _ProviderActionKeys,
   _ParamTypeIsString,
+  _TradeNoticeLevel,
+  _TradeNoticeOptional,
   _NarrowHl,
   _NarrowLighter,
   _AccountResponseConfig,
@@ -411,6 +454,26 @@ describe('Provider setup / options descriptors', () => {
   it('admits providers with empty setup and options arrays', () => {
     expect(providerWithNoDescriptors.setup).toEqual([])
     expect(providerWithNoDescriptors.options).toEqual([])
+  })
+})
+
+describe('ProviderMarketInfo.tradeNotice', () => {
+  it('attaches a warn-level notice to a market', () => {
+    expect(marketWithWarnNotice.tradeNotice).toEqual(warnNotice)
+    expect(marketWithWarnNotice.tradeNotice?.level).toBe('warn')
+  })
+
+  it('admits a market with no notice (the common case)', () => {
+    expect(marketWithoutNotice.tradeNotice).toBeUndefined()
+  })
+
+  it('carries the two notice levels the widget styles', () => {
+    expect(warnNotice.level).toBe('warn')
+    expect(infoNotice.level).toBe('info')
+  })
+
+  it('keeps the message plaintext — a URL stays inline text', () => {
+    expect(warnNotice.message).toContain('docs.example.invalid')
   })
 })
 
