@@ -78,6 +78,8 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+export type { GetTokensParams } from './services/getTokens.js'
+export { getTokens } from './services/getTokens.js'
 // Transport
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'

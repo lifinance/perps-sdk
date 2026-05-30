@@ -38,6 +38,13 @@ const ASSETS_RESPONSE = {
   ],
 }
 
+const TOKENS_RESPONSE = {
+  tokens: [
+    { id: '3', symbol: 'USDC', logoURI: 'https://cdn.test/usdc.png' },
+    { id: '0', symbol: 'BTC' },
+  ],
+}
+
 const ACCOUNT_PAYLOAD = {
   code: 200,
   total: 1,
@@ -144,6 +151,9 @@ beforeEach(() => {
     if (urlStr.includes('backend.test/v1/perps/assets')) {
       return respond(ASSETS_RESPONSE)
     }
+    if (urlStr.includes('backend.test/v1/perps/tokens')) {
+      return respond(TOKENS_RESPONSE)
+    }
     const u = String(url)
     recorded.push({ url: u, init })
     if (u.includes('/api/v1/account?')) {
@@ -197,20 +207,6 @@ beforeEach(() => {
     }
     if (u.includes('/api/v1/transfer/history')) {
       return respond({ code: 0, transfers: [] })
-    }
-    if (u.includes('/api/v1/assetDetails')) {
-      return respond({
-        code: 0,
-        asset_details: [
-          {
-            asset_id: 3,
-            symbol: 'USDC',
-            l1_decimals: 6,
-            decimals: 6,
-            l1_address: '0xusdc',
-          },
-        ],
-      })
     }
     if (u.includes('/api/v1/funding-rates')) {
       return respond({
@@ -631,9 +627,6 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('/api/v1/orderBookDetails')) {
         return respond(ORDER_BOOK_DETAILS_PAYLOAD)
       }
-      if (u.includes('/api/v1/assetDetails')) {
-        return respond({ code: 0, asset_details: [] })
-      }
       if (u.includes('/api/v1/deposit/history')) {
         return respond({
           code: 0,
@@ -665,6 +658,9 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/tokens')) {
+        return respond(TOKENS_RESPONSE)
+      }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
@@ -677,6 +673,95 @@ describe('LighterProvider — normalisation', () => {
     expect(result.pagination.cursor).toBeTypeOf('string')
     expect(result.items).toHaveLength(1)
     expect(result.items[0].type).toBe(ActivityType.DEPOSIT)
+  })
+})
+
+describe('LighterProvider — getActivity transfer token registry', () => {
+  const transferRow = (assetId: number) => ({
+    id: `tr-${assetId}`,
+    from_account_index: 42,
+    to_account_index: 99,
+    asset_id: assetId,
+    amount: '25',
+    timestamp: 1700000000000,
+    type: 'standard',
+    tx_hash: '0xfeed',
+    from_route: 'r1',
+    to_route: 'r2',
+    fee: '0',
+  })
+
+  const stubWithTransfer = (assetId: number) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/tokens')) {
+        return respond(TOKENS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/orderBookDetails')) {
+        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+      }
+      if (u.includes('/api/v1/transfer/history')) {
+        return respond({ code: 0, transfers: [transferRow(assetId)] })
+      }
+      if (
+        u.includes('/api/v1/deposit/history') ||
+        u.includes('/api/v1/withdraw/history')
+      ) {
+        return respond({ code: 0, deposits: [], withdraws: [] })
+      }
+      if (u.includes('/api/v1/positionFunding')) {
+        return respond({ code: 0, position_fundings: [] })
+      }
+      if (u.includes('/api/v1/liquidations')) {
+        return respond({ code: 0, liquidations: [] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('maps a transfer asset_id to its backend token symbol', async () => {
+    stubWithTransfer(3)
+    const provider = lighterProvider({ authToken: 'tok' })
+    const { items } = await provider.getActivity(STUB_CLIENT, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
+    expect(transfer?.asset).toBe('USDC')
+  })
+
+  it('falls back to String(asset_id) when the token registry has no symbol', async () => {
+    stubWithTransfer(777)
+    const provider = lighterProvider({ authToken: 'tok' })
+    const { items } = await provider.getActivity(STUB_CLIENT, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
+    expect(transfer?.asset).toBe('777')
+  })
+
+  it('memoises /perps/tokens across getActivity calls on the same provider', async () => {
+    stubWithTransfer(3)
+    const provider = lighterProvider({ authToken: 'tok' })
+    await provider.getActivity(STUB_CLIENT, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    await provider.getActivity(STUB_CLIENT, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    const tokenCalls = recorded.filter((r) =>
+      r.url.includes('backend.test/v1/perps/tokens')
+    )
+    expect(tokenCalls).toHaveLength(1)
   })
 })
 

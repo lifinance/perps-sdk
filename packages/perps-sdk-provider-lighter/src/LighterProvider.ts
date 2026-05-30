@@ -4,6 +4,7 @@ import {
   getOhlcv as coreGetOhlcv,
   getOrderbook as coreGetOrderbook,
   getPrices as coreGetPrices,
+  getTokens as coreGetTokens,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -261,6 +262,10 @@ export const lighterProvider = (
   // every subsequent read — flooding the endpoint. Keyed by lowercase address.
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
   const readOnlyCreationFailed: Set<string> = new Set()
+  // Session-memoised `asset_id → symbol` registry from the backend's
+  // Valkey-cached `/perps/tokens` route. Single-flight: concurrent reads share
+  // one fetch and every subsequent read reuses the resolved map.
+  let tokenLookup: Promise<Map<string, string>> | undefined
 
   // ---------------------------------------------------------------------------
   // Internal helpers — closed-over state replaces the class's `this.X` access.
@@ -301,6 +306,22 @@ export const lighterProvider = (
         .filter((a) => a.market === LIGHTER_PROVIDER_KEY)
         .map((a) => [Number(a.assetId), a.displaySymbol])
     )
+  }
+
+  /**
+   * Resolve the `Token.id → Token.symbol` map from the backend's `/perps/tokens`
+   * registry, memoised for the lifetime of this provider instance.
+   */
+  const getTokenLookup = (
+    sdkClient: PerpsSDKClient,
+    opts?: SDKRequestOptions
+  ): Promise<Map<string, string>> => {
+    tokenLookup ??= coreGetTokens(
+      sdkClient,
+      { provider: LIGHTER_PROVIDER_KEY },
+      opts
+    ).then(({ tokens }) => new Map(tokens.map((t) => [t.id, t.symbol])))
+    return tokenLookup
   }
 
   const getStandardAuthToken = async (
@@ -951,7 +972,7 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const [history, marketLookup] = await Promise.all([
+      const [history, marketLookup, tokensById] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
           fetchAllHistory(
             client,
@@ -963,6 +984,7 @@ export const lighterProvider = (
           )
         ),
         buildSymbolLookup(sdkClient, opts),
+        getTokenLookup(sdkClient, opts),
       ])
 
       const items: ActivityItem[] = [
@@ -1026,7 +1048,7 @@ export const lighterProvider = (
             type: ActivityType.TRANSFER,
             direction,
             counterpartyAccountIndex,
-            asset: String(t.asset_id),
+            asset: tokensById.get(String(t.asset_id)) ?? String(t.asset_id),
             amount: t.amount,
             meta: {
               transferType: t.type,
