@@ -25,7 +25,6 @@ import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsProvider } from '../types/core.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
-import { SigningMode } from './types.js'
 
 describe('PerpsClient', () => {
   let client: PerpsClient
@@ -40,34 +39,19 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('signing mode', () => {
-    it('should default to USER_AGENT mode', () => {
-      expect(client.getSigningMode(userAddress, provider)).toBe(
-        SigningMode.USER_AGENT
-      )
-    })
-
-    it('should set USER_AGENT mode and create agent', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
-      expect(client.getSigningMode(userAddress, provider)).toBe(
-        SigningMode.USER_AGENT
-      )
-      expect(await client.hasAgent(userAddress, provider)).toBe(true)
-    })
-
-    it('should get agent address in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-
-      const agentAddress = await client.getAgentAddress(userAddress, provider)
-      expect(agentAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
-    })
-
-    it('should throw when getting agent in USER mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
+  describe('agent management', () => {
+    it('throws when getting an agent address before one exists', async () => {
       await expect(
         client.getAgentAddress(userAddress, provider)
       ).rejects.toThrow()
+    })
+
+    it('returns the agent address once an agent has been created', async () => {
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+
+      const agentAddress = await client.getAgentAddress(userAddress, provider)
+      expect(agentAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
+      expect(await client.hasAgent(userAddress, provider)).toBe(true)
     })
   })
 
@@ -79,24 +63,19 @@ describe('PerpsClient', () => {
   })
 
   describe('removeAgent', () => {
-    it('should remove agent and reset signing mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
-      expect(client.getSigningMode(userAddress, provider)).toBe(
-        SigningMode.USER_AGENT
-      )
+    it('removes a previously created agent', async () => {
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      expect(await client.hasAgent(userAddress, provider)).toBe(true)
 
       await client.removeAgent(userAddress, provider)
 
-      expect(client.getSigningMode(userAddress, provider)).toBe(
-        SigningMode.USER_AGENT
-      )
       expect(await client.hasAgent(userAddress, provider)).toBe(false)
     })
   })
 
   describe('placeOrder', () => {
     it('should place order in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       const result = await client.placeOrder({
         address: userAddress,
@@ -177,7 +156,7 @@ describe('PerpsClient', () => {
 
   describe('cancelOrders', () => {
     it('should cancel orders in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       const result = await client.cancelOrders({
         address: userAddress,
@@ -190,19 +169,9 @@ describe('PerpsClient', () => {
   })
 
   describe('buildProviderSetup', () => {
-    it('should auto-inject signerAddress in USER_AGENT mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+    it('auto-injects the agent signerAddress for agent-signed setup', async () => {
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
-      const result = await client.buildProviderSetup({
-        provider,
-        address: userAddress,
-      })
-
-      expect(result.actions).toBeDefined()
-    })
-
-    it('should work in USER mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER)
       const result = await client.buildProviderSetup({
         provider,
         address: userAddress,
@@ -216,7 +185,7 @@ describe('PerpsClient', () => {
     const BASE_URL = DEFAULT_API_URL
 
     it('propagates InvalidNonce to the caller and submits exactly once', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       let createCallCount = 0
       let executeCallCount = 0
@@ -254,7 +223,7 @@ describe('PerpsClient', () => {
     })
 
     it('propagates non-InvalidNonce errors and submits exactly once', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       let executeCallCount = 0
       server.use(
@@ -484,7 +453,7 @@ describe('PerpsClient', () => {
     }
 
     it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionMode is null', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
       mockAbstractionStatus(null)
 
       let observedAccountModeRequest: CreateActionRequest | undefined
@@ -540,7 +509,7 @@ describe('PerpsClient', () => {
     })
 
     it('returns fallbackUserProviderSetup (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
       mockAbstractionStatus('dexAbstraction')
 
       const accountModeCreateRequests: CreateActionRequest[] = []
@@ -603,7 +572,7 @@ describe('PerpsClient', () => {
     })
 
     it('short-circuits to a no-op when abstractionMode already equals the requested mode', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
       mockAbstractionStatus('unifiedAccount')
 
       const counts = setupActionHandlers()
@@ -624,7 +593,7 @@ describe('PerpsClient', () => {
     })
 
     it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user setup actions', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
       mockAbstractionStatus(null)
 
       let accountModeCreateCount = 0
@@ -696,7 +665,7 @@ describe('PerpsClient', () => {
     })
 
     it('propagates account read errors rather than guessing the signer', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       stubGetAccount.mockRejectedValue(
         new PerpsError(PerpsErrorCode.ProviderError, 'upstream down')
@@ -715,7 +684,7 @@ describe('PerpsClient', () => {
 
   describe('execute(ACCOUNT_TYPE)', () => {
     it('throws a clear error when the provider does not declare ACCOUNT_TYPE (e.g. Hyperliquid)', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       await expect(
         client.execute({
@@ -730,7 +699,7 @@ describe('PerpsClient', () => {
 
   describe('buildProviderSetupInputs filtering (via buildProviderSetup)', () => {
     it('omits ACCOUNT_MODE from bulk-staged provider setup action inputs (requires explicit `mode`)', async () => {
-      await client.setSigningMode(userAddress, provider, SigningMode.USER_AGENT)
+      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
 
       const observedActions: ActionType[] = []
       server.use(

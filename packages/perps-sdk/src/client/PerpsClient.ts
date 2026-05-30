@@ -31,20 +31,19 @@ import {
   signTypedDataWithSigner,
 } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
-import {
-  type BuildProviderSetupParams,
-  type CancelOrdersParams,
-  type ExecuteProviderSetupParams,
-  type ExecuteProviderSetupResult,
-  type GetAccountResult,
-  type GetSetupParams,
-  type ModifyOrdersParams,
-  type PerpsClientOptions,
-  type PlaceOrderParams,
-  type PlaceTriggerOrderParams,
-  type ProviderSetup,
-  SigningMode,
-  type WithdrawParams,
+import type {
+  BuildProviderSetupParams,
+  CancelOrdersParams,
+  ExecuteProviderSetupParams,
+  ExecuteProviderSetupResult,
+  GetAccountResult,
+  GetSetupParams,
+  ModifyOrdersParams,
+  PerpsClientOptions,
+  PlaceOrderParams,
+  PlaceTriggerOrderParams,
+  ProviderSetup,
+  WithdrawParams,
 } from './types.js'
 
 /**
@@ -72,7 +71,6 @@ function findActionDescriptor(
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
   private storage: StorageAdapter
-  private signingModes: Map<string, SigningMode> = new Map()
   private providerMetadataCache: Map<string, Provider> = new Map()
   private _signer: PerpsSDKClient['signer'] | undefined
 
@@ -104,14 +102,6 @@ export class PerpsClient {
     return this.sdkClient
   }
 
-  private modeKey(address: Address, provider: string): string {
-    return `${address.toLowerCase()}:${provider.toLowerCase()}`
-  }
-
-  private signingModeStorageKey(address: Address, provider: string): string {
-    return `lifi-perps-mode:${address.toLowerCase()}:${provider.toLowerCase()}`
-  }
-
   private async getProviderMetadata(provider: string): Promise<Provider> {
     const cached = this.providerMetadataCache.get(provider)
     if (cached) {
@@ -136,18 +126,14 @@ export class PerpsClient {
   }
 
   /**
-   * Action types that require explicit user input (a chosen mode or tier)
-   * and therefore cannot be bulk-staged through `buildProviderSetup` with
-   * empty params. Callers must dispatch these via `execute(...)` once a
-   * value is picked. The post-`APPROVE_AGENT` auto-upgrade path also
-   * dispatches `ACCOUNT_MODE` directly with `mode: 'unifiedAccount'`.
+   * Map the provider's setup gates to bulk-stageable inputs, ordered by
+   * `sequence`. Setup descriptors are params-free by contract — input-requiring
+   * tunables (ACCOUNT_MODE, ACCOUNT_TYPE) live on `Provider.options` and are
+   * dispatched individually via `execute(...)`, never bulk-staged here. The
+   * only param injected is the agent address for `APPROVE_AGENT`.
    */
-  private static readonly EXPLICIT_INPUT_SETUP_ACTIONS: ReadonlySet<ActionType> =
-    new Set([ActionType.ACCOUNT_MODE, ActionType.ACCOUNT_TYPE])
-
   private buildProviderSetupInputs(
     setup: ProviderAction[],
-    mode: SigningMode,
     agentAddress?: Address
   ): Array<{ key: string; params?: Record<string, unknown> }> {
     return [...setup]
@@ -156,27 +142,6 @@ export class PerpsClient {
           (a.sequence ?? Number.MAX_SAFE_INTEGER) -
           (b.sequence ?? Number.MAX_SAFE_INTEGER)
       )
-      .filter((p) => {
-        // ACCOUNT_MODE / ACCOUNT_TYPE require explicit params; they're
-        // dispatched separately via `execute(...)` (or the post-APPROVE_AGENT
-        // auto-upgrade chain) rather than bulk-staged.
-        if (PerpsClient.EXPLICIT_INPUT_SETUP_ACTIONS.has(p.type)) {
-          return false
-        }
-        if (mode === SigningMode.USER) {
-          // USER mode: only items the user can sign, and never APPROVE_AGENT
-          // (no agent is created in this mode).
-          if (!p.signers.includes(PerpsSigner.USER)) {
-            return false
-          }
-          if (p.type === ActionType.APPROVE_AGENT) {
-            return false
-          }
-          return true
-        }
-        // USER_AGENT mode: include every remaining declared provider setup action.
-        return true
-      })
       .map((p) => {
         const params: Record<string, unknown> = {}
         if (p.type === ActionType.APPROVE_AGENT && agentAddress) {
@@ -194,11 +159,6 @@ export class PerpsClient {
     address: Address,
     provider: string
   ): Promise<Address | undefined> {
-    const mode = await this.loadSigningMode(address, provider)
-    if (mode !== SigningMode.USER_AGENT) {
-      return undefined
-    }
-
     // Only AGENT-signed actions surface a distinct signerAddress on the wire.
     // API_KEY signers (e.g. Lighter's LighterKeyStore) are managed per-provider
     // and don't have an EVM address — the backend identifies the action by the
@@ -216,17 +176,6 @@ export class PerpsClient {
 
     const agent = await this.sdkClient.agentManager.getAgent(address, provider)
     return agent.address
-  }
-
-  /**
-   * True if any descriptor for the provider lists `PerpsSigner.AGENT`.
-   * Providers like Lighter sign with their own keystore and never need an
-   * AgentManager-managed agent.
-   */
-  private async providerUsesAgent(provider: string): Promise<boolean> {
-    const metadata = await this.getProviderMetadata(provider)
-    const all = [...metadata.setup, ...metadata.options, ...metadata.actions]
-    return all.some((d) => d.signers.includes(PerpsSigner.AGENT))
   }
 
   /**
@@ -356,8 +305,7 @@ export class PerpsClient {
   /**
    * Assemble the per-call context the provider plugin needs in order to
    * sign. Today this is the wallet signer (when configured) and the
-   * agent keypair (when the descriptor includes `PerpsSigner.AGENT` and
-   * the signing mode requires it).
+   * agent keypair (when the descriptor includes `PerpsSigner.AGENT`).
    */
   private async buildSignActionsContext(
     provider: string,
@@ -369,13 +317,7 @@ export class PerpsClient {
       ctx.signer = this.sdkClient.signer
     }
     if (descriptor.signers.includes(PerpsSigner.AGENT)) {
-      const mode = await this.loadSigningMode(address, provider)
-      if (mode === SigningMode.USER_AGENT) {
-        ctx.agent = await this.sdkClient.agentManager.getAgent(
-          address,
-          provider
-        )
-      }
+      ctx.agent = await this.sdkClient.agentManager.getAgent(address, provider)
     }
     return ctx
   }
@@ -457,51 +399,8 @@ export class PerpsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Signing mode management
+  // Agent management
   // ---------------------------------------------------------------------------
-
-  async setSigningMode(
-    address: Address,
-    provider: string,
-    mode: SigningMode
-  ): Promise<void> {
-    const key = this.modeKey(address, provider)
-    this.signingModes.set(key, mode)
-    await this.storage.set(this.signingModeStorageKey(address, provider), mode)
-    if (
-      mode === SigningMode.USER_AGENT &&
-      (await this.providerUsesAgent(provider))
-    ) {
-      await this.sdkClient.agentManager.getOrCreateAgent(address, provider)
-    }
-  }
-
-  getSigningMode(address: Address, provider: string): SigningMode {
-    return (
-      this.signingModes.get(this.modeKey(address, provider)) ??
-      SigningMode.USER_AGENT
-    )
-  }
-
-  async loadSigningMode(
-    address: Address,
-    provider: string
-  ): Promise<SigningMode> {
-    const key = this.modeKey(address, provider)
-    if (this.signingModes.has(key)) {
-      return this.signingModes.get(key)!
-    }
-
-    const stored = await this.storage.get(
-      this.signingModeStorageKey(address, provider)
-    )
-    const mode: SigningMode =
-      stored === SigningMode.USER_AGENT || stored === SigningMode.USER
-        ? stored
-        : SigningMode.USER_AGENT
-    this.signingModes.set(key, mode)
-    return mode
-  }
 
   async getAgentAddress(address: Address, provider: string): Promise<Address> {
     const agent = await this.sdkClient.agentManager.getAgent(address, provider)
@@ -514,8 +413,6 @@ export class PerpsClient {
 
   async removeAgent(address: Address, provider: string): Promise<void> {
     await this.sdkClient.agentManager.removeAgent(address, provider)
-    this.signingModes.delete(this.modeKey(address, provider))
-    await this.storage.remove(this.signingModeStorageKey(address, provider))
   }
 
   // ---------------------------------------------------------------------------
@@ -581,7 +478,6 @@ export class PerpsClient {
    */
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
-    const mode = await this.loadSigningMode(address, provider)
 
     const metadata = await this.getProviderMetadata(provider)
     const usesAgent = [
@@ -591,7 +487,7 @@ export class PerpsClient {
     ].some((d) => d.signers.includes(PerpsSigner.AGENT))
 
     let agentAddress: Address | undefined
-    if (mode === SigningMode.USER_AGENT && usesAgent) {
+    if (usesAgent) {
       const agent = await this.sdkClient.agentManager.getOrCreateAgent(
         address,
         provider
@@ -601,7 +497,6 @@ export class PerpsClient {
 
     const allInputs = this.buildProviderSetupInputs(
       metadata.setup,
-      mode,
       agentAddress
     )
 
@@ -646,10 +541,9 @@ export class PerpsClient {
   async buildProviderSetup(
     params: BuildProviderSetupParams
   ): Promise<CreateActionResponse> {
-    const mode = await this.loadSigningMode(params.address, params.provider)
     let { signerAddress } = params
 
-    if (mode === SigningMode.USER_AGENT && !signerAddress) {
+    if (!signerAddress) {
       const agent = await this.sdkClient.agentManager.getAgent(
         params.address,
         params.provider
@@ -660,7 +554,6 @@ export class PerpsClient {
     const metadata = await this.getProviderMetadata(params.provider)
     const allInputs = this.buildProviderSetupInputs(
       metadata.setup,
-      mode,
       signerAddress
     )
 
@@ -843,16 +736,13 @@ export class PerpsClient {
     params: ExecuteProviderSetupParams
   ): Promise<ExecuteProviderSetupResult> {
     const { provider, address, required, userSignedActions } = params
-    const mode = await this.loadSigningMode(address, provider)
 
     // 1. Submit user-signed provider setup
     let userResults: ExecuteActionResponse = { results: [] }
     if (userSignedActions.length > 0) {
-      const signerAddress =
-        mode === SigningMode.USER_AGENT
-          ? (await this.sdkClient.agentManager.getAgent(address, provider))
-              .address
-          : address
+      const signerAddress = (
+        await this.sdkClient.agentManager.getAgent(address, provider)
+      ).address
 
       // Submit all user-signed actions — use first action's type for routing
       const firstAction = required.userProviderSetup[0]?.action as string
@@ -884,21 +774,19 @@ export class PerpsClient {
     // trading.
     let agentResults: ExecuteActionResponse | undefined
     let fallbackUserProviderSetup: ActionStep[] | undefined
-    if (mode === SigningMode.USER_AGENT) {
-      const justApprovedAgent = userResults.results.some(
-        (r) => r.success && r.action === ActionType.APPROVE_AGENT
-      )
-      if (justApprovedAgent) {
-        const metadata = await this.getProviderMetadata(provider)
-        if (PerpsClient.hasWritableAccountMode(metadata)) {
-          const upgrade = await this.prepareAccountModeChange(
-            provider,
-            address,
-            PerpsClient.DEFAULT_ACCOUNT_MODE
-          )
-          agentResults = upgrade.results
-          fallbackUserProviderSetup = upgrade.fallback
-        }
+    const justApprovedAgent = userResults.results.some(
+      (r) => r.success && r.action === ActionType.APPROVE_AGENT
+    )
+    if (justApprovedAgent) {
+      const metadata = await this.getProviderMetadata(provider)
+      if (PerpsClient.hasWritableAccountMode(metadata)) {
+        const upgrade = await this.prepareAccountModeChange(
+          provider,
+          address,
+          PerpsClient.DEFAULT_ACCOUNT_MODE
+        )
+        agentResults = upgrade.results
+        fallbackUserProviderSetup = upgrade.fallback
       }
     }
 
@@ -907,10 +795,7 @@ export class PerpsClient {
     //    bulk staging (it requires explicit `mode` params), so this block
     //    today only runs for future agent-signed steps the backend chooses
     //    to stage.
-    if (
-      required.agentProviderSetup.length > 0 &&
-      mode === SigningMode.USER_AGENT
-    ) {
+    if (required.agentProviderSetup.length > 0) {
       const agent = await this.sdkClient.agentManager.getAgent(
         address,
         provider
@@ -1071,7 +956,6 @@ export class PerpsClient {
     action: T
     params: ActionParamsMap[T]
   }): Promise<ExecuteActionResponse> {
-    await this.loadSigningMode(params.address, params.provider)
     const metadata = await this.getProviderMetadata(params.provider)
     const descriptor = findActionDescriptor(metadata, params.action)
 
