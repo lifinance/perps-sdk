@@ -13,6 +13,7 @@ import type {
   ParamOption,
   Provider,
   ProviderAction,
+  ProviderExplorer,
   ProviderMarketInfo,
   TradeNotice,
 } from './providers.js'
@@ -131,6 +132,7 @@ const hyperliquidProvider: Provider = {
     },
   ],
   markets: [{ id: 'BTC-PERP', quoteAsset: 'USDC' }],
+  explorer: { txUrlPrefix: 'https://arbiscan.io/tx/', chainId: 42161 },
 }
 
 // Provider exercising the Lighter mapping: one setup gate, two options.
@@ -150,6 +152,7 @@ const lighterProvider: Provider = {
     },
   ],
   markets: [{ id: 'BTC', quoteAsset: 'USDC' }],
+  explorer: { txUrlPrefix: 'https://example.invalid/tx/', chainId: 1 },
 }
 
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
@@ -339,6 +342,17 @@ type _TradeNoticeOptional = Expect<
   Equals<Extract<RequiredKeys<ProviderMarketInfo>, 'tradeNotice'>, never>
 >
 
+// `ProviderExplorer` keys: tx-URL prefix + settlement chain id, both required.
+type _ProviderExplorerKeys = Expect<
+  Equals<keyof ProviderExplorer, 'txUrlPrefix' | 'chainId'>
+>
+
+// `explorer` is optional on the provider — a provider with no explorer mapping
+// omits it (mirrors `minDepositUsd`).
+type _ExplorerOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'explorer'>, never>
+>
+
 // `AccountConfig` narrows on `provider`. The widget never reads the union
 // directly without narrowing — these assertions lock that contract.
 type _NarrowHl = Expect<
@@ -402,6 +416,8 @@ export type _TypeAssertions = [
   _ParamTypeIsString,
   _TradeNoticeLevel,
   _TradeNoticeOptional,
+  _ProviderExplorerKeys,
+  _ExplorerOptional,
   _NarrowHl,
   _NarrowLighter,
   _AccountResponseConfig,
@@ -474,6 +490,31 @@ describe('ProviderMarketInfo.tradeNotice', () => {
 
   it('keeps the message plaintext — a URL stays inline text', () => {
     expect(warnNotice.message).toContain('docs.example.invalid')
+  })
+})
+
+describe('Provider.explorer', () => {
+  it('maps hyperliquid to Arbiscan on Arbitrum', () => {
+    expect(hyperliquidProvider.explorer).toEqual({
+      txUrlPrefix: 'https://arbiscan.io/tx/',
+      chainId: 42161,
+    })
+  })
+
+  it('builds a tx link by appending the hash to txUrlPrefix', () => {
+    const hash = '0xdeadbeef'
+    expect(`${hyperliquidProvider.explorer?.txUrlPrefix}${hash}`).toBe(
+      'https://arbiscan.io/tx/0xdeadbeef'
+    )
+  })
+
+  it('carries explorer metadata for lighter', () => {
+    expect(lighterProvider.explorer?.chainId).toBe(1)
+    expect(lighterProvider.explorer?.txUrlPrefix).toContain('/tx/')
+  })
+
+  it('admits a provider with no explorer mapping', () => {
+    expect(providerWithNoDescriptors.explorer).toBeUndefined()
   })
 })
 

@@ -60,6 +60,22 @@ export interface ProviderMarketInfo {
   tradeNotice?: TradeNotice
 }
 
+/**
+ * Block-explorer / settlement-chain metadata for a provider, letting clients
+ * build a tx link without a per-provider lookup table. Hyperliquid settles on
+ * Arbitrum (Arbiscan); Lighter on its own L2.
+ */
+export interface ProviderExplorer {
+  /**
+   * Tx-URL prefix; clients append the on-chain tx hash. Includes the trailing
+   * path so concatenation alone yields a valid link (e.g.
+   * `https://arbiscan.io/tx/`).
+   */
+  txUrlPrefix: string
+  /** EVM chain id the provider's deposits/withdrawals settle on. */
+  chainId: number
+}
+
 export interface Provider {
   key: string
   name: string
@@ -74,6 +90,8 @@ export interface Provider {
   wsUrl?: string
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
+  /** Absent means the provider has no explorer mapping yet. */
+  explorer?: ProviderExplorer
 }
 
 export interface ProvidersResponse {
