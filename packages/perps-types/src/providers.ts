@@ -43,9 +43,21 @@ export interface ProviderAction {
   sequence?: number
 }
 
+/**
+ * Provider-attached advisory shown against a market. Provider-agnostic: the
+ * producer decides when to emit one (e.g. an HL HIP-3 sub-dex risk warning).
+ */
+export interface TradeNotice {
+  /** Maps to the widget's panel styling: `warn` → warning, `info` → info. */
+  level: 'info' | 'warn'
+  /** Plaintext; any URL is rendered as text, not a hyperlink. */
+  message: string
+}
+
 export interface ProviderMarketInfo {
   id: string
   quoteAsset: string | null
+  tradeNotice?: TradeNotice
 }
 
 export interface Provider {
