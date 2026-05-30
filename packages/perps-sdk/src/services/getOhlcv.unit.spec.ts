@@ -20,16 +20,15 @@ describe('getOhlcv', () => {
     apiKey: 'test-key',
   })
 
-  it('encodes assetId so spot pairs containing "/" reach :assetId intact', async () => {
-    // Without encoding, "LINK/USDC" splits the path and Fastify's `:assetId`
-    // captures only "LINK", leaving "USDC" as an unmatched segment → 404.
+  it('sends assetId as a query param so spot pairs containing "/" need no path encoding', async () => {
     let capturedAssetId: string | undefined
-    let capturedRawPath: string | undefined
+    let capturedPath: string | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/ohlcv/:assetId`, ({ params, request }) => {
-        capturedAssetId = params.assetId as string
-        capturedRawPath = new URL(request.url).pathname
+      http.get(`${DEFAULT_API_URL}/ohlcv`, ({ request }) => {
+        const url = new URL(request.url)
+        capturedAssetId = url.searchParams.get('assetId') ?? undefined
+        capturedPath = url.pathname
         return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'LINK/USDC' })
       })
     )
@@ -41,15 +40,16 @@ describe('getOhlcv', () => {
     })
 
     expect(capturedAssetId).toBe('LINK/USDC')
-    expect(capturedRawPath).toBe('/v1/perps/ohlcv/LINK%2FUSDC')
+    expect(capturedPath).toBe('/v1/perps/ohlcv')
   })
 
-  it('passes plain perp assetIds through unchanged', async () => {
-    let capturedRawPath: string | undefined
+  it('passes plain perp assetIds through as a query param', async () => {
+    let capturedAssetId: string | undefined
 
     server.use(
-      http.get(`${DEFAULT_API_URL}/ohlcv/:assetId`, ({ request }) => {
-        capturedRawPath = new URL(request.url).pathname
+      http.get(`${DEFAULT_API_URL}/ohlcv`, ({ request }) => {
+        capturedAssetId =
+          new URL(request.url).searchParams.get('assetId') ?? undefined
         return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'BTC' })
       })
     )
@@ -60,6 +60,6 @@ describe('getOhlcv', () => {
       interval: '1h',
     })
 
-    expect(capturedRawPath).toBe('/v1/perps/ohlcv/BTC')
+    expect(capturedAssetId).toBe('BTC')
   })
 })

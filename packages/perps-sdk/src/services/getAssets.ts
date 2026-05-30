@@ -8,6 +8,8 @@ import { buildUrl, request } from '../utils/request.js'
 export interface GetAssetsParams {
   /** Provider to get assets from (e.g., 'hyperliquid') */
   provider: string
+  /** Optional filter — canonical `Asset.assetId`s (not display symbols). */
+  assetIds?: string[]
 }
 
 /**
@@ -28,6 +30,7 @@ export async function getAssets(
 ): Promise<AssetsResponse> {
   const url = buildUrl(`${client.config.apiUrl}/assets`, {
     provider: params.provider,
+    assetIds: params.assetIds?.join(','),
   })
   return request<AssetsResponse>(client.config, url, {}, options)
 }

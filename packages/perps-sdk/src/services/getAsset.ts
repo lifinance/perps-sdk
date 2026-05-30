@@ -1,4 +1,4 @@
-import type { Asset } from '@lifi/perps-types'
+import type { Asset, AssetsResponse } from '@lifi/perps-types'
 import type {
   PerpsSDKClient,
   SDKRequestOptions,
@@ -18,7 +18,9 @@ export interface GetAssetParams {
 }
 
 /**
- * Get a specific asset by its canonical assetId.
+ * Get a specific asset by its canonical assetId. Filters the provider's
+ * `/perps/assets` collection to the single requested id; the backend
+ * responds 404 (thrown as a {@link PerpsError}) when nothing matches.
  *
  * @example
  * ```ts
@@ -32,11 +34,15 @@ export async function getAsset(
   params: GetAssetParams,
   options?: SDKRequestOptions
 ): Promise<Asset> {
-  const url = buildUrl(
-    `${client.config.apiUrl}/assets/${encodeURIComponent(params.assetId)}`,
-    {
-      provider: params.provider,
-    }
+  const url = buildUrl(`${client.config.apiUrl}/assets`, {
+    provider: params.provider,
+    assetIds: params.assetId,
+  })
+  const { assets } = await request<AssetsResponse>(
+    client.config,
+    url,
+    {},
+    options
   )
-  return request<Asset>(client.config, url, {}, options)
+  return assets[0]
 }

@@ -453,11 +453,9 @@ export const handlers = [
 
   http.get(`${BASE_URL}/prices`, () => HttpResponse.json(mockPrices)),
 
-  http.get(`${BASE_URL}/ohlcv/:symbol`, () => HttpResponse.json(mockOhlcv)),
+  http.get(`${BASE_URL}/ohlcv`, () => HttpResponse.json(mockOhlcv)),
 
-  http.get(`${BASE_URL}/orderbook/:symbol`, () =>
-    HttpResponse.json(mockOrderbook)
-  ),
+  http.get(`${BASE_URL}/orderbook`, () => HttpResponse.json(mockOrderbook)),
 
   // Account
   http.get(`${BASE_URL}/account`, () => HttpResponse.json(mockAccount)),
