@@ -7,7 +7,10 @@ import {
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
+  effectiveLeverage,
   estimateFees,
+  liquidationDistancePercent,
+  removableMargin,
 } from './calculations.js'
 
 describe('calculatePositionSize', () => {
@@ -215,6 +218,135 @@ describe('applySlippage', () => {
   it('should handle very small prices', () => {
     const result = applySlippage(0.00001, 0.5, true)
     expect(result).toBeGreaterThan(0.00001)
+  })
+})
+
+describe('liquidationDistancePercent', () => {
+  it('should calculate distance for a long below current price', () => {
+    // liq $45k, current $50k = 10% away
+    expect(
+      liquidationDistancePercent({
+        liquidationPrice: 45000,
+        currentPrice: 50000,
+      })
+    ).toBeCloseTo(10)
+  })
+
+  it('should calculate distance for a short above current price', () => {
+    // liq $55k, current $50k = 10% away
+    expect(
+      liquidationDistancePercent({
+        liquidationPrice: 55000,
+        currentPrice: 50000,
+      })
+    ).toBeCloseTo(10)
+  })
+
+  it('should return zero when prices are equal', () => {
+    expect(
+      liquidationDistancePercent({
+        liquidationPrice: 50000,
+        currentPrice: 50000,
+      })
+    ).toBe(0)
+  })
+
+  it('should return zero when current price is zero', () => {
+    expect(
+      liquidationDistancePercent({ liquidationPrice: 45000, currentPrice: 0 })
+    ).toBe(0)
+  })
+
+  it('should return zero when liquidation price is zero', () => {
+    // No liquidation price yet (e.g. unset) reads as 100% away, not a guard case
+    expect(
+      liquidationDistancePercent({ liquidationPrice: 0, currentPrice: 50000 })
+    ).toBe(100)
+  })
+})
+
+describe('effectiveLeverage', () => {
+  it('should calculate leverage from notional and margin', () => {
+    // $10,000 notional on $1,000 margin = 10x
+    expect(
+      effectiveLeverage({ positionValueUsd: 10000, marginUsd: 1000 })
+    ).toBe(10)
+  })
+
+  it('should return 1x when notional equals margin', () => {
+    expect(effectiveLeverage({ positionValueUsd: 5000, marginUsd: 5000 })).toBe(
+      1
+    )
+  })
+
+  it('should return zero when margin is zero', () => {
+    expect(effectiveLeverage({ positionValueUsd: 10000, marginUsd: 0 })).toBe(0)
+  })
+
+  it('should return zero for zero notional', () => {
+    expect(effectiveLeverage({ positionValueUsd: 0, marginUsd: 1000 })).toBe(0)
+  })
+
+  it('should handle negative margin', () => {
+    // A liquidated/underwater position can report negative margin; the sign
+    // carries through rather than being guarded.
+    expect(
+      effectiveLeverage({ positionValueUsd: 10000, marginUsd: -1000 })
+    ).toBe(-10)
+  })
+})
+
+describe('removableMargin', () => {
+  it('should return margin above the minimum required', () => {
+    // $10,000 notional at 10x max needs $1,000 min; $1,500 used => $500 removable
+    expect(
+      removableMargin({
+        marginUsed: 1500,
+        positionValueUsd: 10000,
+        maxLeverage: 10,
+      })
+    ).toBe(500)
+  })
+
+  it('should return zero when position is already at max leverage', () => {
+    expect(
+      removableMargin({
+        marginUsed: 1000,
+        positionValueUsd: 10000,
+        maxLeverage: 10,
+      })
+    ).toBe(0)
+  })
+
+  it('should clamp to zero when used margin is below the minimum', () => {
+    expect(
+      removableMargin({
+        marginUsed: 800,
+        positionValueUsd: 10000,
+        maxLeverage: 10,
+      })
+    ).toBe(0)
+  })
+
+  it('should fall back to full margin when maxLeverage is zero', () => {
+    expect(
+      removableMargin({
+        marginUsed: 1500,
+        positionValueUsd: 10000,
+        maxLeverage: 0,
+      })
+    ).toBe(1500)
+  })
+
+  it('should return full margin for zero notional', () => {
+    // Closed/empty position: nothing is required, all margin is removable
+    expect(
+      removableMargin({
+        marginUsed: 1500,
+        positionValueUsd: 0,
+        maxLeverage: 10,
+      })
+    ).toBe(1500)
   })
 })
 
