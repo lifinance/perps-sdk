@@ -1,6 +1,6 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import { HL_ASSETS, HL_CLEARINGHOUSE_STATE } from '../../test/fixtures.js'
+import { HL_CLEARINGHOUSE_STATE, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getPositions } from './getPositions.js'
@@ -46,7 +46,7 @@ describe('getPositions', () => {
           ],
         },
       },
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -56,25 +56,25 @@ describe('getPositions', () => {
     expect(result.provider).toBe('hyperliquid')
     expect(result.positions).toHaveLength(1)
     const pos = result.positions[0]
-    expect(pos.asset.assetId).toBe('BTC')
-    expect(pos.asset.market).toBe('hyperliquid')
-    expect(pos.asset.displaySymbol).toBe('BTC')
-    expect(pos.asset.displayQuote).toBe('USDC')
+    expect(pos.market.id).toBe('BTC')
+    expect(pos.market.categoryId).toBe('hyperliquid')
+    expect(pos.market.baseAsset.displaySymbol).toBe('BTC')
+    expect(pos.market.quoteAsset.displaySymbol).toBe('USDC')
     expect(pos.size).toBe('0.1')
   })
 
-  it('filters by the assetId-matching `symbol` param', async () => {
-    ;({ restore } = installInfoFetchMock(responses, HL_ASSETS))
+  it('filters by the marketId-matching `symbol` param', async () => {
+    ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
 
     const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
-      assetId: 'ETH',
+      marketId: 'ETH',
     })
     expect(result.positions).toHaveLength(0)
   })
 
   it('reports pagination.hasMore=false (HL returns full state in one call)', async () => {
-    ;({ restore } = installInfoFetchMock(responses, HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
 
     const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,

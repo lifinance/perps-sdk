@@ -112,7 +112,7 @@ export const mockProviders: ProvidersResponse = {
           signingMethod: SigningMethod.EIP712,
         },
       ],
-      markets: [],
+      categories: [],
     },
   ],
 }

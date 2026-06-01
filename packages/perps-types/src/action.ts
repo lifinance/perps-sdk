@@ -1,4 +1,3 @@
-import type { AssetDisplay, AssetIdentity } from './asset.js'
 import type {
   ActionType,
   MarginMode,
@@ -8,6 +7,7 @@ import type {
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
+import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
 import type { PerpsTypedData } from './typedData.js'
 
@@ -86,7 +86,7 @@ export interface ModifyOrderInput {
 
 export interface Order {
   orderId: string
-  asset: AssetDisplay
+  market: MarketDisplay
   side: OrderSide
   type: OrderType
   price?: string
@@ -112,7 +112,7 @@ export interface Order {
 // ---------------------------------------------------------------------------
 
 export interface PlaceOrderParams {
-  asset: AssetIdentity
+  market: MarketRef
   side: OrderSide
   type?: OrderType
   size: string
@@ -128,7 +128,7 @@ export interface PlaceOrderParams {
 }
 
 export interface PlaceTriggerOrderParams {
-  asset: AssetIdentity
+  market: MarketRef
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
@@ -143,14 +143,14 @@ export interface ModifyOrderParams {
 }
 
 export interface UpdateLeverageParams {
-  asset: AssetIdentity
+  market: MarketRef
   leverage: number
   /** Omitted falls back to the provider's default (currently CROSS). */
   marginMode?: MarginMode
 }
 
 export interface UpdatePositionMarginParams {
-  asset: AssetIdentity
+  market: MarketRef
   action: 'add' | 'remove'
   amount: string
 }

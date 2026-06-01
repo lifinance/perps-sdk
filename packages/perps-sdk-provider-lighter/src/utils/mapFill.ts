@@ -11,6 +11,7 @@ import {
   OrderType,
 } from '@lifi/perps-types'
 import type { LtTrade } from '../types/index.js'
+import { marketDisplay } from './marketDisplay.js'
 
 /**
  * Map a raw Lighter trade to the generic Fill type.
@@ -35,12 +36,7 @@ export const mapFill = (
   return {
     id: trade.trade_id.toString(),
     orderId: String(isBuyer ? trade.bid_id : trade.ask_id),
-    asset: {
-      assetId: String(trade.market_id),
-      market: 'lighter',
-      displaySymbol,
-      displayQuote: 'USDC',
-    },
+    market: marketDisplay(String(trade.market_id), displaySymbol),
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
     type: OrderType.LIMIT,
     size: trade.size,

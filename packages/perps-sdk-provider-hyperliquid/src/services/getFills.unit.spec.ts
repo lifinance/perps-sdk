@@ -1,6 +1,6 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import { HL_ASSETS, HL_USER_FILLS } from '../../test/fixtures.js'
+import { HL_MARKETS, HL_USER_FILLS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getFills } from './getFills.js'
@@ -25,7 +25,7 @@ describe('getFills', () => {
   })
 
   it('uses `userFills` when neither startTime nor endTime is provided', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_ASSETS)
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
     const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -33,7 +33,7 @@ describe('getFills', () => {
     })
 
     expect(result.items).toHaveLength(1)
-    expect(result.items[0].asset.displayQuote).toBe('USDC')
+    expect(result.items[0].market.quoteAsset.displaySymbol).toBe('USDC')
     expect(mock.requests.some((r) => r.body.type === 'userFills')).toBe(true)
     expect(mock.requests.some((r) => r.body.type === 'userFillsByTime')).toBe(
       false
@@ -41,7 +41,7 @@ describe('getFills', () => {
   })
 
   it('switches to `userFillsByTime` when startTime or endTime is provided', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_ASSETS)
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
     await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -57,7 +57,7 @@ describe('getFills', () => {
   })
 
   it('drops fills at or above the cursor tid', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
@@ -78,7 +78,7 @@ describe('getFills', () => {
         ...baseResponses,
         userFills: manyFills,
       },
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {

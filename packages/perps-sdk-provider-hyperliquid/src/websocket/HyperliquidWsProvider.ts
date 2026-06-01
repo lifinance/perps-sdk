@@ -27,12 +27,12 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
-  deriveMarket,
   isTriggerOrder,
   mapFill,
   mapOrderStatus,
   mapOrderType,
   mapPosition,
+  marketDisplayFromCoin,
 } from '../utils/index.js'
 
 /**
@@ -246,9 +246,9 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'prices':
         return 'allMids'
       case 'orderbook':
-        return `l2Book:${sub.assetId}`
+        return `l2Book:${sub.marketId}`
       case 'candle':
-        return `candle:${sub.assetId}:${sub.interval}`
+        return `candle:${sub.marketId}:${sub.interval}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -269,13 +269,13 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'orderbook':
         return {
           type: 'l2Book',
-          coin: sub.assetId,
+          coin: sub.marketId,
           ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
         }
       case 'candle':
         return {
           type: 'candle',
-          coin: sub.assetId,
+          coin: sub.marketId,
           interval: sub.interval,
         }
       case 'orderUpdates':
@@ -374,7 +374,7 @@ export class HyperliquidWsProvider implements WsProvider {
       channel: 'orderbook',
       data: {
         provider: this.providerKey,
-        assetId: data.coin,
+        marketId: data.coin,
         bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
         asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
@@ -408,19 +408,14 @@ export class HyperliquidWsProvider implements WsProvider {
         continue
       }
       const type = mapOrderType(o.orderType)
-      const asset = {
-        assetId: o.coin,
-        market: deriveMarket(o.coin),
-        displaySymbol: o.coin,
-        displayQuote: null,
-      }
+      const market = marketDisplayFromCoin(o.coin)
       const createdAt = new Date(o.timestamp).toISOString()
       if (isTriggerOrder(o)) {
         const isLimit =
           type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
         triggerOrders.push({
           orderId,
-          asset,
+          market,
           type,
           size: o.sz,
           triggerPrice: o.triggerPx ?? '0',
@@ -432,7 +427,7 @@ export class HyperliquidWsProvider implements WsProvider {
         const filled = parseFloat(o.origSz) - parseFloat(o.sz)
         openOrders.push({
           orderId,
-          asset,
+          market,
           side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
           type,
           size: o.sz,

@@ -1,14 +1,14 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
-  Asset,
   FundingActivity,
   LiquidationActivity,
+  Market,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -25,7 +25,7 @@ import type {
 import {
   mapFundingActivity,
   mapLedgerEntry,
-  requireAsset,
+  requireMarket,
 } from '../utils/index.js'
 import {
   hlInfoOptions,
@@ -45,13 +45,13 @@ export interface GetActivityParams {
 
 const enrichActivityItem = (
   item: ActivityItem,
-  byAssetId: Map<string, Asset>
+  byMarketId: Map<string, Market>
 ): ActivityItem => {
   if (item.type === ActivityType.FUNDING) {
     const funding = item as FundingActivity
     return {
       ...funding,
-      asset: requireAsset(byAssetId, funding.asset.assetId),
+      market: requireMarket(byMarketId, funding.market.id),
     }
   }
   if (item.type === ActivityType.LIQUIDATION) {
@@ -60,7 +60,7 @@ const enrichActivityItem = (
       ...liq,
       liquidatedPositions: liq.liquidatedPositions.map((p) => ({
         ...p,
-        asset: requireAsset(byAssetId, p.asset.assetId),
+        market: requireMarket(byMarketId, p.market.id),
       })),
     }
   }
@@ -129,12 +129,12 @@ export const getActivity = async (
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
-  const { assets } = await coreGetAssets(
+  const { markets } = await coreGetMarkets(
     client,
     { provider: PROVIDER_KEY },
     options
   )
-  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const byMarketId = new Map(markets.map((m) => [m.id, m]))
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(
@@ -174,7 +174,7 @@ export const getActivity = async (
   const hasMore = filtered.length > limit
   const items = filtered
     .slice(0, limit)
-    .map((item) => enrichActivityItem(item, byAssetId))
+    .map((item) => enrichActivityItem(item, byMarketId))
 
   return {
     provider: PROVIDER_KEY,

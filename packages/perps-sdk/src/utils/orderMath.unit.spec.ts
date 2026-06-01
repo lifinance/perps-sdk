@@ -14,25 +14,41 @@ import {
   findMatchingPosition,
 } from './orderMath.js'
 
-const ASSET_BTC = {
-  assetId: 'BTC',
-  market: 'perp',
-  displaySymbol: 'BTC',
-  displayQuote: 'USDC',
+const baseAsset = (symbol: string) => ({
+  providerId: 'hyperliquid',
+  id: symbol,
+  displaySymbol: symbol,
+  logoURI: `https://x/${symbol}.png`,
+})
+
+const USDC = {
+  providerId: 'hyperliquid',
+  id: 'USDC',
+  displaySymbol: 'USDC',
+  logoURI: 'https://x/usdc.png',
 }
 
-const ASSET_ETH = {
-  assetId: 'ETH',
-  market: 'perp',
-  displaySymbol: 'ETH',
-  displayQuote: 'USDC',
+const MARKET_BTC = {
+  providerId: 'hyperliquid',
+  id: 'BTC',
+  categoryId: 'hyperliquid',
+  baseAsset: baseAsset('BTC'),
+  quoteAsset: USDC,
+}
+
+const MARKET_ETH = {
+  providerId: 'hyperliquid',
+  id: 'ETH',
+  categoryId: 'hyperliquid',
+  baseAsset: baseAsset('ETH'),
+  quoteAsset: USDC,
 }
 
 function position(
   overrides: Partial<Position> & Pick<Position, 'side' | 'size' | 'entryPrice'>
 ): Position {
   return {
-    asset: ASSET_BTC,
+    market: MARKET_BTC,
     markPrice: '0',
     liquidationPrice: '0',
     unrealizedPnl: '0',
@@ -48,7 +64,7 @@ function openOrder(
 ): OpenOrder {
   return {
     id: 'order-1',
-    asset: ASSET_BTC,
+    market: MARKET_BTC,
     type: OrderType.LIMIT,
     filledSize: '0',
     reduceOnly: false,
@@ -62,7 +78,7 @@ function triggerOrder(
 ): TriggerOrder {
   return {
     id: 'trigger-1',
-    asset: ASSET_BTC,
+    market: MARKET_BTC,
     type: OrderType.TAKE_PROFIT_MARKET,
     createdAt: '2025-01-01T00:00:00Z',
     ...overrides,
@@ -70,18 +86,18 @@ function triggerOrder(
 }
 
 describe('findMatchingPosition', () => {
-  it('finds the position whose assetId matches', () => {
+  it('finds the position whose marketId matches', () => {
     const btc = position({
       side: PositionSide.LONG,
       size: '1',
       entryPrice: '100',
-      asset: ASSET_BTC,
+      market: MARKET_BTC,
     })
     const eth = position({
       side: PositionSide.SHORT,
       size: '5',
       entryPrice: '3000',
-      asset: ASSET_ETH,
+      market: MARKET_ETH,
     })
     expect(findMatchingPosition('BTC', [btc, eth])).toBe(btc)
     expect(findMatchingPosition('ETH', [btc, eth])).toBe(eth)

@@ -1,5 +1,5 @@
 import {
-  getAsset as coreGetAsset,
+  getMarket as coreGetMarket,
   PerpsError,
   type PerpsSDKClient,
   type SDKRequestOptions,
@@ -49,10 +49,10 @@ export const getOrder = async (
   }
 
   const order = mapOrder(status.order)
-  const asset = await coreGetAsset(
+  const market = await coreGetMarket(
     client,
-    { provider: PROVIDER_KEY, assetId: order.asset.assetId },
+    { provider: PROVIDER_KEY, marketId: order.market.id },
     options
   )
-  return { ...order, asset }
+  return { ...order, market }
 }

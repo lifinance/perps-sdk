@@ -1,4 +1,4 @@
-import type { Asset } from '@lifi/perps-types'
+import type { Market } from '@lifi/perps-types'
 import type {
   HlClearinghouseState,
   HlExtraAgents,
@@ -79,35 +79,49 @@ export const HL_META_AND_CTXS_MAIN_WITH_COLLATERAL: unknown = [
   [],
 ]
 
+const USDC_ASSET = {
+  providerId: 'hyperliquid',
+  id: 'USDC',
+  displaySymbol: 'USDC',
+  logoURI: '',
+}
+
+const baseAsset = (symbol: string) => ({
+  providerId: 'hyperliquid',
+  id: symbol,
+  displaySymbol: symbol,
+  logoURI: '',
+})
+
 /**
- * Backend-sourced asset list for account-read specs — what
- * `getAssets({ provider: 'hyperliquid' })` returns. Main perps only, BTC + ETH
+ * Backend-sourced market list for account-read specs — what
+ * `getMarkets({ provider: 'hyperliquid' })` returns. Main perps only, BTC + ETH
  * on USDC.
  */
-export const HL_ASSETS: Asset[] = [
+export const HL_MARKETS: Market[] = [
   {
-    assetId: 'BTC',
-    market: 'hyperliquid',
-    displaySymbol: 'BTC',
-    displayQuote: 'USDC',
-    logoURI: '',
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    categoryId: 'hyperliquid',
+    baseAsset: baseAsset('BTC'),
+    quoteAsset: USDC_ASSET,
     szDecimals: 5,
+    markPrice: '95000',
     maxLeverage: 50,
     onlyIsolated: false,
     funding: { rate: '0', nextFundingTime: 0 },
-    markPrice: '95000',
   },
   {
-    assetId: 'ETH',
-    market: 'hyperliquid',
-    displaySymbol: 'ETH',
-    displayQuote: 'USDC',
-    logoURI: '',
+    providerId: 'hyperliquid',
+    id: 'ETH',
+    categoryId: 'hyperliquid',
+    baseAsset: baseAsset('ETH'),
+    quoteAsset: USDC_ASSET,
     szDecimals: 4,
+    markPrice: '3400',
     maxLeverage: 50,
     onlyIsolated: false,
     funding: { rate: '0', nextFundingTime: 0 },
-    markPrice: '3400',
   },
 ]
 

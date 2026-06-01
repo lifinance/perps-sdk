@@ -9,7 +9,7 @@ import { getOhlcv } from './getOhlcv.js'
 
 const EMPTY_OHLCV = {
   provider: 'lighter',
-  assetId: '',
+  marketId: '',
   interval: '1h',
   candles: [],
 }
@@ -20,46 +20,46 @@ describe('getOhlcv', () => {
     apiKey: 'test-key',
   })
 
-  it('sends assetId as a query param so spot pairs containing "/" need no path encoding', async () => {
-    let capturedAssetId: string | undefined
+  it('sends marketId as a query param so spot pairs containing "/" need no path encoding', async () => {
+    let capturedMarketId: string | undefined
     let capturedPath: string | undefined
 
     server.use(
       http.get(`${DEFAULT_API_URL}/ohlcv`, ({ request }) => {
         const url = new URL(request.url)
-        capturedAssetId = url.searchParams.get('assetId') ?? undefined
+        capturedMarketId = url.searchParams.get('marketId') ?? undefined
         capturedPath = url.pathname
-        return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'LINK/USDC' })
+        return HttpResponse.json({ ...EMPTY_OHLCV, marketId: 'LINK/USDC' })
       })
     )
 
     await getOhlcv(client, {
       provider: 'lighter',
-      assetId: 'LINK/USDC',
+      marketId: 'LINK/USDC',
       interval: '1h',
     })
 
-    expect(capturedAssetId).toBe('LINK/USDC')
+    expect(capturedMarketId).toBe('LINK/USDC')
     expect(capturedPath).toBe('/v1/perps/ohlcv')
   })
 
-  it('passes plain perp assetIds through as a query param', async () => {
-    let capturedAssetId: string | undefined
+  it('passes plain perp marketIds through as a query param', async () => {
+    let capturedMarketId: string | undefined
 
     server.use(
       http.get(`${DEFAULT_API_URL}/ohlcv`, ({ request }) => {
-        capturedAssetId =
-          new URL(request.url).searchParams.get('assetId') ?? undefined
-        return HttpResponse.json({ ...EMPTY_OHLCV, assetId: 'BTC' })
+        capturedMarketId =
+          new URL(request.url).searchParams.get('marketId') ?? undefined
+        return HttpResponse.json({ ...EMPTY_OHLCV, marketId: 'BTC' })
       })
     )
 
     await getOhlcv(client, {
       provider: 'hyperliquid',
-      assetId: 'BTC',
+      marketId: 'BTC',
       interval: '1h',
     })
 
-    expect(capturedAssetId).toBe('BTC')
+    expect(capturedMarketId).toBe('BTC')
   })
 })

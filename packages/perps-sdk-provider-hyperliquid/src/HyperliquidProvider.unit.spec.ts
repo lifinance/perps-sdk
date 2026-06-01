@@ -7,25 +7,35 @@ const ADDRESS = '0x1111111111111111111111111111111111111111'
 
 // Backend asset list the account reads fetch (via core getAssets) for the
 // sub-dex fan-out and display fields before issuing the /info calls.
-const ASSETS_RESPONSE = {
-  assets: [
+const MARKETS_RESPONSE = {
+  markets: [
     {
-      assetId: 'BTC',
-      market: 'hyperliquid',
-      displaySymbol: 'BTC',
-      displayQuote: 'USDC',
-      logoURI: '',
+      providerId: 'hyperliquid',
+      id: 'BTC',
+      categoryId: 'hyperliquid',
+      baseAsset: {
+        providerId: 'hyperliquid',
+        id: 'BTC',
+        displaySymbol: 'BTC',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'hyperliquid',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       szDecimals: 5,
+      markPrice: '0',
       maxLeverage: 50,
       onlyIsolated: false,
       funding: { rate: '0', nextFundingTime: 0 },
-      markPrice: '0',
     },
   ],
 }
 
 /**
- * Mock fetch that serves the backend `/assets` route and records every other
+ * Mock fetch that serves the backend `/markets` route and records every other
  * (HL `/info`) request. HL responses are empty — the account read may reject
  * downstream, but the requests are still captured so we can assert their host.
  */
@@ -35,8 +45,8 @@ const installSplitMock = () => {
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/assets')) {
-        return new Response(JSON.stringify(ASSETS_RESPONSE), { status: 200 })
+      if (url.includes('/markets')) {
+        return new Response(JSON.stringify(MARKETS_RESPONSE), { status: 200 })
       }
       infoRequests.push(url)
       void init

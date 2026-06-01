@@ -43,22 +43,33 @@ describe('mapFill (Lighter)', () => {
     )
   })
 
-  it('builds the Lighter asset display with USDC quote', () => {
-    expect(mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL).asset).toEqual({
-      assetId: '1',
-      market: 'lighter',
-      displaySymbol: SYMBOL,
-      displayQuote: 'USDC',
+  it('builds the Lighter market display with USDC quote', () => {
+    expect(mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL).market).toEqual({
+      providerId: 'lighter',
+      id: '1',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '1',
+        displaySymbol: SYMBOL,
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
     })
   })
 
-  // Lighter has no per-symbol market distinction — every fill carries the
+  // Lighter has no per-symbol category distinction — every fill carries the
   // literal `'lighter'` taxonomy entry regardless of the symbol shape.
-  it("emits market: 'lighter' regardless of symbol shape", () => {
+  it("emits categoryId: 'lighter' regardless of symbol shape", () => {
     for (const symbol of ['BTC', 'ETH', 'PURR', 'USDJPY']) {
-      expect(mapFill(baseTrade(), ACCOUNT_INDEX, symbol).asset.market).toBe(
-        'lighter'
-      )
+      expect(
+        mapFill(baseTrade(), ACCOUNT_INDEX, symbol).market.categoryId
+      ).toBe('lighter')
     }
   })
 

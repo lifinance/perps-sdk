@@ -1,9 +1,9 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  HL_ASSETS,
   HL_CLEARINGHOUSE_STATE,
   HL_EXTRA_AGENTS,
+  HL_MARKETS,
   HL_SPOT_CLEARINGHOUSE_STATE,
   HL_USER_FEES,
 } from '../../test/fixtures.js'
@@ -35,7 +35,7 @@ describe('getAccount', () => {
   })
 
   it('normalises a single-dex account into AccountResponse with the typed config', async () => {
-    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
 
     const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
@@ -53,17 +53,40 @@ describe('getAccount', () => {
     expect(
       result.config.provider === 'hyperliquid' ? result.config.agents : []
     ).toEqual(HL_EXTRA_AGENTS)
-    // Standard mode: per-market balances + spot
-    expect(result.balances.spot).toEqual([{ currency: 'USDC', amount: '500' }])
-    expect(result.balances.hyperliquid).toEqual([
-      { currency: 'USDC', amount: '10000' },
+    // Standard mode: spot USDC + gross-normalised perps venue equity are both
+    // category-quote collateral; no non-collateral balances.
+    expect(result.balances).toEqual([])
+    expect(result.collateralBalances).toEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+        },
+        units: '500',
+        valueUsd: '500',
+      },
+      {
+        categoryId: 'hyperliquid',
+        asset: {
+          providerId: 'hyperliquid',
+          id: 'USDC',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+        },
+        // accountValue 10000 + totalMarginUsed 500 (gross-normalised)
+        units: '10500',
+        valueUsd: '10500',
+      },
     ])
     expect(result.marginUsed).toBe('500')
     expect(result.unrealizedPnl).toBe('100')
   })
 
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {
-    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
 
     const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
@@ -79,14 +102,28 @@ describe('getAccount', () => {
   it('treats UNIFIED_ACCOUNT abstraction by deriving margin from positions and dropping per-dex balances', async () => {
     ;({ restore } = installInfoFetchMock(
       defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
     })
 
-    expect(Object.keys(result.balances)).toEqual(['spot'])
+    // Unified mode: spot holds everything — no separate per-dex venue
+    // collateral. The single spot USDC balance is the only collateral.
+    expect(result.collateralBalances).toEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+        },
+        units: '500',
+        valueUsd: '500',
+      },
+    ])
     // Derived from the single position's marginUsed (940)
     expect(result.marginUsed).toBe('940')
   })
@@ -94,17 +131,23 @@ describe('getAccount', () => {
   it('treats DEX_ABSTRACTION by aggregating per-dex account values into the hyperliquid balance bucket', async () => {
     ;({ restore } = installInfoFetchMock(
       defaultResponses(HlAbstractionMode.DEX_ABSTRACTION),
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
     })
 
-    expect(Object.keys(result.balances).sort()).toEqual(['hyperliquid', 'spot'])
-    expect(result.balances.hyperliquid).toEqual([
-      { currency: 'USDC', amount: '10000' },
+    // DEX_ABSTRACTION: spot USDC + gross-normalised venue equity, both
+    // collateral.
+    expect(result.collateralBalances.map((b) => b.categoryId).sort()).toEqual([
+      'hyperliquid',
+      'spot',
     ])
+    const venue = result.collateralBalances.find(
+      (b) => b.categoryId === 'hyperliquid'
+    )
+    expect(venue?.valueUsd).toBe('10500')
   })
 
   it('falls back to null abstractionMode when userAbstraction rejects', async () => {
@@ -113,8 +156,8 @@ describe('getAccount', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString()
-        if (url.includes('/assets')) {
-          return new Response(JSON.stringify({ assets: HL_ASSETS }), {
+        if (url.includes('/markets')) {
+          return new Response(JSON.stringify({ markets: HL_MARKETS }), {
             status: 200,
           })
         }
@@ -144,7 +187,7 @@ describe('getAccount', () => {
   })
 
   it('issues the expected /info calls', async () => {
-    const mock = installInfoFetchMock(defaultResponses(), HL_ASSETS)
+    const mock = installInfoFetchMock(defaultResponses(), HL_MARKETS)
     restore = mock.restore
 
     await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS })
@@ -162,7 +205,7 @@ describe('getAccount', () => {
   })
 
   it('forwards an AbortSignal to fetch', async () => {
-    const mock = installInfoFetchMock(defaultResponses(), HL_ASSETS)
+    const mock = installInfoFetchMock(defaultResponses(), HL_MARKETS)
     restore = mock.restore
 
     const controller = new AbortController()

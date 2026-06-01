@@ -1,11 +1,11 @@
 import type {
   ActionParamsMap,
   ActionStep,
-  AssetIdentity,
   CreateActionResponse,
   Eip712ActionStep,
   Eip712SignedActionStep,
   ExecuteActionResponse,
+  MarketRef,
   Provider,
   ProviderAction,
   SignedActionStep,
@@ -922,7 +922,7 @@ export class PerpsClient {
   async updatePositionMargin(params: {
     provider: string
     address: Address
-    asset: AssetIdentity
+    market: MarketRef
     action: 'add' | 'remove'
     amount: string
   }): Promise<ExecuteActionResponse> {

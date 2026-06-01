@@ -2,8 +2,8 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   ActionStep,
-  AssetIdentity,
   ExecuteActionResponse,
+  MarketRef,
   ModifyOrderInput,
   OrderSide,
   OrderType,
@@ -70,8 +70,8 @@ export interface PlaceOrderParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** Asset identity */
-  asset: AssetIdentity
+  /** Market reference */
+  market: MarketRef
   /** Order side */
   side: OrderSide
   /** Order type */
@@ -101,7 +101,7 @@ export interface PlaceOrderParams {
 export interface PlaceTriggerOrderParams {
   provider: string
   address: Address
-  asset: AssetIdentity
+  market: MarketRef
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput

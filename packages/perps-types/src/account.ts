@@ -1,4 +1,4 @@
-import type { AssetDisplay } from './asset.js'
+import type { Asset } from './asset.js'
 import type {
   ActionType,
   ActivityType,
@@ -10,6 +10,7 @@ import type {
   OrderType,
   PositionSide,
 } from './enums.js'
+import type { MarketDisplay } from './market.js'
 import type { Address } from './primitives.js'
 
 export interface FeeTier {
@@ -18,7 +19,7 @@ export interface FeeTier {
 }
 
 export interface Position {
-  asset: AssetDisplay
+  market: MarketDisplay
   side: PositionSide
   size: string
   entryPrice: string
@@ -32,7 +33,7 @@ export interface Position {
 
 export interface OpenOrder {
   orderId: string
-  asset: AssetDisplay
+  market: MarketDisplay
   side: OrderSide
   type: OrderType
   size: string
@@ -44,14 +45,21 @@ export interface OpenOrder {
 }
 
 export interface Balance {
-  currency: string
-  amount: string
+  /** Which category/venue this balance sits in — references a {@link ProviderCategory}. */
+  categoryId: string
+  asset: Asset
+  units: string
+  /** USD value the SDK fills from the prices map; consumers render with zero math. */
+  valueUsd: string
 }
 
 export interface AccountResponse {
   provider: string
   address: Address
-  balances: Record<string, Balance[]>
+  /** Flat, NON-collateral holdings. */
+  balances: Balance[]
+  /** SDK-determined collateral subset: spot balances in a category's quote asset. */
+  collateralBalances: Balance[]
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier
@@ -59,15 +67,15 @@ export interface AccountResponse {
 }
 
 export interface AccountSummary {
-  portfolioValue: number
-  availableMargin: number
-  marginUsed: number
-  unrealizedPnl: number
+  portfolioValue: string
+  availableMargin: string
+  marginUsed: string
+  unrealizedPnl: string
 }
 
 export interface TriggerOrder {
   orderId: string
-  asset: AssetDisplay
+  market: MarketDisplay
   type: OrderType
   size: string
   triggerPrice: string
@@ -92,7 +100,7 @@ export interface OrdersResponse {
 export interface Fill {
   id: string
   orderId: string
-  asset: AssetDisplay
+  market: MarketDisplay
   side: OrderSide
   type: OrderType
   size: string
@@ -149,7 +157,7 @@ export interface WithdrawalActivity extends BaseActivity {
 }
 
 export interface LiquidatedPosition {
-  asset: AssetDisplay
+  market: MarketDisplay
   size: string
 }
 
@@ -163,7 +171,7 @@ export interface LiquidationActivity extends BaseActivity {
 
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
-  asset: AssetDisplay
+  market: MarketDisplay
   amount: string
   positionSize: string
   fundingRate: string

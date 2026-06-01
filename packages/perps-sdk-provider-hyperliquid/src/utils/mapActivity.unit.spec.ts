@@ -413,7 +413,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     ) as LiquidationActivity
     expect(result.type).toBe(ActivityType.LIQUIDATION)
     expect(result.liquidatedNotionalPosition).toBe('1000')
-    expect(result.liquidatedPositions[0].asset.assetId).toBe('ETH')
+    expect(result.liquidatedPositions[0].market.id).toBe('ETH')
   })
 
   it('returns null for unsupported delta types', () => {
@@ -453,7 +453,7 @@ describe('mapFundingActivity', () => {
     }
     const result = mapFundingActivity(entry, PROVIDER)
     expect(result.type).toBe(ActivityType.FUNDING)
-    expect(result.asset.assetId).toBe('BTC')
+    expect(result.market.id).toBe('BTC')
     expect(result.fundingRate).toBe('0.0001')
     expect(result.amount).toBe('0.5')
     expect(result.positionSize).toBe('0.1')

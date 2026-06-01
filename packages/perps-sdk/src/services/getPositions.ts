@@ -11,8 +11,8 @@ export interface GetPositionsParams {
   provider: string
   /** Wallet address */
   address: Address
-  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`) */
-  assetId?: string
+  /** Optional filter — opaque `Market.id` (not `displaySymbol`) */
+  marketId?: string
   /** Maximum number of results */
   limit?: number
   /** Pagination cursor */
@@ -41,7 +41,7 @@ export async function getPositions(
     client,
     {
       address: params.address,
-      assetId: params.assetId,
+      marketId: params.marketId,
       limit: params.limit,
       cursor: params.cursor,
     },

@@ -9,19 +9,14 @@ import {
 } from '@lifi/perps-types'
 import type { HlUserFill } from '../types/index.js'
 import { assetIsSpot } from './assetId.js'
-import { deriveMarket } from './deriveMarket.js'
+import { marketDisplayFromCoin } from './deriveMarket.js'
 
 export { classifyFillFromPosition }
 
 export const mapFill = (fill: HlUserFill): Fill => ({
   id: String(fill.tid),
   orderId: String(fill.oid),
-  asset: {
-    assetId: fill.coin,
-    market: deriveMarket(fill.coin),
-    displaySymbol: fill.coin,
-    displayQuote: null,
-  },
+  market: marketDisplayFromCoin(fill.coin),
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,

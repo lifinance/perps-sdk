@@ -2,10 +2,11 @@ import type { Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
+import { marketDisplay } from './marketDisplay.js'
 
 /**
  * Map a raw Lighter account position to the generic Position type.
- * @param displaySymbol Human-readable symbol for `asset.displaySymbol`.
+ * @param displaySymbol Human-readable symbol for `market.baseAsset.displaySymbol`.
  */
 export const mapPosition = (
   pos: LtAccountPosition,
@@ -24,12 +25,7 @@ export const mapPosition = (
     : ((positionValue * imf) / 100).toString()
 
   return {
-    asset: {
-      assetId: String(pos.market_id),
-      market: 'lighter',
-      displaySymbol,
-      displayQuote: 'USDC',
-    },
+    market: marketDisplay(String(pos.market_id), displaySymbol),
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: Math.abs(size).toString(),
     entryPrice: pos.avg_entry_price,

@@ -8,8 +8,8 @@ import { buildUrl, request } from '../utils/request.js'
 export interface GetOrderbookParams {
   /** Provider to get orderbook from (e.g., 'hyperliquid') */
   provider: string
-  /** Canonical wire-level `Asset.assetId` (not `displaySymbol`). */
-  assetId: string
+  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  marketId: string
   /** Number of levels to return (default varies by DEX) */
   depth?: number
 }
@@ -25,7 +25,7 @@ export async function getOrderbook(
 ): Promise<OrderbookResponse> {
   const url = buildUrl(`${client.config.apiUrl}/orderbook`, {
     provider: params.provider,
-    assetId: params.assetId,
+    marketId: params.marketId,
     depth: params.depth,
   })
   return request<OrderbookResponse>(client.config, url, {}, options)

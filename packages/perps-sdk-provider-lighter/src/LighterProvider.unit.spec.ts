@@ -14,34 +14,49 @@ const ADDRESS = '0x1111111111111111111111111111111111111111' as const
 /** Year ~2096 in unix seconds — a read-only token expiry far past any test clock. */
 const FAR_EXPIRY_SECONDS = 4_000_000_000
 
-// Lighter account-level methods now call backend `/perps/assets?provider=lighter`
-// to source the `market_id → displaySymbol` lookup. Stub a backend apiUrl
-// against which the fetch mock can match.
+// Lighter account-level methods call backend `/perps/markets?provider=lighter`
+// to source the `market_id → displaySymbol` lookup, and `/perps/assets` for the
+// token registry. Stub a backend apiUrl against which the fetch mock can match.
 const STUB_CLIENT = {
   config: { apiUrl: 'https://backend.test/v1/perps' },
 } as PerpsSDKClient
 
-const ASSETS_RESPONSE = {
-  assets: [
+const MARKETS_RESPONSE = {
+  markets: [
     {
-      assetId: '0',
-      market: 'lighter',
-      displaySymbol: 'BTC',
-      displayQuote: 'USDC',
-      logoURI: '',
+      providerId: 'lighter',
+      id: '0',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '0',
+        displaySymbol: 'BTC',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       szDecimals: 4,
+      markPrice: '50000',
       maxLeverage: 50,
       onlyIsolated: false,
       funding: { rate: '0.0001', nextFundingTime: 0 },
-      markPrice: '50000',
     },
   ],
 }
 
-const TOKENS_RESPONSE = {
-  tokens: [
-    { id: '3', symbol: 'USDC', logoURI: 'https://cdn.test/usdc.png' },
-    { id: '0', symbol: 'BTC' },
+const ASSETS_RESPONSE = {
+  assets: [
+    {
+      providerId: 'lighter',
+      id: '3',
+      displaySymbol: 'USDC',
+      logoURI: 'https://cdn.test/usdc.png',
+    },
+    { providerId: 'lighter', id: '0', displaySymbol: 'BTC', logoURI: '' },
   ],
 }
 
@@ -148,11 +163,11 @@ beforeEach(() => {
   recorded = []
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const urlStr = String(url)
+    if (urlStr.includes('backend.test/v1/perps/markets')) {
+      return respond(MARKETS_RESPONSE)
+    }
     if (urlStr.includes('backend.test/v1/perps/assets')) {
       return respond(ASSETS_RESPONSE)
-    }
-    if (urlStr.includes('backend.test/v1/perps/tokens')) {
-      return respond(TOKENS_RESPONSE)
     }
     const u = String(url)
     recorded.push({ url: u, init })
@@ -459,8 +474,8 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
-        if (u.includes('backend.test/v1/perps/assets')) {
-          return respond(ASSETS_RESPONSE)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -515,8 +530,8 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
-        if (u.includes('backend.test/v1/perps/assets')) {
-          return respond(ASSETS_RESPONSE)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -655,11 +670,11 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('/api/v1/transfer/history')) {
         return respond({ code: 0, transfers: [] })
       }
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
-      }
-      if (u.includes('backend.test/v1/perps/tokens')) {
-        return respond(TOKENS_RESPONSE)
       }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
@@ -695,11 +710,11 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
-      }
-      if (u.includes('backend.test/v1/perps/tokens')) {
-        return respond(TOKENS_RESPONSE)
       }
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
@@ -747,7 +762,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     expect(transfer?.asset).toBe('777')
   })
 
-  it('fetches /perps/tokens per getActivity call (no client-side memo; backend caches)', async () => {
+  it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
     await provider.getActivity(STUB_CLIENT, {
@@ -759,7 +774,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       type: [ActivityType.TRANSFER],
     })
     const tokenCalls = recorded.filter((r) =>
-      r.url.includes('backend.test/v1/perps/tokens')
+      r.url.includes('backend.test/v1/perps/assets')
     )
     expect(tokenCalls).toHaveLength(2)
   })

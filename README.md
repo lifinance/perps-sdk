@@ -46,12 +46,12 @@ Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
 ### Fetch Market Data
 
 ```typescript
-import { createPerpsClient, getProviders, getAssets, getPrices } from '@lifi/perps-sdk'
+import { createPerpsClient, getProviders, getMarkets, getPrices } from '@lifi/perps-sdk'
 
 const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
 
 const { providers } = await getProviders(client)
-const { assets } = await getAssets(client, { provider: 'hyperliquid' })
+const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
 const { prices } = await getPrices(client, { provider: 'hyperliquid', symbols: ['BTC', 'ETH'] })
 ```
 
@@ -78,7 +78,7 @@ const setup = await perps.checkSetup({ provider: 'hyperliquid', address })
 const result = await perps.placeOrder({
   provider: 'hyperliquid',
   address,
-  asset: { assetId: 'BTC', market: 'hyperliquid' },
+  market: { marketId: 'BTC', categoryId: 'hyperliquid' },
   side: OrderSide.BUY,
   type: OrderType.MARKET,
   size: '0.1',

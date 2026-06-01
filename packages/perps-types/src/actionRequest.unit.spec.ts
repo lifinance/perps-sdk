@@ -16,7 +16,7 @@ const placeOrderCreate: CreateActionRequest = {
   address: SOME_ADDRESS,
   action: ActionType.PLACE_ORDER,
   params: {
-    asset: { assetId: 'BTC', market: 'hyperliquid' },
+    market: { marketId: 'BTC', categoryId: 'hyperliquid' },
     side: OrderSide.BUY,
     type: OrderType.LIMIT,
     size: '0.1',
@@ -74,7 +74,7 @@ const withdrawalExecute: ExecuteActionRequest = {
 // Pre-built typed payloads keep the negative assignments to a single error
 // on the assignment line where the directive lives.
 const placeOrderParams: PlaceOrderParams = {
-  asset: { assetId: 'BTC', market: 'hyperliquid' },
+  market: { marketId: 'BTC', categoryId: 'hyperliquid' },
   side: OrderSide.BUY,
   size: '0.1',
 }

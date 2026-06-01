@@ -59,12 +59,14 @@ export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export type { GetActivityParams } from './services/getActivity.js'
 export { getActivity } from './services/getActivity.js'
-export type { GetAssetParams } from './services/getAsset.js'
-export { getAsset } from './services/getAsset.js'
 export type { GetAssetsParams } from './services/getAssets.js'
 export { getAssets } from './services/getAssets.js'
 export type { GetFillsParams } from './services/getFills.js'
 export { getFills } from './services/getFills.js'
+export type { GetMarketParams } from './services/getMarket.js'
+export { getMarket } from './services/getMarket.js'
+export type { GetMarketsParams } from './services/getMarkets.js'
+export { getMarkets } from './services/getMarkets.js'
 export type { GetOhlcvParams } from './services/getOhlcv.js'
 export { getOhlcv } from './services/getOhlcv.js'
 export type { GetOrderParams } from './services/getOrder.js'
@@ -78,8 +80,6 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
-export type { GetTokensParams } from './services/getTokens.js'
-export { getTokens } from './services/getTokens.js'
 // Transport
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'
@@ -104,8 +104,8 @@ export type {
   PerpsProvider,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
-  ProviderGetAssetParams,
   ProviderGetFillsParams,
+  ProviderGetMarketParams,
   ProviderGetOhlcvParams,
   ProviderGetOrderbookParams,
   ProviderGetOrderParams,
@@ -157,6 +157,7 @@ export {
   realizedPnlOnClose,
 } from './utils/positionMath.js'
 export { signTypedData } from './utils/signTypedData.js'
+export { summarize } from './utils/summarize.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 

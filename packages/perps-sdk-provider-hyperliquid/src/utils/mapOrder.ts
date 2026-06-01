@@ -6,7 +6,7 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
-import { deriveMarket } from './deriveMarket.js'
+import { marketDisplayFromCoin } from './deriveMarket.js'
 
 /** Map a Hyperliquid orderType string to the OrderType enum. */
 export const mapOrderType = (orderType: string): OrderType => {
@@ -75,12 +75,7 @@ export const isTriggerOrder = (
 
 export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   orderId: String(o.oid),
-  asset: {
-    assetId: o.coin,
-    market: deriveMarket(o.coin),
-    displaySymbol: o.coin,
-    displayQuote: null,
-  },
+  market: marketDisplayFromCoin(o.coin),
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: mapOrderType(o.orderType),
   size: o.sz,
@@ -99,12 +94,7 @@ export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
     type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
     orderId: String(o.oid),
-    asset: {
-      assetId: o.coin,
-      market: deriveMarket(o.coin),
-      displaySymbol: o.coin,
-      displayQuote: null,
-    },
+    market: marketDisplayFromCoin(o.coin),
     type,
     size: o.sz,
     triggerPrice: o.triggerPx,
@@ -185,12 +175,7 @@ export const mapOrder = (detail: HlOrderDetail): Order => {
 
   return {
     orderId: String(o.oid),
-    asset: {
-      assetId: o.coin,
-      market: deriveMarket(o.coin),
-      displaySymbol: o.coin,
-      displayQuote: null,
-    },
+    market: marketDisplayFromCoin(o.coin),
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type: mapOrderType(o.orderType),
     price: o.limitPx,

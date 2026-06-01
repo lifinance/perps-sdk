@@ -20,9 +20,9 @@ const providersWithWsUrl = {
   providers: mockProviders.providers.map((d) => ({
     ...d,
     wsUrl: 'wss://api.hyperliquid.xyz/ws',
-    markets: [
-      { id: 'hyperliquid', quoteAsset: 'USDC' },
-      { id: 'xyz', quoteAsset: 'USDC' },
+    categories: [
+      { id: 'hyperliquid', quoteAsset: null },
+      { id: 'xyz', quoteAsset: null },
     ],
   })),
 }

@@ -1,10 +1,10 @@
 import {
-  getAsset as coreGetAsset,
   getAssets as coreGetAssets,
+  getMarket as coreGetMarket,
+  getMarkets as coreGetMarkets,
   getOhlcv as coreGetOhlcv,
   getOrderbook as coreGetOrderbook,
   getPrices as coreGetPrices,
-  getTokens as coreGetTokens,
   ExplorerChainId,
   explorerTxUrl,
   PerpsError,
@@ -12,8 +12,8 @@ import {
   type PerpsSDKClient,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
-  type ProviderGetAssetParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketParams,
   type ProviderGetOhlcvParams,
   type ProviderGetOrderbookParams,
   type ProviderGetOrderParams,
@@ -32,12 +32,11 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
-  Asset,
-  AssetDisplay,
-  AssetsResponse,
   Balance,
   FillsResponse,
   LighterAccountConfig,
+  Market,
+  MarketsResponse,
   OhlcvResponse,
   Order,
   OrderbookResponse,
@@ -93,9 +92,11 @@ import {
 } from './utils/apiClient.js'
 import {
   classifyAndMapOrders,
+  lighterAsset,
   mapFill,
   mapOrderDetail,
   mapPosition,
+  marketDisplay,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -108,13 +109,6 @@ const projectFeeTier = (
 ): { maker: string; taker: string } => ({
   maker: tickToFeeString(limits.current_maker_fee_tick),
   taker: tickToFeeString(limits.current_taker_fee_tick),
-})
-
-const lighterAsset = (symbol: string): AssetDisplay => ({
-  assetId: symbol,
-  market: LIGHTER_PROVIDER_KEY,
-  displaySymbol: symbol,
-  displayQuote: 'USDC',
 })
 
 const toIsoFromSeconds = (seconds: number): string =>
@@ -286,42 +280,43 @@ export const lighterProvider = (
     })
 
   /**
-   * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/assets`
-   * response. Used by every account-level read to populate `asset.displaySymbol`
-   * on mapped wire shapes. Backend response is Valkey-cached so this is cheap.
+   * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/markets`
+   * response. Used by every account-level read to populate
+   * `market.baseAsset.displaySymbol` on mapped wire shapes. Backend response is
+   * Valkey-cached so this is cheap.
    */
   const buildSymbolLookup = async (
     sdkClient: PerpsSDKClient,
     opts?: SDKRequestOptions
   ): Promise<Map<number, string>> => {
-    const { assets } = await coreGetAssets(
+    const { markets } = await coreGetMarkets(
       sdkClient,
       { provider: LIGHTER_PROVIDER_KEY },
       opts
     )
     return new Map(
-      assets
-        .filter((a) => a.market === LIGHTER_PROVIDER_KEY)
-        .map((a) => [Number(a.assetId), a.displaySymbol])
+      markets
+        .filter((m) => m.categoryId === LIGHTER_PROVIDER_KEY)
+        .map((m) => [Number(m.id), m.baseAsset.displaySymbol])
     )
   }
 
   /**
-   * Resolve the `Token.id → Token.symbol` map from the backend's `/perps/tokens`
-   * registry. The backend response is Valkey-cached so this is cheap to call
-   * per read; no client-side memo (a long-lived instance would otherwise serve
-   * a stale registry).
+   * Resolve the `Asset.id → Asset.displaySymbol` map from the backend's
+   * `/perps/assets` token registry. The backend response is Valkey-cached so
+   * this is cheap to call per read; no client-side memo (a long-lived instance
+   * would otherwise serve a stale registry).
    */
   const buildTokenLookup = async (
     sdkClient: PerpsSDKClient,
     opts?: SDKRequestOptions
   ): Promise<Map<string, string>> => {
-    const { tokens } = await coreGetTokens(
+    const { assets } = await coreGetAssets(
       sdkClient,
       { provider: LIGHTER_PROVIDER_KEY },
       opts
     )
-    return new Map(tokens.map((t) => [t.id, t.symbol]))
+    return new Map(assets.map((a) => [a.id, a.displaySymbol]))
   }
 
   const getStandardAuthToken = async (
@@ -712,17 +707,23 @@ export const lighterProvider = (
         0
       )
 
-      const balances: Record<string, Balance[]> = {
-        [LIGHTER_PROVIDER_KEY]: [
-          { currency: 'USDC', amount: account.collateral },
-        ],
-      }
-      if (account.assets.length > 0) {
-        balances.spot = account.assets.map((a) => ({
-          currency: a.symbol,
-          amount: a.balance,
-        }))
-      }
+      // USDC collateral is the category quote asset → collateralBalances.
+      const collateralBalances: Balance[] = [
+        {
+          categoryId: LIGHTER_PROVIDER_KEY,
+          asset: lighterAsset('USDC', 'USDC'),
+          units: account.collateral,
+          valueUsd: account.collateral,
+        },
+      ]
+      // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
+      // have no price source at this boundary, so their USD value is unknown.
+      const balances: Balance[] = account.assets.map((a) => ({
+        categoryId: LIGHTER_PROVIDER_KEY,
+        asset: lighterAsset(String(a.asset_id), a.symbol),
+        units: a.balance,
+        valueUsd: a.symbol === 'USDC' ? a.balance : '0',
+      }))
 
       const config: LighterAccountConfig = {
         provider: LIGHTER_PROVIDER_KEY,
@@ -741,6 +742,7 @@ export const lighterProvider = (
         provider: LIGHTER_PROVIDER_KEY,
         address: params.address,
         balances,
+        collateralBalances,
         marginUsed: totalMarginUsed.toString(),
         unrealizedPnl: totalUnrealizedPnl.toString(),
         feeTier:
@@ -766,8 +768,8 @@ export const lighterProvider = (
         .filter((p) => Number.parseFloat(p.position) !== 0)
         .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
 
-      if (params.assetId !== undefined) {
-        positions = positions.filter((p) => p.asset.assetId === params.assetId)
+      if (params.marketId !== undefined) {
+        positions = positions.filter((p) => p.market.id === params.marketId)
       }
 
       return {
@@ -799,9 +801,9 @@ export const lighterProvider = (
       ])
 
       const marketIds =
-        params.assetId === undefined
+        params.marketId === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [Number(params.assetId)]
+          : [Number(params.marketId)]
 
       const responses = await retryOnRevoked(opts, params.address, token, (t) =>
         Promise.all(
@@ -1015,7 +1017,10 @@ export const lighterProvider = (
             provider: LIGHTER_PROVIDER_KEY,
             timestamp: toIsoFromSeconds(f.timestamp),
             type: ActivityType.FUNDING,
-            asset: lighterAsset(marketLookup.get(f.market_id) ?? ''),
+            market: marketDisplay(
+              String(f.market_id),
+              marketLookup.get(f.market_id) ?? ''
+            ),
             amount: f.change,
             positionSize: f.position_size,
             fundingRate: f.rate,
@@ -1032,7 +1037,10 @@ export const lighterProvider = (
             leverageType: l.type,
             liquidatedPositions: [
               {
-                asset: lighterAsset(marketLookup.get(l.market_id) ?? ''),
+                market: marketDisplay(
+                  String(l.market_id),
+                  marketLookup.get(l.market_id) ?? ''
+                ),
                 size: '0',
               },
             ],
@@ -1104,22 +1112,22 @@ export const lighterProvider = (
 
     // Public/shared data routes through the LI.FI backend — Valkey-cached
     // server-side so one fetch serves every client. No direct Lighter call here.
-    getAsset: (
+    getMarket: (
       client: PerpsSDKClient,
-      params: ProviderGetAssetParams,
+      params: ProviderGetMarketParams,
       opts?: SDKRequestOptions
-    ): Promise<Asset> =>
-      coreGetAsset(
+    ): Promise<Market> =>
+      coreGetMarket(
         client,
-        { provider: LIGHTER_PROVIDER_KEY, assetId: params.assetId },
+        { provider: LIGHTER_PROVIDER_KEY, marketId: params.marketId },
         opts
       ),
 
-    getAssets: (
+    getMarkets: (
       client: PerpsSDKClient,
       opts?: SDKRequestOptions
-    ): Promise<AssetsResponse> =>
-      coreGetAssets(client, { provider: LIGHTER_PROVIDER_KEY }, opts),
+    ): Promise<MarketsResponse> =>
+      coreGetMarkets(client, { provider: LIGHTER_PROVIDER_KEY }, opts),
 
     getPrices: (
       client: PerpsSDKClient,
@@ -1128,7 +1136,7 @@ export const lighterProvider = (
     ): Promise<PricesResponse> =>
       coreGetPrices(
         client,
-        { provider: LIGHTER_PROVIDER_KEY, assetIds: params.assetIds },
+        { provider: LIGHTER_PROVIDER_KEY, marketIds: params.marketIds },
         opts
       ),
 
@@ -1141,7 +1149,7 @@ export const lighterProvider = (
         client,
         {
           provider: LIGHTER_PROVIDER_KEY,
-          assetId: params.assetId,
+          marketId: params.marketId,
           interval: params.interval,
           startTime: params.startTime,
           endTime: params.endTime,
@@ -1159,7 +1167,7 @@ export const lighterProvider = (
         client,
         {
           provider: LIGHTER_PROVIDER_KEY,
-          assetId: params.assetId,
+          marketId: params.marketId,
           depth: params.depth,
         },
         opts
@@ -1180,20 +1188,8 @@ export const lighterProvider = (
       return projectLighterConfigSettings(config, setup, options)
     },
 
-    summarize(
-      account: AccountResponse,
-      positions: Position[],
-      prices: Record<string, string>,
-      assets?: Asset[],
-      collateralCurrencies?: ReadonlySet<string>
-    ): AccountSummary {
-      return summarizeLighterAccount(
-        account,
-        positions,
-        prices,
-        assets,
-        collateralCurrencies
-      )
+    summarize(account: AccountResponse, positions: Position[]): AccountSummary {
+      return summarizeLighterAccount(account, positions)
     },
 
     /**

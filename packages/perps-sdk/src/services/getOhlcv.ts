@@ -8,8 +8,8 @@ import { buildUrl, request } from '../utils/request.js'
 export interface GetOhlcvParams {
   /** Provider to get OHLCV from (e.g., 'hyperliquid') */
   provider: string
-  /** Canonical wire-level `Asset.assetId` (not `displaySymbol`). */
-  assetId: string
+  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  marketId: string
   /** Candle interval */
   interval: OhlcvInterval
   /** Start time (Unix timestamp in milliseconds) */
@@ -27,7 +27,7 @@ export interface GetOhlcvParams {
  * ```ts
  * const { candles } = await getOhlcv(client, {
  *   provider: 'hyperliquid',
- *   assetId: 'BTC',
+ *   marketId: 'BTC',
  *   interval: '1h',
  *   limit: 100,
  * })
@@ -40,7 +40,7 @@ export async function getOhlcv(
 ): Promise<OhlcvResponse> {
   const url = buildUrl(`${client.config.apiUrl}/ohlcv`, {
     provider: params.provider,
-    assetId: params.assetId,
+    marketId: params.marketId,
     interval: params.interval,
     startTime: params.startTime,
     endTime: params.endTime,

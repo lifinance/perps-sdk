@@ -2,7 +2,7 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  HL_ASSETS,
+  HL_MARKETS,
   HL_USER_FUNDING,
   HL_USER_NON_FUNDING_LEDGER,
 } from '../../test/fixtures.js'
@@ -30,7 +30,7 @@ describe('getActivity', () => {
   })
 
   it('merges ledger and funding entries newest-first and enriches funding assets', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const result = await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
@@ -42,13 +42,13 @@ describe('getActivity', () => {
     expect(types).toEqual([ActivityType.DEPOSIT, ActivityType.FUNDING].sort())
     const funding = result.items.find((i) => i.type === ActivityType.FUNDING)!
     if (funding.type === ActivityType.FUNDING) {
-      expect(funding.asset.market).toBe('hyperliquid')
-      expect(funding.asset.displayQuote).toBe('USDC')
+      expect(funding.market.categoryId).toBe('hyperliquid')
+      expect(funding.market.quoteAsset.displaySymbol).toBe('USDC')
     }
   })
 
   it('skips the userFunding call when type=[DEPOSIT]', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_ASSETS)
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
     await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -60,7 +60,7 @@ describe('getActivity', () => {
   })
 
   it('skips the ledger call when type=[FUNDING]', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_ASSETS)
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
     await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -74,7 +74,7 @@ describe('getActivity', () => {
   })
 
   it('uses cursor to upper-bound results and emits a next cursor from the tail timestamp', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const cursor = '1900000000000' // far future, includes both items
     const result = await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
