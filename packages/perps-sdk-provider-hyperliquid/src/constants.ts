@@ -1,6 +1,18 @@
+import type { FeeTier } from '@lifi/perps-types'
+
 export const PROVIDER_KEY = 'hyperliquid'
 
 export const DEFAULT_HYPERLIQUID_API_URL = 'https://api.hyperliquid.xyz'
+
+/**
+ * Approximate published baseline maker/taker fee tier for Hyperliquid, used to
+ * seed fee math before the live account `feeTier` resolves. Rates are fractions
+ * (not basis points): `0.00015` = 0.015% maker, `0.00045` = 0.045% taker.
+ */
+export const HYPERLIQUID_FEE_TIER_FALLBACK: FeeTier = {
+  maker: '0.00015',
+  taker: '0.00045',
+}
 
 export const MAX_CANDLE_LIMIT = 1000
 export const DEFAULT_CANDLE_LIMIT = 100
