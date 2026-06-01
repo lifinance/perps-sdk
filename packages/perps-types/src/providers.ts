@@ -1,3 +1,4 @@
+import type { Asset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 
 export interface ParamOption {
@@ -54,9 +55,11 @@ export interface TradeNotice {
   message: string
 }
 
-export interface ProviderMarketInfo {
+export interface ProviderCategory {
   id: string
-  quoteAsset: string | null
+  logoURI?: string
+  /** `null` for the "spot" category — no single fixed quote. */
+  quoteAsset: Asset | null
   tradeNotice?: TradeNotice
 }
 
@@ -70,7 +73,7 @@ export interface Provider {
   setup: ProviderAction[]
   options: ProviderAction[]
   actions: ProviderAction[]
-  markets: ProviderMarketInfo[]
+  categories: ProviderCategory[]
   wsUrl?: string
   /** Absent means no minimum advertised. */
   minDepositUsd?: number

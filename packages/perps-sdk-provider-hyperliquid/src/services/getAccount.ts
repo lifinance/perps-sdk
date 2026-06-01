@@ -1,31 +1,40 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   type SDKRequestOptions,
+  stringToFloat,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
+  Asset,
   Balance,
   HyperliquidAccountConfig,
+  Market,
   Position,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY } from '../constants.js'
+import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import {
   HlAbstractionMode,
   type HlClearinghouseState,
   type HlExtraAgents,
+  type HlSpotBalance,
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
-import { mapPosition, perpsDexNames, requireAsset } from '../utils/index.js'
+import {
+  marketDisplayFromCoin,
+  perpsDexNames,
+  requireMarket,
+} from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { mapPosition } from '../utils/mapPosition.js'
 
 export interface GetAccountParams {
   address: Address
 }
 
-const SPOT_KEY = 'spot'
+const SPOT_KEY = SPOT_MARKET_ID
 
 const getAccountValue = (state: HlClearinghouseState): number =>
   Number.parseFloat(
@@ -71,70 +80,95 @@ const getMarginUsed = (
   return getTotalMarginUsed(mainState).toString()
 }
 
-const buildSpotBalances = (state: HlSpotClearinghouseState): Balance[] =>
-  state.balances.map((b) => ({ currency: b.coin, amount: b.total }))
+const USDC_SYMBOL = 'USDC'
 
-const buildDexAbstractionBalances = (
-  stateByDex: Map<string, HlClearinghouseState>,
-  marketQuoteAssets: Map<string, string>
-): Balance[] => {
-  const totals = new Map<string, number>()
-  for (const [dex, state] of stateByDex) {
-    const quote = marketQuoteAssets.get(dex) ?? 'USDC'
-    const value = getAccountValue(state)
-    totals.set(quote, (totals.get(quote) ?? 0) + value)
+/**
+ * Price each token symbol in USD from the backend market list (a market's
+ * `markPrice` keyed by its base-asset symbol). Quote/stable symbols fall back
+ * to $1.
+ */
+const buildPriceBySymbol = (
+  markets: Market[],
+  quoteSymbols: ReadonlySet<string>
+): Map<string, number> => {
+  const map = new Map<string, number>()
+  for (const m of markets) {
+    map.set(m.baseAsset.displaySymbol, stringToFloat(m.markPrice))
   }
-  return [...totals.entries()].map(([currency, amount]) => ({
-    currency,
-    amount: amount.toString(),
-  }))
+  for (const symbol of quoteSymbols) {
+    if (!map.has(symbol)) {
+      map.set(symbol, 1)
+    }
+  }
+  return map
 }
 
-const buildPerMarketBalances = (
-  stateByDex: Map<string, HlClearinghouseState>,
-  marketQuoteAssets: Map<string, string>
-): Record<string, Balance[]> => {
-  const result: Record<string, Balance[]> = {}
-  for (const [dex, state] of stateByDex) {
-    const quote = marketQuoteAssets.get(dex) ?? 'USDC'
-    const value = getAccountValue(state)
-    const key = dex || PROVIDER_KEY
-    const existing = result[key] ?? []
-    existing.push({ currency: quote, amount: value.toString() })
-    result[key] = existing
-  }
-  return result
+const spotAsset = (b: HlSpotBalance): Asset => ({
+  ...marketDisplayFromCoin(b.coin).baseAsset,
+  id: String(b.token),
+})
+
+const isUnifiedMode = (abstraction: HlAbstractionMode | null): boolean =>
+  abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
+  abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
+
+/**
+ * Per-dex perps equity, normalised to gross holdings. Hyperliquid reports
+ * `accountValue` net of locked margin in `disabled`/`dexAbstraction` modes;
+ * add margin back so every consumer's collateral is uniform and mode-agnostic.
+ */
+const grossVenueEquity = (state: HlClearinghouseState): number =>
+  getAccountValue(state) + getTotalMarginUsed(state)
+
+interface BalancePartition {
+  balances: Balance[]
+  collateralBalances: Balance[]
 }
 
 const buildBalances = (
   abstraction: HlAbstractionMode | null,
   spotState: HlSpotClearinghouseState,
   stateByDex: Map<string, HlClearinghouseState>,
-  marketQuoteAssets: Map<string, string>
-): Record<string, Balance[]> => {
-  const spot = buildSpotBalances(spotState)
+  quoteSymbols: ReadonlySet<string>,
+  priceBySymbol: Map<string, number>
+): BalancePartition => {
+  const balances: Balance[] = []
+  const collateralBalances: Balance[] = []
 
-  if (
-    abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
-    abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
-  ) {
-    return { [SPOT_KEY]: spot }
-  }
-
-  if (abstraction === HlAbstractionMode.DEX_ABSTRACTION) {
-    return {
-      [SPOT_KEY]: spot,
-      [PROVIDER_KEY]: buildDexAbstractionBalances(
-        stateByDex,
-        marketQuoteAssets
-      ),
+  // Spot balances: collateral iff the token is a category quote asset.
+  for (const b of spotState.balances) {
+    const price = priceBySymbol.get(b.coin) ?? 0
+    const balance: Balance = {
+      categoryId: SPOT_KEY,
+      asset: spotAsset(b),
+      units: b.total,
+      valueUsd: (stringToFloat(b.total) * price).toString(),
+    }
+    if (quoteSymbols.has(b.coin)) {
+      collateralBalances.push(balance)
+    } else {
+      balances.push(balance)
     }
   }
 
-  return {
-    [SPOT_KEY]: spot,
-    ...buildPerMarketBalances(stateByDex, marketQuoteAssets),
+  // Unified/portfolio modes hold everything in spot — per-dex equity would
+  // double-count. Only disabled/dexAbstraction carry separate venue collateral.
+  if (!isUnifiedMode(abstraction)) {
+    for (const [dex, state] of stateByDex) {
+      const value = grossVenueEquity(state)
+      collateralBalances.push({
+        categoryId: dex || PROVIDER_KEY,
+        asset: {
+          ...marketDisplayFromCoin(USDC_SYMBOL).baseAsset,
+          id: USDC_SYMBOL,
+        },
+        units: value.toString(),
+        valueUsd: value.toString(),
+      })
+    }
   }
+
+  return { balances, collateralBalances }
 }
 
 /**
@@ -158,19 +192,18 @@ export const getAccount = async (
   params: GetAccountParams,
   options?: SDKRequestOptions
 ): Promise<AccountResponse> => {
-  const { assets } = await coreGetAssets(
+  const { markets } = await coreGetMarkets(
     client,
     { provider: PROVIDER_KEY },
     options
   )
-  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
-  const dexNames = perpsDexNames(assets)
-  const quoteByMarket = new Map<string, string>()
-  for (const a of assets) {
-    if (a.market !== 'spot' && a.displayQuote !== null) {
-      quoteByMarket.set(a.market, a.displayQuote)
-    }
+  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const dexNames = perpsDexNames(markets)
+  const quoteSymbols = new Set<string>()
+  for (const m of markets) {
+    quoteSymbols.add(m.quoteAsset.displaySymbol)
   }
+  const priceBySymbol = buildPriceBySymbol(markets, quoteSymbols)
   const infoOpts = hlInfoOptions(client, options)
 
   const [feesResult, abstractionResult, agentsResult, spotState, stateResults] =
@@ -218,7 +251,7 @@ export const getAccount = async (
     )
     .map((pos) => ({
       ...pos,
-      asset: requireAsset(byAssetId, pos.asset.assetId),
+      market: requireMarket(byMarketId, pos.market.id),
     }))
 
   const stateByDex = new Map<string, HlClearinghouseState>()
@@ -237,15 +270,19 @@ export const getAccount = async (
     agents: agentsResult,
   }
 
+  const { balances, collateralBalances } = buildBalances(
+    abstractionResult,
+    spotState,
+    stateByDex,
+    quoteSymbols,
+    priceBySymbol
+  )
+
   return {
     provider: PROVIDER_KEY,
     address: params.address,
-    balances: buildBalances(
-      abstractionResult,
-      spotState,
-      stateByDex,
-      quoteByMarket
-    ),
+    balances,
+    collateralBalances,
     marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
     unrealizedPnl: totalUnrealizedPnl.toString(),
     feeTier: {

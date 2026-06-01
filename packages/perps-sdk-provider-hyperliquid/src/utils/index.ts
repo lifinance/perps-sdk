@@ -3,7 +3,11 @@
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
-export { deriveMarket, perpsDexNames } from './deriveMarket.js'
+export {
+  deriveMarket,
+  marketDisplayFromCoin,
+  perpsDexNames,
+} from './deriveMarket.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
@@ -11,8 +15,8 @@ export {
   calculateMaintenanceMarginRate,
 } from './liquidation.js'
 export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
-export { mapAsset } from './mapAsset.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
+export { mapMarket } from './mapMarket.js'
 export {
   isTriggerOrder,
   isTriggerType,
@@ -29,4 +33,4 @@ export {
   formatOrderSize,
   getMaxPriceDecimals,
 } from './orderFormatting.js'
-export { requireAsset } from './requireAsset.js'
+export { requireMarket } from './requireMarket.js'

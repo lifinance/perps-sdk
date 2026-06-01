@@ -2,7 +2,7 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  HL_ASSETS,
+  HL_MARKETS,
   HL_ORDER_STATUS_FOUND,
   HL_ORDER_STATUS_UNKNOWN,
 } from '../../test/fixtures.js'
@@ -32,7 +32,7 @@ describe('getOrder', () => {
         ...baseResponses,
         orderStatus: HL_ORDER_STATUS_FOUND,
       },
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const order = await getOrder(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -41,8 +41,8 @@ describe('getOrder', () => {
     })
 
     expect(order.orderId).toBe('1')
-    expect(order.asset.market).toBe('hyperliquid')
-    expect(order.asset.displayQuote).toBe('USDC')
+    expect(order.market.categoryId).toBe('hyperliquid')
+    expect(order.market.quoteAsset.displaySymbol).toBe('USDC')
   })
 
   it('throws OrderNotFound when the upstream status is unknownOid', async () => {

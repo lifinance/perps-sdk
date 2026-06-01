@@ -10,7 +10,7 @@ import type {
 import { ActivityType } from '@lifi/perps-types'
 import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
 import { isSendAssetDelta, isSpotTransferDelta } from '../types/index.js'
-import { deriveMarket } from './deriveMarket.js'
+import { marketDisplayFromCoin } from './deriveMarket.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
@@ -136,12 +136,7 @@ export const mapLedgerEntry = (
         accountValue: d.accountValue,
         leverageType: d.leverageType,
         liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
-          asset: {
-            assetId: p.coin,
-            market: deriveMarket(p.coin),
-            displaySymbol: p.coin,
-            displayQuote: null,
-          },
+          market: marketDisplayFromCoin(p.coin),
           size: p.szi,
         })),
       } satisfies LiquidationActivity
@@ -160,12 +155,7 @@ export const mapFundingActivity = (
   provider: providerKey,
   timestamp: new Date(entry.time).toISOString(),
   type: ActivityType.FUNDING,
-  asset: {
-    assetId: entry.delta.coin,
-    market: deriveMarket(entry.delta.coin),
-    displaySymbol: entry.delta.coin,
-    displayQuote: null,
-  },
+  market: marketDisplayFromCoin(entry.delta.coin),
   amount: entry.delta.usdc,
   positionSize: entry.delta.szi,
   fundingRate: entry.delta.fundingRate,

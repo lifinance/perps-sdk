@@ -1,5 +1,5 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
@@ -7,13 +7,13 @@ import type { PositionsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlClearinghouseState } from '../types/index.js'
-import { mapPosition, perpsDexNames, requireAsset } from '../utils/index.js'
+import { mapPosition, perpsDexNames, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetPositionsParams {
   address: Address
-  /** Filter to a single canonical `Asset.assetId` (e.g. `'BTC'`, `'xyz:PURR'`). */
-  assetId?: string
+  /** Filter to a single opaque `Market.id` (e.g. `'BTC'`, `'xyz:PURR'`). */
+  marketId?: string
   /** Page size hint surfaced on the response. Hyperliquid returns all open positions in one call, so pagination is never required. */
   limit?: number
 }
@@ -30,16 +30,16 @@ export const getPositions = async (
   params: GetPositionsParams,
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> => {
-  const { assets } = await coreGetAssets(
+  const { markets } = await coreGetMarkets(
     client,
     { provider: PROVIDER_KEY },
     options
   )
-  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const byMarketId = new Map(markets.map((m) => [m.id, m]))
   const infoOpts = hlInfoOptions(client, options)
 
   const stateResults = await Promise.all(
-    perpsDexNames(assets).map((name) =>
+    perpsDexNames(markets).map((name) =>
       infoRequest<HlClearinghouseState>(
         apiUrl,
         {
@@ -60,11 +60,11 @@ export const getPositions = async (
     )
     .map((pos) => ({
       ...pos,
-      asset: requireAsset(byAssetId, pos.asset.assetId),
+      market: requireMarket(byMarketId, pos.market.id),
     }))
 
-  if (params.assetId !== undefined) {
-    positions = positions.filter((p) => p.asset.assetId === params.assetId)
+  if (params.marketId !== undefined) {
+    positions = positions.filter((p) => p.market.id === params.marketId)
   }
 
   return {

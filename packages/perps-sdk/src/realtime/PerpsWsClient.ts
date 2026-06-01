@@ -103,7 +103,7 @@ export class PerpsWsClient {
       throw new Error(`No WebSocket URL found for provider: ${provider}`)
     }
 
-    const allMarkets = (providerInfo.markets ?? []) as Array<{
+    const allMarkets = (providerInfo.categories ?? []) as Array<{
       id: string
     }>
     const providerConfig = this.client.config.providers?.[provider]

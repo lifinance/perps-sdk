@@ -6,21 +6,20 @@ import type {
 import { buildUrl, request } from '../utils/request.js'
 
 export interface GetAssetsParams {
-  /** Provider to get assets from (e.g., 'hyperliquid') */
+  /** Provider to get assets from (e.g., 'lighter') */
   provider: string
-  /** Optional filter — canonical `Asset.assetId`s (not display symbols). */
-  assetIds?: string[]
 }
 
 /**
- * Get all available assets for a provider. Thin pass-through to the LI.FI
- * backend's Valkey-cached `/perps/assets` route — the canonical source of
- * public market data for widget consumers.
+ * Get the token/asset registry for a provider. Thin pass-through to the
+ * LI.FI backend's Valkey-cached `/perps/assets` route, which centralises the
+ * `asset id → symbol → logoURI` join so the SDK never calls a provider's
+ * REST API directly for static registry data.
  *
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
- * const { assets } = await getAssets(client, { provider: 'hyperliquid' })
+ * const { assets } = await getAssets(client, { provider: 'lighter' })
  * ```
  */
 export async function getAssets(
@@ -30,7 +29,6 @@ export async function getAssets(
 ): Promise<AssetsResponse> {
   const url = buildUrl(`${client.config.apiUrl}/assets`, {
     provider: params.provider,
-    assetIds: params.assetIds?.join(','),
   })
   return request<AssetsResponse>(client.config, url, {}, options)
 }

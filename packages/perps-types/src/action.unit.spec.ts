@@ -15,7 +15,7 @@ import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
 describe('PlaceOrderParams', () => {
   it('accepts a fixture without marginMode (optional field)', () => {
     const params: PlaceOrderParams = {
-      asset: { assetId: 'BTC', market: 'lighter' },
+      market: { marketId: 'BTC', categoryId: 'lighter' },
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       size: '0.1',
@@ -27,7 +27,7 @@ describe('PlaceOrderParams', () => {
 
   it('accepts marginMode: ISOLATED', () => {
     const params: PlaceOrderParams = {
-      asset: { assetId: 'BTC', market: 'lighter' },
+      market: { marketId: 'BTC', categoryId: 'lighter' },
       side: OrderSide.BUY,
       size: '0.1',
       marginMode: MarginMode.ISOLATED,
@@ -38,7 +38,7 @@ describe('PlaceOrderParams', () => {
 
   it('accepts marginMode: CROSS', () => {
     const params: PlaceOrderParams = {
-      asset: { assetId: 'BTC', market: 'hyperliquid' },
+      market: { marketId: 'BTC', categoryId: 'hyperliquid' },
       side: OrderSide.SELL,
       size: '0.1',
       marginMode: MarginMode.CROSS,
@@ -51,7 +51,7 @@ describe('PlaceOrderParams', () => {
 describe('UpdateLeverageParams', () => {
   it('accepts a fixture without marginMode (optional field)', () => {
     const params: UpdateLeverageParams = {
-      asset: { assetId: 'ETH', market: 'lighter' },
+      market: { marketId: 'ETH', categoryId: 'lighter' },
       leverage: 10,
     }
 
@@ -60,7 +60,7 @@ describe('UpdateLeverageParams', () => {
 
   it('accepts marginMode: ISOLATED', () => {
     const params: UpdateLeverageParams = {
-      asset: { assetId: 'ETH', market: 'lighter' },
+      market: { marketId: 'ETH', categoryId: 'lighter' },
       leverage: 10,
       marginMode: MarginMode.ISOLATED,
     }
@@ -70,7 +70,7 @@ describe('UpdateLeverageParams', () => {
 
   it('accepts marginMode: CROSS', () => {
     const params: UpdateLeverageParams = {
-      asset: { assetId: 'ETH', market: 'hyperliquid' },
+      market: { marketId: 'ETH', categoryId: 'hyperliquid' },
       leverage: 5,
       marginMode: MarginMode.CROSS,
     }

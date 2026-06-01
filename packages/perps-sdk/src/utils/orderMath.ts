@@ -8,16 +8,16 @@ import {
 import { realizedPnlOnClose } from './positionMath.js'
 
 /**
- * Pick the matching open position for an order's asset, if any.
+ * Pick the matching open position for an order's market, if any.
  *
- * @param assetId - The order's `asset.assetId`.
- * @param positions - Open positions list (any symbol).
+ * @param marketId - The order's `market.id`.
+ * @param positions - Open positions list (any market).
  */
 export function findMatchingPosition(
-  assetId: string,
+  marketId: string,
   positions: readonly Position[]
 ): Position | undefined {
-  return positions.find((p) => p.asset.assetId === assetId)
+  return positions.find((p) => p.market.id === marketId)
 }
 
 /**

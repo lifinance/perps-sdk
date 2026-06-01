@@ -7,15 +7,23 @@ import type {
   HyperliquidAccountConfig,
   LighterAccountConfig,
 } from './account.js'
+import type { Asset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type {
   Param,
   ParamOption,
   Provider,
   ProviderAction,
-  ProviderMarketInfo,
+  ProviderCategory,
   TradeNotice,
 } from './providers.js'
+
+const usdcAsset: Asset = {
+  providerId: 'hyperliquid',
+  id: 'USDC',
+  displaySymbol: 'USDC',
+  logoURI: 'https://example.invalid/usdc.svg',
+}
 
 // ---------------------------------------------------------------------------
 // Provider setup / options fixtures
@@ -130,7 +138,7 @@ const hyperliquidProvider: Provider = {
       signingMethod: SigningMethod.EIP712,
     },
   ],
-  markets: [{ id: 'BTC-PERP', quoteAsset: 'USDC' }],
+  categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   minOrderValueUsd: 10,
 }
 
@@ -150,7 +158,9 @@ const lighterProvider: Provider = {
       signingMethod: SigningMethod.WASM_BLOB,
     },
   ],
-  markets: [{ id: 'BTC', quoteAsset: 'USDC' }],
+  categories: [
+    { id: 'lighter', quoteAsset: { ...usdcAsset, providerId: 'lighter' } },
+  ],
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
 }
@@ -168,17 +178,23 @@ const infoNotice: TradeNotice = {
   message: 'Funding settles hourly on this market.',
 }
 
-// A market carrying a warn-level notice alongside the always-present fields.
-const marketWithWarnNotice: ProviderMarketInfo = {
-  id: 'KPEPE-PERP',
-  quoteAsset: 'USDC',
+// A category carrying a warn-level notice alongside the always-present fields.
+const categoryWithWarnNotice: ProviderCategory = {
+  id: 'kpepe',
+  quoteAsset: usdcAsset,
   tradeNotice: warnNotice,
 }
 
-// tradeNotice is optional — a market may omit it entirely.
-const marketWithoutNotice: ProviderMarketInfo = {
-  id: 'BTC-PERP',
-  quoteAsset: 'USDC',
+// tradeNotice is optional — a category may omit it entirely.
+const categoryWithoutNotice: ProviderCategory = {
+  id: 'hyperliquid',
+  quoteAsset: usdcAsset,
+}
+
+// The "spot" category has no single fixed quote — quoteAsset is null.
+const spotCategory: ProviderCategory = {
+  id: 'spot',
+  quoteAsset: null,
 }
 
 // Empty setup + options is valid (provider with no gates and no knobs).
@@ -191,7 +207,7 @@ const providerWithNoDescriptors: Provider = {
   setup: [],
   options: [],
   actions: [],
-  markets: [],
+  categories: [],
 }
 
 // Announced-but-not-launched provider — `active: false` greys it out.
@@ -204,7 +220,7 @@ const announcedProvider: Provider = {
   setup: [],
   options: [],
   actions: [],
-  markets: [],
+  categories: [],
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +269,15 @@ const lighterConfigRoApproved: LighterAccountConfig = {
 const hyperliquidAccountResponse: AccountResponse = {
   provider: 'hyperliquid',
   address: '0x0000000000000000000000000000000000000001',
-  balances: { hyperliquid: [{ currency: 'USDC', amount: '100' }] },
+  balances: [],
+  collateralBalances: [
+    {
+      categoryId: 'hyperliquid',
+      asset: usdcAsset,
+      units: '100',
+      valueUsd: '100',
+    },
+  ],
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0.0002', taker: '0.0005' },
@@ -263,7 +287,15 @@ const hyperliquidAccountResponse: AccountResponse = {
 const lighterAccountResponse: AccountResponse = {
   provider: 'lighter',
   address: '0x0000000000000000000000000000000000000002',
-  balances: { lighter: [{ currency: 'USDC', amount: '50' }] },
+  balances: [],
+  collateralBalances: [
+    {
+      categoryId: 'lighter',
+      asset: { ...usdcAsset, providerId: 'lighter' },
+      units: '50',
+      valueUsd: '50',
+    },
+  ],
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },
@@ -339,7 +371,7 @@ type _TradeNoticeLevel = Expect<Equals<TradeNotice['level'], 'info' | 'warn'>>
 
 // `tradeNotice` is optional on the market — an absent notice is the common case.
 type _TradeNoticeOptional = Expect<
-  Equals<Extract<RequiredKeys<ProviderMarketInfo>, 'tradeNotice'>, never>
+  Equals<Extract<RequiredKeys<ProviderCategory>, 'tradeNotice'>, never>
 >
 
 // `AccountConfig` narrows on `provider`. The widget never reads the union
@@ -377,8 +409,9 @@ export const _fixtures = {
   lighterProvider,
   warnNotice,
   infoNotice,
-  marketWithWarnNotice,
-  marketWithoutNotice,
+  categoryWithWarnNotice,
+  categoryWithoutNotice,
+  spotCategory,
   providerWithNoDescriptors,
   announcedProvider,
   hyperliquidConfig,
@@ -460,14 +493,19 @@ describe('Provider setup / options descriptors', () => {
   })
 })
 
-describe('ProviderMarketInfo.tradeNotice', () => {
-  it('attaches a warn-level notice to a market', () => {
-    expect(marketWithWarnNotice.tradeNotice).toEqual(warnNotice)
-    expect(marketWithWarnNotice.tradeNotice?.level).toBe('warn')
+describe('ProviderCategory.tradeNotice', () => {
+  it('attaches a warn-level notice to a category', () => {
+    expect(categoryWithWarnNotice.tradeNotice).toEqual(warnNotice)
+    expect(categoryWithWarnNotice.tradeNotice?.level).toBe('warn')
   })
 
-  it('admits a market with no notice (the common case)', () => {
-    expect(marketWithoutNotice.tradeNotice).toBeUndefined()
+  it('admits a category with no notice (the common case)', () => {
+    expect(categoryWithoutNotice.tradeNotice).toBeUndefined()
+  })
+
+  it('carries a null quoteAsset for the spot category', () => {
+    expect(spotCategory.quoteAsset).toBeNull()
+    expect(categoryWithoutNotice.quoteAsset?.displaySymbol).toBe('USDC')
   })
 
   it('carries the two notice levels the widget styles', () => {

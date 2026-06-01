@@ -1,5 +1,5 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
@@ -11,7 +11,7 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
-import { mapFill, requireAsset } from '../utils/index.js'
+import { mapFill, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetFillsParams {
@@ -42,12 +42,12 @@ export const getFills = async (
   params: GetFillsParams,
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
-  const { assets } = await coreGetAssets(
+  const { markets } = await coreGetMarkets(
     client,
     { provider: PROVIDER_KEY },
     options
   )
-  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const byMarketId = new Map(markets.map((m) => [m.id, m]))
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(
@@ -83,7 +83,7 @@ export const getFills = async (
   const hasMore = filtered.length > limit
   const items = filtered.slice(0, limit).map((f) => {
     const fill = mapFill(f)
-    return { ...fill, asset: requireAsset(byAssetId, fill.asset.assetId) }
+    return { ...fill, market: requireMarket(byMarketId, fill.market.id) }
   })
 
   return {

@@ -7,6 +7,7 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import type { LtOrder } from '../types/index.js'
+import { marketDisplay } from './marketDisplay.js'
 
 // Lighter's `type` enum uses hyphens in the OpenAPI spec but earlier API
 // versions emitted underscores. Tolerate both so we don't silently fall
@@ -154,15 +155,10 @@ export const mapTriggerOrder = (
     // `order_index` is the per-(account, market) numeric id Lighter's L2
     // mutating txs (cancel, modify) require. The matching-engine string
     // label `order_id` is internal to the SDK provider and never crosses
-    // this boundary — combined with `asset.assetId` (=market_index), the
+    // this boundary — combined with `market.id` (=market_index), the
     // numeric `order_index` uniquely pins a Lighter order.
     orderId: String(order.order_index),
-    asset: {
-      assetId: String(order.market_index),
-      market: 'lighter',
-      displaySymbol,
-      displayQuote: 'USDC',
-    },
+    market: marketDisplay(String(order.market_index), displaySymbol),
     type,
     size: order.initial_base_amount,
     triggerPrice: order.trigger_price,
@@ -173,16 +169,11 @@ export const mapTriggerOrder = (
 
 /**
  * Map a raw Lighter order to the generic OpenOrder type.
- * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
+ * @param displaySymbol - Human-readable symbol for `market.baseAsset.displaySymbol`.
  */
 export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
   orderId: String(order.order_index),
-  asset: {
-    assetId: String(order.market_index),
-    market: 'lighter',
-    displaySymbol,
-    displayQuote: 'USDC',
-  },
+  market: marketDisplay(String(order.market_index), displaySymbol),
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
   type: mapOrderType(order.type),
   size: order.initial_base_amount,
@@ -236,12 +227,7 @@ export const mapOrderDetail = (
   displaySymbol: string
 ): Order => ({
   orderId: String(order.order_index),
-  asset: {
-    assetId: String(order.market_index),
-    market: 'lighter',
-    displaySymbol,
-    displayQuote: 'USDC',
-  },
+  market: marketDisplay(String(order.market_index), displaySymbol),
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
   type: mapOrderType(order.type),
   price: order.price,

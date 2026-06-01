@@ -1,4 +1,4 @@
-import type { Asset } from '@lifi/perps-types'
+import type { Market } from '@lifi/perps-types'
 import { vi } from 'vitest'
 
 export interface RecordedRequest {
@@ -14,15 +14,15 @@ const jsonResponse = (value: unknown, status = 200): Response =>
 
 /**
  * Install a `vi.spyOn(globalThis, 'fetch')` for account-read specs. Serves the
- * backend `/assets` and `/assets/:assetId` GET routes from `assets` (the
- * enriched source of truth), and resolves each Hyperliquid `/info` POST from
- * `responses` keyed by the body's `type` field. Only `/info` requests are
- * recorded. Unknown `type` values raise so tests can't rely on default
- * fixtures.
+ * backend `/markets` GET route from `markets` (the enriched source of truth) —
+ * `getMarket` filters by the `marketIds` query param — and resolves each
+ * Hyperliquid `/info` POST from `responses` keyed by the body's `type` field.
+ * Only `/info` requests are recorded. Unknown `type` values raise so tests
+ * can't rely on default fixtures.
  */
 export function installInfoFetchMock(
   responses: Record<string, unknown>,
-  assets: Asset[] = []
+  markets: Market[] = []
 ): {
   requests: RecordedRequest[]
   restore: () => void
@@ -33,19 +33,12 @@ export function installInfoFetchMock(
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
 
-      const single = url.match(/\/assets\/([^/?]+)/)
-      if (single) {
-        const assetId = decodeURIComponent(single[1])
-        const asset = assets.find((a) => a.assetId === assetId)
-        return asset
-          ? jsonResponse(asset)
-          : jsonResponse(
-              { code: 2023, message: `asset ${assetId} not found` },
-              404
-            )
-      }
-      if (url.includes('/assets')) {
-        return jsonResponse({ assets })
+      if (url.includes('/markets')) {
+        const marketIds = new URL(url).searchParams.get('marketIds')
+        const filtered = marketIds
+          ? markets.filter((m) => marketIds.split(',').includes(m.id))
+          : markets
+        return jsonResponse({ markets: filtered })
       }
 
       const body = JSON.parse((init?.body as string) ?? '{}') as Record<

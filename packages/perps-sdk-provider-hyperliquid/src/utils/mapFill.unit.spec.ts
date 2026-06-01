@@ -158,29 +158,42 @@ describe('mapFill (Hyperliquid)', () => {
     expect(fill.createdAt).toBe(new Date(1_700_000_000_000).toISOString())
   })
 
-  it('builds the asset display from the coin field', () => {
+  it('builds the market display from the coin field', () => {
     const fill = mapFill(baseFill({ coin: 'ETH' }))
-    expect(fill.asset).toEqual({
-      assetId: 'ETH',
-      market: 'hyperliquid',
-      displaySymbol: 'ETH',
-      displayQuote: null,
+    expect(fill.market).toEqual({
+      providerId: 'hyperliquid',
+      id: 'ETH',
+      categoryId: 'hyperliquid',
+      baseAsset: {
+        providerId: 'hyperliquid',
+        id: 'ETH',
+        displaySymbol: 'ETH',
+        logoURI: 'https://app.hyperliquid.xyz/coins/ETH.svg',
+      },
+      quoteAsset: {
+        providerId: 'hyperliquid',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+      },
     })
   })
 
-  describe('asset.market', () => {
-    it('maps a bare coin (main perp dex) to market "hyperliquid"', () => {
-      expect(mapFill(baseFill({ coin: 'BTC' })).asset.market).toBe(
+  describe('market.categoryId', () => {
+    it('maps a bare coin (main perp dex) to category "hyperliquid"', () => {
+      expect(mapFill(baseFill({ coin: 'BTC' })).market.categoryId).toBe(
         'hyperliquid'
       )
     })
 
     it('maps a sub-dex prefixed coin (e.g. "xyz:PURR") to the sub-dex name', () => {
-      expect(mapFill(baseFill({ coin: 'xyz:PURR' })).asset.market).toBe('xyz')
+      expect(mapFill(baseFill({ coin: 'xyz:PURR' })).market.categoryId).toBe(
+        'xyz'
+      )
     })
 
     it('maps an @-prefixed spot coin to market "spot"', () => {
-      expect(mapFill(baseFill({ coin: '@142' })).asset.market).toBe('spot')
+      expect(mapFill(baseFill({ coin: '@142' })).market.categoryId).toBe('spot')
     })
   })
 

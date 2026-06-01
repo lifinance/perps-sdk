@@ -1,6 +1,6 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import { HL_ASSETS, HL_FRONTEND_OPEN_ORDERS } from '../../test/fixtures.js'
+import { HL_FRONTEND_OPEN_ORDERS, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getOrders } from './getOrders.js'
@@ -24,7 +24,7 @@ describe('getOrders', () => {
   })
 
   it('splits limit and trigger orders and enriches their asset display fields', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
@@ -32,8 +32,8 @@ describe('getOrders', () => {
 
     expect(result.provider).toBe('hyperliquid')
     expect(result.openOrders).toHaveLength(1)
-    expect(result.openOrders[0].asset.market).toBe('hyperliquid')
-    expect(result.openOrders[0].asset.displayQuote).toBe('USDC')
+    expect(result.openOrders[0].market.categoryId).toBe('hyperliquid')
+    expect(result.openOrders[0].market.quoteAsset.displaySymbol).toBe('USDC')
     expect(result.openOrders[0].orderId).toBe('1')
     expect(result.triggerOrders).toHaveLength(1)
     expect(result.triggerOrders[0].orderId).toBe('2')
@@ -54,7 +54,7 @@ describe('getOrders', () => {
         ...baseResponses,
         frontendOpenOrders: [parentWithChild, childOrder],
       },
-      HL_ASSETS
+      HL_MARKETS
     ))
 
     const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
@@ -67,12 +67,12 @@ describe('getOrders', () => {
     expect(result.triggerOrders.map((o) => o.orderId)).toEqual(['99'])
   })
 
-  it('filters by assetId-matching `symbol`', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_ASSETS))
+  it('filters by marketId-matching `symbol`', async () => {
+    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
-      assetId: 'ETH',
+      marketId: 'ETH',
     })
     expect(result.openOrders).toHaveLength(0)
     expect(result.triggerOrders).toHaveLength(0)

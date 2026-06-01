@@ -7,9 +7,9 @@ import type {
   ActionType,
   ActivitiesResponse,
   ActivityType,
-  Asset,
-  AssetsResponse,
   FillsResponse,
+  Market,
+  MarketsResponse,
   OhlcvInterval,
   OhlcvResponse,
   Order,
@@ -111,16 +111,16 @@ export interface ProviderGetAccountParams {
 
 export interface ProviderGetPositionsParams {
   address: Address
-  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`). */
-  assetId?: string
+  /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
+  marketId?: string
   limit?: number
   cursor?: string
 }
 
 export interface ProviderGetOrdersParams {
   address: Address
-  /** Optional filter — canonical `Asset.assetId` (not `displaySymbol`). */
-  assetId?: string
+  /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
+  marketId?: string
   limit?: number
   cursor?: string
 }
@@ -147,19 +147,19 @@ export interface ProviderGetActivityParams {
   type?: ActivityType[]
 }
 
-export interface ProviderGetAssetParams {
-  /** Canonical `Asset.assetId` (not `displaySymbol`). */
-  assetId: string
+export interface ProviderGetMarketParams {
+  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  marketId: string
 }
 
 export interface ProviderGetPricesParams {
-  /** Optional filter — canonical `Asset.assetId`s. */
-  assetIds?: string[]
+  /** Optional filter — opaque `Market.id`s. */
+  marketIds?: string[]
 }
 
 export interface ProviderGetOhlcvParams {
-  /** Canonical `Asset.assetId` (not `displaySymbol`). */
-  assetId: string
+  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  marketId: string
   interval: OhlcvInterval
   startTime?: number
   endTime?: number
@@ -167,8 +167,8 @@ export interface ProviderGetOhlcvParams {
 }
 
 export interface ProviderGetOrderbookParams {
-  /** Canonical `Asset.assetId` (not `displaySymbol`). */
-  assetId: string
+  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  marketId: string
   depth?: number
 }
 
@@ -239,16 +239,16 @@ export interface PerpsProvider {
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse>
 
-  getAsset(
+  getMarket(
     client: PerpsSDKClient,
-    params: ProviderGetAssetParams,
+    params: ProviderGetMarketParams,
     options?: SDKRequestOptions
-  ): Promise<Asset>
+  ): Promise<Market>
 
-  getAssets(
+  getMarkets(
     client: PerpsSDKClient,
     options?: SDKRequestOptions
-  ): Promise<AssetsResponse>
+  ): Promise<MarketsResponse>
 
   getPrices(
     client: PerpsSDKClient,
@@ -285,24 +285,16 @@ export interface PerpsProvider {
   ): AccountConfigSetting[]
 
   /**
-   * Reduce the raw `AccountResponse` + positions + ambient prices into the
-   * provider-agnostic {@link AccountSummary} roll-up (portfolio value,
-   * available margin, margin used, unrealised PnL).
+   * Reduce the raw `AccountResponse` + positions into the provider-agnostic
+   * {@link AccountSummary} roll-up (portfolio value, available margin, margin
+   * used, unrealised PnL).
    *
-   * Implementations own the venue-specific reduction rules:
-   * Hyperliquid factors in unified-account abstraction modes against spot
-   * balances; Lighter uses straight collateral. `assets` and
-   * `collateralCurrencies` are optional inputs some implementations need
-   * to value non-USD spot holdings; pass `undefined` if the provider does
-   * not require them.
+   * Branch-free arithmetic over the response's `balances` /
+   * `collateralBalances` partition — the provider plugin has already
+   * determined collateral and filled `Balance.valueUsd`, so this is the same
+   * computation for every provider.
    */
-  summarize(
-    account: AccountResponse,
-    positions: Position[],
-    prices: Record<string, string>,
-    assets?: Asset[],
-    collateralCurrencies?: ReadonlySet<string>
-  ): AccountSummary
+  summarize(account: AccountResponse, positions: Position[]): AccountSummary
 
   /**
    * Per-setup-action params the SDK should inject into `createAction` calls

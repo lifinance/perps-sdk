@@ -1,6 +1,6 @@
 import {
-  getAsset as coreGetAsset,
-  getAssets as coreGetAssets,
+  getMarket as coreGetMarket,
+  getMarkets as coreGetMarkets,
   getOhlcv as coreGetOhlcv,
   getOrderbook as coreGetOrderbook,
   getPrices as coreGetPrices,
@@ -9,8 +9,8 @@ import {
   type PerpsSDKClient,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
-  type ProviderGetAssetParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketParams,
   type ProviderGetOhlcvParams,
   type ProviderGetOrderbookParams,
   type ProviderGetOrderParams,
@@ -25,9 +25,9 @@ import {
   type AccountResponse,
   type AccountSummary,
   type ActivitiesResponse,
-  type Asset,
-  type AssetsResponse,
   type FillsResponse,
+  type Market,
+  type MarketsResponse,
   type OhlcvResponse,
   type Order,
   type OrderbookResponse,
@@ -91,7 +91,7 @@ export function hyperliquidProvider(
         apiUrl,
         {
           address: params.address,
-          assetId: params.assetId,
+          marketId: params.marketId,
           limit: params.limit,
         },
         opts
@@ -107,7 +107,7 @@ export function hyperliquidProvider(
         apiUrl,
         {
           address: params.address,
-          assetId: params.assetId,
+          marketId: params.marketId,
           limit: params.limit,
         },
         opts
@@ -164,22 +164,22 @@ export function hyperliquidProvider(
 
     // Public/shared data routes through the LI.FI backend — Valkey-cached
     // server-side so one fetch serves every client. No direct HL call here.
-    getAsset: (
+    getMarket: (
       client: PerpsSDKClient,
-      params: ProviderGetAssetParams,
+      params: ProviderGetMarketParams,
       opts?: SDKRequestOptions
-    ): Promise<Asset> =>
-      coreGetAsset(
+    ): Promise<Market> =>
+      coreGetMarket(
         client,
-        { provider: PROVIDER_KEY, assetId: params.assetId },
+        { provider: PROVIDER_KEY, marketId: params.marketId },
         opts
       ),
 
-    getAssets: async (
+    getMarkets: async (
       client: PerpsSDKClient,
       opts?: SDKRequestOptions
-    ): Promise<AssetsResponse> =>
-      coreGetAssets(client, { provider: PROVIDER_KEY }, opts),
+    ): Promise<MarketsResponse> =>
+      coreGetMarkets(client, { provider: PROVIDER_KEY }, opts),
 
     getPrices: async (
       client: PerpsSDKClient,
@@ -188,7 +188,7 @@ export function hyperliquidProvider(
     ): Promise<PricesResponse> =>
       coreGetPrices(
         client,
-        { provider: PROVIDER_KEY, assetIds: params.assetIds },
+        { provider: PROVIDER_KEY, marketIds: params.marketIds },
         opts
       ),
 
@@ -201,7 +201,7 @@ export function hyperliquidProvider(
         client,
         {
           provider: PROVIDER_KEY,
-          assetId: params.assetId,
+          marketId: params.marketId,
           interval: params.interval,
           startTime: params.startTime,
           endTime: params.endTime,
@@ -219,7 +219,7 @@ export function hyperliquidProvider(
         client,
         {
           provider: PROVIDER_KEY,
-          assetId: params.assetId,
+          marketId: params.marketId,
           depth: params.depth,
         },
         opts
@@ -242,17 +242,7 @@ export function hyperliquidProvider(
 
     summarize: (
       account: AccountResponse,
-      positions: Position[],
-      prices: Record<string, string>,
-      assets?: Asset[],
-      collateralCurrencies?: ReadonlySet<string>
-    ): AccountSummary =>
-      summarizeHyperliquidAccount(
-        account,
-        positions,
-        prices,
-        assets,
-        collateralCurrencies
-      ),
+      positions: Position[]
+    ): AccountSummary => summarizeHyperliquidAccount(account, positions),
   }
 }

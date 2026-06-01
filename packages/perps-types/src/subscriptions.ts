@@ -1,5 +1,5 @@
 import type { Fill, OpenOrder, Position, TriggerOrder } from './account.js'
-import type { Candle, OhlcvInterval, OrderbookResponse } from './asset.js'
+import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
 import type { Address } from './primitives.js'
 
 // --- Channels the user can subscribe to ---
@@ -8,13 +8,13 @@ export type PricesSubscription = { channel: 'prices'; dex: string }
 export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
-  assetId: string
+  marketId: string
   depth?: number
 }
 export type CandleSubscription = {
   channel: 'candle'
   dex: string
-  assetId: string
+  marketId: string
   interval: OhlcvInterval
 }
 export type OrderUpdatesSubscription = {

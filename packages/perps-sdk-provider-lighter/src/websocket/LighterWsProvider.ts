@@ -1,5 +1,5 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   ReconnectingWebSocket,
   type SubscriptionListener,
@@ -204,7 +204,7 @@ export class LighterWsProvider implements WsProvider {
         this.subs.delete(key)
         this.listeners.delete(key)
         if (sub.channel === 'orderbook') {
-          const id = Number(sub.assetId)
+          const id = Number(sub.marketId)
           if (Number.isFinite(id)) {
             this.orderbooks.delete(id)
           }
@@ -277,7 +277,7 @@ export class LighterWsProvider implements WsProvider {
       case 'prices':
         return 'prices'
       case 'orderbook':
-        return `orderbook:${sub.assetId}`
+        return `orderbook:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -299,11 +299,11 @@ export class LighterWsProvider implements WsProvider {
       return { channel: 'market_stats/all', needsAuth: false }
     }
     if (sub.channel === 'orderbook') {
-      const id = Number(sub.assetId)
+      const id = Number(sub.marketId)
       if (!Number.isFinite(id)) {
         throw new Error(
-          `Lighter WS: unknown market for assetId '${sub.assetId}'. ` +
-            'AssetId must be a numeric market_id string.'
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
         )
       }
       return { channel: `order_book/${id}`, needsAuth: false }
@@ -382,16 +382,18 @@ export class LighterWsProvider implements WsProvider {
           'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
       )
     }
-    const { assets } = await coreGetAssets(this.client, { provider: 'lighter' })
-    for (const a of assets) {
-      if (a.market !== 'lighter') {
+    const { markets } = await coreGetMarkets(this.client, {
+      provider: 'lighter',
+    })
+    for (const m of markets) {
+      if (m.categoryId !== 'lighter') {
         continue
       }
-      const marketId = Number(a.assetId)
+      const marketId = Number(m.id)
       if (!Number.isFinite(marketId)) {
         continue
       }
-      this.marketIdToDisplaySymbol.set(marketId, a.displaySymbol)
+      this.marketIdToDisplaySymbol.set(marketId, m.baseAsset.displaySymbol)
     }
   }
 
@@ -587,7 +589,7 @@ export class LighterWsProvider implements WsProvider {
       channel: 'orderbook',
       data: {
         provider: this.providerKey,
-        assetId,
+        marketId: assetId,
         bids: mapToLevels(
           state.bids,
           (a, b) => Number(b.price) - Number(a.price)

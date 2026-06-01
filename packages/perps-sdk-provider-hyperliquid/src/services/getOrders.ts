@@ -1,5 +1,5 @@
 import {
-  getAssets as coreGetAssets,
+  getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
@@ -15,14 +15,14 @@ import {
   mapOpenOrder,
   mapTriggerOrder,
   perpsDexNames,
-  requireAsset,
+  requireMarket,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 export interface GetOrdersParams {
   address: Address
-  /** Optional filter — canonical `Asset.assetId`. */
-  assetId?: string
+  /** Optional filter — opaque `Market.id`. */
+  marketId?: string
   limit?: number
 }
 
@@ -40,16 +40,16 @@ export const getOrders = async (
   params: GetOrdersParams,
   options?: SDKRequestOptions
 ): Promise<OrdersResponse> => {
-  const { assets } = await coreGetAssets(
+  const { markets } = await coreGetMarkets(
     client,
     { provider: PROVIDER_KEY },
     options
   )
-  const byAssetId = new Map(assets.map((a) => [a.assetId, a]))
+  const byMarketId = new Map(markets.map((m) => [m.id, m]))
   const infoOpts = hlInfoOptions(client, options)
 
   const ordersResults = await Promise.all(
-    perpsDexNames(assets).map((name) =>
+    perpsDexNames(markets).map((name) =>
       infoRequest<HlFrontendOpenOrders>(
         apiUrl,
         {
@@ -79,7 +79,7 @@ export const getOrders = async (
       const order = mapOpenOrder(o)
       return {
         ...order,
-        asset: requireAsset(byAssetId, order.asset.assetId),
+        market: requireMarket(byMarketId, order.market.id),
       }
     })
 
@@ -90,7 +90,7 @@ export const getOrders = async (
         const order = mapTriggerOrder(o)
         return {
           ...order,
-          asset: requireAsset(byAssetId, order.asset.assetId),
+          market: requireMarket(byMarketId, order.market.id),
         }
       }),
     ...raw
@@ -99,16 +99,14 @@ export const getOrders = async (
         const order = mapTriggerOrder(o)
         return {
           ...order,
-          asset: requireAsset(byAssetId, order.asset.assetId),
+          market: requireMarket(byMarketId, order.market.id),
         }
       }),
   ]
 
-  if (params.assetId !== undefined) {
-    openOrders = openOrders.filter((o) => o.asset.assetId === params.assetId)
-    triggerOrders = triggerOrders.filter(
-      (o) => o.asset.assetId === params.assetId
-    )
+  if (params.marketId !== undefined) {
+    openOrders = openOrders.filter((o) => o.market.id === params.marketId)
+    triggerOrders = triggerOrders.filter((o) => o.market.id === params.marketId)
   }
 
   return {
