@@ -1,3 +1,4 @@
+import { ExplorerChainId, explorerTxUrl } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
   DepositActivity,
@@ -108,6 +109,7 @@ export const mapLedgerEntry = (
         ...base,
         type: ActivityType.DEPOSIT,
         amount: delta.usdc ?? '0',
+        explorerLink: explorerTxUrl(ExplorerChainId.ARBITRUM_ONE, entry.hash),
       } satisfies DepositActivity
 
     case 'withdraw':
@@ -116,6 +118,7 @@ export const mapLedgerEntry = (
         type: ActivityType.WITHDRAWAL,
         amount: delta.usdc ?? '0',
         fee: (delta as { fee?: string }).fee ?? '0',
+        explorerLink: explorerTxUrl(ExplorerChainId.ARBITRUM_ONE, entry.hash),
       } satisfies WithdrawalActivity
 
     case 'liquidation': {

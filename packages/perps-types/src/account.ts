@@ -105,6 +105,9 @@ export interface Fill {
   startPosition?: string
   classification: FillClassification
   createdAt: string
+  // Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
+  // the fill has no on-chain tx (every Hyperliquid fill is off-chain).
+  explorerLink?: string
 }
 
 export interface Pagination {
@@ -133,12 +136,16 @@ export interface BaseActivity {
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
   amount: string
+  // Fully-resolved block-explorer URL for the on-chain deposit tx.
+  explorerLink?: string
 }
 
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
   amount: string
   fee: string
+  // Fully-resolved block-explorer URL for the on-chain withdrawal tx.
+  explorerLink?: string
 }
 
 export interface LiquidatedPosition {
@@ -170,6 +177,8 @@ export type TransferActivity = BaseActivity & {
   asset: string
   amount: string
   meta?: Record<string, unknown>
+  // Fully-resolved block-explorer URL for the on-chain transfer tx.
+  explorerLink?: string
 } & (
     | { counterpartyAccountIndex: number; counterpartyAddress?: string }
     | { counterpartyAccountIndex?: number; counterpartyAddress: string }

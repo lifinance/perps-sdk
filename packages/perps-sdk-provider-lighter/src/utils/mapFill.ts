@@ -1,4 +1,8 @@
-import { classifyFillFromPosition } from '@lifi/perps-sdk'
+import {
+  classifyFillFromPosition,
+  ExplorerChainId,
+  explorerTxUrl,
+} from '@lifi/perps-sdk'
 import type { Fill } from '@lifi/perps-types'
 import {
   FillStatus,
@@ -53,5 +57,6 @@ export const mapFill = (
       trade.size
     ),
     createdAt: new Date(trade.timestamp).toISOString(),
+    explorerLink: explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
   }
 }

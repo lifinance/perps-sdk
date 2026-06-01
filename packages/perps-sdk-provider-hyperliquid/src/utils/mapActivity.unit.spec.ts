@@ -373,6 +373,8 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     const result = mapLedgerEntry(entry, PROVIDER, QUERIED) as DepositActivity
     expect(result.type).toBe(ActivityType.DEPOSIT)
     expect(result.amount).toBe('100')
+    // HL deposits settle on Arbitrum; `entry.hash` is the Arbitrum tx.
+    expect(result.explorerLink).toBe('https://arbiscan.io/tx/0xdep')
   })
 
   it('maps a withdrawal', () => {
@@ -389,6 +391,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
     expect(result.amount).toBe('50')
     expect(result.fee).toBe('0.5')
+    expect(result.explorerLink).toBe('https://arbiscan.io/tx/0xwdr')
   })
 
   it('maps a liquidation', () => {

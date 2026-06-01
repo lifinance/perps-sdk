@@ -131,6 +131,7 @@ export {
   priceFromPercent,
   removableMargin,
 } from './utils/calculations.js'
+export { ExplorerChainId, explorerTxUrl } from './utils/explorer.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
 export {
   ACTIVE_ORDER_STATUSES,

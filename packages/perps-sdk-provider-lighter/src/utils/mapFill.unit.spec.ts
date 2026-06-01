@@ -443,6 +443,22 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  describe('explorerLink', () => {
+    it('links the L2 tx hash to the Lighter explorer', () => {
+      const fill = mapFill(
+        baseTrade({ tx_hash: '0000abcd' }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.explorerLink).toBe('https://scan.lighter.xyz/tx/0000abcd')
+    })
+
+    it('omits the link when the tx hash is empty', () => {
+      const fill = mapFill(baseTrade({ tx_hash: '' }), ACCOUNT_INDEX, SYMBOL)
+      expect(fill.explorerLink).toBeUndefined()
+    })
+  })
+
   describe('optional fee fields', () => {
     it('returns undefined fee when the relevant fee field is missing', () => {
       const fill = mapFill(
