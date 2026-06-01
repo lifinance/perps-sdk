@@ -197,6 +197,54 @@ describe('TransferActivity', () => {
   })
 })
 
+describe('explorerLink on on-chain item types', () => {
+  it('accepts a resolved explorerLink on deposit / withdrawal / transfer', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      amount: '1',
+      explorerLink: 'https://etherscan.io/tx/0xabc',
+    }
+    const withdrawal: WithdrawalActivity = {
+      id: 'w',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.WITHDRAWAL,
+      amount: '1',
+      fee: '0',
+      explorerLink: 'https://etherscan.io/tx/0xdef',
+    }
+    const transfer: TransferActivity = {
+      id: 't',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.TRANSFER,
+      direction: 'IN',
+      counterpartyAccountIndex: 1,
+      asset: 'USDC',
+      amount: '1',
+      explorerLink: 'https://scan.lighter.xyz/tx/0000abcd',
+    }
+
+    expect(deposit.explorerLink).toBe('https://etherscan.io/tx/0xabc')
+    expect(withdrawal.explorerLink).toBe('https://etherscan.io/tx/0xdef')
+    expect(transfer.explorerLink).toBe('https://scan.lighter.xyz/tx/0000abcd')
+  })
+
+  it('treats explorerLink as optional (absent ⇒ no on-chain tx)', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      amount: '1',
+    }
+    expect(deposit.explorerLink).toBeUndefined()
+  })
+})
+
 describe('ActivityType.TRANSFER enum member', () => {
   it('has wire value "TRANSFER"', () => {
     expect(ActivityType.TRANSFER).toBe('TRANSFER')
