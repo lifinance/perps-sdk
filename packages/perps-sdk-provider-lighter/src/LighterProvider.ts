@@ -262,10 +262,6 @@ export const lighterProvider = (
   // every subsequent read — flooding the endpoint. Keyed by lowercase address.
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
   const readOnlyCreationFailed: Set<string> = new Set()
-  // Session-memoised `asset_id → symbol` registry from the backend's
-  // Valkey-cached `/perps/tokens` route. Single-flight: concurrent reads share
-  // one fetch and every subsequent read reuses the resolved map.
-  let tokenLookup: Promise<Map<string, string>> | undefined
 
   // ---------------------------------------------------------------------------
   // Internal helpers — closed-over state replaces the class's `this.X` access.
@@ -310,18 +306,20 @@ export const lighterProvider = (
 
   /**
    * Resolve the `Token.id → Token.symbol` map from the backend's `/perps/tokens`
-   * registry, memoised for the lifetime of this provider instance.
+   * registry. The backend response is Valkey-cached so this is cheap to call
+   * per read; no client-side memo (a long-lived instance would otherwise serve
+   * a stale registry).
    */
-  const getTokenLookup = (
+  const buildTokenLookup = async (
     sdkClient: PerpsSDKClient,
     opts?: SDKRequestOptions
   ): Promise<Map<string, string>> => {
-    tokenLookup ??= coreGetTokens(
+    const { tokens } = await coreGetTokens(
       sdkClient,
       { provider: LIGHTER_PROVIDER_KEY },
       opts
-    ).then(({ tokens }) => new Map(tokens.map((t) => [t.id, t.symbol])))
-    return tokenLookup
+    )
+    return new Map(tokens.map((t) => [t.id, t.symbol]))
   }
 
   const getStandardAuthToken = async (
@@ -984,7 +982,7 @@ export const lighterProvider = (
           )
         ),
         buildSymbolLookup(sdkClient, opts),
-        getTokenLookup(sdkClient, opts),
+        buildTokenLookup(sdkClient, opts),
       ])
 
       const items: ActivityItem[] = [

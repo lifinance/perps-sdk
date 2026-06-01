@@ -747,7 +747,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     expect(transfer?.asset).toBe('777')
   })
 
-  it('memoises /perps/tokens across getActivity calls on the same provider', async () => {
+  it('fetches /perps/tokens per getActivity call (no client-side memo; backend caches)', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
     await provider.getActivity(STUB_CLIENT, {
@@ -761,7 +761,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     const tokenCalls = recorded.filter((r) =>
       r.url.includes('backend.test/v1/perps/tokens')
     )
-    expect(tokenCalls).toHaveLength(1)
+    expect(tokenCalls).toHaveLength(2)
   })
 })
 
