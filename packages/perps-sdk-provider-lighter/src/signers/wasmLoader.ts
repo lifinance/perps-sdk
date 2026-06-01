@@ -219,12 +219,12 @@ export async function loadLighterWasm(
   options?: LoadLighterWasmOptions
 ): Promise<LighterWasmExports> {
   if (!cachedExports) {
-    cachedExports = doLoad(options)
+    cachedExports = loadWasmUncached(options)
   }
   return cachedExports
 }
 
-async function doLoad(
+async function loadWasmUncached(
   options?: LoadLighterWasmOptions
 ): Promise<LighterWasmExports> {
   const wasmBinaryUrl =
