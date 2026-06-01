@@ -9,7 +9,9 @@
  * @param _leverage - Position leverage (reserved for future use)
  * @param availableBalance - Available balance, or null if unknown
  * @param _feeRate - Fee rate as decimal, or null if unknown (reserved for future use)
- * @param minMarginUsd - Minimum margin requirement in USD (exchange-specific)
+ * @param minMarginUsd - Minimum margin requirement in USD (exchange-specific).
+ *   Source this from the selected provider's `minOrderValueUsd` metadata
+ *   (see `@lifi/perps-types` `Provider`) rather than a client-side constant.
  * @returns Error code: 'insufficient' | 'below-minimum' | '' (valid)
  */
 export function validateMargin(
