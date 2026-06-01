@@ -115,7 +115,7 @@ export class LighterApiClient {
   }
 
   async get<T>(path: string, params?: ApiParams): Promise<T> {
-    return this.doGet<T>(path, params)
+    return this.getChecked<T>(path, params)
   }
 
   /**
@@ -128,7 +128,7 @@ export class LighterApiClient {
     authToken: string,
     params: ApiParams = {}
   ): Promise<T> {
-    const { status, data } = await this.getRaw<unknown>(path, {
+    const { status, data } = await this.getWithStatus<unknown>(path, {
       ...params,
       auth: authToken,
     })
@@ -152,7 +152,7 @@ export class LighterApiClient {
    * non-2xx — used for endpoints (account lookup by L1 address) where the
    * caller distinguishes specific Lighter error codes from generic failures.
    */
-  async getRaw<T>(
+  async getWithStatus<T>(
     path: string,
     params?: ApiParams
   ): Promise<{ status: number; data: T }> {
@@ -166,8 +166,8 @@ export class LighterApiClient {
     return { status: response.status, data }
   }
 
-  private async doGet<T>(path: string, params?: ApiParams): Promise<T> {
-    const { status, data } = await this.getRaw<unknown>(path, params)
+  private async getChecked<T>(path: string, params?: ApiParams): Promise<T> {
+    const { status, data } = await this.getWithStatus<unknown>(path, params)
     if (status < 200 || status >= 300) {
       throw new PerpsError(
         PerpsErrorCode.ThirdPartyError,
