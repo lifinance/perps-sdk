@@ -483,7 +483,7 @@ export const lighterProvider = (
     client: LighterApiClient,
     address: Address
   ): Promise<LtDetailedAccount> => {
-    const { status, data } = await client.getRaw<{
+    const { status, data } = await client.getWithStatus<{
       code: number
       accounts?: LtDetailedAccount[]
       message?: string

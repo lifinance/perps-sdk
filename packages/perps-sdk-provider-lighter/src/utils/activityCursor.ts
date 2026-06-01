@@ -88,10 +88,10 @@ export const decodeActivityCursor = (
       'Invalid Lighter activity cursor: expected JSON object'
     )
   }
-  const obj = parsed as Record<string, unknown>
+  const cursorRecord = parsed as Record<string, unknown>
   const env: LighterActivityCursor = {}
   for (const key of CURSOR_KEYS) {
-    const v = obj[key]
+    const v = cursorRecord[key]
     if (v === undefined) {
       continue
     }

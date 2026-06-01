@@ -332,20 +332,20 @@ export class LighterWsProvider implements WsProvider {
   }
 
   private async resolveAccountIndex(address: Address): Promise<number> {
-    const lc = address.toLowerCase()
-    const cached = this.accountIndexCache.get(lc)
+    const addressKey = address.toLowerCase()
+    const cached = this.accountIndexCache.get(addressKey)
     if (cached !== undefined) {
       return cached
     }
-    let p = this.accountIndexPromises.get(lc)
-    if (!p) {
-      p = this.fetchAccountIndex(address).finally(() => {
-        this.accountIndexPromises.delete(lc)
+    let pending = this.accountIndexPromises.get(addressKey)
+    if (!pending) {
+      pending = this.fetchAccountIndex(address).finally(() => {
+        this.accountIndexPromises.delete(addressKey)
       })
-      this.accountIndexPromises.set(lc, p)
+      this.accountIndexPromises.set(addressKey, pending)
     }
-    const idx = await p
-    this.accountIndexCache.set(lc, idx)
+    const idx = await pending
+    this.accountIndexCache.set(addressKey, idx)
     return idx
   }
 
