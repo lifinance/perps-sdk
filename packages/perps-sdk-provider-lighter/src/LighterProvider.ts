@@ -5,6 +5,8 @@ import {
   getOrderbook as coreGetOrderbook,
   getPrices as coreGetPrices,
   getTokens as coreGetTokens,
+  ExplorerChainId,
+  explorerTxUrl,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -993,6 +995,7 @@ export const lighterProvider = (
             timestamp: toIsoFromMs(d.timestamp),
             type: ActivityType.DEPOSIT,
             amount: d.amount,
+            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, d.l1_tx_hash),
           })
         ),
         ...history.withdraws.withdraws.map(
@@ -1003,6 +1006,7 @@ export const lighterProvider = (
             type: ActivityType.WITHDRAWAL,
             amount: w.amount,
             fee: '0',
+            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, w.l1_tx_hash),
           })
         ),
         ...history.fundings.position_fundings.map(
@@ -1048,6 +1052,7 @@ export const lighterProvider = (
             counterpartyAccountIndex,
             asset: tokensById.get(String(t.asset_id)) ?? String(t.asset_id),
             amount: t.amount,
+            explorerLink: explorerTxUrl(ExplorerChainId.LIGHTER, t.tx_hash),
             meta: {
               transferType: t.type,
               txHash: t.tx_hash,

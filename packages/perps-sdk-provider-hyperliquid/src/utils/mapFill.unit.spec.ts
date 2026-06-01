@@ -201,6 +201,10 @@ describe('mapFill (Hyperliquid)', () => {
     })
   })
 
+  it('never sets explorerLink — Hyperliquid fills are off-chain', () => {
+    expect(mapFill(baseFill()).explorerLink).toBeUndefined()
+  })
+
   describe('classification', () => {
     it('routes spot fills (coin starts with @) on the buy side to SPOT_BUY', () => {
       const fill = mapFill(baseFill({ coin: '@230', side: 'B' }))
