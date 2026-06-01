@@ -105,6 +105,72 @@ export function applySlippage(
   return isBuy ? price * multiplier : price / multiplier
 }
 
+/**
+ * Distance from the current price to the liquidation price, as a percentage of
+ * the current price.
+ *
+ * @param liquidationPrice - The position's liquidation price
+ * @param currentPrice - Current market price
+ * @returns Absolute distance as a percentage, or 0 when current price is zero
+ */
+export function liquidationDistancePercent(params: {
+  liquidationPrice: number
+  currentPrice: number
+}): number {
+  const { liquidationPrice, currentPrice } = params
+  if (currentPrice === 0) {
+    return 0
+  }
+  return Math.abs((liquidationPrice - currentPrice) / currentPrice) * 100
+}
+
+/**
+ * Effective leverage of an open position.
+ *
+ * leverage = positionValueUsd / marginUsd
+ *
+ * @param positionValueUsd - Position notional value in USD
+ * @param marginUsd - Margin backing the position in USD
+ * @returns Effective leverage, or 0 when margin is zero
+ */
+export function effectiveLeverage(params: {
+  positionValueUsd: number
+  marginUsd: number
+}): number {
+  const { positionValueUsd, marginUsd } = params
+  if (marginUsd === 0) {
+    return 0
+  }
+  return positionValueUsd / marginUsd
+}
+
+/**
+ * Margin that can be removed from a position while keeping its leverage at or
+ * below the asset's maximum.
+ *
+ * The minimum margin to stay within `maxLeverage` is the required margin for
+ * the position's notional (see {@link calculateRequiredMargin}); anything above
+ * that is removable.
+ *
+ * @param marginUsed - Margin currently backing the position in USD
+ * @param positionValueUsd - Position notional value in USD
+ * @param maxLeverage - Maximum leverage allowed for the asset
+ * @returns Removable margin in USD (never negative); falls back to the full
+ *   `marginUsed` when `maxLeverage` is zero (no constraint available)
+ */
+export function removableMargin(params: {
+  marginUsed: number
+  positionValueUsd: number
+  maxLeverage: number
+}): number {
+  const { marginUsed, positionValueUsd, maxLeverage } = params
+  if (maxLeverage === 0) {
+    return marginUsed
+  }
+  const minMargin = calculateRequiredMargin(positionValueUsd, maxLeverage)
+  return Math.max(0, marginUsed - minMargin)
+}
+
 // ---------------------------------------------------------------------------
 // TP/SL expected P&L calculations
 // ---------------------------------------------------------------------------

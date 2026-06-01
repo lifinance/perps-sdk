@@ -124,9 +124,12 @@ export {
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
+  effectiveLeverage,
   estimateFees,
+  liquidationDistancePercent,
   percentFromPrice,
   priceFromPercent,
+  removableMargin,
 } from './utils/calculations.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
 export {
