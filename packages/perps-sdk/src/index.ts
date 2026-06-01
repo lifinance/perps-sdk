@@ -131,6 +131,11 @@ export {
   priceFromPercent,
   removableMargin,
 } from './utils/calculations.js'
+export type { DepositProviderKey } from './utils/depositChain.js'
+export {
+  LIFI_DEPOSIT_CHAIN_BY_PROVIDER,
+  lifiDepositChainForProvider,
+} from './utils/depositChain.js'
 export { ExplorerChainId, explorerTxUrl } from './utils/explorer.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
 export {
