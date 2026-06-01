@@ -41,6 +41,9 @@ importers:
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
+      '@lifi/types':
+        specifier: 17.82.1
+        version: 17.82.1
       viem:
         specifier: 2.48.8
         version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
@@ -679,6 +682,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lifi/types@17.82.1':
+    resolution: {integrity: sha512-n1FDyQtREj8RO/6XTeC1B2fq39t3CUlm7b+TeiMKQ6pLRpovwAZFhhv7dZIuAqr9FJvXc3cKVciyrR3L5IthmQ==}
 
   '@mswjs/interceptors@0.41.9':
     resolution: {integrity: sha512-VVPPgHyQ6ShqnrmDWuxjmUIsO9gWyOZFmuOfLd9LfBGQJwZfy0gvv9pbHSJuoFNIYC7ZDX9aoFwowjcdSC4E8w==}
@@ -4436,6 +4442,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@lifi/types@17.82.1': {}
 
   '@mswjs/interceptors@0.41.9':
     dependencies:
