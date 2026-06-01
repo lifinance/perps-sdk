@@ -4,6 +4,7 @@ import {
   getOhlcv as coreGetOhlcv,
   getOrderbook as coreGetOrderbook,
   getPrices as coreGetPrices,
+  getTokens as coreGetTokens,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -301,6 +302,24 @@ export const lighterProvider = (
         .filter((a) => a.market === LIGHTER_PROVIDER_KEY)
         .map((a) => [Number(a.assetId), a.displaySymbol])
     )
+  }
+
+  /**
+   * Resolve the `Token.id → Token.symbol` map from the backend's `/perps/tokens`
+   * registry. The backend response is Valkey-cached so this is cheap to call
+   * per read; no client-side memo (a long-lived instance would otherwise serve
+   * a stale registry).
+   */
+  const buildTokenLookup = async (
+    sdkClient: PerpsSDKClient,
+    opts?: SDKRequestOptions
+  ): Promise<Map<string, string>> => {
+    const { tokens } = await coreGetTokens(
+      sdkClient,
+      { provider: LIGHTER_PROVIDER_KEY },
+      opts
+    )
+    return new Map(tokens.map((t) => [t.id, t.symbol]))
   }
 
   const getStandardAuthToken = async (
@@ -951,7 +970,7 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(sdkClient, opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const [history, marketLookup] = await Promise.all([
+      const [history, marketLookup, tokensById] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
           fetchAllHistory(
             client,
@@ -963,6 +982,7 @@ export const lighterProvider = (
           )
         ),
         buildSymbolLookup(sdkClient, opts),
+        buildTokenLookup(sdkClient, opts),
       ])
 
       const items: ActivityItem[] = [
@@ -1026,7 +1046,7 @@ export const lighterProvider = (
             type: ActivityType.TRANSFER,
             direction,
             counterpartyAccountIndex,
-            asset: String(t.asset_id),
+            asset: tokensById.get(String(t.asset_id)) ?? String(t.asset_id),
             amount: t.amount,
             meta: {
               transferType: t.type,
