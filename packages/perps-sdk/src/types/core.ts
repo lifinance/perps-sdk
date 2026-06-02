@@ -23,8 +23,6 @@ import type {
   SigningMethod,
 } from '@lifi/perps-types'
 import type { Account, Address, WalletClient } from 'viem'
-import type { AgentManager } from '../agent/AgentManager.js'
-import type { Agent } from '../agent/types.js'
 import type { RetryConfig } from '../transport/retryPolicy.js'
 
 /**
@@ -81,7 +79,6 @@ export interface PerpsBaseConfig {
 
 export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
-  readonly agentManager: AgentManager
   /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
   readonly signer?: PerpsClientSigner
   /** Registered provider plugins, in the order they were passed at construction. */
@@ -93,12 +90,11 @@ export interface PerpsSDKClient {
 /**
  * Per-call context passed by `PerpsClient` to a provider's {@link
  * PerpsProvider.signActions} method. Carries the resolved wallet signer
- * (when configured) and the resolved agent keypair (when the signing-mode +
- * descriptor combination requires one); providers pick whichever they need.
+ * (when configured); providers that own a session credential (e.g. the
+ * Hyperliquid agent keypair, Lighter's API key) resolve it internally.
  */
 export interface SignActionsContext {
   signer?: PerpsClientSigner
-  agent?: Agent
 }
 
 /**
@@ -310,6 +306,26 @@ export interface PerpsProvider {
   ): Promise<Record<string, unknown>>
 
   /**
+   * Resolve the on-wire `signerAddress` for an action whose descriptor names
+   * {@link PerpsSigner.AGENT} — the address of the provider-owned session
+   * keypair that signs on the user's behalf (Hyperliquid's approved agent
+   * wallet). The resolved address is sent as `signerAddress` and, for
+   * `APPROVE_AGENT`, injected as the `agentAddress` action param.
+   *
+   * `create` requests a session keypair be provisioned if none exists yet
+   * (used while staging setup, before the agent has been approved on-chain);
+   * omitting it requires an existing one and throws otherwise.
+   *
+   * Optional: providers whose actions never name `PerpsSigner.AGENT` (e.g.
+   * Lighter, which uses an API-key session with no EVM signer address) omit
+   * it. `PerpsClient` only calls it for AGENT-signed descriptors.
+   */
+  resolveSignerAddress?(
+    address: Address,
+    options?: { create?: boolean }
+  ): Promise<Address>
+
+  /**
    * Sign a batch of unsigned {@link ActionStep}s belonging to one
    * `SigningMethod` arm. Returns the matching {@link SignedActionStep}s in
    * the same order — the core `PerpsClient.execute` then forwards them to
@@ -320,11 +336,11 @@ export interface PerpsProvider {
    * when an action requires a delegated signing method but the resolved
    * provider has no `signActions`.
    *
-   * `method` mirrors the descriptor's `signingMethod`. `EIP712` stays on
-   * `PerpsClient` (it goes through the agent or user wallet generically);
-   * providers only need to handle the method arms they actually own
-   * (`WASM_BLOB` for Lighter, `EVM_TX` where the on-chain target is
-   * provider-specific).
+   * `method` mirrors the descriptor's `signingMethod`. The EIP712 USER-wallet
+   * arm stays generic on `PerpsClient` (`signTypedData` against the configured
+   * wallet); providers own every arm whose credential is provider-specific —
+   * `WASM_BLOB` / `EVM_TX` (Lighter), and the EIP712 AGENT arm signed with the
+   * provider's session keypair (Hyperliquid).
    */
   signActions?(
     method: SigningMethod,

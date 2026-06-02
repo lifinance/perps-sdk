@@ -46,16 +46,6 @@ describe('createPerpsClient', () => {
     }
   })
 
-  it('should provide access to agentManager', () => {
-    const client = createPerpsClient({
-      integrator: 'test-app',
-      apiKey: 'test-key',
-    })
-
-    expect(client.agentManager).toBeDefined()
-    expect(typeof client.agentManager.getOrCreateAgent).toBe('function')
-  })
-
   it('should support requestInterceptor', async () => {
     const client = createPerpsClient({
       integrator: 'test-app',

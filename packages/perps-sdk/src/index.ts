@@ -8,9 +8,6 @@
  */
 
 export * from '@lifi/perps-types'
-export { AgentManager } from './agent/AgentManager.js'
-export { createMemoryStorage, localStorageAdapter } from './agent/storage.js'
-export type { Agent, StorageAdapter } from './agent/types.js'
 export type {
   PerpsBaseConfig,
   PerpsConfig,
@@ -82,6 +79,8 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+export { createMemoryStorage, localStorageAdapter } from './storage/storage.js'
+export type { StorageAdapter } from './storage/types.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'
 export type {
