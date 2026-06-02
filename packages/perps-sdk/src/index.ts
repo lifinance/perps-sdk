@@ -37,19 +37,6 @@ export type {
 // Errors
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
-export type {
-  PerpsWsClientOptions,
-  WsProviderFactory,
-} from './realtime/PerpsWsClient.js'
-// Realtime
-export { PerpsWsClient } from './realtime/PerpsWsClient.js'
-export type { ReconnectingWebSocketOptions } from './realtime/ReconnectingWebSocket.js'
-export { ReconnectingWebSocket } from './realtime/ReconnectingWebSocket.js'
-export type {
-  EventForSubscription,
-  SubscriptionListener,
-  WsProvider,
-} from './realtime/types.js'
 // Services
 export type { CreateActionParams } from './services/createAction.js'
 export { createAction } from './services/createAction.js'
@@ -165,6 +152,17 @@ export { signTypedData } from './utils/signTypedData.js'
 export { summarize } from './utils/summarize.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
-
 // Version
 export { name, version } from './version.js'
+export type {
+  PerpsWsClientOptions,
+  WsProviderFactory,
+} from './websocket/PerpsWsClient.js'
+export { PerpsWsClient } from './websocket/PerpsWsClient.js'
+export type { ReconnectingWebSocketOptions } from './websocket/ReconnectingWebSocket.js'
+export { ReconnectingWebSocket } from './websocket/ReconnectingWebSocket.js'
+export type {
+  EventForSubscription,
+  SubscriptionListener,
+  WsProvider,
+} from './websocket/types.js'
