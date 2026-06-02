@@ -209,11 +209,9 @@ interface CachedStandardToken {
  */
 export interface LighterPerpsProvider extends PerpsProvider {
   /**
-   * Resolve a Lighter auth token for `address` using the same priority chain
-   * as the plugin's read methods: per-call override (n/a here) → constructor
-   * `authToken` → stored long-lived read-only token → read-only token created on
-   * first use via the WASM signer + registered API key → standard 1h token as a
-   * last resort. Returns `undefined` when no source can produce a token —
+   * Resolve a Lighter auth token for `address`, following the resolution order
+   * documented on {@link LighterProviderOptions} (the per-call override does not
+   * apply here). Returns `undefined` when no source can produce a token —
    * callers degrade gracefully.
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
@@ -225,10 +223,8 @@ export interface LighterPerpsProvider extends PerpsProvider {
  * shape used by the rest of the LI.FI SDK family.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.
- * Auth-gated reads use, in priority order: a pre-created token on `authToken`,
- * the stored long-lived read-only token, or — on first use — a read-only token
- * created via the bundled WASM signer + the user's registered API key from
- * `keyStore` and persisted for reuse.
+ * Auth-gated reads resolve their token via the order documented on
+ * {@link LighterProviderOptions}.
  *
  * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
  * `signActions` — `PerpsClient.execute` delegates those arms here.
