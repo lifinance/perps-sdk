@@ -1,3 +1,4 @@
+/** @public */
 export enum PerpsErrorCode {
   // Base errors (2000-2009)
   DefaultError = 2000,
@@ -32,11 +33,13 @@ export enum PerpsErrorCode {
   RouteNotFound = 2060,
 }
 
+/** @public */
 export enum OrderSide {
   BUY = 'BUY',
   SELL = 'SELL',
 }
 
+/** @public */
 export enum OrderType {
   MARKET = 'MARKET',
   LIMIT = 'LIMIT',
@@ -47,16 +50,19 @@ export enum OrderType {
   TRIGGER_ONLY = 'TRIGGER_ONLY',
 }
 
+/** @public */
 export enum PositionSide {
   LONG = 'LONG',
   SHORT = 'SHORT',
 }
 
+/** @public */
 export enum MarginMode {
   ISOLATED = 'ISOLATED',
   CROSS = 'CROSS',
 }
 
+/** @public */
 export enum TimeInForce {
   GTC = 'GTC',
   IOC = 'IOC',
@@ -64,6 +70,7 @@ export enum TimeInForce {
   GTT = 'GTT',
 }
 
+/** @public */
 export enum OrderStatus {
   PENDING = 'PENDING',
   OPEN = 'OPEN',
@@ -75,6 +82,7 @@ export enum OrderStatus {
   TRIGGERED = 'TRIGGERED',
 }
 
+/** @public */
 export enum FillStatus {
   FILLED = 'FILLED',
   PARTIALLY_FILLED = 'PARTIALLY_FILLED',
@@ -82,11 +90,13 @@ export enum FillStatus {
   REJECTED = 'REJECTED',
 }
 
+/** @public */
 export enum LiquidityRole {
   MAKER = 'maker',
   TAKER = 'taker',
 }
 
+/** @public */
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
@@ -107,22 +117,26 @@ export enum ActionType {
   DEPOSIT = 'deposit',
 }
 
+/** @public */
 export enum TriggerCondition {
   ABOVE = 'ABOVE',
   BELOW = 'BELOW',
 }
 
+/** @public */
 export enum TriggerOrderType {
   TAKE_PROFIT = 'TAKE_PROFIT',
   STOP_LOSS = 'STOP_LOSS',
 }
 
+/** @public */
 export enum TriggerOrderStatus {
   WAITING = 'WAITING',
   TRIGGERED = 'TRIGGERED',
   CANCELLED = 'CANCELLED',
 }
 
+/** @public */
 export enum ActivityType {
   DEPOSIT = 'DEPOSIT',
   WITHDRAWAL = 'WITHDRAWAL',
@@ -131,6 +145,7 @@ export enum ActivityType {
   TRANSFER = 'TRANSFER',
 }
 
+/** @public */
 export enum FillClassification {
   OPENED_LONG = 'Opened Long',
   OPENED_SHORT = 'Opened Short',
@@ -146,31 +161,37 @@ export enum FillClassification {
   SPOT_SELL = 'Spot Sell',
 }
 
+/** @public */
 export enum LiquidationClassification {
   LIQUIDATED = 'Liquidated',
 }
 
+/** @public */
 export enum FundingClassification {
   FUNDING = 'Funding',
 }
 
+/** @public */
 export enum TransferClassification {
   DEPOSIT = 'Deposit',
   WITHDRAWAL = 'Withdrawal',
 }
 
+/** @public */
 export type ActivityClassification =
   | FillClassification
   | LiquidationClassification
   | FundingClassification
   | TransferClassification
 
+/** @public */
 export enum PerpsSigner {
   USER = 'USER',
   AGENT = 'AGENT',
   API_KEY = 'API_KEY',
 }
 
+/** @public */
 export enum SigningMethod {
   EIP712 = 'eip712',
   WASM_BLOB = 'wasmBlob',

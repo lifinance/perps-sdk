@@ -1,10 +1,12 @@
 import type { Asset } from './asset.js'
 
+/** @public */
 export interface FundingInfo {
   rate: string
   nextFundingTime: number
 }
 
+/** @public */
 export interface BaseMarket {
   providerId: string
   /** Opaque provider market id; referenced elsewhere as `marketId`. */
@@ -19,6 +21,7 @@ export interface BaseMarket {
   prevDayPrice?: string
 }
 
+/** @public */
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
   onlyIsolated: boolean
@@ -26,10 +29,13 @@ export interface PerpsMarket extends BaseMarket {
   openInterest?: string
 }
 
+/** @public */
 export interface SpotMarket extends BaseMarket {}
 
+/** @public */
 export type Market = PerpsMarket | SpotMarket
 
+/** @public */
 export type MarketDisplay = Pick<
   BaseMarket,
   'providerId' | 'id' | 'categoryId' | 'baseAsset' | 'quoteAsset'
@@ -39,25 +45,30 @@ export type MarketDisplay = Pick<
  * Minimal market reference for write-action params: identifies a market by
  * its opaque `marketId` within a `categoryId`. Embeds no Assets — write
  * params reference by id, not value.
+ * @public
  */
 export interface MarketRef {
   marketId: string
   categoryId: string
 }
 
+/** @public */
 export interface MarketsResponse {
   markets: Market[]
 }
 
+/** @public */
 export interface MarketPrice {
   marketId: string
   price: string
 }
 
+/** @public */
 export interface PricesResponse {
   prices: MarketPrice[]
 }
 
+/** @public */
 export interface Candle {
   t: number
   o: string
@@ -67,6 +78,7 @@ export interface Candle {
   v: string
 }
 
+/** @public */
 export interface OhlcvResponse {
   provider: string
   marketId: string
@@ -74,6 +86,7 @@ export interface OhlcvResponse {
   candles: Candle[]
 }
 
+/** @public */
 export type OhlcvInterval =
   | '1m'
   | '3m'
@@ -90,11 +103,13 @@ export type OhlcvInterval =
   | '1w'
   | '1M'
 
+/** @public */
 export interface OrderbookLevel {
   price: string
   size: string
 }
 
+/** @public */
 export interface OrderbookResponse {
   provider: string
   marketId: string

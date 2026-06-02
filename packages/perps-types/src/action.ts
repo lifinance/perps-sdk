@@ -11,29 +11,35 @@ import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
 import type { PerpsTypedData } from './typedData.js'
 
+/** @public */
 export interface Eip712ActionStep {
   action: ActionType
   typedData: PerpsTypedData
 }
 
+/** @public */
 export interface WasmBlobActionStep {
   action: ActionType
   wasmSignParams: Record<string, unknown>
 }
 
+/** @public */
 export interface EvmTxActionStep {
   action: ActionType
   txParams: Record<string, unknown>
 }
 
+/** @public */
 export type ActionStep = Eip712ActionStep | WasmBlobActionStep | EvmTxActionStep
 
+/** @public */
 export interface Eip712SignedActionStep {
   action: ActionType
   typedData: PerpsTypedData
   signature: Hex
 }
 
+/** @public */
 export interface WasmBlobSignedActionStep {
   action: ActionType
   wasmSignParams: Record<string, unknown>
@@ -44,17 +50,20 @@ export interface WasmBlobSignedActionStep {
   }
 }
 
+/** @public */
 export interface EvmTxSignedActionStep {
   action: ActionType
   txParams: Record<string, unknown>
   txHash: string
 }
 
+/** @public */
 export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
 
+/** @public */
 export type ActionResult =
   | {
       action: ActionType
@@ -67,11 +76,13 @@ export type ActionResult =
       error: string
     }
 
+/** @public */
 export interface TriggerOrderInput {
   triggerPrice: string
   limitPrice?: string
 }
 
+/** @public */
 export interface ModifyOrderInput {
   id: string
   price?: string
@@ -80,6 +91,7 @@ export interface ModifyOrderInput {
   limitPrice?: string
 }
 
+/** @public */
 export interface Order {
   orderId: string
   market: MarketDisplay
@@ -103,6 +115,7 @@ export interface Order {
   updatedAt: string
 }
 
+/** @public */
 export interface PlaceOrderParams {
   market: MarketRef
   side: OrderSide
@@ -119,6 +132,7 @@ export interface PlaceOrderParams {
   stopLoss?: TriggerOrderInput
 }
 
+/** @public */
 export interface PlaceTriggerOrderParams {
   market: MarketRef
   side: OrderSide
@@ -126,14 +140,17 @@ export interface PlaceTriggerOrderParams {
   stopLoss?: TriggerOrderInput
 }
 
+/** @public */
 export interface CancelOrderParams {
   ids: string[]
 }
 
+/** @public */
 export interface ModifyOrderParams {
   modifications: ModifyOrderInput[]
 }
 
+/** @public */
 export interface UpdateLeverageParams {
   market: MarketRef
   leverage: number
@@ -141,17 +158,20 @@ export interface UpdateLeverageParams {
   marginMode?: MarginMode
 }
 
+/** @public */
 export interface UpdatePositionMarginParams {
   market: MarketRef
   action: 'add' | 'remove'
   amount: string
 }
 
+/** @public */
 export interface WithdrawalParams {
   destination: Address
   amount: string
 }
 
+/** @public */
 export interface DepositParams {
   /** Amount of the token to deposit (human-readable, e.g. "100.5"). */
   amount: string
@@ -161,19 +181,23 @@ export interface DepositParams {
   chainId: number
 }
 
+/** @public */
 export interface ApproveAgentParams {
   agentAddress: string
   agentTtlMs?: number
 }
 
+/** @public */
 export interface AccountModeParams {
   mode: string
 }
 
+/** @public */
 export interface AccountTypeParams {
   tier: string
 }
 
+/** @public */
 export interface SendAssetParams {
   collateral: string
   sourceDex: string
@@ -181,6 +205,7 @@ export interface SendAssetParams {
   amount: string
 }
 
+/** @public */
 export interface CancelAllOrdersParams {
   /** 0=immediate (cancel GTC), 1=scheduled, 2=abort scheduled */
   timeInForce: number
@@ -188,6 +213,7 @@ export interface CancelAllOrdersParams {
   timestampMs?: number
 }
 
+/** @public */
 export interface RegisterApiKeyParams {
   /** The API key slot index to register (0-255). Reusing a fixed slot overwrites the old key. */
   apiKeyIndex: number
@@ -200,6 +226,7 @@ export interface RegisterApiKeyParams {
   knownPublicKey?: string
 }
 
+/** @public */
 export interface ApproveReadOnlyTokenParams {
   accountIndex: number
   /** Absolute unix-seconds expiry. Lighter requires lifetime between 1 day and 10 years. */
@@ -207,6 +234,7 @@ export interface ApproveReadOnlyTokenParams {
   scope: 'single' | 'all'
 }
 
+/** @public */
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
@@ -227,6 +255,7 @@ export interface ActionParamsMap {
   [ActionType.DEPOSIT]: DepositParams
 }
 
+/** @public */
 export type CreateActionRequest = {
   [K in ActionType]: {
     provider: string
@@ -237,10 +266,12 @@ export type CreateActionRequest = {
   }
 }[ActionType]
 
+/** @public */
 export interface CreateActionResponse {
   actions: ActionStep[]
 }
 
+/** @public */
 export type ExecuteActionRequest = {
   [K in ActionType]: {
     provider: string
@@ -251,6 +282,7 @@ export type ExecuteActionRequest = {
   }
 }[ActionType]
 
+/** @public */
 export interface ExecuteActionResponse {
   results: ActionResult[]
 }

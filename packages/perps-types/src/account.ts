@@ -13,11 +13,13 @@ import type {
 import type { MarketDisplay } from './market.js'
 import type { Address } from './primitives.js'
 
+/** @public */
 export interface FeeTier {
   maker: string
   taker: string
 }
 
+/** @public */
 export interface Position {
   market: MarketDisplay
   side: PositionSide
@@ -31,6 +33,7 @@ export interface Position {
   marginMode: MarginMode
 }
 
+/** @public */
 export interface OpenOrder {
   orderId: string
   market: MarketDisplay
@@ -44,6 +47,7 @@ export interface OpenOrder {
   createdAt: string
 }
 
+/** @public */
 export interface Balance {
   /** Which category/venue this balance sits in — references a {@link ProviderCategory}. */
   categoryId: string
@@ -53,6 +57,7 @@ export interface Balance {
   valueUsd: string
 }
 
+/** @public */
 export interface AccountResponse {
   provider: string
   address: Address
@@ -66,6 +71,7 @@ export interface AccountResponse {
   config: AccountConfig
 }
 
+/** @public */
 export interface AccountSummary {
   portfolioValue: string
   availableMargin: string
@@ -73,6 +79,7 @@ export interface AccountSummary {
   unrealizedPnl: string
 }
 
+/** @public */
 export interface TriggerOrder {
   orderId: string
   market: MarketDisplay
@@ -84,12 +91,14 @@ export interface TriggerOrder {
   createdAt: string
 }
 
+/** @public */
 export interface PositionsResponse {
   provider: string
   positions: Position[]
   pagination: Pagination
 }
 
+/** @public */
 export interface OrdersResponse {
   provider: string
   openOrders: OpenOrder[]
@@ -97,6 +106,7 @@ export interface OrdersResponse {
   pagination: Pagination
 }
 
+/** @public */
 export interface Fill {
   id: string
   orderId: string
@@ -118,6 +128,7 @@ export interface Fill {
   explorerLink?: string
 }
 
+/** @public */
 export interface Pagination {
   limit: number
   hasMore: boolean
@@ -125,18 +136,21 @@ export interface Pagination {
   nextUrl?: string
 }
 
+/** @public */
 export interface FillsResponse {
   provider: string
   items: Fill[]
   pagination: Pagination
 }
 
+/** @public */
 export interface BaseActivity {
   id: string
   provider: string
   timestamp: string
 }
 
+/** @public */
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
   amount: string
@@ -144,6 +158,7 @@ export interface DepositActivity extends BaseActivity {
   explorerLink?: string
 }
 
+/** @public */
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
   amount: string
@@ -152,11 +167,13 @@ export interface WithdrawalActivity extends BaseActivity {
   explorerLink?: string
 }
 
+/** @public */
 export interface LiquidatedPosition {
   market: MarketDisplay
   size: string
 }
 
+/** @public */
 export interface LiquidationActivity extends BaseActivity {
   type: ActivityType.LIQUIDATION
   liquidatedNotionalPosition: string
@@ -165,6 +182,7 @@ export interface LiquidationActivity extends BaseActivity {
   liquidatedPositions: LiquidatedPosition[]
 }
 
+/** @public */
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
   market: MarketDisplay
@@ -175,6 +193,7 @@ export interface FundingActivity extends BaseActivity {
 
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
+/** @public */
 export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
@@ -188,6 +207,7 @@ export type TransferActivity = BaseActivity & {
     | { counterpartyAccountIndex?: number; counterpartyAddress: string }
   )
 
+/** @public */
 export type ActivityItem =
   | DepositActivity
   | WithdrawalActivity
@@ -195,6 +215,7 @@ export type ActivityItem =
   | FundingActivity
   | TransferActivity
 
+/** @public */
 export interface ActivitiesResponse {
   provider: string
   items: ActivityItem[]
@@ -203,8 +224,10 @@ export interface ActivitiesResponse {
 
 // Account configuration state — typed `AccountResponse.config`.
 
+/** @public */
 export type HyperliquidAgent = Record<string, unknown>
 
+/** @public */
 export interface HyperliquidBuilderFeeApproval {
   builderAddress: string
   /** Basis points as a string. */
@@ -212,6 +235,7 @@ export interface HyperliquidBuilderFeeApproval {
   approved: boolean
 }
 
+/** @public */
 export interface HyperliquidAccountConfig {
   provider: 'hyperliquid'
   /** `null` means abstraction has never been set. */
@@ -220,6 +244,7 @@ export interface HyperliquidAccountConfig {
   builderFeeApproval?: HyperliquidBuilderFeeApproval
 }
 
+/** @public */
 export interface LighterAccountConfig {
   provider: 'lighter'
   accountIndex: number
@@ -233,14 +258,17 @@ export interface LighterAccountConfig {
   readOnlyTokenScope?: 'single' | 'all'
 }
 
+/** @public */
 export type AccountConfig = HyperliquidAccountConfig | LighterAccountConfig
 
+/** @public */
 export interface AccountConfigValue {
   name: string
   /** `null` means no current value — consumers fall back to the descriptor default. */
   value: string | number | boolean | null
 }
 
+/** @public */
 export interface AccountConfigSetting {
   type: ActionType
   values: AccountConfigValue[]
