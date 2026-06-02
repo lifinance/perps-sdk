@@ -15,6 +15,7 @@ const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
 /**
  * Default Lighter HTTP host the SDK posts the create request to. Callers
  * pointing at testnet pass an override via {@link LighterReadOnlyTokenManagerOptions.lighterApiUrl}.
+ * @public
  */
 export const DEFAULT_LIGHTER_API_URL = 'https://mainnet.zklighter.elliot.ai'
 
@@ -22,6 +23,7 @@ export const DEFAULT_LIGHTER_API_URL = 'https://mainnet.zklighter.elliot.ai'
  * Default token name persisted alongside Lighter's `tokens/create` row.
  * Lighter requires a non-empty `name` form field; the literal here is what
  * surfaces in Lighter's UI listing under `app.lighter.xyz/read-only-tokens`.
+ * @public
  */
 export const DEFAULT_READ_ONLY_TOKEN_NAME = 'LI.FI Perps'
 
@@ -30,6 +32,7 @@ export const DEFAULT_READ_ONLY_TOKEN_NAME = 'LI.FI Perps'
  * Lighter's opaque `ro:{accountIndex}:{scope}:{expiry}:{rand}` bearer; the
  * SDK never parses it — `expiry`/`scope`/`accountIndex` are create-time inputs
  * we keep alongside so consumers can render expiry UX without re-fetching.
+ * @public
  */
 export interface LighterReadOnlyToken {
   /** Opaque bearer string — never parse client-side. */
@@ -46,6 +49,7 @@ export interface LighterReadOnlyToken {
  * Lighter `POST /api/v1/tokens/create` response shape (subset). Lighter's
  * OpenAPI documents additional fields (`token_id`, `name`, `revoked`, etc.)
  * we don't need client-side.
+ * @public
  */
 export interface LighterCreateTokenResponse {
   api_token: string
@@ -59,6 +63,7 @@ export interface LighterCreateTokenResponse {
  * endpoint. Returning a parsed {@link LighterCreateTokenResponse} keeps the
  * create code free of fetch/multipart plumbing and lets tests drop a fixture
  * in without spinning a mock server.
+ * @public
  */
 export type LighterTokenFetcher = (params: {
   url: string
@@ -70,6 +75,7 @@ export type LighterTokenFetcher = (params: {
   scopes: string
 }) => Promise<LighterCreateTokenResponse>
 
+/** @public */
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
   /** Lighter API host. Defaults to {@link DEFAULT_LIGHTER_API_URL}. */
@@ -80,11 +86,13 @@ export interface LighterReadOnlyTokenManagerOptions {
   now?: () => number
 }
 
+/** @public */
 export interface ApproveReadOnlyTokenInputs extends ApproveReadOnlyTokenParams {
   /** L1 wallet address that signs the create message. */
   address: Address
 }
 
+/** @public */
 export interface ApproveReadOnlyTokenResult {
   token: LighterReadOnlyToken
   /** Projection of the post-create Lighter account state. */
@@ -109,6 +117,7 @@ const SECONDS_PER_DAY = 86_400
  *
  * The L1 wallet signer and the HTTP fetcher are both injectable so unit
  * tests don't need a real wallet or network.
+ * @public
  */
 export class LighterReadOnlyTokenManager {
   private readonly storage: StorageAdapter
@@ -276,6 +285,7 @@ export class LighterReadOnlyTokenManager {
  * `tokens/create` endpoint and returns the parsed response. Throws a
  * {@link PerpsError} with the Lighter-side body when the response is
  * non-2xx.
+ * @public
  */
 export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
   url,

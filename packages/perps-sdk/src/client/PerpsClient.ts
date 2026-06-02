@@ -63,6 +63,14 @@ function findActionDescriptor(
   return descriptor
 }
 
+/**
+ * The primary high-level perps API: wraps a {@link PerpsSDKClient} and owns the
+ * end-to-end signing pipeline for provider setup, orders, and account-level
+ * actions. Construct via `new PerpsClient(options)` or the SDK's higher-level
+ * wiring.
+ *
+ * @public
+ */
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
   private providerMetadataCache: Map<string, Provider> = new Map()
@@ -80,6 +88,8 @@ export class PerpsClient {
   /**
    * Set or update the wallet signer. Used whenever an action's descriptor
    * names the user wallet in its `signers` list. Pass undefined to clear.
+   *
+   * @public
    */
   setSigner(signer: PerpsSDKClient['signer']): void {
     this._signer = signer
@@ -89,6 +99,12 @@ export class PerpsClient {
     })
   }
 
+  /**
+   * The underlying low-level {@link PerpsSDKClient} (config, signer, provider
+   * registry, agent manager) backing this instance.
+   *
+   * @public
+   */
   get client(): PerpsSDKClient {
     return this.sdkClient
   }
@@ -326,6 +342,10 @@ export class PerpsClient {
    * step's shape — EIP-712 typed data, WASM blob (with the hybrid EIP-191 +
    * WASM flow for REGISTER_API_KEY), or EVM transaction. Lets consumers
    * collect signed setup actions without embedding per-method signing logic.
+   *
+   * @throws {PerpsError} When an EIP-712 step is passed with no wallet signer
+   *   configured, or the step shape is unrecognised.
+   * @public
    */
   async signProviderSetupAction(
     provider: string,
@@ -371,6 +391,12 @@ export class PerpsClient {
     return signed
   }
 
+  /**
+   * Build (but do not sign or submit) the unsigned action steps for `action`,
+   * resolving the agent signer address for AGENT-signed actions.
+   *
+   * @public
+   */
   async buildAction<T extends ActionType>(
     action: T,
     params: { provider: string; address: Address; params: ActionParamsMap[T] }
@@ -395,6 +421,10 @@ export class PerpsClient {
    * descriptor on `Provider.setup` + `Provider.options`. Callers read
    * `result.settings` directly without re-deriving values from the typed
    * `AccountConfig`.
+   *
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   backend account fetch fails.
+   * @public
    */
   async getAccount(params: {
     provider: string
@@ -418,6 +448,10 @@ export class PerpsClient {
    * `true` when `getAccount` resolves, `false` when the backend reports
    * `PerpsErrorCode.AccountNotFound`, and re-throws on any other error
    * (transport failures, validation errors, server errors).
+   *
+   * @throws {PerpsError} On any backend error other than
+   *   `PerpsErrorCode.AccountNotFound`.
+   * @public
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
     try {
@@ -441,6 +475,8 @@ export class PerpsClient {
    * `Provider.options` descriptors are NEVER returned here — options are
    * post-setup tunables and never gate trading. Option state is surfaced
    * separately via `getAccount().settings`.
+   *
+   * @public
    */
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
@@ -500,6 +536,13 @@ export class PerpsClient {
     }
   }
 
+  /**
+   * Build the unsigned setup `ActionStep`s still outstanding for an account,
+   * ordered by descriptor `sequence`. The backend filters already-satisfied
+   * setup; each plugin may contribute params from its local state.
+   *
+   * @public
+   */
   async buildProviderSetup(
     params: BuildProviderSetupParams
   ): Promise<CreateActionResponse> {
@@ -690,6 +733,8 @@ export class PerpsClient {
    *      `fallbackUserProviderSetup`.
    *   3. Sign and submit any pre-staged agent-side setup actions the
    *      backend returned alongside the user-signed ones.
+   *
+   * @public
    */
   async executeProviderSetup(
     params: ExecuteProviderSetupParams
@@ -799,6 +844,10 @@ export class PerpsClient {
    * Signer-role split: looks up the action's setup descriptor and dispatches
    * to `signProviderSetupAction` for user-signed steps; agent steps are
    * auto-signed inside `executeProviderSetup`.
+   *
+   * @throws {PerpsError} When the step's action is not in the provider's
+   *   `setup` descriptors.
+   * @public
    */
   async executeProviderSetupAction(params: {
     provider: string
@@ -836,10 +885,36 @@ export class PerpsClient {
     })
   }
 
+  /**
+   * Place a market or limit order. Convenience wrapper over {@link execute}
+   * with `ActionType.PLACE_ORDER`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @example
+   * ```ts
+   * await client.placeOrder({
+   *   provider: 'hyperliquid',
+   *   address: '0xUser',
+   *   market: { symbol: 'ETH' },
+   *   side: 'buy',
+   *   size: '0.1',
+   * })
+   * ```
+   * @public
+   */
   async placeOrder(params: PlaceOrderParams): Promise<ExecuteActionResponse> {
     return this.execute({ ...params, action: ActionType.PLACE_ORDER, params })
   }
 
+  /**
+   * Place a trigger (take-profit / stop-loss) order. Convenience wrapper over
+   * {@link execute} with `ActionType.PLACE_TRIGGER_ORDER`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
   async placeTriggerOrder(
     params: PlaceTriggerOrderParams
   ): Promise<ExecuteActionResponse> {
@@ -850,18 +925,42 @@ export class PerpsClient {
     })
   }
 
+  /**
+   * Cancel one or more open orders. Convenience wrapper over {@link execute}
+   * with `ActionType.CANCEL_ORDER`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
   async cancelOrders(
     params: CancelOrdersParams
   ): Promise<ExecuteActionResponse> {
     return this.execute({ ...params, action: ActionType.CANCEL_ORDER, params })
   }
 
+  /**
+   * Modify one or more open orders. Convenience wrapper over {@link execute}
+   * with `ActionType.MODIFY_ORDER`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
   async modifyOrders(
     params: ModifyOrdersParams
   ): Promise<ExecuteActionResponse> {
     return this.execute({ ...params, action: ActionType.MODIFY_ORDER, params })
   }
 
+  /**
+   * Add or remove isolated-position margin. Convenience wrapper over
+   * {@link execute} with `ActionType.UPDATE_POSITION_MARGIN`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
   async updatePositionMargin(params: {
     provider: string
     address: Address
@@ -876,6 +975,14 @@ export class PerpsClient {
     })
   }
 
+  /**
+   * Withdraw funds from the provider account. Convenience wrapper over
+   * {@link execute} with `ActionType.WITHDRAWAL`.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
   async withdraw(params: WithdrawParams): Promise<ExecuteActionResponse> {
     return this.execute({
       provider: params.provider,
@@ -891,6 +998,10 @@ export class PerpsClient {
    * `EIP712` is signed inside `PerpsClient` against the agent or user
    * wallet; `WASM_BLOB` and `EVM_TX` are delegated to the provider
    * plugin's {@link PerpsProvider.signActions}.
+   *
+   * @throws {PerpsError} When the action is not declared by the provider,
+   *   no matching signer is configured, or signing/submission fails.
+   * @public
    */
   async execute<T extends ActionType>(params: {
     provider: string

@@ -11,6 +11,7 @@ import {
 // is process-global inside the Go runtime; we track which keys are already
 // initialized so CreateClient runs once per keypair.
 
+/** @public */
 export interface LighterSignerContext {
   /** Lighter-native private key (from GenerateAPIKey, NOT an Ethereum key). */
   apiKeyPrivateKey: string
@@ -20,6 +21,7 @@ export interface LighterSignerContext {
   accountIndex: number
 }
 
+/** @public */
 export interface LighterSignerConfig extends LoadLighterWasmOptions {
   /** Lighter REST API base URL. */
   apiUrl?: string
@@ -27,17 +29,20 @@ export interface LighterSignerConfig extends LoadLighterWasmOptions {
   chainId?: number
 }
 
+/** @public */
 export interface LighterSignedBlob {
   txType: number
   txInfo: string
   txHash: string
 }
 
+/** @public */
 export interface ChangePubKeyResult extends LighterSignedBlob {
   /** EIP-191 message the L1 Ethereum wallet must sign to authorize the key rotation. */
   messageToSign: string
 }
 
+/** @public */
 export interface ApiKeyPair {
   publicKey: string
   privateKey: string
@@ -46,6 +51,7 @@ export interface ApiKeyPair {
 const DEFAULT_API_URL = 'https://mainnet.zklighter.elliot.ai'
 const DEFAULT_CHAIN_ID = 304
 
+/** @public */
 export class LighterSigner {
   private readonly apiUrl: string
   private readonly chainId: number

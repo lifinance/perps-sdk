@@ -12,8 +12,19 @@ import type { HlOrderStatusResponse } from '../types/index.js'
 import { mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
+/**
+ * Parameters for {@link getOrder}.
+ *
+ * @public
+ */
 export type GetOrderParams = ProviderGetOrderParams
 
+/**
+ * Read getOrder direct from the Hyperliquid REST API.
+ *
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
+ */
 export const getOrder = async (
   client: PerpsSDKClient,
   apiUrl: string,

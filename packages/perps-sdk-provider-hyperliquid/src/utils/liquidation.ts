@@ -20,6 +20,7 @@
  * @param maxLeverage - Maximum leverage for the asset (e.g., 50 for BTC)
  * @returns Maintenance margin fraction (e.g., 0.01 for 50x max leverage),
  *   or undefined if maxLeverage is zero
+ * @public
  */
 export function calculateMaintenanceMarginRate(
   maxLeverage: number
@@ -50,6 +51,7 @@ export function calculateMaintenanceMarginRate(
  * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Determines
  *   the maintenance margin rate: mmr = 1 / (2 * maxLeverage)
  * @returns Estimated liquidation price, or undefined if inputs are invalid
+ * @public
  */
 export function calculateLiquidationPrice(
   entryPrice: number,

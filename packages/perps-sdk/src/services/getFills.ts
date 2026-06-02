@@ -6,6 +6,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
+/**
+ * Parameters for {@link getFills}.
+ *
+ * @public
+ */
 export interface GetFillsParams {
   /** Provider to get fills from (e.g., 'hyperliquid') */
   provider: string
@@ -26,6 +31,8 @@ export interface GetFillsParams {
  * (direct-to-venue); requires the provider plugin to be registered on the
  * client.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const { items, pagination } = await getFills(client, {
@@ -34,6 +41,7 @@ export interface GetFillsParams {
  *   limit: 50,
  * })
  * ```
+ * @public
  */
 export async function getFills(
   client: PerpsSDKClient,

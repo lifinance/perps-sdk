@@ -3,6 +3,8 @@ import type { StorageAdapter } from './types.js'
 /**
  * localStorage adapter for browser environments. Falls back to a no-op when
  * `localStorage` is unavailable (e.g. SSR).
+ *
+ * @public
  */
 export const localStorageAdapter: StorageAdapter = {
   get: (key: string): Promise<string | null> => {
@@ -34,6 +36,8 @@ export const localStorageAdapter: StorageAdapter = {
 
 /**
  * In-memory storage adapter for testing or server-side use.
+ *
+ * @public
  */
 export function createMemoryStorage(): StorageAdapter {
   const store = new Map<string, string>()

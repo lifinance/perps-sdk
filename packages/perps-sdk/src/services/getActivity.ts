@@ -6,6 +6,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
+/**
+ * Parameters for {@link getActivity}.
+ *
+ * @public
+ */
 export interface GetActivityParams {
   /** Provider to get activity from (e.g., 'hyperliquid') */
   provider: string
@@ -28,6 +33,8 @@ export interface GetActivityParams {
  * Delegates to the registered venue plugin (direct-to-venue); requires the
  * provider plugin to be registered on the client.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const { items, pagination } = await getActivity(client, {
@@ -36,6 +43,7 @@ export interface GetActivityParams {
  *   limit: 50,
  * })
  * ```
+ * @public
  */
 export async function getActivity(
   client: PerpsSDKClient,

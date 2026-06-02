@@ -30,6 +30,11 @@ import {
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapPosition } from '../utils/mapPosition.js'
 
+/**
+ * Parameters for {@link getAccount}.
+ *
+ * @public
+ */
 export type GetAccountParams = ProviderGetAccountParams
 
 const SPOT_KEY = SPOT_MARKET_ID
@@ -183,6 +188,8 @@ const buildBalances = (
  * builder address LI.FI publishes, which is not data the venue itself
  * owns. Surfacing it belongs at a higher layer (the LI.FI backend or a
  * thin client-side helper that has the integrator's builder config).
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
  */
 export const getAccount = async (
   client: PerpsSDKClient,

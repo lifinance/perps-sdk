@@ -3,6 +3,7 @@ import { MarginMode, PositionSide } from '@lifi/perps-types'
 import type { HlAssetPosition } from '../types/index.js'
 import { marketDisplayFromCoin } from './deriveMarket.js'
 
+/** @public */
 export const mapPosition = (ap: HlAssetPosition): Position => {
   const pos = ap.position
   const szi = parseFloat(pos.szi)

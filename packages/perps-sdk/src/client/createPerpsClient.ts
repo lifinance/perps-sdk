@@ -21,8 +21,18 @@ export type {
   SDKRequestOptions,
 } from '../types/core.js'
 
+/**
+ * Default LI.FI perps API base URL used when `PerpsConfig.apiUrl` is omitted.
+ *
+ * @public
+ */
 export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
 
+/**
+ * Configuration for {@link createPerpsClient}.
+ *
+ * @public
+ */
 export interface PerpsConfig {
   integrator: string
   apiKey: string
@@ -69,6 +79,22 @@ export interface PerpsConfig {
   fetch?: typeof fetch
 }
 
+/**
+ * Construct the low-level {@link PerpsSDKClient} — config, signer, agent
+ * manager, and provider registry — shared by the service functions and the
+ * higher-level {@link PerpsClient}.
+ *
+ * @throws {PerpsError} When `options.integrator` is missing.
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   apiKey: 'key',
+ *   providers: [hyperliquidProvider()],
+ * })
+ * ```
+ * @public
+ */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   if (!options.integrator) {
     const error = new PerpsError(

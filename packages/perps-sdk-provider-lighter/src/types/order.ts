@@ -1,5 +1,6 @@
 // Order shapes returned by Lighter's REST API.
 
+/** @public */
 export type LtOrder = {
   order_index: number
   client_order_index: number
@@ -30,12 +31,14 @@ export type LtOrder = {
   transaction_time: number
 }
 
+/** @public */
 export interface LtOrdersResponse {
   code: number
   next_cursor: string
   orders: LtOrder[]
 }
 
+/** @public */
 export interface LtOrderBookOrder {
   order_index: number
   order_id: string
@@ -47,6 +50,7 @@ export interface LtOrderBookOrder {
   transaction_time: number
 }
 
+/** @public */
 export interface LtOrderBookOrdersResponse {
   code: number
   total_asks: number

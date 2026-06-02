@@ -1,5 +1,6 @@
 // Asset / market metadata returned by Hyperliquid `/info`.
 
+/** @public */
 export type HlUniverseItem = {
   name: string
   szDecimals: number
@@ -8,10 +9,12 @@ export type HlUniverseItem = {
   isDelisted?: boolean
 }
 
+/** @public */
 export type HlMeta = {
   universe: HlUniverseItem[]
 }
 
+/** @public */
 export type HlAssetCtx = {
   funding: string
   openInterest: string
@@ -20,12 +23,16 @@ export type HlAssetCtx = {
   markPx: string
 }
 
+/** @public */
 export type HlMetaAndAssetCtxs = [HlMeta, HlAssetCtx[]]
 
+/** @public */
 export type HlUniverse = HlMeta['universe']
 
+/** @public */
 export type HlAllMids = Record<string, string>
 
+/** @public */
 export type HlCandle = {
   t: number
   o: string
@@ -35,17 +42,21 @@ export type HlCandle = {
   v: string
 }
 
+/** @public */
 export type HlCandleSnapshot = HlCandle[]
 
+/** @public */
 export type HlLevel = {
   px: string
   sz: string
   n: number
 }
 
+/** @public */
 export type HlL2Book = {
   levels: [HlLevel[], HlLevel[]]
   time: number
 }
 
+/** @public */
 export type HlPerpDexs = (null | { name: string })[]

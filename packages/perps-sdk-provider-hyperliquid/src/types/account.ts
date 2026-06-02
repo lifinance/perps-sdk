@@ -1,5 +1,6 @@
 // Account-level types returned by Hyperliquid `/info`.
 
+/** @public */
 export type HlPosition = {
   coin: string
   szi: string
@@ -14,10 +15,12 @@ export type HlPosition = {
   }
 }
 
+/** @public */
 export type HlAssetPosition = {
   position: HlPosition
 }
 
+/** @public */
 export type HlClearinghouseState = {
   assetPositions: HlAssetPosition[]
   marginSummary: {
@@ -30,6 +33,7 @@ export type HlClearinghouseState = {
   }
 }
 
+/** @public */
 export type HlSpotBalance = {
   coin: string
   token: number
@@ -38,21 +42,25 @@ export type HlSpotBalance = {
   entryNtl: string
 }
 
+/** @public */
 export type HlSpotClearinghouseState = {
   balances: HlSpotBalance[]
 }
 
+/** @public */
 export type HlUserFees = {
   userAddRate: string
   userCrossRate: string
   activeReferralDiscount: string
 }
 
+/** @public */
 export type HlExtraAgents = Record<string, unknown>[]
 
 /**
  * Possible values returned by the `userAbstraction` info endpoint.
  * `null` means abstraction has never been set (standard mode).
+ * @public
  */
 export const HlAbstractionMode = {
   DISABLED: 'disabled',
@@ -61,5 +69,6 @@ export const HlAbstractionMode = {
   DEX_ABSTRACTION: 'dexAbstraction',
 } as const
 
+/** @public */
 export type HlAbstractionMode =
   (typeof HlAbstractionMode)[keyof typeof HlAbstractionMode]

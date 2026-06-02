@@ -13,6 +13,7 @@
  *   Source this from the selected provider's `minOrderValueUsd` metadata
  *   (see `@lifi/perps-types` `Provider`) rather than a client-side constant.
  * @returns Error code: 'insufficient' | 'below-minimum' | '' (valid)
+ * @public
  */
 export function validateMargin(
   margin: number,

@@ -8,7 +8,11 @@ import {
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
 import { marketDisplayFromCoin } from './deriveMarket.js'
 
-/** Map a Hyperliquid orderType string to the OrderType enum. */
+/**
+ * Map a Hyperliquid orderType string to the OrderType enum.
+ *
+ * @public
+ */
 export const mapOrderType = (orderType: string): OrderType => {
   switch (orderType) {
     case 'Take Profit Market':
@@ -26,6 +30,7 @@ export const mapOrderType = (orderType: string): OrderType => {
   }
 }
 
+/** @public */
 export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.TAKE_PROFIT_MARKET ||
   type === OrderType.TAKE_PROFIT_LIMIT ||
@@ -50,6 +55,7 @@ export const isTriggerType = (type: OrderType): boolean =>
  *      `'Limit'` for a freshly-placed TP/SL until REST refetch lands the
  *      corrected type).
  *   5. `orderType` — final fall-back via `isTriggerType`.
+ * @public
  */
 export const isTriggerOrder = (
   o: HlFrontendOpenOrder | HlOrderDetail['order']
@@ -73,6 +79,7 @@ export const isTriggerOrder = (
   return isTriggerType(mapOrderType(o.orderType))
 }
 
+/** @public */
 export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   orderId: String(o.oid),
   market: marketDisplayFromCoin(o.coin),
@@ -88,6 +95,7 @@ export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
   createdAt: new Date(o.timestamp).toISOString(),
 })
 
+/** @public */
 export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
   const type = mapOrderType(o.orderType)
   const isLimit =
@@ -104,6 +112,7 @@ export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
   }
 }
 
+/** @public */
 export const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
     case 'open':
@@ -130,6 +139,7 @@ export const mapOrderStatus = (status: string): OrderStatus => {
  * describing *why* the order ended in a terminal non-FILLED state. Bare
  * `canceled`/`cancelled`/`rejected` carry no actionable detail and
  * return `undefined`; so do non-terminal and unknown values.
+ * @public
  */
 export const mapStatusReason = (status: string): string | undefined => {
   switch (status) {
@@ -169,6 +179,7 @@ const mapTimeInForce = (tif: string | undefined): TimeInForce | undefined => {
   }
 }
 
+/** @public */
 export const mapOrder = (detail: HlOrderDetail): Order => {
   const o = detail.order
   const filled = parseFloat(o.origSz) - parseFloat(o.sz)

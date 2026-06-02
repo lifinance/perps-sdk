@@ -1,15 +1,38 @@
+/**
+ * Provider key for LI.FI-backend-proxied requests in a
+ * {@link ProviderRetryConfig}.
+ *
+ * @public
+ */
 export const LIFI_REQUEST_KEY = 'lifi' as const
 
+/**
+ * Outcome of classifying a response/error for retry: the three `retry-*`
+ * variants are retriable; `'fail'` is terminal.
+ *
+ * @public
+ */
 export type RetryClassification =
   | 'retry-rate-limit'
   | 'retry-server'
   | 'retry-network'
   | 'fail'
 
+/**
+ * Context passed to a {@link RetryPolicy.classify} callback.
+ *
+ * @public
+ */
 export interface RetryClassifyContext {
   response: Response
 }
 
+/**
+ * Context passed to a {@link RetryPolicy.shouldRetry} callback for each
+ * attempt.
+ *
+ * @public
+ */
 export interface RetryAttemptContext {
   attempt: number
   response?: Response
@@ -23,6 +46,8 @@ export interface RetryAttemptContext {
  * `undefined` defers to the base classifier; returning `'fail'` short-circuits
  * retry. `shouldRetry` runs after `classify` has already decided to retry and
  * gives a final yes/no per attempt.
+ *
+ * @public
  */
 export interface RetryPolicy {
   maxAttempts?: number
@@ -33,6 +58,12 @@ export interface RetryPolicy {
   shouldRetry?: (ctx: RetryAttemptContext) => boolean | Promise<boolean>
 }
 
+/**
+ * A fully resolved retry policy with every field populated — the form
+ * {@link fetchWithRetry} consumes.
+ *
+ * @public
+ */
 export interface ResolvedRetryPolicy {
   enabled: boolean
   maxAttempts: number
@@ -47,14 +78,27 @@ export interface ResolvedRetryPolicy {
  * Per-provider overrides keyed by the provider plugin's `type` (e.g. `'hyperliquid'`,
  * `'lighter'`), plus `'lifi'` for backend-proxied requests. `default` is the
  * fallback applied to any provider not explicitly listed.
+ *
+ * @public
  */
 export interface ProviderRetryConfig {
   default?: RetryPolicy | false
   [providerKey: string]: RetryPolicy | false | undefined
 }
 
+/**
+ * Top-level `retry` option: a flat {@link RetryPolicy} for all providers,
+ * `false` to disable retries, or a per-provider {@link ProviderRetryConfig}.
+ *
+ * @public
+ */
 export type RetryConfig = RetryPolicy | false | ProviderRetryConfig
 
+/**
+ * Built-in default retry policy for LI.FI-backend requests.
+ *
+ * @public
+ */
 export const LIFI_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
   maxAttempts: 3,
@@ -72,6 +116,11 @@ export const LIFI_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   },
 }
 
+/**
+ * A resolved policy that performs a single attempt with no retries.
+ *
+ * @public
+ */
 export const DISABLED_RETRY: ResolvedRetryPolicy = {
   enabled: false,
   maxAttempts: 1,
@@ -125,6 +174,8 @@ function mergePolicy(
  * Resolution order when `config` is a {@link ProviderRetryConfig}:
  * `config[providerKey]` → `config.default` → `base`. A flat {@link RetryPolicy}
  * applies to every provider. `false` (at any level) disables retries entirely.
+ *
+ * @public
  */
 export function resolveRetryPolicy(
   base: ResolvedRetryPolicy,

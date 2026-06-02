@@ -62,6 +62,7 @@ const mapOrderStatus = (status: string): OrderStatus => {
  * Map a raw Lighter order status to a short English sentence describing
  * *why* the order ended in a terminal non-FILLED state. Non-terminal
  * statuses, plain `filled`, and unknown values return `undefined`.
+ * @public
  */
 export const mapStatusReason = (status: string): string | undefined => {
   switch (status) {
@@ -101,6 +102,7 @@ export const mapStatusReason = (status: string): string | undefined => {
  * Hyperliquid helper of the same name so the backend can split a raw
  * Lighter order list into the same `openOrders` / `triggerOrders`
  * buckets the SDK declares on `OrdersResponse`.
+ * @public
  */
 export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.TAKE_PROFIT_MARKET ||
@@ -123,6 +125,7 @@ export const isTriggerType = (type: OrderType): boolean =>
  *      momentarily lags during state transitions (e.g. right after an OCO
  *      sibling cancels).
  *   3. `type` — final fallback via the mapped `OrderType`.
+ * @public
  */
 export const isTriggerOrder = (raw: LtOrder): boolean => {
   if (
@@ -143,6 +146,7 @@ export const isTriggerOrder = (raw: LtOrder): boolean => {
  * the generic `TriggerOrder` shape. For market variants the `limitPrice`
  * field is omitted; for limit variants `order.price` is the limit and
  * `order.trigger_price` is the activation level.
+ * @public
  */
 export const mapTriggerOrder = (
   order: LtOrder,
@@ -170,6 +174,7 @@ export const mapTriggerOrder = (
 /**
  * Map a raw Lighter order to the generic OpenOrder type.
  * @param displaySymbol - Human-readable symbol for `market.baseAsset.displaySymbol`.
+ * @public
  */
 export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
   orderId: String(order.order_index),
@@ -190,6 +195,7 @@ export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
  * a terminal state (filled / cancelled / rejected / expired) — consumers
  * applying WS deltas evict those from the cached buckets. REST callers
  * see `terminated: []` because `accountActiveOrders` returns active only.
+ * @public
  */
 export const classifyAndMapOrders = (
   orders: LtOrder[],
@@ -221,6 +227,7 @@ export const classifyAndMapOrders = (
 /**
  * Map a raw Lighter order to the rich Order type — adds status, time-in-force
  * and remaining/filled sizes on top of the OpenOrder fields.
+ * @public
  */
 export const mapOrderDetail = (
   order: LtOrder,

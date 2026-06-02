@@ -1,5 +1,6 @@
 // Trade (fill) shapes returned by Lighter's `/api/v1/trades` endpoint.
 
+/** @public */
 export type LtTrade = {
   trade_id: number
   tx_hash: string
@@ -27,6 +28,7 @@ export type LtTrade = {
   maker_position_size_before: string
 }
 
+/** @public */
 export interface LtTradesResponse {
   code: number
   next_cursor: string

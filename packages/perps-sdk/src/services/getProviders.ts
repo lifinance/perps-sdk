@@ -20,6 +20,7 @@ import { request } from '../utils/request.js'
  * const { providers } = await getProviders(client)
  * console.log(providers) // [{ key: 'hyperliquid', name: 'Hyperliquid', ... }]
  * ```
+ * @public
  */
 export async function getProviders(
   client: PerpsSDKClient,

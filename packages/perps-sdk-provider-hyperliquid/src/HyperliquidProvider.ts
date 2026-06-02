@@ -58,6 +58,11 @@ import {
 } from './signers/HyperliquidAgentStore.js'
 import { hyperliquidSignActions } from './signers/signActions.js'
 
+/**
+ * Options for {@link hyperliquidProvider}.
+ *
+ * @public
+ */
 export interface HyperliquidProviderOptions {
   /**
    * Base URL for the Hyperliquid REST surface. Defaults to
@@ -104,6 +109,15 @@ export interface HyperliquidPerpsProvider extends PerpsProvider {
  * Write actions are EIP-712 typed data signed by the user's Hyperliquid agent
  * keypair; the plugin owns that keypair (generation, storage, revocation) and
  * dispatches the agent-signed arm via `signActions`.
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   providers: [hyperliquidProvider()],
+ * })
+ * ```
+ * @public
  */
 export function hyperliquidProvider(
   options: HyperliquidProviderOptions = {}

@@ -10,6 +10,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link executeAction}.
+ *
+ * @public
+ */
 export interface ExecuteActionParams {
   provider: string
   address: Address
@@ -18,6 +23,14 @@ export interface ExecuteActionParams {
   actions: SignedActionStep[]
 }
 
+/**
+ * Submit client-signed `ActionStep`s to the backend for execution. This is a
+ * money-moving write — the request is never auto-retried (the signed bytes
+ * could already have landed on a transport failure).
+ *
+ * @throws {PerpsError} On backend error responses, network, or parsing errors.
+ * @public
+ */
 export async function executeAction(
   client: PerpsSDKClient,
   params: ExecuteActionParams,

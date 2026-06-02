@@ -4,6 +4,8 @@ import { privateKeyToAccount } from 'viem/accounts'
 
 /**
  * Sign EIP-712 typed data with a raw private key (agent keypair).
+ *
+ * @public
  */
 export async function signTypedData(
   privateKey: Hex,
@@ -21,6 +23,8 @@ export async function signTypedData(
  * Sign EIP-712 typed data with an externally-provided WalletClient. Works
  * with browser wallets (wagmi), private keys, mnemonics — any viem
  * WalletClient.
+ *
+ * @internal
  */
 export async function signTypedDataWithSigner(
   signer: WalletClient<any, any, Account>,

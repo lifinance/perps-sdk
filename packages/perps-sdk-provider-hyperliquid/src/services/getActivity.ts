@@ -33,6 +33,11 @@ import {
   infoRequest,
 } from '../utils/infoClient.js'
 
+/**
+ * Parameters for {@link getActivity}.
+ *
+ * @public
+ */
 export interface GetActivityParams {
   address: Address
   limit?: number
@@ -122,6 +127,8 @@ const fetchActivityData = async (
  * Cursor-based pagination uses the ms-since-epoch timestamp of the last
  * item on the current page. `startTime` defaults to 90 days ago to keep
  * unbounded queries cheap.
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
  */
 export const getActivity = async (
   client: PerpsSDKClient,

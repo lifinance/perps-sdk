@@ -7,6 +7,8 @@ import type { PerpsProvider, PerpsSDKClient } from '../types/core.js'
  * reads run direct-to-venue through the plugin, so a missing plugin is a wiring
  * error (the consumer must pass it to `createPerpsClient({ providers: [...] })`)
  * rather than a runtime-recoverable state.
+ *
+ * @internal
  */
 export function requireProvider(
   client: PerpsSDKClient,

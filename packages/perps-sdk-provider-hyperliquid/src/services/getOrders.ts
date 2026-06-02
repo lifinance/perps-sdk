@@ -19,6 +19,11 @@ import {
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
+/**
+ * Parameters for {@link getOrders}.
+ *
+ * @public
+ */
 export interface GetOrdersParams {
   address: Address
   /** Optional filter — opaque `Market.id`. */
@@ -33,6 +38,8 @@ export interface GetOrdersParams {
  * extracted and surfaced alongside top-level trigger orders. The backend's
  * enriched asset list supplies the sub-dex fan-out and display fields; only
  * `frontendOpenOrders` is read direct.
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
  */
 export const getOrders = async (
   client: PerpsSDKClient,

@@ -14,6 +14,11 @@ import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
 import { mapFill, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
+/**
+ * Parameters for {@link getFills}.
+ *
+ * @public
+ */
 export interface GetFillsParams {
   address: Address
   limit?: number
@@ -35,6 +40,8 @@ export interface GetFillsParams {
  * Pagination is cursor-based on the fill's `tid`: results with
  * `tid < cursor` are kept and the last-page's tail `id` is returned as the
  * next cursor.
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
  */
 export const getFills = async (
   client: PerpsSDKClient,

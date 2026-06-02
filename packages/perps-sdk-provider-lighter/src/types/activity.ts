@@ -1,6 +1,7 @@
 // Activity history shapes returned by Lighter's REST API
 // (deposits, withdrawals, funding payments, liquidations, transfers).
 
+/** @public */
 export interface LtDepositHistoryItem {
   id: string
   asset_id: number
@@ -10,12 +11,14 @@ export interface LtDepositHistoryItem {
   l1_tx_hash: string
 }
 
+/** @public */
 export interface LtDepositHistoryResponse {
   code: number
   deposits: LtDepositHistoryItem[]
   cursor?: string
 }
 
+/** @public */
 export interface LtWithdrawHistoryItem {
   id: string
   asset_id: number
@@ -26,12 +29,14 @@ export interface LtWithdrawHistoryItem {
   l1_tx_hash: string
 }
 
+/** @public */
 export interface LtWithdrawHistoryResponse {
   code: number
   withdraws: LtWithdrawHistoryItem[]
   cursor?: string
 }
 
+/** @public */
 export interface LtPositionFunding {
   timestamp: number
   market_id: number
@@ -42,12 +47,14 @@ export interface LtPositionFunding {
   position_side: string
 }
 
+/** @public */
 export interface LtPositionFundingsResponse {
   code: number
   position_fundings: LtPositionFunding[]
   next_cursor?: string
 }
 
+/** @public */
 export interface LtLiquidation {
   id: number
   market_id: number
@@ -55,12 +62,14 @@ export interface LtLiquidation {
   executed_at: number
 }
 
+/** @public */
 export interface LtLiquidationsResponse {
   code: number
   liquidations: LtLiquidation[]
   next_cursor?: string
 }
 
+/** @public */
 export interface LtTransfer {
   id: string
   asset_id: number
@@ -77,6 +86,7 @@ export interface LtTransfer {
   tx_hash: string
 }
 
+/** @public */
 export interface LtTransferHistoryResponse {
   code: number
   transfers: LtTransfer[]

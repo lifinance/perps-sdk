@@ -12,6 +12,7 @@ import { realizedPnlOnClose } from './positionMath.js'
  *
  * @param marketId - The order's `market.id`.
  * @param positions - Open positions list (any market).
+ * @public
  */
 export function findMatchingPosition(
   marketId: string,
@@ -28,6 +29,7 @@ export function findMatchingPosition(
  *    position can only close what's open.
  *
  * Inputs are non-negative magnitudes.
+ * @public
  */
 export function resolveCloseSize(
   orderSize: number,
@@ -47,6 +49,7 @@ export function resolveCloseSize(
  *
  * @returns Realised PnL if the order would reduce the position, otherwise
  *   `null`.
+ * @public
  */
 export function expectedRealizedPnlForOpenOrder(
   order: OpenOrder,
@@ -96,6 +99,7 @@ export function expectedRealizedPnlForOpenOrder(
  * `TriggerOrder` shape) is used as the rPnL price; the optional `limitPrice`
  * for STOP_LIMIT / TAKE_PROFIT_LIMIT is the post-trigger limit, not the rPnL
  * price.
+ * @public
  */
 export function expectedRealizedPnlForTriggerOrder(
   order: TriggerOrder,

@@ -163,6 +163,8 @@ const normalizeLighterPublicKey = (key: string): string =>
  *
  * Write actions (`signActions` for the WASM_BLOB / EVM_TX arms) require
  * `signer` and `keyStore` to be supplied.
+ *
+ * @public
  */
 export interface LighterProviderOptions {
   /** Lighter REST base URL. Defaults to mainnet. */
@@ -206,6 +208,8 @@ interface CachedStandardToken {
  * use internally. The base {@link PerpsProvider} contract stays
  * provider-agnostic — this extension is opt-in for callers that explicitly
  * type against it.
+ *
+ * @public
  */
 export interface LighterPerpsProvider extends PerpsProvider {
   /**
@@ -228,6 +232,15 @@ export interface LighterPerpsProvider extends PerpsProvider {
  *
  * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
  * `signActions` — `PerpsClient.execute` delegates those arms here.
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   providers: [lighterProvider()],
+ * })
+ * ```
+ * @public
  */
 export const lighterProvider = (
   options: LighterProviderOptions = {}
@@ -1241,5 +1254,7 @@ export const lighterProvider = (
 
 /**
  * Alias matching `@lifi/sdk`'s capitalised factory naming (`EVM()`, `EthereumProvider()`).
+ *
+ * @public
  */
 export const Lighter = lighterProvider

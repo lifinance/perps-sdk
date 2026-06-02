@@ -19,6 +19,7 @@ import type { LighterSigner } from './LighterSigner.js'
  * a WASM signer (`LighterSigner`), the API-key store keyed on L1 address,
  * and a reference to the host SDK client for descriptor/account fetches
  * within the REGISTER_API_KEY hybrid flow.
+ * @internal
  */
 export interface LighterSignActionsDeps {
   signer: LighterSigner
@@ -41,6 +42,7 @@ export interface LighterSignActionsDeps {
  * `ACCOUNT_TYPE` (Lighter `/changeAccountTier`) is a WASM_BLOB envelope
  * authenticated with an auth token rather than a wasm tx signature —
  * created via `LighterSigner.createAuthToken` and parked in `signedTx.txInfo`.
+ * @internal
  */
 export async function signWasmBlobActions(
   deps: LighterSignActionsDeps,
@@ -227,6 +229,7 @@ async function requireApiKey(
  * rely on an earlier step (e.g. approve) having mined. Each step's
  * `txParams` carries chainId, target, function name, args, and a
  * human-readable abi from the backend.
+ * @internal
  */
 export async function signEvmTxActions(
   steps: EvmTxActionStep[],
@@ -274,6 +277,7 @@ export async function signEvmTxActions(
  * Top-level dispatch: pick the per-method signer based on the descriptor's
  * `signingMethod` and forward. `EIP712` is intentionally rejected — that
  * arm stays generic on `PerpsClient` (agent/user wallet via `signTypedData`).
+ * @internal
  */
 export async function lighterSignActions(
   deps: LighterSignActionsDeps,

@@ -1,5 +1,6 @@
 // Fill shapes returned by Hyperliquid `/info`.
 
+/** @public */
 export type HlUserFill = {
   tid: number
   oid: number
@@ -15,6 +16,8 @@ export type HlUserFill = {
   startPosition: string
 }
 
+/** @public */
 export type HlUserFills = HlUserFill[]
 
+/** @public */
 export type HlUserFillsByTime = HlUserFill[]

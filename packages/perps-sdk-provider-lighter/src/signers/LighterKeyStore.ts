@@ -8,6 +8,7 @@ import type { Address } from 'viem'
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 
+/** @public */
 export interface LighterApiKey {
   /** Lighter account index, looked up once via accountsByL1Address. */
   accountIndex: number
@@ -19,6 +20,7 @@ export interface LighterApiKey {
   apiKeyPublicKey: string
 }
 
+/** @public */
 export class LighterKeyStore {
   private readonly storage: StorageAdapter
   private readonly cache = new Map<string, LighterApiKey>()

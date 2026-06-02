@@ -8,6 +8,7 @@ import { FillClassification } from '@lifi/perps-types'
  *   `< 0` short, `0` flat).
  * @param side Hyperliquid-style: `'B'` for buy, anything else for sell.
  * @param sz Unsigned fill size, parsed with `parseFloat`.
+ * @public
  */
 export function classifyFillFromPosition(
   startPosition: string,

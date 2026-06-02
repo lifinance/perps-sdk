@@ -1,11 +1,13 @@
 import type { Asset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 
+/** @public */
 export interface ParamOption {
   value: string
   label: string
 }
 
+/** @public */
 export interface Param {
   /** Wire key for the action params object: `{ [param.name]: value }`. */
   name: string
@@ -22,6 +24,7 @@ export interface Param {
  * array it sits in, not in the type. The core three fields are always present;
  * the rest are presentation/ordering hints provided per-action in the
  * provider's hardcoded metadata.
+ * @public
  */
 export interface ProviderAction {
   type: ActionType
@@ -47,6 +50,7 @@ export interface ProviderAction {
 /**
  * Provider-attached advisory shown against a market. Provider-agnostic: the
  * producer decides when to emit one (e.g. an HL HIP-3 sub-dex risk warning).
+ * @public
  */
 export interface TradeNotice {
   /** Maps to the widget's panel styling: `warn` → warning, `info` → info. */
@@ -55,6 +59,7 @@ export interface TradeNotice {
   message: string
 }
 
+/** @public */
 export interface ProviderCategory {
   id: string
   logoURI?: string
@@ -63,6 +68,7 @@ export interface ProviderCategory {
   tradeNotice?: TradeNotice
 }
 
+/** @public */
 export interface Provider {
   key: string
   name: string
@@ -90,6 +96,7 @@ export interface Provider {
   minReduceOrderValueUsd?: number
 }
 
+/** @public */
 export interface ProvidersResponse {
   providers: Provider[]
 }

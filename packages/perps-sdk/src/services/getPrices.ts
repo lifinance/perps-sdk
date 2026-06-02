@@ -5,6 +5,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link getPrices}.
+ *
+ * @public
+ */
 export interface GetPricesParams {
   /** Provider to get prices from (e.g., 'hyperliquid') */
   provider: string
@@ -14,6 +19,9 @@ export interface GetPricesParams {
 
 /**
  * Get current prices for markets, optionally filtered by `Market.id`.
+ *
+ * @throws {PerpsError} On backend error responses, network, or parsing errors.
+ * @public
  */
 export async function getPrices(
   client: PerpsSDKClient,

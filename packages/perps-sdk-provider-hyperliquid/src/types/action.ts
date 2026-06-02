@@ -1,5 +1,6 @@
 // Hyperliquid `/exchange` request/response shapes + EIP-712 primary types.
 
+/** @public */
 export type HlExchangeRequest = {
   action: Record<string, unknown>
   signature: {
@@ -11,6 +12,7 @@ export type HlExchangeRequest = {
   vaultAddress?: string | null
 }
 
+/** @public */
 export type HlExchangeResponse = {
   status: string
   response?:
@@ -32,20 +34,28 @@ export type HlExchangeResponse = {
       }
 }
 
+/** @public */
 export const HL_PRIMARY_TYPE_APPROVE_AGENT =
   'HyperliquidTransaction:ApproveAgent' as const
+/** @public */
 export const HL_PRIMARY_TYPE_APPROVE_BUILDER_FEE =
   'HyperliquidTransaction:ApproveBuilderFee' as const
+/** @public */
 export const HL_PRIMARY_TYPE_USER_SET_ABSTRACTION =
   'HyperliquidTransaction:UserSetAbstraction' as const
+/** @public */
 export const HL_PRIMARY_TYPE_AGENT_SET_ABSTRACTION =
   'HyperliquidTransaction:AgentSetAbstraction' as const
+/** @public */
 export const HL_PRIMARY_TYPE_WITHDRAW =
   'HyperliquidTransaction:Withdraw' as const
+/** @public */
 export const HL_PRIMARY_TYPE_SEND_ASSET =
   'HyperliquidTransaction:SendAsset' as const
+/** @public */
 export const HL_PRIMARY_TYPE_AGENT = 'Agent' as const
 
+/** @public */
 export type HlPrimaryType =
   | typeof HL_PRIMARY_TYPE_APPROVE_AGENT
   | typeof HL_PRIMARY_TYPE_APPROVE_BUILDER_FEE

@@ -20,6 +20,7 @@ const LIGHTER_SUPPORTED_INTERVALS: Record<string, string> = {
   '1w': '1w',
 }
 
+/** @public */
 export const mapInterval = (interval: string): string => {
   const resolution = LIGHTER_SUPPORTED_INTERVALS[interval]
   if (!resolution) {

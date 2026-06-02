@@ -11,6 +11,7 @@
  *
  * @param isLong - True for long positions, false for short.
  * @returns +1 for long, -1 for short.
+ * @public
  */
 export function directionSign(isLong: boolean): 1 | -1 {
   return isLong ? 1 : -1
@@ -30,6 +31,7 @@ export function directionSign(isLong: boolean): 1 | -1 {
  *   market, limitPrice for limit orders).
  * @returns The new weighted-average entry price, or undefined if the inputs
  *   cannot produce a valid average (zero combined size, non-finite values).
+ * @public
  */
 export function predictAverageEntryPrice(params: {
   currentSize: number
@@ -57,6 +59,7 @@ export function predictAverageEntryPrice(params: {
  *
  * @returns The new effective leverage, or undefined if total margin is
  *   non-positive.
+ * @public
  */
 export function predictNewLeverage(params: {
   currentNotional: number
@@ -78,6 +81,7 @@ export function predictNewLeverage(params: {
  * `pnl = (markPrice - entryPrice) * size * directionSign(isLong)`
  *
  * @param size - Position size as a non-negative magnitude.
+ * @public
  */
 export function predictUnrealizedPnl(params: {
   entryPrice: number
@@ -95,6 +99,7 @@ export function predictUnrealizedPnl(params: {
  * `rPnl = (closePrice - entryPrice) * closeSize * directionSign(isLong)`
  *
  * @param closeSize - Size being closed as a non-negative magnitude.
+ * @public
  */
 export function realizedPnlOnClose(params: {
   entryPrice: number

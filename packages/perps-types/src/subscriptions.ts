@@ -2,40 +2,48 @@ import type { Fill, OpenOrder, Position, TriggerOrder } from './account.js'
 import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
 import type { Address } from './primitives.js'
 
+/** @public */
 export type PricesSubscription = { channel: 'prices'; dex: string }
+/** @public */
 export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
   marketId: string
   depth?: number
 }
+/** @public */
 export type CandleSubscription = {
   channel: 'candle'
   dex: string
   marketId: string
   interval: OhlcvInterval
 }
+/** @public */
 export type OrderUpdatesSubscription = {
   channel: 'orderUpdates'
   dex: string
   address: Address
 }
+/** @public */
 export type FillsSubscription = {
   channel: 'fills'
   dex: string
   address: Address
 }
+/** @public */
 export type PositionsSubscription = {
   channel: 'positions'
   dex: string
   address: Address
 }
+/** @public */
 export type SpotBalancesSubscription = {
   channel: 'spotBalances'
   dex: string
   address: Address
 }
 
+/** @public */
 export type Subscription =
   | PricesSubscription
   | OrderbookSubscription
@@ -45,15 +53,20 @@ export type Subscription =
   | PositionsSubscription
   | SpotBalancesSubscription
 
+/** @public */
 export interface SpotBalance {
   coin: string
   total: string
   hold: string
 }
 
+/** @public */
 export type PricesEvent = { channel: 'prices'; data: Record<string, string> }
+/** @public */
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
+/** @public */
 export type CandleEvent = { channel: 'candle'; data: Candle }
+/** @public */
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
   data: {
@@ -68,10 +81,14 @@ export type OrderUpdatesEvent = {
     terminated: string[]
   }
 }
+/** @public */
 export type FillsEvent = { channel: 'fills'; data: Fill[] }
+/** @public */
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
+/** @public */
 export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }
 
+/** @public */
 export type SubscriptionEvent =
   | PricesEvent
   | OrderbookEvent

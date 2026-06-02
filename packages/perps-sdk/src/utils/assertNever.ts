@@ -14,6 +14,7 @@
  *     case 'lighter': return projectLighter(config)
  *     default: return assertNever(config)
  *   }
+ * @internal
  */
 export function assertNever(value: never): never {
   throw new Error(

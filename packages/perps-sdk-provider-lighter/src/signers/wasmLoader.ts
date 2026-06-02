@@ -48,6 +48,7 @@ function defaultAssetUrl(filename: string): URL {
   return new URL(`../../wasm/${filename}`, currentModuleUrl())
 }
 
+/** @public */
 export interface LoadLighterWasmOptions {
   /** Override URL for the `.wasm` binary (browser: fetch; Node: fs). */
   wasmBinaryUrl?: string | URL
@@ -63,6 +64,7 @@ export interface LoadLighterWasmOptions {
   wasmExecJsSource?: string
 }
 
+/** @public */
 export interface LighterWasmExports {
   GenerateAPIKey: (seed?: string) => {
     publicKey?: string
@@ -113,6 +115,7 @@ export interface LighterWasmExports {
   SignUpdateMargin: (...args: unknown[]) => SignResult
 }
 
+/** @internal */
 export interface SignResult {
   txType?: number
   txInfo?: string
@@ -208,6 +211,7 @@ async function readUrlText(url: string | URL): Promise<string> {
  * Load the Lighter WASM signer. Memoized per-process: subsequent calls return
  * the cached exports. The Go runtime keeps a long-running goroutine to service
  * JS calls — we start it once and never stop it.
+ * @public
  */
 export async function loadLighterWasm(
   options?: LoadLighterWasmOptions
@@ -279,7 +283,11 @@ async function yieldToGoRuntime(): Promise<void> {
   }
 }
 
-/** Testing helper — drop the cached WASM instance so the next load reinitializes. */
+/**
+ * Testing helper — drop the cached WASM instance so the next load reinitializes.
+ *
+ * @public
+ */
 export function resetLighterWasmCache(): void {
   cachedExports = undefined
 }

@@ -19,6 +19,7 @@ const toDisplay = (m: Market): MarketDisplay => ({
  * list is the source of truth for every tradable market, so an id the venue
  * references but the backend does not know is a hard error — never a silent
  * fallback to an unenriched stand-in.
+ * @public
  */
 export const requireMarket = (
   byMarketId: Map<string, Market>,

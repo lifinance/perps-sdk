@@ -29,6 +29,8 @@ export type {
 
 /**
  * Options for PerpsClient constructor.
+ *
+ * @public
  */
 export interface PerpsClientOptions {
   /** Integrator identifier (required) */
@@ -48,6 +50,8 @@ export interface PerpsClientOptions {
 /**
  * Parameters for the internal `buildProviderSetup` helper that materialises
  * typed-data envelopes for the setup descriptors.
+ *
+ * @public
  */
 export interface BuildProviderSetupParams {
   /** Provider to build setup actions for */
@@ -60,6 +64,8 @@ export interface BuildProviderSetupParams {
 
 /**
  * Parameters for placing an order.
+ *
+ * @public
  */
 export interface PlaceOrderParams {
   /** Provider to place order on */
@@ -93,6 +99,8 @@ export interface PlaceOrderParams {
 /**
  * Parameters for placing trigger-only orders (TP/SL on existing positions).
  * Sends a TRIGGER_ONLY order that skips the main order wire.
+ *
+ * @public
  */
 export interface PlaceTriggerOrderParams {
   provider: string
@@ -105,6 +113,8 @@ export interface PlaceTriggerOrderParams {
 
 /**
  * Parameters for withdrawing funds.
+ *
+ * @public
  */
 export interface WithdrawParams {
   /** Provider to withdraw from */
@@ -117,6 +127,8 @@ export interface WithdrawParams {
 
 /**
  * Parameters for canceling orders.
+ *
+ * @public
  */
 export interface CancelOrdersParams {
   /** Provider to cancel orders on */
@@ -129,6 +141,8 @@ export interface CancelOrdersParams {
 
 /**
  * Parameters for modifying orders.
+ *
+ * @public
  */
 export interface ModifyOrdersParams {
   /** Provider to modify orders on */
@@ -141,6 +155,8 @@ export interface ModifyOrdersParams {
 
 /**
  * Parameters for {@link PerpsClient.checkSetup}.
+ *
+ * @public
  */
 export interface GetSetupParams {
   /** Provider to check setup for */
@@ -157,6 +173,8 @@ export interface GetSetupParams {
  *
  * `Provider.options` items are NEVER included here — they don't gate trading
  * and are surfaced separately via `getAccount().settings`.
+ *
+ * @public
  */
 export interface ProviderSetup {
   /** Setup steps requiring user wallet signature */
@@ -169,6 +187,8 @@ export interface ProviderSetup {
 
 /**
  * Parameters for {@link PerpsClient.executeProviderSetup}.
+ *
+ * @public
  */
 export interface ExecuteProviderSetupParams {
   /** Provider to satisfy setup for */
@@ -183,6 +203,8 @@ export interface ExecuteProviderSetupParams {
 
 /**
  * Result from {@link PerpsClient.executeProviderSetup}.
+ *
+ * @public
  */
 export interface ExecuteProviderSetupResult {
   /** Results from user-signed setup submission */
@@ -206,6 +228,8 @@ export interface ExecuteProviderSetupResult {
  * `Provider.setup` + `Provider.options` (in that order). Index the
  * projection by `setting.type === descriptor.type` and read
  * `setting.values[i].value` for each `Param` the descriptor declared.
+ *
+ * @public
  */
 export interface GetAccountResult extends AccountResponse {
   /** SDK-projected current state of every setup + options descriptor. */

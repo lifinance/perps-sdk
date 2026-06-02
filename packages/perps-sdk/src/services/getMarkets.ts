@@ -5,6 +5,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link getMarkets}.
+ *
+ * @public
+ */
 export interface GetMarketsParams {
   /** Provider to get markets from (e.g., 'hyperliquid') */
   provider: string
@@ -17,11 +22,14 @@ export interface GetMarketsParams {
  * backend's Valkey-cached `/perps/markets` route — the canonical source of
  * public market data for widget consumers.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
  * ```
+ * @public
  */
 export async function getMarkets(
   client: PerpsSDKClient,

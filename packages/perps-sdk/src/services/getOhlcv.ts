@@ -5,6 +5,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link getOhlcv}.
+ *
+ * @public
+ */
 export interface GetOhlcvParams {
   /** Provider to get OHLCV from (e.g., 'hyperliquid') */
   provider: string
@@ -23,6 +28,8 @@ export interface GetOhlcvParams {
 /**
  * Get OHLCV (candlestick) data for a market.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const { candles } = await getOhlcv(client, {
@@ -32,6 +39,7 @@ export interface GetOhlcvParams {
  *   limit: 100,
  * })
  * ```
+ * @public
  */
 export async function getOhlcv(
   client: PerpsSDKClient,
