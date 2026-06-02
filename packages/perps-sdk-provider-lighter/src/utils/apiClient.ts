@@ -9,6 +9,7 @@ import {
   LIGHTER_SUCCESS_CODES,
 } from '../constants.js'
 
+/** @internal */
 export type ApiParams = Record<string, string | number | boolean>
 
 /**
@@ -29,6 +30,7 @@ const lighterBodyErrorCode = (data: unknown): number | undefined => {
  * {@link PerpsError} so callers can evict the stored read-only token and retry
  * with a freshly-created one. Lighter signals this on either channel: an HTTP
  * 401/403, or an HTTP 200 carrying an error `code` in the body.
+ * @internal
  */
 export class LighterAuthRejectedError extends PerpsError {}
 
@@ -37,6 +39,7 @@ const isLighterAuthRejection = (status: number, data: unknown): boolean =>
   status === 403 ||
   lighterBodyErrorCode(data) === LIGHTER_INVALID_AUTH_CODE
 
+/** @internal */
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
   maxAttempts: 2,
@@ -58,6 +61,7 @@ export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   },
 }
 
+/** @internal */
 export interface LighterApiClientOptions {
   signal?: AbortSignal
   policy?: ResolvedRetryPolicy
@@ -81,6 +85,7 @@ export interface LighterApiClientOptions {
  * Lighter signals rate limiting via 429 OR 405 (documented behaviour) with a
  * documented 60s firewall cooldown. The default {@link ResolvedRetryPolicy}
  * waits long enough to avoid hammering through the cooldown.
+ * @public
  */
 export class LighterApiClient {
   private readonly baseUrl: string

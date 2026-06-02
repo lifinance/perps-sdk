@@ -1,5 +1,6 @@
 // Market / asset / orderbook metadata returned by Lighter's REST API.
 
+/** @public */
 export interface LtMarketConfig {
   market_margin_mode: number
   insurance_fund_account_index: number
@@ -10,6 +11,7 @@ export interface LtMarketConfig {
   hidden: boolean
 }
 
+/** @public */
 export interface LtPerpsOrderBookDetail {
   symbol: string
   market_id: number
@@ -45,6 +47,7 @@ export interface LtPerpsOrderBookDetail {
   strategy_index: number
 }
 
+/** @public */
 export interface LtSpotOrderBookDetail {
   symbol: string
   market_id: number
@@ -72,12 +75,14 @@ export interface LtSpotOrderBookDetail {
   daily_price_change: number
 }
 
+/** @public */
 export interface LtOrderBookDetailsResponse {
   code: number
   order_book_details: LtPerpsOrderBookDetail[]
   spot_order_book_details: LtSpotOrderBookDetail[]
 }
 
+/** @public */
 export interface LtToken {
   symbol: string
   name: string
@@ -86,11 +91,13 @@ export interface LtToken {
   market: 'PERPS' | 'SPOT'
 }
 
+/** @public */
 export interface LtTokenListResponse {
   code: number
   tokens: LtToken[]
 }
 
+/** @public */
 export interface LtAssetDetail {
   asset_id: number
   symbol: string
@@ -99,11 +106,13 @@ export interface LtAssetDetail {
   l1_address: string
 }
 
+/** @public */
 export interface LtAssetDetailsResponse {
   code: number
   asset_details: LtAssetDetail[]
 }
 
+/** @public */
 export interface LtCandle {
   t: number
   o: number
@@ -113,12 +122,14 @@ export interface LtCandle {
   v: number
 }
 
+/** @public */
 export interface LtCandlesResponse {
   code: number
   r: string
   c: LtCandle[]
 }
 
+/** @public */
 export interface LtFundingRate {
   market_id: number
   exchange: string
@@ -126,6 +137,7 @@ export interface LtFundingRate {
   rate: number
 }
 
+/** @public */
 export interface LtFundingRatesResponse {
   code: number
   funding_rates: LtFundingRate[]

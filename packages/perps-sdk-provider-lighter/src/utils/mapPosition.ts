@@ -7,6 +7,7 @@ import { marketDisplay } from './marketDisplay.js'
 /**
  * Map a raw Lighter account position to the generic Position type.
  * @param displaySymbol Human-readable symbol for `market.baseAsset.displaySymbol`.
+ * @public
  */
 export const mapPosition = (
   pos: LtAccountPosition,

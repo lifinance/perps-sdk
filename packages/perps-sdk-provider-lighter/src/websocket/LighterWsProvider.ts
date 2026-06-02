@@ -68,6 +68,8 @@ const LIGHTER_AUTH_CHANNEL = {
  * `undefined` if no API key is registered. Called both on initial subscribe
  * and on every reconnect, so it must always return a token valid for at
  * least the next few minutes.
+ *
+ * @public
  */
 export type LighterAuthProvider = (
   address: Address
@@ -90,6 +92,11 @@ interface OrderbookState {
   assetId: string
 }
 
+/**
+ * Options for {@link lighterWsProvider} / {@link LighterWsProvider}.
+ *
+ * @public
+ */
 export interface LighterWsProviderOptions {
   /** REST base URL for `/api/v1/account` lookups. Defaults to mainnet. */
   restUrl?: string
@@ -106,6 +113,14 @@ export interface LighterWsProviderOptions {
   authProvider?: LighterAuthProvider
 }
 
+/**
+ * Lighter realtime {@link WsProvider}: subscribes to Lighter's WS channels
+ * (orderbook, prices, orders, positions) over a single
+ * {@link ReconnectingWebSocket}, attaching auth tokens to gated channels.
+ * Construct via {@link lighterWsProvider}.
+ *
+ * @public
+ */
 export class LighterWsProvider implements WsProvider {
   private readonly rws: ReconnectingWebSocket
   private readonly restUrl: string
@@ -693,6 +708,8 @@ function collectAuthChannelItems<T>(
  * override) so `PerpsWsClient` can call the returned factory with just
  * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
  * unused — Lighter advertises a single venue, no sub-DEX filtering.
+ *
+ * @public
  */
 export const lighterWsProvider =
   (options?: LighterWsProviderOptions): WsProviderFactory =>

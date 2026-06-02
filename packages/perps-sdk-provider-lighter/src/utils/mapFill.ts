@@ -17,6 +17,7 @@ import { marketDisplay } from './marketDisplay.js'
  * Map a raw Lighter trade to the generic Fill type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
  * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
+ * @public
  */
 export const mapFill = (
   trade: LtTrade,

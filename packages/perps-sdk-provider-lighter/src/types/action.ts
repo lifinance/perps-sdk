@@ -2,7 +2,11 @@
 // SDK passes them to the WASM signer alongside SDK-managed fields (nonce,
 // account_index, api_key_index).
 
-/** Backend-provided params for SignCreateOrder. */
+/**
+ * Backend-provided params for SignCreateOrder.
+ *
+ * @public
+ */
 export type LtCreateOrderWasmParams = {
   market_index: number
   client_order_index: number
@@ -19,13 +23,21 @@ export type LtCreateOrderWasmParams = {
   integrator_maker_fee: number
 }
 
-/** Backend-provided params for SignCancelOrder. */
+/**
+ * Backend-provided params for SignCancelOrder.
+ *
+ * @public
+ */
 export type LtCancelOrderWasmParams = {
   market_index: number
   order_index: number
 }
 
-/** Backend-provided params for SignModifyOrder. */
+/**
+ * Backend-provided params for SignModifyOrder.
+ *
+ * @public
+ */
 export type LtModifyOrderWasmParams = {
   market_index: number
   order_index: number
@@ -37,28 +49,44 @@ export type LtModifyOrderWasmParams = {
   integrator_maker_fee: number
 }
 
-/** Backend-provided params for SignUpdateLeverage. */
+/**
+ * Backend-provided params for SignUpdateLeverage.
+ *
+ * @public
+ */
 export type LtUpdateLeverageWasmParams = {
   market_index: number
   fraction: number
   margin_mode: number
 }
 
-/** Backend-provided params for SignUpdateMargin. */
+/**
+ * Backend-provided params for SignUpdateMargin.
+ *
+ * @public
+ */
 export type LtUpdateMarginWasmParams = {
   market_index: number
   usdc_amount: number
   direction: number
 }
 
-/** Backend-provided params for SignWithdraw. */
+/**
+ * Backend-provided params for SignWithdraw.
+ *
+ * @public
+ */
 export type LtWithdrawWasmParams = {
   asset_index: number
   route_type: number
   amount: number
 }
 
-/** Backend-provided params for SignCancelAllOrders. */
+/**
+ * Backend-provided params for SignCancelAllOrders.
+ *
+ * @public
+ */
 export type LtCancelAllOrdersWasmParams = {
   /** 0=immediate (cancel GTC), 1=scheduled, 2=abort scheduled */
   time_in_force: number
@@ -73,6 +101,7 @@ export type LtCancelAllOrdersWasmParams = {
  * signature (the user's wallet signs the ChangePubKey message). The SDK
  * generates the keypair via the WASM signer and fills in `new_public_key`
  * before invoking SignChangePubKey.
+ * @public
  */
 export type LtChangePubKeyWasmParams = {
   /** API key slot index to register (0-255). SDK fills in the generated public key. */
@@ -80,28 +109,47 @@ export type LtChangePubKeyWasmParams = {
   nonce: number
 }
 
+/** @public */
 export const LT_ORDER_TYPE_LIMIT = 0
+/** @public */
 export const LT_ORDER_TYPE_MARKET = 1
+/** @public */
 export const LT_ORDER_TYPE_STOP_LOSS = 2
+/** @public */
 export const LT_ORDER_TYPE_STOP_LOSS_LIMIT = 3
+/** @public */
 export const LT_ORDER_TYPE_TAKE_PROFIT = 4
+/** @public */
 export const LT_ORDER_TYPE_TAKE_PROFIT_LIMIT = 5
+/** @public */
 export const LT_ORDER_TYPE_TWAP = 6
 
+/** @public */
 export const LT_TIME_IN_FORCE_IOC = 0
+/** @public */
 export const LT_TIME_IN_FORCE_GTC = 1
+/** @public */
 export const LT_TIME_IN_FORCE_POST_ONLY = 2
 
+/** @public */
 export const LT_MARGIN_MODE_CROSS = 0
+/** @public */
 export const LT_MARGIN_MODE_ISOLATED = 1
 
+/** @public */
 export const LT_MARGIN_DIRECTION_REMOVE = 0
+/** @public */
 export const LT_MARGIN_DIRECTION_ADD = 1
 
+/** @public */
 export const LT_ROUTE_PERP = 0
+/** @public */
 export const LT_ROUTE_SPOT = 1
 
+/** @public */
 export const LT_ASSET_ID_USDC = 3
 
+/** @public */
 export const LT_NIL_TRIGGER_PRICE = 0
+/** @public */
 export const LT_DEFAULT_ORDER_EXPIRY = -1

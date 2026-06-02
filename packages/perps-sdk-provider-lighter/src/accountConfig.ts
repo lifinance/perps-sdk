@@ -147,6 +147,7 @@ function projectLighterDescriptor(
  * @param config Typed account state for the Lighter account.
  * @param setup  `Provider.setup` array as emitted by `/providers`.
  * @param options `Provider.options` array as emitted by `/providers`.
+ * @public
  */
 export function projectLighterConfigSettings(
   config: LighterAccountConfig,

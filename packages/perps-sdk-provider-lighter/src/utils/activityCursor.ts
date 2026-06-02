@@ -13,6 +13,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * The envelope is round-tripped through `cursor` as base64url JSON so callers
  * don't need to know the per-endpoint shape. The encoding mirrors the LI.FI
  * backend's wire format so cursors created by the backend remain usable.
+ * @public
  */
 export interface LighterActivityCursor {
   deposits?: string
@@ -43,6 +44,7 @@ const isNonEmpty = (v: string | undefined): v is string =>
  * encoding of the UTF-8 bytes and then rewrite `+/=` to base64url. This is
  * the same byte sequence Node's `Buffer.from(json, 'utf8').toString('base64url')`
  * produces, so cursors round-trip across environments.
+ * @public
  */
 export const encodeActivityCursor = (
   env: LighterActivityCursor
@@ -64,6 +66,7 @@ export const encodeActivityCursor = (
  * absent cursor (first page) and throws {@link PerpsError} with
  * `ValidationError` if the string is malformed — we'd rather fail loudly than
  * silently re-page from page 1 and re-deliver already-paginated rows.
+ * @public
  */
 export const decodeActivityCursor = (
   cursor: string | undefined

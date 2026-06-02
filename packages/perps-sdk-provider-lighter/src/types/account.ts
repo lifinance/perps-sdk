@@ -1,6 +1,7 @@
 // Account / balance shapes returned by Lighter's `/api/v1/account` and
 // `/api/v1/accountLimits` endpoints.
 
+/** @public */
 export type LtAccountPosition = {
   market_id: number
   symbol: string
@@ -21,6 +22,7 @@ export type LtAccountPosition = {
   total_discount: string
 }
 
+/** @public */
 export type LtAccountAsset = {
   symbol: string
   asset_id: number
@@ -33,9 +35,11 @@ export type LtAccountAsset = {
  * `LtAccountPosition` — alias kept for read-side clarity at call sites that
  * fan out off per-market order counts (`open_order_count`,
  * `pending_order_count`, `position_tied_order_count`).
+ * @public
  */
 export type LtDetailedAccountPosition = LtAccountPosition
 
+/** @public */
 export interface LtApprovedIntegrator {
   account_index: number
   name: string
@@ -46,6 +50,7 @@ export interface LtApprovedIntegrator {
   approval_expiry: number
 }
 
+/** @public */
 export interface LtDetailedAccount {
   code: number
   account_type: number
@@ -70,12 +75,14 @@ export interface LtDetailedAccount {
   approved_integrators?: LtApprovedIntegrator[]
 }
 
+/** @public */
 export interface LtDetailedAccountsResponse {
   code: number
   total: number
   accounts: LtDetailedAccount[]
 }
 
+/** @public */
 export interface LtAccountLimits {
   code: number
   message?: string

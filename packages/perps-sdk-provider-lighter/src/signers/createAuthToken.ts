@@ -5,6 +5,7 @@ import type { LighterSigner } from './LighterSigner.js'
 const DEFAULT_LIFETIME_SECONDS = 60 * 60
 const DEFAULT_THRESHOLD_SECONDS = 30 * 86_400
 
+/** @public */
 export interface CreateAuthTokenInputs {
   signer: LighterSigner
   apiKey: Pick<
@@ -28,6 +29,7 @@ export interface CreateAuthTokenInputs {
  * This utility carries no SDK-wide coupling — pass an explicit `signer` +
  * `apiKey` and consume the returned bearer however the caller likes
  * (per-call `options.lighterAuthToken`, persisted cache, etc.).
+ * @public
  */
 export async function createAuthToken(
   inputs: CreateAuthTokenInputs
@@ -49,6 +51,7 @@ export async function createAuthToken(
  * banners — `thresholdSeconds` defaults to 30 days. Returns `false` for an
  * undefined or already-expired token, so callers may treat that as "no
  * token / renewal not needed (yet)".
+ * @public
  */
 export function isReadOnlyTokenExpiringSoon(
   token: LighterReadOnlyToken | undefined | null,

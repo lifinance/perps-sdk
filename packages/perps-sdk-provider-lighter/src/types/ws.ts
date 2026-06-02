@@ -7,13 +7,16 @@
 //   - market_stats/all        → public prices across all markets
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
 
+/** @public */
 export type LtWsMessage = {
   channel?: string
   type: string
 }
 
+/** @public */
 export type LtWsPingMessage = LtWsMessage & { type: 'ping' }
 
+/** @public */
 export type LtWsMarketStats = {
   market_id: number
   index_price: string
@@ -31,23 +34,27 @@ export type LtWsMarketStats = {
 /**
  * `market_stats/all` pushes one record per known market each tick. We
  * aggregate them into a Record<assetId, price> before emitting `prices`.
+ * @public
  */
 export type LtWsMarketStatsAllMessage = LtWsMessage & {
   type: 'subscribed/market_stats' | 'update/market_stats'
   market_stats?: Record<string, LtWsMarketStats>
 }
 
+/** @public */
 export type LtWsOrderBookLevel = {
   price: string
   size: string
 }
 
+/** @public */
 export type LtWsOrderBook = {
   asks: LtWsOrderBookLevel[]
   bids: LtWsOrderBookLevel[]
   offset?: number
 }
 
+/** @public */
 export type LtWsOrderBookMessage = LtWsMessage & {
   type: 'subscribed/order_book' | 'update/order_book'
   order_book: LtWsOrderBook
@@ -56,6 +63,7 @@ export type LtWsOrderBookMessage = LtWsMessage & {
 /**
  * `/api/v1/account?by=l1_address` response. The provider only consumes the
  * `index` field — everything else is intentionally typed as unknown.
+ * @public
  */
 export type LtWsAccountByL1Response = {
   code: number
@@ -77,6 +85,7 @@ export type LtWsAccountByL1Response = {
  *
  * The provider uses `collectAuthChannelItems` to normalise all three shapes
  * into a flat T[].
+ * @public
  */
 export type LtWsAccountAllOrdersMessage = LtWsMessage & {
   type: 'subscribed/account_all_orders' | 'update/account_all_orders'
@@ -84,6 +93,7 @@ export type LtWsAccountAllOrdersMessage = LtWsMessage & {
   data?: { orders?: Record<string, unknown[]> | unknown[] }
 }
 
+/** @public */
 export type LtWsAccountAllTradesMessage = LtWsMessage & {
   type: 'subscribed/account_all_trades' | 'update/account_all_trades'
   trades?: Record<string, unknown[]> | unknown[]
@@ -94,6 +104,7 @@ export type LtWsAccountAllTradesMessage = LtWsMessage & {
   data?: { trades?: Record<string, unknown[]> | unknown[] }
 }
 
+/** @public */
 export type LtWsAccountAllPositionsMessage = LtWsMessage & {
   type: 'subscribed/account_all_positions' | 'update/account_all_positions'
   positions?: Record<string, unknown>
