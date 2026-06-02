@@ -102,10 +102,10 @@ const SECONDS_PER_DAY = 86_400
 
 /**
  * Manage the per-account Lighter read-only token alongside the existing
- * `(L1 address, account index)`-scoped storage adapter pattern. Mirrors
- * `AgentManager`'s injection surface so the same `StorageAdapter` powers
- * both. The token is opaque — never parsed client-side; `expiry`/`scope`
- * recorded at create time are the source of truth.
+ * `(L1 address, account index)`-scoped storage adapter pattern. Takes an
+ * injectable `StorageAdapter` so callers can share one storage backend across
+ * the SDK's session stores. The token is opaque — never parsed client-side;
+ * `expiry`/`scope` recorded at create time are the source of truth.
  *
  * The L1 wallet signer and the HTTP fetcher are both injectable so unit
  * tests don't need a real wallet or network.

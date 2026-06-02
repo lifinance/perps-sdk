@@ -19,10 +19,10 @@ export {
   PROVIDER_KEY as HYPERLIQUID_PROVIDER_KEY,
 } from './constants.js'
 export {
+  type HyperliquidPerpsProvider,
   type HyperliquidProviderOptions,
   hyperliquidProvider,
 } from './HyperliquidProvider.js'
-
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
 export type { GetActivityParams } from './services/getActivity.js'
@@ -35,6 +35,8 @@ export type { GetOrdersParams } from './services/getOrders.js'
 export { getOrders } from './services/getOrders.js'
 export type { GetPositionsParams } from './services/getPositions.js'
 export { getPositions } from './services/getPositions.js'
+export type { HyperliquidAgent } from './signers/HyperliquidAgentStore.js'
+export { HyperliquidAgentStore } from './signers/HyperliquidAgentStore.js'
 export * from './types/index.js'
 export * from './utils/index.js'
 export {
