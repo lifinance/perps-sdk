@@ -1,6 +1,7 @@
 import {
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
+  type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
 } from '@lifi/perps-sdk'
@@ -12,7 +13,6 @@ import type {
   Market,
   Position,
 } from '@lifi/perps-types'
-import type { Address } from 'viem'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import {
   HlAbstractionMode,
@@ -30,9 +30,7 @@ import {
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapPosition } from '../utils/mapPosition.js'
 
-export interface GetAccountParams {
-  address: Address
-}
+export type GetAccountParams = ProviderGetAccountParams
 
 const SPOT_KEY = SPOT_MARKET_ID
 
