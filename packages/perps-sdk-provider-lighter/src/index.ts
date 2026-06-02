@@ -1,20 +1,17 @@
 // biome-ignore-all lint/performance/noBarrelFile: package public entry point.
 // biome-ignore-all lint/performance/noReExportAll: package public entry point.
 
-// ---------------------------------------------------------------------------
-// @lifi/perps-sdk-provider-lighter
-//
-// Lighter provider plugin for @lifi/perps-sdk. Implements `PerpsProvider`
-// reads (account / positions / orders / order / fills / activity / assets /
-// asset / prices / ohlcv / orderbook) by talking directly to Lighter's REST
-// API — no LI.FI backend hop. Auth-gated reads use the user's Lighter
-// read-only token (pre-created, persisted, or created on-demand via the
-// bundled WASM signer).
-//
-// `signActions` (the `WASM_BLOB` / `EVM_TX` arms of `PerpsClient.execute`)
-// is owned here too — `LighterSigner`, `LighterKeyStore`,
-// `LighterReadOnlyTokenManager`, and the WASM blob ship with this package.
-// ---------------------------------------------------------------------------
+/**
+ * Lighter provider plugin for `@lifi/perps-sdk`. Serves `PerpsProvider` reads
+ * directly from Lighter's REST API (no LI.FI backend hop); auth-gated reads
+ * use the user's Lighter read-only token. Also owns `signActions` (the
+ * `WASM_BLOB` / `EVM_TX` arms of `PerpsClient.execute`) — `LighterSigner`,
+ * `LighterKeyStore`, `LighterReadOnlyTokenManager`, and the WASM blob ship
+ * with this package.
+ *
+ * @packageDocumentation
+ * @public
+ */
 
 export { projectLighterConfigSettings } from './accountConfig.js'
 export { summarizeLighterAccount } from './accountSummary.js'

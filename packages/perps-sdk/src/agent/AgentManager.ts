@@ -20,9 +20,6 @@ export class AgentManager {
     this.storage = storage ?? localStorageAdapter
   }
 
-  /**
-   * Get the storage key for an agent.
-   */
   private storageKey(address: Address, provider: string): string {
     return `${STORAGE_PREFIX}:${address.toLowerCase()}:${provider.toLowerCase()}`
   }
@@ -35,13 +32,11 @@ export class AgentManager {
   async getAgent(address: Address, provider: string): Promise<Agent> {
     const key = this.storageKey(address, provider)
 
-    // Check cache first
     const cached = this.cache.get(key)
     if (cached) {
       return cached
     }
 
-    // Check storage
     const stored = await this.storage.get(key)
     if (stored) {
       const agent = JSON.parse(stored) as Agent
@@ -64,7 +59,6 @@ export class AgentManager {
     try {
       return await this.getAgent(address, provider)
     } catch {
-      // Generate new agent
       const privateKey = generatePrivateKey()
       const account = privateKeyToAccount(privateKey)
 
@@ -73,7 +67,6 @@ export class AgentManager {
         privateKey,
       }
 
-      // Store
       const key = this.storageKey(address, provider)
       await this.storage.set(key, JSON.stringify(agent))
       this.cache.set(key, agent)

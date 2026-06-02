@@ -1,8 +1,13 @@
-// Client
+/**
+ * `@lifi/perps-sdk` — the public entry point. Exports `createPerpsClient` and
+ * `PerpsClient` (the primary API), the realtime `PerpsWsClient`, the pure
+ * calculation/parsing/order helpers, and re-exports the shared `@lifi/perps-types`.
+ *
+ * @packageDocumentation
+ * @public
+ */
 
-// Types
 export * from '@lifi/perps-types'
-// Agent
 export { AgentManager } from './agent/AgentManager.js'
 export { createMemoryStorage, localStorageAdapter } from './agent/storage.js'
 export type { Agent, StorageAdapter } from './agent/types.js'
@@ -34,14 +39,12 @@ export type {
   ProviderConfigs,
   ProviderSetup,
 } from './client/types.js'
-// Errors
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
 } from './realtime/PerpsWsClient.js'
-// Realtime
 export { PerpsWsClient } from './realtime/PerpsWsClient.js'
 export type { ReconnectingWebSocketOptions } from './realtime/ReconnectingWebSocket.js'
 export { ReconnectingWebSocket } from './realtime/ReconnectingWebSocket.js'
@@ -50,7 +53,6 @@ export type {
   SubscriptionListener,
   WsProvider,
 } from './realtime/types.js'
-// Services
 export type { CreateActionParams } from './services/createAction.js'
 export { createAction } from './services/createAction.js'
 export type { ExecuteActionParams } from './services/executeAction.js'
@@ -80,7 +82,6 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
-// Transport
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'
 export type {
@@ -98,7 +99,6 @@ export {
   LIFI_RETRY_DEFAULTS,
   resolveRetryPolicy,
 } from './transport/retryPolicy.js'
-// Core provider plugin interface
 export type {
   PerpsClientSigner,
   PerpsProvider,
@@ -165,6 +165,4 @@ export { signTypedData } from './utils/signTypedData.js'
 export { summarize } from './utils/summarize.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
-
-// Version
 export { name, version } from './version.js'

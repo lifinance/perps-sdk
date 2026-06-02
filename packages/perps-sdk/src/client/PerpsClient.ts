@@ -91,7 +91,6 @@ export class PerpsClient {
    */
   setSigner(signer: PerpsSDKClient['signer']): void {
     this._signer = signer
-    // Override the signer on the sdkClient
     Object.defineProperty(this.sdkClient, 'signer', {
       get: () => this._signer,
       configurable: true,
@@ -376,10 +375,6 @@ export class PerpsClient {
     return signed
   }
 
-  // ---------------------------------------------------------------------------
-  // Generic action helpers
-  // ---------------------------------------------------------------------------
-
   async buildAction<T extends ActionType>(
     action: T,
     params: { provider: string; address: Address; params: ActionParamsMap[T] }
@@ -398,10 +393,6 @@ export class PerpsClient {
     })
   }
 
-  // ---------------------------------------------------------------------------
-  // Agent management
-  // ---------------------------------------------------------------------------
-
   async getAgentAddress(address: Address, provider: string): Promise<Address> {
     const agent = await this.sdkClient.agentManager.getAgent(address, provider)
     return agent.address
@@ -414,10 +405,6 @@ export class PerpsClient {
   async removeAgent(address: Address, provider: string): Promise<void> {
     await this.sdkClient.agentManager.removeAgent(address, provider)
   }
-
-  // ---------------------------------------------------------------------------
-  // Account
-  // ---------------------------------------------------------------------------
 
   /**
    * Fetch the user's account state from the backend and attach the
@@ -464,10 +451,6 @@ export class PerpsClient {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Setup
-  // ---------------------------------------------------------------------------
-
   /**
    * Return the unsatisfied entries on `Provider.setup` for this account,
    * split by signer role. Trading is gated on `isReady === true`.
@@ -504,14 +487,12 @@ export class PerpsClient {
       return { userProviderSetup: [], agentProviderSetup: [], isReady: true }
     }
 
-    // Build a signer lookup from setup descriptors.
     const signersByAction = new Map<string, PerpsSigner[]>()
     for (const desc of metadata.setup) {
       signersByAction.set(desc.type, desc.signers)
     }
 
-    // Send all to backend via createAction for the first provider setup action type
-    // The backend filters already-satisfied ones and returns typed data
+    // The backend filters already-satisfied setup actions and returns typed data.
     const { actions } = await this.buildProviderSetup({
       provider,
       address,
@@ -737,14 +718,13 @@ export class PerpsClient {
   ): Promise<ExecuteProviderSetupResult> {
     const { provider, address, required, userSignedActions } = params
 
-    // 1. Submit user-signed provider setup
     let userResults: ExecuteActionResponse = { results: [] }
     if (userSignedActions.length > 0) {
       const signerAddress = (
         await this.sdkClient.agentManager.getAgent(address, provider)
       ).address
 
-      // Submit all user-signed actions — use first action's type for routing
+      // Route the batch on the first action's type.
       const firstAction = required.userProviderSetup[0]?.action as string
       userResults = await executeAction(this.sdkClient, {
         provider,
@@ -760,18 +740,14 @@ export class PerpsClient {
       }
     }
 
-    // 2. Auto-upgrade ACCOUNT_MODE after APPROVE_AGENT.
-    //
-    // When the user-signed setup included a successful APPROVE_AGENT, the
-    // freshly approved agent is now authorised to sign account-level
-    // actions for accounts whose abstraction has never been set. If the
-    // provider exposes a writable `ACCOUNT_MODE` descriptor (Hyperliquid
-    // today), the SDK reads `account.config.abstractionMode` to decide
-    // the signer: `null` → agent-dispatch silently to the SDK's preferred
-    // default; non-null → return a wallet-signing fallback step. Either
-    // way the chain does NOT abort onboarding — `ACCOUNT_MODE` lives on
-    // `Provider.options`, not `Provider.setup`, and so does not gate
-    // trading.
+    // After a successful APPROVE_AGENT, the freshly approved agent is now
+    // authorised to sign account-level actions for accounts whose abstraction
+    // has never been set. If the provider exposes a writable `ACCOUNT_MODE`
+    // descriptor (Hyperliquid today), the SDK reads `account.config.abstractionMode`
+    // to decide the signer: `null` → agent-dispatch silently to the SDK's
+    // preferred default; non-null → return a wallet-signing fallback step.
+    // Either way the chain does NOT abort onboarding — `ACCOUNT_MODE` lives on
+    // `Provider.options`, not `Provider.setup`, and so does not gate trading.
     let agentResults: ExecuteActionResponse | undefined
     let fallbackUserProviderSetup: ActionStep[] | undefined
     const justApprovedAgent = userResults.results.some(
@@ -790,11 +766,10 @@ export class PerpsClient {
       }
     }
 
-    // 3. Sign and submit any pre-staged agent provider setup returned by the
-    //    backend's `buildProviderSetup` call. ACCOUNT_MODE is filtered out of
-    //    bulk staging (it requires explicit `mode` params), so this block
-    //    today only runs for future agent-signed steps the backend chooses
-    //    to stage.
+    // Sign and submit any pre-staged agent provider setup returned by the
+    // backend's `buildProviderSetup` call. ACCOUNT_MODE is filtered out of
+    // bulk staging (it requires explicit `mode` params), so this block today
+    // only runs for future agent-signed steps the backend chooses to stage.
     if (required.agentProviderSetup.length > 0) {
       const agent = await this.sdkClient.agentManager.getAgent(
         address,
@@ -824,7 +799,6 @@ export class PerpsClient {
         actions: signedAgentActions,
       })
 
-      // Merge staged-setup action results with any auto-upgrade results from step 2.
       agentResults = {
         results: [...(agentResults?.results ?? []), ...stagedResults.results],
       }
@@ -888,10 +862,6 @@ export class PerpsClient {
       userSignedActions,
     })
   }
-
-  // ---------------------------------------------------------------------------
-  // Typed action helpers
-  // ---------------------------------------------------------------------------
 
   async placeOrder(params: PlaceOrderParams): Promise<ExecuteActionResponse> {
     return this.execute({ ...params, action: ActionType.PLACE_ORDER, params })

@@ -2,8 +2,6 @@ import type { Fill, OpenOrder, Position, TriggerOrder } from './account.js'
 import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
 import type { Address } from './primitives.js'
 
-// --- Channels the user can subscribe to ---
-
 export type PricesSubscription = { channel: 'prices'; dex: string }
 export type OrderbookSubscription = {
   channel: 'orderbook'
@@ -46,8 +44,6 @@ export type Subscription =
   | FillsSubscription
   | PositionsSubscription
   | SpotBalancesSubscription
-
-// --- Events emitted to listeners ---
 
 export interface SpotBalance {
   coin: string

@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Account-level types returned by Hyperliquid `/info`.
-// ---------------------------------------------------------------------------
 
 export type HlPosition = {
   coin: string
@@ -32,8 +30,6 @@ export type HlClearinghouseState = {
   }
 }
 
-// -- spotClearinghouseState -------------------------------------------------
-
 export type HlSpotBalance = {
   coin: string
   token: number
@@ -46,19 +42,13 @@ export type HlSpotClearinghouseState = {
   balances: HlSpotBalance[]
 }
 
-// -- userFees ---------------------------------------------------------------
-
 export type HlUserFees = {
   userAddRate: string
   userCrossRate: string
   activeReferralDiscount: string
 }
 
-// -- extraAgents ------------------------------------------------------------
-
 export type HlExtraAgents = Record<string, unknown>[]
-
-// -- userAbstraction --------------------------------------------------------
 
 /**
  * Possible values returned by the `userAbstraction` info endpoint.

@@ -360,7 +360,6 @@ export class HyperliquidWsProvider implements WsProvider {
     const subDexKey = data.dex || 'default'
     this.midsBySubDex.set(subDexKey, data.mids)
 
-    // Merge all sub-dex mids into a single record
     const merged: Record<string, string> = {}
     for (const mids of this.midsBySubDex.values()) {
       Object.assign(merged, mids)
@@ -456,7 +455,6 @@ export class HyperliquidWsProvider implements WsProvider {
     )
     this.positionsBySubDex.set(subDexKey, positions)
 
-    // Merge all sub-dex positions into a single flat array
     const merged = [...this.positionsBySubDex.values()].flat()
 
     this.emit(`positions:${data.user.toLowerCase()}`, {

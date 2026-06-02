@@ -1,3 +1,12 @@
+/**
+ * `@lifi/perps-types` — shared cross-provider type surface for the perps SDK:
+ * account/order/market shapes, action params, enums, error codes, provider
+ * descriptors, subscriptions, and EIP-712 typed-data structures.
+ *
+ * @packageDocumentation
+ * @public
+ */
+
 export * from './account.js'
 export * from './action.js'
 export * from './asset.js'

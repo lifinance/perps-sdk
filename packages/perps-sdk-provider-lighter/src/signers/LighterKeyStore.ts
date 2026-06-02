@@ -1,16 +1,10 @@
 import type { StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
 
-// ---------------------------------------------------------------------------
-// LighterKeyStore
-//
-// Persists the Lighter-native API keypair plus account/key indices per L1
-// user address. Unlike AgentManager, the private key here is a Lighter custom
-// keypair — generated via WASM GenerateAPIKey — not an Ethereum private key.
-//
-// We namespace the storage key by provider (`lighter`) so the same user can
-// later hold credentials for other WASM-blob providers without collision.
-// ---------------------------------------------------------------------------
+// The private key here is a Lighter custom keypair — generated via WASM
+// GenerateAPIKey — not an Ethereum private key. The storage key is namespaced
+// by provider (`lighter`) so the same user can hold credentials for other
+// WASM-blob providers without collision.
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 

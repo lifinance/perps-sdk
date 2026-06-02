@@ -29,9 +29,6 @@ import type {
 } from '../types/index.js'
 import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
 
-// ---------------------------------------------------------------------------
-// LighterWsProvider
-//
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
@@ -55,7 +52,6 @@ import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
 //
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
-// ---------------------------------------------------------------------------
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
