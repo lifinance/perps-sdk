@@ -14,11 +14,22 @@ import {
 } from '../transport/retryPolicy.js'
 import { version } from '../version.js'
 
+/**
+ * `RequestInit` plus a per-call retry override.
+ *
+ * @internal
+ */
 export interface RequestOptions extends RequestInit {
   /** Per-call retry override. Falls back to the resolved client-level policy. */
   retry?: RetryPolicy | false
 }
 
+/**
+ * Internal HTTP helper: applies SDK headers, retry policy, and the request
+ * interceptor, then normalizes failures into {@link PerpsError}.
+ *
+ * @internal
+ */
 export async function request<T>(
   config: PerpsBaseConfig,
   url: string,
@@ -97,6 +108,11 @@ export async function request<T>(
   }
 }
 
+/**
+ * Build a URL with a query string from defined params (skips `undefined`).
+ *
+ * @internal
+ */
 export function buildUrl(
   baseUrl: string,
   params: Record<string, string | number | boolean | undefined>

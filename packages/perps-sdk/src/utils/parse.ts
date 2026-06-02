@@ -9,7 +9,14 @@
  * - Whitespace
  *
  * @param value - The string to parse
- * @returns Parsed number, or NaN if the string contains no valid number
+ * @returns Parsed number; `0` for empty/blank input, `NaN` when a non-empty
+ *   string contains no parseable number
+ * @example
+ * ```ts
+ * stringToFloat('$1,234.50') // 1234.5
+ * stringToFloat('') // 0
+ * ```
+ * @public
  */
 export function stringToFloat(value: string): number {
   if (!value) {

@@ -4,6 +4,8 @@ import type { StorageAdapter } from './types.js'
  * localStorage adapter for browser environments.
  * Agent keys are stored as JSON strings with the key pattern:
  * `lifi-perps-agent:{address}:{provider}`
+ *
+ * @public
  */
 export const localStorageAdapter: StorageAdapter = {
   get: (key: string): Promise<string | null> => {
@@ -36,6 +38,8 @@ export const localStorageAdapter: StorageAdapter = {
 
 /**
  * In-memory storage adapter for testing or server-side use.
+ *
+ * @public
  */
 export function createMemoryStorage(): StorageAdapter {
   const store = new Map<string, string>()

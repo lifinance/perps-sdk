@@ -13,6 +13,11 @@
  * @param leverage - Position leverage
  * @param price - Current asset price
  * @returns Position size in asset units
+ * @example
+ * ```ts
+ * calculatePositionSize(100, 10, 2000) // 0.5 (ETH at $2000)
+ * ```
+ * @public
  */
 export function calculatePositionSize(
   marginUsd: number,
@@ -28,6 +33,7 @@ export function calculatePositionSize(
  * @param size - Position size in asset units
  * @param price - Current asset price
  * @returns Notional value in USD
+ * @public
  */
 export function calculateNotionalValue(size: number, price: number): number {
   return Math.abs(size) * price
@@ -40,6 +46,7 @@ export function calculateNotionalValue(size: number, price: number): number {
  * @param currentPrice - Current market price
  * @param size - Position size (positive for long, negative for short)
  * @returns Unrealized PnL in USD
+ * @public
  */
 export function calculateUnrealizedPnl(
   entryPrice: number,
@@ -55,6 +62,7 @@ export function calculateUnrealizedPnl(
  * @param pnl - Profit/loss in USD
  * @param margin - Initial margin in USD
  * @returns ROE as percentage (e.g., 10 for 10%)
+ * @public
  */
 export function calculateRoe(pnl: number, margin: number): number {
   if (margin === 0) {
@@ -69,6 +77,7 @@ export function calculateRoe(pnl: number, margin: number): number {
  * @param notionalValue - Position notional value in USD
  * @param leverage - Position leverage
  * @returns Required margin in USD
+ * @public
  */
 export function calculateRequiredMargin(
   notionalValue: number,
@@ -83,6 +92,7 @@ export function calculateRequiredMargin(
  * @param sizeUsd - Position size in USD (notional value)
  * @param feeRate - Fee rate as decimal (e.g., 0.00035 for 0.035%)
  * @returns Estimated fee in USD
+ * @public
  */
 export function estimateFees(sizeUsd: number, feeRate: number): number {
   return sizeUsd * feeRate
@@ -95,6 +105,7 @@ export function estimateFees(sizeUsd: number, feeRate: number): number {
  * @param slippagePercent - Slippage tolerance as percentage (e.g., 0.5 for 0.5%)
  * @param isBuy - True if buying (price goes up), false if selling (price goes down)
  * @returns Price adjusted for slippage
+ * @public
  */
 export function applySlippage(
   price: number,
@@ -112,6 +123,7 @@ export function applySlippage(
  * @param liquidationPrice - The position's liquidation price
  * @param currentPrice - Current market price
  * @returns Absolute distance as a percentage, or 0 when current price is zero
+ * @public
  */
 export function liquidationDistancePercent(params: {
   liquidationPrice: number
@@ -132,6 +144,7 @@ export function liquidationDistancePercent(params: {
  * @param positionValueUsd - Position notional value in USD
  * @param marginUsd - Margin backing the position in USD
  * @returns Effective leverage, or 0 when margin is zero
+ * @public
  */
 export function effectiveLeverage(params: {
   positionValueUsd: number
@@ -157,6 +170,7 @@ export function effectiveLeverage(params: {
  * @param maxLeverage - Maximum leverage allowed for the asset
  * @returns Removable margin in USD (never negative); falls back to the full
  *   `marginUsed` when `maxLeverage` is zero (no constraint available)
+ * @public
  */
 export function removableMargin(params: {
   marginUsed: number
@@ -171,6 +185,11 @@ export function removableMargin(params: {
   return Math.max(0, marginUsed - minMargin)
 }
 
+/**
+ * Signed expected PnL for a trigger price — see {@link calculateExpectedPnl}.
+ *
+ * @public
+ */
 export interface ExpectedPnl {
   amount: number
   percent: number
@@ -185,6 +204,7 @@ export interface ExpectedPnl {
  * @param leverage - Position leverage multiplier
  * @param isLong - True for long positions, false for short
  * @param margin - Margin amount in USD
+ * @public
  */
 export function calculateExpectedPnl(
   triggerPrice: number,
@@ -211,6 +231,7 @@ export function calculateExpectedPnl(
  * @param entryPrice - Position entry price
  * @param leverage - Position leverage multiplier
  * @param isLong - True for long positions, false for short
+ * @public
  */
 export function priceFromPercent(
   percent: number,
@@ -232,6 +253,7 @@ export function priceFromPercent(
  * @param entryPrice - Position entry price
  * @param leverage - Position leverage multiplier
  * @param isLong - True for long positions, false for short
+ * @public
  */
 export function percentFromPrice(
   price: number,
@@ -253,6 +275,7 @@ export function percentFromPrice(
  * @param size - Position size in asset units at close
  * @param price - Price at close
  * @returns PnL as a percentage of position value
+ * @public
  */
 export function calculateRealizedPnlPercent(
   realizedPnl: number,

@@ -30,29 +30,51 @@ import type { RetryConfig } from '../transport/retryPolicy.js'
 /**
  * Viem `WalletClient` shape used by `PerpsSDKClient.signer`. Aliased here so
  * provider plugins can name the type without re-deriving the viem generics.
+ *
+ * @public
  */
 export type PerpsClientSigner = WalletClient<any, any, Account>
 
 /**
  * Per-provider config — restricts which `markets` the WS client subscribes
  * to. Indexed by provider key.
+ *
+ * @public
  */
 export interface ProviderConfig {
   markets?: string[]
 }
 
-/** @deprecated Use {@link ProviderConfig}. */
+/**
+ * @deprecated Use {@link ProviderConfig}.
+ * @public
+ */
 export type HyperliquidConfig = ProviderConfig
 
+/**
+ * Map of per-provider {@link ProviderConfig}, keyed by provider key.
+ *
+ * @public
+ */
 export interface ProviderConfigs {
   [provider: string]: ProviderConfig | undefined
 }
 
+/**
+ * Hook to rewrite each outgoing request's URL/`RequestInit` before it is sent.
+ *
+ * @public
+ */
 export type RequestInterceptor = (
   url: string,
   options: RequestInit
 ) => RequestInit | Promise<RequestInit>
 
+/**
+ * Per-call request options threaded through the service functions.
+ *
+ * @public
+ */
 export interface SDKRequestOptions {
   signal?: AbortSignal
   /**
@@ -67,6 +89,8 @@ export interface SDKRequestOptions {
 /**
  * Immutable snapshot of the resolved client configuration after defaults
  * are applied. Exposed via {@link PerpsSDKClient.config}.
+ *
+ * @public
  */
 export interface PerpsBaseConfig {
   integrator: string
@@ -79,6 +103,13 @@ export interface PerpsBaseConfig {
   fetch?: typeof fetch
 }
 
+/**
+ * Low-level SDK client: resolved config, agent manager, optional wallet
+ * signer, and the registered provider plugins. Returned by
+ * {@link createPerpsClient} and consumed by every service function.
+ *
+ * @public
+ */
 export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
   readonly agentManager: AgentManager
@@ -95,6 +126,8 @@ export interface PerpsSDKClient {
  * PerpsProvider.signActions} method. Carries the resolved wallet signer
  * (when configured) and the resolved agent keypair (when the signing-mode +
  * descriptor combination requires one); providers pick whichever they need.
+ *
+ * @public
  */
 export interface SignActionsContext {
   signer?: PerpsClientSigner
@@ -104,11 +137,18 @@ export interface SignActionsContext {
 /**
  * Read-side params for {@link PerpsProvider.getAccount}. The `provider`
  * field is implicit in the provider instance and so is not duplicated here.
+ *
+ * @public
  */
 export interface ProviderGetAccountParams {
   address: Address
 }
 
+/**
+ * Read params for {@link PerpsProvider.getPositions}.
+ *
+ * @public
+ */
 export interface ProviderGetPositionsParams {
   address: Address
   /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
@@ -117,6 +157,11 @@ export interface ProviderGetPositionsParams {
   cursor?: string
 }
 
+/**
+ * Read params for {@link PerpsProvider.getOrders}.
+ *
+ * @public
+ */
 export interface ProviderGetOrdersParams {
   address: Address
   /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
@@ -125,11 +170,21 @@ export interface ProviderGetOrdersParams {
   cursor?: string
 }
 
+/**
+ * Read params for {@link PerpsProvider.getOrder}.
+ *
+ * @public
+ */
 export interface ProviderGetOrderParams {
   address: Address
   id: string
 }
 
+/**
+ * Read params for {@link PerpsProvider.getFills}.
+ *
+ * @public
+ */
 export interface ProviderGetFillsParams {
   address: Address
   limit?: number
@@ -138,6 +193,11 @@ export interface ProviderGetFillsParams {
   endTime?: number
 }
 
+/**
+ * Read params for {@link PerpsProvider.getActivity}.
+ *
+ * @public
+ */
 export interface ProviderGetActivityParams {
   address: Address
   limit?: number
@@ -147,16 +207,31 @@ export interface ProviderGetActivityParams {
   type?: ActivityType[]
 }
 
+/**
+ * Read params for {@link PerpsProvider.getMarket}.
+ *
+ * @public
+ */
 export interface ProviderGetMarketParams {
   /** Opaque provider `Market.id` (not `displaySymbol`). */
   marketId: string
 }
 
+/**
+ * Read params for {@link PerpsProvider.getPrices}.
+ *
+ * @public
+ */
 export interface ProviderGetPricesParams {
   /** Optional filter — opaque `Market.id`s. */
   marketIds?: string[]
 }
 
+/**
+ * Read params for {@link PerpsProvider.getOhlcv}.
+ *
+ * @public
+ */
 export interface ProviderGetOhlcvParams {
   /** Opaque provider `Market.id` (not `displaySymbol`). */
   marketId: string
@@ -166,6 +241,11 @@ export interface ProviderGetOhlcvParams {
   limit?: number
 }
 
+/**
+ * Read params for {@link PerpsProvider.getOrderbook}.
+ *
+ * @public
+ */
 export interface ProviderGetOrderbookParams {
   /** Opaque provider `Market.id` (not `displaySymbol`). */
   marketId: string
@@ -194,6 +274,8 @@ export interface ProviderGetOrderbookParams {
  * Write-side actions (`createAction`, `executeAction`) remain on the core
  * client because they go through the LI.FI backend's generic action
  * pipeline — they are not per-provider plugin surface.
+ *
+ * @public
  */
 export interface PerpsProvider {
   /**

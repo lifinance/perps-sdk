@@ -11,6 +11,8 @@ const STORAGE_PREFIX = 'lifi-perps-agent'
 /**
  * Manages agent keypairs for USER_AGENT signing mode.
  * Agent keys are stored per user address + provider combination.
+ *
+ * @public
  */
 export class AgentManager {
   private storage: StorageAdapter
@@ -28,6 +30,7 @@ export class AgentManager {
    * Get an existing agent for a user + provider pair.
    *
    * @throws {PerpsError} If agent not found
+   * @public
    */
   async getAgent(address: Address, provider: string): Promise<Agent> {
     const key = this.storageKey(address, provider)
@@ -54,6 +57,7 @@ export class AgentManager {
 
   /**
    * Get an existing agent or create a new one.
+   * @public
    */
   async getOrCreateAgent(address: Address, provider: string): Promise<Agent> {
     try {
@@ -77,6 +81,7 @@ export class AgentManager {
 
   /**
    * Check if an agent exists for a user + provider pair.
+   * @public
    */
   async hasAgent(address: Address, provider: string): Promise<boolean> {
     try {
@@ -90,6 +95,7 @@ export class AgentManager {
   /**
    * Remove an agent for a user + provider pair.
    * Call this when the user revokes agent authorization.
+   * @public
    */
   async removeAgent(address: Address, provider: string): Promise<void> {
     const key = this.storageKey(address, provider)
@@ -100,6 +106,7 @@ export class AgentManager {
   /**
    * Import an existing agent keypair.
    * Useful for restoring from backup or using a specific key.
+   * @public
    */
   async importAgent(
     address: Address,
@@ -123,6 +130,7 @@ export class AgentManager {
   /**
    * Clear all cached agents.
    * Does not remove from storage.
+   * @public
    */
   clearCache(): void {
     this.cache.clear()

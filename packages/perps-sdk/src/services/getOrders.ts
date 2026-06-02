@@ -6,6 +6,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
+/**
+ * Parameters for {@link getOrders}.
+ *
+ * @public
+ */
 export interface GetOrdersParams {
   /** Provider (e.g., 'hyperliquid') */
   provider: string
@@ -24,6 +29,8 @@ export interface GetOrdersParams {
  * registered venue plugin (direct-to-venue); requires the provider plugin to be
  * registered on the client.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const { openOrders, triggerOrders } = await getOrders(client, {
@@ -31,6 +38,7 @@ export interface GetOrdersParams {
  *   address: '0x1234...',
  * })
  * ```
+ * @public
  */
 export async function getOrders(
   client: PerpsSDKClient,

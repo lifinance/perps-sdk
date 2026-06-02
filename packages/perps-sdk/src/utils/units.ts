@@ -9,7 +9,13 @@ import { formatUnits } from 'viem'
  *
  * @param amount - Amount in base units (e.g. "1000000" for 1 USDC)
  * @param decimals - Token decimals (e.g. 6 for USDC)
- * @returns Decimal string (e.g. "1.0")
+ * @returns Decimal string (e.g. "1.0"); `"0"` when `amount` is not a valid
+ *   bigint
+ * @example
+ * ```ts
+ * fromBaseUnits('1000000', 6) // '1'
+ * ```
+ * @public
  */
 export function fromBaseUnits(amount: string, decimals: number): string {
   try {
@@ -25,6 +31,7 @@ export function fromBaseUnits(amount: string, decimals: number): string {
  * @param amount - Amount in base units
  * @param decimals - Token decimals
  * @returns Numeric value, or 0 if parsing fails
+ * @public
  */
 export function fromBaseUnitsNumber(amount: string, decimals: number): number {
   const value = Number(fromBaseUnits(amount, decimals))

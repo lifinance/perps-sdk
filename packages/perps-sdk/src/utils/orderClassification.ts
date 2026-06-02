@@ -29,6 +29,7 @@ const SL_TYPES = new Set<OrderType>([
 
 /**
  * Check if an open order is a Take Profit trigger order.
+ * @public
  */
 export function isTakeProfitOrder(order: Pick<OpenOrder, 'type'>): boolean {
   return TP_TYPES.has(order.type)
@@ -36,6 +37,7 @@ export function isTakeProfitOrder(order: Pick<OpenOrder, 'type'>): boolean {
 
 /**
  * Check if an open order is a Stop Loss trigger order.
+ * @public
  */
 export function isStopLossOrder(order: Pick<OpenOrder, 'type'>): boolean {
   return SL_TYPES.has(order.type)
@@ -43,6 +45,7 @@ export function isStopLossOrder(order: Pick<OpenOrder, 'type'>): boolean {
 
 /**
  * Check if an open order is a TP or SL trigger order.
+ * @public
  */
 export function isTpSlOrder(order: Pick<OpenOrder, 'type'>): boolean {
   return TP_TYPES.has(order.type) || SL_TYPES.has(order.type)
@@ -53,6 +56,7 @@ export function isTpSlOrder(order: Pick<OpenOrder, 'type'>): boolean {
  * in `openOrders` / `triggerOrders`). Anything not in this set is terminal —
  * filled, cancelled, rejected, expired — and should be evicted from the
  * cached orders list when seen in a WS update.
+ * @public
  */
 export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
   OrderStatus.OPEN,
@@ -61,6 +65,11 @@ export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
   OrderStatus.TRIGGERED,
 ])
 
+/**
+ * Whether `status` is one of {@link ACTIVE_ORDER_STATUSES}.
+ *
+ * @public
+ */
 export function isActiveOrderStatus(status: OrderStatus): boolean {
   return ACTIVE_ORDER_STATUSES.has(status)
 }
@@ -69,6 +78,7 @@ export function isActiveOrderStatus(status: OrderStatus): boolean {
  * Classify a fill as open or close based on realizedPnl.
  * @deprecated Use `Fill.classification` instead — it uses startPosition
  * for accurate open/increase/reduce/close/reverse classification.
+ * @public
  */
 export function classifyFill(
   side: OrderSide,

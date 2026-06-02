@@ -6,13 +6,22 @@
  * so the map is keyed by chain id rather than by provider.
  */
 
-/** Settling chains a perps tx can be observed on. */
+/**
+ * Settling chains a perps tx can be observed on.
+ *
+ * @public
+ */
 export const ExplorerChainId = {
   ETHEREUM: 1,
   ARBITRUM_ONE: 42161,
   LIGHTER: 304,
 } as const
 
+/**
+ * Union of {@link ExplorerChainId} values.
+ *
+ * @public
+ */
 export type ExplorerChainId =
   (typeof ExplorerChainId)[keyof typeof ExplorerChainId]
 
@@ -27,6 +36,7 @@ const TX_BASE_URL_BY_CHAIN: Record<ExplorerChainId, string> = {
  *
  * @returns The explorer URL, or `undefined` when the hash is empty (no on-chain
  *   tx to link).
+ * @public
  */
 export function explorerTxUrl(
   chainId: ExplorerChainId,

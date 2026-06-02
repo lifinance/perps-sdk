@@ -2,6 +2,8 @@ import type { Address, Hex } from 'viem'
 
 /**
  * Agent keypair for signing trading actions.
+ *
+ * @public
  */
 export interface Agent {
   /** Agent wallet address */
@@ -13,6 +15,8 @@ export interface Agent {
 /**
  * Storage adapter interface for persisting agent keys.
  * Implement this interface to use custom storage (e.g., encrypted storage, database).
+ *
+ * @public
  */
 export interface StorageAdapter {
   /** Get a value by key */

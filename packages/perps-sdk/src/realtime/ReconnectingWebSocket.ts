@@ -7,11 +7,22 @@ type WsEventMap = {
 
 type WsEvent = keyof WsEventMap
 
+/**
+ * Options for {@link ReconnectingWebSocket}.
+ *
+ * @public
+ */
 export interface ReconnectingWebSocketOptions {
   maxRetries?: number
   pingIntervalMs?: number
 }
 
+/**
+ * A `WebSocket` wrapper that auto-reconnects with exponential backoff, buffers
+ * sends while disconnected, and keep-alive pings the server.
+ *
+ * @public
+ */
 export class ReconnectingWebSocket {
   private ws: WebSocket | null = null
   private readonly url: string
@@ -118,6 +129,11 @@ export class ReconnectingWebSocket {
     }
   }
 
+  /**
+   * Send `data`, buffering it for replay when the socket is not yet open.
+   *
+   * @public
+   */
   send(data: string) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(data)
@@ -126,6 +142,11 @@ export class ReconnectingWebSocket {
     }
   }
 
+  /**
+   * Permanently close the socket and suppress further reconnection.
+   *
+   * @public
+   */
   close() {
     this.closed = true
     this.stopPing()
@@ -137,14 +158,30 @@ export class ReconnectingWebSocket {
     this.readyResolvers = []
   }
 
+  /**
+   * Register a listener for a socket lifecycle event.
+   *
+   * @public
+   */
   on<E extends WsEvent>(event: E, fn: WsEventMap[E]) {
     ;(this.listeners[event] as Set<WsEventMap[E]>).add(fn)
   }
 
+  /**
+   * Remove a previously registered lifecycle-event listener.
+   *
+   * @public
+   */
   off<E extends WsEvent>(event: E, fn: WsEventMap[E]) {
     ;(this.listeners[event] as Set<WsEventMap[E]>).delete(fn)
   }
 
+  /**
+   * Resolve once the socket is open; reject if it closes or exhausts retries
+   * before opening.
+   *
+   * @public
+   */
   ready(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return Promise.resolve()

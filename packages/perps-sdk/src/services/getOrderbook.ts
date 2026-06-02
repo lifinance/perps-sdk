@@ -5,6 +5,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link getOrderbook}.
+ *
+ * @public
+ */
 export interface GetOrderbookParams {
   /** Provider to get orderbook from (e.g., 'hyperliquid') */
   provider: string
@@ -17,6 +22,9 @@ export interface GetOrderbookParams {
 /**
  * Get an orderbook backfill snapshot for a market. Pair with a provider WS
  * subscription for live updates.
+ *
+ * @throws {PerpsError} On backend error responses, network, or parsing errors.
+ * @public
  */
 export async function getOrderbook(
   client: PerpsSDKClient,

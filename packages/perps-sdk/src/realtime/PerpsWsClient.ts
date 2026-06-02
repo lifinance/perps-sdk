@@ -11,6 +11,8 @@ import type {
 /**
  * Factory for a per-provider WS plugin. Invoked once per provider key the
  * first time `subscribe(...)` is called against it.
+ *
+ * @public
  */
 export type WsProviderFactory = (params: {
   /** Provider key (e.g. `'lighter'`, `'hyperliquid'`). */
@@ -32,6 +34,11 @@ export type WsProviderFactory = (params: {
   client: PerpsSDKClient
 }) => WsProvider
 
+/**
+ * Options for {@link PerpsWsClient}.
+ *
+ * @public
+ */
 export interface PerpsWsClientOptions {
   /**
    * Per-provider WS factory map. Each key (e.g. `'hyperliquid'`,
@@ -44,6 +51,12 @@ export interface PerpsWsClientOptions {
   wsProviders?: Record<string, WsProviderFactory>
 }
 
+/**
+ * Realtime client: lazily instantiates a per-provider {@link WsProvider} on
+ * first subscription and fans subscriptions out to it.
+ *
+ * @public
+ */
 export class PerpsWsClient {
   private readonly client: PerpsSDKClient
   private readonly options: PerpsWsClientOptions
@@ -55,6 +68,14 @@ export class PerpsWsClient {
     this.options = options
   }
 
+  /**
+   * Subscribe to a realtime channel, lazily creating the provider's WS
+   * connection. Returns an unsubscribe function.
+   *
+   * @throws {PerpsError} When no WS provider factory is registered for the
+   *   subscription's `dex`.
+   * @public
+   */
   async subscribe<S extends Subscription>(
     sub: S,
     listener: (event: EventForSubscription<S>) => void
@@ -64,6 +85,11 @@ export class PerpsWsClient {
     return provider.subscribe(sub, listener as SubscriptionListener)
   }
 
+  /**
+   * Close every open provider WS connection and drop all cached providers.
+   *
+   * @public
+   */
   close() {
     for (const p of this.providers.values()) {
       p.close()

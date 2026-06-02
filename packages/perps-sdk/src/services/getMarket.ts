@@ -5,6 +5,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { buildUrl, request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link getMarket}.
+ *
+ * @public
+ */
 export interface GetMarketParams {
   /** Provider to get market from (e.g., 'hyperliquid') */
   provider: string
@@ -21,12 +26,15 @@ export interface GetMarketParams {
  * `/perps/markets` collection to the single requested id; the backend
  * responds 404 (thrown as a {@link PerpsError}) when nothing matches.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
  * const market = await getMarket(client, { provider: 'hyperliquid', marketId: 'BTC' })
  * console.log(market.baseAsset.displaySymbol)
  * ```
+ * @public
  */
 export async function getMarket(
   client: PerpsSDKClient,

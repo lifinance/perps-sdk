@@ -10,6 +10,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { request } from '../utils/request.js'
 
+/**
+ * Parameters for {@link createAction}.
+ *
+ * @public
+ */
 export interface CreateActionParams<T extends ActionType = ActionType> {
   provider: string
   address: Address
@@ -18,6 +23,14 @@ export interface CreateActionParams<T extends ActionType = ActionType> {
   params: ActionParamsMap[T]
 }
 
+/**
+ * Request the backend to build the unsigned `ActionStep`s for an action. The
+ * returned steps are signed client-side and submitted via
+ * {@link executeAction}.
+ *
+ * @throws {PerpsError} On backend error responses, network, or parsing errors.
+ * @public
+ */
 export async function createAction<T extends ActionType>(
   client: PerpsSDKClient,
   params: CreateActionParams<T>,

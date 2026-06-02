@@ -17,6 +17,8 @@ const sumValueUsd = (balances: AccountResponse['balances']): number =>
  * - `availableMargin = Σ collateralBalances.valueUsd − marginUsed`
  * - `portfolioValue  = Σ balances.valueUsd + Σ collateralBalances.valueUsd + unrealizedPnl`
  * - `marginUsed` / `unrealizedPnl` are summed over positions.
+ *
+ * @public
  */
 export function summarize(
   account: AccountResponse,

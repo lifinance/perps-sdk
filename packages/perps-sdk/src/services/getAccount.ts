@@ -6,6 +6,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
+/**
+ * Parameters for {@link getAccount}.
+ *
+ * @public
+ */
 export interface GetAccountParams {
   /** Provider to get account from (e.g., 'hyperliquid') */
   provider: string
@@ -21,6 +26,8 @@ export interface GetAccountParams {
  * Use {@link getPositions} and {@link getOrders} to fetch positions and orders
  * separately.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const account = await getAccount(client, {
@@ -29,6 +36,7 @@ export interface GetAccountParams {
  * })
  * console.log(account.balances)
  * ```
+ * @public
  */
 export async function getAccount(
   client: PerpsSDKClient,

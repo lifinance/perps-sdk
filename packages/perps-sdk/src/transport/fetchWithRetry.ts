@@ -1,6 +1,11 @@
 import { sleep } from '../utils/sleep.js'
 import type { ResolvedRetryPolicy, RetryClassification } from './retryPolicy.js'
 
+/**
+ * Options for {@link fetchWithRetry}.
+ *
+ * @public
+ */
 export interface FetchWithRetryOptions {
   policy: ResolvedRetryPolicy
   fetchImpl?: typeof fetch
@@ -13,6 +18,8 @@ export interface FetchWithRetryOptions {
  * backoff with full jitter, capped by `maxDelayMs`. Network errors (thrown
  * `fetch` rejections) are treated as `retry-network` — same retry budget as
  * 5xx. An aborted signal short-circuits without further attempts.
+ *
+ * @public
  */
 export async function fetchWithRetry(
   input: RequestInfo | URL,

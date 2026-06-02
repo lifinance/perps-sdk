@@ -6,6 +6,11 @@ import type {
 } from '../client/createPerpsClient.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
+/**
+ * Parameters for {@link getPositions}.
+ *
+ * @public
+ */
 export interface GetPositionsParams {
   /** Provider (e.g., 'hyperliquid') */
   provider: string
@@ -24,6 +29,8 @@ export interface GetPositionsParams {
  * (direct-to-venue); requires the provider plugin to be registered on the
  * client.
  *
+ * @throws {PerpsError} When the provider plugin is not registered, or on
+ *   backend / network / parsing errors.
  * @example
  * ```ts
  * const { positions } = await getPositions(client, {
@@ -31,6 +38,7 @@ export interface GetPositionsParams {
  *   address: '0x1234...',
  * })
  * ```
+ * @public
  */
 export async function getPositions(
   client: PerpsSDKClient,

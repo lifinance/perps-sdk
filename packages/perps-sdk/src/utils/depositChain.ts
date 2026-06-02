@@ -1,13 +1,19 @@
 import type { AccountConfig } from '@lifi/perps-types'
 import { ChainId } from '@lifi/types'
 
-/** Perps provider keys that have a declared LI.FI deposit-target chain. */
+/**
+ * Perps provider keys that have a declared LI.FI deposit-target chain.
+ *
+ * @public
+ */
 export type DepositProviderKey = AccountConfig['provider']
 
 /**
  * Declared single source of truth: perps provider key → the LI.FI chain a
  * client opens the swap widget against to fund that provider. Values come from
  * the `@lifi/types` `ChainId` enum; never hardcode the numeric ids.
+ *
+ * @public
  */
 export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Record<
   DepositProviderKey,
@@ -22,6 +28,7 @@ export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Record<
  *
  * @returns The `@lifi/types` `ChainId`, or `undefined` for a provider key with
  *   no declared deposit chain (the `/providers` wire key is an open `string`).
+ * @public
  */
 export function lifiDepositChainForProvider(
   providerKey: string
