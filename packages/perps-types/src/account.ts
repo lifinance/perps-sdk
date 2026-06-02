@@ -131,10 +131,6 @@ export interface FillsResponse {
   pagination: Pagination
 }
 
-// ---------------------------------------------------------------------------
-// Activities
-// ---------------------------------------------------------------------------
-
 export interface BaseActivity {
   id: string
   provider: string
@@ -205,9 +201,7 @@ export interface ActivitiesResponse {
   pagination: Pagination
 }
 
-// ---------------------------------------------------------------------------
-// Account configuration state — typed `AccountResponse.config`
-// ---------------------------------------------------------------------------
+// Account configuration state — typed `AccountResponse.config`.
 
 export type HyperliquidAgent = Record<string, unknown>
 

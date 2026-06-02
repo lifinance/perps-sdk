@@ -1,6 +1,16 @@
 // biome-ignore-all lint/performance/noBarrelFile: package public entry point.
 // biome-ignore-all lint/performance/noReExportAll: package public entry point.
 
+/**
+ * Hyperliquid provider plugin for `@lifi/perps-sdk`. Reads account-specific
+ * state directly from `${apiUrl}/info`; enriched asset metadata and
+ * public/shared data come from the LI.FI backend. Register the
+ * `hyperliquidProvider()` factory with `createPerpsClient`.
+ *
+ * @packageDocumentation
+ * @public
+ */
+
 export { projectHyperliquidConfigSettings } from './accountConfig.js'
 export { summarizeHyperliquidAccount } from './accountSummary.js'
 export {

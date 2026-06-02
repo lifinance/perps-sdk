@@ -259,10 +259,6 @@ export const lighterProvider = (
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
   const readOnlyCreationFailed: Set<string> = new Set()
 
-  // ---------------------------------------------------------------------------
-  // Internal helpers — closed-over state replaces the class's `this.X` access.
-  // ---------------------------------------------------------------------------
-
   const apiClient = (
     sdkClient?: PerpsSDKClient,
     opts?: SDKRequestOptions
@@ -426,7 +422,6 @@ export const lighterProvider = (
         return token.token
       } catch (err) {
         readOnlyCreationFailed.add(flightKey)
-        // eslint-disable-next-line no-console
         console.warn(
           '[lighter] read-only token creation failed; ' +
             'falling back to standard auth tokens for this session.',
@@ -646,10 +641,6 @@ export const lighterProvider = (
 
     return { deposits, withdraws, fundings, liquidations, transfers }
   }
-
-  // ---------------------------------------------------------------------------
-  // PerpsProvider — public surface
-  // ---------------------------------------------------------------------------
 
   return {
     type: LIGHTER_PROVIDER_KEY,

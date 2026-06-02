@@ -67,10 +67,6 @@ export type ActionResult =
       error: string
     }
 
-// ---------------------------------------------------------------------------
-// Shared data types
-// ---------------------------------------------------------------------------
-
 export interface TriggerOrderInput {
   triggerPrice: string
   limitPrice?: string
@@ -106,10 +102,6 @@ export interface Order {
   createdAt: string
   updatedAt: string
 }
-
-// ---------------------------------------------------------------------------
-// Per-action param types
-// ---------------------------------------------------------------------------
 
 export interface PlaceOrderParams {
   market: MarketRef
@@ -189,10 +181,6 @@ export interface SendAssetParams {
   amount: string
 }
 
-// ---------------------------------------------------------------------------
-// ActionParamsMap — compile-time type resolution for SDK
-// ---------------------------------------------------------------------------
-
 export interface CancelAllOrdersParams {
   /** 0=immediate (cancel GTC), 1=scheduled, 2=abort scheduled */
   timeInForce: number
@@ -238,10 +226,6 @@ export interface ActionParamsMap {
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.DEPOSIT]: DepositParams
 }
-
-// ---------------------------------------------------------------------------
-// Request / Response types
-// ---------------------------------------------------------------------------
 
 export type CreateActionRequest = {
   [K in ActionType]: {

@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Order shapes returned by Hyperliquid `/info`.
-// ---------------------------------------------------------------------------
 
 export type HlFrontendOpenOrder = {
   oid: number
@@ -22,8 +20,6 @@ export type HlFrontendOpenOrder = {
 }
 
 export type HlFrontendOpenOrders = HlFrontendOpenOrder[]
-
-// -- orderStatus ------------------------------------------------------------
 
 export type HlOrderDetail = {
   order: {

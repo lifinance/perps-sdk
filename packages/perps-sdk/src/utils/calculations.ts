@@ -171,10 +171,6 @@ export function removableMargin(params: {
   return Math.max(0, marginUsed - minMargin)
 }
 
-// ---------------------------------------------------------------------------
-// TP/SL expected P&L calculations
-// ---------------------------------------------------------------------------
-
 export interface ExpectedPnl {
   amount: number
   percent: number
@@ -249,10 +245,6 @@ export function percentFromPrice(
   const priceDiff = isLong ? price - entryPrice : entryPrice - price
   return (priceDiff / entryPrice) * leverage * 100
 }
-
-// ---------------------------------------------------------------------------
-// Realized PnL percentage
-// ---------------------------------------------------------------------------
 
 /**
  * Calculate realized PnL as a percentage of position value at close.

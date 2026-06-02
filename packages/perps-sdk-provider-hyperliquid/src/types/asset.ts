@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Asset / market metadata returned by Hyperliquid `/info`.
-// ---------------------------------------------------------------------------
 
 export type HlUniverseItem = {
   name: string
@@ -26,11 +24,7 @@ export type HlMetaAndAssetCtxs = [HlMeta, HlAssetCtx[]]
 
 export type HlUniverse = HlMeta['universe']
 
-// -- allMids ----------------------------------------------------------------
-
 export type HlAllMids = Record<string, string>
-
-// -- candleSnapshot ---------------------------------------------------------
 
 export type HlCandle = {
   t: number
@@ -43,8 +37,6 @@ export type HlCandle = {
 
 export type HlCandleSnapshot = HlCandle[]
 
-// -- l2Book -----------------------------------------------------------------
-
 export type HlLevel = {
   px: string
   sz: string
@@ -55,7 +47,5 @@ export type HlL2Book = {
   levels: [HlLevel[], HlLevel[]]
   time: number
 }
-
-// -- perpDexs ---------------------------------------------------------------
 
 export type HlPerpDexs = (null | { name: string })[]

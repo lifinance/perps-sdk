@@ -51,9 +51,9 @@ import { getPositions } from './services/getPositions.js'
 export interface HyperliquidProviderOptions {
   /**
    * Base URL for the Hyperliquid REST surface. Defaults to
-   * `https://api.hyperliquid.xyz`. Override for testnet
-   * (`https://api.hyperliquid-testnet.xyz`) or for routing through a
-   * private mirror.
+   * `https://api.hyperliquid.xyz`. Override to point at a custom or
+   * third-party endpoint — e.g. a reverse proxy, a self-hosted mirror, or a
+   * rate-limit-managed gateway in front of Hyperliquid.
    */
   apiUrl?: string
 }

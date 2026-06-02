@@ -1,6 +1,3 @@
-// ---------------------------------------------------------------------------
-// Lighter WebSocket message types.
-//
 // The Lighter stream server sends JSON messages of shape:
 //   { type: 'subscribed/<channel>' | 'update/<channel>' | 'ping',
 //     channel: '<channel>/<id>',
@@ -9,7 +6,6 @@
 // Channels we subscribe to:
 //   - market_stats/all        → public prices across all markets
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
-// ---------------------------------------------------------------------------
 
 export type LtWsMessage = {
   channel?: string

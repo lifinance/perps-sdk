@@ -1,8 +1,6 @@
 import type { Address } from 'viem'
 
-// ---------------------------------------------------------------------------
 // `userNonFundingLedgerUpdates` + `userFunding` shapes.
-// ---------------------------------------------------------------------------
 
 /**
  * Hyperliquid `spotTransfer` ledger delta. Emitted for transfers of spot
@@ -85,8 +83,6 @@ export type HlLedgerUpdate = {
 }
 
 export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
-
-// -- userFunding ------------------------------------------------------------
 
 export type HlFundingDelta = {
   type: 'funding'

@@ -1,7 +1,5 @@
-// ---------------------------------------------------------------------------
 // Account / balance shapes returned by Lighter's `/api/v1/account` and
 // `/api/v1/accountLimits` endpoints.
-// ---------------------------------------------------------------------------
 
 export type LtAccountPosition = {
   market_id: number
