@@ -2,20 +2,17 @@ import {
   getMarket as coreGetMarket,
   PerpsError,
   type PerpsSDKClient,
+  type ProviderGetOrderParams,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type { Order } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
 import { mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
-export interface GetOrderParams {
-  address: Address
-  id: string
-}
+export type GetOrderParams = ProviderGetOrderParams
 
 export const getOrder = async (
   client: PerpsSDKClient,
