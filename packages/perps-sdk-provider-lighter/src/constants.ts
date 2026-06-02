@@ -56,4 +56,18 @@ export const DEFAULT_API_KEY_INDEX = 42
 
 const LIGHTER_CODE_ACCOUNT_NOT_FOUND = 21100
 
-export { LIGHTER_CODE_ACCOUNT_NOT_FOUND }
+/** Lighter body `code` for a rejected/invalid auth token ("invalid auth string"). */
+const LIGHTER_INVALID_AUTH_CODE = 20013
+
+/**
+ * Lighter body `code` values that mean success. Lighter is inconsistent per
+ * endpoint: `/api/v1/account` returns `code: 200`, most others return `code: 0`.
+ * A body with no `code` field is also success (no error channel present).
+ */
+const LIGHTER_SUCCESS_CODES = new Set([0, 200])
+
+export {
+  LIGHTER_CODE_ACCOUNT_NOT_FOUND,
+  LIGHTER_INVALID_AUTH_CODE,
+  LIGHTER_SUCCESS_CODES,
+}
