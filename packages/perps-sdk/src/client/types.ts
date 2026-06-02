@@ -17,7 +17,6 @@ import type { StorageAdapter } from '../agent/types.js'
 import type { PerpsProvider } from '../types/core.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
-// Re-export the SDK client types from createPerpsClient
 export type {
   HyperliquidConfig,
   PerpsBaseConfig,

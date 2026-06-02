@@ -12,9 +12,6 @@ import type {
   RequestInterceptor,
 } from '../types/core.js'
 
-// Re-export the shared client/provider types so existing callers that
-// import them from this module keep working. The canonical definitions
-// live in `../types/core.js`.
 export type {
   HyperliquidConfig,
   PerpsBaseConfig,

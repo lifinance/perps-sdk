@@ -74,23 +74,18 @@ export function formatOrderPrice(
 ): string {
   const maxPriceDecimals = getMaxPriceDecimals(szDecimals, market)
 
-  // Round to max allowed decimals
   let rounded = stringToFloat(price.toFixed(maxPriceDecimals))
 
-  // Integer prices are always allowed regardless of significant figures
   if (Number.isInteger(rounded)) {
     return rounded.toString()
   }
 
-  // Count significant figures (digits excluding leading zeros)
   const absStr = Math.abs(rounded).toString().replace('.', '')
   const sigFigs = absStr.replace(/^0+/, '').length
 
-  // If more than 5 significant figures, round to 5
   if (sigFigs > 5) {
     rounded = stringToFloat(rounded.toPrecision(5))
   }
 
-  // Return without trailing zeros
   return rounded.toString()
 }

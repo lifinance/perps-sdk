@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Hyperliquid `/exchange` request/response shapes + EIP-712 primary types.
-// ---------------------------------------------------------------------------
 
 export type HlExchangeRequest = {
   action: Record<string, unknown>
@@ -33,10 +31,6 @@ export type HlExchangeResponse = {
         }
       }
 }
-
-// ---------------------------------------------------------------------------
-// EIP-712 primary type literals.
-// ---------------------------------------------------------------------------
 
 export const HL_PRIMARY_TYPE_APPROVE_AGENT =
   'HyperliquidTransaction:ApproveAgent' as const

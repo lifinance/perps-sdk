@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Hyperliquid WebSocket incoming message types.
-// ---------------------------------------------------------------------------
 
 import type { HlClearinghouseState } from './account.js'
 import type { HlAllMids, HlCandle, HlL2Book } from './asset.js'

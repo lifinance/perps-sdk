@@ -1,7 +1,5 @@
-// ---------------------------------------------------------------------------
 // Activity history shapes returned by Lighter's REST API
 // (deposits, withdrawals, funding payments, liquidations, transfers).
-// ---------------------------------------------------------------------------
 
 export interface LtDepositHistoryItem {
   id: string

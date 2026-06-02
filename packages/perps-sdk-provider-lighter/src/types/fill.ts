@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Trade (fill) shapes returned by Lighter's `/api/v1/trades` endpoint.
-// ---------------------------------------------------------------------------
 
 export type LtTrade = {
   trade_id: number

@@ -1,14 +1,9 @@
-// ---------------------------------------------------------------------------
-// Lighter WASM loader
-//
-// Loads the Go-compiled `lighter-signer.wasm` and its companion `wasm_exec.js`
-// runtime. The Go runtime installs functions (SignCreateOrder, SignCancelOrder,
-// etc.) onto `globalThis` when `go.run(instance)` starts the main goroutine.
+// The Go runtime installs functions (SignCreateOrder, SignCancelOrder, etc.)
+// onto `globalThis` when `go.run(instance)` starts the main goroutine.
 //
 // The default asset URLs resolve relative to this module's emitted JS file:
 //   src/signers/../../wasm/lighter-signer.wasm     → package-root wasm/
 //   dist/{esm,cjs}/signers/../../wasm/…            → dist/wasm/ (shared)
-//
 // The build script copies the wasm assets into both dist subtrees so the same
 // relative path resolves at runtime regardless of which bundle is loaded.
 //
@@ -17,7 +12,6 @@
 // — `currentModuleUrl` always appears as the first frame, and V8 includes the
 // emitting file path regardless of module system. Callers can override both
 // asset URLs via {@link LoadLighterWasmOptions} to bypass this heuristic.
-// ---------------------------------------------------------------------------
 
 function currentModuleUrl(): string {
   const cjsFilename = (globalThis as { __filename?: string }).__filename

@@ -11,10 +11,8 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * (or never paged because the type filter excluded it) and skipped.
  *
  * The envelope is round-tripped through `cursor` as base64url JSON so callers
- * don't need to know the per-endpoint shape. The encoding mirrors what the
- * LI.FI backend has emitted to widget consumers since the multi-endpoint
- * activity fan-out landed; the SDK preserves the same shape so cursors
- * created by the old backend path remain usable post-migration.
+ * don't need to know the per-endpoint shape. The encoding mirrors the LI.FI
+ * backend's wire format so cursors created by the backend remain usable.
  */
 export interface LighterActivityCursor {
   deposits?: string

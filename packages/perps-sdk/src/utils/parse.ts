@@ -1,8 +1,4 @@
 /**
- * Robust string-to-number parsing utilities.
- */
-
-/**
  * Parse a string to a float, stripping common formatting artefacts.
  *
  * Handles:
@@ -19,7 +15,6 @@ export function stringToFloat(value: string): number {
   if (!value) {
     return 0
   }
-  // Strip whitespace, currency symbols, thousands commas, and % suffix
   const cleaned = value.trim().replace(/[$%]/g, '').replace(/,/g, '').trim()
   if (!cleaned) {
     return 0

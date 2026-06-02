@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Market / asset / orderbook metadata returned by Lighter's REST API.
-// ---------------------------------------------------------------------------
 
 export interface LtMarketConfig {
   market_margin_mode: number

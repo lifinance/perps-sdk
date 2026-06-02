@@ -6,14 +6,10 @@ import {
   type SignResult,
 } from './wasmLoader.js'
 
-// ---------------------------------------------------------------------------
-// Lighter signing context
-//
-// Every Sign* call needs the Go signer to have been initialized with the API
-// private key for a given (apiKeyIndex, accountIndex) pair via CreateClient.
-// The context is process-global inside the Go runtime; we track which keys we
-// have already initialized so we only call CreateClient once per keypair.
-// ---------------------------------------------------------------------------
+// Every Sign* call needs the Go signer initialized with the API private key
+// for a given (apiKeyIndex, accountIndex) pair via CreateClient. The context
+// is process-global inside the Go runtime; we track which keys are already
+// initialized so CreateClient runs once per keypair.
 
 export interface LighterSignerContext {
   /** Lighter-native private key (from GenerateAPIKey, NOT an Ethereum key). */
