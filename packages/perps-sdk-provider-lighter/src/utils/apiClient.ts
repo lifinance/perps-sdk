@@ -70,7 +70,7 @@ export interface LighterApiClientOptions {
  * Browser-direct by design: no LI.FI backend hop, no caching shim — caller
  * supplies the REST base URL, the path, and any query params, and we return
  * the parsed JSON body. Lighter advertises CORS headers on every public
- * endpoint (verified in ORD-330) so a vanilla `fetch` from the widget works.
+ * endpoint so a vanilla `fetch` from the widget works.
  *
  * Auth-gated endpoints (accountLimits, accountActiveOrders, deposit/history,
  * withdraw/history, positionFunding, liquidations, transfer/history) take the
