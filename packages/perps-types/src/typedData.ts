@@ -19,7 +19,6 @@ export type PerpsTypedData = {
   domain: TypedDataDomain
   types: Record<string, readonly TypedDataParameter[]>
   primaryType: PerpsPrimaryType
-  // biome-ignore lint/suspicious/noExplicitAny: typed-data message shape is provider-specific
   message: Record<string, any>
 }
 
