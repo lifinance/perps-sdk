@@ -1,9 +1,8 @@
 import type { StorageAdapter } from './types.js'
 
 /**
- * localStorage adapter for browser environments.
- * Agent keys are stored as JSON strings with the key pattern:
- * `lifi-perps-agent:{address}:{provider}`
+ * localStorage adapter for browser environments. Falls back to a no-op when
+ * `localStorage` is unavailable (e.g. SSR).
  *
  * @public
  */
@@ -12,7 +11,6 @@ export const localStorageAdapter: StorageAdapter = {
     try {
       return Promise.resolve(localStorage.getItem(key))
     } catch {
-      // localStorage not available (e.g., SSR)
       return Promise.resolve(null)
     }
   },

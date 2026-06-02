@@ -13,7 +13,6 @@ import type {
   WithdrawalParams,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import type { StorageAdapter } from '../agent/types.js'
 import type { PerpsProvider } from '../types/core.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
@@ -40,8 +39,6 @@ export interface PerpsClientOptions {
   apiKey: string
   /** Base API URL. Defaults to DEFAULT_API_URL */
   apiUrl?: string
-  /** Custom storage adapter for agent keys. Defaults to localStorage. */
-  storage?: StorageAdapter
   /**
    * Provider plugins or per-provider config. Accepts the same two shapes as
    * {@link PerpsConfig.providers}: an array of `PerpsProvider` plugins or a

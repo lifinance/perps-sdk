@@ -13,6 +13,10 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createTestAgentProvider,
+  type TestAgentProvider,
+} from '../../test/agentProvider.js'
+import {
   mockAccount,
   mockCreateOrderResponse,
   mockCreateWithdrawalResponse,
@@ -20,7 +24,6 @@ import {
   mockSubmitWithdrawalResponse,
   server,
 } from '../../test/handlers.js'
-import { createMemoryStorage } from '../agent/storage.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsProvider } from '../types/core.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
@@ -28,30 +31,58 @@ import { PerpsClient } from './PerpsClient.js'
 
 describe('PerpsClient', () => {
   let client: PerpsClient
+  let agentProvider: TestAgentProvider
   const userAddress = '0x1234567890123456789012345678901234567890'
   const provider = 'hyperliquid'
 
   beforeEach(() => {
+    agentProvider = createTestAgentProvider({ type: provider })
     client = new PerpsClient({
       integrator: 'test-app',
       apiKey: 'test-key',
-      storage: createMemoryStorage(),
+      providers: [agentProvider],
     })
   })
 
-  describe('agent management', () => {
-    it('throws when getting an agent address before one exists', async () => {
+  describe('agent-signed actions require a provisioned provider session', () => {
+    it('throws when no agent session has been created on the provider', async () => {
+      // PLACE_ORDER is AGENT-signed; with no agent provisioned, core's
+      // delegation to the provider's resolveSignerAddress must throw.
       await expect(
-        client.getAgentAddress(userAddress, provider)
+        client.placeOrder({
+          address: userAddress,
+          provider,
+          symbol: 'BTC',
+          side: 'BUY' as any,
+          type: 'MARKET' as any,
+          size: '0.1',
+          price: '95000.00',
+        })
       ).rejects.toThrow()
     })
 
-    it('returns the agent address once an agent has been created', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
-
-      const agentAddress = await client.getAgentAddress(userAddress, provider)
-      expect(agentAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
-      expect(await client.hasAgent(userAddress, provider)).toBe(true)
+    it('throws when the resolved provider owns no agent session', async () => {
+      const noAgentClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProvider,
+        ],
+      })
+      await expect(
+        noAgentClient.placeOrder({
+          address: userAddress,
+          provider,
+          symbol: 'BTC',
+          side: 'BUY' as any,
+          type: 'MARKET' as any,
+          size: '0.1',
+          price: '95000.00',
+        })
+      ).rejects.toThrow(/does not implement resolveSignerAddress/)
     })
   })
 
@@ -62,20 +93,9 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('removeAgent', () => {
-    it('removes a previously created agent', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
-      expect(await client.hasAgent(userAddress, provider)).toBe(true)
-
-      await client.removeAgent(userAddress, provider)
-
-      expect(await client.hasAgent(userAddress, provider)).toBe(false)
-    })
-  })
-
   describe('placeOrder', () => {
     it('should place order in USER_AGENT mode', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       const result = await client.placeOrder({
         address: userAddress,
@@ -108,7 +128,6 @@ describe('PerpsClient', () => {
       const withdrawClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        storage: createMemoryStorage(),
       })
       withdrawClient.setSigner(signer)
 
@@ -156,7 +175,7 @@ describe('PerpsClient', () => {
 
   describe('cancelOrders', () => {
     it('should cancel orders in USER_AGENT mode', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       const result = await client.cancelOrders({
         address: userAddress,
@@ -170,7 +189,7 @@ describe('PerpsClient', () => {
 
   describe('buildProviderSetup', () => {
     it('auto-injects the agent signerAddress for agent-signed setup', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       const result = await client.buildProviderSetup({
         provider,
@@ -185,7 +204,7 @@ describe('PerpsClient', () => {
     const BASE_URL = DEFAULT_API_URL
 
     it('propagates InvalidNonce to the caller and submits exactly once', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       let createCallCount = 0
       let executeCallCount = 0
@@ -223,7 +242,7 @@ describe('PerpsClient', () => {
     })
 
     it('propagates non-InvalidNonce errors and submits exactly once', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       let executeCallCount = 0
       server.use(
@@ -266,7 +285,7 @@ describe('PerpsClient', () => {
     }
 
     it('submits executeAction exactly once on a 503 — outcome-unknown writes must not retry', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       let executeCallCount = 0
       server.use(
@@ -296,7 +315,7 @@ describe('PerpsClient', () => {
     })
 
     it('submits executeAction exactly once on a dropped connection (no retry-network)', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       let executeCallCount = 0
       server.use(
@@ -330,21 +349,21 @@ describe('PerpsClient', () => {
     const BASE_URL = DEFAULT_API_URL
 
     // Account state is read direct from the provider plugin, so register a
-    // stub whose getAccount yields the abstraction mode each test needs.
+    // stub whose getAccount yields the abstraction mode each test needs. The
+    // stub also owns an agent session (resolveSignerAddress + EIP712
+    // signActions) so core can delegate the agent-signed ACCOUNT_MODE arm.
     const stubGetAccount = vi.fn()
     beforeEach(() => {
       stubGetAccount.mockReset()
+      agentProvider = createTestAgentProvider({
+        type: 'hyperliquid',
+        getAccount: stubGetAccount,
+        projectConfig: vi.fn(() => []),
+      } as unknown as Partial<PerpsProvider> & { type: string })
       client = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        storage: createMemoryStorage(),
-        providers: [
-          {
-            type: 'hyperliquid',
-            getAccount: stubGetAccount,
-            projectConfig: vi.fn(() => []),
-          } as unknown as PerpsProvider,
-        ],
+        providers: [agentProvider],
       })
     })
 
@@ -453,7 +472,7 @@ describe('PerpsClient', () => {
     }
 
     it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionMode is null', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
       mockAbstractionStatus(null)
 
       let observedAccountModeRequest: CreateActionRequest | undefined
@@ -509,7 +528,7 @@ describe('PerpsClient', () => {
     })
 
     it('returns fallbackUserProviderSetup (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
       mockAbstractionStatus('dexAbstraction')
 
       const accountModeCreateRequests: CreateActionRequest[] = []
@@ -572,7 +591,7 @@ describe('PerpsClient', () => {
     })
 
     it('short-circuits to a no-op when abstractionMode already equals the requested mode', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
       mockAbstractionStatus('unifiedAccount')
 
       const counts = setupActionHandlers()
@@ -593,7 +612,7 @@ describe('PerpsClient', () => {
     })
 
     it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user setup actions', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
       mockAbstractionStatus(null)
 
       let accountModeCreateCount = 0
@@ -665,7 +684,7 @@ describe('PerpsClient', () => {
     })
 
     it('propagates account read errors rather than guessing the signer', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       stubGetAccount.mockRejectedValue(
         new PerpsError(PerpsErrorCode.ProviderError, 'upstream down')
@@ -684,7 +703,7 @@ describe('PerpsClient', () => {
 
   describe('execute(ACCOUNT_TYPE)', () => {
     it('throws a clear error when the provider does not declare ACCOUNT_TYPE (e.g. Hyperliquid)', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       await expect(
         client.execute({
@@ -699,7 +718,7 @@ describe('PerpsClient', () => {
 
   describe('buildProviderSetupInputs filtering (via buildProviderSetup)', () => {
     it('omits ACCOUNT_MODE from bulk-staged provider setup action inputs (requires explicit `mode`)', async () => {
-      await client.client.agentManager.getOrCreateAgent(userAddress, provider)
+      await agentProvider.createAgent(userAddress)
 
       const observedActions: ActionType[] = []
       server.use(
@@ -746,7 +765,6 @@ describe('PerpsClient', () => {
       const stubbedClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        storage: createMemoryStorage(),
         providers: [stub],
       })
 
@@ -774,8 +792,12 @@ describe('PerpsClient', () => {
     })
 
     it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
       await expect(
-        client.getAccount({ provider, address: userAddress })
+        noProviderClient.getAccount({ provider, address: userAddress })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
     })
   })
@@ -793,7 +815,6 @@ describe('PerpsClient', () => {
       stubbedClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        storage: createMemoryStorage(),
         providers: [
           {
             type: 'hyperliquid',

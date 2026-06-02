@@ -1,7 +1,5 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Account, WalletClient } from 'viem'
-import { AgentManager } from '../agent/AgentManager.js'
-import type { StorageAdapter } from '../agent/types.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { RetryConfig } from '../transport/retryPolicy.js'
 import type {
@@ -40,7 +38,6 @@ export interface PerpsConfig {
   apiKey: string
   apiUrl?: string
   disableVersionCheck?: boolean
-  storage?: StorageAdapter
   requestInterceptor?: RequestInterceptor
   /**
    * Provider plugins or per-provider config. Two shapes are accepted:
@@ -122,14 +119,9 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     fetch: options.fetch,
   }
 
-  const agentManager = new AgentManager(options.storage)
-
   return {
     get config() {
       return config
-    },
-    get agentManager() {
-      return agentManager
     },
     get signer() {
       return options.signer

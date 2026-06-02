@@ -18,12 +18,14 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetPricesParams,
   type SDKRequestOptions,
+  type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
   type AccountConfigSetting,
   type AccountResponse,
   type AccountSummary,
+  type ActionStep,
   type ActivitiesResponse,
   type FillsResponse,
   type Market,
@@ -37,7 +39,10 @@ import {
   type PositionsResponse,
   type PricesResponse,
   type ProviderAction,
+  type SignedActionStep,
+  type SigningMethod,
 } from '@lifi/perps-types'
+import type { Address, Hex } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
 import { summarizeHyperliquidAccount } from './accountSummary.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
@@ -47,6 +52,11 @@ import { getFills } from './services/getFills.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
+import {
+  type HyperliquidAgent,
+  HyperliquidAgentStore,
+} from './signers/HyperliquidAgentStore.js'
+import { hyperliquidSignActions } from './signers/signActions.js'
 
 /**
  * Options for {@link hyperliquidProvider}.
@@ -61,6 +71,31 @@ export interface HyperliquidProviderOptions {
    * rate-limit-managed gateway in front of Hyperliquid.
    */
   apiUrl?: string
+  /**
+   * Storage adapter for the user's per-address Hyperliquid agent keypair.
+   * Defaults to browser `localStorage`. Pass a custom adapter for SSR /
+   * non-browser hosts or encrypted storage.
+   */
+  storage?: StorageAdapter
+}
+
+/**
+ * Hyperliquid provider plugin extended with agent-keypair lifecycle methods.
+ * Hyperliquid signs trading actions with a per-user agent wallet the user
+ * approves via `APPROVE_AGENT`; the plugin owns that keypair's generation,
+ * persistence, and revocation. The base {@link PerpsProvider} contract stays
+ * provider-agnostic — this extension is opt-in for callers that explicitly
+ * type against it (e.g. to surface a "revoke agent" affordance).
+ */
+export interface HyperliquidPerpsProvider extends PerpsProvider {
+  /** Resolve the agent wallet address, throwing if none has been created. */
+  getAgentAddress(address: Address): Promise<Address>
+  /** Whether an agent keypair exists for the user address. */
+  hasAgent(address: Address): Promise<boolean>
+  /** Remove the user's agent keypair (revoke local authorization). */
+  removeAgent(address: Address): Promise<void>
+  /** Import an existing agent keypair for the user address. */
+  importAgent(address: Address, privateKey: Hex): Promise<HyperliquidAgent>
 }
 
 /**
@@ -70,6 +105,10 @@ export interface HyperliquidProviderOptions {
  * metadata and public/shared data come from the LI.FI backend (Valkey-cached).
  * Pass to `createPerpsClient({ providers: [hyperliquidProvider()] })` and look
  * up via `client.getProvider('hyperliquid')`.
+ *
+ * Write actions are EIP-712 typed data signed by the user's Hyperliquid agent
+ * keypair; the plugin owns that keypair (generation, storage, revocation) and
+ * dispatches the agent-signed arm via `signActions`.
  *
  * @example
  * ```ts
@@ -82,11 +121,42 @@ export interface HyperliquidProviderOptions {
  */
 export function hyperliquidProvider(
   options: HyperliquidProviderOptions = {}
-): PerpsProvider {
+): HyperliquidPerpsProvider {
   const apiUrl = options.apiUrl ?? DEFAULT_HYPERLIQUID_API_URL
+  const agentStore = new HyperliquidAgentStore(options.storage)
 
   return {
     type: PROVIDER_KEY,
+
+    getAgentAddress: async (address: Address): Promise<Address> =>
+      (await agentStore.get(address)).address,
+
+    hasAgent: (address: Address): Promise<boolean> => agentStore.has(address),
+
+    removeAgent: (address: Address): Promise<void> =>
+      agentStore.remove(address),
+
+    importAgent: (
+      address: Address,
+      privateKey: Hex
+    ): Promise<HyperliquidAgent> => agentStore.import(address, privateKey),
+
+    resolveSignerAddress: async (
+      address: Address,
+      opts?: { create?: boolean }
+    ): Promise<Address> => {
+      const agent = opts?.create
+        ? await agentStore.getOrCreate(address)
+        : await agentStore.get(address)
+      return agent.address
+    },
+
+    signActions: (
+      method: SigningMethod,
+      steps: ActionStep[],
+      address: Address
+    ): Promise<SignedActionStep[]> =>
+      hyperliquidSignActions(agentStore, method, steps, address),
 
     getAccount: (
       client: PerpsSDKClient,
