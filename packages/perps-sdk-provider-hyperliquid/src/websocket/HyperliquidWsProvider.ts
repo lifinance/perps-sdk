@@ -43,6 +43,8 @@ import {
  * passes in (the provider's own key and `'spot'` are excluded — they
  * aren't sub-DEX subscriptions on the HL wire). Higher-order shape mirrors
  * `lighterWsProvider(options)` so the two factories register identically.
+ *
+ * @public
  */
 export const hyperliquidWsProvider =
   (): WsProviderFactory =>
@@ -51,6 +53,13 @@ export const hyperliquidWsProvider =
     return new HyperliquidWsProvider(wsUrl, provider, subDexes)
   }
 
+/**
+ * Hyperliquid realtime {@link WsProvider}: multiplexes prices/positions/orders
+ * subscriptions across sub-DEX `allMids` / `clearinghouseState` WS streams over
+ * a single {@link ReconnectingWebSocket}. Construct via {@link hyperliquidWsProvider}.
+ *
+ * @public
+ */
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()

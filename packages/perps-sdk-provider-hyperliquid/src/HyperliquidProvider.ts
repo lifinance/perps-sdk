@@ -48,6 +48,11 @@ import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
 
+/**
+ * Options for {@link hyperliquidProvider}.
+ *
+ * @public
+ */
 export interface HyperliquidProviderOptions {
   /**
    * Base URL for the Hyperliquid REST surface. Defaults to
@@ -65,6 +70,15 @@ export interface HyperliquidProviderOptions {
  * metadata and public/shared data come from the LI.FI backend (Valkey-cached).
  * Pass to `createPerpsClient({ providers: [hyperliquidProvider()] })` and look
  * up via `client.getProvider('hyperliquid')`.
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   providers: [hyperliquidProvider()],
+ * })
+ * ```
+ * @public
  */
 export function hyperliquidProvider(
   options: HyperliquidProviderOptions = {}

@@ -19,6 +19,7 @@ import { marketDisplayFromCoin } from './deriveMarket.js'
  * `queriedAddress` matching the delta's `user` (OUT) or `destination` (IN).
  * Returns null for unsupported delta types and for same-user `sendAsset`
  * dex moves (where `user === destination === queriedAddress`).
+ * @public
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
@@ -147,6 +148,7 @@ export const mapLedgerEntry = (
   }
 }
 
+/** @public */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
   providerKey: string

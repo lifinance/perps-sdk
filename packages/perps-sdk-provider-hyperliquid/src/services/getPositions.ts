@@ -10,6 +10,11 @@ import type { HlClearinghouseState } from '../types/index.js'
 import { mapPosition, perpsDexNames, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
+/**
+ * Parameters for {@link getPositions}.
+ *
+ * @public
+ */
 export interface GetPositionsParams {
   address: Address
   /** Filter to a single opaque `Market.id` (e.g. `'BTC'`, `'xyz:PURR'`). */
@@ -23,6 +28,8 @@ export interface GetPositionsParams {
  * normalised into `PositionsResponse`. Zero-size entries are dropped. The
  * backend's enriched asset list supplies the sub-dex fan-out and display
  * fields; only `clearinghouseState` is read direct from Hyperliquid.
+ * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @public
  */
 export const getPositions = async (
   client: PerpsSDKClient,

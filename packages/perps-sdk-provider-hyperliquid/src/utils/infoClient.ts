@@ -9,6 +9,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 
+/** @internal */
 export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
   maxAttempts: 3,
@@ -30,13 +31,18 @@ export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   },
 }
 
+/** @public */
 export interface InfoRequestOptions {
   signal?: AbortSignal
   policy?: ResolvedRetryPolicy
   fetchImpl?: typeof fetch
 }
 
-/** Resolve the client's retry/fetch config into options for {@link infoRequest}. */
+/**
+ * Resolve the client's retry/fetch config into options for {@link infoRequest}.
+ *
+ * @public
+ */
 export const hlInfoOptions = (
   client: PerpsSDKClient,
   options?: SDKRequestOptions
@@ -59,6 +65,7 @@ export const hlInfoOptions = (
  * surfacing.
  *
  * Non-2xx responses raise a {@link PerpsError} with the Hyperliquid provider key.
+ * @public
  */
 export async function infoRequest<T>(
   apiUrl: string,

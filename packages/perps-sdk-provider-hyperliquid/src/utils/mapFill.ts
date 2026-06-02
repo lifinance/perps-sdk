@@ -13,6 +13,7 @@ import { marketDisplayFromCoin } from './deriveMarket.js'
 
 export { classifyFillFromPosition }
 
+/** @public */
 export const mapFill = (fill: HlUserFill): Fill => ({
   id: String(fill.tid),
   orderId: String(fill.oid),

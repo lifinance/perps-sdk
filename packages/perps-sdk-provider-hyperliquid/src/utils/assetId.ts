@@ -1,4 +1,8 @@
-/** Spot asset IDs use the @pairIndex format (e.g. "@230"). */
+/**
+ * Spot asset IDs use the @pairIndex format (e.g. "@230").
+ *
+ * @public
+ */
 export const assetIsSpot = (assetId: string): boolean => assetId.startsWith('@')
 
 /**
@@ -6,6 +10,7 @@ export const assetIsSpot = (assetId: string): boolean => assetId.startsWith('@')
  *
  * Main provider (provider = ''): assetId = indexInProvider
  * HIP-3 providers (provider = 'xyz'): assetId = 100_000 + perpDexIndex * 10_000 + indexInProvider
+ * @public
  */
 export const calculateAssetId = (
   providerIndex: number,
@@ -19,6 +24,7 @@ export const calculateAssetId = (
 
 /**
  * Get the provider index from the given list of provider names.
+ * @public
  */
 export const getProviderIndex = (
   provider: string,

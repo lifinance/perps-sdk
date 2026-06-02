@@ -1,5 +1,6 @@
 // Order shapes returned by Hyperliquid `/info`.
 
+/** @public */
 export type HlFrontendOpenOrder = {
   oid: number
   coin: string
@@ -19,8 +20,10 @@ export type HlFrontendOpenOrder = {
   cloid: string | null
 }
 
+/** @public */
 export type HlFrontendOpenOrders = HlFrontendOpenOrder[]
 
+/** @public */
 export type HlOrderDetail = {
   order: {
     oid: number
@@ -41,11 +44,13 @@ export type HlOrderDetail = {
   statusTimestamp: number
 }
 
+/** @public */
 export type HlOrderStatusFound = {
   status: 'order'
   order: HlOrderDetail
 }
 
+/** @public */
 export type HlOrderStatusResponse =
   | HlOrderStatusFound
   | { status: 'unknownOid' }

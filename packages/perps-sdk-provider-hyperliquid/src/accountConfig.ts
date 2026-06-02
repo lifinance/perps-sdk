@@ -73,6 +73,8 @@ function projectHyperliquidDescriptor(
  * Project the union of Hyperliquid setup + options descriptors against the
  * typed `HyperliquidAccountConfig`. Produces exactly one
  * `AccountConfigSetting` per descriptor, in `setup`-then-`options` order.
+ *
+ * @public
  */
 export function projectHyperliquidConfigSettings(
   config: HyperliquidAccountConfig,

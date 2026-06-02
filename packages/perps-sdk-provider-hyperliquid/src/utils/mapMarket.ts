@@ -4,6 +4,7 @@ import { deriveMarket, marketDisplayFromCoin } from './deriveMarket.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
+/** @public */
 export const mapMarket = (
   universe: HlUniverseItem,
   assetCtx: HlAssetCtx

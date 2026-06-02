@@ -26,6 +26,7 @@ function getMaxDecimals(market?: string): number {
  * @param szDecimals - The asset's szDecimals (from market meta)
  * @param market - Optional market type (e.g. 'spot'). Defaults to perps rules.
  * @returns Maximum allowed price decimals
+ * @public
  */
 export function getMaxPriceDecimals(
   szDecimals: number,
@@ -44,6 +45,7 @@ export function getMaxPriceDecimals(
  * @param size - The size value to format
  * @param szDecimals - Number of decimal places allowed for this asset (from meta)
  * @returns Size as a string with correct precision, no trailing zeros
+ * @public
  */
 export function formatOrderSize(size: number, szDecimals: number): string {
   // Truncate (don't round up) to avoid exceeding available balance
@@ -66,6 +68,7 @@ export function formatOrderSize(size: number, szDecimals: number): string {
  * @param szDecimals - The asset's szDecimals (affects max price decimals)
  * @param market - Optional market type (e.g. 'spot'). Defaults to perps rules.
  * @returns Price as a string with correct precision, no trailing zeros
+ * @public
  */
 export function formatOrderPrice(
   price: number,

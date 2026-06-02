@@ -18,6 +18,7 @@ const QUOTE_SYMBOL = 'USDC'
  *
  * Must stay in lockstep with `lifi-perps-backend`'s `toProviderMarketId` /
  * `buildAssetMarketLookup` — they define the same category taxonomy on the wire.
+ * @public
  */
 export const deriveMarket = (marketId: string): string => {
   if (marketId.startsWith('@')) {
@@ -41,6 +42,7 @@ const coinAsset = (symbol: string): Asset => ({
  * Build a {@link MarketDisplay} for a Hyperliquid market id, synthesising the
  * base/quote token {@link Asset}s from the venue coin string (HL prices every
  * market in USDC). Embedded on `Position`/`Fill`/`Order`.
+ * @public
  */
 export const marketDisplayFromCoin = (coin: string): MarketDisplay => ({
   providerId: PROVIDER_KEY,
@@ -54,6 +56,7 @@ export const marketDisplayFromCoin = (coin: string): MarketDisplay => ({
  * Distinct wire `dex` names to fan `clearinghouseState` / `frontendOpenOrders`
  * reads across, derived from the backend market list. Spot is excluded (it has
  * no clearinghouseState); the main perp dex maps to the empty string.
+ * @public
  */
 export const perpsDexNames = (markets: Market[]): string[] => {
   const names = new Set<string>()

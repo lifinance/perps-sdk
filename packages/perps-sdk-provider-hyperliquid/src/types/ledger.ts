@@ -7,6 +7,7 @@ import type { Address } from 'viem'
  * tokens between Hyperliquid accounts. `user` is the sender, `destination`
  * the recipient; direction is derived at the call site from the queried
  * address.
+ * @public
  */
 export type HlSpotTransferDelta = {
   type: 'spotTransfer'
@@ -32,6 +33,7 @@ export type HlSpotTransferDelta = {
  * - `token` is a wire token identifier (e.g. `"USDC"` or `"TOKEN:0x..."`).
  * - `nonce` is the wire nonce (ms timestamp); always present on `send`
  *   deltas, unlike `spotTransfer` where it may be null.
+ * @public
  */
 export type HlSendAssetDelta = {
   type: 'send'
@@ -48,6 +50,7 @@ export type HlSendAssetDelta = {
   feeToken: string
 }
 
+/** @public */
 export type HlLedgerDelta =
   | HlSpotTransferDelta
   | HlSendAssetDelta
@@ -62,6 +65,7 @@ export type HlLedgerDelta =
  * `type` discriminant alone because the catch-all arm of `HlLedgerDelta` has
  * `type: string` (a supertype of the literal `'spotTransfer'`). Use this at
  * call sites that need the strongly-typed shape.
+ * @public
  */
 export const isSpotTransferDelta = (
   delta: HlLedgerDelta
@@ -71,19 +75,23 @@ export const isSpotTransferDelta = (
  * Type guard for `HlSendAssetDelta`. The wire `type` literal is `'send'`;
  * see `HlSendAssetDelta` for the naming-vs-wire-format rationale. Same
  * catch-all-arm caveat as `isSpotTransferDelta`.
+ * @public
  */
 export const isSendAssetDelta = (
   delta: HlLedgerDelta
 ): delta is HlSendAssetDelta => delta.type === 'send'
 
+/** @public */
 export type HlLedgerUpdate = {
   time: number
   hash: string
   delta: HlLedgerDelta
 }
 
+/** @public */
 export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
 
+/** @public */
 export type HlFundingDelta = {
   type: 'funding'
   coin: string
@@ -92,10 +100,12 @@ export type HlFundingDelta = {
   fundingRate: string
 }
 
+/** @public */
 export type HlFundingUpdate = {
   time: number
   hash: string
   delta: HlFundingDelta
 }
 
+/** @public */
 export type HlUserFunding = HlFundingUpdate[]
