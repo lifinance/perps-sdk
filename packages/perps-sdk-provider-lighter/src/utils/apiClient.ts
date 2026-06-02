@@ -4,18 +4,12 @@ import {
   type ResolvedRetryPolicy,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import {
+  LIGHTER_INVALID_AUTH_CODE,
+  LIGHTER_SUCCESS_CODES,
+} from '../constants.js'
 
 export type ApiParams = Record<string, string | number | boolean>
-
-/** Lighter body `code` for a rejected/invalid auth token ("invalid auth string"). */
-const LIGHTER_INVALID_AUTH_CODE = 20013
-
-/**
- * Lighter body `code` values that mean success. Lighter is inconsistent per
- * endpoint: `/api/v1/account` returns `code: 200`, most others return `code: 0`.
- * A body with no `code` field is also success (no error channel present).
- */
-const LIGHTER_SUCCESS_CODES = new Set([0, 200])
 
 /**
  * Lighter signals errors on two channels: a non-2xx HTTP status, or an HTTP 200
