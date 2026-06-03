@@ -1,5 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
+import type { PerpsSDKClient } from '@lifi/perps-sdk'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LighterWsProvider } from './LighterWsProvider.js'
+
+const getMarketsMock = vi.fn()
+
+vi.mock('@lifi/perps-sdk', async (importActual) => {
+  const actual = await importActual<typeof import('@lifi/perps-sdk')>()
+  return {
+    ...actual,
+    getMarkets: (...args: unknown[]) => getMarketsMock(...args),
+  }
+})
 
 // Minimal valid Lighter raw payloads matching the perps-types shapes.
 const RAW_ORDER = {
@@ -319,6 +330,118 @@ describe('LighterWsProvider', () => {
 
       expect(listener).not.toHaveBeenCalled()
       p.close()
+    })
+  })
+
+  describe('display-symbol fetch coupling (ORD-482)', () => {
+    const fakeClient = {} as PerpsSDKClient
+
+    beforeEach(() => {
+      getMarketsMock.mockReset()
+    })
+
+    /** No displaySymbolMap → ensureDisplaySymbols would hit coreGetMarkets. */
+    const makeFetchingProvider = () =>
+      new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, fakeClient)
+
+    it('subscribes to prices even when the /markets display-symbol fetch rejects', async () => {
+      getMarketsMock.mockRejectedValue(new Error('markets route 500'))
+      const provider = makeFetchingProvider()
+      // Stub the socket so subscribe doesn't await a real connection.
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      const listener = vi.fn()
+      const unsubscribe = await provider.subscribe(
+        { channel: 'prices', dex: 'lighter' },
+        listener
+      )
+
+      expect(typeof unsubscribe).toBe('function')
+      expect(getMarketsMock).not.toHaveBeenCalled()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
+      )
+
+      // Price ticks (keyed by String(market_id)) reach the listener.
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          market_stats: { '0': { market_id: 0, last_trade_price: '50000' } },
+        })
+      )
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toEqual({
+        channel: 'prices',
+        data: { '0': '50000' },
+      })
+      provider.close()
+    })
+
+    it('subscribes to orderbook even when the /markets display-symbol fetch rejects', async () => {
+      getMarketsMock.mockRejectedValue(new Error('markets route 500'))
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      const unsubscribe = await provider.subscribe(
+        { channel: 'orderbook', dex: 'lighter', marketId: '5' },
+        vi.fn()
+      )
+
+      expect(typeof unsubscribe).toBe('function')
+      expect(getMarketsMock).not.toHaveBeenCalled()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'order_book/5' })
+      )
+      provider.close()
+    })
+
+    it('still resolves display symbols for auth channels (positions)', async () => {
+      getMarketsMock.mockResolvedValue({
+        markets: [
+          {
+            id: '0',
+            categoryId: 'lighter',
+            baseAsset: { displaySymbol: 'BTC' },
+          },
+        ],
+      })
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { authProvider: async () => 'token' },
+        fakeClient
+      )
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.send = vi.fn()
+      // Skip the live /api/v1/account resolution.
+      ;(provider as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      vi.spyOn(provider as any, 'resolveAccountIndex').mockResolvedValue(
+        ACCOUNT_IDX
+      )
+
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        listener
+      )
+
+      expect(getMarketsMock).toHaveBeenCalledOnce()
+      expect((provider as any).marketIdToDisplaySymbol.get(0)).toBe('BTC')
+
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': RAW_POSITION },
+        })
+      )
+      const event = listener.mock.calls[0][0]
+      expect(event.data[0].market.baseAsset.displaySymbol).toBe('BTC')
+      provider.close()
     })
   })
 })
