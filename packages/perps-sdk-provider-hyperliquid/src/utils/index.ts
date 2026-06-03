@@ -34,4 +34,3 @@ export {
   getMaxPriceDecimals,
 } from './orderFormatting.js'
 export { requireMarket } from './requireMarket.js'
-export { marketToDisplay, resolveEntityMarket } from './resolveEntityMarket.js'

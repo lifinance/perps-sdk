@@ -1,3 +1,4 @@
+import type { MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
   FillStatus,
@@ -8,6 +9,26 @@ import {
 import { describe, expect, it } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './mapFill.js'
+
+const ETH_MARKET: MarketDisplay = {
+  providerId: 'hyperliquid',
+  id: 'ETH',
+  categoryId: 'hyperliquid',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'ETH',
+    displaySymbol: 'ETH',
+    logoURI: 'https://app.hyperliquid.xyz/coins/ETH.svg',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+  },
+}
+
+const map = (fill: HlUserFill) => mapFill(fill, ETH_MARKET)
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   tid: 12345,
@@ -95,40 +116,38 @@ describe('classifyFillFromPosition', () => {
 
 describe('mapFill (Hyperliquid)', () => {
   it('stringifies the numeric tid into Fill.id', () => {
-    const fill = mapFill(baseFill({ tid: 12345 }))
+    const fill = map(baseFill({ tid: 12345 }))
     expect(fill.id).toBe('12345')
     expect(typeof fill.id).toBe('string')
   })
 
   it('maps side "B" to OrderSide.BUY', () => {
-    expect(mapFill(baseFill({ side: 'B' })).side).toBe(OrderSide.BUY)
+    expect(map(baseFill({ side: 'B' })).side).toBe(OrderSide.BUY)
   })
 
   it('maps any non-"B" side (e.g. "A") to OrderSide.SELL', () => {
-    expect(mapFill(baseFill({ side: 'A' })).side).toBe(OrderSide.SELL)
+    expect(map(baseFill({ side: 'A' })).side).toBe(OrderSide.SELL)
   })
 
   it('maps a dir containing "Limit" to OrderType.LIMIT', () => {
-    expect(mapFill(baseFill({ dir: 'Open Long Limit' })).type).toBe(
-      OrderType.LIMIT
-    )
+    expect(map(baseFill({ dir: 'Open Long Limit' })).type).toBe(OrderType.LIMIT)
   })
 
   it('maps a dir without "Limit" to OrderType.MARKET', () => {
-    expect(mapFill(baseFill({ dir: 'Open Long' })).type).toBe(OrderType.MARKET)
+    expect(map(baseFill({ dir: 'Open Long' })).type).toBe(OrderType.MARKET)
   })
 
   it('treats undefined dir as a market fill', () => {
     // `dir` is typed as required, but the live API has been observed to omit
     // it for some entries; the mapper uses optional chaining to fall back to
     // MARKET, which we lock in here.
-    expect(
-      mapFill(baseFill({ dir: undefined as unknown as string })).type
-    ).toBe(OrderType.MARKET)
+    expect(map(baseFill({ dir: undefined as unknown as string })).type).toBe(
+      OrderType.MARKET
+    )
   })
 
   it('preserves size, price, and fee as raw strings', () => {
-    const fill = mapFill(baseFill({ sz: '1.5', px: '2000.25', fee: '0.123' }))
+    const fill = map(baseFill({ sz: '1.5', px: '2000.25', fee: '0.123' }))
     expect(fill.size).toBe('1.5')
     expect(fill.filledSize).toBe('1.5')
     expect(fill.price).toBe('2000.25')
@@ -136,65 +155,29 @@ describe('mapFill (Hyperliquid)', () => {
   })
 
   it('always reports status FILLED', () => {
-    expect(mapFill(baseFill()).status).toBe(FillStatus.FILLED)
+    expect(map(baseFill()).status).toBe(FillStatus.FILLED)
   })
 
   it('normalises closedPnl "0" to null', () => {
-    expect(mapFill(baseFill({ closedPnl: '0' })).realizedPnl).toBeNull()
+    expect(map(baseFill({ closedPnl: '0' })).realizedPnl).toBeNull()
   })
 
   it('passes through a non-zero closedPnl as-is', () => {
-    expect(mapFill(baseFill({ closedPnl: '12.34' })).realizedPnl).toBe('12.34')
+    expect(map(baseFill({ closedPnl: '12.34' })).realizedPnl).toBe('12.34')
   })
 
   it('preserves startPosition for downstream classification', () => {
-    expect(mapFill(baseFill({ startPosition: '0.5' })).startPosition).toBe(
-      '0.5'
-    )
+    expect(map(baseFill({ startPosition: '0.5' })).startPosition).toBe('0.5')
   })
 
   it('renders the time epoch (ms) as an ISO timestamp', () => {
-    const fill = mapFill(baseFill({ time: 1_700_000_000_000 }))
+    const fill = map(baseFill({ time: 1_700_000_000_000 }))
     expect(fill.createdAt).toBe(new Date(1_700_000_000_000).toISOString())
   })
 
-  it('builds the market display from the coin field', () => {
-    const fill = mapFill(baseFill({ coin: 'ETH' }))
-    expect(fill.market).toEqual({
-      providerId: 'hyperliquid',
-      id: 'ETH',
-      categoryId: 'hyperliquid',
-      baseAsset: {
-        providerId: 'hyperliquid',
-        id: 'ETH',
-        displaySymbol: 'ETH',
-        logoURI: 'https://app.hyperliquid.xyz/coins/ETH.svg',
-      },
-      quoteAsset: {
-        providerId: 'hyperliquid',
-        id: 'USDC',
-        displaySymbol: 'USDC',
-        logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
-      },
-    })
-  })
-
-  describe('market.categoryId', () => {
-    it('maps a bare coin (main perp dex) to category "hyperliquid"', () => {
-      expect(mapFill(baseFill({ coin: 'BTC' })).market.categoryId).toBe(
-        'hyperliquid'
-      )
-    })
-
-    it('maps a sub-dex prefixed coin (e.g. "xyz:PURR") to the sub-dex name', () => {
-      expect(mapFill(baseFill({ coin: 'xyz:PURR' })).market.categoryId).toBe(
-        'xyz'
-      )
-    })
-
-    it('maps an @-prefixed spot coin to market "spot"', () => {
-      expect(mapFill(baseFill({ coin: '@142' })).market.categoryId).toBe('spot')
-    })
+  it('returns the resolved market verbatim', () => {
+    const fill = map(baseFill())
+    expect(fill.market).toBe(ETH_MARKET)
   })
 
   describe('liquidity role from crossed flag', () => {
@@ -202,35 +185,35 @@ describe('mapFill (Hyperliquid)', () => {
       [true, LiquidityRole.TAKER],
       [false, LiquidityRole.MAKER],
     ])('maps crossed: %s to liquidity: %s', (crossed, expected) => {
-      expect(mapFill(baseFill({ crossed })).liquidity).toBe(expected)
+      expect(map(baseFill({ crossed })).liquidity).toBe(expected)
     })
   })
 
   describe('orderId from oid', () => {
     it('stringifies the numeric oid into Fill.orderId', () => {
-      const fill = mapFill(baseFill({ oid: 12345 }))
+      const fill = map(baseFill({ oid: 12345 }))
       expect(fill.orderId).toBe('12345')
       expect(typeof fill.orderId).toBe('string')
     })
   })
 
   it('never sets explorerLink — Hyperliquid fills are off-chain', () => {
-    expect(mapFill(baseFill()).explorerLink).toBeUndefined()
+    expect(map(baseFill()).explorerLink).toBeUndefined()
   })
 
   describe('classification', () => {
     it('routes spot fills (coin starts with @) on the buy side to SPOT_BUY', () => {
-      const fill = mapFill(baseFill({ coin: '@230', side: 'B' }))
+      const fill = map(baseFill({ coin: '@230', side: 'B' }))
       expect(fill.classification).toBe(FillClassification.SPOT_BUY)
     })
 
     it('routes spot fills on the sell side to SPOT_SELL', () => {
-      const fill = mapFill(baseFill({ coin: '@230', side: 'A' }))
+      const fill = map(baseFill({ coin: '@230', side: 'A' }))
       expect(fill.classification).toBe(FillClassification.SPOT_SELL)
     })
 
     it('delegates perp fills to classifyFillFromPosition', () => {
-      const fill = mapFill(
+      const fill = map(
         baseFill({ coin: 'ETH', side: 'B', sz: '1', startPosition: '0' })
       )
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)

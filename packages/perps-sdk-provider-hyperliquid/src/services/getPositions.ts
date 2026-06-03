@@ -7,11 +7,7 @@ import type { PositionsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlClearinghouseState } from '../types/index.js'
-import {
-  mapPosition,
-  perpsDexNames,
-  resolveEntityMarket,
-} from '../utils/index.js'
+import { mapPosition, perpsDexNames, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -63,13 +59,11 @@ export const getPositions = async (
     )
   )
 
-  let positions = stateResults
-    .flatMap((state) =>
-      state.assetPositions
-        .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
-        .map((ap) => mapPosition(ap))
-    )
-    .map((pos) => resolveEntityMarket(pos, byMarketId))
+  let positions = stateResults.flatMap((state) =>
+    state.assetPositions
+      .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
+      .map((ap) => mapPosition(ap, requireMarket(byMarketId, ap.position.coin)))
+  )
 
   if (params.marketId !== undefined) {
     positions = positions.filter((p) => p.market.id === params.marketId)

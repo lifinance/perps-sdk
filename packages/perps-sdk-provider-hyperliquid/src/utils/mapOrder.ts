@@ -1,4 +1,9 @@
-import type { OpenOrder, Order, TriggerOrder } from '@lifi/perps-types'
+import type {
+  MarketDisplay,
+  OpenOrder,
+  Order,
+  TriggerOrder,
+} from '@lifi/perps-types'
 import {
   OrderSide,
   OrderStatus,
@@ -80,9 +85,12 @@ export const isTriggerOrder = (
 }
 
 /** @public */
-export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
+export const mapOpenOrder = (
+  o: HlFrontendOpenOrder,
+  market: MarketDisplay
+): OpenOrder => ({
   orderId: String(o.oid),
-  market: marketDisplayFromCoin(o.coin),
+  market,
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: mapOrderType(o.orderType),
   size: o.sz,
@@ -96,13 +104,16 @@ export const mapOpenOrder = (o: HlFrontendOpenOrder): OpenOrder => ({
 })
 
 /** @public */
-export const mapTriggerOrder = (o: HlFrontendOpenOrder): TriggerOrder => {
+export const mapTriggerOrder = (
+  o: HlFrontendOpenOrder,
+  market: MarketDisplay
+): TriggerOrder => {
   const type = mapOrderType(o.orderType)
   const isLimit =
     type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
   return {
     orderId: String(o.oid),
-    market: marketDisplayFromCoin(o.coin),
+    market,
     type,
     size: o.sz,
     triggerPrice: o.triggerPx,

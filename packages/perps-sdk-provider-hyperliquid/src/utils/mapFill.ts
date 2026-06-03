@@ -1,5 +1,5 @@
 import { classifyFillFromPosition } from '@lifi/perps-sdk'
-import type { Fill } from '@lifi/perps-types'
+import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
   FillStatus,
@@ -9,15 +9,14 @@ import {
 } from '@lifi/perps-types'
 import type { HlUserFill } from '../types/index.js'
 import { assetIsSpot } from './assetId.js'
-import { marketDisplayFromCoin } from './deriveMarket.js'
 
 export { classifyFillFromPosition }
 
 /** @public */
-export const mapFill = (fill: HlUserFill): Fill => ({
+export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   id: String(fill.tid),
   orderId: String(fill.oid),
-  market: marketDisplayFromCoin(fill.coin),
+  market,
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
   size: fill.sz,

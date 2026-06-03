@@ -1,4 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   HL_MARKETS,
@@ -88,18 +89,18 @@ describe('getFills', () => {
     )
   })
 
-  it('falls back to the synthesised display for a fill on an unlisted market', async () => {
+  it('throws MarketNotFound for a fill on a market absent from /markets', async () => {
     ;({ restore } = installInfoFetchMock(
       { ...baseResponses, userFills: HL_SPOT_USER_FILLS },
       HL_MARKETS
     ))
 
-    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const err = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
       address: ADDRESS,
-    })
+    }).catch((e) => e)
 
-    expect(result.items[0].market.id).toBe('@142')
-    expect(result.items[0].market.baseAsset.displaySymbol).toBe('@142')
+    expect(err).toBeInstanceOf(PerpsError)
+    expect((err as PerpsError).code).toBe(PerpsErrorCode.MarketNotFound)
   })
 
   it('returns the last item id as the next cursor and reports hasMore against the limit', async () => {
