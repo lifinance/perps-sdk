@@ -726,6 +726,73 @@ describe('PerpsClient', () => {
     })
   })
 
+  describe('executeProviderOption — mandatory option failure throws', () => {
+    const BASE_URL = DEFAULT_API_URL
+
+    // ACCOUNT_MODE is a Provider.options tunable dispatched through `execute`.
+    // The backend rejects the selected value with a 200 OK carrying a
+    // per-action `{ success: false, error }`; executeProviderOption must turn
+    // that into a throw rather than silently resolving.
+    function respondAccountMode(result: { success: boolean; error?: string }) {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                typedData: {
+                  domain: { name: 'Test', chainId: 1 },
+                  types: { Mode: [{ name: 'mode', type: 'string' }] },
+                  primaryType: 'Mode',
+                  message: { mode: 'dexAbstraction' },
+                },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, ...result }],
+          } as ExecuteActionResponse)
+        })
+      )
+    }
+
+    it('rejects with a PerpsError carrying the venue error on success:false', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError = 'Account mode change rejected by venue'
+      respondAccountMode({ success: false, error: venueError })
+
+      await expect(
+        client.executeProviderOption({
+          provider,
+          address: userAddress,
+          action: ActionType.ACCOUNT_MODE,
+          params: { mode: 'dexAbstraction' },
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('resolves when the option change succeeds', async () => {
+      await agentProvider.createAgent(userAddress)
+      respondAccountMode({ success: true })
+
+      await expect(
+        client.executeProviderOption({
+          provider,
+          address: userAddress,
+          action: ActionType.ACCOUNT_MODE,
+          params: { mode: 'dexAbstraction' },
+        })
+      ).resolves.toBeUndefined()
+    })
+  })
+
   describe('buildProviderSetupInputs filtering (via buildProviderSetup)', () => {
     it('omits ACCOUNT_MODE from bulk-staged provider setup action inputs (requires explicit `mode`)', async () => {
       await agentProvider.createAgent(userAddress)
