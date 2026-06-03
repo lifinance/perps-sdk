@@ -2,22 +2,14 @@ import type {
   AccountConfig,
   AccountConfigSetting,
   AccountResponse,
-  AccountSummary,
   ActionStep,
   ActionType,
   ActivitiesResponse,
   ActivityType,
   FillsResponse,
-  Market,
-  MarketsResponse,
-  OhlcvInterval,
-  OhlcvResponse,
   Order,
-  OrderbookResponse,
   OrdersResponse,
-  Position,
   PositionsResponse,
-  PricesResponse,
   ProviderAction,
   SignedActionStep,
   SigningMethod,
@@ -204,51 +196,6 @@ export interface ProviderGetActivityParams {
 }
 
 /**
- * Read params for {@link PerpsProvider.getMarket}.
- *
- * @public
- */
-export interface ProviderGetMarketParams {
-  /** Opaque provider `Market.id` (not `displaySymbol`). */
-  marketId: string
-}
-
-/**
- * Read params for {@link PerpsProvider.getPrices}.
- *
- * @public
- */
-export interface ProviderGetPricesParams {
-  /** Optional filter — opaque `Market.id`s. */
-  marketIds?: string[]
-}
-
-/**
- * Read params for {@link PerpsProvider.getOhlcv}.
- *
- * @public
- */
-export interface ProviderGetOhlcvParams {
-  /** Opaque provider `Market.id` (not `displaySymbol`). */
-  marketId: string
-  interval: OhlcvInterval
-  startTime?: number
-  endTime?: number
-  limit?: number
-}
-
-/**
- * Read params for {@link PerpsProvider.getOrderbook}.
- *
- * @public
- */
-export interface ProviderGetOrderbookParams {
-  /** Opaque provider `Market.id` (not `displaySymbol`). */
-  marketId: string
-  depth?: number
-}
-
-/**
  * Provider plugin for {@link createPerpsClient}, modelled on
  * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type`
  * (the wire key — `'hyperliquid'`, `'lighter'`, …) and implements the
@@ -317,35 +264,6 @@ export interface PerpsProvider {
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse>
 
-  getMarket(
-    client: PerpsSDKClient,
-    params: ProviderGetMarketParams,
-    options?: SDKRequestOptions
-  ): Promise<Market>
-
-  getMarkets(
-    client: PerpsSDKClient,
-    options?: SDKRequestOptions
-  ): Promise<MarketsResponse>
-
-  getPrices(
-    client: PerpsSDKClient,
-    params: ProviderGetPricesParams,
-    options?: SDKRequestOptions
-  ): Promise<PricesResponse>
-
-  getOhlcv(
-    client: PerpsSDKClient,
-    params: ProviderGetOhlcvParams,
-    options?: SDKRequestOptions
-  ): Promise<OhlcvResponse>
-
-  getOrderbook(
-    client: PerpsSDKClient,
-    params: ProviderGetOrderbookParams,
-    options?: SDKRequestOptions
-  ): Promise<OrderbookResponse>
-
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`
    * + `options` descriptors into `AccountConfigSetting[]`. Used by
@@ -361,18 +279,6 @@ export interface PerpsProvider {
     setup: ProviderAction[],
     options: ProviderAction[]
   ): AccountConfigSetting[]
-
-  /**
-   * Reduce the raw `AccountResponse` + positions into the provider-agnostic
-   * {@link AccountSummary} roll-up (portfolio value, available margin, margin
-   * used, unrealised PnL).
-   *
-   * Branch-free arithmetic over the response's `balances` /
-   * `collateralBalances` partition — the provider plugin has already
-   * determined collateral and filled `Balance.valueUsd`, so this is the same
-   * computation for every provider.
-   */
-  summarize(account: AccountResponse, positions: Position[]): AccountSummary
 
   /**
    * Per-setup-action params the SDK should inject into `createAction` calls

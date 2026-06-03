@@ -1,22 +1,13 @@
 import {
-  getMarket as coreGetMarket,
-  getMarkets as coreGetMarkets,
-  getOhlcv as coreGetOhlcv,
-  getOrderbook as coreGetOrderbook,
-  getPrices as coreGetPrices,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
   type ProviderGetFillsParams,
-  type ProviderGetMarketParams,
-  type ProviderGetOhlcvParams,
-  type ProviderGetOrderbookParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
-  type ProviderGetPricesParams,
   type SDKRequestOptions,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
@@ -24,27 +15,19 @@ import {
   type AccountConfig,
   type AccountConfigSetting,
   type AccountResponse,
-  type AccountSummary,
   type ActionStep,
   type ActivitiesResponse,
   type FillsResponse,
-  type Market,
-  type MarketsResponse,
-  type OhlcvResponse,
   type Order,
-  type OrderbookResponse,
   type OrdersResponse,
   PerpsErrorCode,
-  type Position,
   type PositionsResponse,
-  type PricesResponse,
   type ProviderAction,
   type SignedActionStep,
   type SigningMethod,
 } from '@lifi/perps-types'
 import type { Address, Hex } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
-import { summarizeHyperliquidAccount } from './accountSummary.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
 import { getAccount } from './services/getAccount.js'
 import { getActivity } from './services/getActivity.js'
@@ -246,69 +229,6 @@ export function hyperliquidProvider(
         opts
       ),
 
-    // Public/shared data routes through the LI.FI backend — Valkey-cached
-    // server-side so one fetch serves every client. No direct HL call here.
-    getMarket: (
-      client: PerpsSDKClient,
-      params: ProviderGetMarketParams,
-      opts?: SDKRequestOptions
-    ): Promise<Market> =>
-      coreGetMarket(
-        client,
-        { provider: PROVIDER_KEY, marketId: params.marketId },
-        opts
-      ),
-
-    getMarkets: async (
-      client: PerpsSDKClient,
-      opts?: SDKRequestOptions
-    ): Promise<MarketsResponse> =>
-      coreGetMarkets(client, { provider: PROVIDER_KEY }, opts),
-
-    getPrices: async (
-      client: PerpsSDKClient,
-      params: ProviderGetPricesParams,
-      opts?: SDKRequestOptions
-    ): Promise<PricesResponse> =>
-      coreGetPrices(
-        client,
-        { provider: PROVIDER_KEY, marketIds: params.marketIds },
-        opts
-      ),
-
-    getOhlcv: (
-      client: PerpsSDKClient,
-      params: ProviderGetOhlcvParams,
-      opts?: SDKRequestOptions
-    ): Promise<OhlcvResponse> =>
-      coreGetOhlcv(
-        client,
-        {
-          provider: PROVIDER_KEY,
-          marketId: params.marketId,
-          interval: params.interval,
-          startTime: params.startTime,
-          endTime: params.endTime,
-          limit: params.limit,
-        },
-        opts
-      ),
-
-    getOrderbook: (
-      client: PerpsSDKClient,
-      params: ProviderGetOrderbookParams,
-      opts?: SDKRequestOptions
-    ): Promise<OrderbookResponse> =>
-      coreGetOrderbook(
-        client,
-        {
-          provider: PROVIDER_KEY,
-          marketId: params.marketId,
-          depth: params.depth,
-        },
-        opts
-      ),
-
     projectConfig: (
       config: AccountConfig,
       setup: ProviderAction[],
@@ -323,10 +243,5 @@ export function hyperliquidProvider(
       }
       return projectHyperliquidConfigSettings(config, setup, options)
     },
-
-    summarize: (
-      account: AccountResponse,
-      positions: Position[]
-    ): AccountSummary => summarizeHyperliquidAccount(account, positions),
   }
 }
