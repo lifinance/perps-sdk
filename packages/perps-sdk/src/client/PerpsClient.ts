@@ -760,7 +760,10 @@ export class PerpsClient {
 
       const mandatoryFailure = userResults.results.find((r) => !r.success)
       if (mandatoryFailure) {
-        return { userResults }
+        throw new PerpsError(
+          PerpsErrorCode.ExchangeRejected,
+          mandatoryFailure.error
+        )
       }
     }
 

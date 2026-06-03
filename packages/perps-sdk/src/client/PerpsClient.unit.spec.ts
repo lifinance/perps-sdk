@@ -701,6 +701,155 @@ describe('PerpsClient', () => {
     })
   })
 
+  describe('executeProviderSetup — mandatory setup-action failure throws', () => {
+    const BASE_URL = DEFAULT_API_URL
+
+    // The backend rejects a mandatory setup action with a 200 OK carrying a
+    // per-action `{ success: false, error }`. The SDK must throw so the
+    // failure reaches the caller, rather than silently resolving.
+    function failExecuteAction(error: string) {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                typedData: {
+                  domain: { name: 'Test', chainId: 1 },
+                  types: { Approve: [{ name: 'who', type: 'address' }] },
+                  primaryType: 'Approve',
+                  message: {
+                    who: '0x0000000000000000000000000000000000000000',
+                  },
+                },
+              },
+            ],
+          })
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, success: false, error }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+    }
+
+    const TYPED_DATA = {
+      domain: { name: 'venue', chainId: 1 },
+      types: { Setup: [{ name: 'x', type: 'uint256' }] },
+      primaryType: 'Setup' as const,
+      message: { x: 0 },
+    }
+
+    function userSetup(action: ActionType) {
+      return {
+        required: {
+          userProviderSetup: [{ action, typedData: TYPED_DATA }],
+          agentProviderSetup: [],
+          isReady: false,
+        },
+        userSignedActions: [
+          { action, typedData: TYPED_DATA, signature: '0xsig' as const },
+        ],
+      }
+    }
+
+    it('rejects with a PerpsError carrying the venue error for a Hyperliquid APPROVE_AGENT failure', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError =
+        'Too many extra agents for cumulative volume traded. Current limit is 3'
+      failExecuteAction(venueError)
+
+      await expect(
+        client.executeProviderSetup({
+          provider: 'hyperliquid',
+          address: userAddress,
+          ...userSetup(ActionType.APPROVE_AGENT),
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('rejects with a PerpsError carrying the venue error for a Lighter REGISTER_API_KEY failure', async () => {
+      const lighterProvider = createTestAgentProvider({ type: 'lighter' })
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider],
+      })
+      await lighterProvider.createAgent(userAddress)
+      const venueError = 'API key registration rejected'
+      failExecuteAction(venueError)
+
+      await expect(
+        lighterClient.executeProviderSetup({
+          provider: 'lighter',
+          address: userAddress,
+          ...userSetup(ActionType.REGISTER_API_KEY),
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('propagates the throw through executeProviderSetupAction (the widget entry point)', async () => {
+      // APPROVE_AGENT is a USER-signed EIP-712 step, so executeProviderSetupAction
+      // signs it with the configured wallet before submitting.
+      const account = privateKeyToAccount(`0x${'22'.repeat(32)}` as Hex)
+      const signerProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const signerClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [signerProvider],
+      })
+      signerClient.setSigner(
+        createWalletClient({ account, chain: mainnet, transport: viemHttp() })
+      )
+      await signerProvider.createAgent(account.address)
+      const venueError =
+        'Too many extra agents for cumulative volume traded. Current limit is 3'
+      failExecuteAction(venueError)
+
+      await expect(
+        signerClient.executeProviderSetupAction({
+          provider: 'hyperliquid',
+          address: account.address,
+          step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('resolves normally when the mandatory setup action succeeds', async () => {
+      await agentProvider.createAgent(userAddress)
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const result = await client.executeProviderSetup({
+        provider: 'hyperliquid',
+        address: userAddress,
+        ...userSetup(ActionType.APPROVE_BUILDER_FEE),
+      })
+
+      expect(result.userResults.results).toEqual([
+        { action: ActionType.APPROVE_BUILDER_FEE, success: true },
+      ])
+    })
+  })
+
   describe('execute(ACCOUNT_TYPE)', () => {
     it('throws a clear error when the provider does not declare ACCOUNT_TYPE (e.g. Hyperliquid)', async () => {
       await agentProvider.createAgent(userAddress)
