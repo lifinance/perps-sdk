@@ -51,7 +51,6 @@ export async function getActivity(
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> {
   return requireProvider(client, params.provider).getActivity(
-    client,
     {
       address: params.address,
       limit: params.limit,

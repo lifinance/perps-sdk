@@ -2,7 +2,7 @@ import type { PositionsResponse } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { mockPositions } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProvider } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/core.js'
 import { getPositions } from './getPositions.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -14,7 +14,7 @@ const makeClient = () => {
   const plugin = {
     type: 'hyperliquid',
     getPositions: getPositionsSpy,
-  } as unknown as PerpsProvider
+  } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
     integrator: 'test-app',
     apiKey: 'test-key',

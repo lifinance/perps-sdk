@@ -104,9 +104,9 @@ export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
   /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
   readonly signer?: PerpsClientSigner
-  /** Registered provider plugins, in the order they were passed at construction. */
+  /** Registered providers, bound to this client, in construction order. */
   readonly providers: PerpsProvider[]
-  /** Look up a registered {@link PerpsProvider} by its `type` key. */
+  /** Look up a registered bound {@link PerpsProvider} by its `type` key. */
   getProvider(key: string): PerpsProvider | undefined
 }
 
@@ -196,10 +196,12 @@ export interface ProviderGetActivityParams {
 }
 
 /**
- * Provider plugin for {@link createPerpsClient}, modelled on
- * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type`
- * (the wire key — `'hyperliquid'`, `'lighter'`, …) and implements the
- * read-side surface area for one DEX.
+ * Unbound provider plugin passed to {@link createPerpsClient}, modelled on
+ * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type` (the wire
+ * key — `'hyperliquid'`, `'lighter'`, …) and implements the read-side surface
+ * area for one DEX. Read methods take the {@link PerpsSDKClient} as their first
+ * argument; {@link createPerpsClient} binds it once via {@link bindProvider},
+ * yielding the runtime {@link PerpsProvider} whose reads drop the `client` arg.
  *
  * Concrete implementations live in dedicated packages
  * (`@lifi/perps-sdk-provider-hyperliquid`, `@lifi/perps-sdk-provider-lighter`).
@@ -211,7 +213,7 @@ export interface ProviderGetActivityParams {
  *   apiKey: 'key',
  *   providers: [hyperliquidProvider(), lighterProvider()],
  * })
- * const account = await client.getProvider('hyperliquid')!.getAccount(client, { address })
+ * const account = await client.getProvider('hyperliquid')!.getAccount({ address })
  * ```
  *
  * Write-side actions (`createAction`, `executeAction`) remain on the core
@@ -220,7 +222,7 @@ export interface ProviderGetActivityParams {
  *
  * @public
  */
-export interface PerpsProvider {
+export interface PerpsProviderPlugin {
   /**
    * Provider key, matching `Provider.key` from the backend's
    * `/providers` response (e.g. `'hyperliquid'`, `'lighter'`). Used to
@@ -336,4 +338,37 @@ export interface PerpsProvider {
     address: Address,
     ctx?: SignActionsContext
   ): Promise<SignedActionStep[]>
+}
+
+/** Read-method keys on {@link PerpsProviderPlugin} whose leading `client` arg is bound away. */
+type PerpsProviderReadMethod =
+  | 'getAccount'
+  | 'getPositions'
+  | 'getOrders'
+  | 'getOrder'
+  | 'getFills'
+  | 'getActivity'
+
+/** Drop the leading {@link PerpsSDKClient} argument from a plugin read method. */
+type BoundRead<M> = M extends (
+  client: PerpsSDKClient,
+  ...rest: infer R
+) => infer Ret
+  ? (...rest: R) => Ret
+  : never
+
+/**
+ * Runtime provider returned by {@link PerpsSDKClient.getProvider} and
+ * {@link requireProvider}: the {@link PerpsProviderPlugin} with the `client`
+ * argument bound away from every read method by {@link bindProvider}, so reads
+ * are `getX(params, options?)`. Write/setup members (`projectConfig`,
+ * `resolveSetupParams`, `resolveSignerAddress`, `signActions`) never took
+ * `client`, so they carry over unchanged.
+ *
+ * @public
+ */
+export type PerpsProvider = {
+  [K in keyof PerpsProviderPlugin]: K extends PerpsProviderReadMethod
+    ? BoundRead<PerpsProviderPlugin[K]>
+    : PerpsProviderPlugin[K]
 }

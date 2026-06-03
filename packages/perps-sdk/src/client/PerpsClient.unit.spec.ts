@@ -25,7 +25,7 @@ import {
   server,
 } from '../../test/handlers.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import type { PerpsProvider } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/core.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
 
@@ -69,7 +69,7 @@ describe('PerpsClient', () => {
           {
             type: provider,
             projectConfig: vi.fn(() => []),
-          } as unknown as PerpsProvider,
+          } as unknown as PerpsProviderPlugin,
         ],
       })
       await expect(
@@ -359,7 +359,7 @@ describe('PerpsClient', () => {
         type: 'hyperliquid',
         getAccount: stubGetAccount,
         projectConfig: vi.fn(() => []),
-      } as unknown as Partial<PerpsProvider> & { type: string })
+      } as unknown as Partial<PerpsProviderPlugin> & { type: string })
       client = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -826,14 +826,14 @@ describe('PerpsClient', () => {
     const sentinelSettings = [
       { type: ActionType.APPROVE_AGENT, values: [] },
     ] as const
-    const buildStubProvider = (): PerpsProvider & {
+    const buildStubProvider = (): PerpsProviderPlugin & {
       projectConfig: ReturnType<typeof vi.fn>
     } =>
       ({
         type: 'hyperliquid',
         getAccount: vi.fn(async () => mockAccount),
         projectConfig: vi.fn(() => [...sentinelSettings]),
-      }) as unknown as PerpsProvider & {
+      }) as unknown as PerpsProviderPlugin & {
         projectConfig: ReturnType<typeof vi.fn>
       }
 
@@ -897,7 +897,7 @@ describe('PerpsClient', () => {
             type: 'hyperliquid',
             getAccount: stubGetAccount,
             projectConfig: vi.fn(() => []),
-          } as unknown as PerpsProvider,
+          } as unknown as PerpsProviderPlugin,
         ],
       })
     })

@@ -43,7 +43,6 @@ export async function getOrder(
   options?: SDKRequestOptions
 ): Promise<Order> {
   return requireProvider(client, params.provider).getOrder(
-    client,
     { address: params.address, id: params.id },
     options
   )

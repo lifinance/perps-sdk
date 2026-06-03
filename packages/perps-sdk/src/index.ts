@@ -90,6 +90,7 @@ export {
 export type {
   PerpsClientSigner,
   PerpsProvider,
+  PerpsProviderPlugin,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
   ProviderGetFillsParams,

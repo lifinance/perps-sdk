@@ -13,7 +13,7 @@ import type {
   WithdrawalParams,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import type { PerpsProvider } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/core.js'
 import type { ProviderConfigs } from './createPerpsClient.js'
 
 export type {
@@ -41,10 +41,10 @@ export interface PerpsClientOptions {
   apiUrl?: string
   /**
    * Provider plugins or per-provider config. Accepts the same two shapes as
-   * {@link PerpsConfig.providers}: an array of `PerpsProvider` plugins or a
-   * keyed `ProviderConfigs` map.
+   * {@link PerpsConfig.providers}: an array of `PerpsProviderPlugin` plugins or
+   * a keyed `ProviderConfigs` map.
    */
-  providers?: PerpsProvider[] | ProviderConfigs
+  providers?: PerpsProviderPlugin[] | ProviderConfigs
 }
 
 /**

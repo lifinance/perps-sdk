@@ -5,15 +5,18 @@ import type { RetryConfig } from '../transport/retryPolicy.js'
 import type {
   PerpsBaseConfig,
   PerpsProvider,
+  PerpsProviderPlugin,
   PerpsSDKClient,
   ProviderConfigs,
   RequestInterceptor,
 } from '../types/core.js'
+import { bindProvider } from '../utils/bindProvider.js'
 
 export type {
   HyperliquidConfig,
   PerpsBaseConfig,
   PerpsProvider,
+  PerpsProviderPlugin,
   PerpsSDKClient,
   ProviderConfig,
   ProviderConfigs,
@@ -42,10 +45,10 @@ export interface PerpsConfig {
   /**
    * Provider plugins or per-provider config. Two shapes are accepted:
    *
-   * - `PerpsProvider[]` — plugin objects implementing the read surface
-   *   for one DEX each. Look them up at runtime via
-   *   `client.getProvider(key)`. Modelled on `@lifi/sdk`'s
-   *   `providers: SDKProvider[]`.
+   * - `PerpsProviderPlugin[]` — plugin objects implementing the read surface
+   *   for one DEX each. Bound to the client at construction and looked up at
+   *   runtime as bound {@link PerpsProvider}s via `client.getProvider(key)`.
+   *   Modelled on `@lifi/sdk`'s `providers: SDKProvider[]`.
    * - `ProviderConfigs` — keyed config object (e.g.
    *   `{ hyperliquid: { markets: [...] } }`). Used internally by
    *   `PerpsWsClient` to filter which markets are subscribed to.
@@ -53,7 +56,7 @@ export interface PerpsConfig {
    * Both may be supplied during the migration to provider packages;
    * the array form is preferred for new code.
    */
-  providers?: PerpsProvider[] | ProviderConfigs
+  providers?: PerpsProviderPlugin[] | ProviderConfigs
   /**
    * Wallet signer used whenever an action's descriptor names the user wallet
    * in its `signers` list. Accepts any viem-compatible WalletClient:
@@ -119,7 +122,7 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     fetch: options.fetch,
   }
 
-  return {
+  const client: PerpsSDKClient = {
     get config() {
       return config
     },
@@ -127,12 +130,18 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
       return options.signer
     },
     get providers() {
-      return providerPlugins
+      return boundProviders
     },
     getProvider(key: string): PerpsProvider | undefined {
-      return providerPlugins.find((p) => p.type === key)
+      return boundProviders.find((p) => p.type === key)
     },
   }
+
+  const boundProviders: PerpsProvider[] = providerPlugins.map((plugin) =>
+    bindProvider(plugin, client)
+  )
+
+  return client
 }
 
 /**
@@ -141,8 +150,10 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
  * keyed `ProviderConfigs` consumed internally by `PerpsWsClient` for
  * markets filtering.
  */
-function splitProviders(input: PerpsProvider[] | ProviderConfigs | undefined): {
-  providerPlugins: PerpsProvider[]
+function splitProviders(
+  input: PerpsProviderPlugin[] | ProviderConfigs | undefined
+): {
+  providerPlugins: PerpsProviderPlugin[]
   providerConfigs?: ProviderConfigs
 } {
   if (input === undefined) {
