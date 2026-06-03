@@ -13,6 +13,7 @@ import type {
   SubscriptionEvent,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -62,6 +63,13 @@ const LIGHTER_AUTH_CHANNEL = {
   fills: 'account_all_trades',
   positions: 'account_all_positions',
 } as const
+
+/** Channels whose handlers read `marketIdToDisplaySymbol`. */
+function channelNeedsDisplaySymbols(channel: Subscription['channel']): boolean {
+  return (
+    channel === 'orderUpdates' || channel === 'fills' || channel === 'positions'
+  )
+}
 
 /**
  * Creates a fresh Lighter auth token for the given L1 address, or returns
@@ -186,7 +194,13 @@ export class LighterWsProvider implements WsProvider {
       return () => {}
     }
 
-    await this.ensureDisplaySymbols()
+    // Only the auth channels (orders/fills/positions) read
+    // `marketIdToDisplaySymbol`. `prices`/`orderbook` are keyed purely by
+    // `String(market_id)`, so gating them on the `/markets` fetch would let a
+    // failed display-symbol lookup kill live price ticks.
+    if (channelNeedsDisplaySymbols(sub.channel)) {
+      await this.ensureDisplaySymbols()
+    }
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
@@ -394,10 +408,10 @@ export class LighterWsProvider implements WsProvider {
       )
     }
     const { markets } = await coreGetMarkets(this.client, {
-      provider: 'lighter',
+      provider: LIGHTER_PROVIDER_KEY,
     })
     for (const m of markets) {
-      if (m.categoryId !== 'lighter') {
+      if (m.categoryId !== LIGHTER_PROVIDER_KEY) {
         continue
       }
       const marketId = Number(m.id)
