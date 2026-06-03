@@ -93,13 +93,9 @@ export type {
   ProviderGetAccountParams,
   ProviderGetActivityParams,
   ProviderGetFillsParams,
-  ProviderGetMarketParams,
-  ProviderGetOhlcvParams,
-  ProviderGetOrderbookParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
-  ProviderGetPricesParams,
   SignActionsContext,
 } from './types/core.js'
 export type { ExpectedPnl } from './utils/calculations.js'

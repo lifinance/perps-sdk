@@ -1,10 +1,6 @@
 import {
   getAssets as coreGetAssets,
-  getMarket as coreGetMarket,
   getMarkets as coreGetMarkets,
-  getOhlcv as coreGetOhlcv,
-  getOrderbook as coreGetOrderbook,
-  getPrices as coreGetPrices,
   ExplorerChainId,
   explorerTxUrl,
   PerpsError,
@@ -13,13 +9,9 @@ import {
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
   type ProviderGetFillsParams,
-  type ProviderGetMarketParams,
-  type ProviderGetOhlcvParams,
-  type ProviderGetOrderbookParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
-  type ProviderGetPricesParams,
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -28,22 +20,16 @@ import type {
   AccountConfig,
   AccountConfigSetting,
   AccountResponse,
-  AccountSummary,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
   Balance,
   FillsResponse,
   LighterAccountConfig,
-  Market,
-  MarketsResponse,
-  OhlcvResponse,
   Order,
-  OrderbookResponse,
   OrdersResponse,
   Position,
   PositionsResponse,
-  PricesResponse,
   ProviderAction,
   SignedActionStep,
   SigningMethod,
@@ -51,7 +37,6 @@ import type {
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
-import { summarizeLighterAccount } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,
@@ -1110,69 +1095,6 @@ export const lighterProvider = (
       }
     },
 
-    // Public/shared data routes through the LI.FI backend — Valkey-cached
-    // server-side so one fetch serves every client. No direct Lighter call here.
-    getMarket: (
-      client: PerpsSDKClient,
-      params: ProviderGetMarketParams,
-      opts?: SDKRequestOptions
-    ): Promise<Market> =>
-      coreGetMarket(
-        client,
-        { provider: LIGHTER_PROVIDER_KEY, marketId: params.marketId },
-        opts
-      ),
-
-    getMarkets: (
-      client: PerpsSDKClient,
-      opts?: SDKRequestOptions
-    ): Promise<MarketsResponse> =>
-      coreGetMarkets(client, { provider: LIGHTER_PROVIDER_KEY }, opts),
-
-    getPrices: (
-      client: PerpsSDKClient,
-      params: ProviderGetPricesParams,
-      opts?: SDKRequestOptions
-    ): Promise<PricesResponse> =>
-      coreGetPrices(
-        client,
-        { provider: LIGHTER_PROVIDER_KEY, marketIds: params.marketIds },
-        opts
-      ),
-
-    getOhlcv: (
-      client: PerpsSDKClient,
-      params: ProviderGetOhlcvParams,
-      opts?: SDKRequestOptions
-    ): Promise<OhlcvResponse> =>
-      coreGetOhlcv(
-        client,
-        {
-          provider: LIGHTER_PROVIDER_KEY,
-          marketId: params.marketId,
-          interval: params.interval,
-          startTime: params.startTime,
-          endTime: params.endTime,
-          limit: params.limit,
-        },
-        opts
-      ),
-
-    getOrderbook: (
-      client: PerpsSDKClient,
-      params: ProviderGetOrderbookParams,
-      opts?: SDKRequestOptions
-    ): Promise<OrderbookResponse> =>
-      coreGetOrderbook(
-        client,
-        {
-          provider: LIGHTER_PROVIDER_KEY,
-          marketId: params.marketId,
-          depth: params.depth,
-        },
-        opts
-      ),
-
     projectConfig(
       config: AccountConfig,
       setup: ProviderAction[],
@@ -1186,10 +1108,6 @@ export const lighterProvider = (
         )
       }
       return projectLighterConfigSettings(config, setup, options)
-    },
-
-    summarize(account: AccountResponse, positions: Position[]): AccountSummary {
-      return summarizeLighterAccount(account, positions)
     },
 
     /**
