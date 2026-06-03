@@ -230,6 +230,21 @@ export interface LighterPerpsProvider extends PerpsProviderPlugin {
 export const lighterProvider = (
   options: LighterProviderOptions = {}
 ): LighterPerpsProvider => {
+  // Late-bind slot: the factory runs before the client exists, so `bind`
+  // assigns this once during createPerpsClient and the read methods read it.
+  let boundClient: PerpsSDKClient | undefined
+
+  const requireClient = (): PerpsSDKClient => {
+    if (boundClient === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'lighterProvider used before binding. Register it via ' +
+          'createPerpsClient({ providers: [lighterProvider()] }).'
+      )
+    }
+    return boundClient
+  }
+
   const restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
@@ -253,21 +268,18 @@ export const lighterProvider = (
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
   const readOnlyCreationFailed: Set<string> = new Set()
 
-  const apiClient = (
-    sdkClient?: PerpsSDKClient,
-    opts?: SDKRequestOptions
-  ): LighterApiClient =>
-    new LighterApiClient(restUrl, {
+  const apiClient = (opts?: SDKRequestOptions): LighterApiClient => {
+    const client = requireClient()
+    return new LighterApiClient(restUrl, {
       signal: opts?.signal,
-      policy: sdkClient
-        ? resolveRetryPolicy(
-            LIGHTER_RETRY_DEFAULTS,
-            sdkClient.config.retry,
-            LIGHTER_PROVIDER_KEY
-          )
-        : undefined,
-      fetchImpl: sdkClient?.config.fetch,
+      policy: resolveRetryPolicy(
+        LIGHTER_RETRY_DEFAULTS,
+        client.config.retry,
+        LIGHTER_PROVIDER_KEY
+      ),
+      fetchImpl: client.config.fetch,
     })
+  }
 
   /**
    * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/markets`
@@ -276,11 +288,10 @@ export const lighterProvider = (
    * Valkey-cached so this is cheap.
    */
   const buildSymbolLookup = async (
-    sdkClient: PerpsSDKClient,
     opts?: SDKRequestOptions
   ): Promise<Map<number, string>> => {
     const { markets } = await coreGetMarkets(
-      sdkClient,
+      requireClient(),
       { provider: LIGHTER_PROVIDER_KEY },
       opts
     )
@@ -298,11 +309,10 @@ export const lighterProvider = (
    * would otherwise serve a stale registry).
    */
   const buildTokenLookup = async (
-    sdkClient: PerpsSDKClient,
     opts?: SDKRequestOptions
   ): Promise<Map<string, string>> => {
     const { assets } = await coreGetAssets(
-      sdkClient,
+      requireClient(),
       { provider: LIGHTER_PROVIDER_KEY },
       opts
     )
@@ -639,16 +649,19 @@ export const lighterProvider = (
   return {
     type: LIGHTER_PROVIDER_KEY,
 
+    bind(client: PerpsSDKClient): void {
+      boundClient = client
+    },
+
     resolveAuthToken(address: Address): Promise<string | undefined> {
       return resolveAuthToken(undefined, address)
     },
 
     async getAccount(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const account = await fetchDetailedAccount(client, params.address)
       const token = await resolveAuthToken(opts, params.address)
 
@@ -659,7 +672,7 @@ export const lighterProvider = (
         localKey,
         storedReadOnlyToken,
       ] = await Promise.all([
-        buildSymbolLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         token === undefined
           ? Promise.resolve(undefined)
@@ -739,14 +752,13 @@ export const lighterProvider = (
     },
 
     async getPositions(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
       ])
 
       let positions: Position[] = account.positions
@@ -765,7 +777,6 @@ export const lighterProvider = (
     },
 
     async getOrders(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
     ): Promise<OrdersResponse> {
@@ -779,10 +790,10 @@ export const lighterProvider = (
         }
       }
 
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
       ])
 
       const marketIds =
@@ -815,7 +826,6 @@ export const lighterProvider = (
     },
 
     async getOrder(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> {
@@ -829,10 +839,10 @@ export const lighterProvider = (
         )
       }
 
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const [account, symbolLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
       ])
 
       // Native `order_index` route only. The cross-provider `Order.orderId`
@@ -891,14 +901,13 @@ export const lighterProvider = (
     },
 
     async getFills(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> {
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const [account, symbolLookup, token] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
         resolveAuthToken(opts, params.address),
       ])
 
@@ -943,7 +952,6 @@ export const lighterProvider = (
     },
 
     async getActivity(
-      sdkClient: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> {
@@ -957,7 +965,7 @@ export const lighterProvider = (
       }
 
       const inputCursor = decodeActivityCursor(params.cursor)
-      const client = apiClient(sdkClient, opts)
+      const client = apiClient(opts)
       const account = await fetchDetailedAccount(client, params.address)
       const [history, marketLookup, tokensById] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
@@ -970,8 +978,8 @@ export const lighterProvider = (
             inputCursor
           )
         ),
-        buildSymbolLookup(sdkClient, opts),
-        buildTokenLookup(sdkClient, opts),
+        buildSymbolLookup(opts),
+        buildTokenLookup(opts),
       ])
 
       const items: ActivityItem[] = [

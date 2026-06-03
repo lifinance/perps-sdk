@@ -11,6 +11,7 @@ const makeClient = () => {
   const getAccountSpy = vi.fn(async (): Promise<AccountResponse> => mockAccount)
   const plugin = {
     type: 'hyperliquid',
+    bind: vi.fn(),
     getAccount: getAccountSpy,
   } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
@@ -31,11 +32,7 @@ describe('getAccount', () => {
     })
 
     expect(result).toEqual(mockAccount)
-    expect(getAccountSpy).toHaveBeenCalledWith(
-      client,
-      { address: ADDRESS },
-      undefined
-    )
+    expect(getAccountSpy).toHaveBeenCalledWith({ address: ADDRESS }, undefined)
   })
 
   it('forwards request options (signal) to the plugin', async () => {
@@ -49,7 +46,6 @@ describe('getAccount', () => {
     )
 
     expect(getAccountSpy).toHaveBeenCalledWith(
-      client,
       { address: ADDRESS },
       {
         signal: controller.signal,

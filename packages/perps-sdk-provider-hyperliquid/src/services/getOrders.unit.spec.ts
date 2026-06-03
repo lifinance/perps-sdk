@@ -16,6 +16,8 @@ const baseResponses = {
   frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
 }
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getOrders', () => {
   let restore: () => void
 
@@ -26,7 +28,7 @@ describe('getOrders', () => {
   it('splits limit and trigger orders and enriches their asset display fields', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
-    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getOrders(ctx, {
       address: ADDRESS,
     })
 
@@ -57,7 +59,7 @@ describe('getOrders', () => {
       HL_MARKETS
     ))
 
-    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getOrders(ctx, {
       address: ADDRESS,
     })
 
@@ -70,7 +72,7 @@ describe('getOrders', () => {
   it('filters by marketId-matching `symbol`', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
-    const result = await getOrders(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getOrders(ctx, {
       address: ADDRESS,
       marketId: 'ETH',
     })

@@ -29,6 +29,7 @@ import {
 import type { Address, Hex } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
+import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
 import { getActivity } from './services/getActivity.js'
 import { getFills } from './services/getFills.js'
@@ -107,9 +108,12 @@ export function hyperliquidProvider(
 ): HyperliquidPerpsProvider {
   const apiUrl = options.apiUrl ?? DEFAULT_HYPERLIQUID_API_URL
   const agentStore = new HyperliquidAgentStore(options.storage)
+  const contextRef = new HyperliquidContextRef(apiUrl)
 
   return {
     type: PROVIDER_KEY,
+
+    bind: (client: PerpsSDKClient): void => contextRef.bind(client),
 
     getAgentAddress: async (address: Address): Promise<Address> =>
       (await agentStore.get(address)).address,
@@ -142,20 +146,17 @@ export function hyperliquidProvider(
       hyperliquidSignActions(agentStore, method, steps, address),
 
     getAccount: (
-      client: PerpsSDKClient,
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> =>
-      getAccount(client, apiUrl, { address: params.address }, opts),
+      getAccount(contextRef.require(), { address: params.address }, opts),
 
     getPositions: (
-      client: PerpsSDKClient,
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> =>
       getPositions(
-        client,
-        apiUrl,
+        contextRef.require(),
         {
           address: params.address,
           marketId: params.marketId,
@@ -165,13 +166,11 @@ export function hyperliquidProvider(
       ),
 
     getOrders: (
-      client: PerpsSDKClient,
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
     ): Promise<OrdersResponse> =>
       getOrders(
-        client,
-        apiUrl,
+        contextRef.require(),
         {
           address: params.address,
           marketId: params.marketId,
@@ -181,25 +180,21 @@ export function hyperliquidProvider(
       ),
 
     getOrder: (
-      client: PerpsSDKClient,
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> =>
       getOrder(
-        client,
-        apiUrl,
+        contextRef.require(),
         { address: params.address, id: params.id },
         opts
       ),
 
     getFills: (
-      client: PerpsSDKClient,
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> =>
       getFills(
-        client,
-        apiUrl,
+        contextRef.require(),
         {
           address: params.address,
           limit: params.limit,
@@ -211,13 +206,11 @@ export function hyperliquidProvider(
       ),
 
     getActivity: (
-      client: PerpsSDKClient,
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> =>
       getActivity(
-        client,
-        apiUrl,
+        contextRef.require(),
         {
           address: params.address,
           limit: params.limit,

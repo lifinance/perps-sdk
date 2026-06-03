@@ -21,6 +21,7 @@ type LighterLikePlugin = PerpsProviderPlugin & {
 
 const makePlugin = () => {
   const calls = {
+    bind: vi.fn((_client: PerpsSDKClient): void => {}),
     getAccount: vi.fn(
       async (): Promise<AccountResponse> => ({}) as AccountResponse
     ),
@@ -40,6 +41,7 @@ const makePlugin = () => {
   }
   const plugin: LighterLikePlugin = {
     type: 'lighter',
+    bind: calls.bind,
     getAccount: calls.getAccount,
     getPositions: calls.getPositions,
     getOrders: calls.getOrders,
@@ -58,7 +60,22 @@ describe('bindProvider', () => {
     expect(bindProvider(plugin, fakeClient).type).toBe('lighter')
   })
 
-  it('binds the client into each read method, so callers omit it', async () => {
+  it('injects the client into the plugin once via bind', () => {
+    const { plugin, calls } = makePlugin()
+    bindProvider(plugin, fakeClient)
+
+    expect(calls.bind).toHaveBeenCalledTimes(1)
+    expect(calls.bind).toHaveBeenCalledWith(fakeClient)
+  })
+
+  it('drops the one-shot bind member from the bound provider', () => {
+    const { plugin } = makePlugin()
+    const bound = bindProvider(plugin, fakeClient)
+
+    expect('bind' in bound).toBe(false)
+  })
+
+  it('forwards clientless read calls straight through to the plugin', async () => {
     const { plugin, calls } = makePlugin()
     const bound = bindProvider(plugin, fakeClient)
 
@@ -69,36 +86,15 @@ describe('bindProvider', () => {
     await bound.getFills({ address: ADDRESS })
     await bound.getActivity({ address: ADDRESS })
 
-    expect(calls.getAccount).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS },
-      undefined
-    )
-    expect(calls.getPositions).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS, marketId: 'ETH' },
-      undefined
-    )
-    expect(calls.getOrders).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS },
-      undefined
-    )
-    expect(calls.getOrder).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS, id: '1' },
-      undefined
-    )
-    expect(calls.getFills).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS },
-      undefined
-    )
-    expect(calls.getActivity).toHaveBeenCalledWith(
-      fakeClient,
-      { address: ADDRESS },
-      undefined
-    )
+    expect(calls.getAccount).toHaveBeenCalledWith({ address: ADDRESS })
+    expect(calls.getPositions).toHaveBeenCalledWith({
+      address: ADDRESS,
+      marketId: 'ETH',
+    })
+    expect(calls.getOrders).toHaveBeenCalledWith({ address: ADDRESS })
+    expect(calls.getOrder).toHaveBeenCalledWith({ address: ADDRESS, id: '1' })
+    expect(calls.getFills).toHaveBeenCalledWith({ address: ADDRESS })
+    expect(calls.getActivity).toHaveBeenCalledWith({ address: ADDRESS })
   })
 
   it('forwards per-call options to the underlying read method', async () => {
@@ -109,7 +105,6 @@ describe('bindProvider', () => {
     await bound.getOrders({ address: ADDRESS }, { signal: controller.signal })
 
     expect(calls.getOrders).toHaveBeenCalledWith(
-      fakeClient,
       { address: ADDRESS },
       { signal: controller.signal }
     )

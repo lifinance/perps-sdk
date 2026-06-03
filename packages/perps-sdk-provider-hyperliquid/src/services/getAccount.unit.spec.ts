@@ -27,6 +27,8 @@ const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
   clearinghouseState: HL_CLEARINGHOUSE_STATE,
 })
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getAccount', () => {
   let restore: () => void
 
@@ -37,7 +39,7 @@ describe('getAccount', () => {
   it('normalises a single-dex account into AccountResponse with the typed config', async () => {
     ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
 
-    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getAccount(ctx, {
       address: ADDRESS,
     })
 
@@ -88,7 +90,7 @@ describe('getAccount', () => {
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {
     ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
 
-    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getAccount(ctx, {
       address: ADDRESS,
     })
 
@@ -105,7 +107,7 @@ describe('getAccount', () => {
       HL_MARKETS
     ))
 
-    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getAccount(ctx, {
       address: ADDRESS,
     })
 
@@ -134,7 +136,7 @@ describe('getAccount', () => {
       HL_MARKETS
     ))
 
-    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getAccount(ctx, {
       address: ADDRESS,
     })
 
@@ -175,7 +177,7 @@ describe('getAccount', () => {
       })
     restore = () => spy.mockRestore()
 
-    const result = await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getAccount(ctx, {
       address: ADDRESS,
     })
 
@@ -190,7 +192,7 @@ describe('getAccount', () => {
     const mock = installInfoFetchMock(defaultResponses(), HL_MARKETS)
     restore = mock.restore
 
-    await getAccount(client, DEFAULT_HYPERLIQUID_API_URL, { address: ADDRESS })
+    await getAccount(ctx, { address: ADDRESS })
 
     const types = mock.requests.map((r) => r.body.type)
     expect(types).toContain('userFees')
@@ -209,12 +211,7 @@ describe('getAccount', () => {
     restore = mock.restore
 
     const controller = new AbortController()
-    await getAccount(
-      client,
-      DEFAULT_HYPERLIQUID_API_URL,
-      { address: ADDRESS },
-      { signal: controller.signal }
-    )
+    await getAccount(ctx, { address: ADDRESS }, { signal: controller.signal })
 
     // The mock fetch doesn't honour AbortSignal, but every concurrent /info
     // call must propagate the same signal through to the upstream call.

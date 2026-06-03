@@ -14,7 +14,10 @@ const makeClient = (plugins: PerpsProviderPlugin[] = []) =>
 
 describe('requireProvider', () => {
   it('returns the bound provider matching the provider key', () => {
-    const plugin = { type: 'hyperliquid' } as unknown as PerpsProviderPlugin
+    const plugin = {
+      type: 'hyperliquid',
+      bind: vi.fn(),
+    } as unknown as PerpsProviderPlugin
     const client = makeClient([plugin])
 
     expect(requireProvider(client, 'hyperliquid')).toBe(
@@ -24,8 +27,14 @@ describe('requireProvider', () => {
   })
 
   it('selects the correct provider when several are registered', () => {
-    const hl = { type: 'hyperliquid' } as unknown as PerpsProviderPlugin
-    const lighter = { type: 'lighter' } as unknown as PerpsProviderPlugin
+    const hl = {
+      type: 'hyperliquid',
+      bind: vi.fn(),
+    } as unknown as PerpsProviderPlugin
+    const lighter = {
+      type: 'lighter',
+      bind: vi.fn(),
+    } as unknown as PerpsProviderPlugin
     const client = makeClient([hl, lighter])
 
     expect(requireProvider(client, 'lighter').type).toBe('lighter')
@@ -52,7 +61,10 @@ describe('requireProvider', () => {
   })
 
   it('delegates lookup to client.getProvider', () => {
-    const plugin = { type: 'lighter' } as unknown as PerpsProviderPlugin
+    const plugin = {
+      type: 'lighter',
+      bind: vi.fn(),
+    } as unknown as PerpsProviderPlugin
     const client = makeClient([plugin])
     const spy = vi.spyOn(client, 'getProvider')
 

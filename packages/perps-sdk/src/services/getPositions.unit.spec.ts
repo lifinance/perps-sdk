@@ -13,6 +13,7 @@ const makeClient = () => {
   )
   const plugin = {
     type: 'hyperliquid',
+    bind: vi.fn(),
     getPositions: getPositionsSpy,
   } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
@@ -37,7 +38,6 @@ describe('getPositions', () => {
 
     expect(result).toEqual(mockPositions)
     expect(getPositionsSpy).toHaveBeenCalledWith(
-      client,
       { address: ADDRESS, marketId: 'BTC', limit: 25, cursor: 'next-page' },
       undefined
     )
@@ -49,7 +49,6 @@ describe('getPositions', () => {
     await getPositions(client, { provider: 'hyperliquid', address: ADDRESS })
 
     expect(getPositionsSpy).toHaveBeenCalledWith(
-      client,
       {
         address: ADDRESS,
         marketId: undefined,
@@ -71,7 +70,6 @@ describe('getPositions', () => {
     )
 
     expect(getPositionsSpy).toHaveBeenCalledWith(
-      client,
       expect.objectContaining({ address: ADDRESS }),
       { signal: controller.signal }
     )

@@ -13,6 +13,7 @@ const makeClient = () => {
   )
   const plugin = {
     type: 'hyperliquid',
+    bind: vi.fn(),
     getActivity: getActivitySpy,
   } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
@@ -38,7 +39,6 @@ describe('getActivity', () => {
 
     expect(result).toEqual(mockActivity)
     expect(getActivitySpy).toHaveBeenCalledWith(
-      client,
       {
         address: ADDRESS,
         limit: 10,
@@ -62,7 +62,6 @@ describe('getActivity', () => {
     )
 
     expect(getActivitySpy).toHaveBeenCalledWith(
-      client,
       expect.objectContaining({ address: ADDRESS }),
       { signal: controller.signal }
     )

@@ -17,6 +17,8 @@ const responses = {
   clearinghouseState: HL_CLEARINGHOUSE_STATE,
 }
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getPositions', () => {
   let restore: () => void
 
@@ -50,7 +52,7 @@ describe('getPositions', () => {
       HL_MARKETS
     ))
 
-    const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getPositions(ctx, {
       address: ADDRESS,
     })
 
@@ -67,7 +69,7 @@ describe('getPositions', () => {
   it('filters by the marketId-matching `symbol` param', async () => {
     ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
 
-    const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getPositions(ctx, {
       address: ADDRESS,
       marketId: 'ETH',
     })
@@ -77,7 +79,7 @@ describe('getPositions', () => {
   it('reports pagination.hasMore=false (HL returns full state in one call)', async () => {
     ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
 
-    const result = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getPositions(ctx, {
       address: ADDRESS,
     })
     expect(result.pagination.hasMore).toBe(false)
@@ -108,7 +110,7 @@ describe('getPositions', () => {
       HL_MARKETS
     ))
 
-    const err = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const err = await getPositions(ctx, {
       address: ADDRESS,
     }).catch((e) => e)
 

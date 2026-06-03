@@ -22,6 +22,8 @@ const baseResponses = {
   userFunding: HL_USER_FUNDING,
 }
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getActivity', () => {
   let restore: () => void
 
@@ -32,7 +34,7 @@ describe('getActivity', () => {
   it('merges ledger and funding entries newest-first and enriches funding assets', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
-    const result = await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getActivity(ctx, {
       address: ADDRESS,
     })
 
@@ -51,7 +53,7 @@ describe('getActivity', () => {
     const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
-    await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
+    await getActivity(ctx, {
       address: ADDRESS,
       type: [ActivityType.DEPOSIT],
     })
@@ -63,7 +65,7 @@ describe('getActivity', () => {
     const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
-    await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
+    await getActivity(ctx, {
       address: ADDRESS,
       type: [ActivityType.FUNDING],
     })
@@ -77,7 +79,7 @@ describe('getActivity', () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const cursor = '1900000000000' // far future, includes both items
-    const result = await getActivity(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getActivity(ctx, {
       address: ADDRESS,
       cursor,
     })

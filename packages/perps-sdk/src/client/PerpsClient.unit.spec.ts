@@ -68,6 +68,7 @@ describe('PerpsClient', () => {
         providers: [
           {
             type: provider,
+            bind: vi.fn(),
             projectConfig: vi.fn(() => []),
           } as unknown as PerpsProviderPlugin,
         ],
@@ -831,6 +832,7 @@ describe('PerpsClient', () => {
     } =>
       ({
         type: 'hyperliquid',
+        bind: vi.fn(),
         getAccount: vi.fn(async () => mockAccount),
         projectConfig: vi.fn(() => [...sentinelSettings]),
       }) as unknown as PerpsProviderPlugin & {
@@ -895,6 +897,7 @@ describe('PerpsClient', () => {
         providers: [
           {
             type: 'hyperliquid',
+            bind: vi.fn(),
             getAccount: stubGetAccount,
             projectConfig: vi.fn(() => []),
           } as unknown as PerpsProviderPlugin,

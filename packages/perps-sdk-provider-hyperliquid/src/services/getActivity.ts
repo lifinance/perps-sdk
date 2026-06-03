@@ -1,6 +1,5 @@
 import {
   getMarkets as coreGetMarkets,
-  type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type {
@@ -18,6 +17,7 @@ import {
   NINETY_DAYS_MS,
   PROVIDER_KEY,
 } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
@@ -131,8 +131,7 @@ const fetchActivityData = async (
  * @public
  */
 export const getActivity = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {

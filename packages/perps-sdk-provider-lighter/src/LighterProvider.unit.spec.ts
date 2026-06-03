@@ -261,6 +261,7 @@ afterEach(() => {
 describe('LighterProvider — `type` field', () => {
   it('reports `lighter` as the provider key', () => {
     const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
     expect(provider.type).toBe('lighter')
   })
 })
@@ -268,8 +269,8 @@ describe('LighterProvider — `type` field', () => {
 describe('LighterProvider — auth token plumbing', () => {
   it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
     const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
     await provider.getAccount(
-      STUB_CLIENT,
       { address: ADDRESS },
       {
         lighterAuthToken: 'per-call-token',
@@ -284,7 +285,8 @@ describe('LighterProvider — auth token plumbing', () => {
 
   it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
     const provider = lighterProvider({ authToken: 'pre-created-token' })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
@@ -299,7 +301,8 @@ describe('LighterProvider — auth token plumbing', () => {
         return `dynamic-token-${calls}`
       },
     })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
     expect(calls).toBeGreaterThanOrEqual(1)
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
@@ -337,7 +340,8 @@ describe('LighterProvider — auth token plumbing', () => {
         fetcher: tokenFetcher,
       },
     })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
     // Standard (read-write) token is signed exactly once — only to authorise
     // the read-only token creation, never to authenticate the read itself.
     expect(createdTokens.length).toBe(1)
@@ -379,8 +383,9 @@ describe('LighterProvider — auth token plumbing', () => {
         fetcher: tokenFetcher,
       },
     })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
+    await provider.getAccount({ address: ADDRESS })
     // tokens/create hit exactly once across both reads; the second read reuses
     // the persisted token and so never re-signs a standard token either.
     expect(tokenFetcher).toHaveBeenCalledTimes(1)
@@ -406,7 +411,8 @@ describe('LighterProvider — auth token plumbing', () => {
     } as unknown as LighterSigner
     const keyStore = new LighterKeyStore(createMemoryStorage())
     const provider = lighterProvider({ signer: signerStub, keyStore })
-    const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
     // No API key → falls back to the unauthenticated degrade path (zero fee tier).
     expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
     expect(
@@ -498,8 +504,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       keyStore,
       readOnlyTokenOptions: { storage: roStorage, fetcher: tokenFetcher },
     })
+    provider.bind(STUB_CLIENT)
 
-    const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    const account = await provider.getAccount({ address: ADDRESS })
 
     expect(tokenFetcher).toHaveBeenCalledTimes(2) // stale, then fresh after eviction
     expect(limitsCalls).toBe(2) // rejected once, retried once
@@ -557,9 +564,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         fetcher: tokenFetcher,
       },
     })
+    provider.bind(STUB_CLIENT)
 
     await provider.getAccount(
-      STUB_CLIENT,
       { address: ADDRESS },
       { lighterAuthToken: 'caller-token' }
     )
@@ -572,7 +579,8 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
 describe('LighterProvider — unauthenticated degrade paths', () => {
   it('getAccount returns zero fee tier when no token is configured', async () => {
     const provider = lighterProvider()
-    const account = await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
     // accountLimits should NOT have been called
     expect(
@@ -582,7 +590,8 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
 
   it('getOrders returns empty arrays when no token is configured', async () => {
     const provider = lighterProvider()
-    const orders = await provider.getOrders(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    const orders = await provider.getOrders({ address: ADDRESS })
     expect(orders.openOrders).toEqual([])
     expect(orders.triggerOrders).toEqual([])
     expect(orders.pagination.hasMore).toBe(false)
@@ -590,7 +599,8 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
 
   it('getActivity returns empty items when no token is configured', async () => {
     const provider = lighterProvider()
-    const activity = await provider.getActivity(STUB_CLIENT, {
+    provider.bind(STUB_CLIENT)
+    const activity = await provider.getActivity({
       address: ADDRESS,
     })
     expect(activity.items).toEqual([])
@@ -599,8 +609,9 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
 
   it('getOrder throws when no token is configured', async () => {
     const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
     await expect(
-      provider.getOrder(STUB_CLIENT, { address: ADDRESS, id: 'order_1' })
+      provider.getOrder({ address: ADDRESS, id: 'order_1' })
     ).rejects.toThrow(/auth token/i)
   })
 })
@@ -608,7 +619,8 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
 describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
   it('hits Lighter mainnet by default', async () => {
     const provider = lighterProvider()
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
     for (const call of recorded) {
       expect(call.url).toMatch(/^https:\/\/mainnet\.zklighter\.elliot\.ai\//)
     }
@@ -618,7 +630,8 @@ describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
     const provider = lighterProvider({
       restUrl: 'https://testnet.zklighter.elliot.ai',
     })
-    await provider.getAccount(STUB_CLIENT, { address: ADDRESS })
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount({ address: ADDRESS })
     for (const call of recorded) {
       expect(call.url).toMatch(/^https:\/\/testnet\.zklighter\.elliot\.ai\//)
     }
@@ -680,7 +693,8 @@ describe('LighterProvider — normalisation', () => {
     })
 
     const provider = lighterProvider({ authToken: 'tok' })
-    const result = await provider.getActivity(STUB_CLIENT, {
+    provider.bind(STUB_CLIENT)
+    const result = await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.DEPOSIT],
     })
@@ -743,7 +757,8 @@ describe('LighterProvider — getActivity transfer token registry', () => {
   it('maps a transfer asset_id to its backend token symbol', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
-    const { items } = await provider.getActivity(STUB_CLIENT, {
+    provider.bind(STUB_CLIENT)
+    const { items } = await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.TRANSFER],
     })
@@ -754,7 +769,8 @@ describe('LighterProvider — getActivity transfer token registry', () => {
   it('falls back to String(asset_id) when the token registry has no symbol', async () => {
     stubWithTransfer(777)
     const provider = lighterProvider({ authToken: 'tok' })
-    const { items } = await provider.getActivity(STUB_CLIENT, {
+    provider.bind(STUB_CLIENT)
+    const { items } = await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.TRANSFER],
     })
@@ -765,11 +781,12 @@ describe('LighterProvider — getActivity transfer token registry', () => {
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
-    await provider.getActivity(STUB_CLIENT, {
+    provider.bind(STUB_CLIENT)
+    await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.TRANSFER],
     })
-    await provider.getActivity(STUB_CLIENT, {
+    await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.TRANSFER],
     })
@@ -783,9 +800,10 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 describe('LighterProvider — getOrder', () => {
   it('rejects tx-hash-shaped ids with OrderNotFound + guidance', async () => {
     const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
     const txHashShape = '0'.repeat(80) // valid 80-hex shape
     await expect(
-      provider.getOrder(STUB_CLIENT, { address: ADDRESS, id: txHashShape })
+      provider.getOrder({ address: ADDRESS, id: txHashShape })
     ).rejects.toThrow(/looks like a tx hash/)
   })
 })

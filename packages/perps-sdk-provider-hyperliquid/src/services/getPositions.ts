@@ -1,11 +1,11 @@
 import {
   getMarkets as coreGetMarkets,
-  type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type { PositionsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import type { HlClearinghouseState } from '../types/index.js'
 import { mapPosition, perpsDexNames, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
@@ -32,8 +32,7 @@ export interface GetPositionsParams {
  * @public
  */
 export const getPositions = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetPositionsParams,
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> => {

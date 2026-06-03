@@ -199,9 +199,10 @@ export interface ProviderGetActivityParams {
  * Unbound provider plugin passed to {@link createPerpsClient}, modelled on
  * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type` (the wire
  * key — `'hyperliquid'`, `'lighter'`, …) and implements the read-side surface
- * area for one DEX. Read methods take the {@link PerpsSDKClient} as their first
- * argument; {@link createPerpsClient} binds it once via {@link bindProvider},
- * yielding the runtime {@link PerpsProvider} whose reads drop the `client` arg.
+ * area for one DEX. Read methods are clientless — `(params, options?)`; the
+ * runtime context they need is injected once via {@link bind} when
+ * {@link createPerpsClient} calls {@link bindProvider}, and captured in the
+ * factory's closure.
  *
  * Concrete implementations live in dedicated packages
  * (`@lifi/perps-sdk-provider-hyperliquid`, `@lifi/perps-sdk-provider-lighter`).
@@ -230,38 +231,41 @@ export interface PerpsProviderPlugin {
    */
   readonly type: string
 
+  /**
+   * Inject the runtime {@link PerpsSDKClient} into the plugin once, during
+   * {@link createPerpsClient}. The plugin captures it (config, fetch, retry,
+   * provider registry) in its factory closure so the clientless read methods
+   * can resolve their runtime deps at call time. Called exactly once per
+   * registered plugin by {@link bindProvider}.
+   */
+  bind(client: PerpsSDKClient): void
+
   getAccount(
-    client: PerpsSDKClient,
     params: ProviderGetAccountParams,
     options?: SDKRequestOptions
   ): Promise<AccountResponse>
 
   getPositions(
-    client: PerpsSDKClient,
     params: ProviderGetPositionsParams,
     options?: SDKRequestOptions
   ): Promise<PositionsResponse>
 
   getOrders(
-    client: PerpsSDKClient,
     params: ProviderGetOrdersParams,
     options?: SDKRequestOptions
   ): Promise<OrdersResponse>
 
   getOrder(
-    client: PerpsSDKClient,
     params: ProviderGetOrderParams,
     options?: SDKRequestOptions
   ): Promise<Order>
 
   getFills(
-    client: PerpsSDKClient,
     params: ProviderGetFillsParams,
     options?: SDKRequestOptions
   ): Promise<FillsResponse>
 
   getActivity(
-    client: PerpsSDKClient,
     params: ProviderGetActivityParams,
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse>
@@ -340,35 +344,14 @@ export interface PerpsProviderPlugin {
   ): Promise<SignedActionStep[]>
 }
 
-/** Read-method keys on {@link PerpsProviderPlugin} whose leading `client` arg is bound away. */
-type PerpsProviderReadMethod =
-  | 'getAccount'
-  | 'getPositions'
-  | 'getOrders'
-  | 'getOrder'
-  | 'getFills'
-  | 'getActivity'
-
-/** Drop the leading {@link PerpsSDKClient} argument from a plugin read method. */
-type BoundRead<M> = M extends (
-  client: PerpsSDKClient,
-  ...rest: infer R
-) => infer Ret
-  ? (...rest: R) => Ret
-  : never
-
 /**
  * Runtime provider returned by {@link PerpsSDKClient.getProvider} and
- * {@link requireProvider}: the {@link PerpsProviderPlugin} with the `client`
- * argument bound away from every read method by {@link bindProvider}, so reads
- * are `getX(params, options?)`. Write/setup members (`projectConfig`,
- * `resolveSetupParams`, `resolveSignerAddress`, `signActions`) never took
- * `client`, so they carry over unchanged.
+ * {@link requireProvider}: a {@link PerpsProviderPlugin} that has been bound to
+ * its client via {@link bindProvider}. The read methods are already clientless
+ * on the plugin (`getX(params, options?)`); binding only drops the one-shot
+ * {@link PerpsProviderPlugin.bind} hook so consumers cannot re-bind a live
+ * provider.
  *
  * @public
  */
-export type PerpsProvider = {
-  [K in keyof PerpsProviderPlugin]: K extends PerpsProviderReadMethod
-    ? BoundRead<PerpsProviderPlugin[K]>
-    : PerpsProviderPlugin[K]
-}
+export type PerpsProvider = Omit<PerpsProviderPlugin, 'bind'>
