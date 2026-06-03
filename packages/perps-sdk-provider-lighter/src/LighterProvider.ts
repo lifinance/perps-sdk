@@ -4,7 +4,7 @@ import {
   ExplorerChainId,
   explorerTxUrl,
   PerpsError,
-  type PerpsProvider,
+  type PerpsProviderPlugin,
   type PerpsSDKClient,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
@@ -128,7 +128,7 @@ const normalizeLighterPublicKey = (key: string): string =>
   key.replace(/^0x/i, '').toLowerCase()
 
 /**
- * Construction options for the Lighter {@link PerpsProvider} plugin.
+ * Construction options for the Lighter {@link PerpsProviderPlugin}.
  *
  * `restUrl` defaults to Lighter mainnet; pass a testnet URL or a self-hosted
  * mirror to override.
@@ -190,13 +190,13 @@ interface CachedStandardToken {
 /**
  * Lighter provider plugin extended with a public `resolveAuthToken` so the
  * WS layer can share the same token-resolution closure that the read methods
- * use internally. The base {@link PerpsProvider} contract stays
+ * use internally. The base {@link PerpsProviderPlugin} contract stays
  * provider-agnostic — this extension is opt-in for callers that explicitly
  * type against it.
  *
  * @public
  */
-export interface LighterPerpsProvider extends PerpsProvider {
+export interface LighterPerpsProvider extends PerpsProviderPlugin {
   /**
    * Resolve a Lighter auth token for `address`, following the resolution order
    * documented on {@link LighterProviderOptions} (the per-call override does not
@@ -208,7 +208,7 @@ export interface LighterPerpsProvider extends PerpsProvider {
 
 /**
  * Lighter provider plugin factory. Returns an object implementing
- * {@link PerpsProvider}, mirroring the `EthereumProvider()` / `hyperliquidProvider()`
+ * {@link PerpsProviderPlugin}, mirroring the `EthereumProvider()` / `hyperliquidProvider()`
  * shape used by the rest of the LI.FI SDK family.
  *
  * Read functions call Lighter's REST API directly with no LI.FI backend hop.

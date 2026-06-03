@@ -9,7 +9,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address, Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { PerpsError } from '../src/errors/PerpsError.js'
-import type { PerpsProvider } from '../src/types/core.js'
+import type { PerpsProviderPlugin } from '../src/types/core.js'
 import { signTypedData } from '../src/utils/signTypedData.js'
 
 /**
@@ -19,12 +19,12 @@ import { signTypedData } from '../src/utils/signTypedData.js'
  * PerpsClient unit tests can exercise core's delegation without importing the
  * real provider package (which would create a dev-time cyclic dependency).
  */
-export interface TestAgentProvider extends PerpsProvider {
+export interface TestAgentProvider extends PerpsProviderPlugin {
   createAgent(address: Address): Promise<Address>
 }
 
 export function createTestAgentProvider(
-  partial: Partial<PerpsProvider> & { type: string }
+  partial: Partial<PerpsProviderPlugin> & { type: string }
 ): TestAgentProvider {
   const agents = new Map<string, Hex>()
 

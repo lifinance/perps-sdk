@@ -44,7 +44,6 @@ export async function getAccount(
   options?: SDKRequestOptions
 ): Promise<AccountResponse> {
   return requireProvider(client, params.provider).getAccount(
-    client,
     { address: params.address },
     options
   )

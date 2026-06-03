@@ -2,7 +2,7 @@ import type { AccountResponse } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { mockAccount } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProvider } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/core.js'
 import { getAccount } from './getAccount.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -12,7 +12,7 @@ const makeClient = () => {
   const plugin = {
     type: 'hyperliquid',
     getAccount: getAccountSpy,
-  } as unknown as PerpsProvider
+  } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
     integrator: 'test-app',
     apiKey: 'test-key',

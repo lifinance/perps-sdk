@@ -2,10 +2,10 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { createPerpsClient } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import type { PerpsProvider } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/core.js'
 import { requireProvider } from './requireProvider.js'
 
-const makeClient = (plugins: PerpsProvider[] = []) =>
+const makeClient = (plugins: PerpsProviderPlugin[] = []) =>
   createPerpsClient({
     integrator: 'test-app',
     apiKey: 'test-key',
@@ -13,19 +13,22 @@ const makeClient = (plugins: PerpsProvider[] = []) =>
   })
 
 describe('requireProvider', () => {
-  it('returns the registered plugin matching the provider key', () => {
-    const plugin = { type: 'hyperliquid' } as unknown as PerpsProvider
+  it('returns the bound provider matching the provider key', () => {
+    const plugin = { type: 'hyperliquid' } as unknown as PerpsProviderPlugin
     const client = makeClient([plugin])
 
-    expect(requireProvider(client, 'hyperliquid')).toBe(plugin)
+    expect(requireProvider(client, 'hyperliquid')).toBe(
+      client.getProvider('hyperliquid')
+    )
+    expect(requireProvider(client, 'hyperliquid').type).toBe('hyperliquid')
   })
 
-  it('selects the correct plugin when several are registered', () => {
-    const hl = { type: 'hyperliquid' } as unknown as PerpsProvider
-    const lighter = { type: 'lighter' } as unknown as PerpsProvider
+  it('selects the correct provider when several are registered', () => {
+    const hl = { type: 'hyperliquid' } as unknown as PerpsProviderPlugin
+    const lighter = { type: 'lighter' } as unknown as PerpsProviderPlugin
     const client = makeClient([hl, lighter])
 
-    expect(requireProvider(client, 'lighter')).toBe(lighter)
+    expect(requireProvider(client, 'lighter').type).toBe('lighter')
   })
 
   it('throws a PerpsError with SDKError code when the plugin is missing', () => {
@@ -49,7 +52,7 @@ describe('requireProvider', () => {
   })
 
   it('delegates lookup to client.getProvider', () => {
-    const plugin = { type: 'lighter' } as unknown as PerpsProvider
+    const plugin = { type: 'lighter' } as unknown as PerpsProviderPlugin
     const client = makeClient([plugin])
     const spy = vi.spyOn(client, 'getProvider')
 

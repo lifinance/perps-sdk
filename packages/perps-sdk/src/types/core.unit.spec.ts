@@ -1,21 +1,16 @@
 import type {
   AccountResponse,
   ActivitiesResponse,
-  Asset,
-  AssetsResponse,
   FillsResponse,
-  OhlcvResponse,
   Order,
-  OrderbookResponse,
   OrdersResponse,
   PositionsResponse,
-  PricesResponse,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProvider } from './core.js'
+import type { PerpsProviderPlugin } from './core.js'
 
-function makeStubProvider(type: string): PerpsProvider {
+function makeStubProvider(type: string): PerpsProviderPlugin {
   const stub = async (): Promise<never> => {
     throw new Error('not implemented')
   }
@@ -27,16 +22,12 @@ function makeStubProvider(type: string): PerpsProvider {
     getOrder: () => stub() as unknown as Promise<Order>,
     getFills: () => stub() as unknown as Promise<FillsResponse>,
     getActivity: () => stub() as unknown as Promise<ActivitiesResponse>,
-    getAsset: () => stub() as unknown as Promise<Asset>,
-    getAssets: () => stub() as unknown as Promise<AssetsResponse>,
-    getPrices: () => stub() as unknown as Promise<PricesResponse>,
-    getOhlcv: () => stub() as unknown as Promise<OhlcvResponse>,
-    getOrderbook: () => stub() as unknown as Promise<OrderbookResponse>,
+    projectConfig: () => [],
   }
 }
 
 describe('PerpsProvider integration with createPerpsClient', () => {
-  it('exposes registered providers via client.providers in registration order', () => {
+  it('exposes bound providers via client.providers in registration order', () => {
     const hl = makeStubProvider('hyperliquid')
     const lighter = makeStubProvider('lighter')
     const client = createPerpsClient({
@@ -45,10 +36,13 @@ describe('PerpsProvider integration with createPerpsClient', () => {
       providers: [hl, lighter],
     })
 
-    expect(client.providers).toEqual([hl, lighter])
+    expect(client.providers.map((p) => p.type)).toEqual([
+      'hyperliquid',
+      'lighter',
+    ])
   })
 
-  it('looks providers up by type via getProvider', () => {
+  it('looks bound providers up by type via getProvider', () => {
     const hl = makeStubProvider('hyperliquid')
     const lighter = makeStubProvider('lighter')
     const client = createPerpsClient({
@@ -57,8 +51,8 @@ describe('PerpsProvider integration with createPerpsClient', () => {
       providers: [hl, lighter],
     })
 
-    expect(client.getProvider('hyperliquid')).toBe(hl)
-    expect(client.getProvider('lighter')).toBe(lighter)
+    expect(client.getProvider('hyperliquid')?.type).toBe('hyperliquid')
+    expect(client.getProvider('lighter')?.type).toBe('lighter')
   })
 
   it('returns undefined for an unknown provider key', () => {
@@ -104,8 +98,8 @@ describe('PerpsProvider integration with createPerpsClient', () => {
     expect(client.config.providers).toBeUndefined()
   })
 
-  it('lets a registered provider receive the client back through method calls', async () => {
-    const provider: PerpsProvider = {
+  it('binds the client into a bound provider read, so callers omit it', async () => {
+    const plugin: PerpsProviderPlugin = {
       ...makeStubProvider('hyperliquid'),
       getAccount: async (sdkClient, params) => {
         expect(sdkClient.config.integrator).toBe('test-app')
@@ -122,10 +116,10 @@ describe('PerpsProvider integration with createPerpsClient', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
       apiKey: 'test-key',
-      providers: [provider],
+      providers: [plugin],
     })
 
-    const result = await client.getProvider('hyperliquid')!.getAccount(client, {
+    const result = await client.getProvider('hyperliquid')!.getAccount({
       address: '0x0000000000000000000000000000000000000000',
     })
 

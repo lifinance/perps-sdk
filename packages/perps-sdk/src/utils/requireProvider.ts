@@ -3,10 +3,11 @@ import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsProvider, PerpsSDKClient } from '../types/core.js'
 
 /**
- * Resolve the registered provider plugin for `provider`, or throw. Account
- * reads run direct-to-venue through the plugin, so a missing plugin is a wiring
- * error (the consumer must pass it to `createPerpsClient({ providers: [...] })`)
- * rather than a runtime-recoverable state.
+ * Resolve the registered bound {@link PerpsProvider} for `provider`, or throw.
+ * Account reads run direct-to-venue through the provider, so a missing one is a
+ * wiring error (the consumer must pass it to
+ * `createPerpsClient({ providers: [...] })`) rather than a runtime-recoverable
+ * state.
  *
  * @internal
  */

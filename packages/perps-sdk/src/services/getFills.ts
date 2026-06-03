@@ -49,7 +49,6 @@ export async function getFills(
   options?: SDKRequestOptions
 ): Promise<FillsResponse> {
   return requireProvider(client, params.provider).getFills(
-    client,
     {
       address: params.address,
       limit: params.limit,

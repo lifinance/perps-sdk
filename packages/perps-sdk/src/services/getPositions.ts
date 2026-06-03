@@ -46,7 +46,6 @@ export async function getPositions(
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> {
   return requireProvider(client, params.provider).getPositions(
-    client,
     {
       address: params.address,
       marketId: params.marketId,

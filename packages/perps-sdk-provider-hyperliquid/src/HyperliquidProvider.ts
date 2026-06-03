@@ -1,6 +1,6 @@
 import {
   PerpsError,
-  type PerpsProvider,
+  type PerpsProviderPlugin,
   type PerpsSDKClient,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
@@ -66,11 +66,11 @@ export interface HyperliquidProviderOptions {
  * Hyperliquid provider plugin extended with agent-keypair lifecycle methods.
  * Hyperliquid signs trading actions with a per-user agent wallet the user
  * approves via `APPROVE_AGENT`; the plugin owns that keypair's generation,
- * persistence, and revocation. The base {@link PerpsProvider} contract stays
- * provider-agnostic — this extension is opt-in for callers that explicitly
- * type against it (e.g. to surface a "revoke agent" affordance).
+ * persistence, and revocation. The base {@link PerpsProviderPlugin} contract
+ * stays provider-agnostic — this extension is opt-in for callers that
+ * explicitly type against it (e.g. to surface a "revoke agent" affordance).
  */
-export interface HyperliquidPerpsProvider extends PerpsProvider {
+export interface HyperliquidPerpsProvider extends PerpsProviderPlugin {
   /** Resolve the agent wallet address, throwing if none has been created. */
   getAgentAddress(address: Address): Promise<Address>
   /** Whether an agent keypair exists for the user address. */
@@ -82,7 +82,7 @@ export interface HyperliquidPerpsProvider extends PerpsProvider {
 }
 
 /**
- * Factory for the Hyperliquid {@link PerpsProvider} plugin.
+ * Factory for the Hyperliquid {@link PerpsProviderPlugin}.
  *
  * Account-specific state is read direct from `${apiUrl}/info`; enriched asset
  * metadata and public/shared data come from the LI.FI backend (Valkey-cached).
