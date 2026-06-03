@@ -15,7 +15,7 @@ import {
   mapOpenOrder,
   mapTriggerOrder,
   perpsDexNames,
-  requireMarket,
+  resolveEntityMarket,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -82,33 +82,15 @@ export const getOrders = async (
 
   let openOrders: OpenOrder[] = nonChild
     .filter((o) => !isTriggerOrder(o))
-    .map((o) => {
-      const order = mapOpenOrder(o)
-      return {
-        ...order,
-        market: requireMarket(byMarketId, order.market.id),
-      }
-    })
+    .map((o) => resolveEntityMarket(mapOpenOrder(o), byMarketId))
 
   let triggerOrders: TriggerOrder[] = [
     ...nonChild
       .filter((o) => isTriggerOrder(o))
-      .map((o) => {
-        const order = mapTriggerOrder(o)
-        return {
-          ...order,
-          market: requireMarket(byMarketId, order.market.id),
-        }
-      }),
+      .map((o) => resolveEntityMarket(mapTriggerOrder(o), byMarketId)),
     ...raw
       .filter((o) => childOids.has(o.oid))
-      .map((o) => {
-        const order = mapTriggerOrder(o)
-        return {
-          ...order,
-          market: requireMarket(byMarketId, order.market.id),
-        }
-      }),
+      .map((o) => resolveEntityMarket(mapTriggerOrder(o), byMarketId)),
   ]
 
   if (params.marketId !== undefined) {

@@ -1,11 +1,14 @@
 import {
+  getMarkets as coreGetMarkets,
   isActiveOrderStatus,
+  type PerpsSDKClient,
   ReconnectingWebSocket,
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
 } from '@lifi/perps-sdk'
 import {
+  type Market,
   type OpenOrder,
   OrderSide,
   OrderType,
@@ -33,6 +36,7 @@ import {
   mapOrderType,
   mapPosition,
   marketDisplayFromCoin,
+  resolveEntityMarket,
 } from '../utils/index.js'
 
 /**
@@ -48,9 +52,9 @@ import {
  */
 export const hyperliquidWsProvider =
   (): WsProviderFactory =>
-  ({ provider, wsUrl, markets }) => {
+  ({ provider, wsUrl, markets, client }) => {
     const subDexes = markets.filter((m) => m !== provider && m !== 'spot')
-    return new HyperliquidWsProvider(wsUrl, provider, subDexes)
+    return new HyperliquidWsProvider(wsUrl, provider, subDexes, client)
   }
 
 /**
@@ -66,21 +70,53 @@ export class HyperliquidWsProvider implements WsProvider {
   private listeners = new Map<string, Set<SubscriptionListener>>()
   private readonly providerKey: string
   private readonly subDexes: string[]
+  private readonly client: PerpsSDKClient | undefined
   private positionsBySubDex = new Map<string, Position[]>()
   private midsBySubDex = new Map<string, Record<string, string>>()
+  private byMarketId = new Map<string, Market>()
+  private byMarketIdPromise: Promise<void> | undefined
 
-  constructor(wsUrl: string, providerKey: string, subDexes: string[]) {
+  constructor(
+    wsUrl: string,
+    providerKey: string,
+    subDexes: string[],
+    client?: PerpsSDKClient
+  ) {
     this.providerKey = providerKey
     this.subDexes = subDexes
+    this.client = client
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
     this.rws.on('open', () => this.resubscribeAll())
+  }
+
+  /**
+   * Fetch the backend's enriched `/markets` registry once per provider
+   * instance and key it by `Market.id`, used to re-key venue-synthesised
+   * displays on mapped positions/orders/fills. No-op without a client.
+   */
+  private async ensureMarketMap(): Promise<void> {
+    const client = this.client
+    if (this.byMarketId.size > 0 || client === undefined) {
+      return
+    }
+    if (!this.byMarketIdPromise) {
+      this.byMarketIdPromise = (async () => {
+        const { markets } = await coreGetMarkets(client, {
+          provider: this.providerKey,
+        })
+        this.byMarketId = new Map(markets.map((m) => [m.id, m]))
+      })()
+    }
+    await this.byMarketIdPromise
   }
 
   async subscribe(
     sub: Subscription,
     listener: SubscriptionListener
   ): Promise<() => void> {
+    await this.ensureMarketMap()
+
     const key = this.toKey(sub)
 
     if (!this.listeners.has(key)) {
@@ -421,29 +457,39 @@ export class HyperliquidWsProvider implements WsProvider {
       if (isTriggerOrder(o)) {
         const isLimit =
           type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
-        triggerOrders.push({
-          orderId,
-          market,
-          type,
-          size: o.sz,
-          triggerPrice: o.triggerPx ?? '0',
-          ...(isLimit ? { limitPrice: o.limitPx } : {}),
-          label: o.triggerCondition,
-          createdAt,
-        })
+        triggerOrders.push(
+          resolveEntityMarket(
+            {
+              orderId,
+              market,
+              type,
+              size: o.sz,
+              triggerPrice: o.triggerPx ?? '0',
+              ...(isLimit ? { limitPrice: o.limitPx } : {}),
+              label: o.triggerCondition,
+              createdAt,
+            },
+            this.byMarketId
+          )
+        )
       } else {
         const filled = parseFloat(o.origSz) - parseFloat(o.sz)
-        openOrders.push({
-          orderId,
-          market,
-          side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-          type,
-          size: o.sz,
-          price: o.limitPx,
-          filledSize: filled.toString(),
-          reduceOnly: o.reduceOnly ?? false,
-          createdAt,
-        })
+        openOrders.push(
+          resolveEntityMarket(
+            {
+              orderId,
+              market,
+              side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+              type,
+              size: o.sz,
+              price: o.limitPx,
+              filledSize: filled.toString(),
+              reduceOnly: o.reduceOnly ?? false,
+              createdAt,
+            },
+            this.byMarketId
+          )
+        )
       }
     }
     this.emitToPrefix('orderUpdates:', {
@@ -453,14 +499,16 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.map((f) => mapFill(f as HlUserFill))
+    const items = data.fills.map((f) =>
+      resolveEntityMarket(mapFill(f as HlUserFill), this.byMarketId)
+    )
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(ap as HlAssetPosition)
+      resolveEntityMarket(mapPosition(ap as HlAssetPosition), this.byMarketId)
     )
     this.positionsBySubDex.set(subDexKey, positions)
 

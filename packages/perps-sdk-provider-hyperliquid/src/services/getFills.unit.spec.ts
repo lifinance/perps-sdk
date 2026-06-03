@@ -1,6 +1,11 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, describe, expect, it } from 'vitest'
-import { HL_MARKETS, HL_USER_FILLS } from '../../test/fixtures.js'
+import {
+  HL_MARKETS,
+  HL_SPOT_MARKET,
+  HL_SPOT_USER_FILLS,
+  HL_USER_FILLS,
+} from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getFills } from './getFills.js'
@@ -65,6 +70,36 @@ describe('getFills', () => {
     })
     // The only fill has tid 100; cursor is exclusive so it's filtered out.
     expect(result.items).toHaveLength(0)
+  })
+
+  it('enriches a spot fill onto the backend BASE/QUOTE display and spot logo', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userFills: HL_SPOT_USER_FILLS },
+      [...HL_MARKETS, HL_SPOT_MARKET]
+    ))
+
+    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
+
+    expect(result.items[0].market.baseAsset.displaySymbol).toBe('BTC/USDC')
+    expect(result.items[0].market.baseAsset.logoURI).toBe(
+      'https://app.hyperliquid.xyz/coins/BTC_spot.svg'
+    )
+  })
+
+  it('falls back to the synthesised display for a fill on an unlisted market', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userFills: HL_SPOT_USER_FILLS },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    })
+
+    expect(result.items[0].market.id).toBe('@142')
+    expect(result.items[0].market.baseAsset.displaySymbol).toBe('@142')
   })
 
   it('returns the last item id as the next cursor and reports hasMore against the limit', async () => {

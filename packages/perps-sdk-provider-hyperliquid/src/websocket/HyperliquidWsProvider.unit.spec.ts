@@ -1,5 +1,7 @@
+import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
+import { HL_MARKETS, HL_SPOT_MARKET } from '../../test/fixtures.js'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
 
 // --- Mock ReconnectingWebSocket ---
@@ -56,9 +58,17 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
   return { MockRws, getMockRwsInstance: () => instance }
 })
 
+const { getMarketsMock } = vi.hoisted(() => ({
+  getMarketsMock: vi.fn(),
+}))
+
 vi.mock('@lifi/perps-sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@lifi/perps-sdk')>()
-  return { ...actual, ReconnectingWebSocket: MockRws }
+  return {
+    ...actual,
+    ReconnectingWebSocket: MockRws,
+    getMarkets: getMarketsMock,
+  }
 })
 
 // --- Test setup ---
@@ -71,6 +81,21 @@ function createProvider(): HyperliquidWsProvider {
     'wss://api.hyperliquid.xyz/ws',
     providerKey,
     subDexes
+  )
+}
+
+const fakeClient = {} as PerpsSDKClient
+
+/** Provider wired to a client whose `getMarkets` returns `markets`. */
+function createEnrichingProvider(
+  markets = [...HL_MARKETS, HL_SPOT_MARKET]
+): HyperliquidWsProvider {
+  getMarketsMock.mockResolvedValue({ markets })
+  return new HyperliquidWsProvider(
+    'wss://api.hyperliquid.xyz/ws',
+    providerKey,
+    subDexes,
+    fakeClient
   )
 }
 
@@ -594,6 +619,129 @@ describe('HyperliquidWsProvider', () => {
       expect(event2.data).toHaveLength(2)
       expect(event2.data.map((p: any) => p.market.id)).toContain('BTC')
       expect(event2.data.map((p: any) => p.market.id)).toContain('xyz:BRENTOIL')
+    })
+
+    it('enriches a spot order onto the backend BASE/QUOTE display and spot logo', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: {
+                oid: 100,
+                coin: '@142',
+                side: 'B',
+                sz: '0.05',
+                limitPx: '93000',
+                orderType: 'Limit',
+                origSz: '0.1',
+                reduceOnly: false,
+                timestamp: 1704067200000,
+                tif: 'Gtc',
+                cloid: null,
+                triggerCondition: 'N/A',
+                triggerPx: null,
+              },
+              status: 'open',
+              statusTimestamp: 1704067200000,
+            },
+          ],
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders[0].market.baseAsset.displaySymbol).toBe(
+        'BTC/USDC'
+      )
+      expect(event.data.openOrders[0].market.baseAsset.logoURI).toBe(
+        'https://app.hyperliquid.xyz/coins/BTC_spot.svg'
+      )
+    })
+
+    it('leaves a perp position display unchanged after enrichment', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'clearinghouseState',
+          data: {
+            dex: '',
+            user: '0xuser1',
+            clearinghouseState: {
+              assetPositions: [
+                {
+                  position: {
+                    coin: 'BTC',
+                    szi: '0.1',
+                    entryPx: '94000',
+                    positionValue: '9500',
+                    liquidationPx: '85000',
+                    unrealizedPnl: '100',
+                    marginUsed: '940',
+                    leverage: { type: 'cross', value: 10 },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data[0].market.id).toBe('BTC')
+      expect(event.data[0].market.baseAsset.displaySymbol).toBe('BTC')
+    })
+
+    it('falls back to the synthesised display for a fill on an unlisted market', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [
+              {
+                tid: 555,
+                coin: '@142',
+                side: 'B',
+                px: '94000',
+                sz: '0.1',
+                dir: 'Buy',
+                fee: '4.70',
+                closedPnl: '0',
+                time: 1704067200000,
+                startPosition: '0.0',
+              },
+            ],
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data[0].market.id).toBe('@142')
+      expect(event.data[0].market.baseAsset.displaySymbol).toBe('@142')
     })
 
     it('should ignore pong messages', async () => {

@@ -125,6 +125,30 @@ export const HL_MARKETS: Market[] = [
   },
 ]
 
+/**
+ * Backend spot market: the venue references it by coin `@142`, the backend
+ * lists it under `id: '@142'` with an enriched `BTC/USDC` display and a
+ * `_spot` logo. `HL_MARKETS` omits it so the same fixtures exercise the
+ * unlisted-fallback path.
+ */
+export const HL_SPOT_MARKET: Market = {
+  providerId: 'hyperliquid',
+  id: '@142',
+  categoryId: 'spot',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    displaySymbol: 'BTC/USDC',
+    logoURI: 'https://app.hyperliquid.xyz/coins/BTC_spot.svg',
+  },
+  quoteAsset: USDC_ASSET,
+  szDecimals: 5,
+  markPrice: '95000',
+  maxLeverage: 1,
+  onlyIsolated: false,
+  funding: { rate: '0', nextFundingTime: 0 },
+}
+
 export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {
   marginSummary: { accountValue: '10000', totalMarginUsed: '500' },
   crossMarginSummary: { accountValue: '10000', totalMarginUsed: '500' },
@@ -235,6 +259,23 @@ export const HL_USER_FILLS: HlUserFills = [
     sz: '0.1',
     px: '94000',
     dir: 'Open Long',
+    fee: '4.70',
+    closedPnl: '0',
+    crossed: true,
+    time: 1704067200000,
+    startPosition: '0',
+  },
+]
+
+export const HL_SPOT_USER_FILLS: HlUserFills = [
+  {
+    tid: 101,
+    oid: 2,
+    coin: '@142',
+    side: 'B',
+    sz: '0.1',
+    px: '94000',
+    dir: 'Buy',
     fee: '4.70',
     closedPnl: '0',
     crossed: true,

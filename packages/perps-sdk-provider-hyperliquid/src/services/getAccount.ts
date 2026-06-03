@@ -25,7 +25,7 @@ import {
 import {
   marketDisplayFromCoin,
   perpsDexNames,
-  requireMarket,
+  resolveEntityMarket,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapPosition } from '../utils/mapPosition.js'
@@ -254,10 +254,7 @@ export const getAccount = async (
         .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
         .map((ap) => mapPosition(ap))
     )
-    .map((pos) => ({
-      ...pos,
-      market: requireMarket(byMarketId, pos.market.id),
-    }))
+    .map((pos) => resolveEntityMarket(pos, byMarketId))
 
   const stateByDex = new Map<string, HlClearinghouseState>()
   stateResults.forEach((state, i) => {
