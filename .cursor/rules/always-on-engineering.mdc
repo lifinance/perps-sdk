@@ -1,0 +1,14 @@
+---
+description: Core engineering guardrails for all coding tasks
+alwaysApply: true
+---
+
+# Core Guardrails
+
+- Prefer root-cause fixes over symptom-hiding workarounds.
+- Keep diffs focused and minimal for the requested scope.
+- Do not use destructive git commands unless explicitly requested.
+- Do not commit secrets, local machine paths, or local-only config files.
+- Add or update tests for behavior changes.
+- Run lint, typecheck, and relevant tests before claiming completion.
+- Keep comments concise and durable; avoid storyline/ticket-history comments in source.
