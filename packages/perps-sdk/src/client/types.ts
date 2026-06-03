@@ -211,13 +211,6 @@ export interface ExecuteProviderSetupResult {
   userResults: ExecuteActionResponse
   /** Results from agent-signed setup submission (if any) */
   agentResults?: ExecuteActionResponse
-  /**
-   * Fallback user-wallet setup steps surfaced when an agent-signed
-   * `ACCOUNT_MODE` dispatch is not authorised (e.g. Hyperliquid refuses to
-   * upgrade from a non-default abstraction variant without a user signature).
-   * Caller must re-sign these with the user's wallet.
-   */
-  fallbackUserProviderSetup?: ActionStep[]
 }
 
 /**
