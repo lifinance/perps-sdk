@@ -81,7 +81,7 @@ describe('hyperliquidProvider', () => {
 
     await client
       .getProvider('hyperliquid')!
-      .getAccount(client, { address: ADDRESS })
+      .getAccount({ address: ADDRESS })
       .catch(() => undefined)
 
     expect(mock.infoRequests.length).toBeGreaterThan(0)
@@ -104,7 +104,7 @@ describe('hyperliquidProvider', () => {
 
     await client
       .getProvider('hyperliquid')!
-      .getAccount(client, { address: ADDRESS })
+      .getAccount({ address: ADDRESS })
       .catch(() => undefined)
 
     expect(mock.infoRequests.length).toBeGreaterThan(0)

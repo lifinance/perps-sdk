@@ -16,6 +16,7 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
   }
   return {
     type,
+    bind: () => {},
     getAccount: () => stub() as unknown as Promise<AccountResponse>,
     getPositions: () => stub() as unknown as Promise<PositionsResponse>,
     getOrders: () => stub() as unknown as Promise<OrdersResponse>,
@@ -98,26 +99,30 @@ describe('PerpsProvider integration with createPerpsClient', () => {
     expect(client.config.providers).toBeUndefined()
   })
 
-  it('binds the client into a bound provider read, so callers omit it', async () => {
+  it('injects the client via bind so the clientless read can resolve it', async () => {
+    let boundIntegrator: string | undefined
     const plugin: PerpsProviderPlugin = {
       ...makeStubProvider('hyperliquid'),
-      getAccount: async (sdkClient, params) => {
-        expect(sdkClient.config.integrator).toBe('test-app')
-        return {
+      bind: (client) => {
+        boundIntegrator = client.config.integrator
+      },
+      getAccount: async (params) =>
+        ({
           balances: [],
           totalEquity: '0',
           marginUsed: '0',
           marginAvailable: '0',
           config: { provider: 'hyperliquid' },
           extra: { address: params.address },
-        } as unknown as AccountResponse
-      },
+        }) as unknown as AccountResponse,
     }
     const client = createPerpsClient({
       integrator: 'test-app',
       apiKey: 'test-key',
       providers: [plugin],
     })
+
+    expect(boundIntegrator).toBe('test-app')
 
     const result = await client.getProvider('hyperliquid')!.getAccount({
       address: '0x0000000000000000000000000000000000000000',

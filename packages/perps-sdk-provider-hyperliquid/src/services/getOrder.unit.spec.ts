@@ -19,6 +19,8 @@ const client = createPerpsClient({
 
 const baseResponses = {}
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getOrder', () => {
   let restore: () => void
 
@@ -35,7 +37,7 @@ describe('getOrder', () => {
       HL_MARKETS
     ))
 
-    const order = await getOrder(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const order = await getOrder(ctx, {
       address: ADDRESS,
       id: '1',
     })
@@ -52,7 +54,7 @@ describe('getOrder', () => {
     }))
 
     await expect(
-      getOrder(client, DEFAULT_HYPERLIQUID_API_URL, {
+      getOrder(ctx, {
         address: ADDRESS,
         id: '7',
       })
@@ -66,7 +68,7 @@ describe('getOrder', () => {
     }))
 
     await expect(
-      getOrder(client, DEFAULT_HYPERLIQUID_API_URL, {
+      getOrder(ctx, {
         address: ADDRESS,
         id: 'abc',
       })

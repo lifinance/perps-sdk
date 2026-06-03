@@ -11,6 +11,7 @@ const makeClient = () => {
   const getFillsSpy = vi.fn(async (): Promise<FillsResponse> => mockFills)
   const plugin = {
     type: 'hyperliquid',
+    bind: vi.fn(),
     getFills: getFillsSpy,
   } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
@@ -36,7 +37,6 @@ describe('getFills', () => {
 
     expect(result).toEqual(mockFills)
     expect(getFillsSpy).toHaveBeenCalledWith(
-      client,
       {
         address: ADDRESS,
         limit: 10,
@@ -59,7 +59,6 @@ describe('getFills', () => {
     )
 
     expect(getFillsSpy).toHaveBeenCalledWith(
-      client,
       expect.objectContaining({ address: ADDRESS }),
       { signal: controller.signal }
     )

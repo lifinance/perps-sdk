@@ -11,6 +11,7 @@ const makeClient = () => {
   const getOrderSpy = vi.fn(async (): Promise<Order> => mockOrder)
   const plugin = {
     type: 'hyperliquid',
+    bind: vi.fn(),
     getOrder: getOrderSpy,
   } as unknown as PerpsProviderPlugin
   const client = createPerpsClient({
@@ -33,7 +34,6 @@ describe('getOrder', () => {
 
     expect(result).toEqual(mockOrder)
     expect(getOrderSpy).toHaveBeenCalledWith(
-      client,
       { address: ADDRESS, id: 'order1' },
       undefined
     )
@@ -50,7 +50,6 @@ describe('getOrder', () => {
     )
 
     expect(getOrderSpy).toHaveBeenCalledWith(
-      client,
       { address: ADDRESS, id: 'order1' },
       { signal: controller.signal }
     )

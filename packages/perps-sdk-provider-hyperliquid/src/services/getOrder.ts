@@ -1,13 +1,13 @@
 import {
   getMarket as coreGetMarket,
   PerpsError,
-  type PerpsSDKClient,
   type ProviderGetOrderParams,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type { Order } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
 import { mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
@@ -26,8 +26,7 @@ export type GetOrderParams = ProviderGetOrderParams
  * @public
  */
 export const getOrder = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetOrderParams,
   options?: SDKRequestOptions
 ): Promise<Order> => {

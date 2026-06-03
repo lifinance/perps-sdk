@@ -44,6 +44,7 @@ export function createTestAgentProvider(
   }
 
   return {
+    bind: () => {},
     ...partial,
     type: partial.type,
     createAgent,

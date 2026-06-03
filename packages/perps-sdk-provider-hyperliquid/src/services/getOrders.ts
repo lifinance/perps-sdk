@@ -1,11 +1,11 @@
 import {
   getMarkets as coreGetMarkets,
-  type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type { OpenOrder, OrdersResponse, TriggerOrder } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import type {
   HlFrontendOpenOrder,
   HlFrontendOpenOrders,
@@ -42,8 +42,7 @@ export interface GetOrdersParams {
  * @public
  */
 export const getOrders = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetOrdersParams,
   options?: SDKRequestOptions
 ): Promise<OrdersResponse> => {

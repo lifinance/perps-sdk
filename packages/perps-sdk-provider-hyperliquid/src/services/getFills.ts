@@ -1,6 +1,5 @@
 import {
   getMarkets as coreGetMarkets,
-  type PerpsSDKClient,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import type { FillsResponse } from '@lifi/perps-types'
@@ -10,6 +9,7 @@ import {
   MAX_HISTORY_LIMIT,
   PROVIDER_KEY,
 } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
 import { mapFill, requireMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
@@ -44,8 +44,7 @@ export interface GetFillsParams {
  * @public
  */
 export const getFills = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetFillsParams,
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {

@@ -23,6 +23,8 @@ const baseResponses = {
   userFillsByTime: HL_USER_FILLS,
 }
 
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
 describe('getFills', () => {
   let restore: () => void
 
@@ -34,7 +36,7 @@ describe('getFills', () => {
     const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
-    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getFills(ctx, {
       address: ADDRESS,
     })
 
@@ -50,7 +52,7 @@ describe('getFills', () => {
     const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore
 
-    await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    await getFills(ctx, {
       address: ADDRESS,
       startTime: 1000,
       endTime: 2000,
@@ -65,7 +67,7 @@ describe('getFills', () => {
   it('drops fills at or above the cursor tid', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
-    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getFills(ctx, {
       address: ADDRESS,
       cursor: '100',
     })
@@ -79,7 +81,7 @@ describe('getFills', () => {
       [...HL_MARKETS, HL_SPOT_MARKET]
     ))
 
-    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getFills(ctx, {
       address: ADDRESS,
     })
 
@@ -95,7 +97,7 @@ describe('getFills', () => {
       HL_MARKETS
     ))
 
-    const err = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const err = await getFills(ctx, {
       address: ADDRESS,
     }).catch((e) => e)
 
@@ -117,7 +119,7 @@ describe('getFills', () => {
       HL_MARKETS
     ))
 
-    const result = await getFills(client, DEFAULT_HYPERLIQUID_API_URL, {
+    const result = await getFills(ctx, {
       address: ADDRESS,
       limit: 2,
     })

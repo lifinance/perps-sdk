@@ -5,12 +5,12 @@ import type {
 } from '../types/core.js'
 
 /**
- * Bind a {@link PerpsProviderPlugin} to `client`, returning a runtime
- * {@link PerpsProvider} whose six read methods omit the leading `client`
- * argument (it is closed over here) and call the plugin with `client`
- * re-threaded. Every other member — `type`, the write/setup hooks, and any
- * provider-specific extras (e.g. Lighter's `resolveAuthToken`, Hyperliquid's
- * agent management) — passes through unchanged via spread-then-override.
+ * Inject `client` into a {@link PerpsProviderPlugin} once via its
+ * {@link PerpsProviderPlugin.bind} hook, returning the runtime
+ * {@link PerpsProvider} — the plugin with its one-shot `bind` member dropped so
+ * consumers cannot re-bind a live provider. The read methods are already
+ * clientless (`getX(params, options?)`); they resolve their runtime deps from
+ * the context the plugin captured during `bind`.
  *
  * @internal
  */
@@ -18,15 +18,7 @@ export function bindProvider(
   plugin: PerpsProviderPlugin,
   client: PerpsSDKClient
 ): PerpsProvider {
-  return {
-    ...plugin,
-    getAccount: (params, options) => plugin.getAccount(client, params, options),
-    getPositions: (params, options) =>
-      plugin.getPositions(client, params, options),
-    getOrders: (params, options) => plugin.getOrders(client, params, options),
-    getOrder: (params, options) => plugin.getOrder(client, params, options),
-    getFills: (params, options) => plugin.getFills(client, params, options),
-    getActivity: (params, options) =>
-      plugin.getActivity(client, params, options),
-  }
+  plugin.bind(client)
+  const { bind: _bind, ...provider } = plugin
+  return provider
 }

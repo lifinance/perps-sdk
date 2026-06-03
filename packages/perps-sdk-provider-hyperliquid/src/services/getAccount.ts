@@ -1,6 +1,5 @@
 import {
   getMarkets as coreGetMarkets,
-  type PerpsSDKClient,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
@@ -14,6 +13,7 @@ import type {
   Position,
 } from '@lifi/perps-types'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import type { HyperliquidContext } from '../context.js'
 import {
   HlAbstractionMode,
   type HlClearinghouseState,
@@ -192,8 +192,7 @@ const buildBalances = (
  * @public
  */
 export const getAccount = async (
-  client: PerpsSDKClient,
-  apiUrl: string,
+  { client, apiUrl }: HyperliquidContext,
   params: GetAccountParams,
   options?: SDKRequestOptions
 ): Promise<AccountResponse> => {
