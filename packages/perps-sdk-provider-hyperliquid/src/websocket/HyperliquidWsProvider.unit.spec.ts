@@ -1,8 +1,27 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
+import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { HL_MARKETS, HL_SPOT_MARKET } from '../../test/fixtures.js'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
+
+const XYZ_BRENTOIL_MARKET: Market = {
+  providerId: 'hyperliquid',
+  id: 'xyz:BRENTOIL',
+  categoryId: 'xyz',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'BRENTOIL',
+    displaySymbol: 'BRENTOIL',
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+} as Market
 
 // --- Mock ReconnectingWebSocket ---
 
@@ -439,7 +458,7 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('should emit orderUpdates event using prefix matching', async () => {
-      const provider = createProvider()
+      const provider = createEnrichingProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
@@ -492,7 +511,7 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('should emit fills event for userFills channel', async () => {
-      const provider = createProvider()
+      const provider = createEnrichingProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
@@ -540,7 +559,10 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('should emit combined positions for clearinghouseState messages', async () => {
-      const provider = createProvider()
+      const provider = createEnrichingProvider([
+        ...HL_MARKETS,
+        XYZ_BRENTOIL_MARKET,
+      ])
       const listener = vi.fn()
 
       await provider.subscribe(
@@ -706,7 +728,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data[0].market.baseAsset.displaySymbol).toBe('BTC')
     })
 
-    it('falls back to the synthesised display for a fill on an unlisted market', async () => {
+    it('drops a fill on a market absent from /markets without emitting', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const listener = vi.fn()
 
@@ -739,9 +761,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      const event = listener.mock.calls[0][0]
-      expect(event.data[0].market.id).toBe('@142')
-      expect(event.data[0].market.baseAsset.displaySymbol).toBe('@142')
+      expect(listener).not.toHaveBeenCalled()
     })
 
     it('should ignore pong messages', async () => {

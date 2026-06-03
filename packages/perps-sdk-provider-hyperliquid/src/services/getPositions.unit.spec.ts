@@ -1,4 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HL_CLEARINGHOUSE_STATE, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -81,5 +82,37 @@ describe('getPositions', () => {
     })
     expect(result.pagination.hasMore).toBe(false)
     expect(result.pagination.limit).toBe(1)
+  })
+
+  it('throws MarketNotFound for a wire coin absent from /markets', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            {
+              position: {
+                coin: 'DOGE',
+                szi: '10',
+                entryPx: '0.1',
+                positionValue: '1',
+                liquidationPx: '0.05',
+                unrealizedPnl: '0',
+                marginUsed: '0.1',
+                leverage: { type: 'cross', value: 1 },
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const err = await getPositions(client, DEFAULT_HYPERLIQUID_API_URL, {
+      address: ADDRESS,
+    }).catch((e) => e)
+
+    expect(err).toBeInstanceOf(PerpsError)
+    expect((err as PerpsError).code).toBe(PerpsErrorCode.MarketNotFound)
   })
 })

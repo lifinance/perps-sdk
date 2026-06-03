@@ -35,8 +35,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapPosition,
-  marketDisplayFromCoin,
-  resolveEntityMarket,
+  requireMarket,
 } from '../utils/index.js'
 
 /**
@@ -452,44 +451,34 @@ export class HyperliquidWsProvider implements WsProvider {
         continue
       }
       const type = mapOrderType(o.orderType)
-      const market = marketDisplayFromCoin(o.coin)
+      const market = requireMarket(this.byMarketId, o.coin)
       const createdAt = new Date(o.timestamp).toISOString()
       if (isTriggerOrder(o)) {
         const isLimit =
           type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
-        triggerOrders.push(
-          resolveEntityMarket(
-            {
-              orderId,
-              market,
-              type,
-              size: o.sz,
-              triggerPrice: o.triggerPx ?? '0',
-              ...(isLimit ? { limitPrice: o.limitPx } : {}),
-              label: o.triggerCondition,
-              createdAt,
-            },
-            this.byMarketId
-          )
-        )
+        triggerOrders.push({
+          orderId,
+          market,
+          type,
+          size: o.sz,
+          triggerPrice: o.triggerPx ?? '0',
+          ...(isLimit ? { limitPrice: o.limitPx } : {}),
+          label: o.triggerCondition,
+          createdAt,
+        })
       } else {
         const filled = parseFloat(o.origSz) - parseFloat(o.sz)
-        openOrders.push(
-          resolveEntityMarket(
-            {
-              orderId,
-              market,
-              side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-              type,
-              size: o.sz,
-              price: o.limitPx,
-              filledSize: filled.toString(),
-              reduceOnly: o.reduceOnly ?? false,
-              createdAt,
-            },
-            this.byMarketId
-          )
-        )
+        openOrders.push({
+          orderId,
+          market,
+          side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+          type,
+          size: o.sz,
+          price: o.limitPx,
+          filledSize: filled.toString(),
+          reduceOnly: o.reduceOnly ?? false,
+          createdAt,
+        })
       }
     }
     this.emitToPrefix('orderUpdates:', {
@@ -500,7 +489,7 @@ export class HyperliquidWsProvider implements WsProvider {
 
   private handleUserFills(data: HlWsUserFillsData) {
     const items = data.fills.map((f) =>
-      resolveEntityMarket(mapFill(f as HlUserFill), this.byMarketId)
+      mapFill(f as HlUserFill, requireMarket(this.byMarketId, f.coin))
     )
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
@@ -508,7 +497,10 @@ export class HyperliquidWsProvider implements WsProvider {
   private handleClearinghouseState(data: HlWsClearinghouseStateData) {
     const subDexKey = data.dex || 'default'
     const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      resolveEntityMarket(mapPosition(ap as HlAssetPosition), this.byMarketId)
+      mapPosition(
+        ap as HlAssetPosition,
+        requireMarket(this.byMarketId, ap.position.coin)
+      )
     )
     this.positionsBySubDex.set(subDexKey, positions)
 
