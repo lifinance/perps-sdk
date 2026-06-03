@@ -726,6 +726,43 @@ export class PerpsClient {
   }
 
   /**
+   * Sign and submit a single provider-option change (a `Provider.options`
+   * tunable such as Lighter `ACCOUNT_TYPE` or Hyperliquid `ACCOUNT_MODE`)
+   * end-to-end, throwing on a venue rejection.
+   *
+   * Options are dispatched through the same {@link execute} pipeline as
+   * trades, but unlike a trade an option change is a single mandatory action:
+   * a per-action `success: false` (returned as a 200 OK) means the user's
+   * selection was rejected and must surface, not be silently dropped. This
+   * wrapper inspects the result and throws a {@link PerpsError} carrying the
+   * venue `error`, giving options the same throw contract that setup has via
+   * {@link executeProviderSetupAction}. The only structural difference is that
+   * an option carries `params` (the selected value) rather than a pre-staged
+   * step.
+   *
+   * `execute` itself is unchanged — it still returns results without throwing,
+   * which the trade hooks rely on for partial-fill handling.
+   *
+   * @throws {PerpsError} `PerpsErrorCode.ExchangeRejected` carrying the venue
+   *   error when any returned result has `success: false`; also the errors
+   *   `execute` itself can throw (unregistered provider, no signer, signing
+   *   failure).
+   * @public
+   */
+  async executeProviderOption<T extends ActionType>(params: {
+    provider: string
+    address: Address
+    action: T
+    params: ActionParamsMap[T]
+  }): Promise<void> {
+    const { results } = await this.execute(params)
+    const failure = results.find((r) => !r.success)
+    if (failure) {
+      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
+    }
+  }
+
+  /**
    * Place a market or limit order. Convenience wrapper over {@link execute}
    * with `ActionType.PLACE_ORDER`.
    *
