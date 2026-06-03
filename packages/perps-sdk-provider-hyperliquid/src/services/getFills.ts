@@ -11,7 +11,7 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
-import { mapFill, requireMarket } from '../utils/index.js'
+import { mapFill, resolveEntityMarket } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -88,10 +88,9 @@ export const getFills = async (
       : allFills.filter((f) => f.tid < Number.parseInt(params.cursor!, 10))
 
   const hasMore = filtered.length > limit
-  const items = filtered.slice(0, limit).map((f) => {
-    const fill = mapFill(f)
-    return { ...fill, market: requireMarket(byMarketId, fill.market.id) }
-  })
+  const items = filtered
+    .slice(0, limit)
+    .map((f) => resolveEntityMarket(mapFill(f), byMarketId))
 
   return {
     provider: PROVIDER_KEY,
