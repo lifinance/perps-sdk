@@ -345,7 +345,7 @@ describe('PerpsClient', () => {
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch
   // ---------------------------------------------------------------------------
 
-  describe('executeProviderSetup — proactive ACCOUNT_MODE signer selection after APPROVE_AGENT', () => {
+  describe('executeProviderSetup — no silent ACCOUNT_MODE write during setup', () => {
     const BASE_URL = DEFAULT_API_URL
 
     // Account state is read direct from the provider plugin, so register a
@@ -399,10 +399,8 @@ describe('PerpsClient', () => {
     }
 
     /**
-     * Configure the stubbed plugin `getAccount` with a custom `abstractionMode`
-     * for the duration of the test. The new flow reads this up front to choose
-     * the signer for `ACCOUNT_MODE` — `null` routes to the agent, anything else
-     * routes to the user-wallet fallback.
+     * Configure the stubbed plugin `getAccount` with a custom `abstractionMode`.
+     * Setup must leave the account mode untouched regardless of this value.
      */
     function mockAbstractionStatus(status: string | null) {
       const account: AccountResponse = {
@@ -471,37 +469,11 @@ describe('PerpsClient', () => {
       return counts
     }
 
-    it('dispatches agent-signed ACCOUNT_MODE with mode=unifiedAccount when abstractionMode is null', async () => {
+    it('dispatches no ACCOUNT_MODE action after a successful APPROVE_AGENT for a fresh (abstractionMode null) account', async () => {
       await agentProvider.createAgent(userAddress)
       mockAbstractionStatus(null)
 
-      let observedAccountModeRequest: CreateActionRequest | undefined
       const counts = setupActionHandlers()
-      // Capture the createAction request for ACCOUNT_MODE so we can assert
-      // the SDK supplied `mode: 'unifiedAccount'` and routed via the agent.
-      server.use(
-        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
-          const body = (await request.json()) as CreateActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            observedAccountModeRequest = body
-          }
-          return HttpResponse.json({
-            actions: [
-              {
-                action: body.action,
-                typedData: {
-                  domain: { name: 'Test', chainId: 1 },
-                  types: { Approve: [{ name: 'who', type: 'address' }] },
-                  primaryType: 'Approve',
-                  message: {
-                    who: '0x0000000000000000000000000000000000000000',
-                  },
-                },
-              },
-            ],
-          })
-        })
-      )
 
       const result = await client.executeProviderSetup({
         provider,
@@ -512,87 +484,20 @@ describe('PerpsClient', () => {
       expect(result.userResults.results).toEqual([
         { action: ActionType.APPROVE_AGENT, success: true },
       ])
-      expect(result.agentResults?.results).toEqual([
-        { action: ActionType.ACCOUNT_MODE, success: true },
-      ])
-      expect(result.fallbackUserProviderSetup).toBeUndefined()
-      expect(observedAccountModeRequest?.params).toEqual({
-        mode: 'unifiedAccount',
-      })
-      // Agent-signed: `signerAddress` is the agent address, NOT the user.
-      expect(observedAccountModeRequest?.signerAddress).toBeDefined()
-      expect(observedAccountModeRequest?.signerAddress).not.toBe(userAddress)
-      // Auto-upgrade fired exactly once on top of the user-signed APPROVE_AGENT.
-      expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBe(1)
-      expect(counts.execute.get(ActionType.APPROVE_AGENT)).toBe(1)
+      // No silent account-mode write: neither built nor submitted.
+      expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
+      expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
+      // No agent-side results and no wallet fallback are produced by setup.
+      expect(result.agentResults).toBeUndefined()
+      expect(
+        (result as { fallbackUserProviderSetup?: unknown })
+          .fallbackUserProviderSetup
+      ).toBeUndefined()
     })
 
-    it('returns fallbackUserProviderSetup (no agent dispatch) when abstractionMode is already set to a different mode', async () => {
+    it('dispatches no ACCOUNT_MODE action regardless of the account abstractionMode', async () => {
       await agentProvider.createAgent(userAddress)
       mockAbstractionStatus('dexAbstraction')
-
-      const accountModeCreateRequests: CreateActionRequest[] = []
-      let accountModeExecuteCount = 0
-      server.use(
-        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
-          const body = (await request.json()) as CreateActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            accountModeCreateRequests.push(body)
-          }
-          return HttpResponse.json({
-            actions: [
-              {
-                action: body.action,
-                typedData: {
-                  domain: { name: 'Test', chainId: 1 },
-                  types: { Approve: [{ name: 'who', type: 'address' }] },
-                  primaryType: 'Approve',
-                  message: {
-                    who: '0x0000000000000000000000000000000000000000',
-                  },
-                },
-              },
-            ],
-          })
-        }),
-        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
-          const body = (await request.json()) as ExecuteActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            accountModeExecuteCount += 1
-          }
-          return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
-          })
-        })
-      )
-
-      const result = await client.executeProviderSetup({
-        provider,
-        address: userAddress,
-        ...approveAgentSetupAction,
-      })
-
-      expect(result.userResults.results[0].success).toBe(true)
-      // No agent dispatch attempted — `executeAction` was never called for
-      // ACCOUNT_MODE; the SDK knew up front that the change requires a
-      // user-wallet signature.
-      expect(result.agentResults).toBeUndefined()
-      expect(accountModeExecuteCount).toBe(0)
-      // The unsigned ACCOUNT_MODE step is surfaced to the widget.
-      expect(result.fallbackUserProviderSetup).toHaveLength(1)
-      expect(result.fallbackUserProviderSetup?.[0].action).toBe(
-        ActionType.ACCOUNT_MODE
-      )
-      // Only one /createAction call for ACCOUNT_MODE — no agent attempt first.
-      expect(accountModeCreateRequests).toHaveLength(1)
-      // The fallback build call must NOT pass a signerAddress (it's a
-      // user-wallet action, not an agent-signed one).
-      expect(accountModeCreateRequests[0].signerAddress).toBeUndefined()
-    })
-
-    it('short-circuits to a no-op when abstractionMode already equals the requested mode', async () => {
-      await agentProvider.createAgent(userAddress)
-      mockAbstractionStatus('unifiedAccount')
 
       const counts = setupActionHandlers()
 
@@ -603,54 +508,37 @@ describe('PerpsClient', () => {
       })
 
       expect(result.userResults.results[0].success).toBe(true)
-      // The status read short-circuits before any /createAction or
-      // /executeAction call for ACCOUNT_MODE.
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(result.agentResults).toBeUndefined()
-      expect(result.fallbackUserProviderSetup).toBeUndefined()
     })
 
-    it('skips the auto-upgrade chain when APPROVE_AGENT was not in the user setup actions', async () => {
+    it('does not read the account during setup (no abstraction-mode probe)', async () => {
+      await agentProvider.createAgent(userAddress)
+      setupActionHandlers()
+
+      await client.executeProviderSetup({
+        provider,
+        address: userAddress,
+        ...approveAgentSetupAction,
+      })
+
+      // The removed auto-upgrade was the only setup-path account read.
+      expect(stubGetAccount).not.toHaveBeenCalled()
+    })
+
+    it('signs and submits backend-staged agent setup actions', async () => {
       await agentProvider.createAgent(userAddress)
       mockAbstractionStatus(null)
 
-      let accountModeCreateCount = 0
-      server.use(
-        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
-          const body = (await request.json()) as CreateActionRequest
-          if (body.action === ActionType.ACCOUNT_MODE) {
-            accountModeCreateCount += 1
-          }
-          return HttpResponse.json({
-            actions: [
-              {
-                action: body.action,
-                typedData: {
-                  domain: { name: 'Test', chainId: 1 },
-                  types: { Approve: [{ name: 'who', type: 'address' }] },
-                  primaryType: 'Approve',
-                  message: {
-                    who: '0x0000000000000000000000000000000000000000',
-                  },
-                },
-              },
-            ],
-          })
-        }),
-        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
-          const body = (await request.json()) as ExecuteActionRequest
-          return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
-          })
-        })
-      )
+      const counts = setupActionHandlers()
 
       const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
         required: {
-          userProviderSetup: [
+          userProviderSetup: [],
+          agentProviderSetup: [
             {
               action: ActionType.APPROVE_BUILDER_FEE,
               typedData: {
@@ -661,43 +549,16 @@ describe('PerpsClient', () => {
               },
             },
           ],
-          agentProviderSetup: [],
           isReady: false,
         },
-        userSignedActions: [
-          {
-            action: ActionType.APPROVE_BUILDER_FEE,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { Approve: [{ name: 'x', type: 'uint256' }] },
-              primaryType: 'Approve',
-              message: { x: 0 },
-            },
-            signature: '0xsig',
-          },
-        ],
+        userSignedActions: [],
       })
 
-      expect(result.userResults.results[0].success).toBe(true)
-      expect(accountModeCreateCount).toBe(0)
-      expect(result.agentResults).toBeUndefined()
-    })
-
-    it('propagates account read errors rather than guessing the signer', async () => {
-      await agentProvider.createAgent(userAddress)
-
-      stubGetAccount.mockRejectedValue(
-        new PerpsError(PerpsErrorCode.ProviderError, 'upstream down')
-      )
-      setupActionHandlers()
-
-      await expect(
-        client.executeProviderSetup({
-          provider,
-          address: userAddress,
-          ...approveAgentSetupAction,
-        })
-      ).rejects.toThrow()
+      expect(result.agentResults?.results).toEqual([
+        { action: ActionType.APPROVE_BUILDER_FEE, success: true },
+      ])
+      expect(counts.execute.get(ActionType.APPROVE_BUILDER_FEE)).toBe(1)
+      expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
     })
   })
 
