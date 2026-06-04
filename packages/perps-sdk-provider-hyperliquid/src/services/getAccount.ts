@@ -217,16 +217,19 @@ export const getAccount = async (
         { type: 'userFees', user: params.address },
         infoOpts
       ),
+      // "Never set abstraction" is a successful 200 `null` body, not an error —
+      // so a fetch failure must propagate, never be coerced to `null` (which
+      // would silently route margin/balance down the wrong, non-unified branch).
       infoRequest<HlAbstractionMode | null>(
         apiUrl,
         { type: 'userAbstraction', user: params.address },
         infoOpts
-      ).catch(() => null),
+      ),
       infoRequest<HlExtraAgents>(
         apiUrl,
         { type: 'extraAgents', user: params.address },
         infoOpts
-      ).catch(() => [] as HlExtraAgents),
+      ),
       infoRequest<HlSpotClearinghouseState>(
         apiUrl,
         { type: 'spotClearinghouseState', user: params.address },

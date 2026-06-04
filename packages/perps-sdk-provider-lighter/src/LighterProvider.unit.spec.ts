@@ -283,6 +283,41 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=per-call-token')
   })
 
+  // A fee-tier fetch failure must NOT be coerced into a fabricated 0%/0% fee
+  // tier — that shows a trader fake fees. The error has to surface.
+  it('propagates an accountLimits fetch error instead of masking it as a 0% fee tier', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          return new Response('boom', { status: 500 })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getAccount(
+        { address: ADDRESS },
+        { lighterAuthToken: 'per-call-token' }
+      )
+    ).rejects.toThrow()
+  })
+
   it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
     const provider = lighterProvider({ authToken: 'pre-created-token' })
     provider.bind(STUB_CLIENT)
@@ -566,10 +601,14 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     })
     provider.bind(STUB_CLIENT)
 
-    await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'caller-token' }
-    )
+    // The 401 surfaces rather than being masked as a 0% fee tier; with a
+    // caller-supplied token it is not the SDK's to self-heal.
+    await expect(
+      provider.getAccount(
+        { address: ADDRESS },
+        { lighterAuthToken: 'caller-token' }
+      )
+    ).rejects.toThrow()
 
     expect(tokenFetcher).toHaveBeenCalledTimes(0) // never created an SDK-owned token
     expect(limitsCalls).toBe(1) // 401 surfaced, not retried
