@@ -1065,7 +1065,9 @@ export const lighterProvider = (
         }),
       ]
 
-      const filtered = items.filter((it) => {
+      const merged = [...(inputCursor?.overflow ?? []), ...items]
+
+      const filtered = merged.filter((it) => {
         const ts = new Date(it.timestamp).getTime()
         if (params.startTime !== undefined && ts < params.startTime) {
           return false
@@ -1081,20 +1083,24 @@ export const lighterProvider = (
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )
 
+      const limit = params.limit ?? filtered.length
+      const emitted = filtered.slice(0, limit)
+      const overflow = filtered.slice(limit)
+
       const nextCursorEnvelope: LighterActivityCursor = {
         deposits: history.deposits.cursor,
         withdraws: history.withdraws.cursor,
         fundings: history.fundings.next_cursor,
         liquidations: history.liquidations.next_cursor,
         transfers: history.transfers.cursor,
+        overflow,
       }
       const responseCursor = encodeActivityCursor(nextCursorEnvelope)
       const hasMore = responseCursor !== undefined
 
-      const limit = params.limit ?? filtered.length
       return {
         provider: LIGHTER_PROVIDER_KEY,
-        items: filtered.slice(0, limit),
+        items: emitted,
         pagination: {
           limit,
           hasMore,
