@@ -31,7 +31,7 @@ import {
   server,
 } from '../../test/handlers.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import type { PerpsProviderPlugin } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/provider.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
 

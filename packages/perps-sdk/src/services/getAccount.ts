@@ -1,9 +1,7 @@
 import type { AccountResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import type {
-  PerpsSDKClient,
-  SDKRequestOptions,
-} from '../client/createPerpsClient.js'
+import type { SDKRequestOptions } from '../types/config.js'
+import type { PerpsSDKClient } from '../types/provider.js'
 import { requireProvider } from '../utils/requireProvider.js'
 
 /**

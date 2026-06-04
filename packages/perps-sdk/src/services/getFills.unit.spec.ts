@@ -2,7 +2,7 @@ import type { FillsResponse } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { mockFills } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProviderPlugin } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/provider.js'
 import { getFills } from './getFills.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const

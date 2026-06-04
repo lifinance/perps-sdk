@@ -1,7 +1,7 @@
 import { PerpsErrorCode, type Subscription } from '@lifi/perps-types'
-import type { PerpsSDKClient } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { getProviders } from '../services/getProviders.js'
+import type { PerpsSDKClient } from '../types/provider.js'
 import type {
   EventForSubscription,
   SubscriptionListener,

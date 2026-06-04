@@ -16,13 +16,6 @@ import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
 import type {
-  ActionSignerContribution,
-  PerpsProvider,
-  SignActionsContext,
-} from '../types/core.js'
-import { requireProvider as resolveProvider } from '../utils/requireProvider.js'
-import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
-import type {
   BuildProviderSetupParams,
   CancelOrdersParams,
   ExecuteProviderSetupParams,
@@ -35,7 +28,15 @@ import type {
   PlaceTriggerOrderParams,
   ProviderSetup,
   WithdrawParams,
-} from './types.js'
+} from '../types/api.js'
+import type {
+  ActionSignerContribution,
+  PerpsProvider,
+  PerpsSDKClient,
+  SignActionsContext,
+} from '../types/provider.js'
+import { requireProvider as resolveProvider } from '../utils/requireProvider.js'
+import { createPerpsClient } from './createPerpsClient.js'
 
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the

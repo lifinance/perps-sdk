@@ -2,7 +2,7 @@ import type {
   PerpsProvider,
   PerpsProviderPlugin,
   PerpsSDKClient,
-} from '../types/core.js'
+} from '../types/provider.js'
 
 /**
  * Inject `client` into a {@link PerpsProviderPlugin} once via its

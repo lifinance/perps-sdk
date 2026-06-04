@@ -2,7 +2,7 @@ import type { ActivitiesResponse } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { mockActivity } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProviderPlugin } from '../types/core.js'
+import type { PerpsProviderPlugin } from '../types/provider.js'
 import { getActivity } from './getActivity.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
