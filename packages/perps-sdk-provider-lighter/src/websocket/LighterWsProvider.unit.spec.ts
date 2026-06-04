@@ -345,6 +345,29 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('logs and skips a structurally-invalid frame before it reaches the handler', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:5', listener)
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // order_book frame missing the required `order_book` payload.
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/order_book',
+          channel: 'order_book:5',
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+      p.close()
+    })
+
     it('logs a throwing handler instead of swallowing it, and keeps handling later frames', () => {
       const p = makeProvider()
       primeProvider(p)
