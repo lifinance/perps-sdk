@@ -31,8 +31,10 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
   class MockRws {
     onMessageHandlers: Array<(data: string) => void> = []
     onOpenHandlers: Array<() => void> = []
+    onStatusHandlers: Array<(status: string) => void> = []
     sent: string[] = []
     closed = false
+    status = 'reconnecting'
 
     constructor() {
       instance = this
@@ -48,6 +50,16 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     }
 
     off() {}
+
+    onStatus(fn: (status: string) => void) {
+      this.onStatusHandlers.push(fn)
+    }
+
+    offStatus() {}
+
+    getStatus() {
+      return this.status
+    }
 
     send(data: string) {
       this.sent.push(data)
@@ -70,6 +82,13 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     simulateOpen() {
       for (const fn of this.onOpenHandlers) {
         fn()
+      }
+    }
+
+    simulateStatus(status: string) {
+      this.status = status
+      for (const fn of this.onStatusHandlers) {
+        fn(status)
       }
     }
   }
@@ -1077,6 +1096,44 @@ describe('HyperliquidWsProvider', () => {
         method: 'subscribe',
         subscription: { type: 'l2Book', coin: 'BTC' },
       })
+    })
+  })
+
+  describe('connection status', () => {
+    it('forwards underlying connection status to the subscriber onStatus', async () => {
+      const provider = createProvider()
+      const onStatus = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn(),
+        onStatus
+      )
+
+      // Current status delivered synchronously on subscribe.
+      expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+
+      getMockRwsInstance().simulateStatus('connected')
+      expect(onStatus).toHaveBeenLastCalledWith('connected')
+
+      getMockRwsInstance().simulateStatus('disconnected')
+      expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+    })
+
+    it('stops notifying onStatus after the subscription is removed', async () => {
+      const provider = createProvider()
+      const onStatus = vi.fn()
+
+      const unsubscribe = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn(),
+        onStatus
+      )
+      onStatus.mockClear()
+      unsubscribe()
+
+      getMockRwsInstance().simulateStatus('disconnected')
+      expect(onStatus).not.toHaveBeenCalled()
     })
   })
 

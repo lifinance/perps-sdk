@@ -7,6 +7,7 @@ import type {
   EventForSubscription,
   SubscriptionListener,
   WsProvider,
+  WsStatusListener,
 } from './types.js'
 
 /**
@@ -73,17 +74,23 @@ export class PerpsWsClient {
    * Subscribe to a realtime channel, lazily creating the provider's WS
    * connection. Returns an unsubscribe function.
    *
+   * @param onStatus - Optional listener for the underlying connection's
+   *   health. Fires `reconnecting` on a transient drop and the terminal
+   *   `disconnected` once auto-reconnect is abandoned, so consumers can
+   *   surface a reconnecting/disconnected state instead of silently showing
+   *   stale data.
    * @throws {PerpsError} When no WS provider factory is registered for the
    *   subscription's `dex`.
    * @public
    */
   async subscribe<S extends Subscription>(
     sub: S,
-    listener: (event: EventForSubscription<S>) => void
+    listener: (event: EventForSubscription<S>) => void,
+    onStatus?: WsStatusListener
   ): Promise<() => void> {
     const providerKey = sub.dex
     const provider = await this.getOrCreateProvider(providerKey)
-    return provider.subscribe(sub, listener as SubscriptionListener)
+    return provider.subscribe(sub, listener as SubscriptionListener, onStatus)
   }
 
   /**

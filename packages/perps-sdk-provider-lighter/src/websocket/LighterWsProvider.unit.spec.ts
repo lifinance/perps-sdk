@@ -127,6 +127,29 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
+  it('reports connection status to the subscriber onStatus and forwards transitions', async () => {
+    const provider = makeProvider()
+    const onStatus = vi.fn()
+    const unsubscribe = await provider.subscribe(
+      { channel: 'candle', dex: 'lighter', assetId: 'BTC', interval: '1h' },
+      vi.fn(),
+      onStatus
+    )
+
+    // Current status delivered synchronously; socket starts reconnecting.
+    expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+
+    // The provider bridges the underlying rws status to its subscribers.
+    for (const fn of (provider as any).statusListeners) {
+      fn('disconnected')
+    }
+    expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+
+    unsubscribe()
+    expect((provider as any).statusListeners.size).toBe(0)
+    provider.close()
+  })
+
   it('rejects spotBalances which Lighter does not expose', async () => {
     const provider = makeProvider()
     await expect(

@@ -107,7 +107,21 @@ describe('PerpsWsClient', () => {
 
       await ws.subscribe(sub, listener)
 
-      expect(mockSubscribe).toHaveBeenCalledWith(sub, listener)
+      expect(mockSubscribe).toHaveBeenCalledWith(sub, listener, undefined)
+
+      ws.close()
+    })
+
+    it('should forward the onStatus listener to the provider', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+      const listener = vi.fn()
+      const onStatus = vi.fn()
+      const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
+
+      await ws.subscribe(sub, listener, onStatus)
+
+      expect(mockSubscribe).toHaveBeenCalledWith(sub, listener, onStatus)
 
       ws.close()
     })

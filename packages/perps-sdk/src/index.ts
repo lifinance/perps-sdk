@@ -171,6 +171,8 @@ export { ReconnectingWebSocket } from './websocket/ReconnectingWebSocket.js'
 export type {
   EventForSubscription,
   SubscriptionListener,
+  WsConnectionStatus,
   WsProvider,
+  WsStatusListener,
 } from './websocket/types.js'
 export { wsLog } from './websocket/wsLog.js'

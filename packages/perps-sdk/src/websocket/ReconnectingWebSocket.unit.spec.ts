@@ -331,4 +331,81 @@ describe('ReconnectingWebSocket', () => {
       expect(latestWs().readyState).toBe(MockWebSocket.CLOSED)
     })
   })
+
+  describe('connection status', () => {
+    it('starts reconnecting and reports connected on open', () => {
+      const rws = new ReconnectingWebSocket('wss://example.com')
+      expect(rws.getStatus()).toBe('reconnecting')
+
+      latestWs().simulateOpen()
+      expect(rws.getStatus()).toBe('connected')
+    })
+
+    it('notifies status listeners on connect / drop transitions', () => {
+      const rws = new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 3,
+      })
+      const onStatus = vi.fn()
+      rws.onStatus(onStatus)
+
+      latestWs().simulateOpen()
+      expect(onStatus).toHaveBeenLastCalledWith('connected')
+
+      latestWs().simulateClose(1006, 'abnormal')
+      expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+
+      vi.advanceTimersByTime(150)
+      latestWs().simulateOpen()
+      expect(onStatus).toHaveBeenLastCalledWith('connected')
+    })
+
+    it('emits terminal disconnected status when reconnects are exhausted', () => {
+      const rws = new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 2,
+      })
+      const onStatus = vi.fn()
+      rws.onStatus(onStatus)
+      latestWs().simulateOpen()
+
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(150)
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(300)
+      // Third close -> attempt=2 >= maxRetries(2): gives up.
+      latestWs().simulateClose()
+      vi.advanceTimersByTime(60_000)
+
+      expect(rws.getStatus()).toBe('disconnected')
+      expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+      // No further reconnects scheduled after the terminal signal.
+      expect(MockWebSocket.instances).toHaveLength(3)
+    })
+
+    it('still rejects pending ready() waiters alongside the terminal status', async () => {
+      const rws = new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 0,
+      })
+      const onStatus = vi.fn()
+      rws.onStatus(onStatus)
+      const readyPromise = rws.ready()
+
+      latestWs().simulateClose()
+
+      await expect(readyPromise).rejects.toThrow(
+        'WebSocket max reconnect attempts reached'
+      )
+      expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+    })
+
+    it('does not notify listeners removed via offStatus', () => {
+      const rws = new ReconnectingWebSocket('wss://example.com')
+      const onStatus = vi.fn()
+      rws.onStatus(onStatus)
+      rws.offStatus(onStatus)
+
+      latestWs().simulateOpen()
+
+      expect(onStatus).not.toHaveBeenCalled()
+    })
+  })
 })
