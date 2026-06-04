@@ -45,6 +45,10 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+export {
+  parseStoredRecord,
+  readValidatedRecord,
+} from './storage/parseStoredRecord.js'
 export { createMemoryStorage, localStorageAdapter } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
@@ -156,6 +160,7 @@ export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 // Version
 export { name, version } from './version.js'
+export { cachePromise } from './websocket/cachePromise.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
@@ -168,3 +173,4 @@ export type {
   SubscriptionListener,
   WsProvider,
 } from './websocket/types.js'
+export { wsLog } from './websocket/wsLog.js'

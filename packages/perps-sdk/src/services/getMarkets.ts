@@ -9,7 +9,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetMarketsParams {
-  /** Provider to get markets from (e.g., 'hyperliquid') */
   provider: string
   /** Optional filter — opaque `Market.id`s (not display symbols). */
   marketIds?: string[]
@@ -20,8 +19,7 @@ export interface GetMarketsParams {
  * backend's Valkey-cached `/perps/markets` route — the canonical source of
  * public market data for widget consumers.
  *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
+ * @throws {PerpsError} On backend, network, or parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })

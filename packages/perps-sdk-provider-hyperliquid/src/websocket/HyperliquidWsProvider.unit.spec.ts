@@ -314,6 +314,65 @@ describe('HyperliquidWsProvider', () => {
         },
       })
     })
+
+    it('retries the market-map fetch on the next subscribe after a transient failure', async () => {
+      getMarketsMock.mockReset()
+      getMarketsMock
+        .mockRejectedValueOnce(new Error('coreGetMarkets boom'))
+        .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
+      const provider = new HyperliquidWsProvider(
+        'wss://api.hyperliquid.xyz/ws',
+        providerKey,
+        subDexes,
+        fakeClient
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+          vi.fn()
+        )
+      ).rejects.toThrow('coreGetMarkets boom')
+
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'clearinghouseState',
+          data: {
+            dex: '',
+            user: '0xuser1',
+            clearinghouseState: {
+              assetPositions: [
+                {
+                  position: {
+                    coin: 'BTC',
+                    szi: '0.1',
+                    entryPx: '94000',
+                    positionValue: '9500',
+                    liquidationPx: '85000',
+                    unrealizedPnl: '100',
+                    marginUsed: '940',
+                    leverage: { type: 'cross', value: 10 },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data[0]).toMatchObject({
+        market: { id: 'BTC' },
+        size: '0.1',
+      })
+    })
   })
 
   describe('message handling', () => {
@@ -728,9 +787,10 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data[0].market.baseAsset.displaySymbol).toBe('BTC')
     })
 
-    it('drops a fill on a market absent from /markets without emitting', async () => {
+    it('surfaces (logs) a fill on a market absent from /markets instead of swallowing it', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const listener = vi.fn()
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
         { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
@@ -762,6 +822,8 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(listener).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledOnce()
+      errorSpy.mockRestore()
     })
 
     it('should ignore pong messages', async () => {
@@ -797,9 +859,10 @@ describe('HyperliquidWsProvider', () => {
       expect(listener).not.toHaveBeenCalled()
     })
 
-    it('should ignore malformed JSON', async () => {
+    it('logs and skips malformed JSON without emitting', async () => {
       const provider = createProvider()
       const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await provider.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
@@ -809,6 +872,91 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage('not valid json{{{')
 
       expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      warnSpy.mockRestore()
+    })
+
+    it('logs and skips a structurally-invalid frame before it reaches the mapper', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      // Parseable l2Book frame missing the required `levels` tuple.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2Book',
+          data: { coin: 'BTC', time: 1704067200000 },
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('isolates a throwing frame so a later good frame on another channel still delivers', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const priceListener = vi.fn()
+      const fillListener = vi.fn()
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        priceListener
+      )
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        fillListener
+      )
+
+      // Unknown-market fill frame: its handler throws MarketNotFound.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [
+              {
+                tid: 555,
+                coin: '@142',
+                side: 'B',
+                px: '94000',
+                sz: '0.1',
+                dir: 'Buy',
+                fee: '4.70',
+                closedPnl: '0',
+                time: 1704067200000,
+                startPosition: '0.0',
+              },
+            ],
+          },
+        })
+      )
+
+      // A subsequent good frame on a different channel must still be delivered.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allMids',
+          data: { mids: { BTC: '95000' } },
+        })
+      )
+
+      expect(errorSpy).toHaveBeenCalledOnce()
+      expect(fillListener).not.toHaveBeenCalled()
+      expect(priceListener).toHaveBeenCalledWith({
+        channel: 'prices',
+        data: { BTC: '95000' },
+      })
+      errorSpy.mockRestore()
     })
 
     it('should notify multiple listeners on same subscription', async () => {

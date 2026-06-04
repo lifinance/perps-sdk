@@ -1,4 +1,5 @@
 import {
+  cachePromise,
   getMarkets as coreGetMarkets,
   isActiveOrderStatus,
   type PerpsSDKClient,
@@ -6,6 +7,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  wsLog,
 } from '@lifi/perps-sdk'
 import {
   type Market,
@@ -99,15 +101,18 @@ export class HyperliquidWsProvider implements WsProvider {
     if (this.byMarketId.size > 0 || client === undefined) {
       return
     }
-    if (!this.byMarketIdPromise) {
-      this.byMarketIdPromise = (async () => {
+    await cachePromise(
+      () => this.byMarketIdPromise,
+      (p) => {
+        this.byMarketIdPromise = p
+      },
+      async () => {
         const { markets } = await coreGetMarkets(client, {
           provider: this.providerKey,
         })
         this.byMarketId = new Map(markets.map((m) => [m.id, m]))
-      })()
-    }
-    await this.byMarketIdPromise
+      }
+    )
   }
 
   async subscribe(
@@ -359,6 +364,7 @@ export class HyperliquidWsProvider implements WsProvider {
     try {
       msg = JSON.parse(raw)
     } catch {
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
     if (
@@ -366,6 +372,11 @@ export class HyperliquidWsProvider implements WsProvider {
       msg.channel === 'pong' ||
       msg.channel === 'subscriptionResponse'
     ) {
+      return
+    }
+
+    if (!isValidHlFrame(msg.channel, msg.data)) {
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
 
@@ -395,8 +406,8 @@ export class HyperliquidWsProvider implements WsProvider {
           )
           break
       }
-    } catch {
-      // Skip malformed messages
+    } catch (error) {
+      wsLog.handlerFailure(this.providerKey, error)
     }
   }
 
@@ -522,5 +533,49 @@ export class HyperliquidWsProvider implements WsProvider {
       channel: 'spotBalances',
       data: balances,
     })
+  }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null
+
+/**
+ * Minimal presence/type check of the channel-discriminating and required
+ * fields the matching handler dereferences without its own guard. A frame
+ * that parses but fails this is a bad frame (log + skip), distinct from a
+ * handler that throws on otherwise-shaped data. Unknown channels pass through
+ * to the dispatch switch, which silently ignores them.
+ */
+function isValidHlFrame(channel: string, data: unknown): boolean {
+  if (!isObject(data)) {
+    return false
+  }
+  switch (channel) {
+    case 'allMids':
+      return isObject(data.mids)
+    case 'l2Book':
+      return (
+        typeof data.coin === 'string' &&
+        Array.isArray(data.levels) &&
+        Array.isArray(data.levels[0]) &&
+        Array.isArray(data.levels[1]) &&
+        typeof data.time === 'number'
+      )
+    case 'candle':
+      return typeof data.s === 'string' && typeof data.i === 'string'
+    case 'orderUpdates':
+      return Array.isArray(data)
+    case 'userFills':
+      return typeof data.user === 'string' && Array.isArray(data.fills)
+    case 'clearinghouseState':
+      return (
+        typeof data.user === 'string' &&
+        isObject(data.clearinghouseState) &&
+        Array.isArray(data.clearinghouseState.assetPositions)
+      )
+    case 'spotClearinghouseState':
+      return typeof data.user === 'string' && Array.isArray(data.balances)
+    default:
+      return true
   }
 }

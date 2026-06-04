@@ -152,9 +152,9 @@ describe('getAccount', () => {
     expect(venue?.valueUsd).toBe('10500')
   })
 
-  it('falls back to null abstractionMode when userAbstraction rejects', async () => {
+  const failingTypeMock = (failType: string) => {
     const responses = defaultResponses()
-    const spy = vi
+    return vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString()
@@ -167,7 +167,7 @@ describe('getAccount', () => {
           string,
           unknown
         >
-        if (body.type === 'userAbstraction') {
+        if (body.type === failType) {
           return new Response('boom', { status: 500 })
         }
         const value = (responses as Record<string, unknown>)[
@@ -175,17 +175,23 @@ describe('getAccount', () => {
         ]
         return new Response(JSON.stringify(value), { status: 200 })
       })
+  }
+
+  // A transient fetch error must NOT be coerced into a plausible "standard
+  // mode" (null) account — that silently routes margin/balance computation
+  // down the wrong branch. The error has to surface.
+  it('propagates a userAbstraction fetch error instead of masking it as null', async () => {
+    const spy = failingTypeMock('userAbstraction')
     restore = () => spy.mockRestore()
 
-    const result = await getAccount(ctx, {
-      address: ADDRESS,
-    })
+    await expect(getAccount(ctx, { address: ADDRESS })).rejects.toThrow()
+  })
 
-    expect(
-      result.config.provider === 'hyperliquid'
-        ? result.config.abstractionMode
-        : 'wrong'
-    ).toBeNull()
+  it('propagates an extraAgents fetch error instead of masking it as []', async () => {
+    const spy = failingTypeMock('extraAgents')
+    restore = () => spy.mockRestore()
+
+    await expect(getAccount(ctx, { address: ADDRESS })).rejects.toThrow()
   })
 
   it('issues the expected /info calls', async () => {

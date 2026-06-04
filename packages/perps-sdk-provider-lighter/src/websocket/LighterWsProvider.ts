@@ -5,6 +5,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type {
   Fill,
@@ -438,9 +439,23 @@ export class LighterWsProvider implements WsProvider {
     try {
       msg = JSON.parse(raw) as LtWsMessage
     } catch {
+      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
       return
     }
 
+    if (!isValidLighterFrame(msg)) {
+      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
+      return
+    }
+
+    try {
+      this.dispatch(msg)
+    } catch (error) {
+      wsLog.handlerFailure(LIGHTER_PROVIDER_KEY, error)
+    }
+  }
+
+  private dispatch(msg: LtWsMessage): void {
     if (msg.type === 'ping') {
       this.rws.send(JSON.stringify({ type: 'pong' }))
       return
@@ -660,6 +675,33 @@ export class LighterWsProvider implements WsProvider {
       fn(event)
     }
   }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null
+
+/**
+ * Minimal presence/type check of the discriminating `type` and the required
+ * fields the matching handler dereferences without its own guard (currently
+ * only `order_book`, whose handler reads `order_book.bids`/`.asks`). A frame
+ * that parses but fails this is a bad frame (log + skip), distinct from a
+ * handler that throws on otherwise-shaped data. Frames for other types pass
+ * through to `dispatch`, which ignores types it does not recognise.
+ */
+function isValidLighterFrame(msg: LtWsMessage): boolean {
+  if (typeof msg.type !== 'string') {
+    return false
+  }
+  if (
+    msg.type === 'subscribed/order_book' ||
+    msg.type === 'update/order_book'
+  ) {
+    const book = (msg as { order_book?: unknown }).order_book
+    return (
+      isObject(book) && Array.isArray(book.bids) && Array.isArray(book.asks)
+    )
+  }
+  return true
 }
 
 function applyLevels(

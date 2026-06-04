@@ -5,6 +5,7 @@ import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
+import * as getProvidersModule from '../services/getProviders.js'
 import { PerpsWsClient, type WsProviderFactory } from './PerpsWsClient.js'
 
 const mockSubscribe = vi.fn().mockResolvedValue(() => {})
@@ -159,6 +160,27 @@ describe('PerpsWsClient', () => {
         "No WS provider factory registered for 'unknown-provider'."
       )
 
+      ws.close()
+    })
+
+    it('retries init on the next subscribe after a transient init failure', async () => {
+      const getProvidersMock = vi
+        .spyOn(getProvidersModule, 'getProviders')
+        .mockRejectedValueOnce(new Error('transient /providers failure'))
+        .mockResolvedValue(providersWithWsUrl)
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
+
+      await expect(
+        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      ).rejects.toThrow('transient /providers failure')
+      expect(factory).not.toHaveBeenCalled()
+
+      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      expect(factory).toHaveBeenCalledOnce()
+      expect(getProvidersMock).toHaveBeenCalledTimes(2)
+
+      getProvidersMock.mockRestore()
       ws.close()
     })
 

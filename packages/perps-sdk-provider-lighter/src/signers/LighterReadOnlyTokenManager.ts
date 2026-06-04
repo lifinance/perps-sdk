@@ -1,6 +1,7 @@
 import {
   localStorageAdapter,
   PerpsError,
+  readValidatedRecord,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import type {
@@ -108,6 +109,27 @@ export interface ApproveReadOnlyTokenResult {
 
 const SECONDS_PER_DAY = 86_400
 
+const isLighterReadOnlyToken = (
+  value: unknown
+): value is LighterReadOnlyToken => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { token, expiry, scope, accountIndex } = value as Record<
+    string,
+    unknown
+  >
+  return (
+    typeof token === 'string' &&
+    token.length > 0 &&
+    typeof expiry === 'number' &&
+    Number.isFinite(expiry) &&
+    (scope === 'single' || scope === 'all') &&
+    typeof accountIndex === 'number' &&
+    Number.isFinite(accountIndex)
+  )
+}
+
 /**
  * Manage the per-account Lighter read-only token alongside the existing
  * `(L1 address, account index)`-scoped storage adapter pattern. Takes an
@@ -155,12 +177,12 @@ export class LighterReadOnlyTokenManager {
     if (cached) {
       return this.isExpired(cached) ? undefined : cached
     }
-    const raw = await this.storage.get(key)
-    if (!raw) {
-      return undefined
-    }
-    const parsed = JSON.parse(raw) as LighterReadOnlyToken
-    if (this.isExpired(parsed)) {
+    const parsed = await readValidatedRecord(
+      this.storage,
+      key,
+      isLighterReadOnlyToken
+    )
+    if (!parsed || this.isExpired(parsed)) {
       return undefined
     }
     this.cache.set(key, parsed)
@@ -179,16 +201,13 @@ export class LighterReadOnlyTokenManager {
     thresholdDays = 30
   ): Promise<boolean> {
     const key = this.storageKey(address, accountIndex)
-    const raw =
+    const token =
       this.cache.get(key) ??
-      (await (async () => {
-        const stored = await this.storage.get(key)
-        return stored ? (JSON.parse(stored) as LighterReadOnlyToken) : undefined
-      })())
-    if (!raw) {
+      (await readValidatedRecord(this.storage, key, isLighterReadOnlyToken))
+    if (!token) {
       return false
     }
-    const remainingSeconds = raw.expiry - Math.floor(this.now() / 1000)
+    const remainingSeconds = token.expiry - Math.floor(this.now() / 1000)
     if (remainingSeconds <= 0) {
       return false
     }

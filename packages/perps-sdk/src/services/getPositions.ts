@@ -10,15 +10,11 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetPositionsParams {
-  /** Provider (e.g., 'hyperliquid') */
   provider: string
-  /** Wallet address */
   address: Address
   /** Optional filter — opaque `Market.id` (not `displaySymbol`) */
   marketId?: string
-  /** Maximum number of results */
   limit?: number
-  /** Pagination cursor */
   cursor?: string
 }
 

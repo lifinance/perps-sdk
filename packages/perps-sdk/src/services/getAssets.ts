@@ -9,7 +9,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetAssetsParams {
-  /** Provider to get assets from (e.g., 'lighter') */
   provider: string
 }
 
@@ -19,8 +18,7 @@ export interface GetAssetsParams {
  * `asset id → symbol → logoURI` join so the SDK never calls a provider's
  * REST API directly for static registry data.
  *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
+ * @throws {PerpsError} On backend, network, or parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })

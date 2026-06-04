@@ -1,3 +1,4 @@
+import { type ActivityItem, ActivityType } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import {
   decodeActivityCursor,
@@ -68,6 +69,56 @@ describe('activity cursor round-trip', () => {
       'base64url'
     )
     expect(() => decodeActivityCursor(bad)).toThrow(/must be a string/)
+  })
+
+  it('round-trips an overflow tail of activity items', () => {
+    const overflow: ActivityItem[] = [
+      {
+        id: 'd1',
+        provider: 'lighter',
+        timestamp: '2023-11-14T22:13:20.000Z',
+        type: ActivityType.DEPOSIT,
+        amount: '100',
+      },
+    ]
+    const env: LighterActivityCursor = { deposits: 'dep:1', overflow }
+    const decoded = decodeActivityCursor(encodeActivityCursor(env))
+    expect(decoded).toEqual(env)
+  })
+
+  it('emits a cursor when only overflow remains (upstream exhausted)', () => {
+    const overflow: ActivityItem[] = [
+      {
+        id: 'w1',
+        provider: 'lighter',
+        timestamp: '2023-11-14T22:13:20.000Z',
+        type: ActivityType.WITHDRAWAL,
+        amount: '5',
+        fee: '0',
+      },
+    ]
+    const encoded = encodeActivityCursor({ overflow })
+    expect(encoded).toBeTypeOf('string')
+    expect(decodeActivityCursor(encoded)).toEqual({ overflow })
+  })
+
+  it('omits an empty overflow array from the encoded cursor', () => {
+    expect(encodeActivityCursor({ overflow: [] })).toBeUndefined()
+    expect(
+      decodeActivityCursor(
+        encodeActivityCursor({ deposits: 'd', overflow: [] })
+      )
+    ).toEqual({
+      deposits: 'd',
+    })
+  })
+
+  it('rejects a non-array overflow value', () => {
+    const bad = Buffer.from(
+      JSON.stringify({ overflow: 'not-an-array' }),
+      'utf8'
+    ).toString('base64url')
+    expect(() => decodeActivityCursor(bad)).toThrow(/overflow must be an array/)
   })
 
   it('rejects a non-object JSON cursor', () => {

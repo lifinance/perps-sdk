@@ -674,11 +674,14 @@ export const lighterProvider = (
       ] = await Promise.all([
         buildSymbolLookup(opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
+        // No token is a legitimate unauthenticated read → undefined → zero fee
+        // tier. A fetch error is NOT: it must propagate, never be coerced to a
+        // fabricated 0%/0% fee tier.
         token === undefined
           ? Promise.resolve(undefined)
           : retryOnRevoked(opts, params.address, token, (t) =>
               fetchAccountLimits(client, account.index, t)
-            ).catch(() => undefined),
+            ),
         keyStore ? keyStore.get(params.address) : Promise.resolve(null),
         readOnlyTokenManager.get(params.address, account.index),
       ])
@@ -1065,7 +1068,9 @@ export const lighterProvider = (
         }),
       ]
 
-      const filtered = items.filter((it) => {
+      const merged = [...(inputCursor?.overflow ?? []), ...items]
+
+      const filtered = merged.filter((it) => {
         const ts = new Date(it.timestamp).getTime()
         if (params.startTime !== undefined && ts < params.startTime) {
           return false
@@ -1081,20 +1086,24 @@ export const lighterProvider = (
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )
 
+      const limit = params.limit ?? filtered.length
+      const emitted = filtered.slice(0, limit)
+      const overflow = filtered.slice(limit)
+
       const nextCursorEnvelope: LighterActivityCursor = {
         deposits: history.deposits.cursor,
         withdraws: history.withdraws.cursor,
         fundings: history.fundings.next_cursor,
         liquidations: history.liquidations.next_cursor,
         transfers: history.transfers.cursor,
+        overflow,
       }
       const responseCursor = encodeActivityCursor(nextCursorEnvelope)
       const hasMore = responseCursor !== undefined
 
-      const limit = params.limit ?? filtered.length
       return {
         provider: LIGHTER_PROVIDER_KEY,
-        items: filtered.slice(0, limit),
+        items: emitted,
         pagination: {
           limit,
           hasMore,

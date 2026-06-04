@@ -387,6 +387,81 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('handleMessage — failure isolation', () => {
+    it('logs and skips a frame that is not valid JSON', () => {
+      const p = makeProvider()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      ;(p as any).handleMessage('not valid json{{{')
+
+      expect(warnSpy).toHaveBeenCalledOnce()
+      warnSpy.mockRestore()
+      p.close()
+    })
+
+    it('logs and skips a structurally-invalid frame before it reaches the handler', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:5', listener)
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // order_book frame missing the required `order_book` payload.
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/order_book',
+          channel: 'order_book:5',
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+      p.close()
+    })
+
+    it('logs a throwing handler instead of swallowing it, and keeps handling later frames', () => {
+      const p = makeProvider()
+      primeProvider(p)
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const throwingListener = vi.fn(() => {
+        throw new Error('subscriber blew up')
+      })
+      inject(p, `fills:${TEST_ADDR}`, throwingListener)
+
+      const goodListener = vi.fn()
+      inject(p, `orderUpdates:${TEST_ADDR}`, goodListener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_trades',
+          channel: `account_all_trades:${ACCOUNT_IDX}`,
+          trades: { '0': [RAW_TRADE] },
+        })
+      )
+
+      // The bad frame surfaced via the error log rather than vanishing.
+      expect(throwingListener).toHaveBeenCalledOnce()
+      expect(errorSpy).toHaveBeenCalledOnce()
+
+      // A subsequent good frame on another channel is still delivered.
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: `account_all_orders:${ACCOUNT_IDX}`,
+          orders: { '0': [RAW_ORDER] },
+        })
+      )
+
+      expect(goodListener).toHaveBeenCalledOnce()
+      errorSpy.mockRestore()
+      p.close()
+    })
+  })
+
   describe('display-symbol fetch coupling (ORD-482)', () => {
     const fakeClient = {} as PerpsSDKClient
 
