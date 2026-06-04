@@ -260,11 +260,7 @@ export class LighterWsProvider implements WsProvider {
       try {
         await this.sendSubscribe(s.channel, s.needsAuth, s.address)
       } catch (err) {
-        console.error(
-          `[lighter] WS resubscribe failed for channel '${s.channel}'; ` +
-            'this channel will not receive updates until the next reconnect.',
-          err
-        )
+        wsLog.subscribeFailure(LIGHTER_PROVIDER_KEY, s.channel, err)
       }
     }
   }
