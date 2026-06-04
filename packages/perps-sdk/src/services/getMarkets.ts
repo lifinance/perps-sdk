@@ -9,7 +9,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetMarketsParams {
-  /** Provider to get markets from (e.g., 'hyperliquid') */
   provider: string
   /** Optional filter — opaque `Market.id`s (not display symbols). */
   marketIds?: string[]

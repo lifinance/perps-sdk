@@ -74,11 +74,10 @@ export interface PerpsConfig {
  * @public
  */
 export interface PerpsClientOptions {
-  /** Integrator identifier (required) */
   integrator: string
   /** API key for authenticated requests (get one at https://portal.li.fi/) */
   apiKey: string
-  /** Base API URL. Defaults to DEFAULT_API_URL */
+  /** Defaults to DEFAULT_API_URL */
   apiUrl?: string
   /**
    * Provider plugins or per-provider config. Accepts the same two shapes as
@@ -95,9 +94,7 @@ export interface PerpsClientOptions {
  * @public
  */
 export interface BuildProviderSetupParams {
-  /** Provider to build setup actions for */
   provider: string
-  /** User wallet address */
   address: Address
 }
 
@@ -107,31 +104,18 @@ export interface BuildProviderSetupParams {
  * @public
  */
 export interface PlaceOrderParams {
-  /** Provider to place order on */
   provider: string
-  /** User wallet address */
   address: Address
-  /** Market reference */
   market: MarketRef
-  /** Order side */
   side: OrderSide
-  /** Order type */
   type: OrderType
-  /** Order size */
   size: string
-  /** Order price */
   price: string
-  /** Leverage */
   leverage?: number
-  /** Reduce only flag */
   reduceOnly?: boolean
-  /** Time in force */
   timeInForce?: TimeInForce
-  /** Expiration time */
   expiresAt?: string
-  /** Take profit trigger */
   takeProfit?: TriggerOrderInput
-  /** Stop loss trigger */
   stopLoss?: TriggerOrderInput
 }
 
@@ -156,11 +140,8 @@ export interface PlaceTriggerOrderParams {
  * @public
  */
 export interface WithdrawParams {
-  /** Provider to withdraw from */
   provider: string
-  /** User wallet address (account owner) */
   address: Address
-  /** Withdrawal details */
   withdrawal: WithdrawalParams
 }
 
@@ -170,11 +151,8 @@ export interface WithdrawParams {
  * @public
  */
 export interface CancelOrdersParams {
-  /** Provider to cancel orders on */
   provider: string
-  /** User wallet address */
   address: Address
-  /** Order IDs to cancel */
   ids: string[]
 }
 
@@ -184,11 +162,8 @@ export interface CancelOrdersParams {
  * @public
  */
 export interface ModifyOrdersParams {
-  /** Provider to modify orders on */
   provider: string
-  /** User wallet address */
   address: Address
-  /** Modifications to apply */
   modifications: ModifyOrderInput[]
 }
 
@@ -198,9 +173,7 @@ export interface ModifyOrdersParams {
  * @public
  */
 export interface GetSetupParams {
-  /** Provider to check setup for */
   provider: string
-  /** User wallet address */
   address: Address
 }
 
@@ -246,7 +219,6 @@ export interface ExecuteProviderSetupParams {
  * @public
  */
 export interface ExecuteProviderSetupResult {
-  /** Results from the submitted setup steps */
   results: ExecuteActionResponse
 }
 

@@ -10,19 +10,14 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetActivityParams {
-  /** Provider to get activity from (e.g., 'hyperliquid') */
   provider: string
-  /** Wallet address */
   address: Address
-  /** Maximum number of items to return */
   limit?: number
-  /** Cursor for pagination */
   cursor?: string
   /** Filter: activity after this timestamp (ms) */
   startTime?: number
   /** Filter: activity before this timestamp (ms) */
   endTime?: number
-  /** Filter by activity type(s) */
   type?: ActivityType[]
 }
 

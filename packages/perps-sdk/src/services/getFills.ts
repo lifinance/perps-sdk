@@ -10,13 +10,9 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetFillsParams {
-  /** Provider to get fills from (e.g., 'hyperliquid') */
   provider: string
-  /** Wallet address */
   address: Address
-  /** Maximum number of items to return */
   limit?: number
-  /** Cursor for pagination */
   cursor?: string
   /** Filter: fills after this timestamp (ms) */
   startTime?: number
