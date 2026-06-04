@@ -20,12 +20,12 @@ export interface GetMarketParams {
 }
 
 /**
- * Get a specific market by its opaque marketId. Filters the provider's
- * `/perps/markets` collection to the single requested id; the backend
- * responds 404 (thrown as a {@link PerpsError}) when nothing matches.
+ * Get a specific market by its opaque marketId. Requests the single market
+ * from the backend `/markets` route (filtered by `marketIds`) and returns the
+ * first match; the backend responds 404 (thrown as a {@link PerpsError}) when
+ * nothing matches.
  *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
+ * @throws {PerpsError} On backend (e.g. 404), network, or parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })

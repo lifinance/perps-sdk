@@ -26,8 +26,7 @@ export interface GetOhlcvParams {
 /**
  * Get OHLCV (candlestick) data for a market.
  *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
+ * @throws {PerpsError} On backend, network, or parsing errors.
  * @example
  * ```ts
  * const { candles } = await getOhlcv(client, {
