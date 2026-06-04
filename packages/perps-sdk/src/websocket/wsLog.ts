@@ -6,8 +6,9 @@ const truncate = (raw: string): string =>
     : raw
 
 /**
- * Structured logger for WS message-handling failures, shared by the provider
- * packages so a malformed frame or a throwing mapper never vanishes silently.
+ * Structured logger for WS message-handling and subscription failures, shared
+ * by the provider packages so a malformed frame, a throwing mapper, or a failed
+ * resubscribe never vanishes silently.
  *
  * @internal
  */
@@ -26,5 +27,16 @@ export const wsLog = {
    */
   handlerFailure(provider: string, error: unknown): void {
     console.error(`[${provider}:ws] message handler threw`, error)
+  },
+  /**
+   * A channel's (re)subscribe threw while (re)opening the socket — e.g. an
+   * auth-token fetch rejected after a reconnect. Surfaced at `error`; the
+   * channel is skipped so one failure does not abort the others.
+   */
+  subscribeFailure(provider: string, channel: string, error: unknown): void {
+    console.error(
+      `[${provider}:ws] resubscribe failed for channel '${channel}'; it will not receive updates until the next reconnect.`,
+      error
+    )
   },
 } as const

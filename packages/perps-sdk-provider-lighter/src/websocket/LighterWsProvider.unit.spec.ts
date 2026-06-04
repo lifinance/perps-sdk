@@ -333,6 +333,60 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('onOpen resubscribe error isolation (ORD-516)', () => {
+    /**
+     * Drive onOpen with two active auth subs where the first channel's auth
+     * fetch rejects. The second must still be sent and the rejection must be
+     * caught (no unhandled promise rejection escaping the open handler).
+     */
+    it('resubscribes remaining channels when one channel auth fetch rejects, and surfaces the failure', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failingAddr = TEST_ADDR
+      const okAddr = '0x1111111111111111111111111111111111111111'
+      const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
+        authProvider: async (address) => {
+          if (address.toLowerCase() === failingAddr.toLowerCase()) {
+            throw new Error('RO token revoked')
+          }
+          return 'token'
+        },
+      })
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      ;(provider as any).subs.set(`orderUpdates:${failingAddr}`, {
+        count: 1,
+        channel: 'account_all_orders/42',
+        address: failingAddr,
+        needsAuth: true,
+      })
+      ;(provider as any).subs.set(`orderUpdates:${okAddr}`, {
+        count: 1,
+        channel: 'account_all_orders/7',
+        address: okAddr,
+        needsAuth: true,
+      })
+
+      await expect((provider as any).onOpen()).resolves.toBeUndefined()
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: 'account_all_orders/7',
+          auth: 'token',
+        })
+      )
+      expect(send).not.toHaveBeenCalledWith(
+        expect.stringContaining('account_all_orders/42')
+      )
+      expect(errSpy).toHaveBeenCalledWith(
+        expect.stringContaining('account_all_orders/42'),
+        expect.any(Error)
+      )
+      errSpy.mockRestore()
+      provider.close()
+    })
+  })
+
   describe('handleMessage — failure isolation', () => {
     it('logs and skips a frame that is not valid JSON', () => {
       const p = makeProvider()

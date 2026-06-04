@@ -43,4 +43,19 @@ describe('wsLog', () => {
       expect(logged).toBe(err)
     })
   })
+
+  describe('subscribeFailure', () => {
+    it('logs the error at error level with the provider key and channel', () => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const err = new Error('RO token revoked')
+
+      wsLog.subscribeFailure('lighter', 'account_all_orders/42', err)
+
+      expect(errorLog).toHaveBeenCalledOnce()
+      const [message, logged] = errorLog.mock.calls[0]
+      expect(message).toContain('lighter')
+      expect(message).toContain('account_all_orders/42')
+      expect(logged).toBe(err)
+    })
+  })
 })
