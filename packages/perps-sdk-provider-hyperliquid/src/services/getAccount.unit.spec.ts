@@ -55,8 +55,9 @@ describe('getAccount', () => {
     expect(
       result.config.provider === 'hyperliquid' ? result.config.agents : []
     ).toEqual(HL_EXTRA_AGENTS)
-    // Standard mode: spot USDC + gross-normalised perps venue equity are both
-    // category-quote collateral; no non-collateral balances.
+    // Standard mode: spot USDC + free perps venue equity (accountValue, net of
+    // locked margin) are both category-quote collateral; no non-collateral
+    // balances.
     expect(result.balances).toEqual([])
     expect(result.collateralBalances).toEqual([
       {
@@ -78,9 +79,9 @@ describe('getAccount', () => {
           displaySymbol: 'USDC',
           logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
         },
-        // accountValue 10000 + totalMarginUsed 500 (gross-normalised)
-        units: '10500',
-        valueUsd: '10500',
+        // accountValue 10000 (free — net of locked margin)
+        units: '10000',
+        valueUsd: '10000',
       },
     ])
     expect(result.marginUsed).toBe('500')
@@ -140,8 +141,7 @@ describe('getAccount', () => {
       address: ADDRESS,
     })
 
-    // DEX_ABSTRACTION: spot USDC + gross-normalised venue equity, both
-    // collateral.
+    // DEX_ABSTRACTION: spot USDC + free venue equity, both collateral.
     expect(result.collateralBalances.map((b) => b.categoryId).sort()).toEqual([
       'hyperliquid',
       'spot',
@@ -149,7 +149,7 @@ describe('getAccount', () => {
     const venue = result.collateralBalances.find(
       (b) => b.categoryId === 'hyperliquid'
     )
-    expect(venue?.valueUsd).toBe('10500')
+    expect(venue?.valueUsd).toBe('10000')
   })
 
   const failingTypeMock = (failType: string) => {

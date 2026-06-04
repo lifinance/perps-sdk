@@ -12,6 +12,7 @@
  */
 
 export { projectHyperliquidConfigSettings } from './accountConfig.js'
+export { summarizeHyperliquidAccount } from './accountSummary.js'
 export {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,

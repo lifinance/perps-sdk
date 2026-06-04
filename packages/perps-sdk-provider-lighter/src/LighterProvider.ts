@@ -20,6 +20,7 @@ import type {
   AccountConfig,
   AccountConfigSetting,
   AccountResponse,
+  AccountSummary,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
@@ -37,6 +38,7 @@ import type {
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
+import { summarizeLighterAccount } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,
@@ -709,12 +711,15 @@ export const lighterProvider = (
       )
 
       // USDC collateral is the category quote asset → collateralBalances.
+      // `available_balance` is the free collateral (Lighter's `collateral` is
+      // gross, i.e. includes margin locked in positions); the locked portion is
+      // carried by the positions' `marginUsed`.
       const collateralBalances: Balance[] = [
         {
           categoryId: LIGHTER_PROVIDER_KEY,
           asset: lighterAsset('USDC', 'USDC'),
-          units: account.collateral,
-          valueUsd: account.collateral,
+          units: account.available_balance,
+          valueUsd: account.available_balance,
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
@@ -1110,6 +1115,13 @@ export const lighterProvider = (
           ...(responseCursor === undefined ? {} : { cursor: responseCursor }),
         },
       }
+    },
+
+    getPortfolioSummary(
+      account: AccountResponse,
+      positions: Position[]
+    ): AccountSummary {
+      return summarizeLighterAccount(account, positions)
     },
 
     projectConfig(

@@ -14,6 +14,7 @@
  */
 
 export { projectLighterConfigSettings } from './accountConfig.js'
+export { summarizeLighterAccount } from './accountSummary.js'
 export {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,

@@ -1,9 +1,12 @@
 import type {
+  AccountResponse,
+  AccountSummary,
   ActionParamsMap,
   ActionStep,
   CreateActionResponse,
   ExecuteActionResponse,
   MarketRef,
+  Position,
   Provider,
   ProviderAction,
   SignedActionStep,
@@ -289,6 +292,21 @@ export class PerpsClient {
       metadata.options
     )
     return { ...response, settings }
+  }
+
+  /**
+   * Roll an already-fetched {@link AccountResponse} (plus its positions) up
+   * into an {@link AccountSummary}, delegating to the owning provider so the
+   * venue-specific collateral and margin semantics are applied correctly.
+   */
+  getPortfolioSummary(
+    account: AccountResponse,
+    positions: Position[]
+  ): AccountSummary {
+    return this.requireProvider(account.provider).getPortfolioSummary(
+      account,
+      positions
+    )
   }
 
   /**

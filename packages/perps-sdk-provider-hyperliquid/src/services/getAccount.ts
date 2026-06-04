@@ -115,14 +115,6 @@ const isUnifiedMode = (abstraction: HlAbstractionMode | null): boolean =>
   abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
   abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
 
-/**
- * Per-dex perps equity, normalised to gross holdings. Hyperliquid reports
- * `accountValue` net of locked margin in `disabled`/`dexAbstraction` modes;
- * add margin back so every consumer's collateral is uniform and mode-agnostic.
- */
-const grossVenueEquity = (state: HlClearinghouseState): number =>
-  getAccountValue(state) + getTotalMarginUsed(state)
-
 interface BalancePartition {
   balances: Balance[]
   collateralBalances: Balance[]
@@ -156,9 +148,11 @@ const buildBalances = (
 
   // Unified/portfolio modes hold everything in spot — per-dex equity would
   // double-count. Only disabled/dexAbstraction carry separate venue collateral.
+  // `accountValue` is reported net of locked margin, i.e. the free collateral;
+  // the locked portion is carried by the positions' `marginUsed`.
   if (!isUnifiedMode(abstraction)) {
     for (const [dex, state] of stateByDex) {
-      const value = grossVenueEquity(state)
+      const value = getAccountValue(state)
       collateralBalances.push({
         categoryId: dex || PROVIDER_KEY,
         asset: {

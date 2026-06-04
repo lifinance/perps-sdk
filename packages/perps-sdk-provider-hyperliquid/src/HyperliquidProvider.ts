@@ -17,6 +17,7 @@ import {
   type AccountConfig,
   type AccountConfigSetting,
   type AccountResponse,
+  type AccountSummary,
   type ActionStep,
   ActionType,
   type ActivitiesResponse,
@@ -25,6 +26,7 @@ import {
   type OrdersResponse,
   PerpsErrorCode,
   PerpsSigner,
+  type Position,
   type PositionsResponse,
   type ProviderAction,
   type SignedActionStep,
@@ -32,6 +34,7 @@ import {
 } from '@lifi/perps-types'
 import type { Address, Hex } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
+import { summarizeHyperliquidAccount } from './accountSummary.js'
 import { DEFAULT_HYPERLIQUID_API_URL, PROVIDER_KEY } from './constants.js'
 import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
@@ -239,6 +242,11 @@ export function hyperliquidProvider(
         },
         opts
       ),
+
+    getPortfolioSummary: (
+      account: AccountResponse,
+      positions: Position[]
+    ): AccountSummary => summarizeHyperliquidAccount(account, positions),
 
     projectConfig: (
       config: AccountConfig,

@@ -163,7 +163,6 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
-export { summarize } from './utils/summarize.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 // Version
