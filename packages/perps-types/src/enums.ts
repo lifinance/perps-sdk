@@ -115,6 +115,24 @@ export enum ActionType {
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   DEPOSIT = 'deposit',
+  /** Provider-independent: cast a vote for a (typically inactive) provider. */
+  VOTE = 'vote',
+}
+
+/** @public */
+export enum VoteDirection {
+  UP = 'up',
+  DOWN = 'down',
+}
+
+/**
+ * Discriminator for the kind of vote. Lets new vote subjects be added later
+ * without a breaking change to the vote contract. Currently only providers
+ * can be voted on.
+ * @public
+ */
+export enum VoteType {
+  PROVIDER = 'provider',
 }
 
 /** @public */

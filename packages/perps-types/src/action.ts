@@ -257,14 +257,14 @@ export interface ActionParamsMap {
 
 /** @public */
 export type CreateActionRequest = {
-  [K in ActionType]: {
+  [K in keyof ActionParamsMap]: {
     provider: string
     address: Address
     signerAddress?: Address
     action: K
     params: ActionParamsMap[K]
   }
-}[ActionType]
+}[keyof ActionParamsMap]
 
 /** @public */
 export interface CreateActionResponse {
@@ -273,14 +273,14 @@ export interface CreateActionResponse {
 
 /** @public */
 export type ExecuteActionRequest = {
-  [K in ActionType]: {
+  [K in keyof ActionParamsMap]: {
     provider: string
     address: Address
     signerAddress?: Address
     action: K
     actions: SignedActionStep[]
   }
-}[ActionType]
+}[keyof ActionParamsMap]
 
 /** @public */
 export interface ExecuteActionResponse {
