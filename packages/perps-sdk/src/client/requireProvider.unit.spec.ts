@@ -1,8 +1,8 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
-import { createPerpsClient } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsProviderPlugin } from '../types/provider.js'
+import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider } from './requireProvider.js'
 
 const makeClient = (plugins: PerpsProviderPlugin[] = []) =>

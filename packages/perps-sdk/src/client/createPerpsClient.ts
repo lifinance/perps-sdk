@@ -7,7 +7,7 @@ import type {
   PerpsProviderPlugin,
   PerpsSDKClient,
 } from '../types/provider.js'
-import { bindProvider } from '../utils/bindProvider.js'
+import { bindProvider } from './bindProvider.js'
 
 /**
  * Default LI.FI perps API base URL used when `PerpsConfig.apiUrl` is omitted.

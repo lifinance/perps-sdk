@@ -35,8 +35,8 @@ import type {
   PerpsSDKClient,
   SignActionsContext,
 } from '../types/provider.js'
-import { requireProvider as resolveProvider } from '../utils/requireProvider.js'
 import { createPerpsClient } from './createPerpsClient.js'
+import { requireProvider as resolveProvider } from './requireProvider.js'
 
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the
