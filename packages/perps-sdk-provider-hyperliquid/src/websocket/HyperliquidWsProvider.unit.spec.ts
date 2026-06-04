@@ -314,6 +314,65 @@ describe('HyperliquidWsProvider', () => {
         },
       })
     })
+
+    it('retries the market-map fetch on the next subscribe after a transient failure', async () => {
+      getMarketsMock.mockReset()
+      getMarketsMock
+        .mockRejectedValueOnce(new Error('coreGetMarkets boom'))
+        .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
+      const provider = new HyperliquidWsProvider(
+        'wss://api.hyperliquid.xyz/ws',
+        providerKey,
+        subDexes,
+        fakeClient
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+          vi.fn()
+        )
+      ).rejects.toThrow('coreGetMarkets boom')
+
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'clearinghouseState',
+          data: {
+            dex: '',
+            user: '0xuser1',
+            clearinghouseState: {
+              assetPositions: [
+                {
+                  position: {
+                    coin: 'BTC',
+                    szi: '0.1',
+                    entryPx: '94000',
+                    positionValue: '9500',
+                    liquidationPx: '85000',
+                    unrealizedPnl: '100',
+                    marginUsed: '940',
+                    leverage: { type: 'cross', value: 10 },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data[0]).toMatchObject({
+        market: { id: 'BTC' },
+        size: '0.1',
+      })
+    })
   })
 
   describe('message handling', () => {

@@ -156,6 +156,7 @@ export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 // Version
 export { name, version } from './version.js'
+export { cachePromise } from './websocket/cachePromise.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
