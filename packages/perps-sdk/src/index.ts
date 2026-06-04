@@ -128,6 +128,14 @@ export {
 } from './utils/depositChain.js'
 export { ExplorerChainId, explorerTxUrl } from './utils/explorer.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
+export type { FormatOptions } from './utils/format.js'
+export {
+  formatCompactUsd,
+  formatPrice,
+  formatSignedPercent,
+  formatSignedUsd,
+  formatUsd,
+} from './utils/format.js'
 export {
   ACTIVE_ORDER_STATUSES,
   classifyFill,
