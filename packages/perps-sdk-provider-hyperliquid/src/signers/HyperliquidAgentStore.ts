@@ -6,7 +6,7 @@ import {
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { type Address, type Hex, isAddress } from 'viem'
+import { type Address, type Hex, isAddress, isHex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { PROVIDER_KEY } from '../constants.js'
 
@@ -24,8 +24,17 @@ export interface HyperliquidAgent {
   privateKey: Hex
 }
 
-/** A 32-byte EVM private key as 0x-prefixed hex. */
-const PRIVATE_KEY_HEX = /^0x[0-9a-fA-F]{64}$/
+const isParsablePrivateKey = (value: unknown): value is Hex => {
+  if (!isHex(value)) {
+    return false
+  }
+  try {
+    privateKeyToAccount(value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
   if (typeof value !== 'object' || value === null) {
@@ -35,8 +44,7 @@ const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
   return (
     typeof address === 'string' &&
     isAddress(address) &&
-    typeof privateKey === 'string' &&
-    PRIVATE_KEY_HEX.test(privateKey)
+    isParsablePrivateKey(privateKey)
   )
 }
 

@@ -112,6 +112,24 @@ describe('HyperliquidAgentStore', () => {
     )
   })
 
+  it('surfaces a stored record whose privateKey is hex-shaped but not a valid key', async () => {
+    const storage = createMemoryStorage()
+    // 0x + 64 hex zeros: matches the old shape regex but is not a valid
+    // secp256k1 key, so viem's privateKeyToAccount rejects it.
+    await storage.set(
+      storageKey,
+      JSON.stringify({
+        address: userAddress,
+        privateKey: `0x${'0'.repeat(64)}`,
+      })
+    )
+    const badKeyStore = new HyperliquidAgentStore(storage)
+
+    await expect(badKeyStore.getOrCreate(userAddress)).rejects.toThrow(
+      /malformed/i
+    )
+  })
+
   it('regenerates on genuine absence (not a corrupt record)', async () => {
     const storage = createMemoryStorage()
     const store2 = new HyperliquidAgentStore(storage)
