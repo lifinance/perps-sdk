@@ -9,6 +9,7 @@ import type {
   FillsResponse,
   Order,
   OrdersResponse,
+  PerpsSigner,
   PositionsResponse,
   ProviderAction,
   SignedActionStep,
@@ -18,8 +19,8 @@ import type { Account, Address, WalletClient } from 'viem'
 import type { RetryConfig } from '../transport/retryPolicy.js'
 
 /**
- * Viem `WalletClient` shape used by `PerpsSDKClient.signer`. Aliased here so
- * provider plugins can name the type without re-deriving the viem generics.
+ * Viem `WalletClient` shape used by `PerpsSDKClient.userWallet`. Aliased here
+ * so provider plugins can name the type without re-deriving the viem generics.
  *
  * @public
  */
@@ -94,16 +95,16 @@ export interface PerpsBaseConfig {
 }
 
 /**
- * Low-level SDK client: resolved config, agent manager, optional wallet
- * signer, and the registered provider plugins. Returned by
- * {@link createPerpsClient} and consumed by every service function.
+ * Low-level SDK client: resolved config, the optional end-user wallet, and the
+ * registered provider plugins. Returned by {@link createPerpsClient} and
+ * consumed by every service function.
  *
  * @public
  */
 export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
-  /** Wallet signer for setup actions — accepts any viem WalletClient (browser, private key, mnemonic). */
-  readonly signer?: PerpsClientSigner
+  /** The end-user's wallet — accepts any viem WalletClient (browser, private key, mnemonic). */
+  readonly userWallet?: PerpsClientSigner
   /** Registered providers, bound to this client, in construction order. */
   readonly providers: PerpsProvider[]
   /** Look up a registered bound {@link PerpsProvider} by its `type` key. */
@@ -112,14 +113,46 @@ export interface PerpsSDKClient {
 
 /**
  * Per-call context passed by `PerpsClient` to a provider's {@link
- * PerpsProvider.signActions} method. Carries the resolved wallet signer
- * (when configured); providers that own a session credential (e.g. the
- * Hyperliquid agent keypair, Lighter's API key) resolve it internally.
+ * PerpsProvider.signActions} method. Carries the end-user's wallet (when
+ * configured); providers that own a session credential (e.g. the Hyperliquid
+ * agent keypair, Lighter's API key) resolve it internally.
  *
  * @public
  */
 export interface SignActionsContext {
-  signer?: PerpsClientSigner
+  userWallet?: PerpsClientSigner
+  /**
+   * The signing batch's declared signers, from the action's `ProviderAction`
+   * descriptor. The plugin branches on this to pick WHO signs (e.g.
+   * Hyperliquid: `USER` → end-user wallet, `AGENT` → session keypair). Core
+   * forwards the descriptor's `signers` as data; it does not branch on them.
+   */
+  signers?: PerpsSigner[]
+}
+
+/**
+ * Signer-bearing wire fields a provider plugin contributes to an action's
+ * `createAction` / `executeAction` requests — resolved by the plugin because
+ * signer identity (WHO signs) is provider-owned. Returned by
+ * {@link PerpsProviderPlugin.resolveActionRequest}.
+ *
+ * @public
+ */
+export interface ActionSignerContribution {
+  /**
+   * The on-wire `signerAddress` for an action a provider signs on the user's
+   * behalf — the address of the provider-owned session keypair (Hyperliquid's
+   * approved agent wallet). Sent on both `createAction` (so the backend builds
+   * the right typed data) and `executeAction`. Omitted when the provider signs
+   * as the user or with a non-EVM session credential (Lighter's API key).
+   */
+  signerAddress?: Address
+  /**
+   * Extra action params the plugin injects from its own signer state — e.g.
+   * Hyperliquid's `agentAddress` for `APPROVE_AGENT`. Merged over the caller's
+   * params.
+   */
+  params?: Record<string, unknown>
 }
 
 /**
@@ -300,24 +333,26 @@ export interface PerpsProviderPlugin {
   ): Promise<Record<string, unknown>>
 
   /**
-   * Resolve the on-wire `signerAddress` for an action whose descriptor names
-   * {@link PerpsSigner.AGENT} — the address of the provider-owned session
-   * keypair that signs on the user's behalf (Hyperliquid's approved agent
-   * wallet). The resolved address is sent as `signerAddress` and, for
-   * `APPROVE_AGENT`, injected as the `agentAddress` action param.
+   * Contribute the signer-bearing wire fields for an action — the plugin owns
+   * signer identity (WHO signs), so core asks the plugin rather than resolving
+   * a `signerAddress` itself. The descriptor's `signers` are forwarded so the
+   * plugin can branch on signer role: a provider that signs on the user's
+   * behalf with a session keypair (Hyperliquid's agent) resolves — provisioning
+   * one if needed — and returns the agent address as `signerAddress`; for
+   * `APPROVE_AGENT` (user-signed) it returns the agent address only as the
+   * `agentAddress` param. The agent address must be known pre-build so the
+   * backend builds the right typed data, so core calls this before
+   * `createAction` and threads the same result into `executeAction`.
    *
-   * `create` requests a session keypair be provisioned if none exists yet
-   * (used while staging setup, before the agent has been approved on-chain);
-   * omitting it requires an existing one and throws otherwise.
-   *
-   * Optional: providers whose actions never name `PerpsSigner.AGENT` (e.g.
-   * Lighter, which uses an API-key session with no EVM signer address) omit
-   * it. `PerpsClient` only calls it for AGENT-signed descriptors.
+   * Optional: providers that sign as the user or with a non-EVM session
+   * credential (Lighter's API key) omit it — core then sends no `signerAddress`
+   * and no injected params.
    */
-  resolveSignerAddress?(
+  resolveActionRequest?(
+    action: ActionType,
     address: Address,
-    options?: { create?: boolean }
-  ): Promise<Address>
+    signers: PerpsSigner[]
+  ): Promise<ActionSignerContribution>
 
   /**
    * Sign a batch of unsigned {@link ActionStep}s belonging to one
@@ -330,11 +365,11 @@ export interface PerpsProviderPlugin {
    * when an action requires a delegated signing method but the resolved
    * provider has no `signActions`.
    *
-   * `method` mirrors the descriptor's `signingMethod`. The EIP712 USER-wallet
-   * arm stays generic on `PerpsClient` (`signTypedData` against the configured
-   * wallet); providers own every arm whose credential is provider-specific —
-   * `WASM_BLOB` / `EVM_TX` (Lighter), and the EIP712 AGENT arm signed with the
-   * provider's session keypair (Hyperliquid).
+   * `method` mirrors the descriptor's `signingMethod`. The plugin owns every
+   * arm, branching on the descriptor's `signers` internally: the EIP712 arm
+   * signs with the user's wallet (read from `ctx.userWallet`) or the provider's
+   * session keypair (Hyperliquid's agent), and `WASM_BLOB` / `EVM_TX` sign with
+   * the provider's local credential (Lighter).
    */
   signActions?(
     method: SigningMethod,

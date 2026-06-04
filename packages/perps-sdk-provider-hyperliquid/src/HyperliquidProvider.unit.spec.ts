@@ -1,6 +1,6 @@
 import { createMemoryStorage, createPerpsClient } from '@lifi/perps-sdk'
 import type { Eip712ActionStep } from '@lifi/perps-types'
-import { ActionType, SigningMethod } from '@lifi/perps-types'
+import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
@@ -124,33 +124,53 @@ describe('hyperliquidProvider', () => {
       },
     })
 
-    it('resolveSignerAddress creates and returns a stable agent address', async () => {
+    it('resolveActionRequest provisions APPROVE_AGENT and injects the agent address as a param', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
 
-      const created = await provider.resolveSignerAddress!(ADDRESS, {
-        create: true,
-      })
-      expect(created).toMatch(/^0x[a-fA-F0-9]{40}$/)
+      const contribution = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        [PerpsSigner.USER]
+      )
+      // APPROVE_AGENT is user-signed: agent rides as a param, not signerAddress.
+      expect(contribution.signerAddress).toBeUndefined()
+      const agentAddress = contribution.params?.agentAddress as string
+      expect(agentAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
 
-      // Subsequent resolves return the same agent without re-creating.
-      expect(await provider.resolveSignerAddress!(ADDRESS)).toBe(created)
-      expect(await provider.getAgentAddress(ADDRESS)).toBe(created)
+      // The provisioned agent is stable and surfaced via the lifecycle methods.
+      expect(await provider.getAgentAddress(ADDRESS)).toBe(agentAddress)
       expect(await provider.hasAgent(ADDRESS)).toBe(true)
+
+      // An agent-signed action carries the same agent as signerAddress.
+      const place = await provider.resolveActionRequest!(
+        ActionType.PLACE_ORDER,
+        ADDRESS,
+        [PerpsSigner.AGENT]
+      )
+      expect(place.signerAddress).toBe(agentAddress)
     })
 
-    it('resolveSignerAddress throws without create when no agent exists', async () => {
+    it('resolveActionRequest throws for an agent-signed action when no agent exists', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
-      await expect(provider.resolveSignerAddress!(ADDRESS)).rejects.toThrow()
+      await expect(
+        provider.resolveActionRequest!(ActionType.PLACE_ORDER, ADDRESS, [
+          PerpsSigner.AGENT,
+        ])
+      ).rejects.toThrow()
     })
 
     it('signActions signs the EIP712 agent arm and removeAgent revokes it', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
-      await provider.resolveSignerAddress!(ADDRESS, { create: true })
+      // Provision the agent via the user-signed APPROVE_AGENT path.
+      await provider.resolveActionRequest!(ActionType.APPROVE_AGENT, ADDRESS, [
+        PerpsSigner.USER,
+      ])
 
       const [signed] = await provider.signActions!(
         SigningMethod.EIP712,
         [eip712Step()],
-        ADDRESS
+        ADDRESS,
+        { signers: [PerpsSigner.AGENT] }
       )
       expect(signed.action).toBe(ActionType.PLACE_ORDER)
       expect('signature' in signed && signed.signature).toMatch(

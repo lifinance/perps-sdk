@@ -3,9 +3,11 @@ import type {
   Eip712ActionStep,
   Eip712SignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, SigningMethod } from '@lifi/perps-types'
-import type { Address, Hex } from 'viem'
-import { recoverTypedDataAddress } from 'viem'
+import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import type { Account, Address, Hex, WalletClient } from 'viem'
+import { createWalletClient, http, recoverTypedDataAddress } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
 import { HyperliquidAgentStore } from './HyperliquidAgentStore.js'
 import { hyperliquidSignActions } from './signActions.js'
@@ -32,7 +34,8 @@ describe('hyperliquidSignActions', () => {
       store,
       SigningMethod.EIP712,
       [step],
-      ADDRESS
+      ADDRESS,
+      { signers: [PerpsSigner.AGENT] }
     )) as Eip712SignedActionStep[]
 
     expect(signed.action).toBe(step.action)
@@ -49,14 +52,62 @@ describe('hyperliquidSignActions', () => {
     expect(recovered.toLowerCase()).toBe(agent.address.toLowerCase())
   })
 
-  it('throws when no agent has been provisioned', async () => {
+  it('signs the USER arm with the end-user wallet (recoverable to the user)', async () => {
+    const store = new HyperliquidAgentStore(createMemoryStorage())
+    // No agent provisioned: a USER-signed action must not touch the agent.
+    const userKey = `0x${'22'.repeat(32)}` as Hex
+    const userAccount = privateKeyToAccount(userKey)
+    const userWallet = createWalletClient({
+      account: userAccount,
+      chain: mainnet,
+      transport: http(),
+    }) as WalletClient<never, never, Account>
+
+    const step = eip712Step()
+    const [signed] = (await hyperliquidSignActions(
+      store,
+      SigningMethod.EIP712,
+      [step],
+      ADDRESS,
+      { signers: [PerpsSigner.USER], userWallet }
+    )) as Eip712SignedActionStep[]
+
+    const recovered = await recoverTypedDataAddress({
+      domain: step.typedData.domain,
+      types: step.typedData.types as never,
+      primaryType: step.typedData.primaryType as never,
+      message: step.typedData.message,
+      signature: signed.signature as Hex,
+    })
+    expect(recovered.toLowerCase()).toBe(userAccount.address.toLowerCase())
+  })
+
+  it('throws when a USER-signed action has no end-user wallet', async () => {
     const store = new HyperliquidAgentStore(createMemoryStorage())
     await expect(
       hyperliquidSignActions(
         store,
         SigningMethod.EIP712,
         [eip712Step()],
-        ADDRESS
+        ADDRESS,
+        {
+          signers: [PerpsSigner.USER],
+        }
+      )
+    ).rejects.toThrow(/end-user wallet/)
+  })
+
+  it('throws when no agent has been provisioned for an agent-signed action', async () => {
+    const store = new HyperliquidAgentStore(createMemoryStorage())
+    await expect(
+      hyperliquidSignActions(
+        store,
+        SigningMethod.EIP712,
+        [eip712Step()],
+        ADDRESS,
+        {
+          signers: [PerpsSigner.AGENT],
+        }
       )
     ).rejects.toThrow('Agent not found')
   })
@@ -66,7 +117,9 @@ describe('hyperliquidSignActions', () => {
     await store.getOrCreate(ADDRESS)
 
     await expect(
-      hyperliquidSignActions(store, SigningMethod.WASM_BLOB, [], ADDRESS)
-    ).rejects.toThrow(/only signs the EIP712 agent arm/)
+      hyperliquidSignActions(store, SigningMethod.WASM_BLOB, [], ADDRESS, {
+        signers: [PerpsSigner.AGENT],
+      })
+    ).rejects.toThrow(/only signs EIP712 actions/)
   })
 })

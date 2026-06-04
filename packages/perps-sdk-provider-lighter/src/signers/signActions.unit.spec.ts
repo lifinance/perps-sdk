@@ -122,7 +122,7 @@ describe('lighterSignActions', () => {
         SigningMethod.WASM_BLOB,
         [step],
         ADDRESS,
-        { signer: walletStub as never }
+        { userWallet: walletStub as never }
       )) as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(1)
@@ -156,7 +156,7 @@ describe('lighterSignActions', () => {
       })
     })
 
-    it('throws a clear error when no wallet signer is supplied', async () => {
+    it('throws a clear error when no end-user wallet is supplied', async () => {
       const { deps } = makeDeps()
       const step: WasmBlobActionStep = {
         action: ActionType.REGISTER_API_KEY,
@@ -164,7 +164,7 @@ describe('lighterSignActions', () => {
       }
       await expect(
         lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
-      ).rejects.toThrow(/wallet signer/i)
+      ).rejects.toThrow(/end-user wallet/i)
     })
 
     it('throws when wasmSignParams is missing `nonce`', async () => {
@@ -175,7 +175,7 @@ describe('lighterSignActions', () => {
       }
       await expect(
         lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS, {
-          signer: {
+          userWallet: {
             account: { address: ADDRESS },
             signMessage: vi.fn(),
           } as never,
@@ -247,11 +247,11 @@ describe('lighterSignActions', () => {
   })
 
   describe('method routing', () => {
-    it('refuses EIP712 — that arm stays on PerpsClient', async () => {
+    it('refuses EIP712 — Lighter declares no EIP712 actions', async () => {
       const { deps } = makeDeps()
       await expect(
         lighterSignActions(deps, SigningMethod.EIP712, [], ADDRESS)
-      ).rejects.toThrow(/EIP712 stays on PerpsClient/)
+      ).rejects.toThrow(/no EIP712 actions/)
     })
   })
 })

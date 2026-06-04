@@ -58,13 +58,13 @@ export interface PerpsConfig {
    */
   providers?: PerpsProviderPlugin[] | ProviderConfigs
   /**
-   * Wallet signer used whenever an action's descriptor names the user wallet
-   * in its `signers` list. Accepts any viem-compatible WalletClient:
+   * The end-user's wallet, used whenever an action's descriptor names the user
+   * wallet in its `signers` list. Accepts any viem-compatible WalletClient:
    *   - Browser wallet: wagmi's useWalletClient() result
    *   - Private key:    createWalletClient({ account: privateKeyToAccount('0x...'), transport: http() })
    *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })
    */
-  signer?: WalletClient<any, any, Account>
+  userWallet?: WalletClient<any, any, Account>
   /**
    * Retry behaviour for HTTP requests. Pass `false` to disable retries
    * everywhere (single-shot — useful when wrapping with TanStack Query or
@@ -83,9 +83,9 @@ export interface PerpsConfig {
 }
 
 /**
- * Construct the low-level {@link PerpsSDKClient} — config, signer, agent
- * manager, and provider registry — shared by the service functions and the
- * higher-level {@link PerpsClient}.
+ * Construct the low-level {@link PerpsSDKClient} — config, the optional
+ * end-user wallet, and provider registry — shared by the service functions and
+ * the higher-level {@link PerpsClient}.
  *
  * @throws {PerpsError} When `options.integrator` is missing.
  * @example
@@ -126,8 +126,8 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     get config() {
       return config
     },
-    get signer() {
-      return options.signer
+    get userWallet() {
+      return options.userWallet
     },
     get providers() {
       return boundProviders

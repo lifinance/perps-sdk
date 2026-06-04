@@ -22,15 +22,17 @@ export async function signTypedData(
 /**
  * Sign EIP-712 typed data with an externally-provided WalletClient. Works
  * with browser wallets (wagmi), private keys, mnemonics — any viem
- * WalletClient.
+ * WalletClient. Used by provider plugins to sign the EIP712 USER arm with the
+ * end-user's wallet.
  *
- * @internal
+ * @public
  */
 export async function signTypedDataWithSigner(
-  signer: WalletClient<any, any, Account>,
+  userWallet: WalletClient<any, any, Account>,
   typedData: PerpsTypedData
 ): Promise<Hex> {
-  return signer.signTypedData({
+  return userWallet.signTypedData({
+    account: userWallet.account,
     domain: typedData.domain,
     types: typedData.types,
     primaryType: typedData.primaryType,

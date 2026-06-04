@@ -90,7 +90,7 @@ async function signStandardWasmAction(
  *   5. Inject the L1 signature into the ChangePubKey txInfo JSON.
  *   6. Persist the keypair and return the signed blob.
  *
- * Requires a USER wallet signer in `ctx.signer` — the L1 signature is the
+ * Requires the end-user's wallet in `ctx.userWallet` — the L1 signature is the
  * user's consent to rotate keys.
  */
 async function signRegisterApiKey(
@@ -99,12 +99,12 @@ async function signRegisterApiKey(
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep> {
-  const walletSigner = ctx?.signer
+  const walletSigner = ctx?.userWallet
   if (!walletSigner) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      'REGISTER_API_KEY requires a wallet signer — pass `signer` to ' +
-        'createPerpsClient or call setSigner(walletClient).'
+      'REGISTER_API_KEY requires the end-user wallet — pass `userWallet` to ' +
+        'createPerpsClient or call setUserWallet(walletClient).'
     )
   }
 
@@ -235,12 +235,12 @@ export async function signEvmTxActions(
   steps: EvmTxActionStep[],
   ctx: SignActionsContext | undefined
 ): Promise<EvmTxSignedActionStep[]> {
-  const walletSigner = ctx?.signer
+  const walletSigner = ctx?.userWallet
   if (!walletSigner) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      'EVM_TX signing requires a wallet signer. Pass `signer` to ' +
-        'createPerpsClient or call setSigner(walletClient).'
+      'EVM_TX signing requires the end-user wallet. Pass `userWallet` to ' +
+        'createPerpsClient or call setUserWallet(walletClient).'
     )
   }
 
@@ -275,8 +275,9 @@ export async function signEvmTxActions(
 
 /**
  * Top-level dispatch: pick the per-method signer based on the descriptor's
- * `signingMethod` and forward. `EIP712` is intentionally rejected — that
- * arm stays generic on `PerpsClient` (agent/user wallet via `signTypedData`).
+ * `signingMethod` and forward. `EIP712` is rejected — Lighter declares no
+ * EIP712 actions (its user-consent step uses an EIP-191 `signMessage` inside
+ * the `WASM_BLOB` REGISTER_API_KEY flow).
  * @internal
  */
 export async function lighterSignActions(
@@ -299,8 +300,7 @@ export async function lighterSignActions(
     case SigningMethod.EIP712:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'LighterProvider.signActions: EIP712 stays on PerpsClient; ' +
-          'providers must not be asked to dispatch it.'
+        'LighterProvider.signActions: Lighter declares no EIP712 actions.'
       )
     default:
       throw new PerpsError(
