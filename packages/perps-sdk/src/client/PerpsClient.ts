@@ -2,29 +2,25 @@ import type {
   ActionParamsMap,
   ActionStep,
   CreateActionResponse,
-  Eip712ActionStep,
-  Eip712SignedActionStep,
   ExecuteActionResponse,
   MarketRef,
   Provider,
   ProviderAction,
   SignedActionStep,
 } from '@lifi/perps-types'
-import {
-  ActionType,
-  PerpsErrorCode,
-  PerpsSigner,
-  SigningMethod,
-} from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
 import { getProviders } from '../services/getProviders.js'
-import type { PerpsProvider, SignActionsContext } from '../types/core.js'
+import type {
+  ActionSignerContribution,
+  PerpsProvider,
+  SignActionsContext,
+} from '../types/core.js'
 import { requireProvider as resolveProvider } from '../utils/requireProvider.js'
-import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import { createPerpsClient, type PerpsSDKClient } from './createPerpsClient.js'
 import type {
   BuildProviderSetupParams,
@@ -74,7 +70,7 @@ function findActionDescriptor(
 export class PerpsClient {
   private sdkClient: PerpsSDKClient
   private providerMetadataCache: Map<string, Provider> = new Map()
-  private _signer: PerpsSDKClient['signer'] | undefined
+  private _userWallet: PerpsSDKClient['userWallet'] | undefined
 
   constructor(options: PerpsClientOptions) {
     this.sdkClient = createPerpsClient({
@@ -86,22 +82,22 @@ export class PerpsClient {
   }
 
   /**
-   * Set or update the wallet signer. Used whenever an action's descriptor
+   * Set or update the end-user's wallet. Used whenever an action's descriptor
    * names the user wallet in its `signers` list. Pass undefined to clear.
    *
    * @public
    */
-  setSigner(signer: PerpsSDKClient['signer']): void {
-    this._signer = signer
-    Object.defineProperty(this.sdkClient, 'signer', {
-      get: () => this._signer,
+  setUserWallet(userWallet: PerpsSDKClient['userWallet']): void {
+    this._userWallet = userWallet
+    Object.defineProperty(this.sdkClient, 'userWallet', {
+      get: () => this._userWallet,
       configurable: true,
     })
   }
 
   /**
-   * The underlying low-level {@link PerpsSDKClient} (config, signer, provider
-   * registry, agent manager) backing this instance.
+   * The underlying low-level {@link PerpsSDKClient} (config, user wallet,
+   * provider registry) backing this instance.
    *
    * @public
    */
@@ -133,218 +129,91 @@ export class PerpsClient {
   }
 
   /**
-   * Map the provider's setup gates to bulk-stageable inputs, ordered by
-   * `sequence`. Setup descriptors are params-free by contract — input-requiring
-   * tunables (ACCOUNT_MODE, ACCOUNT_TYPE) live on `Provider.options` and are
-   * dispatched individually via `execute(...)`, never bulk-staged here. The
-   * only param injected is the agent address for `APPROVE_AGENT`.
-   */
-  private buildProviderSetupInputs(
-    setup: ProviderAction[],
-    agentAddress?: Address
-  ): Array<{ key: string; params?: Record<string, unknown> }> {
-    return [...setup]
-      .sort(
-        (a, b) =>
-          (a.sequence ?? Number.MAX_SAFE_INTEGER) -
-          (b.sequence ?? Number.MAX_SAFE_INTEGER)
-      )
-      .map((p) => {
-        const params: Record<string, unknown> = {}
-        if (p.type === ActionType.APPROVE_AGENT && agentAddress) {
-          params.agentAddress = agentAddress
-        }
-        return {
-          key: p.type,
-          ...(Object.keys(params).length > 0 ? { params } : {}),
-        }
-      })
-  }
-
-  private async resolveSignerForAction(
-    action: ActionType,
-    address: Address,
-    provider: string
-  ): Promise<Address | undefined> {
-    // Only AGENT-signed actions surface a distinct signerAddress on the wire.
-    // API_KEY signers (e.g. Lighter's LighterKeyStore) are managed per-provider
-    // and don't have an EVM address — the backend identifies the action by the
-    // L1 `address` instead.
-    const metadata = await this.getProviderMetadata(provider)
-    const allActions = [
-      ...metadata.setup,
-      ...metadata.options,
-      ...metadata.actions,
-    ]
-    const descriptor = allActions.find((d) => d.type === action)
-    if (!descriptor?.signers.includes(PerpsSigner.AGENT)) {
-      return undefined
-    }
-
-    return this.resolveAgentSignerAddress(provider, address)
-  }
-
-  /**
    * Resolve the registered provider plugin for `provider`, throwing a
    * `PerpsError` when the caller has not registered one via the SDK's
-   * `providers` option. The plugin is the only owner of write-side signing
-   * for `WASM_BLOB` and `EVM_TX` action arms.
+   * `providers` option. The plugin owns signer identity and write-side signing.
    */
   private requireProvider(provider: string): PerpsProvider {
     return resolveProvider(this.sdkClient, provider)
   }
 
   /**
-   * Resolve the on-wire `signerAddress` for an AGENT-signed action via the
-   * provider plugin's session keypair (Hyperliquid's approved agent wallet).
-   * Throws when the provider does not own an agent session — only providers
-   * whose descriptors name {@link PerpsSigner.AGENT} are expected to.
+   * Ask the provider plugin for the signer-bearing wire fields of `action` —
+   * the on-wire `signerAddress` and any signer-derived params (e.g.
+   * Hyperliquid's `agentAddress` for `APPROVE_AGENT`). Forwards the descriptor's
+   * `signers` so the plugin can branch on signer role. Returns empty when the
+   * plugin signs as the user or with a non-EVM credential. Core constructs no
+   * `signerAddress` itself; signer identity is plugin-owned.
    */
-  private async resolveAgentSignerAddress(
+  private async resolveActionRequest(
     provider: string,
-    address: Address,
-    options?: { create?: boolean }
-  ): Promise<Address> {
+    descriptor: ProviderAction,
+    address: Address
+  ): Promise<ActionSignerContribution> {
     const plugin = this.requireProvider(provider)
-    if (typeof plugin.resolveSignerAddress !== 'function') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider '${provider}' declares an agent-signed action but does not ` +
-          'implement resolveSignerAddress.'
-      )
+    if (typeof plugin.resolveActionRequest !== 'function') {
+      return {}
     }
-    return plugin.resolveSignerAddress(address, options)
+    return plugin.resolveActionRequest(
+      descriptor.type,
+      address,
+      descriptor.signers
+    )
   }
 
+  /**
+   * Delegate signing of `actions` to the provider plugin. The plugin owns
+   * every signing arm and branches on the descriptor's `signers` internally,
+   * reading the end-user's wallet from the {@link SignActionsContext} when an
+   * arm signs as the user.
+   */
   private async delegateSignActions(
     provider: string,
     address: Address,
-    method: SigningMethod,
-    actions: ActionStep[],
-    ctx: SignActionsContext
+    descriptor: ProviderAction,
+    actions: ActionStep[]
   ): Promise<SignedActionStep[]> {
     const plugin = this.requireProvider(provider)
     if (typeof plugin.signActions !== 'function') {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Provider '${provider}' does not implement signActions for ` +
-          `signingMethod '${method}'.`
+          `signingMethod '${descriptor.signingMethod}'.`
       )
     }
-    return plugin.signActions(method, actions, address, ctx)
-  }
-
-  private async autoSignAndExecute(
-    provider: string,
-    address: Address,
-    action: ActionType,
-    actions: ActionStep[],
-    descriptor: ProviderAction
-  ): Promise<ExecuteActionResponse> {
-    switch (descriptor.signingMethod) {
-      case SigningMethod.EIP712: {
-        const eip712Actions = actions as Eip712ActionStep[]
-
-        if (descriptor.signers.includes(PerpsSigner.AGENT)) {
-          const signerAddress = await this.resolveAgentSignerAddress(
-            provider,
-            address
-          )
-          const signedActions = await this.delegateSignActions(
-            provider,
-            address,
-            SigningMethod.EIP712,
-            eip712Actions,
-            {}
-          )
-          return executeAction(this.sdkClient, {
-            provider,
-            address,
-            signerAddress,
-            action,
-            actions: signedActions,
-          })
-        }
-
-        if (descriptor.signers.includes(PerpsSigner.USER)) {
-          const signer = this.sdkClient.signer
-          if (!signer) {
-            throw new PerpsError(
-              PerpsErrorCode.SDKError,
-              `Action '${action}' requires a user-wallet signature, but no signer was configured. Pass a WalletClient to createPerpsClient({ signer }).`
-            )
-          }
-          const signedActions: SignedActionStep[] = await Promise.all(
-            eip712Actions.map(
-              async (a) =>
-                ({
-                  action: a.action,
-                  typedData: a.typedData,
-                  signature: await signTypedDataWithSigner(signer, a.typedData),
-                }) satisfies Eip712SignedActionStep
-            )
-          )
-          return executeAction(this.sdkClient, {
-            provider,
-            address,
-            signerAddress: address,
-            action,
-            actions: signedActions,
-          })
-        }
-
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          `Action '${action}' descriptor names no supported signer (signers=[${descriptor.signers.join(', ')}]).`
-        )
-      }
-
-      case SigningMethod.WASM_BLOB:
-      case SigningMethod.EVM_TX: {
-        const ctx = this.buildSignActionsContext()
-        const signedActions = await this.delegateSignActions(
-          provider,
-          address,
-          descriptor.signingMethod,
-          actions,
-          ctx
-        )
-        return executeAction(this.sdkClient, {
-          provider,
-          address,
-          signerAddress: address,
-          action,
-          actions: signedActions,
-        })
-      }
-
-      default:
-        throw new Error(`Unknown signingMethod: ${descriptor.signingMethod}`)
-    }
+    return plugin.signActions(
+      descriptor.signingMethod,
+      actions,
+      address,
+      this.buildSignActionsContext(descriptor)
+    )
   }
 
   /**
    * Assemble the per-call context the provider plugin needs in order to sign:
-   * the configured wallet signer. Provider-owned session credentials (the
-   * Hyperliquid agent keypair, Lighter's API key) are resolved inside the
-   * provider's `signActions`, not threaded through here.
+   * the end-user's wallet and the descriptor's declared `signers`. Core
+   * forwards `signers` as data so the plugin can pick WHO signs; it does not
+   * branch on them. Provider-owned session credentials (the Hyperliquid agent
+   * keypair, Lighter's API key) are resolved inside the provider's
+   * `signActions`, not threaded through here.
    */
-  private buildSignActionsContext(): SignActionsContext {
-    const ctx: SignActionsContext = {}
-    if (this.sdkClient.signer !== undefined) {
-      ctx.signer = this.sdkClient.signer
+  private buildSignActionsContext(
+    descriptor: ProviderAction
+  ): SignActionsContext {
+    const ctx: SignActionsContext = { signers: descriptor.signers }
+    if (this.sdkClient.userWallet !== undefined) {
+      ctx.userWallet = this.sdkClient.userWallet
     }
     return ctx
   }
 
   /**
-   * Sign a single provider setup action step using whichever signing path matches the
-   * step's shape — EIP-712 typed data, WASM blob (with the hybrid EIP-191 +
-   * WASM flow for REGISTER_API_KEY), or EVM transaction. Lets consumers
-   * collect signed setup actions without embedding per-method signing logic.
+   * Sign a single provider setup action step by delegating to the provider
+   * plugin, which branches on the step's signing scheme internally. Lets
+   * consumers collect signed setup actions without embedding per-method
+   * signing logic.
    *
-   * @throws {PerpsError} When an EIP-712 step is passed with no wallet signer
-   *   configured, or the step shape is unrecognised.
+   * @throws {PerpsError} When the step's action is not declared by the provider.
    * @public
    */
   async signProviderSetupAction(
@@ -352,48 +221,20 @@ export class PerpsClient {
     address: Address,
     step: ActionStep
   ): Promise<SignedActionStep> {
-    if ('typedData' in step) {
-      if (!this.sdkClient.signer) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'EIP-712 provider setup action signing requires a wallet signer. Pass ' +
-            '`signer` to createPerpsClient or call setSigner(walletClient).'
-        )
-      }
-      return {
-        action: step.action,
-        typedData: step.typedData,
-        signature: await signTypedDataWithSigner(
-          this.sdkClient.signer,
-          step.typedData
-        ),
-      } satisfies Eip712SignedActionStep
-    }
-    const method =
-      'wasmSignParams' in step
-        ? SigningMethod.WASM_BLOB
-        : 'txParams' in step
-          ? SigningMethod.EVM_TX
-          : undefined
-    if (method === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'Unknown ActionStep shape — expected typedData, wasmSignParams, or txParams.'
-      )
-    }
+    const metadata = await this.getProviderMetadata(provider)
+    const descriptor = findActionDescriptor(metadata, step.action)
     const [signed] = await this.delegateSignActions(
       provider,
       address,
-      method,
-      [step],
-      this.buildSignActionsContext()
+      descriptor,
+      [step]
     )
     return signed
   }
 
   /**
    * Build (but do not sign or submit) the unsigned action steps for `action`,
-   * resolving the agent signer address for AGENT-signed actions.
+   * letting the provider plugin contribute any signer-bearing request fields.
    *
    * @public
    */
@@ -401,17 +242,23 @@ export class PerpsClient {
     action: T,
     params: { provider: string; address: Address; params: ActionParamsMap[T] }
   ): Promise<CreateActionResponse> {
-    const signerAddress = await this.resolveSignerForAction(
-      action,
-      params.address,
-      params.provider
-    )
+    const metadata = await this.getProviderMetadata(params.provider)
+    const descriptor = findActionDescriptor(metadata, action)
+    const { signerAddress, params: signerParams } =
+      await this.resolveActionRequest(
+        params.provider,
+        descriptor,
+        params.address
+      )
     return createAction(this.sdkClient, {
       provider: params.provider,
       address: params.address,
       signerAddress,
       action,
-      params: params.params,
+      params: {
+        ...params.params,
+        ...signerParams,
+      } as ActionParamsMap[T],
     })
   }
 
@@ -469,8 +316,8 @@ export class PerpsClient {
   }
 
   /**
-   * Return the unsatisfied entries on `Provider.setup` for this account,
-   * split by signer role. Trading is gated on `isReady === true`.
+   * Return the unsatisfied entries on `Provider.setup` for this account as a
+   * flat, self-describing list. Trading is gated on `isReady === true`.
    *
    * `Provider.options` descriptors are NEVER returned here — options are
    * post-setup tunables and never gate trading. Option state is surfaced
@@ -481,105 +328,54 @@ export class PerpsClient {
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
 
-    const metadata = await this.getProviderMetadata(provider)
-    const usesAgent = [
-      ...metadata.setup,
-      ...metadata.options,
-      ...metadata.actions,
-    ].some((d) => d.signers.includes(PerpsSigner.AGENT))
-
-    let agentAddress: Address | undefined
-    if (usesAgent) {
-      agentAddress = await this.resolveAgentSignerAddress(provider, address, {
-        create: true,
-      })
-    }
-
-    const allInputs = this.buildProviderSetupInputs(
-      metadata.setup,
-      agentAddress
-    )
-
-    if (allInputs.length === 0) {
-      return { userProviderSetup: [], agentProviderSetup: [], isReady: true }
-    }
-
-    const signersByAction = new Map<string, PerpsSigner[]>()
-    for (const desc of metadata.setup) {
-      signersByAction.set(desc.type, desc.signers)
-    }
-
-    // The backend filters already-satisfied setup actions and returns typed data.
-    const { actions } = await this.buildProviderSetup({
-      provider,
-      address,
-      signerAddress: agentAddress,
-    })
-
-    if (actions.length === 0) {
-      return { userProviderSetup: [], agentProviderSetup: [], isReady: true }
-    }
-
-    const userProviderSetup = actions.filter((a) => {
-      const signers = signersByAction.get(a.action) ?? []
-      return signers.includes(PerpsSigner.USER)
-    })
-    const agentProviderSetup = actions.filter((a) => {
-      const signers = signersByAction.get(a.action) ?? []
-      return signers.includes(PerpsSigner.AGENT)
-    })
+    // The backend filters already-satisfied setup actions and returns typed
+    // data for those still outstanding; each plugin contributes its own
+    // signer-bearing request fields.
+    const { actions } = await this.buildProviderSetup({ provider, address })
 
     return {
-      userProviderSetup,
-      agentProviderSetup,
-      isReady: false,
+      setup: actions,
+      isReady: actions.length === 0,
     }
   }
 
   /**
    * Build the unsigned setup `ActionStep`s still outstanding for an account,
    * ordered by descriptor `sequence`. The backend filters already-satisfied
-   * setup; each plugin may contribute params from its local state.
+   * setup; each plugin contributes its own signer-bearing request fields and
+   * any local-state params (e.g. Lighter's known pubkey).
    *
    * @public
    */
   async buildProviderSetup(
     params: BuildProviderSetupParams
   ): Promise<CreateActionResponse> {
-    let { signerAddress } = params
+    const { provider, address } = params
 
-    if (!signerAddress) {
-      signerAddress = await this.resolveAgentSignerAddress(
-        params.provider,
-        params.address
-      )
-    }
-
-    const metadata = await this.getProviderMetadata(params.provider)
-    const allInputs = this.buildProviderSetupInputs(
-      metadata.setup,
-      signerAddress
+    const metadata = await this.getProviderMetadata(provider)
+    const orderedSetup = [...metadata.setup].sort(
+      (a, b) =>
+        (a.sequence ?? Number.MAX_SAFE_INTEGER) -
+        (b.sequence ?? Number.MAX_SAFE_INTEGER)
     )
 
-    // The backend filters already-satisfied provider setup and returns the
-    // unsigned action steps for those still outstanding. The plugin gets one
-    // chance per input to contribute params from its local state (e.g.
-    // Lighter's known local pubkey, which gates the backend's idempotency).
-    const plugin = this.sdkClient.getProvider(params.provider)
+    const plugin = this.sdkClient.getProvider(provider)
     const allActions: ActionStep[] = []
-    for (const input of allInputs) {
-      const action = input.key as ActionType
-      const pluginParams = plugin?.resolveSetupParams
-        ? await plugin.resolveSetupParams(action, params.address)
+    for (const descriptor of orderedSetup) {
+      const action = descriptor.type
+      const { signerAddress, params: signerParams } =
+        await this.resolveActionRequest(provider, descriptor, address)
+      const localParams = plugin?.resolveSetupParams
+        ? await plugin.resolveSetupParams(action, address)
         : {}
       const { actions } = await createAction(this.sdkClient, {
-        provider: params.provider,
-        address: params.address,
+        provider,
+        address,
         signerAddress,
         action,
         params: {
-          ...(input.params ?? {}),
-          ...pluginParams,
+          ...signerParams,
+          ...localParams,
         } as Record<string, never>,
       })
       allActions.push(...actions)
@@ -589,84 +385,47 @@ export class PerpsClient {
   }
 
   /**
-   * Submit the signed setup steps returned by `checkSetup` (and seeded
-   * with user-wallet signatures by the caller). Internally splits into:
-   *
-   *   1. Submit user-signed setup actions.
-   *   2. Sign and submit any pre-staged agent-side setup actions the
-   *      backend returned alongside the user-signed ones.
+   * Submit the signed setup steps returned by `checkSetup` (and signed by the
+   * caller / `signProviderSetupAction`). Routes the batch on the first step's
+   * action and lets the plugin contribute that action's `signerAddress`.
+   * Throws on any per-step venue rejection.
    *
    * @public
    */
   async executeProviderSetup(
     params: ExecuteProviderSetupParams
   ): Promise<ExecuteProviderSetupResult> {
-    const { provider, address, required, userSignedActions } = params
+    const { provider, address, setup, signedActions } = params
 
-    let userResults: ExecuteActionResponse = { results: [] }
-    if (userSignedActions.length > 0) {
-      const signerAddress = await this.resolveAgentSignerAddress(
-        provider,
-        address
-      )
-
-      // Route the batch on the first action's type.
-      const firstAction = required.userProviderSetup[0]?.action as string
-      userResults = await executeAction(this.sdkClient, {
-        provider,
-        address,
-        signerAddress,
-        action: (firstAction ?? ActionType.APPROVE_AGENT) as ActionType,
-        actions: userSignedActions,
-      })
-
-      const mandatoryFailure = userResults.results.find((r) => !r.success)
-      if (mandatoryFailure) {
-        throw new PerpsError(
-          PerpsErrorCode.ExchangeRejected,
-          mandatoryFailure.error
-        )
-      }
+    if (signedActions.length === 0) {
+      return { results: { results: [] } }
     }
 
-    let agentResults: ExecuteActionResponse | undefined
+    const action = setup[0]?.action ?? signedActions[0].action
+    const metadata = await this.getProviderMetadata(provider)
+    const descriptor = findActionDescriptor(metadata, action)
+    const { signerAddress } = await this.resolveActionRequest(
+      provider,
+      descriptor,
+      address
+    )
 
-    // Sign and submit any pre-staged agent provider setup returned by the
-    // backend's `buildProviderSetup` call. ACCOUNT_MODE is filtered out of
-    // bulk staging (it requires explicit `mode` params), so this block today
-    // only runs for future agent-signed steps the backend chooses to stage.
-    if (required.agentProviderSetup.length > 0) {
-      const signerAddress = await this.resolveAgentSignerAddress(
-        provider,
-        address
-      )
+    const results = await executeAction(this.sdkClient, {
+      provider,
+      address,
+      // The submitting account: the plugin-resolved signer (Hyperliquid's
+      // agent) when present, else the end-user's address.
+      signerAddress: signerAddress ?? address,
+      action,
+      actions: signedActions,
+    })
 
-      const signedAgentActions = await this.delegateSignActions(
-        provider,
-        address,
-        SigningMethod.EIP712,
-        required.agentProviderSetup,
-        {}
-      )
-
-      const firstAction = required.agentProviderSetup[0]?.action as string
-      const stagedResults = await executeAction(this.sdkClient, {
-        provider,
-        address,
-        signerAddress,
-        action: (firstAction ?? ActionType.ACCOUNT_MODE) as ActionType,
-        actions: signedAgentActions,
-      })
-
-      agentResults = {
-        results: [...(agentResults?.results ?? []), ...stagedResults.results],
-      }
+    const failure = results.results.find((r) => !r.success)
+    if (failure) {
+      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
     }
 
-    return {
-      userResults,
-      ...(agentResults ? { agentResults } : {}),
-    }
+    return { results }
   }
 
   /**
@@ -680,10 +439,6 @@ export class PerpsClient {
    * advanced underneath us), `executeProviderSetup` will surface a nonce
    * conflict that the caller invalidates on, refetches `checkSetup`, and
    * retries with a fresh step.
-   *
-   * Signer-role split: looks up the action's setup descriptor and dispatches
-   * to `signProviderSetupAction` for user-signed steps; agent steps are
-   * auto-signed inside `executeProviderSetup`.
    *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors.
@@ -704,24 +459,13 @@ export class PerpsClient {
         `Action '${step.action}' is not in '${provider}'.setup`
       )
     }
-    const isUserStep = descriptor.signers.includes(PerpsSigner.USER)
 
-    let userSignedActions: SignedActionStep[] = []
-    if (isUserStep) {
-      const signed = await this.signProviderSetupAction(provider, address, step)
-      userSignedActions = [signed]
-    }
-
-    const singleStep: ProviderSetup = {
-      userProviderSetup: isUserStep ? [step] : [],
-      agentProviderSetup: isUserStep ? [] : [step],
-      isReady: false,
-    }
+    const signed = await this.signProviderSetupAction(provider, address, step)
     await this.executeProviderSetup({
       provider,
       address,
-      required: singleStep,
-      userSignedActions,
+      setup: [step],
+      signedActions: [signed],
     })
   }
 
@@ -870,37 +614,54 @@ export class PerpsClient {
   }
 
   /**
-   * Execute any action through the SDK's signing pipeline. The
-   * action's descriptor in provider metadata picks the route:
-   * `EIP712` is signed inside `PerpsClient` against the agent or user
-   * wallet; `WASM_BLOB` and `EVM_TX` are delegated to the provider
-   * plugin's {@link PerpsProvider.signActions}.
+   * Execute any action through the SDK's signing pipeline: fetch the unsigned
+   * steps, delegate signing to the provider plugin (which branches on the
+   * descriptor's scheme and signer internally), and submit. Core stays
+   * signer-agnostic — the plugin owns WHO signs and HOW.
    *
    * @throws {PerpsError} When the action is not declared by the provider,
-   *   no matching signer is configured, or signing/submission fails.
+   *   the plugin cannot sign it, or submission fails.
    * @public
    */
   async execute<T extends ActionType>(params: {
     provider: string
     address: Address
-    signerAddress?: Address
     action: T
     params: ActionParamsMap[T]
   }): Promise<ExecuteActionResponse> {
-    const metadata = await this.getProviderMetadata(params.provider)
-    const descriptor = findActionDescriptor(metadata, params.action)
+    const { provider, address, action } = params
+    const metadata = await this.getProviderMetadata(provider)
+    const descriptor = findActionDescriptor(metadata, action)
 
-    const { actions } = await this.buildAction(params.action, {
-      provider: params.provider,
-      address: params.address,
-      params: params.params,
+    const { signerAddress, params: signerParams } =
+      await this.resolveActionRequest(provider, descriptor, address)
+
+    const { actions } = await createAction(this.sdkClient, {
+      provider,
+      address,
+      signerAddress,
+      action,
+      params: {
+        ...params.params,
+        ...signerParams,
+      } as ActionParamsMap[T],
     })
-    return await this.autoSignAndExecute(
-      params.provider,
-      params.address,
-      params.action,
-      actions,
-      descriptor
+
+    const signedActions = await this.delegateSignActions(
+      provider,
+      address,
+      descriptor,
+      actions
     )
+
+    return executeAction(this.sdkClient, {
+      provider,
+      address,
+      // The submitting account: the plugin-resolved signer (Hyperliquid's
+      // agent) when present, else the end-user's address.
+      signerAddress: signerAddress ?? address,
+      action,
+      actions: signedActions,
+    })
   }
 }
