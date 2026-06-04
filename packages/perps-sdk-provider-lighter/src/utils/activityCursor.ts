@@ -1,5 +1,5 @@
 import { PerpsError } from '@lifi/perps-sdk'
-import { PerpsErrorCode } from '@lifi/perps-types'
+import { type ActivityItem, PerpsErrorCode } from '@lifi/perps-types'
 
 /**
  * Per-endpoint cursor envelope for Lighter activity pagination.
@@ -21,6 +21,13 @@ export interface LighterActivityCursor {
   fundings?: string
   liquidations?: string
   transfers?: string
+  /**
+   * Already-fetched, merged-and-sorted rows that did not fit under the page
+   * `limit`. The upstream cursors above have advanced past these rows, so they
+   * are replayed (prepended) on the next page before any fresh fetch — without
+   * them the tail would be lost forever.
+   */
+  overflow?: ActivityItem[]
 }
 
 const CURSOR_KEYS = [
@@ -37,8 +44,8 @@ const isNonEmpty = (v: string | undefined): v is string =>
 /**
  * Encode a `LighterActivityCursor` as the base64url-of-JSON cursor string
  * Lighter widgets persist between activity pages. Returns `undefined` when
- * every key is empty — the caller should report `hasMore: false` and omit
- * `cursor` from `Pagination` in that case.
+ * every per-endpoint key is empty and no `overflow` rows remain — the caller
+ * should report `hasMore: false` and omit `cursor` from `Pagination` then.
  *
  * Browser-direct: `Buffer` is Node-only. We use `btoa` over a Latin-1
  * encoding of the UTF-8 bytes and then rewrite `+/=` to base64url. This is
@@ -54,6 +61,9 @@ export const encodeActivityCursor = (
     if (isNonEmpty(env[key])) {
       compact[key] = env[key]
     }
+  }
+  if (env.overflow !== undefined && env.overflow.length > 0) {
+    compact.overflow = env.overflow
   }
   if (Object.keys(compact).length === 0) {
     return undefined
@@ -103,6 +113,16 @@ export const decodeActivityCursor = (
       )
     }
     env[key] = v
+  }
+  const overflow = cursorRecord.overflow
+  if (overflow !== undefined) {
+    if (!Array.isArray(overflow)) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Invalid Lighter activity cursor: overflow must be an array'
+      )
+    }
+    env.overflow = overflow as ActivityItem[]
   }
   return env
 }

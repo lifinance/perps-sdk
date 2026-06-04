@@ -705,6 +705,125 @@ describe('LighterProvider — normalisation', () => {
   })
 })
 
+describe('LighterProvider — getActivity paging never drops rows', () => {
+  const depositRow = (id: string, timestampMs: number) => ({
+    id,
+    asset_id: 3,
+    amount: '100',
+    timestamp: timestampMs,
+    status: 'completed',
+    l1_tx_hash: `0x${id}`,
+  })
+
+  const withdrawRow = (id: string, timestampMs: number) => ({
+    id,
+    asset_id: 3,
+    amount: '50',
+    timestamp: timestampMs,
+    status: 'completed',
+    l1_tx_hash: `0x${id}`,
+  })
+
+  // Deposits paginate over two upstream pages; withdrawals are single-page.
+  // A page-1 `limit` below the merged count forces a sliced-off overflow tail
+  // whose upstream cursor has already advanced past it.
+  const stubPagedHistory = () =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/orderBookDetails')) {
+        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+      }
+      if (u.includes('/api/v1/deposit/history')) {
+        if (u.includes('cursor=dep-next')) {
+          return respond({
+            code: 0,
+            deposits: [depositRow('d3', 1700000001000)],
+          })
+        }
+        return respond({
+          code: 0,
+          deposits: [
+            depositRow('d1', 1700000005000),
+            depositRow('d2', 1700000004000),
+          ],
+          cursor: 'dep-next',
+        })
+      }
+      if (u.includes('/api/v1/withdraw/history')) {
+        return respond({
+          code: 0,
+          withdraws: [
+            withdrawRow('w1', 1700000003000),
+            withdrawRow('w2', 1700000002000),
+          ],
+        })
+      }
+      if (u.includes('/api/v1/positionFunding')) {
+        return respond({ code: 0, position_fundings: [] })
+      }
+      if (u.includes('/api/v1/liquidations')) {
+        return respond({ code: 0, liquidations: [] })
+      }
+      if (u.includes('/api/v1/transfer/history')) {
+        return respond({ code: 0, transfers: [] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('returns every row exactly once across paged calls (limit < merged count)', async () => {
+    stubPagedHistory()
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const seen: string[] = []
+    let cursor: string | undefined
+    let pages = 0
+    do {
+      const page = await provider.getActivity({
+        address: ADDRESS,
+        type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+        limit: 3,
+        ...(cursor === undefined ? {} : { cursor }),
+      })
+      expect(page.items.length).toBeLessThanOrEqual(3)
+      for (const it of page.items) {
+        seen.push(it.id)
+      }
+      cursor = page.pagination.hasMore ? page.pagination.cursor : undefined
+      pages += 1
+      expect(pages).toBeLessThan(10)
+    } while (cursor !== undefined)
+
+    // d1..d3 (3 deposits across two upstream pages) + w1, w2 = 5 rows, each once.
+    expect(seen.slice().sort()).toEqual(['d1', 'd2', 'd3', 'w1', 'w2'])
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  it('keeps hasMore true while a sliced overflow tail remains', async () => {
+    stubPagedHistory()
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const page1 = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+      limit: 3,
+    })
+    expect(page1.items).toHaveLength(3)
+    expect(page1.pagination.hasMore).toBe(true)
+    expect(page1.pagination.cursor).toBeTypeOf('string')
+  })
+})
+
 describe('LighterProvider — getActivity transfer token registry', () => {
   const transferRow = (assetId: number) => ({
     id: `tr-${assetId}`,
