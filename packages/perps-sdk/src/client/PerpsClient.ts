@@ -397,7 +397,7 @@ export class PerpsClient {
    *
    * @public
    */
-  async buildAction<T extends ActionType>(
+  async buildAction<T extends keyof ActionParamsMap>(
     action: T,
     params: { provider: string; address: Address; params: ActionParamsMap[T] }
   ): Promise<CreateActionResponse> {
@@ -568,7 +568,7 @@ export class PerpsClient {
     const plugin = this.sdkClient.getProvider(params.provider)
     const allActions: ActionStep[] = []
     for (const input of allInputs) {
-      const action = input.key as ActionType
+      const action = input.key as keyof ActionParamsMap
       const pluginParams = plugin?.resolveSetupParams
         ? await plugin.resolveSetupParams(action, params.address)
         : {}
@@ -749,7 +749,7 @@ export class PerpsClient {
    *   failure).
    * @public
    */
-  async executeProviderOption<T extends ActionType>(params: {
+  async executeProviderOption<T extends keyof ActionParamsMap>(params: {
     provider: string
     address: Address
     action: T
@@ -880,7 +880,7 @@ export class PerpsClient {
    *   no matching signer is configured, or signing/submission fails.
    * @public
    */
-  async execute<T extends ActionType>(params: {
+  async execute<T extends keyof ActionParamsMap>(params: {
     provider: string
     address: Address
     signerAddress?: Address

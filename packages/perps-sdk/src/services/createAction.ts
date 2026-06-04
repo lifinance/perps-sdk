@@ -1,8 +1,4 @@
-import type {
-  ActionParamsMap,
-  ActionType,
-  CreateActionResponse,
-} from '@lifi/perps-types'
+import type { ActionParamsMap, CreateActionResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import type {
   PerpsSDKClient,
@@ -15,7 +11,9 @@ import { request } from '../utils/request.js'
  *
  * @public
  */
-export interface CreateActionParams<T extends ActionType = ActionType> {
+export interface CreateActionParams<
+  T extends keyof ActionParamsMap = keyof ActionParamsMap,
+> {
   provider: string
   address: Address
   signerAddress?: Address
@@ -31,7 +29,7 @@ export interface CreateActionParams<T extends ActionType = ActionType> {
  * @throws {PerpsError} On backend error responses, network, or parsing errors.
  * @public
  */
-export async function createAction<T extends ActionType>(
+export async function createAction<T extends keyof ActionParamsMap>(
   client: PerpsSDKClient,
   params: CreateActionParams<T>,
   options?: SDKRequestOptions
