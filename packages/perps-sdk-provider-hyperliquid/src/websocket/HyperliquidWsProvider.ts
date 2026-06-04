@@ -1,4 +1,5 @@
 import {
+  cachePromise,
   getMarkets as coreGetMarkets,
   isActiveOrderStatus,
   type PerpsSDKClient,
@@ -100,15 +101,18 @@ export class HyperliquidWsProvider implements WsProvider {
     if (this.byMarketId.size > 0 || client === undefined) {
       return
     }
-    if (!this.byMarketIdPromise) {
-      this.byMarketIdPromise = (async () => {
+    await cachePromise(
+      () => this.byMarketIdPromise,
+      (p) => {
+        this.byMarketIdPromise = p
+      },
+      async () => {
         const { markets } = await coreGetMarkets(client, {
           provider: this.providerKey,
         })
         this.byMarketId = new Map(markets.map((m) => [m.id, m]))
-      })()
-    }
-    await this.byMarketIdPromise
+      }
+    )
   }
 
   async subscribe(

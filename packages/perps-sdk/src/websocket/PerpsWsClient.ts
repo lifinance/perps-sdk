@@ -2,6 +2,7 @@ import { PerpsErrorCode, type Subscription } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import { getProviders } from '../services/getProviders.js'
 import type { PerpsSDKClient } from '../types/provider.js'
+import { cachePromise } from './cachePromise.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
@@ -104,12 +105,17 @@ export class PerpsWsClient {
       return existing
     }
 
-    let initPromise = this.initPromises.get(provider)
-    if (!initPromise) {
-      initPromise = this.initProvider(provider)
-      this.initPromises.set(provider, initPromise)
-    }
-    return initPromise
+    return cachePromise(
+      () => this.initPromises.get(provider),
+      (p) => {
+        if (p) {
+          this.initPromises.set(provider, p)
+        } else {
+          this.initPromises.delete(provider)
+        }
+      },
+      () => this.initProvider(provider)
+    )
   }
 
   private async initProvider(provider: string): Promise<WsProvider> {
