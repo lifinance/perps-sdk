@@ -8,34 +8,11 @@
  */
 
 export * from '@lifi/perps-types'
-export type {
-  PerpsBaseConfig,
-  PerpsConfig,
-  PerpsSDKClient,
-  RequestInterceptor,
-  SDKRequestOptions,
-} from './client/createPerpsClient.js'
 export {
   createPerpsClient,
   DEFAULT_API_URL,
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
-export type {
-  BuildProviderSetupParams,
-  CancelOrdersParams,
-  ExecuteProviderSetupParams,
-  ExecuteProviderSetupResult,
-  GetAccountResult,
-  GetSetupParams,
-  HyperliquidConfig,
-  ModifyOrdersParams,
-  PerpsClientOptions,
-  PlaceOrderParams as ClientPlaceOrderParams,
-  PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
-  ProviderConfig,
-  ProviderConfigs,
-  ProviderSetup,
-} from './client/types.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 // Services
@@ -88,10 +65,33 @@ export {
   resolveRetryPolicy,
 } from './transport/retryPolicy.js'
 export type {
-  ActionSignerContribution,
+  BuildProviderSetupParams,
+  CancelOrdersParams,
+  ExecuteProviderSetupParams,
+  ExecuteProviderSetupResult,
+  GetAccountResult,
+  GetSetupParams,
+  ModifyOrdersParams,
+  PerpsClientOptions,
+  PerpsConfig,
+  PlaceOrderParams as ClientPlaceOrderParams,
+  PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
+  ProviderSetup,
+} from './types/api.js'
+export type {
+  HyperliquidConfig,
+  PerpsBaseConfig,
   PerpsClientSigner,
+  ProviderConfig,
+  ProviderConfigs,
+  RequestInterceptor,
+  SDKRequestOptions,
+} from './types/config.js'
+export type {
+  ActionSignerContribution,
   PerpsProvider,
   PerpsProviderPlugin,
+  PerpsSDKClient,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
   ProviderGetFillsParams,
@@ -99,7 +99,7 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   SignActionsContext,
-} from './types/core.js'
+} from './types/provider.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,

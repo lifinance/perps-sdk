@@ -1,6 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
-import type { PerpsProvider, PerpsSDKClient } from '../types/core.js'
+import type { PerpsProvider, PerpsSDKClient } from '../types/provider.js'
 
 /**
  * Resolve the registered bound {@link PerpsProvider} for `provider`, or throw.

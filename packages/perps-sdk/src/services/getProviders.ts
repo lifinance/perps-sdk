@@ -1,8 +1,6 @@
 import type { ProvidersResponse } from '@lifi/perps-types'
-import type {
-  PerpsSDKClient,
-  SDKRequestOptions,
-} from '../client/createPerpsClient.js'
+import type { SDKRequestOptions } from '../types/config.js'
+import type { PerpsSDKClient } from '../types/provider.js'
 import { request } from '../utils/request.js'
 
 /**

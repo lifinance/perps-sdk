@@ -1,9 +1,5 @@
 import type { PerpsErrorBody } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type {
-  PerpsBaseConfig,
-  SDKRequestOptions,
-} from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { fetchWithRetry } from '../transport/fetchWithRetry.js'
 import {
@@ -12,6 +8,7 @@ import {
   type RetryPolicy,
   resolveRetryPolicy,
 } from '../transport/retryPolicy.js'
+import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
 import { version } from '../version.js'
 
 /**
