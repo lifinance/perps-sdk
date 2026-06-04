@@ -1,15 +1,15 @@
 import type { PerpsErrorBody } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
-import { fetchWithRetry } from '../transport/fetchWithRetry.js'
+import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
+import { version } from '../version.js'
+import { fetchWithRetry } from './fetchWithRetry.js'
 import {
   LIFI_REQUEST_KEY,
   LIFI_RETRY_DEFAULTS,
   type RetryPolicy,
   resolveRetryPolicy,
-} from '../transport/retryPolicy.js'
-import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
-import { version } from '../version.js'
+} from './retryPolicy.js'
 
 /**
  * `RequestInit` plus a per-call retry override.

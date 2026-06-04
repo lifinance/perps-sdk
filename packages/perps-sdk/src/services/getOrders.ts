@@ -1,8 +1,8 @@
 import type { OrdersResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { requireProvider } from '../client/requireProvider.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
-import { requireProvider } from '../utils/requireProvider.js'
 
 /**
  * Parameters for {@link getOrders}.

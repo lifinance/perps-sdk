@@ -1,7 +1,7 @@
 import type { ProvidersResponse } from '@lifi/perps-types'
+import { request } from '../transport/request.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
-import { request } from '../utils/request.js'
 
 /**
  * Get all available providers.

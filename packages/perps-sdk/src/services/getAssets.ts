@@ -1,7 +1,7 @@
 import type { AssetsResponse } from '@lifi/perps-types'
+import { buildUrl, request } from '../transport/request.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
-import { buildUrl, request } from '../utils/request.js'
 
 /**
  * Parameters for {@link getAssets}.
