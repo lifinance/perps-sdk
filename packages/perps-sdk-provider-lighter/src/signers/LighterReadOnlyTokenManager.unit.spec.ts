@@ -241,6 +241,42 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(fresh).toBeUndefined()
     })
 
+    it('treats a token with a non-numeric expiry as absent (not valid forever)', async () => {
+      const storage = createMemoryStorage()
+      const key = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`
+      // A corrupt expiry: NaN <= now is false, so the old `isExpired` check
+      // would treat this token as valid forever.
+      await storage.set(
+        key,
+        JSON.stringify({
+          token: 'ro:corrupt',
+          expiry: 'not-a-number',
+          scope: 'all',
+          accountIndex: 7,
+        })
+      )
+      const manager = new LighterReadOnlyTokenManager({
+        storage,
+        now: () => ANCHOR_NOW_MS,
+      })
+
+      expect(await manager.get(ADDRESS_A, 7)).toBeUndefined()
+      // Poisoned entry evicted so it does not keep tripping later reads.
+      expect(await storage.get(key)).toBeNull()
+    })
+
+    it('treats unparseable stored JSON as absent', async () => {
+      const storage = createMemoryStorage()
+      const key = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`
+      await storage.set(key, '{corrupt')
+      const manager = new LighterReadOnlyTokenManager({
+        storage,
+        now: () => ANCHOR_NOW_MS,
+      })
+
+      expect(await manager.get(ADDRESS_A, 7)).toBeUndefined()
+    })
+
     it('keeps separate entries per accountIndex under the same L1 address', async () => {
       const storage = createMemoryStorage()
       const a = makeManager({
@@ -355,6 +391,26 @@ describe('LighterReadOnlyTokenManager', () => {
       })
       expect(await manager.isReadOnlyTokenExpiringSoon(ADDRESS_A, 7, 30)).toBe(
         true
+      )
+    })
+
+    it('returns false for a token with a non-numeric expiry', async () => {
+      const storage = createMemoryStorage()
+      await storage.set(
+        `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`,
+        JSON.stringify({
+          token: 'ro:corrupt',
+          expiry: 'not-a-number',
+          scope: 'all',
+          accountIndex: 7,
+        })
+      )
+      const manager = new LighterReadOnlyTokenManager({
+        storage,
+        now: () => ANCHOR_NOW_MS,
+      })
+      expect(await manager.isReadOnlyTokenExpiringSoon(ADDRESS_A, 7, 30)).toBe(
+        false
       )
     })
 

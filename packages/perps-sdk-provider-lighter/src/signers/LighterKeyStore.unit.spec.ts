@@ -82,6 +82,41 @@ describe('LighterKeyStore', () => {
     expect(storage.get).toHaveBeenCalledWith(STORAGE_KEY)
   })
 
+  it('treats unparseable stored JSON as absent and evicts it', async () => {
+    const backing = createMemoryStorage()
+    await backing.set(STORAGE_KEY, '{corrupt')
+    const storage = spyStorage(backing)
+    const store = new LighterKeyStore(storage)
+
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+    expect(storage.remove).toHaveBeenCalledWith(STORAGE_KEY)
+    await expect(backing.get(STORAGE_KEY)).resolves.toBeNull()
+  })
+
+  it('treats a partial record missing apiKeyPrivateKey as absent', async () => {
+    const backing = createMemoryStorage()
+    await backing.set(
+      STORAGE_KEY,
+      JSON.stringify({
+        accountIndex: 42,
+        apiKeyIndex: 1,
+        apiKeyPublicKey: apiKey.apiKeyPublicKey,
+      })
+    )
+    const store = new LighterKeyStore(backing)
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('treats a record with a non-numeric accountIndex as absent', async () => {
+    const backing = createMemoryStorage()
+    await backing.set(
+      STORAGE_KEY,
+      JSON.stringify({ ...apiKey, accountIndex: 'oops' })
+    )
+    const store = new LighterKeyStore(backing)
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
   it('normalises mixed-case addresses to the same storage key', async () => {
     const storage = spyStorage(createMemoryStorage())
     const store = new LighterKeyStore(storage)
