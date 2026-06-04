@@ -5,6 +5,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
 import type {
@@ -139,6 +140,7 @@ export class LighterWsProvider implements WsProvider {
 
   private readonly subs = new Map<string, SubState>()
   private readonly listeners = new Map<string, Set<SubscriptionListener>>()
+  private readonly statusListeners = new Set<WsStatusListener>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -180,9 +182,31 @@ export class LighterWsProvider implements WsProvider {
       void this.onOpen()
     })
     this.rws.on('close', () => this.stopKeepalive())
+    this.rws.onStatus((status) => {
+      for (const fn of this.statusListeners) {
+        fn(status)
+      }
+    })
   }
 
   async subscribe(
+    sub: Subscription,
+    listener: SubscriptionListener,
+    onStatus?: WsStatusListener
+  ): Promise<() => void> {
+    const unsubscribe = await this.subscribeChannel(sub, listener)
+    if (!onStatus) {
+      return unsubscribe
+    }
+    this.statusListeners.add(onStatus)
+    onStatus(this.rws.getStatus())
+    return () => {
+      this.statusListeners.delete(onStatus)
+      unsubscribe()
+    }
+  }
+
+  private async subscribeChannel(
     sub: Subscription,
     listener: SubscriptionListener
   ): Promise<() => void> {
@@ -247,6 +271,7 @@ export class LighterWsProvider implements WsProvider {
     this.rws.close()
     this.subs.clear()
     this.listeners.clear()
+    this.statusListeners.clear()
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
   }

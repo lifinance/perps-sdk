@@ -7,6 +7,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
 import {
@@ -69,6 +70,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
+  private statusListeners = new Set<WsStatusListener>()
   private readonly providerKey: string
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
@@ -89,6 +91,11 @@ export class HyperliquidWsProvider implements WsProvider {
     this.rws = new ReconnectingWebSocket(wsUrl)
     this.rws.on('message', (data) => this.handleMessage(data))
     this.rws.on('open', () => this.resubscribeAll())
+    this.rws.onStatus((status) => {
+      for (const fn of this.statusListeners) {
+        fn(status)
+      }
+    })
   }
 
   /**
@@ -116,6 +123,23 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   async subscribe(
+    sub: Subscription,
+    listener: SubscriptionListener,
+    onStatus?: WsStatusListener
+  ): Promise<() => void> {
+    const unsubscribe = await this.subscribeChannel(sub, listener)
+    if (!onStatus) {
+      return unsubscribe
+    }
+    this.statusListeners.add(onStatus)
+    onStatus(this.rws.getStatus())
+    return () => {
+      this.statusListeners.delete(onStatus)
+      unsubscribe()
+    }
+  }
+
+  private async subscribeChannel(
     sub: Subscription,
     listener: SubscriptionListener
   ): Promise<() => void> {
@@ -280,6 +304,7 @@ export class HyperliquidWsProvider implements WsProvider {
     this.rws.close()
     this.subs.clear()
     this.listeners.clear()
+    this.statusListeners.clear()
   }
 
   private resubscribeAll() {

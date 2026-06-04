@@ -1,3 +1,5 @@
+import type { WsConnectionStatus, WsStatusListener } from './types.js'
+
 type WsEventMap = {
   open: () => void
   close: (code: number, reason: string) => void
@@ -6,6 +8,14 @@ type WsEventMap = {
 }
 
 type WsEvent = keyof WsEventMap
+
+/**
+ * Default reconnect attempt cap. With the exponential backoff capped at 10s,
+ * ten attempts span ~39s of retries before the socket is declared
+ * `disconnected` — long enough for a live trading feed to ride out a transient
+ * network blip.
+ */
+const DEFAULT_MAX_RETRIES = 10
 
 /**
  * Options for {@link ReconnectingWebSocket}.
@@ -38,6 +48,8 @@ export class ReconnectingWebSocket {
     error: new Set<WsEventMap['error']>(),
     message: new Set<WsEventMap['message']>(),
   }
+  private statusListeners = new Set<WsStatusListener>()
+  private status: WsConnectionStatus = 'reconnecting'
   private readyResolvers: Array<{
     resolve: () => void
     reject: (e: Error) => void
@@ -45,7 +57,7 @@ export class ReconnectingWebSocket {
 
   constructor(url: string, options?: ReconnectingWebSocketOptions) {
     this.url = url
-    this.maxRetries = options?.maxRetries ?? 3
+    this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES
     this.pingIntervalMs = options?.pingIntervalMs ?? 30_000
     this.connect()
   }
@@ -57,6 +69,7 @@ export class ReconnectingWebSocket {
       this.attempt = 0
       this.flush()
       this.startPing()
+      this.setStatus('connected')
       for (const fn of this.listeners.open) {
         fn()
       }
@@ -96,8 +109,10 @@ export class ReconnectingWebSocket {
         reject(new Error('WebSocket max reconnect attempts reached'))
       }
       this.readyResolvers = []
+      this.setStatus('disconnected')
       return
     }
+    this.setStatus('reconnecting')
     const delay = Math.min((1 << this.attempt) * 150, 10_000)
     this.attempt++
     setTimeout(() => {
@@ -105,6 +120,16 @@ export class ReconnectingWebSocket {
         this.connect()
       }
     }, delay)
+  }
+
+  private setStatus(status: WsConnectionStatus) {
+    if (this.status === status) {
+      return
+    }
+    this.status = status
+    for (const fn of this.statusListeners) {
+      fn(status)
+    }
   }
 
   private flush() {
@@ -174,6 +199,35 @@ export class ReconnectingWebSocket {
    */
   off<E extends WsEvent>(event: E, fn: WsEventMap[E]) {
     ;(this.listeners[event] as Set<WsEventMap[E]>).delete(fn)
+  }
+
+  /**
+   * Current connection health. `reconnecting` until the first open;
+   * `disconnected` once auto-reconnect is abandoned (terminal).
+   *
+   * @public
+   */
+  getStatus(): WsConnectionStatus {
+    return this.status
+  }
+
+  /**
+   * Register a connection-health listener. Fires on every status transition,
+   * including the terminal `disconnected` emitted on reconnect exhaustion.
+   *
+   * @public
+   */
+  onStatus(fn: WsStatusListener) {
+    this.statusListeners.add(fn)
+  }
+
+  /**
+   * Remove a previously registered connection-health listener.
+   *
+   * @public
+   */
+  offStatus(fn: WsStatusListener) {
+    this.statusListeners.delete(fn)
   }
 
   /**
