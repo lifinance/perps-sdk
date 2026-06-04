@@ -74,6 +74,53 @@ describe('HyperliquidAgentStore', () => {
     )
   })
 
+  const storageKey = `lifi-perps-agent:${userAddress.toLowerCase()}:hyperliquid`
+
+  it('surfaces a corrupt stored record instead of regenerating over it', async () => {
+    const storage = createMemoryStorage()
+    await storage.set(storageKey, '{not valid json')
+    const corruptStore = new HyperliquidAgentStore(storage)
+
+    await expect(corruptStore.get(userAddress)).rejects.toThrow(/malformed/i)
+    // getOrCreate must NOT silently overwrite the poisoned record with a fresh
+    // key — that is the silent-keypair-loss bug. It surfaces the same error.
+    await expect(corruptStore.getOrCreate(userAddress)).rejects.toThrow(
+      /malformed/i
+    )
+  })
+
+  it('surfaces a stored record missing the privateKey field', async () => {
+    const storage = createMemoryStorage()
+    await storage.set(storageKey, JSON.stringify({ address: userAddress }))
+    const partialStore = new HyperliquidAgentStore(storage)
+
+    await expect(partialStore.getOrCreate(userAddress)).rejects.toThrow(
+      /malformed/i
+    )
+  })
+
+  it('surfaces a stored record whose privateKey is not 0x-hex', async () => {
+    const storage = createMemoryStorage()
+    await storage.set(
+      storageKey,
+      JSON.stringify({ address: userAddress, privateKey: 'deadbeef' })
+    )
+    const badKeyStore = new HyperliquidAgentStore(storage)
+
+    await expect(badKeyStore.getOrCreate(userAddress)).rejects.toThrow(
+      /malformed/i
+    )
+  })
+
+  it('regenerates on genuine absence (not a corrupt record)', async () => {
+    const storage = createMemoryStorage()
+    const store2 = new HyperliquidAgentStore(storage)
+
+    const agent = await store2.getOrCreate(userAddress)
+    expect(isAddress(agent.address)).toBe(true)
+    expect(agent.privateKey).toMatch(/^0x[a-fA-F0-9]{64}$/)
+  })
+
   it('persists agents to the injected storage adapter', async () => {
     const storage = createMemoryStorage()
     const first = new HyperliquidAgentStore(storage)

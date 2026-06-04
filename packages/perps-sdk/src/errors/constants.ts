@@ -6,4 +6,5 @@
  */
 export enum PerpsErrorMessage {
   AgentNotFound = 'Agent not found. Complete provider setup (APPROVE_AGENT) first.',
+  AgentStorageCorrupt = 'Stored agent keypair is malformed. Revoke and re-approve the agent (APPROVE_AGENT) to regenerate it.',
 }

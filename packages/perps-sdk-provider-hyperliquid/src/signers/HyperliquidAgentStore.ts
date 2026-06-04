@@ -2,10 +2,11 @@ import {
   localStorageAdapter,
   PerpsError,
   PerpsErrorMessage,
+  parseStoredRecord,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, isAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { PROVIDER_KEY } from '../constants.js'
 
@@ -21,6 +22,22 @@ export interface HyperliquidAgent {
   address: Address
   /** Agent private key. */
   privateKey: Hex
+}
+
+/** A 32-byte EVM private key as 0x-prefixed hex. */
+const PRIVATE_KEY_HEX = /^0x[0-9a-fA-F]{64}$/
+
+const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { address, privateKey } = value as Record<string, unknown>
+  return (
+    typeof address === 'string' &&
+    isAddress(address) &&
+    typeof privateKey === 'string' &&
+    PRIVATE_KEY_HEX.test(privateKey)
+  )
 }
 
 /**
@@ -43,7 +60,10 @@ export class HyperliquidAgentStore {
   /**
    * Get the existing agent for a user address.
    *
-   * @throws {PerpsError} If no agent has been created yet.
+   * @throws {PerpsError} `AgentNotFound` when no agent exists, or
+   * `AgentStorageCorrupt` when a record is present but malformed (so callers
+   * never act on a structurally-invalid keypair, and `getOrCreate` does not
+   * silently overwrite a poisoned-but-recoverable entry).
    */
   async get(address: Address): Promise<HyperliquidAgent> {
     const key = this.storageKey(address)
@@ -54,25 +74,38 @@ export class HyperliquidAgentStore {
     }
 
     const stored = await this.storage.get(key)
-    if (stored) {
-      const agent = JSON.parse(stored) as HyperliquidAgent
+    const agent = parseStoredRecord(stored, isHyperliquidAgent)
+    if (agent) {
       this.cache.set(key, agent)
       return agent
     }
 
+    const corrupt = stored !== null
     const error = new PerpsError(
       PerpsErrorCode.SDKError,
-      PerpsErrorMessage.AgentNotFound
+      corrupt
+        ? PerpsErrorMessage.AgentStorageCorrupt
+        : PerpsErrorMessage.AgentNotFound
     )
     error.tool = '@lifi/perps-sdk-provider-hyperliquid'
     throw error
   }
 
-  /** Get the existing agent for a user address, or create and persist one. */
+  /**
+   * Get the existing agent for a user address, or create and persist one.
+   * Regenerates only on genuine absence; a malformed stored record surfaces
+   * as `AgentStorageCorrupt` rather than being overwritten with a fresh key.
+   */
   async getOrCreate(address: Address): Promise<HyperliquidAgent> {
     try {
       return await this.get(address)
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof PerpsError &&
+        error.message !== PerpsErrorMessage.AgentNotFound
+      ) {
+        throw error
+      }
       const privateKey = generatePrivateKey()
       const account = privateKeyToAccount(privateKey)
 

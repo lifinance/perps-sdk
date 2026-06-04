@@ -1,4 +1,4 @@
-import type { StorageAdapter } from '@lifi/perps-sdk'
+import { readValidatedRecord, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
 
 // The private key here is a Lighter custom keypair — generated via WASM
@@ -20,6 +20,24 @@ export interface LighterApiKey {
   apiKeyPublicKey: string
 }
 
+const isLighterApiKey = (value: unknown): value is LighterApiKey => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { accountIndex, apiKeyIndex, apiKeyPrivateKey, apiKeyPublicKey } =
+    value as Record<string, unknown>
+  return (
+    typeof accountIndex === 'number' &&
+    Number.isFinite(accountIndex) &&
+    typeof apiKeyIndex === 'number' &&
+    Number.isFinite(apiKeyIndex) &&
+    typeof apiKeyPrivateKey === 'string' &&
+    apiKeyPrivateKey.length > 0 &&
+    typeof apiKeyPublicKey === 'string' &&
+    apiKeyPublicKey.length > 0
+  )
+}
+
 /** @public */
 export class LighterKeyStore {
   private readonly storage: StorageAdapter
@@ -39,11 +57,10 @@ export class LighterKeyStore {
     if (cached) {
       return cached
     }
-    const stored = await this.storage.get(key)
-    if (!stored) {
+    const parsed = await readValidatedRecord(this.storage, key, isLighterApiKey)
+    if (!parsed) {
       return null
     }
-    const parsed = JSON.parse(stored) as LighterApiKey
     this.cache.set(key, parsed)
     return parsed
   }
