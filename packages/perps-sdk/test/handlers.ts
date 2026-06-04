@@ -114,6 +114,41 @@ export const mockProviders: ProvidersResponse = {
       ],
       categories: [],
     },
+    {
+      key: 'lighter',
+      name: 'Lighter',
+      logoURI: 'https://example.com/lighter.png',
+      signingMethod: SigningMethod.WASM_BLOB,
+      active: true,
+      // Lighter registers an API key via a WASM blob whose user-consent leg is
+      // an EIP-191 message — no agent, no EIP712. Self-describing setup step.
+      setup: [
+        {
+          type: ActionType.REGISTER_API_KEY,
+          title: 'Register API key',
+          signers: [PerpsSigner.API_KEY],
+          signingMethod: SigningMethod.WASM_BLOB,
+          params: [],
+        },
+      ],
+      options: [
+        {
+          type: ActionType.ACCOUNT_TYPE,
+          title: 'Account tier',
+          signers: [PerpsSigner.API_KEY],
+          signingMethod: SigningMethod.WASM_BLOB,
+          params: [],
+        },
+      ],
+      actions: [
+        {
+          type: ActionType.PLACE_ORDER,
+          signers: [PerpsSigner.API_KEY],
+          signingMethod: SigningMethod.WASM_BLOB,
+        },
+      ],
+      categories: [],
+    },
   ],
 }
 

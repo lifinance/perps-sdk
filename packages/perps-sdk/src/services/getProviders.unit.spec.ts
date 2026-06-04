@@ -13,8 +13,11 @@ describe('getProviders', () => {
     const result = await getProviders(client)
 
     expect(result).toEqual(mockProviders)
-    expect(result.providers).toHaveLength(1)
-    expect(result.providers[0].key).toBe('hyperliquid')
+    expect(result.providers).toHaveLength(2)
+    expect(result.providers.map((p) => p.key)).toEqual([
+      'hyperliquid',
+      'lighter',
+    ])
   })
 
   it('should include setup + options descriptors for each provider', async () => {

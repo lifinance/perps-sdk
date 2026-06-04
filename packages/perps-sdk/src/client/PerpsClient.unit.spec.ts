@@ -4,8 +4,14 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
+  SignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import type { Hex } from 'viem'
 import { createWalletClient, http as viemHttp } from 'viem'
@@ -46,8 +52,8 @@ describe('PerpsClient', () => {
 
   describe('agent-signed actions require a provisioned provider session', () => {
     it('throws when no agent session has been created on the provider', async () => {
-      // PLACE_ORDER is AGENT-signed; with no agent provisioned, core's
-      // delegation to the provider's resolveSignerAddress must throw.
+      // PLACE_ORDER is AGENT-signed; with no agent provisioned, the plugin's
+      // resolveActionRequest must throw when core asks for the signer.
       await expect(
         client.placeOrder({
           address: userAddress,
@@ -61,8 +67,10 @@ describe('PerpsClient', () => {
       ).rejects.toThrow()
     })
 
-    it('throws when the resolved provider owns no agent session', async () => {
-      const noAgentClient = new PerpsClient({
+    it('throws when the resolved provider cannot sign the action', async () => {
+      // A plugin with neither resolveActionRequest nor signActions: core
+      // contributes no signerAddress and then fails to delegate signing.
+      const noSignClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
@@ -74,7 +82,7 @@ describe('PerpsClient', () => {
         ],
       })
       await expect(
-        noAgentClient.placeOrder({
+        noSignClient.placeOrder({
           address: userAddress,
           provider,
           symbol: 'BTC',
@@ -83,7 +91,7 @@ describe('PerpsClient', () => {
           size: '0.1',
           price: '95000.00',
         })
-      ).rejects.toThrow(/does not implement resolveSignerAddress/)
+      ).rejects.toThrow(/does not implement signActions/)
     })
   })
 
@@ -129,8 +137,9 @@ describe('PerpsClient', () => {
       const withdrawClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
+        providers: [createTestAgentProvider({ type: provider })],
       })
-      withdrawClient.setSigner(signer)
+      withdrawClient.setUserWallet(signer)
 
       let capturedRequest: ExecuteActionRequest | undefined
 
@@ -157,7 +166,7 @@ describe('PerpsClient', () => {
       expect(capturedRequest!.actions[0].signature).toMatch(/^0x[0-9a-f]+$/i)
     })
 
-    it('throws a clear error when no signer is configured', async () => {
+    it('throws a clear error when no user wallet is configured', async () => {
       server.use(
         http.post(`${BASE_URL}/createAction`, () =>
           HttpResponse.json(mockCreateWithdrawalResponse)
@@ -170,7 +179,7 @@ describe('PerpsClient', () => {
           address: userAddress,
           withdrawal: { destination: userAddress, amount: '10' },
         })
-      ).rejects.toThrow(/no signer was configured/i)
+      ).rejects.toThrow(/userWallet/i)
     })
   })
 
@@ -351,7 +360,7 @@ describe('PerpsClient', () => {
 
     // Account state is read direct from the provider plugin, so register a
     // stub whose getAccount yields the abstraction mode each test needs. The
-    // stub also owns an agent session (resolveSignerAddress + EIP712
+    // stub also owns an agent session (resolveActionRequest + EIP712
     // signActions) so core can delegate the agent-signed ACCOUNT_MODE arm.
     const stubGetAccount = vi.fn()
     beforeEach(() => {
@@ -380,17 +389,13 @@ describe('PerpsClient', () => {
       message: { agent: '0xabcd' },
     }
     const approveAgentSetupAction = {
-      required: {
-        userProviderSetup: [
-          {
-            action: ActionType.APPROVE_AGENT,
-            typedData: APPROVE_AGENT_TYPED_DATA,
-          },
-        ],
-        agentProviderSetup: [],
-        isReady: false,
-      },
-      userSignedActions: [
+      setup: [
+        {
+          action: ActionType.APPROVE_AGENT,
+          typedData: APPROVE_AGENT_TYPED_DATA,
+        },
+      ],
+      signedActions: [
         {
           action: ActionType.APPROVE_AGENT,
           typedData: APPROVE_AGENT_TYPED_DATA,
@@ -482,18 +487,12 @@ describe('PerpsClient', () => {
         ...approveAgentSetupAction,
       })
 
-      expect(result.userResults.results).toEqual([
+      expect(result.results.results).toEqual([
         { action: ActionType.APPROVE_AGENT, success: true },
       ])
       // No silent account-mode write: neither built nor submitted.
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
-      // No agent-side results and no wallet fallback are produced by setup.
-      expect(result.agentResults).toBeUndefined()
-      expect(
-        (result as { fallbackUserProviderSetup?: unknown })
-          .fallbackUserProviderSetup
-      ).toBeUndefined()
     })
 
     it('dispatches no ACCOUNT_MODE action regardless of the account abstractionMode', async () => {
@@ -508,10 +507,9 @@ describe('PerpsClient', () => {
         ...approveAgentSetupAction,
       })
 
-      expect(result.userResults.results[0].success).toBe(true)
+      expect(result.results.results[0].success).toBe(true)
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
-      expect(result.agentResults).toBeUndefined()
     })
 
     it('does not read the account during setup (no abstraction-mode probe)', async () => {
@@ -528,7 +526,7 @@ describe('PerpsClient', () => {
       expect(stubGetAccount).not.toHaveBeenCalled()
     })
 
-    it('signs and submits backend-staged agent setup actions', async () => {
+    it('submits the pre-signed setup steps the caller supplies', async () => {
       await agentProvider.createAgent(userAddress)
       mockAbstractionStatus(null)
 
@@ -537,25 +535,32 @@ describe('PerpsClient', () => {
       const result = await client.executeProviderSetup({
         provider,
         address: userAddress,
-        required: {
-          userProviderSetup: [],
-          agentProviderSetup: [
-            {
-              action: ActionType.APPROVE_BUILDER_FEE,
-              typedData: {
-                domain: { name: 'HL', chainId: 1 },
-                types: { Approve: [{ name: 'x', type: 'uint256' }] },
-                primaryType: 'Approve',
-                message: { x: 0 },
-              },
+        setup: [
+          {
+            action: ActionType.APPROVE_BUILDER_FEE,
+            typedData: {
+              domain: { name: 'HL', chainId: 1 },
+              types: { Approve: [{ name: 'x', type: 'uint256' }] },
+              primaryType: 'Approve',
+              message: { x: 0 },
             },
-          ],
-          isReady: false,
-        },
-        userSignedActions: [],
+          },
+        ],
+        signedActions: [
+          {
+            action: ActionType.APPROVE_BUILDER_FEE,
+            typedData: {
+              domain: { name: 'HL', chainId: 1 },
+              types: { Approve: [{ name: 'x', type: 'uint256' }] },
+              primaryType: 'Approve',
+              message: { x: 0 },
+            },
+            signature: '0xsig',
+          },
+        ],
       })
 
-      expect(result.agentResults?.results).toEqual([
+      expect(result.results.results).toEqual([
         { action: ActionType.APPROVE_BUILDER_FEE, success: true },
       ])
       expect(counts.execute.get(ActionType.APPROVE_BUILDER_FEE)).toBe(1)
@@ -607,12 +612,8 @@ describe('PerpsClient', () => {
 
     function userSetup(action: ActionType) {
       return {
-        required: {
-          userProviderSetup: [{ action, typedData: TYPED_DATA }],
-          agentProviderSetup: [],
-          isReady: false,
-        },
-        userSignedActions: [
+        setup: [{ action, typedData: TYPED_DATA }],
+        signedActions: [
           { action, typedData: TYPED_DATA, signature: '0xsig' as const },
         ],
       }
@@ -669,7 +670,7 @@ describe('PerpsClient', () => {
         apiKey: 'test-key',
         providers: [signerProvider],
       })
-      signerClient.setSigner(
+      signerClient.setUserWallet(
         createWalletClient({ account, chain: mainnet, transport: viemHttp() })
       )
       await signerProvider.createAgent(account.address)
@@ -706,7 +707,7 @@ describe('PerpsClient', () => {
         ...userSetup(ActionType.APPROVE_BUILDER_FEE),
       })
 
-      expect(result.userResults.results).toEqual([
+      expect(result.results.results).toEqual([
         { action: ActionType.APPROVE_BUILDER_FEE, success: true },
       ])
     })
@@ -935,6 +936,183 @@ describe('PerpsClient', () => {
       await expect(
         stubbedClient.accountExists(provider, userAddress)
       ).rejects.toThrow()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Signer-agnostic core: Lighter (no agent) end-to-end + both-plugin
+  // orchestration. Regression for ORD-500 — the agent code path is gone, so a
+  // Lighter setup flow cannot reach it.
+  // ---------------------------------------------------------------------------
+
+  describe('signer-agnostic orchestration', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const lighterAddress = '0x2222222222222222222222222222222222222222'
+
+    // A Lighter-shaped plugin with NO agent machinery: it implements WASM
+    // signing but neither resolveActionRequest nor any agent session. If core
+    // tried to resolve an agent signer, construction of the request would have
+    // to call a method this plugin does not provide.
+    function createWasmOnlyProvider(): PerpsProviderPlugin & {
+      signActions: ReturnType<typeof vi.fn>
+    } {
+      const signActions = vi.fn(
+        async (
+          _method,
+          steps: { action: ActionType }[]
+        ): Promise<SignedActionStep[]> =>
+          steps.map((s) => ({
+            action: s.action,
+            wasmSignParams: {},
+            signedTx: { txType: 0, txInfo: 'blob', txHash: '0xhash' },
+          }))
+      )
+      return {
+        type: 'lighter',
+        bind: vi.fn(),
+        projectConfig: vi.fn(() => []),
+        signActions,
+      } as unknown as PerpsProviderPlugin & {
+        signActions: ReturnType<typeof vi.fn>
+      }
+    }
+
+    it('runs a Lighter checkSetup → sign → executeProviderSetup flow with no agent path', async () => {
+      const lighter = createWasmOnlyProvider()
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+
+      const createCalls: CreateActionRequest[] = []
+      const executeCalls: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: { nonce: 1 } }],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCalls.push(body)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const { setup, isReady } = await lighterClient.checkSetup({
+        provider: 'lighter',
+        address: lighterAddress,
+      })
+      expect(isReady).toBe(false)
+      expect(setup).toHaveLength(1)
+      expect(setup[0].action).toBe(ActionType.REGISTER_API_KEY)
+
+      // No signerAddress is constructed by core for an API_KEY signer.
+      expect(createCalls[0].signerAddress).toBeUndefined()
+
+      const signed = await lighterClient.signProviderSetupAction(
+        'lighter',
+        lighterAddress,
+        setup[0]
+      )
+      const result = await lighterClient.executeProviderSetup({
+        provider: 'lighter',
+        address: lighterAddress,
+        setup,
+        signedActions: [signed],
+      })
+
+      expect(result.results.results).toEqual([
+        { action: ActionType.REGISTER_API_KEY, success: true },
+      ])
+      // Execute submits under the user's own address — no agent address.
+      expect(executeCalls[0].signerAddress).toBe(lighterAddress)
+      // The plugin's WASM signer was driven (WASM_BLOB scheme), not an agent.
+      expect(lighter.signActions).toHaveBeenCalledOnce()
+      expect(lighter.signActions.mock.calls[0][0]).toBe(SigningMethod.WASM_BLOB)
+    })
+
+    it('orchestrates both plugins: Hyperliquid agent-signs while Lighter WASM-signs', async () => {
+      const hl = createTestAgentProvider({ type: 'hyperliquid' })
+      const lighter = createWasmOnlyProvider()
+      const bothClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [hl, lighter],
+      })
+      await hl.createAgent(userAddress)
+      const hlAgent = await hl.resolveActionRequest!(
+        ActionType.PLACE_ORDER,
+        userAddress,
+        [PerpsSigner.AGENT]
+      )
+
+      const executeCalls: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json(
+            body.provider === 'hyperliquid'
+              ? {
+                  actions: [
+                    {
+                      action: body.action,
+                      typedData: {
+                        domain: { name: 'HL', chainId: 1 },
+                        types: { Order: [{ name: 'x', type: 'uint256' }] },
+                        primaryType: 'Order',
+                        message: { x: 0 },
+                      },
+                    },
+                  ],
+                }
+              : {
+                  actions: [{ action: body.action, wasmSignParams: {} }],
+                }
+          )
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCalls.push(body)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const hlResult = await bothClient.placeOrder({
+        address: userAddress,
+        provider: 'hyperliquid',
+        symbol: 'BTC',
+        side: 'BUY' as any,
+        type: 'MARKET' as any,
+        size: '0.1',
+        price: '95000.00',
+      })
+      const lighterResult = await bothClient.placeOrder({
+        address: lighterAddress,
+        provider: 'lighter',
+        symbol: 'BTC',
+        side: 'BUY' as any,
+        type: 'MARKET' as any,
+        size: '0.1',
+        price: '95000.00',
+      })
+
+      expect(hlResult.results[0].success).toBe(true)
+      expect(lighterResult.results[0].success).toBe(true)
+
+      const hlExec = executeCalls.find((c) => c.provider === 'hyperliquid')!
+      const lighterExec = executeCalls.find((c) => c.provider === 'lighter')!
+      // Hyperliquid submits under its agent; Lighter under the user address.
+      expect(hlExec.signerAddress).toBe(hlAgent.signerAddress)
+      expect(lighterExec.signerAddress).toBe(lighterAddress)
+      expect(lighter.signActions.mock.calls[0][0]).toBe(SigningMethod.WASM_BLOB)
     })
   })
 })
