@@ -58,8 +58,6 @@ export interface BuildProviderSetupParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** Address of the signer (auto-set in USER_AGENT mode) */
-  signerAddress?: Address
 }
 
 /**
@@ -168,8 +166,10 @@ export interface GetSetupParams {
 /**
  * Result from {@link PerpsClient.checkSetup}.
  *
- * Reports the unsatisfied entries on `Provider.setup` for the queried
- * account, split by the signer role the descriptor declares.
+ * Reports the unsatisfied entries on `Provider.setup` for the queried account
+ * as a flat list — each `ActionStep` is self-describing (its action keys back
+ * to the provider's `setup` descriptor, which declares the step's signer and
+ * scheme), so no signer-role partition is exposed here.
  *
  * `Provider.options` items are NEVER included here — they don't gate trading
  * and are surfaced separately via `getAccount().settings`.
@@ -177,10 +177,8 @@ export interface GetSetupParams {
  * @public
  */
 export interface ProviderSetup {
-  /** Setup steps requiring user wallet signature */
-  userProviderSetup: ActionStep[]
-  /** Setup steps the SDK auto-signs with the agent */
-  agentProviderSetup: ActionStep[]
+  /** Unsatisfied setup steps, ordered by descriptor `sequence`. */
+  setup: ActionStep[]
   /** Whether all setup items are already satisfied (ready to trade) */
   isReady: boolean
 }
@@ -195,10 +193,10 @@ export interface ExecuteProviderSetupParams {
   provider: string
   /** User wallet address */
   address: Address
-  /** The result from checkSetup() */
-  required: ProviderSetup
-  /** User-signed actions corresponding to required.userProviderSetup */
-  userSignedActions: SignedActionStep[]
+  /** The unsatisfied setup steps from checkSetup() */
+  setup: ActionStep[]
+  /** Signed counterparts of `setup`, in the same order */
+  signedActions: SignedActionStep[]
 }
 
 /**
@@ -207,10 +205,8 @@ export interface ExecuteProviderSetupParams {
  * @public
  */
 export interface ExecuteProviderSetupResult {
-  /** Results from user-signed setup submission */
-  userResults: ExecuteActionResponse
-  /** Results from agent-signed setup submission (if any) */
-  agentResults?: ExecuteActionResponse
+  /** Results from the submitted setup steps */
+  results: ExecuteActionResponse
 }
 
 /**

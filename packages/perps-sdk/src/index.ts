@@ -88,6 +88,7 @@ export {
   resolveRetryPolicy,
 } from './transport/retryPolicy.js'
 export type {
+  ActionSignerContribution,
   PerpsClientSigner,
   PerpsProvider,
   PerpsProviderPlugin,
@@ -146,7 +147,10 @@ export {
   predictUnrealizedPnl,
   realizedPnlOnClose,
 } from './utils/positionMath.js'
-export { signTypedData } from './utils/signTypedData.js'
+export {
+  signTypedData,
+  signTypedDataWithSigner,
+} from './utils/signTypedData.js'
 export { summarize } from './utils/summarize.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
