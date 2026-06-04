@@ -1,4 +1,5 @@
 import {
+  type ActionSignerContribution,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -9,6 +10,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type SDKRequestOptions,
+  type SignActionsContext,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
@@ -16,11 +18,13 @@ import {
   type AccountConfigSetting,
   type AccountResponse,
   type ActionStep,
+  ActionType,
   type ActivitiesResponse,
   type FillsResponse,
   type Order,
   type OrdersResponse,
   PerpsErrorCode,
+  PerpsSigner,
   type PositionsResponse,
   type ProviderAction,
   type SignedActionStep,
@@ -128,22 +132,36 @@ export function hyperliquidProvider(
       privateKey: Hex
     ): Promise<HyperliquidAgent> => agentStore.import(address, privateKey),
 
-    resolveSignerAddress: async (
+    resolveActionRequest: async (
+      action: ActionType,
       address: Address,
-      opts?: { create?: boolean }
-    ): Promise<Address> => {
-      const agent = opts?.create
-        ? await agentStore.getOrCreate(address)
-        : await agentStore.get(address)
-      return agent.address
+      signers: PerpsSigner[]
+    ): Promise<ActionSignerContribution> => {
+      // APPROVE_AGENT is user-signed: the user authorises the agent, so the
+      // agent address rides as a param (not signerAddress). The agent is
+      // provisioned on first use so its address is known before the backend
+      // builds the typed data.
+      if (action === ActionType.APPROVE_AGENT) {
+        const agent = await agentStore.getOrCreate(address)
+        return { params: { agentAddress: agent.address } }
+      }
+      // Agent-signed actions (trades, account-mode) carry the agent as the
+      // on-wire signerAddress. User-signed actions (builder-fee, withdrawal)
+      // contribute nothing — core submits under the user's own address.
+      if (signers.includes(PerpsSigner.AGENT)) {
+        const agent = await agentStore.get(address)
+        return { signerAddress: agent.address }
+      }
+      return {}
     },
 
     signActions: (
       method: SigningMethod,
       steps: ActionStep[],
-      address: Address
+      address: Address,
+      ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> =>
-      hyperliquidSignActions(agentStore, method, steps, address),
+      hyperliquidSignActions(agentStore, method, steps, address, ctx),
 
     getAccount: (
       params: ProviderGetAccountParams,
