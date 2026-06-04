@@ -253,7 +253,18 @@ export class LighterWsProvider implements WsProvider {
   private async onOpen(): Promise<void> {
     this.startKeepalive()
     for (const [, s] of this.subs) {
-      await this.sendSubscribe(s.channel, s.needsAuth, s.address)
+      // Isolate each resubscribe: an auth-token fetch can reject (e.g. RO
+      // token revoked after reconnect), and one channel's failure must not
+      // abort the rest of the loop or escape as an unhandled rejection.
+      try {
+        await this.sendSubscribe(s.channel, s.needsAuth, s.address)
+      } catch (err) {
+        console.error(
+          `[lighter] WS resubscribe failed for channel '${s.channel}'; ` +
+            'this channel will not receive updates until the next reconnect.',
+          err
+        )
+      }
     }
   }
 
