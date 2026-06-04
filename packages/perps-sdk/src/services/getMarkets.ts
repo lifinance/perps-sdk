@@ -20,8 +20,7 @@ export interface GetMarketsParams {
  * backend's Valkey-cached `/perps/markets` route — the canonical source of
  * public market data for widget consumers.
  *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
+ * @throws {PerpsError} On backend, network, or parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
