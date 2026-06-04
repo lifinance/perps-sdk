@@ -6,6 +6,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  wsLog,
 } from '@lifi/perps-sdk'
 import {
   type Market,
@@ -359,6 +360,7 @@ export class HyperliquidWsProvider implements WsProvider {
     try {
       msg = JSON.parse(raw)
     } catch {
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
     if (
@@ -395,8 +397,8 @@ export class HyperliquidWsProvider implements WsProvider {
           )
           break
       }
-    } catch {
-      // Skip malformed messages
+    } catch (error) {
+      wsLog.handlerFailure(this.providerKey, error)
     }
   }
 

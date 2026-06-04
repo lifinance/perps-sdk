@@ -168,3 +168,4 @@ export type {
   SubscriptionListener,
   WsProvider,
 } from './websocket/types.js'
+export { wsLog } from './websocket/wsLog.js'

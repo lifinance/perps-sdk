@@ -5,6 +5,7 @@ import {
   type SubscriptionListener,
   type WsProvider,
   type WsProviderFactory,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type {
   Fill,
@@ -427,9 +428,18 @@ export class LighterWsProvider implements WsProvider {
     try {
       msg = JSON.parse(raw) as LtWsMessage
     } catch {
+      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
       return
     }
 
+    try {
+      this.dispatch(msg)
+    } catch (error) {
+      wsLog.handlerFailure(LIGHTER_PROVIDER_KEY, error)
+    }
+  }
+
+  private dispatch(msg: LtWsMessage): void {
     if (msg.type === 'ping') {
       this.rws.send(JSON.stringify({ type: 'pong' }))
       return
