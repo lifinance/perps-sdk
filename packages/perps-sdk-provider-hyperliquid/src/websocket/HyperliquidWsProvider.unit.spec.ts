@@ -876,6 +876,32 @@ describe('HyperliquidWsProvider', () => {
       warnSpy.mockRestore()
     })
 
+    it('logs and skips a structurally-invalid frame before it reaches the mapper', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      // Parseable l2Book frame missing the required `levels` tuple.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2Book',
+          data: { coin: 'BTC', time: 1704067200000 },
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
     it('isolates a throwing frame so a later good frame on another channel still delivers', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const priceListener = vi.fn()

@@ -375,6 +375,11 @@ export class HyperliquidWsProvider implements WsProvider {
       return
     }
 
+    if (!isValidHlFrame(msg.channel, msg.data)) {
+      wsLog.parseFailure(this.providerKey, raw)
+      return
+    }
+
     try {
       switch (msg.channel) {
         case 'allMids':
@@ -528,5 +533,49 @@ export class HyperliquidWsProvider implements WsProvider {
       channel: 'spotBalances',
       data: balances,
     })
+  }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null
+
+/**
+ * Minimal presence/type check of the channel-discriminating and required
+ * fields the matching handler dereferences without its own guard. A frame
+ * that parses but fails this is a bad frame (log + skip), distinct from a
+ * handler that throws on otherwise-shaped data. Unknown channels pass through
+ * to the dispatch switch, which silently ignores them.
+ */
+function isValidHlFrame(channel: string, data: unknown): boolean {
+  if (!isObject(data)) {
+    return false
+  }
+  switch (channel) {
+    case 'allMids':
+      return isObject(data.mids)
+    case 'l2Book':
+      return (
+        typeof data.coin === 'string' &&
+        Array.isArray(data.levels) &&
+        Array.isArray(data.levels[0]) &&
+        Array.isArray(data.levels[1]) &&
+        typeof data.time === 'number'
+      )
+    case 'candle':
+      return typeof data.s === 'string' && typeof data.i === 'string'
+    case 'orderUpdates':
+      return Array.isArray(data)
+    case 'userFills':
+      return typeof data.user === 'string' && Array.isArray(data.fills)
+    case 'clearinghouseState':
+      return (
+        typeof data.user === 'string' &&
+        isObject(data.clearinghouseState) &&
+        Array.isArray(data.clearinghouseState.assetPositions)
+      )
+    case 'spotClearinghouseState':
+      return typeof data.user === 'string' && Array.isArray(data.balances)
+    default:
+      return true
   }
 }
