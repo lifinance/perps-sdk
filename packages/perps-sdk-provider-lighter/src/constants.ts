@@ -13,34 +13,7 @@ export const LIGHTER_PROVIDER_KEY = 'lighter'
 export const DEFAULT_LIGHTER_REST_URL = 'https://mainnet.zklighter.elliot.ai'
 
 /** @internal */
-export const MAX_CANDLE_LIMIT = 1000
-/** @internal */
-export const DEFAULT_CANDLE_LIMIT = 100
-/** @internal */
-export const DEFAULT_OHLCV_LOOKBACK_MS = 24 * 60 * 60 * 1000
-/** @internal */
-export const MAX_ORDERBOOK_DEPTH = 100
-/** @internal */
-export const DEFAULT_HISTORY_LIMIT = 50
-/** @internal */
 export const DEFAULT_TRADES_LIMIT = 50
-
-/**
- * Lighter market market_margin_mode enum mirrored from orderBookDetails.
- *
- * @internal
- */
-export enum LtMarginMode {
-  CROSS = 0,
-  ISOLATED = 1,
-}
-
-/**
- * Lighter market statuses.
- *
- * @internal
- */
-export const MARKET_STATUS_ACTIVE = 'active'
 
 /**
  * Lighter pairs each maker/taker fee with a 1e6 integer tick:
@@ -51,15 +24,6 @@ export const MARKET_STATUS_ACTIVE = 'active'
  * @internal
  */
 export const LIGHTER_FEE_TICK_SCALE = 1_000_000
-
-/**
- * CDN base for Lighter token logos. URLs are built as
- * `${LIGHTER_LOGO_BASE_URL}/${logo}.${logo_extension}` using the `logo` and
- * `logo_extension` fields from `/api/v1/tokenlist`.
- *
- * @internal
- */
-export const LIGHTER_LOGO_BASE_URL = 'https://assets.lighter.xyz/fe/token'
 
 /**
  * Wildcard `market_id` accepted by Lighter's per-market account endpoints to

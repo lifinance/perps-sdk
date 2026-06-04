@@ -28,14 +28,6 @@ export const HYPERLIQUID_FEE_TIER_FALLBACK: FeeTier = {
 }
 
 /** @internal */
-export const MAX_CANDLE_LIMIT = 1000
-/** @internal */
-export const DEFAULT_CANDLE_LIMIT = 100
-/** @internal */
-export const DEFAULT_OHLCV_LOOKBACK_MS = 24 * 60 * 60 * 1000
-/** @internal */
-export const MAX_ORDERBOOK_DEPTH = 100
-/** @internal */
 export const DEFAULT_HISTORY_LIMIT = 50
 /** @internal */
 export const MAX_HISTORY_LIMIT = 200
