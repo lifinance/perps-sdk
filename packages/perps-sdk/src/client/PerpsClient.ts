@@ -548,14 +548,20 @@ export class PerpsClient {
   ): Promise<CreateActionResponse> {
     let { signerAddress } = params
 
-    if (!signerAddress) {
+    const metadata = await this.getProviderMetadata(params.provider)
+    const usesAgent = [
+      ...metadata.setup,
+      ...metadata.options,
+      ...metadata.actions,
+    ].some((d) => d.signers.includes(PerpsSigner.AGENT))
+
+    if (!signerAddress && usesAgent) {
       signerAddress = await this.resolveAgentSignerAddress(
         params.provider,
         params.address
       )
     }
 
-    const metadata = await this.getProviderMetadata(params.provider)
     const allInputs = this.buildProviderSetupInputs(
       metadata.setup,
       signerAddress

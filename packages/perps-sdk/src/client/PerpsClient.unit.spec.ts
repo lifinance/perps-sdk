@@ -4,8 +4,14 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
+  ProvidersResponse,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import type { Hex } from 'viem'
 import { createWalletClient, http as viemHttp } from 'viem'
@@ -198,6 +204,111 @@ describe('PerpsClient', () => {
       })
 
       expect(result.actions).toBeDefined()
+    })
+  })
+
+  describe('non-agent provider setup (no resolveSignerAddress)', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const lighterKey = 'lighter'
+
+    // Lighter: REGISTER_API_KEY is the sole setup gate, signed by API_KEY /
+    // USER. No descriptor names PerpsSigner.AGENT and the plugin omits
+    // resolveSignerAddress — core must never reach for an agent signer.
+    const lighterProviders: ProvidersResponse = {
+      providers: [
+        {
+          key: lighterKey,
+          name: 'Lighter',
+          logoURI: 'https://example.invalid/lighter.svg',
+          signingMethod: SigningMethod.WASM_BLOB,
+          active: true,
+          setup: [
+            {
+              type: ActionType.REGISTER_API_KEY,
+              title: 'Register session API key',
+              description:
+                'Registers a Lighter API key so the session signer can place orders.',
+              signers: [PerpsSigner.USER],
+              signingMethod: SigningMethod.WASM_BLOB,
+              params: [],
+            },
+          ],
+          options: [],
+          actions: [
+            {
+              type: ActionType.PLACE_ORDER,
+              signers: [PerpsSigner.API_KEY],
+              signingMethod: SigningMethod.WASM_BLOB,
+            },
+          ],
+          categories: [],
+        },
+      ],
+    }
+
+    const lighterRegisterApiKeyResponse: CreateActionResponse = {
+      actions: [{ action: ActionType.REGISTER_API_KEY }],
+    }
+
+    let lighterPlugin: PerpsProviderPlugin
+    let lighterClient: PerpsClient
+
+    beforeEach(() => {
+      lighterPlugin = {
+        type: lighterKey,
+        bind: vi.fn(),
+        projectConfig: vi.fn(() => []),
+      } as unknown as PerpsProviderPlugin
+      lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterPlugin],
+      })
+    })
+
+    it('buildProviderSetup resolves with signerAddress left undefined and never reaches for an agent signer', async () => {
+      let capturedRequest: CreateActionRequest | undefined
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json(lighterProviders)
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          capturedRequest = (await request.json()) as CreateActionRequest
+          return HttpResponse.json(lighterRegisterApiKeyResponse)
+        })
+      )
+
+      const result = await lighterClient.buildProviderSetup({
+        provider: lighterKey,
+        address: userAddress,
+      })
+
+      expect(result.actions).toHaveLength(1)
+      expect(result.actions[0].action).toBe(ActionType.REGISTER_API_KEY)
+      expect(capturedRequest).toBeDefined()
+      expect(capturedRequest!.signerAddress).toBeUndefined()
+    })
+
+    it('checkSetup returns the REGISTER_API_KEY gate without throwing for a provider whose plugin omits resolveSignerAddress', async () => {
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json(lighterProviders)
+        ),
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(lighterRegisterApiKeyResponse)
+        )
+      )
+
+      const setup = await lighterClient.checkSetup({
+        provider: lighterKey,
+        address: userAddress,
+      })
+
+      expect(setup.isReady).toBe(false)
+      expect(setup.userProviderSetup.map((a) => a.action)).toEqual([
+        ActionType.REGISTER_API_KEY,
+      ])
+      expect(setup.agentProviderSetup).toEqual([])
     })
   })
 
