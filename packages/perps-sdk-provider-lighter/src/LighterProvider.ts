@@ -674,11 +674,14 @@ export const lighterProvider = (
       ] = await Promise.all([
         buildSymbolLookup(opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
+        // No token is a legitimate unauthenticated read → undefined → zero fee
+        // tier. A fetch error is NOT: it must propagate, never be coerced to a
+        // fabricated 0%/0% fee tier.
         token === undefined
           ? Promise.resolve(undefined)
           : retryOnRevoked(opts, params.address, token, (t) =>
               fetchAccountLimits(client, account.index, t)
-            ).catch(() => undefined),
+            ),
         keyStore ? keyStore.get(params.address) : Promise.resolve(null),
         readOnlyTokenManager.get(params.address, account.index),
       ])
