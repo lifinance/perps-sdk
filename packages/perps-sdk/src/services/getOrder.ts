@@ -10,11 +10,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOrderParams {
-  /** Provider to get order from (e.g., 'hyperliquid') */
   provider: string
-  /** Wallet address */
   address: Address
-  /** Order ID */
   id: string
 }
 

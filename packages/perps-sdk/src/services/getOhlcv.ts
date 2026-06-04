@@ -9,17 +9,14 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOhlcvParams {
-  /** Provider to get OHLCV from (e.g., 'hyperliquid') */
   provider: string
   /** Opaque provider `Market.id` (not `displaySymbol`). */
   marketId: string
-  /** Candle interval */
   interval: OhlcvInterval
-  /** Start time (Unix timestamp in milliseconds) */
+  /** Unix timestamp in milliseconds */
   startTime?: number
-  /** End time (Unix timestamp in milliseconds) */
+  /** Unix timestamp in milliseconds */
   endTime?: number
-  /** Maximum number of candles to return */
   limit?: number
 }
 
