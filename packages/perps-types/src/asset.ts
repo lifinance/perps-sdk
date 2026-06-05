@@ -6,7 +6,7 @@
  */
 export interface Asset {
   providerId: string
-  /** Own provider-minted id (Lighter's numeric `asset_id` stringified; HL coin symbol). */
+  /** Own provider-minted id (Lighter's numeric `asset_id` stringified; HL spot's `spotMeta` token index, the id spot balances carry in their `token` field). */
   id: string
   displaySymbol: string
   logoURI: string
