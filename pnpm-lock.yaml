@@ -45,7 +45,7 @@ importers:
         specifier: 17.82.1
         version: 17.82.1
       viem:
-        specifier: 2.48.8
+        specifier: ^2.48.8
         version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
       '@vitest/coverage-v8':
@@ -69,9 +69,6 @@ importers:
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
-      viem:
-        specifier: 2.48.8
-        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:*
@@ -85,6 +82,9 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      viem:
+        specifier: 2.48.8
+        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3))
@@ -94,9 +94,6 @@ importers:
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
-      viem:
-        specifier: 2.48.8
-        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:*
@@ -110,6 +107,9 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      viem:
+        specifier: 2.48.8
+        version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3))

@@ -58,7 +58,7 @@
   "dependencies": {
     "@lifi/perps-types": "workspace:*",
     "@lifi/types": "17.82.1",
-    "viem": "2.48.8"
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.8",

@@ -65,17 +65,18 @@
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests"
   },
   "dependencies": {
-    "@lifi/perps-types": "workspace:*",
-    "viem": "2.48.8"
+    "@lifi/perps-types": "workspace:*"
   },
   "peerDependencies": {
-    "@lifi/perps-sdk": "workspace:*"
+    "@lifi/perps-sdk": "workspace:*",
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:*",
     "@vitest/coverage-v8": "^2.1.8",
     "madge": "^8.0.0",
     "typescript": "^5.9.2",
+    "viem": "2.48.8",
     "vitest": "^2.1.8"
   },
   "publishConfig": {
