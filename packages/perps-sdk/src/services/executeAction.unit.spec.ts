@@ -1,4 +1,8 @@
-import { ActionType } from '@lifi/perps-types'
+import {
+  ActionType,
+  type ExecuteActionResponse,
+  META_PROVIDER,
+} from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { mockSubmitOrderResponse, server } from '../../test/handlers.js'
@@ -79,6 +83,62 @@ describe('executeAction', () => {
     ).rejects.toThrow('gateway error')
 
     expect(attempts).toBe(1)
+  })
+
+  it('submits a signed META_VOTE on the generic path with the meta sentinel', async () => {
+    const client = createPerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+    })
+    const signedVoteStep = {
+      action: ActionType.META_VOTE,
+      typedData: {
+        domain: { name: 'LIFI Perps', version: '1', chainId: 1 },
+        types: { Vote: [{ name: 'targetProvider', type: 'string' }] },
+        primaryType: 'Vote',
+        message: {
+          targetProvider: 'driftv2',
+          direction: 'up',
+          voteType: 'provider',
+          voter: ADDRESS,
+          timestamp: 1_900_000_000_000,
+        },
+      },
+      signature: `0x${'cd'.repeat(65)}`,
+    } as never
+    const mockVoteExecuteResponse: ExecuteActionResponse = {
+      results: [{ action: ActionType.META_VOTE, success: true }],
+    }
+
+    let url: string | undefined
+    let body: unknown
+    server.use(
+      http.post(`${DEFAULT_API_URL}/executeAction`, async ({ request }) => {
+        url = request.url
+        body = await request.json()
+        return HttpResponse.json(mockVoteExecuteResponse)
+      })
+    )
+
+    const result = await executeAction(client, {
+      provider: META_PROVIDER,
+      address: ADDRESS,
+      action: ActionType.META_VOTE,
+      actions: [signedVoteStep],
+    })
+
+    // The vote rides /executeAction, never a bespoke /vote route.
+    expect(url?.endsWith('/executeAction')).toBe(true)
+    expect(body).toEqual({
+      provider: 'meta',
+      address: ADDRESS,
+      action: ActionType.META_VOTE,
+      actions: [signedVoteStep],
+    })
+    expect(result.results[0]).toEqual({
+      action: ActionType.META_VOTE,
+      success: true,
+    })
   })
 
   it('includes signerAddress in the body when provided', async () => {
