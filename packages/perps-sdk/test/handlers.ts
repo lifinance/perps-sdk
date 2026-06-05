@@ -5,11 +5,11 @@ import type {
   ExecuteActionResponse,
   FillsResponse,
   MarketsResponse,
+  Meta,
   OhlcvResponse,
   Order,
   OrderbookResponse,
   OrdersResponse,
-  PerpsMeta,
   PositionsResponse,
   PricesResponse,
   ProvidersResponse,
@@ -153,7 +153,7 @@ export const mockProviders: ProvidersResponse = {
   ],
 }
 
-export const mockMeta: PerpsMeta = {
+export const mockMeta: Meta = {
   version: '1.4.2',
   notices: [
     {

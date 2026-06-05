@@ -1,4 +1,4 @@
-import type { PerpsMeta } from '@lifi/perps-types'
+import type { Meta } from '@lifi/perps-types'
 import { request } from '../transport/request.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
@@ -22,8 +22,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
 export async function getMeta(
   client: PerpsSDKClient,
   options?: SDKRequestOptions
-): Promise<PerpsMeta> {
-  return request<PerpsMeta>(
+): Promise<Meta> {
+  return request<Meta>(
     client.config,
     `${client.config.apiUrl}/meta`,
     {},

@@ -3,7 +3,7 @@
  * provider or market.
  * @public
  */
-export interface PerpsNotice {
+export interface Notice {
   /** Unix epoch milliseconds. */
   timestamp: number
   title: string
@@ -16,7 +16,7 @@ export interface PerpsNotice {
  * Read-only platform metadata served by `GET /v1/perps/meta`.
  * @public
  */
-export interface PerpsMeta {
+export interface Meta {
   version: string
-  notices: PerpsNotice[]
+  notices: Notice[]
 }
