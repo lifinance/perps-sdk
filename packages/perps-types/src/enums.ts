@@ -115,6 +115,8 @@ export enum ActionType {
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   DEPOSIT = 'deposit',
+  /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
+  META_VOTE = 'metaVote',
 }
 
 /** @public */

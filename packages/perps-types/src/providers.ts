@@ -94,6 +94,13 @@ export interface Provider {
    * reduce-only orders use the same floor as `minOrderValueUsd`.
    */
   minReduceOrderValueUsd?: number
+  /**
+   * Aggregate up-votes for this provider. Populated only for inactive
+   * providers (those gathering demand before launch); absent once `active`.
+   */
+  upVotes?: number
+  /** Aggregate down-votes. Populated only for inactive providers; see {@link upVotes}. */
+  downVotes?: number
 }
 
 /** @public */
