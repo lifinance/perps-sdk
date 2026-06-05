@@ -10,6 +10,7 @@ import type {
 import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
 import type { PerpsTypedData } from './typedData.js'
+import type { VoteParams } from './vote.js'
 
 /** @public */
 export interface Eip712ActionStep {
@@ -253,6 +254,7 @@ export interface ActionParamsMap {
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.DEPOSIT]: DepositParams
+  [ActionType.META_VOTE]: VoteParams
 }
 
 /** @public */
