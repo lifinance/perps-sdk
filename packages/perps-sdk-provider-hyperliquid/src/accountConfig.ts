@@ -58,6 +58,7 @@ function projectHyperliquidDescriptor(
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.DEPOSIT:
     case ActionType.META_VOTE:
+    case ActionType.META_ACCEPT_TERMS:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +

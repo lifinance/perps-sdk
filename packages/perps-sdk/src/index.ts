@@ -46,6 +46,7 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+export { getTermsAcceptance } from './services/getTermsAcceptance.js'
 export {
   parseStoredRecord,
   readValidatedRecord,

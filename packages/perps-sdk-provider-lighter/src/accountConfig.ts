@@ -127,6 +127,7 @@ function projectLighterDescriptor(
     case ActionType.UPDATE_POSITION_MARGIN:
     case ActionType.DEPOSIT:
     case ActionType.META_VOTE:
+    case ActionType.META_ACCEPT_TERMS:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +

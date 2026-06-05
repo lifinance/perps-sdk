@@ -1,3 +1,4 @@
+import type { AcceptTermsParams } from './acceptTerms.js'
 import type {
   ActionType,
   MarginMode,
@@ -255,6 +256,7 @@ export interface ActionParamsMap {
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_VOTE]: VoteParams
+  [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
 }
 
 /** @public */
