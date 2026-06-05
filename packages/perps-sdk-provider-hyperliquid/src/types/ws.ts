@@ -1,6 +1,6 @@
 // Hyperliquid WebSocket incoming message types.
 
-import type { HlClearinghouseState } from './account.js'
+import type { HlClearinghouseState, HlSpotBalance } from './account.js'
 import type { HlAllMids, HlCandle, HlL2Book } from './asset.js'
 import type { HlUserFill } from './fill.js'
 
@@ -44,5 +44,5 @@ export type HlWsClearinghouseStateData = {
 /** @public */
 export type HlWsSpotClearinghouseStateData = {
   user: string
-  balances: Array<{ coin: string; total: string; hold: string }>
+  balances: HlSpotBalance[]
 }

@@ -5,6 +5,8 @@ import {
   HL_EXTRA_AGENTS,
   HL_MARKETS,
   HL_SPOT_CLEARINGHOUSE_STATE,
+  HL_SPOT_CLEARINGHOUSE_STATE_MULTI,
+  HL_SPOT_MARKETS,
   HL_USER_FEES,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -64,7 +66,7 @@ describe('getAccount', () => {
         categoryId: 'spot',
         asset: {
           providerId: 'hyperliquid',
-          id: '0',
+          id: 'USDC',
           displaySymbol: 'USDC',
           logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
         },
@@ -119,7 +121,7 @@ describe('getAccount', () => {
         categoryId: 'spot',
         asset: {
           providerId: 'hyperliquid',
-          id: '0',
+          id: 'USDC',
           displaySymbol: 'USDC',
           logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
         },
@@ -222,5 +224,61 @@ describe('getAccount', () => {
     // The mock fetch doesn't honour AbortSignal, but every concurrent /info
     // call must propagate the same signal through to the upstream call.
     expect(mock.requests.length).toBeGreaterThan(0)
+  })
+
+  describe('spot balance identity + pricing', () => {
+    const markets = [...HL_MARKETS, ...HL_SPOT_MARKETS]
+    const spotResponses = {
+      ...defaultResponses(),
+      spotClearinghouseState: HL_SPOT_CLEARINGHOUSE_STATE_MULTI,
+    }
+
+    it('keys a spot Balance.asset.id on the coin symbol, never String(b.token)', async () => {
+      ;({ restore } = installInfoFetchMock(spotResponses, markets))
+
+      const result = await getAccount(ctx, { address: ADDRESS })
+
+      const purr = result.balances.find((b) => b.asset.id === 'PURR')
+      expect(purr).toBeDefined()
+      // The pre-fix defect surfaced String(b.token) === '1' here.
+      expect(result.balances.map((b) => b.asset.id)).not.toContain('1')
+    })
+
+    it('values a spot-only holding at units * spot mark price', async () => {
+      ;({ restore } = installInfoFetchMock(spotResponses, markets))
+
+      const result = await getAccount(ctx, { address: ADDRESS })
+
+      // PURR: 100 units * 0.6 markPrice
+      const purr = result.balances.find((b) => b.asset.id === 'PURR')
+      expect(purr?.valueUsd).toBe('60')
+    })
+
+    it('prices a USDH-quoted pair without hardcoding USDC (quote leg = $1)', async () => {
+      ;({ restore } = installInfoFetchMock(spotResponses, markets))
+
+      const result = await getAccount(ctx, { address: ADDRESS })
+
+      // USDH is a category quote asset → collateral, priced at $1.
+      const usdh = result.collateralBalances.find((b) => b.asset.id === 'USDH')
+      expect(usdh?.valueUsd).toBe('300')
+      // VNTR base token of the USDH-quoted pair: 40 units * 2.5 markPrice.
+      const vntr = result.balances.find((b) => b.asset.id === 'VNTR')
+      expect(vntr?.valueUsd).toBe('100')
+    })
+
+    it('matches the invariant: each spot Balance.asset.id === its SpotMarket.baseAsset.id', async () => {
+      ;({ restore } = installInfoFetchMock(spotResponses, markets))
+
+      const result = await getAccount(ctx, { address: ADDRESS })
+
+      const spotMarketIds = new Set(HL_SPOT_MARKETS.map((m) => m.baseAsset.id))
+      const heldBaseIds = result.balances.map((b) => b.asset.id)
+      // Every non-collateral spot holding resolves to a market by identity.
+      for (const id of heldBaseIds) {
+        expect(spotMarketIds).toContain(id)
+      }
+      expect(heldBaseIds).toEqual(expect.arrayContaining(['PURR', 'VNTR']))
+    })
   })
 })

@@ -174,6 +174,60 @@ export const HL_SPOT_CLEARINGHOUSE_STATE: HlSpotClearinghouseState = {
   ],
 }
 
+const USDH_ASSET = {
+  providerId: 'hyperliquid',
+  id: 'USDH',
+  displaySymbol: 'USDH',
+  logoURI: '',
+}
+
+/**
+ * Spot markets for the spot-balance contract tests: a PURR/USDC pair and a
+ * VNTR/USDH pair (HIP-3 sub-dex quoting a non-USDC stable). Each market's
+ * `baseAsset.id` is the coin symbol — the same value a held balance's
+ * `Asset.id` must equal.
+ */
+export const HL_SPOT_MARKETS: Market[] = [
+  {
+    providerId: 'hyperliquid',
+    id: 'PURR/USDC',
+    categoryId: 'spot',
+    baseAsset: baseAsset('PURR'),
+    quoteAsset: USDC_ASSET,
+    szDecimals: 0,
+    markPrice: '0.6',
+    maxLeverage: 1,
+    onlyIsolated: false,
+    funding: { rate: '0', nextFundingTime: 0 },
+  },
+  {
+    providerId: 'hyperliquid',
+    id: '@7',
+    categoryId: 'spot',
+    baseAsset: baseAsset('VNTR'),
+    quoteAsset: USDH_ASSET,
+    szDecimals: 2,
+    markPrice: '2.5',
+    maxLeverage: 1,
+    onlyIsolated: false,
+    funding: { rate: '0', nextFundingTime: 0 },
+  },
+]
+
+/**
+ * Spot holdings exercising every pricing branch against `HL_SPOT_MARKETS`:
+ * PURR priced via its USDC-quoted market, VNTR priced via its USDH-quoted
+ * market, and the USDC / USDH quote stables that price at $1.
+ */
+export const HL_SPOT_CLEARINGHOUSE_STATE_MULTI: HlSpotClearinghouseState = {
+  balances: [
+    { coin: 'PURR', token: 1, total: '100', hold: '10', entryNtl: '0' },
+    { coin: 'USDC', token: 0, total: '500', hold: '0', entryNtl: '0' },
+    { coin: 'USDH', token: 2, total: '300', hold: '0', entryNtl: '0' },
+    { coin: 'VNTR', token: 3, total: '40', hold: '5', entryNtl: '0' },
+  ],
+}
+
 export const HL_USER_FEES: HlUserFees = {
   userAddRate: '0.0002',
   userCrossRate: '0.0005',

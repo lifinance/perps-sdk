@@ -2,7 +2,11 @@ import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
-import { HL_MARKETS, HL_SPOT_MARKET } from '../../test/fixtures.js'
+import {
+  HL_MARKETS,
+  HL_SPOT_MARKET,
+  HL_SPOT_MARKETS,
+} from '../../test/fixtures.js'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
 
 const XYZ_BRENTOIL_MARKET: Market = {
@@ -1060,6 +1064,52 @@ describe('HyperliquidWsProvider', () => {
 
       expect(btcListener).toHaveBeenCalledOnce()
       expect(ethListener).not.toHaveBeenCalled()
+    })
+    it('emits typed Balances over spotBalances with symbol ids matching SpotMarket.baseAsset.id', async () => {
+      const provider = createEnrichingProvider([
+        ...HL_MARKETS,
+        ...HL_SPOT_MARKETS,
+      ])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xUser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotClearinghouseState',
+          data: {
+            user: '0xuser1',
+            balances: [
+              { coin: 'PURR', token: 1, total: '100', hold: '10' },
+              { coin: 'USDH', token: 2, total: '300', hold: '0' },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('spotBalances')
+
+      const purr = event.data.find((b: any) => b.asset.id === 'PURR')
+      // Invariant: the held balance's asset.id is the coin symbol, identical to
+      // the SpotMarket.baseAsset.id — never String(b.token).
+      expect(purr.asset.id).toBe(
+        HL_SPOT_MARKETS.find((m) => m.baseAsset.id === 'PURR')!.baseAsset.id
+      )
+      expect(purr.categoryId).toBe('spot')
+      expect(purr.units).toBe('100')
+      // 100 units * 0.6 spot markPrice
+      expect(purr.valueUsd).toBe('60')
+      // locked = the wire `hold`; available = units - locked.
+      expect(purr.locked).toBe('10')
+
+      const usdh = event.data.find((b: any) => b.asset.id === 'USDH')
+      // USDH quote stable prices at $1, derived from the markets — not USDC.
+      expect(usdh.valueUsd).toBe('300')
     })
   })
 
