@@ -7,6 +7,7 @@
  * @public
  */
 
+export * from './acceptTerms.js'
 export * from './account.js'
 export * from './action.js'
 export * from './asset.js'

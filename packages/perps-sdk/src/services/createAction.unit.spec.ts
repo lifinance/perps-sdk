@@ -1,4 +1,5 @@
 import {
+  type AcceptTermsParams,
   ActionType,
   type CreateActionResponse,
   META_PROVIDER,
@@ -7,7 +8,11 @@ import {
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { mockCreateOrderResponse, server } from '../../test/handlers.js'
+import {
+  mockCreateAcceptTermsResponse,
+  mockCreateOrderResponse,
+  server,
+} from '../../test/handlers.js'
 import {
   createPerpsClient,
   DEFAULT_API_URL,
@@ -128,6 +133,40 @@ describe('createAction', () => {
     expect(result.actions[0].action).toBe(ActionType.META_VOTE)
     expect(result.actions[0]).toMatchObject({
       typedData: { primaryType: 'Vote' },
+    })
+  })
+
+  it('POSTs a META_ACCEPT_TERMS on the generic path with the meta sentinel as provider', async () => {
+    const acceptTermsParams: AcceptTermsParams = { termsVersion: '3' }
+
+    let url: string | undefined
+    let body: unknown
+    server.use(
+      http.post(`${DEFAULT_API_URL}/createAction`, async ({ request }) => {
+        url = request.url
+        body = await request.json()
+        return HttpResponse.json(mockCreateAcceptTermsResponse)
+      })
+    )
+
+    const result = await createAction(client, {
+      provider: META_PROVIDER,
+      address: ADDRESS,
+      action: ActionType.META_ACCEPT_TERMS,
+      params: acceptTermsParams,
+    })
+
+    // Acceptance rides /createAction, never a bespoke /acceptTerms route.
+    expect(url?.endsWith('/createAction')).toBe(true)
+    expect(body).toEqual({
+      provider: 'meta',
+      address: ADDRESS,
+      action: ActionType.META_ACCEPT_TERMS,
+      params: acceptTermsParams,
+    })
+    expect(result.actions[0].action).toBe(ActionType.META_ACCEPT_TERMS)
+    expect(result.actions[0]).toMatchObject({
+      typedData: { primaryType: 'AcceptTerms' },
     })
   })
 

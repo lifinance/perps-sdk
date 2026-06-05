@@ -13,6 +13,7 @@ import type {
   PositionsResponse,
   PricesResponse,
   ProvidersResponse,
+  TermsAcceptanceStatus,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -166,6 +167,48 @@ export const mockMeta: Meta = {
       timestamp: 1735603200000,
       title: 'New market listed',
       message: 'PEPE-USD is now available for trading.',
+    },
+  ],
+}
+
+const TERMS_CONTENT =
+  'LI.FI Perps Terms of Service v3\n\nBy using this service you agree to the following terms…'
+
+export const mockTermsAccepted: TermsAcceptanceStatus = {
+  termsVersion: '3',
+  content: TERMS_CONTENT,
+  accepted: true,
+  acceptedAt: 1735689600000,
+}
+
+export const mockTermsNotAccepted: TermsAcceptanceStatus = {
+  termsVersion: '3',
+  content: TERMS_CONTENT,
+  accepted: false,
+}
+
+export const mockCreateAcceptTermsResponse: CreateActionResponse = {
+  actions: [
+    {
+      action: ActionType.META_ACCEPT_TERMS,
+      typedData: {
+        domain: { name: 'LIFI Perps', version: '1', chainId: 1 },
+        types: {
+          AcceptTerms: [
+            { name: 'action', type: 'string' },
+            { name: 'acceptor', type: 'address' },
+            { name: 'termsVersion', type: 'string' },
+            { name: 'timestamp', type: 'uint256' },
+          ],
+        },
+        primaryType: 'AcceptTerms',
+        message: {
+          action: 'Accept LI.FI Perps Terms of Service v3',
+          acceptor: '0x1234567890123456789012345678901234567890',
+          termsVersion: '3',
+          timestamp: 1700000000000,
+        },
+      },
     },
   ],
 }
@@ -495,6 +538,10 @@ export const handlers = [
   http.get(`${BASE_URL}/providers`, () => HttpResponse.json(mockProviders)),
 
   http.get(`${BASE_URL}/meta`, () => HttpResponse.json(mockMeta)),
+
+  http.get(`${BASE_URL}/meta/terms`, () =>
+    HttpResponse.json(mockTermsNotAccepted)
+  ),
 
   http.get(`${BASE_URL}/markets`, () => HttpResponse.json(mockMarkets)),
 
