@@ -1,7 +1,7 @@
 import {
   createPerpsClient,
-  getAsset,
   getAssets,
+  getMarkets,
   getOhlcv,
   getOrderbook,
   getPrices,
@@ -22,27 +22,29 @@ async function run() {
   const { assets } = await getAssets(client, { provider: 'hyperliquid' })
   console.log('Assets:', assets)
 
-  // Get a specific asset
-  const asset = await getAsset(client, {
-    provider: 'hyperliquid',
-    symbol: 'BTC',
-  })
-  console.log('Asset:', asset)
+  // Resolve a market by its opaque Market.id — the OHLCV/orderbook/prices
+  // filters key off Market.id, not a display symbol.
+  const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+  const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
+  if (!btc) {
+    throw new Error('BTC market not found')
+  }
 
-  // Get prices
+  // Get all prices
   const { prices } = await getPrices(client, { provider: 'hyperliquid' })
   console.log('All prices:', prices)
 
+  // Filter prices by opaque Market.id
   const filtered = await getPrices(client, {
     provider: 'hyperliquid',
-    symbols: ['BTC', 'ETH'],
+    marketIds: [btc.id],
   })
   console.log('Filtered prices:', filtered)
 
   // Get OHLCV candles
   const { candles } = await getOhlcv(client, {
     provider: 'hyperliquid',
-    symbol: 'BTC',
+    marketId: btc.id,
     interval: '1h',
     limit: 100,
   })
@@ -51,7 +53,7 @@ async function run() {
   // Get orderbook
   const { bids, asks } = await getOrderbook(client, {
     provider: 'hyperliquid',
-    symbol: 'BTC',
+    marketId: btc.id,
     depth: 20,
   })
   console.log('Orderbook:', { bids, asks })

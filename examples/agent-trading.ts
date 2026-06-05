@@ -1,4 +1,4 @@
-import { OrderSide, OrderType, PerpsClient } from '@lifi/perps-sdk'
+import { getMarkets, OrderSide, OrderType, PerpsClient } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 import type { Account, Chain, Transport, WalletClient } from 'viem'
 
@@ -11,40 +11,50 @@ async function run() {
 
   // The user wallet signs setup steps that name PerpsSigner.USER. Pass any
   // viem WalletClient (wagmi's useWalletClient(), a private-key client, etc.).
-  perps.setSigner(walletClient)
+  perps.setUserWallet(walletClient)
 
   const userAddress = '0x1234567890123456789012345678901234567890' as const
 
   // 1. Check which setup gates are unsatisfied (creates the agent keypair
   //    locally when the provider requires one).
-  const required = await perps.checkSetup({
+  const setup = await perps.checkSetup({
     provider: 'hyperliquid',
     address: userAddress,
   })
 
-  if (!required.isReady) {
-    // 2. Sign each user-gated setup step with the configured wallet signer.
+  if (!setup.isReady) {
+    // 2. Sign each outstanding setup step with the configured wallet signer.
     //    Agent-gated steps are auto-signed inside executeProviderSetup.
-    const userSignedActions = await Promise.all(
-      required.userProviderSetup.map((step) =>
+    const signedActions = await Promise.all(
+      setup.setup.map((step) =>
         perps.signProviderSetupAction('hyperliquid', userAddress, step)
       )
     )
 
-    // 3. Submit the signed user setup and auto-sign any agent setup steps.
+    // 3. Submit the signed setup steps and auto-sign any agent setup steps.
     await perps.executeProviderSetup({
       provider: 'hyperliquid',
       address: userAddress,
-      required,
-      userSignedActions,
+      setup: setup.setup,
+      signedActions,
     })
   }
 
-  // 4. Place orders — the agent signs automatically, no wallet popups.
+  // 4. Resolve the market by its opaque Market.id — placeOrder references a
+  //    market via { marketId, categoryId }, not a display symbol.
+  const { markets } = await getMarkets(perps.client, {
+    provider: 'hyperliquid',
+  })
+  const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
+  if (!btc) {
+    throw new Error('BTC market not found')
+  }
+
+  // 5. Place orders — the agent signs automatically, no wallet popups.
   const result = await perps.placeOrder({
     address: userAddress,
     provider: 'hyperliquid',
-    asset: { assetId: 'BTC', market: 'hyperliquid' },
+    market: { marketId: btc.id, categoryId: btc.categoryId },
     side: OrderSide.BUY,
     type: OrderType.MARKET,
     size: '0.1',
@@ -53,7 +63,7 @@ async function run() {
   })
   console.log('Order result:', result)
 
-  // 5. Cancel orders — also automatic.
+  // 6. Cancel orders — also automatic.
   await perps.cancelOrders({
     address: userAddress,
     provider: 'hyperliquid',
