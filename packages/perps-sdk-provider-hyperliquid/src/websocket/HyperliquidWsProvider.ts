@@ -39,6 +39,8 @@ import {
   mapOrderType,
   mapPosition,
   requireMarket,
+  spotBalance,
+  spotPriceByCoin,
 } from '../utils/index.js'
 
 /**
@@ -549,10 +551,10 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private handleSpotClearinghouseState(data: HlWsSpotClearinghouseStateData) {
+    const priceByCoin = spotPriceByCoin([...this.byMarketId.values()])
     const balances = data.balances.map((b) => ({
-      coin: b.coin,
-      total: b.total,
-      hold: b.hold,
+      ...spotBalance(b, priceByCoin),
+      locked: b.hold,
     }))
     this.emit(`spotClearinghouseState:${data.user.toLowerCase()}`, {
       channel: 'spotBalances',

@@ -174,6 +174,41 @@ export const HL_SPOT_CLEARINGHOUSE_STATE: HlSpotClearinghouseState = {
   ],
 }
 
+/**
+ * Spot account holding a non-collateral token (`PURR`, token 1) alongside the
+ * USDC collateral. `PURR` shares no symbol with any perp; its spot pair `@107`
+ * marks at `0.5`, so the holding values at `100 * 0.5 = 50`.
+ */
+export const HL_SPOT_CLEARINGHOUSE_STATE_WITH_HOLDING: HlSpotClearinghouseState =
+  {
+    balances: [
+      { coin: 'USDC', token: 0, total: '500', hold: '0', entryNtl: '0' },
+      { coin: 'PURR', token: 1, total: '100', hold: '40', entryNtl: '20' },
+    ],
+  }
+
+/** `HL_MARKETS` plus the spot `PURR/USDC` pair (`@107`) marking at `0.5`. */
+export const HL_MARKETS_WITH_SPOT: Market[] = [
+  ...HL_MARKETS,
+  {
+    providerId: 'hyperliquid',
+    id: '@107',
+    categoryId: 'spot',
+    baseAsset: {
+      providerId: 'hyperliquid',
+      id: 'PURR',
+      displaySymbol: 'PURR/USDC',
+      logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
+    },
+    quoteAsset: USDC_ASSET,
+    szDecimals: 2,
+    markPrice: '0.5',
+    maxLeverage: 1,
+    onlyIsolated: false,
+    funding: { rate: '0', nextFundingTime: 0 },
+  } as Market,
+]
+
 export const HL_USER_FEES: HlUserFees = {
   userAddRate: '0.0002',
   userCrossRate: '0.0005',

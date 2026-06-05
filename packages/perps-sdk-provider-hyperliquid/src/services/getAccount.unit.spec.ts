@@ -4,7 +4,9 @@ import {
   HL_CLEARINGHOUSE_STATE,
   HL_EXTRA_AGENTS,
   HL_MARKETS,
+  HL_MARKETS_WITH_SPOT,
   HL_SPOT_CLEARINGHOUSE_STATE,
+  HL_SPOT_CLEARINGHOUSE_STATE_WITH_HOLDING,
   HL_USER_FEES,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -86,6 +88,33 @@ describe('getAccount', () => {
     ])
     expect(result.marginUsed).toBe('500')
     expect(result.unrealizedPnl).toBe('100')
+  })
+
+  it('values a non-collateral spot holding at units * spot mark price', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        spotClearinghouseState: HL_SPOT_CLEARINGHOUSE_STATE_WITH_HOLDING,
+      },
+      HL_MARKETS_WITH_SPOT
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.balances).toEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '1',
+          displaySymbol: 'PURR',
+          logoURI: 'https://app.hyperliquid.xyz/coins/PURR.svg',
+        },
+        units: '100',
+        // 100 PURR * 0.5 spot mark
+        valueUsd: '50',
+      },
+    ])
   })
 
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {

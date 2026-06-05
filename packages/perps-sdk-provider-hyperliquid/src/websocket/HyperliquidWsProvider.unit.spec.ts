@@ -2,7 +2,11 @@ import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
-import { HL_MARKETS, HL_SPOT_MARKET } from '../../test/fixtures.js'
+import {
+  HL_MARKETS,
+  HL_MARKETS_WITH_SPOT,
+  HL_SPOT_MARKET,
+} from '../../test/fixtures.js'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
 
 const XYZ_BRENTOIL_MARKET: Market = {
@@ -764,6 +768,52 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data.openOrders[0].market.baseAsset.logoURI).toBe(
         'https://app.hyperliquid.xyz/coins/BTC_spot.svg'
       )
+    })
+
+    it('maps spotClearinghouseState to typed Balance[] with valueUsd and locked', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS_WITH_SPOT)
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotClearinghouseState',
+          data: {
+            user: '0xuser1',
+            balances: [
+              {
+                coin: 'PURR',
+                token: 1,
+                total: '100',
+                hold: '40',
+                entryNtl: '20',
+              },
+            ],
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('spotBalances')
+      expect(event.data).toEqual([
+        {
+          categoryId: 'spot',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '1',
+            displaySymbol: 'PURR',
+            logoURI: 'https://app.hyperliquid.xyz/coins/PURR.svg',
+          },
+          units: '100',
+          // 100 PURR * 0.5 spot mark
+          valueUsd: '50',
+          locked: '40',
+        },
+      ])
     })
 
     it('leaves a perp position display unchanged after enrichment', async () => {

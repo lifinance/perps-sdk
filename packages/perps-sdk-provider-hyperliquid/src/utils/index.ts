@@ -34,3 +34,9 @@ export {
   getMaxPriceDecimals,
 } from './orderFormatting.js'
 export { requireMarket } from './requireMarket.js'
+export {
+  type HlSpotBalanceRef,
+  spotAsset,
+  spotBalance,
+  spotPriceByCoin,
+} from './spotBalance.js'
