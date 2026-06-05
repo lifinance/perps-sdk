@@ -5,6 +5,7 @@ import type {
   ExecuteActionResponse,
   FillsResponse,
   MarketsResponse,
+  Meta,
   OhlcvResponse,
   Order,
   OrderbookResponse,
@@ -148,6 +149,23 @@ export const mockProviders: ProvidersResponse = {
         },
       ],
       categories: [],
+    },
+  ],
+}
+
+export const mockMeta: Meta = {
+  version: '1.4.2',
+  notices: [
+    {
+      timestamp: 1735689600000,
+      title: 'Scheduled maintenance',
+      message: 'Trading paused 02:00–03:00 UTC for an upgrade.',
+      link: 'https://status.li.fi/maintenance',
+    },
+    {
+      timestamp: 1735603200000,
+      title: 'New market listed',
+      message: 'PEPE-USD is now available for trading.',
     },
   ],
 }
@@ -475,6 +493,8 @@ export const mockSubmitWithdrawalResponse: ExecuteActionResponse = {
 export const handlers = [
   // Market data
   http.get(`${BASE_URL}/providers`, () => HttpResponse.json(mockProviders)),
+
+  http.get(`${BASE_URL}/meta`, () => HttpResponse.json(mockMeta)),
 
   http.get(`${BASE_URL}/markets`, () => HttpResponse.json(mockMarkets)),
 
