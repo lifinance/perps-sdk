@@ -31,6 +31,14 @@ export interface ReconnectingWebSocketOptions {
  * A `WebSocket` wrapper that auto-reconnects with exponential backoff, buffers
  * sends while disconnected, and keep-alive pings the server.
  *
+ * Hand-rolled rather than wrapping `partysocket` / `reconnecting-websocket`:
+ * both expose only the raw `readyState`, which cannot distinguish a transient
+ * `reconnecting` drop from a terminal `disconnected` after retry exhaustion,
+ * and neither offers the {@link WsStatusListener} status feed or the
+ * {@link ReconnectingWebSocket.ready} promise that rejects on exhaustion.
+ * Reproducing the {@link WsConnectionStatus} state machine over either library
+ * needs an adapter the size of this class.
+ *
  * @public
  */
 export class ReconnectingWebSocket {
