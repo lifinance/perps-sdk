@@ -72,14 +72,14 @@ describe('getAccount', () => {
         valueUsd: '500',
       },
       {
+        // Collateral asset is the dex's market quote asset (token-index id).
         categoryId: 'hyperliquid',
         asset: {
           providerId: 'hyperliquid',
-          id: 'USDC',
+          id: '0',
           displaySymbol: 'USDC',
-          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+          logoURI: '',
         },
-        // accountValue 10000 (free — net of locked margin)
         units: '10000',
         valueUsd: '10000',
       },

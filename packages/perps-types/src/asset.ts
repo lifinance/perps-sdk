@@ -6,7 +6,13 @@
  */
 export interface Asset {
   providerId: string
-  /** Own provider-minted id (Lighter's numeric `asset_id` stringified; HL coin symbol). */
+  /**
+   * The asset's own provider-native id. Lighter: numeric `asset_id`, stringified.
+   * Hyperliquid spot: the venue token index (`spotMeta.tokens[].index`, the
+   * value HL carries in a balance's `token` field) — identical to that token's
+   * spot `Market.baseAsset.id`, so a held balance resolves to its market by
+   * identity. NEVER the coin symbol (that is `displaySymbol`).
+   */
   id: string
   displaySymbol: string
   logoURI: string

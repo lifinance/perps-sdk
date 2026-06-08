@@ -2,30 +2,29 @@ import {
   getMarkets as coreGetMarkets,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
-  stringToFloat,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   Asset,
   Balance,
   HyperliquidAccountConfig,
-  Market,
   Position,
 } from '@lifi/perps-types'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import {
   HlAbstractionMode,
   type HlClearinghouseState,
   type HlExtraAgents,
-  type HlSpotBalance,
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
 import {
-  marketDisplayFromCoin,
   perpsDexNames,
   requireMarket,
+  spotAssetFromToken,
+  spotBalance,
+  spotPriceById,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapPosition } from '../utils/mapPosition.js'
@@ -36,8 +35,6 @@ import { mapPosition } from '../utils/mapPosition.js'
  * @public
  */
 export type GetAccountParams = ProviderGetAccountParams
-
-const SPOT_KEY = SPOT_MARKET_ID
 
 const getAccountValue = (state: HlClearinghouseState): number =>
   Number.parseFloat(
@@ -83,34 +80,6 @@ const getMarginUsed = (
   return getTotalMarginUsed(mainState).toString()
 }
 
-const USDC_SYMBOL = 'USDC'
-
-/**
- * Price each token symbol in USD from the backend market list (a market's
- * `markPrice` keyed by its base-asset symbol). Quote/stable symbols fall back
- * to $1.
- */
-const buildPriceBySymbol = (
-  markets: Market[],
-  quoteSymbols: ReadonlySet<string>
-): Map<string, number> => {
-  const map = new Map<string, number>()
-  for (const m of markets) {
-    map.set(m.baseAsset.displaySymbol, stringToFloat(m.markPrice))
-  }
-  for (const symbol of quoteSymbols) {
-    if (!map.has(symbol)) {
-      map.set(symbol, 1)
-    }
-  }
-  return map
-}
-
-const spotAsset = (b: HlSpotBalance): Asset => ({
-  ...marketDisplayFromCoin(b.coin).baseAsset,
-  id: String(b.token),
-})
-
 const isUnifiedMode = (abstraction: HlAbstractionMode | null): boolean =>
   abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
   abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
@@ -124,22 +93,17 @@ const buildBalances = (
   abstraction: HlAbstractionMode | null,
   spotState: HlSpotClearinghouseState,
   stateByDex: Map<string, HlClearinghouseState>,
-  quoteSymbols: ReadonlySet<string>,
-  priceBySymbol: Map<string, number>
+  quoteAssetIds: ReadonlySet<string>,
+  priceById: Map<string, number>,
+  quoteAssetByCategory: Map<string, Asset>
 ): BalancePartition => {
   const balances: Balance[] = []
   const collateralBalances: Balance[] = []
 
   // Spot balances: collateral iff the token is a category quote asset.
   for (const b of spotState.balances) {
-    const price = priceBySymbol.get(b.coin) ?? 0
-    const balance: Balance = {
-      categoryId: SPOT_KEY,
-      asset: spotAsset(b),
-      units: b.total,
-      valueUsd: (stringToFloat(b.total) * price).toString(),
-    }
-    if (quoteSymbols.has(b.coin)) {
+    const balance = spotBalance(spotAssetFromToken(b), b.total, priceById)
+    if (quoteAssetIds.has(balance.asset.id)) {
       collateralBalances.push(balance)
     } else {
       balances.push(balance)
@@ -152,13 +116,13 @@ const buildBalances = (
   // the locked portion is carried by the positions' `marginUsed`.
   if (!isUnifiedMode(abstraction)) {
     for (const [dex, state] of stateByDex) {
+      const categoryId = dex || PROVIDER_KEY
       const value = getAccountValue(state)
       collateralBalances.push({
-        categoryId: dex || PROVIDER_KEY,
-        asset: {
-          ...marketDisplayFromCoin(USDC_SYMBOL).baseAsset,
-          id: USDC_SYMBOL,
-        },
+        categoryId,
+        // Always present: every dex in `stateByDex` derives from `markets`,
+        // which is what populates `quoteAssetByCategory`.
+        asset: quoteAssetByCategory.get(categoryId)!,
         units: value.toString(),
         valueUsd: value.toString(),
       })
@@ -197,11 +161,11 @@ export const getAccount = async (
   )
   const byMarketId = new Map(markets.map((m) => [m.id, m]))
   const dexNames = perpsDexNames(markets)
-  const quoteSymbols = new Set<string>()
-  for (const m of markets) {
-    quoteSymbols.add(m.quoteAsset.displaySymbol)
-  }
-  const priceBySymbol = buildPriceBySymbol(markets, quoteSymbols)
+  const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
+  const priceById = spotPriceById(markets)
+  const quoteAssetByCategory = new Map(
+    markets.map((m) => [m.categoryId, m.quoteAsset])
+  )
   const infoOpts = hlInfoOptions(client, options)
 
   const [feesResult, abstractionResult, agentsResult, spotState, stateResults] =
@@ -270,8 +234,9 @@ export const getAccount = async (
     abstractionResult,
     spotState,
     stateByDex,
-    quoteSymbols,
-    priceBySymbol
+    quoteAssetIds,
+    priceById,
+    quoteAssetByCategory
   )
 
   return {

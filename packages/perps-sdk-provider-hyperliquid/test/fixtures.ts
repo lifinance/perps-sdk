@@ -79,9 +79,10 @@ export const HL_META_AND_CTXS_MAIN_WITH_COLLATERAL: unknown = [
   [],
 ]
 
+// Quote/collateral asset. HL spot `Asset.id` is the token index (USDC = 0).
 const USDC_ASSET = {
   providerId: 'hyperliquid',
-  id: 'USDC',
+  id: '0',
   displaySymbol: 'USDC',
   logoURI: '',
 }

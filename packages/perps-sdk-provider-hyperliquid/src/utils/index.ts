@@ -34,3 +34,8 @@ export {
   getMaxPriceDecimals,
 } from './orderFormatting.js'
 export { requireMarket } from './requireMarket.js'
+export {
+  spotAssetFromToken,
+  spotBalance,
+  spotPriceById,
+} from './spotBalance.js'
