@@ -1,4 +1,10 @@
-import type { Fill, OpenOrder, Position, TriggerOrder } from './account.js'
+import type {
+  Balance,
+  Fill,
+  OpenOrder,
+  Position,
+  TriggerOrder,
+} from './account.js'
 import type { Candle, OhlcvInterval, OrderbookResponse } from './market.js'
 import type { Address } from './primitives.js'
 
@@ -54,13 +60,6 @@ export type Subscription =
   | SpotBalancesSubscription
 
 /** @public */
-export interface SpotBalance {
-  coin: string
-  total: string
-  hold: string
-}
-
-/** @public */
 export type PricesEvent = { channel: 'prices'; data: Record<string, string> }
 /** @public */
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
@@ -85,8 +84,15 @@ export type OrderUpdatesEvent = {
 export type FillsEvent = { channel: 'fills'; data: Fill[] }
 /** @public */
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
-/** @public */
-export type SpotBalancesEvent = { channel: 'spotBalances'; data: SpotBalance[] }
+/**
+ * Spot holdings as typed {@link Balance}s, each carrying the venue-locked
+ * portion (`locked` = reserved against open orders; `available = units − locked`).
+ * @public
+ */
+export type SpotBalancesEvent = {
+  channel: 'spotBalances'
+  data: (Balance & { locked: string })[]
+}
 
 /** @public */
 export type SubscriptionEvent =

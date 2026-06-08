@@ -283,7 +283,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should send clearinghouseState subscribe for default and xyz sub-dexes', async () => {
+    it('sends a single allDexsClearinghouseState subscribe for positions', async () => {
       const provider = createProvider()
 
       await provider.subscribe(
@@ -291,23 +291,14 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      expect(getMockRwsInstance().sent).toHaveLength(2)
-      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
-      expect(payloads).toContainEqual({
+      expect(getMockRwsInstance().sent).toHaveLength(1)
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
         method: 'subscribe',
-        subscription: { type: 'clearinghouseState', user: '0xabc' },
-      })
-      expect(payloads).toContainEqual({
-        method: 'subscribe',
-        subscription: {
-          type: 'clearinghouseState',
-          user: '0xabc',
-          dex: 'xyz',
-        },
+        subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
       })
     })
 
-    it('should send two unsubscribe messages when positions listener unsubscribes', async () => {
+    it('sends a single allDexsClearinghouseState unsubscribe when the positions listener unsubscribes', async () => {
       const provider = createProvider()
 
       const unsub = await provider.subscribe(
@@ -318,19 +309,10 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().sent = [] // Clear subscribe messages
       unsub()
 
-      expect(getMockRwsInstance().sent).toHaveLength(2)
-      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
-      expect(payloads).toContainEqual({
+      expect(getMockRwsInstance().sent).toHaveLength(1)
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
         method: 'unsubscribe',
-        subscription: { type: 'clearinghouseState', user: '0xabc' },
-      })
-      expect(payloads).toContainEqual({
-        method: 'unsubscribe',
-        subscription: {
-          type: 'clearinghouseState',
-          user: '0xabc',
-          dex: 'xyz',
-        },
+        subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
       })
     })
 
@@ -361,26 +343,30 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'clearinghouseState',
+          channel: 'allDexsClearinghouseState',
           data: {
-            dex: '',
             user: '0xuser1',
-            clearinghouseState: {
-              assetPositions: [
+            clearinghouseStates: [
+              [
+                '',
                 {
-                  position: {
-                    coin: 'BTC',
-                    szi: '0.1',
-                    entryPx: '94000',
-                    positionValue: '9500',
-                    liquidationPx: '85000',
-                    unrealizedPnl: '100',
-                    marginUsed: '940',
-                    leverage: { type: 'cross', value: 10 },
-                  },
+                  assetPositions: [
+                    {
+                      position: {
+                        coin: 'BTC',
+                        szi: '0.1',
+                        entryPx: '94000',
+                        positionValue: '9500',
+                        liquidationPx: '85000',
+                        unrealizedPnl: '100',
+                        marginUsed: '940',
+                        leverage: { type: 'cross', value: 10 },
+                      },
+                    },
+                  ],
                 },
               ],
-            },
+            ],
           },
         })
       )
@@ -636,7 +622,101 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit combined positions for clearinghouseState messages', async () => {
+    it('emits typed spot Balances keyed on the wire token index', async () => {
+      const PURR_SPOT: Market = {
+        providerId: 'hyperliquid',
+        id: 'PURR/USDC',
+        categoryId: 'spot',
+        baseAsset: {
+          providerId: 'hyperliquid',
+          id: '5',
+          displaySymbol: 'PURR',
+          logoURI: '',
+        },
+        quoteAsset: {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: '',
+        },
+        szDecimals: 2,
+        markPrice: '0.5',
+        maxLeverage: 1,
+        onlyIsolated: false,
+        funding: { rate: '0', nextFundingTime: 0 },
+      } as Market
+      const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotState',
+          data: {
+            user: '0xuser1',
+            spotState: {
+              balances: [
+                { coin: 'PURR', token: 5, total: '100', hold: '10' },
+                { coin: 'USDC', token: 0, total: '500', hold: '0' },
+                { coin: 'GHOST', token: 9, total: '1', hold: '0' },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('spotBalances')
+      expect(event.data).toEqual([
+        {
+          categoryId: 'spot',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '5',
+            displaySymbol: 'PURR',
+            logoURI: 'https://app.hyperliquid.xyz/coins/PURR.svg',
+          },
+          units: '100',
+          valueUsd: '50',
+          locked: '10',
+        },
+        {
+          categoryId: 'spot',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '0',
+            displaySymbol: 'USDC',
+            logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+          },
+          units: '500',
+          valueUsd: '500',
+          locked: '0',
+        },
+        {
+          categoryId: 'spot',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '9',
+            displaySymbol: 'GHOST',
+            logoURI: 'https://app.hyperliquid.xyz/coins/GHOST.svg',
+          },
+          units: '1',
+          // No market for GHOST → unpriced.
+          valueUsd: '0',
+          locked: '0',
+        },
+      ])
+      // Contract invariant: a held Balance.asset.id equals that token's
+      // SpotMarket.baseAsset.id (the token index), so the widget joins by id.
+      expect(event.data[0].asset.id).toBe(PURR_SPOT.baseAsset.id)
+    })
+
+    it('emits combined positions across dexes from one allDexsClearinghouseState frame', async () => {
       const provider = createEnrichingProvider([
         ...HL_MARKETS,
         XYZ_BRENTOIL_MARKET,
@@ -648,77 +728,66 @@ describe('HyperliquidWsProvider', () => {
         listener
       )
 
-      // Default sub-dex (native BTC position)
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'clearinghouseState',
+          channel: 'allDexsClearinghouseState',
           data: {
-            dex: '',
             user: '0xuser1',
-            clearinghouseState: {
-              assetPositions: [
+            clearinghouseStates: [
+              [
+                '',
                 {
-                  position: {
-                    coin: 'BTC',
-                    szi: '0.1',
-                    entryPx: '94000',
-                    positionValue: '9500',
-                    liquidationPx: '85000',
-                    unrealizedPnl: '100',
-                    marginUsed: '940',
-                    leverage: { type: 'cross', value: 10 },
-                  },
+                  assetPositions: [
+                    {
+                      position: {
+                        coin: 'BTC',
+                        szi: '0.1',
+                        entryPx: '94000',
+                        positionValue: '9500',
+                        liquidationPx: '85000',
+                        unrealizedPnl: '100',
+                        marginUsed: '940',
+                        leverage: { type: 'cross', value: 10 },
+                      },
+                    },
+                  ],
                 },
               ],
-            },
+              [
+                'xyz',
+                {
+                  assetPositions: [
+                    {
+                      position: {
+                        coin: 'xyz:BRENTOIL',
+                        szi: '-0.45',
+                        entryPx: '70.50',
+                        positionValue: '31.725',
+                        liquidationPx: '90.00',
+                        unrealizedPnl: '-2.50',
+                        marginUsed: '15.86',
+                        leverage: { type: 'isolated', value: 2 },
+                      },
+                    },
+                  ],
+                },
+              ],
+            ],
           },
         })
       )
 
       expect(listener).toHaveBeenCalledOnce()
-      const event1 = listener.mock.calls[0][0]
-      expect(event1.channel).toBe('positions')
-      expect(event1.data).toHaveLength(1)
-      expect(event1.data[0]).toMatchObject({
-        market: { id: 'BTC' },
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('positions')
+      expect(event.data).toHaveLength(2)
+      expect(event.data.map((p: any) => p.market.id)).toContain('BTC')
+      expect(event.data.map((p: any) => p.market.id)).toContain('xyz:BRENTOIL')
+      expect(event.data.find((p: any) => p.market.id === 'BTC')).toMatchObject({
         size: '0.1',
         entryPrice: '94000',
         leverage: 10,
       })
-
-      // xyz sub-dex (HIP-3 BRENTOIL position) — should merge with native
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'clearinghouseState',
-          data: {
-            dex: 'xyz',
-            user: '0xuser1',
-            clearinghouseState: {
-              assetPositions: [
-                {
-                  position: {
-                    coin: 'xyz:BRENTOIL',
-                    szi: '-0.45',
-                    entryPx: '70.50',
-                    positionValue: '31.725',
-                    liquidationPx: '90.00',
-                    unrealizedPnl: '-2.50',
-                    marginUsed: '15.86',
-                    leverage: { type: 'isolated', value: 2 },
-                  },
-                },
-              ],
-            },
-          },
-        })
-      )
-
-      expect(listener).toHaveBeenCalledTimes(2)
-      const event2 = listener.mock.calls[1][0]
-      expect(event2.channel).toBe('positions')
-      expect(event2.data).toHaveLength(2)
-      expect(event2.data.map((p: any) => p.market.id)).toContain('BTC')
-      expect(event2.data.map((p: any) => p.market.id)).toContain('xyz:BRENTOIL')
     })
 
     it('enriches a spot order onto the backend BASE/QUOTE display and spot logo', async () => {
@@ -777,26 +846,30 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'clearinghouseState',
+          channel: 'allDexsClearinghouseState',
           data: {
-            dex: '',
             user: '0xuser1',
-            clearinghouseState: {
-              assetPositions: [
+            clearinghouseStates: [
+              [
+                '',
                 {
-                  position: {
-                    coin: 'BTC',
-                    szi: '0.1',
-                    entryPx: '94000',
-                    positionValue: '9500',
-                    liquidationPx: '85000',
-                    unrealizedPnl: '100',
-                    marginUsed: '940',
-                    leverage: { type: 'cross', value: 10 },
-                  },
+                  assetPositions: [
+                    {
+                      position: {
+                        coin: 'BTC',
+                        szi: '0.1',
+                        entryPx: '94000',
+                        positionValue: '9500',
+                        liquidationPx: '85000',
+                        unrealizedPnl: '100',
+                        marginUsed: '940',
+                        leverage: { type: 'cross', value: 10 },
+                      },
+                    },
+                  ],
                 },
               ],
-            },
+            ],
           },
         })
       )

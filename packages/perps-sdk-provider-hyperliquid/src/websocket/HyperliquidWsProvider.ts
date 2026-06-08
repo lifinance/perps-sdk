@@ -15,7 +15,6 @@ import {
   type OpenOrder,
   OrderSide,
   OrderType,
-  type Position,
   type Subscription,
   type SubscriptionEvent,
   type TriggerOrder,
@@ -24,12 +23,12 @@ import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
+  HlWsAllDexsClearinghouseStateData,
   HlWsAllMidsData,
   HlWsCandleData,
-  HlWsClearinghouseStateData,
   HlWsL2BookData,
   HlWsMessage,
-  HlWsSpotClearinghouseStateData,
+  HlWsSpotStateData,
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
@@ -39,6 +38,9 @@ import {
   mapOrderType,
   mapPosition,
   requireMarket,
+  spotAssetFromToken,
+  spotBalance,
+  spotPriceById,
 } from '../utils/index.js'
 
 /**
@@ -60,9 +62,9 @@ export const hyperliquidWsProvider =
   }
 
 /**
- * Hyperliquid realtime {@link WsProvider}: multiplexes prices/positions/orders
- * subscriptions across sub-DEX `allMids` / `clearinghouseState` WS streams over
- * a single {@link ReconnectingWebSocket}. Construct via {@link hyperliquidWsProvider}.
+ * Hyperliquid realtime {@link WsProvider}: multiplexes prices, positions,
+ * orders, fills and spot balances over a single {@link ReconnectingWebSocket}.
+ * Construct via {@link hyperliquidWsProvider}.
  *
  * @public
  */
@@ -74,7 +76,6 @@ export class HyperliquidWsProvider implements WsProvider {
   private readonly providerKey: string
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
-  private positionsBySubDex = new Map<string, Position[]>()
   private midsBySubDex = new Map<string, Record<string, string>>()
   private byMarketId = new Map<string, Market>()
   private byMarketIdPromise: Promise<void> | undefined
@@ -196,50 +197,6 @@ export class HyperliquidWsProvider implements WsProvider {
       }
     }
 
-    // Positions require multi-sub-dex clearinghouseState subscriptions
-    if (sub.channel === 'positions') {
-      const entries = this.getPositionSubEntries(sub.address)
-
-      for (const { subKey, payload } of entries) {
-        const existing = this.subs.get(subKey)
-        if (existing) {
-          existing.count++
-        } else {
-          this.subs.set(subKey, { count: 1, payload })
-          await this.rws.ready()
-          this.rws.send(
-            JSON.stringify({ method: 'subscribe', subscription: payload })
-          )
-        }
-      }
-
-      return () => {
-        this.listeners.get(key)?.delete(listener)
-        let allRemoved = true
-        for (const { subKey, payload } of entries) {
-          const s = this.subs.get(subKey)
-          if (s) {
-            s.count--
-            if (s.count <= 0) {
-              this.subs.delete(subKey)
-              this.rws.send(
-                JSON.stringify({
-                  method: 'unsubscribe',
-                  subscription: payload,
-                })
-              )
-            } else {
-              allRemoved = false
-            }
-          }
-        }
-        if (allRemoved) {
-          this.listeners.delete(key)
-          this.positionsBySubDex.clear()
-        }
-      }
-    }
-
     // All other channels: single WS subscription per key
     const payload = this.toHlPayload(sub)
     const existing = this.subs.get(key)
@@ -283,23 +240,6 @@ export class HyperliquidWsProvider implements WsProvider {
     ]
   }
 
-  /** Build sub-key + payload pairs for each sub-dex clearinghouseState subscription. */
-  private getPositionSubEntries(
-    address: string
-  ): Array<{ subKey: string; payload: object }> {
-    const addr = address.toLowerCase()
-    return [
-      {
-        subKey: `positions:${addr}:default`,
-        payload: { type: 'clearinghouseState', user: address },
-      },
-      ...this.subDexes.map((dex) => ({
-        subKey: `positions:${addr}:${dex}`,
-        payload: { type: 'clearinghouseState', user: address, dex },
-      })),
-    ]
-  }
-
   close() {
     this.rws.close()
     this.subs.clear()
@@ -330,7 +270,7 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
       case 'spotBalances':
-        return `spotClearinghouseState:${sub.address.toLowerCase()}`
+        return `spotState:${sub.address.toLowerCase()}`
     }
   }
 
@@ -357,11 +297,9 @@ export class HyperliquidWsProvider implements WsProvider {
       case 'fills':
         return { type: 'userFills', user: sub.address }
       case 'positions':
-        // Positions are handled via getPositionSubEntries in subscribe()
-        // and never reach toHlPayload, but TS requires exhaustive cases.
-        return { type: 'clearinghouseState', user: sub.address }
+        return { type: 'allDexsClearinghouseState', user: sub.address }
       case 'spotBalances':
-        return { type: 'spotClearinghouseState', user: sub.address }
+        return { type: 'spotState', user: sub.address }
     }
   }
 
@@ -422,13 +360,13 @@ export class HyperliquidWsProvider implements WsProvider {
         case 'userFills':
           this.handleUserFills(msg.data as HlWsUserFillsData)
           break
-        case 'clearinghouseState':
-          this.handleClearinghouseState(msg.data as HlWsClearinghouseStateData)
-          break
-        case 'spotClearinghouseState':
-          this.handleSpotClearinghouseState(
-            msg.data as HlWsSpotClearinghouseStateData
+        case 'allDexsClearinghouseState':
+          this.handleAllDexsClearinghouseState(
+            msg.data as HlWsAllDexsClearinghouseStateData
           )
+          break
+        case 'spotState':
+          this.handleSpotState(msg.data as HlWsSpotStateData)
           break
       }
     } catch (error) {
@@ -530,33 +468,31 @@ export class HyperliquidWsProvider implements WsProvider {
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
-  private handleClearinghouseState(data: HlWsClearinghouseStateData) {
-    const subDexKey = data.dex || 'default'
-    const positions = data.clearinghouseState.assetPositions.map((ap) =>
-      mapPosition(
-        ap as HlAssetPosition,
-        requireMarket(this.byMarketId, ap.position.coin)
+  private handleAllDexsClearinghouseState(
+    data: HlWsAllDexsClearinghouseStateData
+  ) {
+    const positions = data.clearinghouseStates.flatMap(([, state]) =>
+      state.assetPositions.map((ap) =>
+        mapPosition(
+          ap as HlAssetPosition,
+          requireMarket(this.byMarketId, ap.position.coin)
+        )
       )
     )
-    this.positionsBySubDex.set(subDexKey, positions)
-
-    const merged = [...this.positionsBySubDex.values()].flat()
-
     this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',
-      data: merged,
+      data: positions,
     })
   }
 
-  private handleSpotClearinghouseState(data: HlWsSpotClearinghouseStateData) {
-    const balances = data.balances.map((b) => ({
-      coin: b.coin,
-      total: b.total,
-      hold: b.hold,
-    }))
-    this.emit(`spotClearinghouseState:${data.user.toLowerCase()}`, {
+  private handleSpotState(data: HlWsSpotStateData) {
+    const priceById = spotPriceById([...this.byMarketId.values()])
+    this.emit(`spotState:${data.user.toLowerCase()}`, {
       channel: 'spotBalances',
-      data: balances,
+      data: data.spotState.balances.map((b) => ({
+        ...spotBalance(spotAssetFromToken(b), b.total, priceById),
+        locked: b.hold,
+      })),
     })
   }
 }
@@ -592,14 +528,16 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
       return Array.isArray(data)
     case 'userFills':
       return typeof data.user === 'string' && Array.isArray(data.fills)
-    case 'clearinghouseState':
+    case 'allDexsClearinghouseState':
+      return (
+        typeof data.user === 'string' && Array.isArray(data.clearinghouseStates)
+      )
+    case 'spotState':
       return (
         typeof data.user === 'string' &&
-        isObject(data.clearinghouseState) &&
-        Array.isArray(data.clearinghouseState.assetPositions)
+        isObject(data.spotState) &&
+        Array.isArray(data.spotState.balances)
       )
-    case 'spotClearinghouseState':
-      return typeof data.user === 'string' && Array.isArray(data.balances)
     default:
       return true
   }
