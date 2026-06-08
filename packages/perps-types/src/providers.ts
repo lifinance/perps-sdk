@@ -95,6 +95,12 @@ export interface Provider {
    * reduce-only orders use the same floor as `minOrderValueUsd`.
    */
   minReduceOrderValueUsd?: number
+  /** Minimum withdrawal notional in USD. Absent means no minimum advertised. */
+  minWithdrawalUsd?: number
+  /** Flat deposit fee in USD the provider charges. Absent means no fee advertised. */
+  depositFeeUsd?: number
+  /** Flat withdrawal fee in USD the provider charges. Absent means no fee advertised. */
+  withdrawalFeeUsd?: number
   /**
    * Aggregate up-votes for this provider. Populated only for inactive
    * providers (those gathering demand before launch); absent once `active`.

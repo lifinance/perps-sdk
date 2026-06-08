@@ -165,6 +165,9 @@ const lighterProvider: Provider = {
   ],
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
+  minWithdrawalUsd: 5,
+  depositFeeUsd: 0,
+  withdrawalFeeUsd: 1,  
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
 }
 
@@ -579,6 +582,20 @@ describe('Provider.supportedIntervals', () => {
   it('declares an empty set for inactive / no-candle providers', () => {
     expect(announcedProvider.supportedIntervals).toEqual([])
     expect(providerWithNoDescriptors.supportedIntervals).toEqual([])
+  })
+})
+
+describe('Provider withdrawal minimum and deposit/withdrawal fees', () => {
+  it('carries minWithdrawalUsd and the flat deposit/withdrawal fees', () => {
+    expect(lighterProvider.minWithdrawalUsd).toBe(5)
+    expect(lighterProvider.depositFeeUsd).toBe(0)
+    expect(lighterProvider.withdrawalFeeUsd).toBe(1)
+  })
+
+  it('admits a provider that advertises no withdrawal minimum or fees', () => {
+    expect(providerWithNoDescriptors.minWithdrawalUsd).toBeUndefined()
+    expect(providerWithNoDescriptors.depositFeeUsd).toBeUndefined()
+    expect(providerWithNoDescriptors.withdrawalFeeUsd).toBeUndefined()
   })
 })
 
