@@ -163,6 +163,9 @@ const lighterProvider: Provider = {
   ],
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
+  minWithdrawalUsd: 5,
+  depositFeeUsd: 0,
+  withdrawalFeeUsd: 1,
 }
 
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
@@ -531,6 +534,20 @@ describe('Provider order-value minimums', () => {
   it('admits a provider that advertises no order-value minimum', () => {
     expect(providerWithNoDescriptors.minOrderValueUsd).toBeUndefined()
     expect(providerWithNoDescriptors.minReduceOrderValueUsd).toBeUndefined()
+  })
+})
+
+describe('Provider withdrawal minimum and deposit/withdrawal fees', () => {
+  it('carries minWithdrawalUsd and the flat deposit/withdrawal fees', () => {
+    expect(lighterProvider.minWithdrawalUsd).toBe(5)
+    expect(lighterProvider.depositFeeUsd).toBe(0)
+    expect(lighterProvider.withdrawalFeeUsd).toBe(1)
+  })
+
+  it('admits a provider that advertises no withdrawal minimum or fees', () => {
+    expect(providerWithNoDescriptors.minWithdrawalUsd).toBeUndefined()
+    expect(providerWithNoDescriptors.depositFeeUsd).toBeUndefined()
+    expect(providerWithNoDescriptors.withdrawalFeeUsd).toBeUndefined()
   })
 })
 
