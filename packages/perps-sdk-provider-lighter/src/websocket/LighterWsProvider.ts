@@ -140,7 +140,7 @@ export class LighterWsProvider implements WsProvider {
 
   private readonly subs = new Map<string, SubState>()
   private readonly listeners = new Map<string, Set<SubscriptionListener>>()
-  private readonly statusListeners = new Set<WsStatusListener>()
+  private readonly statusListeners = new Map<WsStatusListener, number>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -183,7 +183,7 @@ export class LighterWsProvider implements WsProvider {
     })
     this.rws.on('close', () => this.stopKeepalive())
     this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners) {
+      for (const fn of this.statusListeners.keys()) {
         fn(status)
       }
     })
@@ -198,10 +198,18 @@ export class LighterWsProvider implements WsProvider {
     if (!onStatus) {
       return unsubscribe
     }
-    this.statusListeners.add(onStatus)
+    this.statusListeners.set(
+      onStatus,
+      (this.statusListeners.get(onStatus) ?? 0) + 1
+    )
     onStatus(this.rws.getStatus())
     return () => {
-      this.statusListeners.delete(onStatus)
+      const remaining = (this.statusListeners.get(onStatus) ?? 0) - 1
+      if (remaining > 0) {
+        this.statusListeners.set(onStatus, remaining)
+      } else {
+        this.statusListeners.delete(onStatus)
+      }
       unsubscribe()
     }
   }
@@ -239,8 +247,13 @@ export class LighterWsProvider implements WsProvider {
       existing.count++
     } else {
       this.subs.set(key, { count: 1, channel, needsAuth, address })
+      // Only send now if already open; otherwise onOpen resubscribes it on
+      // (re)connect. Sending in both places double-subscribes — and for auth
+      // channels needlessly re-fetches a token.
+      if (this.rws.getStatus() === 'connected') {
+        await this.sendSubscribe(channel, needsAuth, address)
+      }
       await this.rws.ready()
-      await this.sendSubscribe(channel, needsAuth, address)
     }
 
     return () => {

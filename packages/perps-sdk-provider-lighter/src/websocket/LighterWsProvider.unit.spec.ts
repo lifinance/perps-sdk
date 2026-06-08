@@ -140,13 +140,43 @@ describe('LighterWsProvider', () => {
     expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
 
     // The provider bridges the underlying rws status to its subscribers.
-    for (const fn of (provider as any).statusListeners) {
+    for (const fn of (provider as any).statusListeners.keys()) {
       fn('disconnected')
     }
     expect(onStatus).toHaveBeenLastCalledWith('disconnected')
 
     unsubscribe()
     expect((provider as any).statusListeners.size).toBe(0)
+    provider.close()
+  })
+
+  it('keeps delivering status to a shared onStatus until its last subscription is removed', async () => {
+    const provider = makeProvider()
+    ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+    ;(provider as any).rws.send = vi.fn()
+    const onStatus = vi.fn()
+
+    // Two subscriptions share one onStatus — as a React StrictMode
+    // double-mount does with a stable setState. Removing one must not strip
+    // the listener the other still depends on.
+    const unsub1 = await provider.subscribe(
+      { channel: 'prices', dex: 'lighter' },
+      vi.fn(),
+      onStatus
+    )
+    await provider.subscribe(
+      { channel: 'orderbook', dex: 'lighter', marketId: '5' },
+      vi.fn(),
+      onStatus
+    )
+
+    unsub1()
+    onStatus.mockClear()
+
+    for (const fn of (provider as any).statusListeners.keys()) {
+      fn('reconnecting')
+    }
+    expect(onStatus).toHaveBeenCalledWith('reconnecting')
     provider.close()
   })
 
@@ -408,6 +438,27 @@ describe('LighterWsProvider', () => {
       errSpy.mockRestore()
       provider.close()
     })
+
+    it('does not double-subscribe when subscribing before the socket opens', async () => {
+      const provider = makeProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      // Socket is still connecting (real rws getStatus stays 'reconnecting').
+
+      await provider.subscribe({ channel: 'prices', dex: 'lighter' }, vi.fn())
+
+      // Nothing sent inline while disconnected — onOpen is the sole sender.
+      expect(send).not.toHaveBeenCalled()
+
+      await (provider as any).onOpen()
+
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
+      )
+      provider.close()
+    })
   })
 
   describe('handleMessage — failure isolation', () => {
@@ -499,8 +550,9 @@ describe('LighterWsProvider', () => {
     it('subscribes to prices even when the /markets display-symbol fetch rejects', async () => {
       getMarketsMock.mockRejectedValue(new Error('markets route 500'))
       const provider = makeFetchingProvider()
-      // Stub the socket so subscribe doesn't await a real connection.
+      // Stub the socket as open so subscribe sends inline without a real connection.
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
       const send = vi.fn()
       ;(provider as any).rws.send = send
 
@@ -535,6 +587,7 @@ describe('LighterWsProvider', () => {
       getMarketsMock.mockRejectedValue(new Error('markets route 500'))
       const provider = makeFetchingProvider()
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
       const send = vi.fn()
       ;(provider as any).rws.send = send
 
