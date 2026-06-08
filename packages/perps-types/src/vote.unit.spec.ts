@@ -52,6 +52,7 @@ const inactiveProviderWithVotes: Provider = {
   options: [],
   actions: [],
   categories: [],
+  supportedIntervals: [],
   upVotes: 128,
   downVotes: 4,
 }
@@ -175,6 +176,7 @@ describe('Provider vote counts', () => {
       options: [],
       actions: [],
       categories: [],
+      supportedIntervals: ['1m', '1h', '1d'],
     }
     expect(active.upVotes).toBeUndefined()
     expect(active.downVotes).toBeUndefined()
