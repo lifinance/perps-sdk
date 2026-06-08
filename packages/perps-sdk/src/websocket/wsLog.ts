@@ -29,6 +29,15 @@ export const wsLog = {
     console.error(`[${provider}:ws] message handler threw`, error)
   },
   /**
+   * An `error`-channel frame the server pushed (e.g. a rejected or duplicate
+   * subscription). The frame parsed fine — this is the venue reporting a
+   * problem, not a malformed frame — so surface it at `error` with the
+   * server's own text rather than mislabelling it a parse failure.
+   */
+  serverError(provider: string, message: string): void {
+    console.error(`[${provider}:ws] server error`, message)
+  },
+  /**
    * A channel's (re)subscribe threw while (re)opening the socket — e.g. an
    * auth-token fetch rejected after a reconnect. Surfaced at `error`; the
    * channel is skipped so one failure does not abort the others.

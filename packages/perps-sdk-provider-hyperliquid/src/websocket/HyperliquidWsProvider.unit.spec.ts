@@ -34,7 +34,7 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     onStatusHandlers: Array<(status: string) => void> = []
     sent: string[] = []
     closed = false
-    status = 'reconnecting'
+    status = 'connected'
 
     constructor() {
       instance = this
@@ -80,6 +80,7 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     }
 
     simulateOpen() {
+      this.status = 'connected'
       for (const fn of this.onOpenHandlers) {
         fn()
       }
@@ -968,6 +969,35 @@ describe('HyperliquidWsProvider', () => {
       warnSpy.mockRestore()
     })
 
+    it('surfaces an error-channel frame as a server error, not a parse failure', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'error',
+          data: 'Already subscribed: {"type":"allMids"}',
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('server error'),
+        'Already subscribed: {"type":"allMids"}'
+      )
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
     it('logs and skips a structurally-invalid frame before it reaches the mapper', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -1170,6 +1200,31 @@ describe('HyperliquidWsProvider', () => {
         subscription: { type: 'l2Book', coin: 'BTC' },
       })
     })
+
+    it('does not double-subscribe when subscribing before the socket opens', async () => {
+      const provider = createProvider()
+      // Subscriptions made while the socket is still connecting are recorded
+      // but must not be sent inline — the open handler resubscribes them.
+      // Sending in both places makes HL reply "Already subscribed".
+      getMockRwsInstance().status = 'reconnecting'
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+
+      expect(getMockRwsInstance().sent).toHaveLength(0)
+
+      getMockRwsInstance().simulateOpen()
+
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
+        },
+      ])
+    })
   })
 
   describe('connection status', () => {
@@ -1184,10 +1239,10 @@ describe('HyperliquidWsProvider', () => {
       )
 
       // Current status delivered synchronously on subscribe.
-      expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
-
-      getMockRwsInstance().simulateStatus('connected')
       expect(onStatus).toHaveBeenLastCalledWith('connected')
+
+      getMockRwsInstance().simulateStatus('reconnecting')
+      expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
 
       getMockRwsInstance().simulateStatus('disconnected')
       expect(onStatus).toHaveBeenLastCalledWith('disconnected')
@@ -1207,6 +1262,31 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().simulateStatus('disconnected')
       expect(onStatus).not.toHaveBeenCalled()
+    })
+
+    it('keeps delivering status to a shared onStatus until its last subscription is removed', async () => {
+      const provider = createProvider()
+      const onStatus = vi.fn()
+
+      // Two subscriptions share one onStatus — as a React StrictMode
+      // double-mount does with a stable setState. Removing one must not strip
+      // the listener the other still depends on.
+      const unsub1 = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn(),
+        onStatus
+      )
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn(),
+        onStatus
+      )
+
+      unsub1()
+      onStatus.mockClear()
+
+      getMockRwsInstance().simulateStatus('reconnecting')
+      expect(onStatus).toHaveBeenCalledWith('reconnecting')
     })
   })
 

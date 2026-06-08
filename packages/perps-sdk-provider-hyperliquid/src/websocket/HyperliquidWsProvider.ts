@@ -72,7 +72,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
   private listeners = new Map<string, Set<SubscriptionListener>>()
-  private statusListeners = new Set<WsStatusListener>()
+  private statusListeners = new Map<WsStatusListener, number>()
   private readonly providerKey: string
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
@@ -93,7 +93,7 @@ export class HyperliquidWsProvider implements WsProvider {
     this.rws.on('message', (data) => this.handleMessage(data))
     this.rws.on('open', () => this.resubscribeAll())
     this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners) {
+      for (const fn of this.statusListeners.keys()) {
         fn(status)
       }
     })
@@ -132,10 +132,18 @@ export class HyperliquidWsProvider implements WsProvider {
     if (!onStatus) {
       return unsubscribe
     }
-    this.statusListeners.add(onStatus)
+    this.statusListeners.set(
+      onStatus,
+      (this.statusListeners.get(onStatus) ?? 0) + 1
+    )
     onStatus(this.rws.getStatus())
     return () => {
-      this.statusListeners.delete(onStatus)
+      const remaining = (this.statusListeners.get(onStatus) ?? 0) - 1
+      if (remaining > 0) {
+        this.statusListeners.set(onStatus, remaining)
+      } else {
+        this.statusListeners.delete(onStatus)
+      }
       unsubscribe()
     }
   }
@@ -163,12 +171,11 @@ export class HyperliquidWsProvider implements WsProvider {
           existing.count++
         } else {
           this.subs.set(subKey, { count: 1, payload })
-          await this.rws.ready()
-          this.rws.send(
-            JSON.stringify({ method: 'subscribe', subscription: payload })
-          )
+          this.sendSubscribe(payload)
         }
       }
+
+      await this.rws.ready()
 
       return () => {
         this.listeners.get(key)?.delete(listener)
@@ -204,11 +211,10 @@ export class HyperliquidWsProvider implements WsProvider {
       existing.count++
     } else {
       this.subs.set(key, { count: 1, payload })
-      await this.rws.ready()
-      this.rws.send(
-        JSON.stringify({ method: 'subscribe', subscription: payload })
-      )
+      this.sendSubscribe(payload)
     }
+
+    await this.rws.ready()
 
     return () => {
       this.listeners.get(key)?.delete(listener)
@@ -249,6 +255,21 @@ export class HyperliquidWsProvider implements WsProvider {
 
   private resubscribeAll() {
     for (const { payload } of this.subs.values()) {
+      this.rws.send(
+        JSON.stringify({ method: 'subscribe', subscription: payload })
+      )
+    }
+  }
+
+  /**
+   * Put a subscribe frame on the wire only when the socket is already open.
+   * While it is down the sub is recorded in `this.subs` and `resubscribeAll`
+   * on the next open is the sole authority that sends it; sending here too
+   * would double-subscribe, which HL rejects with
+   * `{channel:'error',data:'Already subscribed: …'}`.
+   */
+  private sendSubscribe(payload: object) {
+    if (this.rws.getStatus() === 'connected') {
       this.rws.send(
         JSON.stringify({ method: 'subscribe', subscription: payload })
       )
@@ -335,6 +356,11 @@ export class HyperliquidWsProvider implements WsProvider {
       msg.channel === 'pong' ||
       msg.channel === 'subscriptionResponse'
     ) {
+      return
+    }
+
+    if (msg.channel === 'error') {
+      wsLog.serverError(this.providerKey, String(msg.data))
       return
     }
 
