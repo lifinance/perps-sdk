@@ -919,6 +919,25 @@ describe('HyperliquidWsProvider', () => {
       errorSpy.mockRestore()
     })
 
+    it('keeps delivering data to a shared listener after a sibling unsubscribe', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const unsub1 = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        listener
+      )
+      await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        listener
+      )
+      unsub1()
+      listener.mockClear()
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'allMids', data: { mids: { BTC: '95000' } } })
+      )
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
+
     it('should ignore pong messages', async () => {
       const provider = createProvider()
       const listener = vi.fn()

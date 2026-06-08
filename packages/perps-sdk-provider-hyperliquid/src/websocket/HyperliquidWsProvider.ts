@@ -71,7 +71,7 @@ export const hyperliquidWsProvider =
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
   private subs = new Map<string, { count: number; payload: object }>()
-  private listeners = new Map<string, Set<SubscriptionListener>>()
+  private listeners = new Map<string, Map<SubscriptionListener, number>>()
   private statusListeners = new Map<WsStatusListener, number>()
   private readonly providerKey: string
   private readonly subDexes: string[]
@@ -156,10 +156,7 @@ export class HyperliquidWsProvider implements WsProvider {
 
     const key = this.toKey(sub)
 
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set())
-    }
-    this.listeners.get(key)!.add(listener)
+    this.addListener(key, listener)
 
     // Prices require multi-sub-dex allMids subscriptions
     if (sub.channel === 'prices') {
@@ -178,7 +175,7 @@ export class HyperliquidWsProvider implements WsProvider {
       await this.rws.ready()
 
       return () => {
-        this.listeners.get(key)?.delete(listener)
+        this.removeListener(key, listener)
         let allRemoved = true
         for (const { subKey, payload } of entries) {
           const s = this.subs.get(subKey)
@@ -217,7 +214,7 @@ export class HyperliquidWsProvider implements WsProvider {
     await this.rws.ready()
 
     return () => {
-      this.listeners.get(key)?.delete(listener)
+      this.removeListener(key, listener)
       const s = this.subs.get(key)
       if (s) {
         s.count--
@@ -324,10 +321,37 @@ export class HyperliquidWsProvider implements WsProvider {
     }
   }
 
+  /**
+   * Register `listener` under `key`, ref-counted: the same listener (e.g. a
+   * stable React callback re-subscribed under StrictMode's double-mount) may
+   * register more than once, and only the matching number of removals drops
+   * it — so a sibling unsubscribe never strips a listener another live
+   * subscription still needs.
+   */
+  private addListener(key: string, listener: SubscriptionListener) {
+    const fns =
+      this.listeners.get(key) ?? new Map<SubscriptionListener, number>()
+    fns.set(listener, (fns.get(listener) ?? 0) + 1)
+    this.listeners.set(key, fns)
+  }
+
+  private removeListener(key: string, listener: SubscriptionListener) {
+    const fns = this.listeners.get(key)
+    if (!fns) {
+      return
+    }
+    const remaining = (fns.get(listener) ?? 0) - 1
+    if (remaining > 0) {
+      fns.set(listener, remaining)
+    } else {
+      fns.delete(listener)
+    }
+  }
+
   private emit(key: string, event: SubscriptionEvent) {
     const fns = this.listeners.get(key)
     if (fns) {
-      for (const fn of fns) {
+      for (const fn of fns.keys()) {
         fn(event)
       }
     }
@@ -336,7 +360,7 @@ export class HyperliquidWsProvider implements WsProvider {
   private emitToPrefix(prefix: string, event: SubscriptionEvent) {
     for (const [key, fns] of this.listeners) {
       if (key.startsWith(prefix)) {
-        for (const fn of fns) {
+        for (const fn of fns.keys()) {
           fn(event)
         }
       }

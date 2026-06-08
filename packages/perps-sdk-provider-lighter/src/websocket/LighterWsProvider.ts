@@ -139,7 +139,10 @@ export class LighterWsProvider implements WsProvider {
   private readonly client: PerpsSDKClient | undefined
 
   private readonly subs = new Map<string, SubState>()
-  private readonly listeners = new Map<string, Set<SubscriptionListener>>()
+  private readonly listeners = new Map<
+    string,
+    Map<SubscriptionListener, number>
+  >()
   private readonly statusListeners = new Map<WsStatusListener, number>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
@@ -237,10 +240,7 @@ export class LighterWsProvider implements WsProvider {
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set())
-    }
-    this.listeners.get(key)?.add(listener)
+    this.addListener(key, listener)
 
     const existing = this.subs.get(key)
     if (existing) {
@@ -257,7 +257,7 @@ export class LighterWsProvider implements WsProvider {
     }
 
     return () => {
-      this.listeners.get(key)?.delete(listener)
+      this.removeListener(key, listener)
       const s = this.subs.get(key)
       if (!s) {
         return
@@ -700,12 +700,39 @@ export class LighterWsProvider implements WsProvider {
     return Number.isFinite(n) ? n : null
   }
 
+  /**
+   * Register `listener` under `key`, ref-counted: the same listener (e.g. a
+   * stable React callback re-subscribed under StrictMode's double-mount) may
+   * register more than once, and only the matching number of removals drops
+   * it — so a sibling unsubscribe never strips a listener another live
+   * subscription still needs.
+   */
+  private addListener(key: string, listener: SubscriptionListener): void {
+    const fns =
+      this.listeners.get(key) ?? new Map<SubscriptionListener, number>()
+    fns.set(listener, (fns.get(listener) ?? 0) + 1)
+    this.listeners.set(key, fns)
+  }
+
+  private removeListener(key: string, listener: SubscriptionListener): void {
+    const fns = this.listeners.get(key)
+    if (!fns) {
+      return
+    }
+    const remaining = (fns.get(listener) ?? 0) - 1
+    if (remaining > 0) {
+      fns.set(listener, remaining)
+    } else {
+      fns.delete(listener)
+    }
+  }
+
   private emit(key: string, event: SubscriptionEvent): void {
     const fns = this.listeners.get(key)
     if (!fns) {
       return
     }
-    for (const fn of fns) {
+    for (const fn of fns.keys()) {
       fn(event)
     }
   }

@@ -180,6 +180,32 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
+  it('keeps delivering data to a shared listener after a sibling unsubscribe', async () => {
+    const provider = makeProvider()
+    ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+    ;(provider as any).rws.send = vi.fn()
+    const listener = vi.fn()
+
+    // Same listener subscribed twice (a React StrictMode double-mount); the
+    // first unsubscribe must not strip the listener the second still needs.
+    const unsub1 = await provider.subscribe(
+      { channel: 'prices', dex: 'lighter' },
+      listener
+    )
+    await provider.subscribe({ channel: 'prices', dex: 'lighter' }, listener)
+    unsub1()
+    listener.mockClear()
+
+    ;(provider as any).handleMessage(
+      JSON.stringify({
+        type: 'update/market_stats',
+        market_stats: { '0': { market_id: 0, last_trade_price: '50000' } },
+      })
+    )
+    expect(listener).toHaveBeenCalledTimes(1)
+    provider.close()
+  })
+
   it('rejects spotBalances which Lighter does not expose', async () => {
     const provider = makeProvider()
     await expect(
