@@ -171,44 +171,19 @@ describe('HyperliquidWsProvider', () => {
       expect(typeof unsub).toBe('function')
     })
 
-    it('should ref-count subscriptions - second subscriber does not send again', async () => {
+    it('unsubscribes both default + xyz allMids when the prices listener unsubscribes', async () => {
       const provider = createProvider()
 
-      await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        vi.fn()
-      )
-      await provider.subscribe(
+      const unsub = await provider.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
         vi.fn()
       )
 
-      // Only two subscribe messages (default + xyz), not four
+      getMockRwsInstance().sent = [] // Clear the two subscribe messages.
+      unsub()
+
       expect(getMockRwsInstance().sent).toHaveLength(2)
-    })
-
-    it('should send unsubscribe when last listener unsubscribes', async () => {
-      const provider = createProvider()
-
-      const unsub1 = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        vi.fn()
-      )
-      const unsub2 = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        vi.fn()
-      )
-
-      unsub1()
-      // Still one subscriber, no unsubscribe sent (2 initial subscribes)
-      expect(getMockRwsInstance().sent).toHaveLength(2)
-
-      unsub2()
-      // Last subscriber removed, unsubscribes for both default + xyz
-      expect(getMockRwsInstance().sent).toHaveLength(4)
-      const unsubPayloads = getMockRwsInstance()
-        .sent.slice(2)
-        .map((s) => JSON.parse(s))
+      const unsubPayloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(unsubPayloads).toContainEqual({
         method: 'unsubscribe',
         subscription: { type: 'allMids' },
@@ -919,25 +894,6 @@ describe('HyperliquidWsProvider', () => {
       errorSpy.mockRestore()
     })
 
-    it('keeps delivering data to a shared listener after a sibling unsubscribe', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-      const unsub1 = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        listener
-      )
-      await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        listener
-      )
-      unsub1()
-      listener.mockClear()
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({ channel: 'allMids', data: { mids: { BTC: '95000' } } })
-      )
-      expect(listener).toHaveBeenCalledTimes(1)
-    })
-
     it('should ignore pong messages', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -1100,19 +1056,16 @@ describe('HyperliquidWsProvider', () => {
       errorSpy.mockRestore()
     })
 
-    it('should notify multiple listeners on same subscription', async () => {
+    it('should not notify a listener after it unsubscribes', async () => {
       const provider = createProvider()
-      const listener1 = vi.fn()
-      const listener2 = vi.fn()
+      const listener = vi.fn()
 
-      await provider.subscribe(
+      const unsub = await provider.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
-        listener1
+        listener
       )
-      await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        listener2
-      )
+
+      unsub()
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
@@ -1121,35 +1074,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener1).toHaveBeenCalledOnce()
-      expect(listener2).toHaveBeenCalledOnce()
-    })
-
-    it('should not notify unsubscribed listener', async () => {
-      const provider = createProvider()
-      const listener1 = vi.fn()
-      const listener2 = vi.fn()
-
-      const unsub1 = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        listener1
-      )
-      await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        listener2
-      )
-
-      unsub1()
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '96000' } },
-        })
-      )
-
-      expect(listener1).not.toHaveBeenCalled()
-      expect(listener2).toHaveBeenCalledOnce()
+      expect(listener).not.toHaveBeenCalled()
     })
 
     it('should route messages to correct subscription only', async () => {
@@ -1283,29 +1208,29 @@ describe('HyperliquidWsProvider', () => {
       expect(onStatus).not.toHaveBeenCalled()
     })
 
-    it('keeps delivering status to a shared onStatus until its last subscription is removed', async () => {
+    it('delivers status to each active subscription and drops it on unsubscribe', async () => {
       const provider = createProvider()
-      const onStatus = vi.fn()
+      const onStatusA = vi.fn()
+      const onStatusB = vi.fn()
 
-      // Two subscriptions share one onStatus — as a React StrictMode
-      // double-mount does with a stable setState. Removing one must not strip
-      // the listener the other still depends on.
-      const unsub1 = await provider.subscribe(
+      const unsubA = await provider.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
         vi.fn(),
-        onStatus
+        onStatusA
       )
       await provider.subscribe(
         { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
         vi.fn(),
-        onStatus
+        onStatusB
       )
 
-      unsub1()
-      onStatus.mockClear()
+      unsubA()
+      onStatusA.mockClear()
+      onStatusB.mockClear()
 
       getMockRwsInstance().simulateStatus('reconnecting')
-      expect(onStatus).toHaveBeenCalledWith('reconnecting')
+      expect(onStatusA).not.toHaveBeenCalled()
+      expect(onStatusB).toHaveBeenCalledWith('reconnecting')
     })
   })
 

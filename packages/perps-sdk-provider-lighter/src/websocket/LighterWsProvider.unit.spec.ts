@@ -103,10 +103,7 @@ describe('LighterWsProvider', () => {
 
   /** Inject a listener directly, bypassing the subscribe WS path. */
   const inject = (p: LighterWsProvider, key: string, fn: () => void) => {
-    if (!(p as any).listeners.has(key)) {
-      ;(p as any).listeners.set(key, new Set())
-    }
-    ;(p as any).listeners.get(key).add(fn)
+    ;(p as any).listeners.set(key, fn)
   }
 
   it('accepts candle subscriptions as a no-op (Lighter has no candle WS channel)', async () => {
@@ -140,7 +137,7 @@ describe('LighterWsProvider', () => {
     expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
 
     // The provider bridges the underlying rws status to its subscribers.
-    for (const fn of (provider as any).statusListeners.keys()) {
+    for (const fn of (provider as any).statusListeners) {
       fn('disconnected')
     }
     expect(onStatus).toHaveBeenLastCalledWith('disconnected')
@@ -150,50 +147,47 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
-  it('keeps delivering status to a shared onStatus until its last subscription is removed', async () => {
+  it('delivers status to each active subscription and drops it on unsubscribe', async () => {
     const provider = makeProvider()
     ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
     ;(provider as any).rws.send = vi.fn()
-    const onStatus = vi.fn()
+    const onStatusA = vi.fn()
+    const onStatusB = vi.fn()
 
-    // Two subscriptions share one onStatus — as a React StrictMode
-    // double-mount does with a stable setState. Removing one must not strip
-    // the listener the other still depends on.
-    const unsub1 = await provider.subscribe(
+    const unsubA = await provider.subscribe(
       { channel: 'prices', dex: 'lighter' },
       vi.fn(),
-      onStatus
+      onStatusA
     )
     await provider.subscribe(
       { channel: 'orderbook', dex: 'lighter', marketId: '5' },
       vi.fn(),
-      onStatus
+      onStatusB
     )
 
-    unsub1()
-    onStatus.mockClear()
+    unsubA()
+    onStatusA.mockClear()
+    onStatusB.mockClear()
 
-    for (const fn of (provider as any).statusListeners.keys()) {
+    for (const fn of (provider as any).statusListeners) {
       fn('reconnecting')
     }
-    expect(onStatus).toHaveBeenCalledWith('reconnecting')
+    expect(onStatusA).not.toHaveBeenCalled()
+    expect(onStatusB).toHaveBeenCalledWith('reconnecting')
     provider.close()
   })
 
-  it('keeps delivering data to a shared listener after a sibling unsubscribe', async () => {
+  it('stops delivering data to a listener after it unsubscribes', async () => {
     const provider = makeProvider()
     ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
     ;(provider as any).rws.send = vi.fn()
     const listener = vi.fn()
 
-    // Same listener subscribed twice (a React StrictMode double-mount); the
-    // first unsubscribe must not strip the listener the second still needs.
-    const unsub1 = await provider.subscribe(
+    const unsubscribe = await provider.subscribe(
       { channel: 'prices', dex: 'lighter' },
       listener
     )
-    await provider.subscribe({ channel: 'prices', dex: 'lighter' }, listener)
-    unsub1()
+    unsubscribe()
     listener.mockClear()
 
     ;(provider as any).handleMessage(
@@ -202,7 +196,7 @@ describe('LighterWsProvider', () => {
         market_stats: { '0': { market_id: 0, last_trade_price: '50000' } },
       })
     )
-    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener).not.toHaveBeenCalled()
     provider.close()
   })
 

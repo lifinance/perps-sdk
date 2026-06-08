@@ -70,9 +70,9 @@ export const hyperliquidWsProvider =
  */
 export class HyperliquidWsProvider implements WsProvider {
   private rws: ReconnectingWebSocket
-  private subs = new Map<string, { count: number; payload: object }>()
-  private listeners = new Map<string, Map<SubscriptionListener, number>>()
-  private statusListeners = new Map<WsStatusListener, number>()
+  private subs = new Map<string, object>()
+  private listeners = new Map<string, SubscriptionListener>()
+  private statusListeners = new Set<WsStatusListener>()
   private readonly providerKey: string
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
@@ -93,7 +93,7 @@ export class HyperliquidWsProvider implements WsProvider {
     this.rws.on('message', (data) => this.handleMessage(data))
     this.rws.on('open', () => this.resubscribeAll())
     this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners.keys()) {
+      for (const fn of this.statusListeners) {
         fn(status)
       }
     })
@@ -132,18 +132,10 @@ export class HyperliquidWsProvider implements WsProvider {
     if (!onStatus) {
       return unsubscribe
     }
-    this.statusListeners.set(
-      onStatus,
-      (this.statusListeners.get(onStatus) ?? 0) + 1
-    )
+    this.statusListeners.add(onStatus)
     onStatus(this.rws.getStatus())
     return () => {
-      const remaining = (this.statusListeners.get(onStatus) ?? 0) - 1
-      if (remaining > 0) {
-        this.statusListeners.set(onStatus, remaining)
-      } else {
-        this.statusListeners.delete(onStatus)
-      }
+      this.statusListeners.delete(onStatus)
       unsubscribe()
     }
   }
@@ -156,76 +148,44 @@ export class HyperliquidWsProvider implements WsProvider {
 
     const key = this.toKey(sub)
 
-    this.addListener(key, listener)
+    this.listeners.set(key, listener)
 
     // Prices require multi-sub-dex allMids subscriptions
     if (sub.channel === 'prices') {
       const entries = this.getPriceSubEntries()
 
       for (const { subKey, payload } of entries) {
-        const existing = this.subs.get(subKey)
-        if (existing) {
-          existing.count++
-        } else {
-          this.subs.set(subKey, { count: 1, payload })
-          this.sendSubscribe(payload)
-        }
+        this.subs.set(subKey, payload)
+        this.sendSubscribe(payload)
       }
 
       await this.rws.ready()
 
       return () => {
-        this.removeListener(key, listener)
-        let allRemoved = true
+        this.listeners.delete(key)
         for (const { subKey, payload } of entries) {
-          const s = this.subs.get(subKey)
-          if (s) {
-            s.count--
-            if (s.count <= 0) {
-              this.subs.delete(subKey)
-              this.rws.send(
-                JSON.stringify({
-                  method: 'unsubscribe',
-                  subscription: payload,
-                })
-              )
-            } else {
-              allRemoved = false
-            }
-          }
+          this.subs.delete(subKey)
+          this.rws.send(
+            JSON.stringify({ method: 'unsubscribe', subscription: payload })
+          )
         }
-        if (allRemoved) {
-          this.listeners.delete(key)
-          this.midsBySubDex.clear()
-        }
+        this.midsBySubDex.clear()
       }
     }
 
     // All other channels: single WS subscription per key
     const payload = this.toHlPayload(sub)
-    const existing = this.subs.get(key)
-    if (existing) {
-      existing.count++
-    } else {
-      this.subs.set(key, { count: 1, payload })
-      this.sendSubscribe(payload)
-    }
+    this.subs.set(key, payload)
+    this.sendSubscribe(payload)
 
     await this.rws.ready()
 
     return () => {
-      this.removeListener(key, listener)
-      const s = this.subs.get(key)
-      if (s) {
-        s.count--
-        if (s.count <= 0) {
-          this.subs.delete(key)
-          this.listeners.delete(key)
-          this.rws.send(
-            JSON.stringify({ method: 'unsubscribe', subscription: payload })
-          )
-        }
-      }
+      this.listeners.delete(key)
+      this.subs.delete(key)
+      this.rws.send(
+        JSON.stringify({ method: 'unsubscribe', subscription: payload })
+      )
     }
   }
 
@@ -251,7 +211,7 @@ export class HyperliquidWsProvider implements WsProvider {
   }
 
   private resubscribeAll() {
-    for (const { payload } of this.subs.values()) {
+    for (const payload of this.subs.values()) {
       this.rws.send(
         JSON.stringify({ method: 'subscribe', subscription: payload })
       )
@@ -321,48 +281,14 @@ export class HyperliquidWsProvider implements WsProvider {
     }
   }
 
-  /**
-   * Register `listener` under `key`, ref-counted: the same listener (e.g. a
-   * stable React callback re-subscribed under StrictMode's double-mount) may
-   * register more than once, and only the matching number of removals drops
-   * it — so a sibling unsubscribe never strips a listener another live
-   * subscription still needs.
-   */
-  private addListener(key: string, listener: SubscriptionListener) {
-    const fns =
-      this.listeners.get(key) ?? new Map<SubscriptionListener, number>()
-    fns.set(listener, (fns.get(listener) ?? 0) + 1)
-    this.listeners.set(key, fns)
-  }
-
-  private removeListener(key: string, listener: SubscriptionListener) {
-    const fns = this.listeners.get(key)
-    if (!fns) {
-      return
-    }
-    const remaining = (fns.get(listener) ?? 0) - 1
-    if (remaining > 0) {
-      fns.set(listener, remaining)
-    } else {
-      fns.delete(listener)
-    }
-  }
-
   private emit(key: string, event: SubscriptionEvent) {
-    const fns = this.listeners.get(key)
-    if (fns) {
-      for (const fn of fns.keys()) {
-        fn(event)
-      }
-    }
+    this.listeners.get(key)?.(event)
   }
 
   private emitToPrefix(prefix: string, event: SubscriptionEvent) {
-    for (const [key, fns] of this.listeners) {
+    for (const [key, fn] of this.listeners) {
       if (key.startsWith(prefix)) {
-        for (const fn of fns.keys()) {
-          fn(event)
-        }
+        fn(event)
       }
     }
   }

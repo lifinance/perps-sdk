@@ -86,8 +86,6 @@ export type LighterAuthProvider = (
 ) => Promise<string | undefined>
 
 interface SubState {
-  /** Ref count — we send unsubscribe when this drops to zero. */
-  count: number
   /** Raw Lighter WS channel name (e.g. `order_book/5`, `account_all_orders/42`). */
   channel: string
   /** L1 address that triggered this sub (auth channels only). */
@@ -139,11 +137,8 @@ export class LighterWsProvider implements WsProvider {
   private readonly client: PerpsSDKClient | undefined
 
   private readonly subs = new Map<string, SubState>()
-  private readonly listeners = new Map<
-    string,
-    Map<SubscriptionListener, number>
-  >()
-  private readonly statusListeners = new Map<WsStatusListener, number>()
+  private readonly listeners = new Map<string, SubscriptionListener>()
+  private readonly statusListeners = new Set<WsStatusListener>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -186,7 +181,7 @@ export class LighterWsProvider implements WsProvider {
     })
     this.rws.on('close', () => this.stopKeepalive())
     this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners.keys()) {
+      for (const fn of this.statusListeners) {
         fn(status)
       }
     })
@@ -201,18 +196,10 @@ export class LighterWsProvider implements WsProvider {
     if (!onStatus) {
       return unsubscribe
     }
-    this.statusListeners.set(
-      onStatus,
-      (this.statusListeners.get(onStatus) ?? 0) + 1
-    )
+    this.statusListeners.add(onStatus)
     onStatus(this.rws.getStatus())
     return () => {
-      const remaining = (this.statusListeners.get(onStatus) ?? 0) - 1
-      if (remaining > 0) {
-        this.statusListeners.set(onStatus, remaining)
-      } else {
-        this.statusListeners.delete(onStatus)
-      }
+      this.statusListeners.delete(onStatus)
       unsubscribe()
     }
   }
@@ -240,42 +227,27 @@ export class LighterWsProvider implements WsProvider {
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
-    this.addListener(key, listener)
+    this.listeners.set(key, listener)
 
-    const existing = this.subs.get(key)
-    if (existing) {
-      existing.count++
-    } else {
-      this.subs.set(key, { count: 1, channel, needsAuth, address })
-      // Only send now if already open; otherwise onOpen resubscribes it on
-      // (re)connect. Sending in both places double-subscribes — and for auth
-      // channels needlessly re-fetches a token.
-      if (this.rws.getStatus() === 'connected') {
-        await this.sendSubscribe(channel, needsAuth, address)
-      }
-      await this.rws.ready()
+    this.subs.set(key, { channel, needsAuth, address })
+    // Only send now if already open; otherwise onOpen resubscribes it on
+    // (re)connect. Sending in both places double-subscribes — and for auth
+    // channels needlessly re-fetches a token.
+    if (this.rws.getStatus() === 'connected') {
+      await this.sendSubscribe(channel, needsAuth, address)
     }
+    await this.rws.ready()
 
     return () => {
-      this.removeListener(key, listener)
-      const s = this.subs.get(key)
-      if (!s) {
-        return
-      }
-      s.count--
-      if (s.count <= 0) {
-        this.subs.delete(key)
-        this.listeners.delete(key)
-        if (sub.channel === 'orderbook') {
-          const id = Number(sub.marketId)
-          if (Number.isFinite(id)) {
-            this.orderbooks.delete(id)
-          }
+      this.listeners.delete(key)
+      this.subs.delete(key)
+      if (sub.channel === 'orderbook') {
+        const id = Number(sub.marketId)
+        if (Number.isFinite(id)) {
+          this.orderbooks.delete(id)
         }
-        this.rws.send(
-          JSON.stringify({ type: 'unsubscribe', channel: s.channel })
-        )
       }
+      this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
     }
   }
 
@@ -700,41 +672,8 @@ export class LighterWsProvider implements WsProvider {
     return Number.isFinite(n) ? n : null
   }
 
-  /**
-   * Register `listener` under `key`, ref-counted: the same listener (e.g. a
-   * stable React callback re-subscribed under StrictMode's double-mount) may
-   * register more than once, and only the matching number of removals drops
-   * it — so a sibling unsubscribe never strips a listener another live
-   * subscription still needs.
-   */
-  private addListener(key: string, listener: SubscriptionListener): void {
-    const fns =
-      this.listeners.get(key) ?? new Map<SubscriptionListener, number>()
-    fns.set(listener, (fns.get(listener) ?? 0) + 1)
-    this.listeners.set(key, fns)
-  }
-
-  private removeListener(key: string, listener: SubscriptionListener): void {
-    const fns = this.listeners.get(key)
-    if (!fns) {
-      return
-    }
-    const remaining = (fns.get(listener) ?? 0) - 1
-    if (remaining > 0) {
-      fns.set(listener, remaining)
-    } else {
-      fns.delete(listener)
-    }
-  }
-
   private emit(key: string, event: SubscriptionEvent): void {
-    const fns = this.listeners.get(key)
-    if (!fns) {
-      return
-    }
-    for (const fn of fns.keys()) {
-      fn(event)
-    }
+    this.listeners.get(key)?.(event)
   }
 }
 
