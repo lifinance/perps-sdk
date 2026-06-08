@@ -9,6 +9,7 @@ import type {
 } from './account.js'
 import type { Asset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
+import type { OhlcvInterval } from './market.js'
 import type {
   Param,
   ParamOption,
@@ -140,6 +141,7 @@ const hyperliquidProvider: Provider = {
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   minOrderValueUsd: 10,
+  supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
 
 // Provider exercising the Lighter mapping: one setup gate, two options.
@@ -165,7 +167,8 @@ const lighterProvider: Provider = {
   minReduceOrderValueUsd: 1,
   minWithdrawalUsd: 5,
   depositFeeUsd: 0,
-  withdrawalFeeUsd: 1,
+  withdrawalFeeUsd: 1,  
+  supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
 }
 
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
@@ -211,9 +214,11 @@ const providerWithNoDescriptors: Provider = {
   options: [],
   actions: [],
   categories: [],
+  supportedIntervals: [],
 }
 
-// Announced-but-not-launched provider — `active: false` greys it out.
+// Announced-but-not-launched provider — `active: false` greys it out, and an
+// inactive/no-candle provider declares an empty interval set (still required).
 const announcedProvider: Provider = {
   key: 'announced',
   name: 'Announced',
@@ -224,6 +229,7 @@ const announcedProvider: Provider = {
   options: [],
   actions: [],
   categories: [],
+  supportedIntervals: [],
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +355,18 @@ type _OptionsIsRequired = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'options'>, 'options'>
 >
 
+// `supportedIntervals` reuses `OhlcvInterval` (no new enum) and is required —
+// every provider declares its set, empty for inactive / no-candle venues.
+type _SupportedIntervalsShape = Expect<
+  Equals<Provider['supportedIntervals'], OhlcvInterval[]>
+>
+type _SupportedIntervalsIsRequired = Expect<
+  Equals<
+    Extract<RequiredKeys<Provider>, 'supportedIntervals'>,
+    'supportedIntervals'
+  >
+>
+
 // `ProviderAction` keys: the three core fields plus the optional
 // presentation / ordering hints. Catches an accidental rename / addition.
 type _ProviderActionKeys = Expect<
@@ -437,6 +455,8 @@ export type _TypeAssertions = [
   _ActionsFieldShape,
   _SetupIsRequired,
   _OptionsIsRequired,
+  _SupportedIntervalsShape,
+  _SupportedIntervalsIsRequired,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -534,6 +554,34 @@ describe('Provider order-value minimums', () => {
   it('admits a provider that advertises no order-value minimum', () => {
     expect(providerWithNoDescriptors.minOrderValueUsd).toBeUndefined()
     expect(providerWithNoDescriptors.minReduceOrderValueUsd).toBeUndefined()
+  })
+})
+
+describe('Provider.supportedIntervals', () => {
+  it('carries the venue candle intervals in ascending order', () => {
+    expect(hyperliquidProvider.supportedIntervals).toEqual([
+      '1m',
+      '5m',
+      '15m',
+      '1h',
+      '4h',
+      '1d',
+    ])
+  })
+
+  it('admits a per-provider interval set distinct from another venue', () => {
+    expect(lighterProvider.supportedIntervals).toEqual([
+      '1m',
+      '5m',
+      '15m',
+      '1h',
+      '1d',
+    ])
+  })
+
+  it('declares an empty set for inactive / no-candle providers', () => {
+    expect(announcedProvider.supportedIntervals).toEqual([])
+    expect(providerWithNoDescriptors.supportedIntervals).toEqual([])
   })
 })
 

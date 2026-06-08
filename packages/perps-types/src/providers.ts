@@ -1,5 +1,6 @@
 import type { Asset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
+import type { OhlcvInterval } from './market.js'
 
 /** @public */
 export interface ParamOption {
@@ -107,6 +108,12 @@ export interface Provider {
   upVotes?: number
   /** Aggregate down-votes. Populated only for inactive providers; see {@link upVotes}. */
   downVotes?: number
+  /**
+   * Candle intervals this provider supports for OHLCV/chart requests, in
+   * ascending order. Drives the client's chart interval selector. Empty for
+   * providers that expose no candle data.
+   */
+  supportedIntervals: OhlcvInterval[]
 }
 
 /** @public */
