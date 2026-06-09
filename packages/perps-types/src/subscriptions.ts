@@ -16,6 +16,19 @@ export type OrderbookSubscription = {
   dex: string
   marketId: string
   depth?: number
+  /**
+   * Significant-figures price-aggregation hint. Providers that aggregate the
+   * book server-side (Hyperliquid) bucket levels to this many significant
+   * figures; `undefined` requests full precision. Providers that stream the
+   * full book (Lighter) ignore it.
+   */
+  nSigFigs?: number
+  /**
+   * Finer sub-bucketing within the most-significant `nSigFigs` digit. Only
+   * meaningful alongside `nSigFigs`; ignored by providers that don't aggregate
+   * server-side.
+   */
+  mantissa?: number
 }
 /** @public */
 export type CandleSubscription = {

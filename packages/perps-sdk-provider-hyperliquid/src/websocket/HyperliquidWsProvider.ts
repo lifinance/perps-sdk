@@ -40,6 +40,9 @@ import {
   spotPriceById,
 } from '../utils/index.js'
 
+/** HL's `l2Book` returns at most this many levels per side (slow/default mode). */
+const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
  * `new PerpsWsClient(client, { wsProviders: { hyperliquid: hyperliquidWsProvider() } })`.
@@ -224,7 +227,13 @@ export class HyperliquidWsProvider extends WsProviderBase {
         return {
           type: 'l2Book',
           coin: sub.marketId,
-          ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
+          // HL's l2Book ignores any level-count field; it returns up to 20
+          // levels/side and controls granularity via nSigFigs (+ mantissa,
+          // valid only when nSigFigs === 5).
+          ...(sub.nSigFigs !== undefined ? { nSigFigs: sub.nSigFigs } : {}),
+          ...(sub.nSigFigs === 5 && sub.mantissa !== undefined
+            ? { mantissa: sub.mantissa }
+            : {}),
         }
       case 'candle':
         return {
@@ -318,8 +327,12 @@ export class HyperliquidWsProvider extends WsProviderBase {
       data: {
         provider: this.providerKey,
         marketId: data.coin,
-        bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
-        asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
+        bids: data.levels[0]
+          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+          .map((l) => ({ price: l.px, size: l.sz })),
+        asks: data.levels[1]
+          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+          .map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
       },
     })
