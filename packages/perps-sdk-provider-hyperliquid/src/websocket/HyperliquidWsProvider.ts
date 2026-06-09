@@ -10,6 +10,7 @@ import {
 } from '@lifi/perps-sdk'
 import {
   type Market,
+  type MarketDisplay,
   type OpenOrder,
   OrderSide,
   OrderType,
@@ -29,12 +30,12 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
+  findMarket,
   isTriggerOrder,
   mapFill,
   mapOrderStatus,
   mapOrderType,
   mapPosition,
-  requireMarket,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
@@ -42,6 +43,9 @@ import {
 
 /** HL's `l2Book` returns at most this many levels per side (slow/default mode). */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
+/** Minimum gap between unknown-market-triggered registry refetches. */
+const MARKET_REFRESH_COOLDOWN_MS = 60_000
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -75,6 +79,8 @@ export class HyperliquidWsProvider extends WsProviderBase {
   private midsBySubDex = new Map<string, Record<string, string>>()
   private byMarketId = new Map<string, Market>()
   private byMarketIdPromise: Promise<void> | undefined
+  private warnedMarketIds = new Set<string>()
+  private marketRefreshAfter = 0
 
   constructor(
     wsUrl: string,
@@ -97,7 +103,11 @@ export class HyperliquidWsProvider extends WsProviderBase {
     if (this.byMarketId.size > 0 || client === undefined) {
       return
     }
-    await cachePromise(
+    await this.fetchMarketMap(client)
+  }
+
+  private fetchMarketMap(client: PerpsSDKClient): Promise<void> {
+    return cachePromise(
       () => this.byMarketIdPromise,
       (p) => {
         this.byMarketIdPromise = p
@@ -107,7 +117,41 @@ export class HyperliquidWsProvider extends WsProviderBase {
           provider: this.providerKey,
         })
         this.byMarketId = new Map(markets.map((m) => [m.id, m]))
+        this.warnedMarketIds.clear()
       }
+    )
+  }
+
+  /**
+   * Resolve a wire market id against the registry without aborting the
+   * containing frame: a miss warns once per id, schedules a cooldown-gated
+   * registry refetch (the id may have listed after the snapshot) and returns
+   * `undefined` so the caller skips just that item.
+   */
+  private resolveMarket(marketId: string): MarketDisplay | undefined {
+    const market = findMarket(this.byMarketId, marketId)
+    if (market) {
+      return market
+    }
+    if (!this.warnedMarketIds.has(marketId)) {
+      this.warnedMarketIds.add(marketId)
+      wsLog.unknownMarket(this.providerKey, marketId)
+    }
+    this.refreshMarketMap()
+    return undefined
+  }
+
+  private refreshMarketMap(): void {
+    const client = this.client
+    const now = Date.now()
+    if (client === undefined || now < this.marketRefreshAfter) {
+      return
+    }
+    // Set synchronously so concurrent frames cannot trigger a refetch storm.
+    this.marketRefreshAfter = now + MARKET_REFRESH_COOLDOWN_MS
+    this.byMarketIdPromise = undefined
+    this.fetchMarketMap(client).catch((error) =>
+      wsLog.marketRefreshFailure(this.providerKey, error)
     )
   }
 
@@ -364,7 +408,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
         continue
       }
       const type = mapOrderType(o.orderType)
-      const market = requireMarket(this.byMarketId, o.coin)
+      const market = this.resolveMarket(o.coin)
+      if (!market) {
+        continue
+      }
       const createdAt = new Date(o.timestamp).toISOString()
       if (isTriggerOrder(o)) {
         const isLimit =
@@ -401,9 +448,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.map((f) =>
-      mapFill(f as HlUserFill, requireMarket(this.byMarketId, f.coin))
-    )
+    const items = data.fills.flatMap((f) => {
+      const market = this.resolveMarket(f.coin)
+      return market ? [mapFill(f as HlUserFill, market)] : []
+    })
     this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
   }
 
@@ -411,12 +459,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
     data: HlWsAllDexsClearinghouseStateData
   ) {
     const positions = data.clearinghouseStates.flatMap(([, state]) =>
-      state.assetPositions.map((ap) =>
-        mapPosition(
-          ap as HlAssetPosition,
-          requireMarket(this.byMarketId, ap.position.coin)
-        )
-      )
+      state.assetPositions.flatMap((ap) => {
+        const market = this.resolveMarket(ap.position.coin)
+        return market ? [mapPosition(ap as HlAssetPosition, market)] : []
+      })
     )
     this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',

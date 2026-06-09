@@ -48,4 +48,21 @@ export const wsLog = {
       error
     )
   },
+  /**
+   * A frame item referenced a market id missing from the registry (e.g.
+   * listed after the snapshot). The item is skipped — never the whole frame —
+   * so logged at `warn`.
+   */
+  unknownMarket(provider: string, marketId: string): void {
+    console.warn(
+      `[${provider}:ws] skipping item for unknown market '${marketId}'`
+    )
+  },
+  /**
+   * A background market-registry refetch rejected. Unknown-market items keep
+   * being skipped until the next cooldown-gated retry, so logged at `warn`.
+   */
+  marketRefreshFailure(provider: string, error: unknown): void {
+    console.warn(`[${provider}:ws] market registry refresh failed`, error)
+  },
 } as const
