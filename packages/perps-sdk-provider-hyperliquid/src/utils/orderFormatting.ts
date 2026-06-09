@@ -8,6 +8,7 @@
  */
 
 import { stringToFloat } from '@lifi/perps-sdk'
+import Big from 'big.js'
 
 /**
  * Max combined decimals (size + price) enforced by Hyperliquid.
@@ -48,11 +49,12 @@ export function getMaxPriceDecimals(
  * @public
  */
 export function formatOrderSize(size: number, szDecimals: number): string {
-  // Truncate (don't round up) to avoid exceeding available balance
-  const multiplier = 10 ** szDecimals
-  const truncated = Math.floor(size * multiplier) / multiplier
-  // Remove trailing zeros by round-tripping through stringToFloat
-  return stringToFloat(truncated.toFixed(szDecimals)).toString()
+  // Big.roundDown truncates toward zero — never round a size up, it could
+  // exceed available balance. Exact decimal arithmetic: flooring the float
+  // product dropped a lot step (0.29 * 100 === 28.999999999999996).
+  const truncated = new Big(size).round(szDecimals, Big.roundDown)
+  // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
+  return truncated.eq(0) ? '0' : truncated.toFixed()
 }
 
 /**
