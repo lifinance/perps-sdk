@@ -320,6 +320,25 @@ describe('ReconnectingWebSocket', () => {
 
       await expect(readyPromise).rejects.toThrow('WebSocket closed')
     })
+
+    it('should reject immediately when called after reconnect exhaustion', async () => {
+      const rws = new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 0,
+      })
+      latestWs().simulateClose()
+      expect(rws.getStatus()).toBe('disconnected')
+
+      await expect(rws.ready()).rejects.toThrow(
+        'WebSocket max reconnect attempts reached'
+      )
+    })
+
+    it('should reject immediately when called after manual close', async () => {
+      const rws = new ReconnectingWebSocket('wss://example.com')
+      rws.close()
+
+      await expect(rws.ready()).rejects.toThrow('WebSocket closed')
+    })
   })
 
   describe('close', () => {

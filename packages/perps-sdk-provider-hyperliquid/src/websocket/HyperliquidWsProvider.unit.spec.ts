@@ -95,7 +95,13 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
       this.sent.push(data)
     }
 
+    // Mirrors ReconnectingWebSocket.ready(): terminal 'disconnected' rejects.
     ready() {
+      if (this.status === 'disconnected') {
+        return Promise.reject(
+          new Error('WebSocket max reconnect attempts reached')
+        )
+      }
       return Promise.resolve()
     }
 
@@ -189,6 +195,23 @@ describe('HyperliquidWsProvider', () => {
         method: 'subscribe',
         subscription: { type: 'allMids', dex: 'xyz' },
       })
+    })
+
+    it('rejects subscribe after reconnect exhaustion instead of hanging, and a later subscribe retries', async () => {
+      const provider = createProvider()
+      getMockRwsInstance().simulateStatus('disconnected')
+
+      await expect(
+        provider.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      ).rejects.toThrow('WebSocket max reconnect attempts reached')
+
+      // The failed open must not be cached: a retry reaches the wire again.
+      getMockRwsInstance().simulateStatus('connected')
+      const unsub = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      expect(typeof unsub).toBe('function')
     })
 
     it('should return an unsubscribe function', async () => {
