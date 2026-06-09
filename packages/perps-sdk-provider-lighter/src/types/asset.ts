@@ -42,6 +42,7 @@ export interface LtPerpsOrderBookDetail {
   daily_price_low: number
   daily_price_high: number
   daily_price_change: number
+  daily_chart: Record<string, unknown>
   open_interest: number
   market_config: LtMarketConfig
   strategy_index: number
@@ -73,6 +74,7 @@ export interface LtSpotOrderBookDetail {
   daily_price_low: number
   daily_price_high: number
   daily_price_change: number
+  daily_chart: Record<string, unknown>
 }
 
 /** @public */

@@ -60,3 +60,37 @@ export type HlL2Book = {
 
 /** @public */
 export type HlPerpDexs = (null | { name: string })[]
+
+/** @public */
+export type HlSpotToken = {
+  name: string
+  index: number
+  tokenId: string
+  szDecimals: number
+}
+
+/** @public */
+export type HlSpotUniverseEntry = {
+  name: string
+  tokens: [number, number]
+  index: number
+  isCanonical: boolean
+}
+
+/** @public */
+export type HlSpotMeta = {
+  tokens: HlSpotToken[]
+  universe: HlSpotUniverseEntry[]
+}
+
+/** @public */
+export type HlSpotAssetCtx = {
+  coin: string
+  prevDayPx: string
+  dayNtlVlm: string
+  markPx: string
+  midPx: string | null
+}
+
+/** @public */
+export type HlSpotMetaAndAssetCtxs = [HlSpotMeta, HlSpotAssetCtx[]]

@@ -96,3 +96,27 @@ export interface LtAccountLimits {
   leased_lit: string
   effective_lit_stakes: string
 }
+
+/** @public */
+export interface LtSubAccount {
+  code: number
+  account_type: number
+  index: number
+  l1_address: string
+  cancel_all_time: number
+  total_order_count: number
+  total_isolated_order_count: number
+  pending_order_count: number
+  available_balance: string
+  status: number
+  collateral: string
+  transaction_time: number
+  account_trading_mode: number
+}
+
+/** @public */
+export interface LtAccountsByL1AddressResponse {
+  code: number
+  l1_address: string
+  sub_accounts: LtSubAccount[]
+}

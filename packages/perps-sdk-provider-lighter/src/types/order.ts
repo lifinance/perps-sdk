@@ -24,6 +24,11 @@ export type LtOrder = {
   status: string
   trigger_status: string
   trigger_time: number
+  parent_order_index: number
+  parent_order_id: string
+  to_trigger_order_id_0: string
+  to_trigger_order_id_1: string
+  to_cancel_order_id_0: string
   block_height: number
   timestamp: number
   created_at: number
