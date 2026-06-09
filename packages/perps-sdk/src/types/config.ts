@@ -52,10 +52,11 @@ export type RequestInterceptor = (
 export interface SDKRequestOptions {
   signal?: AbortSignal
   /**
-   * Lighter auth token for authenticated read endpoints (getOrders, getOrder,
-   * getActivity). Create via `lighterSigner.createAuthToken(deadline, context)`.
-   * Forwarded as `Authorization: Bearer <token>` and never persisted by the
-   * backend — read-only by design (8h max TTL, cannot authorize writes).
+   * Lighter auth token consumed by provider-direct venue reads (getOrders,
+   * getOrder, getActivity, getAccount). Create via
+   * `lighterSigner.createAuthToken(deadline, context)`. Sent only to Lighter
+   * venue endpoints, never to the LI.FI backend — read-only by design
+   * (8h max TTL, cannot authorize writes).
    */
   lighterAuthToken?: string
 }

@@ -175,6 +175,27 @@ describe('request — error rehydration', () => {
   })
 })
 
+describe('request — header handling', () => {
+  it('does not attach an Authorization header when lighterAuthToken is set', async () => {
+    let authorization: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        authorization = req.headers.get('Authorization')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(
+      client.config,
+      url,
+      { retry: false },
+      { lighterAuthToken: 'live-venue-credential' }
+    )
+    expect(result.ok).toBe(true)
+    expect(authorization).toBeNull()
+  })
+})
+
 describe('request — retry behaviour', () => {
   it('retries 5xx errors before throwing', async () => {
     let attempts = 0
