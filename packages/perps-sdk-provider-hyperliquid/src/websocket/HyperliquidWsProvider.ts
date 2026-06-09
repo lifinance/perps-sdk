@@ -497,7 +497,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
       const market = this.resolveMarket(f.coin)
       return market ? [mapFill(f as HlUserFill, market)] : []
     })
-    this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
+    this.emit(`userFills:${data.user.toLowerCase()}`, {
+      channel: 'fills',
+      data: items,
+    })
   }
 
   private handleAllDexsClearinghouseState(

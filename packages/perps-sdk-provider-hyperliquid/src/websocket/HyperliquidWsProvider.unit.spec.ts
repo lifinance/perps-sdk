@@ -893,6 +893,95 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('delivers fills when the venue echoes the user address in checksummed form', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xAbCdUser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xAbCdUser1',
+            fills: [
+              {
+                tid: 555,
+                coin: 'BTC',
+                side: 'B',
+                px: '94000',
+                sz: '0.1',
+                dir: 'Open Long',
+                fee: '4.70',
+                closedPnl: '0',
+                time: 1704067200000,
+                startPosition: '0.0',
+              },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('fills')
+      expect(event.data[0]).toMatchObject({ id: '555', market: { id: 'BTC' } })
+    })
+
+    it('routes every address-keyed channel case-insensitively on a checksummed echo', async () => {
+      const provider = createEnrichingProvider()
+      const address = '0xAbCdUser1'
+      const fillsListener = vi.fn()
+      const positionsListener = vi.fn()
+      const spotListener = vi.fn()
+      const ordersListener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address },
+        fillsListener
+      )
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address },
+        positionsListener
+      )
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address },
+        spotListener
+      )
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address },
+        ordersListener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: { isSnapshot: false, user: address, fills: [] },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        allDexsFrame(address, [['', ['BTC']]])
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotState',
+          data: { user: address, spotState: { balances: [] } },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+
+      expect(fillsListener).toHaveBeenCalledOnce()
+      expect(positionsListener).toHaveBeenCalledOnce()
+      expect(spotListener).toHaveBeenCalledOnce()
+      expect(ordersListener).toHaveBeenCalledOnce()
+    })
+
     it('emits typed spot Balances keyed on the wire token index', async () => {
       const PURR_SPOT: Market = {
         providerId: 'hyperliquid',
