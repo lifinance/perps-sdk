@@ -269,8 +269,9 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('maps nSigFigs onto the l2Book frame and never sends the ignored nLevels', async () => {
-      const provider = createProvider()
+    it('maps priceStep onto nSigFigs against the market markPrice and never sends the ignored nLevels', async () => {
+      // BTC markPrice 95000: floor(log10) = 4, step 10 → nSigFigs 4.
+      const provider = createEnrichingProvider()
 
       await provider.subscribe(
         {
@@ -278,7 +279,7 @@ describe('HyperliquidWsProvider', () => {
           dex: 'hyperliquid',
           marketId: 'BTC',
           depth: 30,
-          nSigFigs: 4,
+          priceStep: 10,
         },
         vi.fn()
       )
@@ -286,18 +287,19 @@ describe('HyperliquidWsProvider', () => {
       const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
       expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 4 })
       expect(subscription).not.toHaveProperty('nLevels')
+      expect(subscription).not.toHaveProperty('priceStep')
     })
 
-    it('forwards mantissa only when nSigFigs is 5', async () => {
-      const provider = createProvider()
+    it('emits mantissa for a non-power-of-ten priceStep at the 5-sig-fig boundary', async () => {
+      // BTC markPrice 95000: step 2 → nSigFigs 5, mantissa 2.
+      const provider = createEnrichingProvider()
 
       await provider.subscribe(
         {
           channel: 'orderbook',
           dex: 'hyperliquid',
           marketId: 'BTC',
-          nSigFigs: 5,
-          mantissa: 2,
+          priceStep: 2,
         },
         vi.fn()
       )
@@ -310,7 +312,28 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('drops mantissa when nSigFigs is not 5 (HL only honours it at full granularity)', async () => {
+    it('requests full precision when the priceStep is finer than HL resolves', async () => {
+      // BTC markPrice 95000: step 0.1 needs 6 sig figs, beyond HL's max of 5.
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          priceStep: 0.1,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+      })
+    })
+
+    it('requests full precision when no markPrice is available for the market', async () => {
+      // No client → empty market registry → no reference magnitude.
       const provider = createProvider()
 
       await provider.subscribe(
@@ -318,15 +341,15 @@ describe('HyperliquidWsProvider', () => {
           channel: 'orderbook',
           dex: 'hyperliquid',
           marketId: 'BTC',
-          nSigFigs: 3,
-          mantissa: 2,
+          priceStep: 10,
         },
         vi.fn()
       )
 
-      const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
-      expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 3 })
-      expect(subscription).not.toHaveProperty('mantissa')
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+      })
     })
 
     it('should map candle subscription to candle payload', async () => {

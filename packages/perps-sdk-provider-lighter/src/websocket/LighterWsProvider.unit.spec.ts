@@ -622,7 +622,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('ignores the orderbook aggregation hints (nSigFigs/mantissa) — Lighter streams the full book', async () => {
+    it('ignores the orderbook priceStep hint — Lighter streams the full book', async () => {
       const provider = makeFetchingProvider()
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.getStatus = () => 'connected'
@@ -635,8 +635,7 @@ describe('LighterWsProvider', () => {
           dex: 'lighter',
           marketId: '5',
           depth: 30,
-          nSigFigs: 4,
-          mantissa: 2,
+          priceStep: 10,
         },
         vi.fn()
       )

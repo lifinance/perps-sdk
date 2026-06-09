@@ -33,6 +33,7 @@ export {
   formatOrderSize,
   getMaxPriceDecimals,
 } from './orderFormatting.js'
+export { priceStepToAggregation } from './priceStepToAggregation.js'
 export { findMarket, requireMarket } from './requireMarket.js'
 export {
   spotAssetFromToken,

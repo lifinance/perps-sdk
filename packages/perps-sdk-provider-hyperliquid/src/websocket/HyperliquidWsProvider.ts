@@ -36,6 +36,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapPosition,
+  priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
@@ -274,9 +275,11 @@ export class HyperliquidWsProvider extends WsProviderBase {
           // HL's l2Book ignores any level-count field; it returns up to 20
           // levels/side and controls granularity via nSigFigs (+ mantissa,
           // valid only when nSigFigs === 5).
-          ...(sub.nSigFigs !== undefined ? { nSigFigs: sub.nSigFigs } : {}),
-          ...(sub.nSigFigs === 5 && sub.mantissa !== undefined
-            ? { mantissa: sub.mantissa }
+          ...(sub.priceStep !== undefined
+            ? priceStepToAggregation(
+                sub.priceStep,
+                Number(this.byMarketId.get(sub.marketId)?.markPrice)
+              )
             : {}),
         }
       case 'candle':
