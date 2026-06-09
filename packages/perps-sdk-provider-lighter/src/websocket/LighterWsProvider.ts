@@ -1,4 +1,5 @@
 import {
+  cachePromise,
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   ReconnectingWebSocket,
@@ -336,14 +337,17 @@ export class LighterWsProvider extends WsProviderBase {
     if (cached !== undefined) {
       return cached
     }
-    let pending = this.accountIndexPromises.get(addressKey)
-    if (!pending) {
-      pending = this.fetchAccountIndex(address).finally(() => {
-        this.accountIndexPromises.delete(addressKey)
-      })
-      this.accountIndexPromises.set(addressKey, pending)
-    }
-    const idx = await pending
+    const idx = await cachePromise(
+      () => this.accountIndexPromises.get(addressKey),
+      (p) => {
+        if (p === undefined) {
+          this.accountIndexPromises.delete(addressKey)
+        } else {
+          this.accountIndexPromises.set(addressKey, p)
+        }
+      },
+      () => this.fetchAccountIndex(address)
+    )
     this.accountIndexCache.set(addressKey, idx)
     return idx
   }
@@ -368,10 +372,13 @@ export class LighterWsProvider extends WsProviderBase {
     if (this.marketIdToDisplaySymbol.size > 0) {
       return
     }
-    if (!this.displaySymbolsPromise) {
-      this.displaySymbolsPromise = this.fetchDisplaySymbols()
-    }
-    await this.displaySymbolsPromise
+    await cachePromise(
+      () => this.displaySymbolsPromise,
+      (p) => {
+        this.displaySymbolsPromise = p
+      },
+      () => this.fetchDisplaySymbols()
+    )
   }
 
   private async fetchDisplaySymbols(): Promise<void> {

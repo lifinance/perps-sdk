@@ -647,6 +647,79 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
+    it('retries the display-symbol fetch on the next subscribe after a transient failure', async () => {
+      getMarketsMock
+        .mockRejectedValueOnce(new Error('markets route 500'))
+        .mockResolvedValue({
+          markets: [
+            {
+              id: '0',
+              categoryId: 'lighter',
+              baseAsset: { displaySymbol: 'BTC' },
+            },
+          ],
+        })
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { authProvider: async () => 'token' },
+        fakeClient
+      )
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.send = vi.fn()
+      vi.spyOn(provider as any, 'resolveAccountIndex').mockResolvedValue(
+        ACCOUNT_IDX
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow('markets route 500')
+
+      // Connectivity restored — the next subscribe must refetch and succeed.
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect((provider as any).marketIdToDisplaySymbol.get(0)).toBe('BTC')
+      provider.close()
+    })
+
+    it('retries the account-index fetch on the next subscribe after a transient failure', async () => {
+      const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
+        displaySymbolMap: { 0: 'BTC' },
+        authProvider: async () => 'token',
+      })
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.send = vi.fn()
+      const fetchSpy = vi
+        .spyOn(provider as any, 'fetchAccountIndex')
+        .mockRejectedValueOnce(new Error('account route 500'))
+        .mockResolvedValue(ACCOUNT_IDX)
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow('account route 500')
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect((provider as any).accountIndexCache.get(TEST_ADDR)).toBe(
+        ACCOUNT_IDX
+      )
+      provider.close()
+    })
+
     it('still resolves display symbols for auth channels (positions)', async () => {
       getMarketsMock.mockResolvedValue({
         markets: [
