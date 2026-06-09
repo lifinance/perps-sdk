@@ -622,6 +622,31 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
+    it('ignores the orderbook aggregation hints (nSigFigs/mantissa) — Lighter streams the full book', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'lighter',
+          marketId: '5',
+          depth: 30,
+          nSigFigs: 4,
+          mantissa: 2,
+        },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'order_book/5' })
+      )
+      provider.close()
+    })
+
     it('still resolves display symbols for auth channels (positions)', async () => {
       getMarketsMock.mockResolvedValue({
         markets: [

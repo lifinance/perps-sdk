@@ -219,6 +219,66 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('maps nSigFigs onto the l2Book frame and never sends the ignored nLevels', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          depth: 30,
+          nSigFigs: 4,
+        },
+        vi.fn()
+      )
+
+      const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
+      expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 4 })
+      expect(subscription).not.toHaveProperty('nLevels')
+    })
+
+    it('forwards mantissa only when nSigFigs is 5', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          nSigFigs: 5,
+          mantissa: 2,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+        nSigFigs: 5,
+        mantissa: 2,
+      })
+    })
+
+    it('drops mantissa when nSigFigs is not 5 (HL only honours it at full granularity)', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          nSigFigs: 3,
+          mantissa: 2,
+        },
+        vi.fn()
+      )
+
+      const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
+      expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 3 })
+      expect(subscription).not.toHaveProperty('mantissa')
+    })
+
     it('should map candle subscription to candle payload', async () => {
       const provider = createProvider()
 
@@ -467,6 +527,32 @@ describe('HyperliquidWsProvider', () => {
           timestamp: 1704067200000,
         },
       })
+    })
+
+    it('caps emitted orderbook levels at HL per-side limit of 20', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      const side = Array.from({ length: 25 }, (_, i) => ({
+        px: String(95000 - i),
+        sz: '1',
+        n: 1,
+      }))
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2Book',
+          data: { coin: 'BTC', levels: [side, side], time: 1704067200000 },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.bids).toHaveLength(20)
+      expect(event.data.asks).toHaveLength(20)
     })
 
     it('should emit candle event for candle channel', async () => {
