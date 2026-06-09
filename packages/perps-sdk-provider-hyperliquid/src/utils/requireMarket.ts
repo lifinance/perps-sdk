@@ -15,6 +15,19 @@ const toDisplay = (m: Market): MarketDisplay => ({
 })
 
 /**
+ * Resolve a wire market id against the backend's enriched market list,
+ * `undefined` when the list does not know the id.
+ * @public
+ */
+export const findMarket = (
+  byMarketId: Map<string, Market>,
+  marketId: string
+): MarketDisplay | undefined => {
+  const market = byMarketId.get(marketId)
+  return market === undefined ? undefined : toDisplay(market)
+}
+
+/**
  * Resolve a wire market id against the backend's enriched market list. The
  * list is the source of truth for every tradable market, so an id the venue
  * references but the backend does not know is a hard error — never a silent
@@ -25,7 +38,7 @@ export const requireMarket = (
   byMarketId: Map<string, Market>,
   marketId: string
 ): MarketDisplay => {
-  const market = byMarketId.get(marketId)
+  const market = findMarket(byMarketId, marketId)
   if (!market) {
     const err = new PerpsError(
       PerpsErrorCode.MarketNotFound,
@@ -34,5 +47,5 @@ export const requireMarket = (
     err.tool = PROVIDER_KEY
     throw err
   }
-  return toDisplay(market)
+  return market
 }
