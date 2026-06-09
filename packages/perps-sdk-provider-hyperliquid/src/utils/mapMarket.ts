@@ -1,6 +1,8 @@
 import type { PerpsMarket } from '@lifi/perps-types'
 import type { HlAssetCtx, HlUniverseItem } from '../types/index.js'
 import { deriveMarket, marketDisplayFromCoin } from './deriveMarket.js'
+import { calculateMaintenanceMarginRate } from './liquidation.js'
+import { getMaxPriceDecimals } from './orderFormatting.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
@@ -22,6 +24,7 @@ export const mapMarket = (
     baseAsset: display.baseAsset,
     quoteAsset: display.quoteAsset,
     szDecimals: universe.szDecimals,
+    priceDecimals: getMaxPriceDecimals(universe.szDecimals),
     markPrice: assetCtx.markPx,
     volume24h: assetCtx.dayNtlVlm,
     prevDayPrice: assetCtx.prevDayPx,
@@ -32,5 +35,6 @@ export const mapMarket = (
       nextFundingTime,
     },
     openInterest: assetCtx.openInterest,
+    maintenanceMarginRate: calculateMaintenanceMarginRate(universe.maxLeverage),
   }
 }

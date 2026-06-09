@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   directionSign,
+  estimateIsolatedLiquidationPrice,
   predictAverageEntryPrice,
   predictNewLeverage,
   predictUnrealizedPnl,
@@ -13,6 +14,52 @@ describe('directionSign', () => {
   })
   it('returns -1 for short', () => {
     expect(directionSign(false)).toBe(-1)
+  })
+})
+
+describe('estimateIsolatedLiquidationPrice', () => {
+  it('estimates a long liquidation below entry', () => {
+    // entry * (1 - 1/leverage) / (1 - mmr) = 100 * 0.9 / 0.99
+    const liq = estimateIsolatedLiquidationPrice({
+      entryPrice: 100,
+      leverage: 10,
+      isLong: true,
+      maintenanceMarginRate: 0.01,
+    })
+    expect(liq).toBeCloseTo(90.90909, 4)
+  })
+
+  it('estimates a short liquidation above entry', () => {
+    // entry * (1 + 1/leverage) / (1 + mmr) = 100 * 1.1 / 1.01
+    const liq = estimateIsolatedLiquidationPrice({
+      entryPrice: 100,
+      leverage: 10,
+      isLong: false,
+      maintenanceMarginRate: 0.01,
+    })
+    expect(liq).toBeCloseTo(108.91089, 4)
+  })
+
+  it('returns undefined for zero leverage', () => {
+    expect(
+      estimateIsolatedLiquidationPrice({
+        entryPrice: 100,
+        leverage: 0,
+        isLong: true,
+        maintenanceMarginRate: 0.01,
+      })
+    ).toBeUndefined()
+  })
+
+  it('returns undefined for a degenerate denominator', () => {
+    expect(
+      estimateIsolatedLiquidationPrice({
+        entryPrice: 100,
+        leverage: 10,
+        isLong: true,
+        maintenanceMarginRate: 1,
+      })
+    ).toBeUndefined()
   })
 })
 

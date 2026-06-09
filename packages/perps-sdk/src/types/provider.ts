@@ -8,8 +8,10 @@ import type {
   ActivitiesResponse,
   ActivityType,
   FillsResponse,
+  Market,
   Order,
   OrdersResponse,
+  PerpsMarket,
   PerpsSigner,
   Position,
   PositionsResponse,
@@ -83,6 +85,19 @@ export interface ActionSignerContribution {
    * params.
    */
   params?: Record<string, unknown>
+}
+
+/**
+ * Inputs for {@link PerpsProviderPlugin.estimateLiquidationPrice}:
+ * `leverage` is the user-selected leverage for the new position, `isLong`
+ * carries direction.
+ *
+ * @public
+ */
+export interface LiquidationEstimateParams {
+  entryPrice: number
+  leverage: number
+  isLong: boolean
 }
 
 /**
@@ -246,6 +261,46 @@ export interface PerpsProviderPlugin {
     account: AccountResponse,
     positions: Position[]
   ): AccountSummary
+
+  /**
+   * Format an order price onto the venue's tick grid for `market`. This is
+   * the canonical, provider-correct formatting surface — venue tick rules
+   * differ per provider, so provider-agnostic consumers must route every
+   * order price through the market's own provider instead of applying one
+   * venue's rules to another's markets. Pure — does no I/O.
+   *
+   * @returns The price as a wire-ready decimal string, trailing zeros
+   *   stripped.
+   * @throws {PerpsError} `ValidationError` when `market` lacks the tick
+   *   metadata the venue's rules need (e.g. `Market.priceDecimals` absent).
+   */
+  formatOrderPrice(market: Market, price: number): string
+
+  /**
+   * Format an order size onto the venue's lot grid for `market`. Truncates
+   * (never rounds up) so the formatted size cannot exceed the user's intended
+   * size or available balance. Pure — does no I/O.
+   *
+   * @param size - Size in base-asset units as a non-negative magnitude.
+   * @returns The size as a wire-ready decimal string, trailing zeros
+   *   stripped.
+   */
+  formatOrderSize(market: Market, size: number): string
+
+  /**
+   * Estimate the liquidation price of a new isolated position on `market`
+   * using the venue's margin model. A preview helper — for existing
+   * positions, prefer `Position.liquidationPrice` from the venue. Pure —
+   * does no I/O.
+   *
+   * @returns The estimated liquidation price, or `undefined` when the venue's
+   *   model cannot be evaluated client-side (degenerate inputs, or `market`
+   *   lacks the margin metadata the model needs).
+   */
+  estimateLiquidationPrice(
+    market: PerpsMarket,
+    params: LiquidationEstimateParams
+  ): number | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

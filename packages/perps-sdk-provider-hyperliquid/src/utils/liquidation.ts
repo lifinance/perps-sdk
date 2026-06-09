@@ -12,6 +12,8 @@
  * - margin_available = isolated_margin - maintenance_margin_required
  */
 
+import { estimateIsolatedLiquidationPrice } from '@lifi/perps-sdk'
+
 /**
  * Calculate the maintenance margin fraction for a Hyperliquid asset.
  *
@@ -59,15 +61,14 @@ export function calculateLiquidationPrice(
   isLong: boolean,
   maxLeverage: number
 ): number | undefined {
-  if (leverage === 0 || maxLeverage === 0) {
+  const mmr = calculateMaintenanceMarginRate(maxLeverage)
+  if (mmr === undefined) {
     return undefined
   }
-  const mmr = 1 / (2 * maxLeverage)
-  const side = isLong ? 1 : -1
-  const denominator = 1 - mmr * side
-  if (denominator === 0) {
-    return undefined
-  }
-  const marginAvailable = entryPrice * (1 / leverage - mmr)
-  return entryPrice - (side * marginAvailable) / denominator
+  return estimateIsolatedLiquidationPrice({
+    entryPrice,
+    leverage,
+    isLong,
+    maintenanceMarginRate: mmr,
+  })
 }

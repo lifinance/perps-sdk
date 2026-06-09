@@ -16,6 +16,13 @@ export interface BaseMarket {
   baseAsset: Asset
   quoteAsset: Asset
   szDecimals: number
+  /**
+   * Maximum decimal places the venue accepts for order prices on this market.
+   * Some venues impose further constraints on top of this budget (e.g. a
+   * significant-figure cap), so always format prices through the provider's
+   * `formatOrderPrice` rather than applying this field directly.
+   */
+  priceDecimals?: number
   markPrice: string
   volume24h?: string
   prevDayPrice?: string
@@ -27,6 +34,12 @@ export interface PerpsMarket extends BaseMarket {
   onlyIsolated: boolean
   funding: FundingInfo
   openInterest?: string
+  /**
+   * Venue maintenance margin rate for this market as a fraction (e.g. `0.012`
+   * = 1.2%). Feeds client-side liquidation-price estimates via the provider's
+   * `estimateLiquidationPrice`.
+   */
+  maintenanceMarginRate?: number
 }
 
 /** @public */
