@@ -4,10 +4,8 @@ import {
   isActiveOrderStatus,
   type PerpsSDKClient,
   ReconnectingWebSocket,
-  type SubscriptionListener,
-  type WsProvider,
+  WsProviderBase,
   type WsProviderFactory,
-  type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
 import {
@@ -16,7 +14,6 @@ import {
   OrderSide,
   OrderType,
   type Subscription,
-  type SubscriptionEvent,
   type TriggerOrder,
 } from '@lifi/perps-types'
 import type {
@@ -68,12 +65,8 @@ export const hyperliquidWsProvider =
  *
  * @public
  */
-export class HyperliquidWsProvider implements WsProvider {
-  private rws: ReconnectingWebSocket
+export class HyperliquidWsProvider extends WsProviderBase {
   private subs = new Map<string, object>()
-  private listeners = new Map<string, SubscriptionListener>()
-  private statusListeners = new Set<WsStatusListener>()
-  private readonly providerKey: string
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
   private midsBySubDex = new Map<string, Record<string, string>>()
@@ -86,17 +79,9 @@ export class HyperliquidWsProvider implements WsProvider {
     subDexes: string[],
     client?: PerpsSDKClient
   ) {
-    this.providerKey = providerKey
+    super(new ReconnectingWebSocket(wsUrl), providerKey)
     this.subDexes = subDexes
     this.client = client
-    this.rws = new ReconnectingWebSocket(wsUrl)
-    this.rws.on('message', (data) => this.handleMessage(data))
-    this.rws.on('open', () => this.resubscribeAll())
-    this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners) {
-        fn(status)
-      }
-    })
   }
 
   /**
@@ -123,34 +108,10 @@ export class HyperliquidWsProvider implements WsProvider {
     )
   }
 
-  async subscribe(
-    sub: Subscription,
-    listener: SubscriptionListener,
-    onStatus?: WsStatusListener
-  ): Promise<() => void> {
-    const unsubscribe = await this.subscribeChannel(sub, listener)
-    if (!onStatus) {
-      return unsubscribe
-    }
-    this.statusListeners.add(onStatus)
-    onStatus(this.rws.getStatus())
-    return () => {
-      this.statusListeners.delete(onStatus)
-      unsubscribe()
-    }
-  }
-
-  private async subscribeChannel(
-    sub: Subscription,
-    listener: SubscriptionListener
-  ): Promise<() => void> {
+  protected async openChannel(sub: Subscription): Promise<() => void> {
     await this.ensureMarketMap()
 
-    const key = this.toKey(sub)
-
-    this.listeners.set(key, listener)
-
-    // Prices require multi-sub-dex allMids subscriptions
+    // Prices require multi-sub-dex allMids subscriptions under one logical key.
     if (sub.channel === 'prices') {
       const entries = this.getPriceSubEntries()
 
@@ -162,7 +123,6 @@ export class HyperliquidWsProvider implements WsProvider {
       await this.rws.ready()
 
       return () => {
-        this.listeners.delete(key)
         for (const { subKey, payload } of entries) {
           this.subs.delete(subKey)
           this.rws.send(
@@ -174,6 +134,7 @@ export class HyperliquidWsProvider implements WsProvider {
     }
 
     // All other channels: single WS subscription per key
+    const key = this.toKey(sub)
     const payload = this.toHlPayload(sub)
     this.subs.set(key, payload)
     this.sendSubscribe(payload)
@@ -181,7 +142,6 @@ export class HyperliquidWsProvider implements WsProvider {
     await this.rws.ready()
 
     return () => {
-      this.listeners.delete(key)
       this.subs.delete(key)
       this.rws.send(
         JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -203,11 +163,13 @@ export class HyperliquidWsProvider implements WsProvider {
     ]
   }
 
-  close() {
-    this.rws.close()
+  protected onClose(): void {
     this.subs.clear()
-    this.listeners.clear()
-    this.statusListeners.clear()
+    this.midsBySubDex.clear()
+  }
+
+  protected onOpen(): void {
+    this.resubscribeAll()
   }
 
   private resubscribeAll() {
@@ -233,7 +195,7 @@ export class HyperliquidWsProvider implements WsProvider {
     }
   }
 
-  private toKey(sub: Subscription): string {
+  protected toKey(sub: Subscription): string {
     switch (sub.channel) {
       case 'prices':
         return 'allMids'
@@ -281,19 +243,7 @@ export class HyperliquidWsProvider implements WsProvider {
     }
   }
 
-  private emit(key: string, event: SubscriptionEvent) {
-    this.listeners.get(key)?.(event)
-  }
-
-  private emitToPrefix(prefix: string, event: SubscriptionEvent) {
-    for (const [key, fn] of this.listeners) {
-      if (key.startsWith(prefix)) {
-        fn(event)
-      }
-    }
-  }
-
-  private handleMessage(raw: string) {
+  protected handleMessage(raw: string) {
     let msg: HlWsMessage
     try {
       msg = JSON.parse(raw)

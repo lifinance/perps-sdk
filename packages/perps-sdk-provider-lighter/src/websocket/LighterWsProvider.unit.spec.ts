@@ -103,7 +103,7 @@ describe('LighterWsProvider', () => {
 
   /** Inject a listener directly, bypassing the subscribe WS path. */
   const inject = (p: LighterWsProvider, key: string, fn: () => void) => {
-    ;(p as any).listeners.set(key, fn)
+    ;(p as any).channels.set(key, { listeners: new Map([[fn, 1]]) })
   }
 
   it('accepts candle subscriptions as a no-op (Lighter has no candle WS channel)', async () => {
@@ -137,7 +137,7 @@ describe('LighterWsProvider', () => {
     expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
 
     // The provider bridges the underlying rws status to its subscribers.
-    for (const fn of (provider as any).statusListeners) {
+    for (const fn of (provider as any).statusListeners.keys()) {
       fn('disconnected')
     }
     expect(onStatus).toHaveBeenLastCalledWith('disconnected')
@@ -169,7 +169,7 @@ describe('LighterWsProvider', () => {
     onStatusA.mockClear()
     onStatusB.mockClear()
 
-    for (const fn of (provider as any).statusListeners) {
+    for (const fn of (provider as any).statusListeners.keys()) {
       fn('reconnecting')
     }
     expect(onStatusA).not.toHaveBeenCalled()
@@ -427,13 +427,11 @@ describe('LighterWsProvider', () => {
       const send = vi.fn()
       ;(provider as any).rws.send = send
       ;(provider as any).subs.set(`orderUpdates:${failingAddr}`, {
-        count: 1,
         channel: 'account_all_orders/42',
         address: failingAddr,
         needsAuth: true,
       })
       ;(provider as any).subs.set(`orderUpdates:${okAddr}`, {
-        count: 1,
         channel: 'account_all_orders/7',
         address: okAddr,
         needsAuth: true,

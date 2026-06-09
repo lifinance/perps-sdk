@@ -2,18 +2,11 @@ import {
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   ReconnectingWebSocket,
-  type SubscriptionListener,
-  type WsProvider,
+  WsProviderBase,
   type WsProviderFactory,
-  type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
-import type {
-  Fill,
-  Position,
-  Subscription,
-  SubscriptionEvent,
-} from '@lifi/perps-types'
+import type { Fill, Position, Subscription } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
@@ -122,23 +115,18 @@ export interface LighterWsProviderOptions {
 }
 
 /**
- * Lighter realtime {@link WsProvider}: subscribes to Lighter's WS channels
- * (orderbook, prices, orders, positions) over a single
- * {@link ReconnectingWebSocket}, attaching auth tokens to gated channels.
- * Construct via {@link lighterWsProvider}.
+ * Lighter realtime WS provider (extends {@link WsProviderBase}): subscribes to
+ * Lighter's WS channels (orderbook, prices, orders, positions), attaching auth
+ * tokens to gated channels. Construct via {@link lighterWsProvider}.
  *
  * @public
  */
-export class LighterWsProvider implements WsProvider {
-  private readonly rws: ReconnectingWebSocket
+export class LighterWsProvider extends WsProviderBase {
   private readonly restUrl: string
-  private readonly providerKey: string
   private readonly authProvider: LighterAuthProvider | undefined
   private readonly client: PerpsSDKClient | undefined
 
   private readonly subs = new Map<string, SubState>()
-  private readonly listeners = new Map<string, SubscriptionListener>()
-  private readonly statusListeners = new Set<WsStatusListener>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -163,7 +151,7 @@ export class LighterWsProvider implements WsProvider {
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
   ) {
-    this.providerKey = providerKey
+    super(new ReconnectingWebSocket(wsUrl), providerKey)
     this.restUrl = options.restUrl ?? DEFAULT_REST_URL
     this.authProvider = options.authProvider
     this.client = client
@@ -174,46 +162,16 @@ export class LighterWsProvider implements WsProvider {
       ])
     )
 
-    this.rws = new ReconnectingWebSocket(wsUrl)
-    this.rws.on('message', (data) => this.handleMessage(data))
-    this.rws.on('open', () => {
-      void this.onOpen()
-    })
+    // Keep-alive ping is Lighter-specific; the base does not wire 'close'.
     this.rws.on('close', () => this.stopKeepalive())
-    this.rws.onStatus((status) => {
-      for (const fn of this.statusListeners) {
-        fn(status)
-      }
-    })
   }
 
-  async subscribe(
-    sub: Subscription,
-    listener: SubscriptionListener,
-    onStatus?: WsStatusListener
-  ): Promise<() => void> {
-    const unsubscribe = await this.subscribeChannel(sub, listener)
-    if (!onStatus) {
-      return unsubscribe
-    }
-    this.statusListeners.add(onStatus)
-    onStatus(this.rws.getStatus())
-    return () => {
-      this.statusListeners.delete(onStatus)
-      unsubscribe()
-    }
-  }
-
-  private async subscribeChannel(
-    sub: Subscription,
-    listener: SubscriptionListener
-  ): Promise<() => void> {
+  protected async openChannel(sub: Subscription): Promise<() => void> {
     // Lighter has no live OHLC channel — there's nothing to subscribe to.
     // Return a no-op unsubscribe so the caller's UX (chart still rendering
     // from REST history + price-tick mid line) is unaffected, instead of
     // throwing and surfacing a console error on every chart mount.
     if (sub.channel === 'candle') {
-      void listener
       return () => {}
     }
 
@@ -227,7 +185,6 @@ export class LighterWsProvider implements WsProvider {
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
     const key = this.toKey(sub)
-    this.listeners.set(key, listener)
 
     this.subs.set(key, { channel, needsAuth, address })
     // Only send now if already open; otherwise onOpen resubscribes it on
@@ -239,7 +196,6 @@ export class LighterWsProvider implements WsProvider {
     await this.rws.ready()
 
     return () => {
-      this.listeners.delete(key)
       this.subs.delete(key)
       if (sub.channel === 'orderbook') {
         const id = Number(sub.marketId)
@@ -251,17 +207,14 @@ export class LighterWsProvider implements WsProvider {
     }
   }
 
-  close(): void {
+  protected onClose(): void {
     this.stopKeepalive()
-    this.rws.close()
     this.subs.clear()
-    this.listeners.clear()
-    this.statusListeners.clear()
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
   }
 
-  private async onOpen(): Promise<void> {
+  protected async onOpen(): Promise<void> {
     this.startKeepalive()
     for (const [, s] of this.subs) {
       // Isolate each resubscribe: an auth-token fetch can reject (e.g. RO
@@ -315,7 +268,7 @@ export class LighterWsProvider implements WsProvider {
     }
   }
 
-  private toKey(sub: Subscription): string {
+  protected toKey(sub: Subscription): string {
     switch (sub.channel) {
       case 'prices':
         return 'prices'
@@ -327,7 +280,10 @@ export class LighterWsProvider implements WsProvider {
         return `fills:${sub.address.toLowerCase()}`
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
+      // No live wire sub (openChannel returns a no-op), but a stable key is
+      // still needed so the base's fan-out registry can track/release it.
       case 'candle':
+        return `candle:${sub.marketId}:${sub.interval}`
       case 'spotBalances':
         throw new Error(`Lighter WS does not support channel: ${sub.channel}.`)
     }
@@ -440,7 +396,7 @@ export class LighterWsProvider implements WsProvider {
     }
   }
 
-  private handleMessage(raw: string): void {
+  protected handleMessage(raw: string): void {
     let msg: LtWsMessage
     try {
       msg = JSON.parse(raw) as LtWsMessage
@@ -670,10 +626,6 @@ export class LighterWsProvider implements WsProvider {
     }
     const n = Number(tail.slice(1))
     return Number.isFinite(n) ? n : null
-  }
-
-  private emit(key: string, event: SubscriptionEvent): void {
-    this.listeners.get(key)?.(event)
   }
 }
 

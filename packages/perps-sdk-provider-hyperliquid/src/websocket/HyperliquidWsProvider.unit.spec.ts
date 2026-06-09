@@ -1,4 +1,7 @@
-import type { PerpsSDKClient } from '@lifi/perps-sdk'
+import {
+  type PerpsSDKClient,
+  WS_CHANNEL_TEARDOWN_LINGER_MS,
+} from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
@@ -172,26 +175,34 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('unsubscribes both default + xyz allMids when the prices listener unsubscribes', async () => {
-      const provider = createProvider()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
 
-      const unsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
-        vi.fn()
-      )
+        const unsub = await provider.subscribe(
+          { channel: 'prices', dex: 'hyperliquid' },
+          vi.fn()
+        )
 
-      getMockRwsInstance().sent = [] // Clear the two subscribe messages.
-      unsub()
+        getMockRwsInstance().sent = [] // Clear the two subscribe messages.
+        unsub()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS) // fire the deferred teardown
 
-      expect(getMockRwsInstance().sent).toHaveLength(2)
-      const unsubPayloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
-      expect(unsubPayloads).toContainEqual({
-        method: 'unsubscribe',
-        subscription: { type: 'allMids' },
-      })
-      expect(unsubPayloads).toContainEqual({
-        method: 'unsubscribe',
-        subscription: { type: 'allMids', dex: 'xyz' },
-      })
+        expect(getMockRwsInstance().sent).toHaveLength(2)
+        const unsubPayloads = getMockRwsInstance().sent.map((s) =>
+          JSON.parse(s)
+        )
+        expect(unsubPayloads).toContainEqual({
+          method: 'unsubscribe',
+          subscription: { type: 'allMids' },
+        })
+        expect(unsubPayloads).toContainEqual({
+          method: 'unsubscribe',
+          subscription: { type: 'allMids', dex: 'xyz' },
+        })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('should map orderbook subscription to l2Book payload', async () => {
@@ -275,21 +286,27 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('sends a single allDexsClearinghouseState unsubscribe when the positions listener unsubscribes', async () => {
-      const provider = createProvider()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
 
-      const unsub = await provider.subscribe(
-        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
-        vi.fn()
-      )
+        const unsub = await provider.subscribe(
+          { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+          vi.fn()
+        )
 
-      getMockRwsInstance().sent = [] // Clear subscribe messages
-      unsub()
+        getMockRwsInstance().sent = [] // Clear subscribe messages
+        unsub()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS) // fire the deferred teardown
 
-      expect(getMockRwsInstance().sent).toHaveLength(1)
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'unsubscribe',
-        subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
-      })
+        expect(getMockRwsInstance().sent).toHaveLength(1)
+        expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+          method: 'unsubscribe',
+          subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
+        })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('retries the market-map fetch on the next subscribe after a transient failure', async () => {

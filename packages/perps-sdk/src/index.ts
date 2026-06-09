@@ -1,3 +1,6 @@
+// biome-ignore-all lint/performance/noBarrelFile: package public entry point.
+// biome-ignore-all lint/performance/noReExportAll: package public entry point.
+
 /**
  * `@lifi/perps-sdk` — the public entry point. Exports `createPerpsClient` and
  * `PerpsClient` (the primary API), the realtime `PerpsWsClient`, the pure
@@ -184,4 +187,8 @@ export type {
   WsProvider,
   WsStatusListener,
 } from './websocket/types.js'
+export {
+  WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WsProviderBase,
+} from './websocket/WsProviderBase.js'
 export { wsLog } from './websocket/wsLog.js'
