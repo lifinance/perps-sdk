@@ -28,6 +28,24 @@ const ETH_MARKET: MarketDisplay = {
   },
 }
 
+const spotMarket = (id: string): MarketDisplay => ({
+  providerId: 'hyperliquid',
+  id,
+  categoryId: 'spot',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id,
+    displaySymbol: id,
+    logoURI: `https://app.hyperliquid.xyz/coins/${id}.svg`,
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+  },
+})
+
 const map = (fill: HlUserFill) => mapFill(fill, ETH_MARKET)
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
@@ -202,13 +220,35 @@ describe('mapFill (Hyperliquid)', () => {
   })
 
   describe('classification', () => {
-    it('routes spot fills (coin starts with @) on the buy side to SPOT_BUY', () => {
-      const fill = map(baseFill({ coin: '@230', side: 'B' }))
+    it('routes spot fills (@-indexed pair) on the buy side to SPOT_BUY', () => {
+      const fill = mapFill(
+        baseFill({ coin: '@230', side: 'B' }),
+        spotMarket('@230')
+      )
       expect(fill.classification).toBe(FillClassification.SPOT_BUY)
     })
 
     it('routes spot fills on the sell side to SPOT_SELL', () => {
-      const fill = map(baseFill({ coin: '@230', side: 'A' }))
+      const fill = mapFill(
+        baseFill({ coin: '@230', side: 'A' }),
+        spotMarket('@230')
+      )
+      expect(fill.classification).toBe(FillClassification.SPOT_SELL)
+    })
+
+    it('routes canonical-pair spot fills (PURR/USDC) on the buy side to SPOT_BUY', () => {
+      const fill = mapFill(
+        baseFill({ coin: 'PURR/USDC', side: 'B' }),
+        spotMarket('PURR/USDC')
+      )
+      expect(fill.classification).toBe(FillClassification.SPOT_BUY)
+    })
+
+    it('routes canonical-pair spot fills on the sell side to SPOT_SELL', () => {
+      const fill = mapFill(
+        baseFill({ coin: 'PURR/USDC', side: 'A' }),
+        spotMarket('PURR/USDC')
+      )
       expect(fill.classification).toBe(FillClassification.SPOT_SELL)
     })
 
