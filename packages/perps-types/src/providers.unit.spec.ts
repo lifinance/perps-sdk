@@ -167,7 +167,7 @@ const lighterProvider: Provider = {
   minReduceOrderValueUsd: 1,
   minWithdrawalUsd: 5,
   depositFeeUsd: 0,
-  withdrawalFeeUsd: 1,  
+  withdrawalFeeUsd: 1,
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
 }
 
