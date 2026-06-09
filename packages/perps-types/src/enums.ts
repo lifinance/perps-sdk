@@ -11,6 +11,7 @@ export enum PerpsErrorCode {
   // Auth errors (2010-2019)
   SignatureInvalid = 2010,
   AgentUnauthorized = 2011,
+  TermsNotAccepted = 2012,
 
   // Trading errors (2020-2039)
   ExchangeRejected = 2020,
