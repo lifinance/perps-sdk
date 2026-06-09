@@ -69,6 +69,24 @@ describe('formatOrderSize', () => {
   it('should handle large sizes', () => {
     expect(formatOrderSize(100000.12345, 2)).toBe('100000.12')
   })
+
+  it('should not drop a lot step on sizes exactly representable at szDecimals', () => {
+    // 0.29 * 100 === 28.999999999999996 — flooring the float product loses a step
+    expect(formatOrderSize(0.29, 2)).toBe('0.29')
+    expect(formatOrderSize(0.57, 2)).toBe('0.57')
+    expect(formatOrderSize(1.005, 3)).toBe('1.005')
+  })
+
+  it('should still truncate genuinely over-precise sizes toward zero', () => {
+    expect(formatOrderSize(0.2949, 2)).toBe('0.29')
+    expect(formatOrderSize(0.291, 2)).toBe('0.29')
+  })
+
+  it('should truncate sub-lot dust to zero', () => {
+    // 1e-7 stringifies in exponential notation
+    expect(formatOrderSize(1e-7, 2)).toBe('0')
+    expect(formatOrderSize(0.0000001, 4)).toBe('0')
+  })
 })
 
 describe('formatOrderPrice', () => {

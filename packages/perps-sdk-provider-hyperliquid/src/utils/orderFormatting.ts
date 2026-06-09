@@ -48,11 +48,35 @@ export function getMaxPriceDecimals(
  * @public
  */
 export function formatOrderSize(size: number, szDecimals: number): string {
-  // Truncate (don't round up) to avoid exceeding available balance
-  const multiplier = 10 ** szDecimals
-  const truncated = Math.floor(size * multiplier) / multiplier
+  // Truncate toward zero (never round up — could exceed available balance) on
+  // the decimal string: flooring the float product drops a lot step (0.29 * 100 === 28.999999999999996)
+  const [whole = '', fraction = ''] = toPlainDecimalString(size).split('.')
+  const truncatedFraction = fraction.slice(0, szDecimals)
+  const truncated = truncatedFraction ? `${whole}.${truncatedFraction}` : whole
   // Remove trailing zeros by round-tripping through stringToFloat
-  return stringToFloat(truncated.toFixed(szDecimals)).toString()
+  return stringToFloat(truncated).toString()
+}
+
+// Number#toString switches to exponential notation for |x| < 1e-6 and >= 1e21
+function toPlainDecimalString(value: number): string {
+  const str = value.toString()
+  const eIndex = str.indexOf('e')
+  if (eIndex === -1) {
+    return str
+  }
+  const exponent = Number(str.slice(eIndex + 1))
+  const [sign, mantissa] = str.startsWith('-')
+    ? ['-', str.slice(1, eIndex)]
+    : ['', str.slice(0, eIndex)]
+  const digits = mantissa.replace('.', '')
+  const pointIndex = mantissa.split('.')[0].length + exponent
+  if (pointIndex <= 0) {
+    return `${sign}0.${'0'.repeat(-pointIndex)}${digits}`
+  }
+  if (pointIndex >= digits.length) {
+    return `${sign}${digits}${'0'.repeat(pointIndex - digits.length)}`
+  }
+  return `${sign}${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`
 }
 
 /**
