@@ -86,6 +86,11 @@ describe('formatOrderSize', () => {
     // 1e-7 stringifies in exponential notation
     expect(formatOrderSize(1e-7, 2)).toBe('0')
     expect(formatOrderSize(0.0000001, 4)).toBe('0')
+    expect(formatOrderSize(-1e-7, 2)).toBe('0')
+  })
+
+  it('should emit plain notation for sizes at or above 1e21', () => {
+    expect(formatOrderSize(1.5e21, 2)).toBe('1500000000000000000000')
   })
 })
 
