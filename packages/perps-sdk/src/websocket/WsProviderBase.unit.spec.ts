@@ -79,6 +79,11 @@ class TestProvider extends WsProviderBase {
   deliver(key: string, event: SubscriptionEvent) {
     this.emit(key, event)
   }
+
+  /** Test hook into the base's protected idle-channel reclaim. */
+  expireIdle(key: string): boolean {
+    return this.closeChannelIfIdle(key)
+  }
 }
 
 const PRICES = { channel: 'prices', dex: 'test' } as Subscription
@@ -173,6 +178,60 @@ describe('WsProviderBase — deferred teardown', () => {
     expect(teardown).not.toHaveBeenCalled() // timer cleared by close()
     expect(p.onCloseSpy).toHaveBeenCalledTimes(1)
     expect(rws.closed).toBe(true)
+  })
+})
+
+describe('WsProviderBase — closeChannelIfIdle', () => {
+  it('tears down a lingering listener-free channel immediately, exactly once', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const teardown = vi.fn()
+    p.openImpl = async () => teardown
+
+    const unsub = await p.subscribe(PRICES, vi.fn())
+    unsub() // teardown deferred by the linger
+
+    expect(p.expireIdle('prices')).toBe(true)
+    expect(teardown).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+    expect(teardown).toHaveBeenCalledTimes(1) // linger timer was cancelled
+  })
+
+  it('refuses to touch a channel that still has listeners', async () => {
+    const p = new TestProvider(new MockRws())
+    const teardown = vi.fn()
+    p.openImpl = async () => teardown
+    const listener: SubscriptionListener = vi.fn()
+
+    await p.subscribe(PRICES, listener)
+
+    expect(p.expireIdle('prices')).toBe(false)
+    expect(teardown).not.toHaveBeenCalled()
+    p.deliver('prices', priceEvent)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports an unknown key as already free', () => {
+    const p = new TestProvider(new MockRws())
+    expect(p.expireIdle('prices')).toBe(true)
+  })
+
+  it('lets a re-subscribe after the expiry open the channel afresh', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const teardown = vi.fn()
+    p.openImpl = async () => teardown
+
+    const unsub = await p.subscribe(PRICES, vi.fn())
+    unsub()
+    p.expireIdle('prices')
+
+    const listener: SubscriptionListener = vi.fn()
+    await p.subscribe(PRICES, listener)
+    expect(p.openCount).toBe(2)
+    p.deliver('prices', priceEvent)
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 })
 

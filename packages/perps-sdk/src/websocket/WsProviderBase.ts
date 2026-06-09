@@ -117,15 +117,28 @@ export abstract class WsProviderBase implements WsProvider {
     }
   }
 
-  /** Deliver an event to every listener whose key starts with `prefix`. */
-  protected emitToPrefix(prefix: string, event: SubscriptionEvent): void {
-    for (const [key, entry] of this.channels) {
-      if (key.startsWith(prefix)) {
-        for (const fn of entry.listeners.keys()) {
-          fn(event)
-        }
-      }
+  /**
+   * Tear `key` off the wire immediately if no listener holds it — i.e. it is
+   * lingering in the deferred-teardown window (or its open is still
+   * unwinding). Returns `true` when the key is free (absent or just torn
+   * down), `false` — leaving the channel untouched — while live listeners
+   * hold it. Lets a subclass that enforces an exclusivity invariant across
+   * keys reclaim a released channel without waiting out the linger.
+   */
+  protected closeChannelIfIdle(key: string): boolean {
+    const entry = this.channels.get(key)
+    if (entry === undefined) {
+      return true
     }
+    if (entry.listeners.size > 0) {
+      return false
+    }
+    if (entry.pendingTeardown !== undefined) {
+      clearTimeout(entry.pendingTeardown)
+    }
+    entry.teardown?.()
+    this.channels.delete(key)
+    return true
   }
 
   /** Canonical fan-out key for `sub`; must match the key the subclass emits to. */
@@ -141,7 +154,7 @@ export abstract class WsProviderBase implements WsProvider {
   /** Socket (re)opened: replay every recorded sub; start any keep-alive. */
   protected abstract onOpen(): void | Promise<void>
 
-  /** Parse one inbound frame and route it via {@link emit}/{@link emitToPrefix}. */
+  /** Parse one inbound frame and route it via {@link emit}. */
   protected abstract handleMessage(raw: string): void
 
   /** Release subclass-only resources on {@link close} (keep-alive, cached state). */

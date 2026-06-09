@@ -66,10 +66,17 @@ export const hyperliquidWsProvider =
  * orders, fills and spot balances over a single {@link ReconnectingWebSocket}.
  * Construct via {@link hyperliquidWsProvider}.
  *
+ * `orderUpdates` supports a single address per provider instance: HL delivers
+ * those frames without a user field, so frames from two concurrent address
+ * subscriptions on one socket cannot be attributed. Subscribing a second
+ * address rejects while the first still has listeners; once the first is
+ * released, an address switch reclaims the channel immediately.
+ *
  * @public
  */
 export class HyperliquidWsProvider extends WsProviderBase {
   private subs = new Map<string, object>()
+  private orderUpdatesKey: string | undefined
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
   private midsBySubDex = new Map<string, Record<string, string>>()
@@ -112,6 +119,12 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
+    // Must run synchronously, before any await, so two concurrent opens
+    // cannot both pass the exclusivity check.
+    if (sub.channel === 'orderUpdates') {
+      this.claimOrderUpdatesKey(this.toKey(sub))
+    }
+
     await this.ensureMarketMap()
 
     // Prices require multi-sub-dex allMids subscriptions under one logical key.
@@ -146,10 +159,36 @@ export class HyperliquidWsProvider extends WsProviderBase {
 
     return () => {
       this.subs.delete(key)
+      if (this.orderUpdatesKey === key) {
+        this.orderUpdatesKey = undefined
+      }
       this.rws.send(
         JSON.stringify({ method: 'unsubscribe', subscription: payload })
       )
     }
+  }
+
+  /**
+   * Enforce the single-address `orderUpdates` invariant (HL frames carry no
+   * user field, so concurrent address subscriptions are unattributable). A
+   * listener-free lingering channel for another address is torn down eagerly
+   * so a wallet switch needn't wait out the teardown linger; a live one throws.
+   */
+  private claimOrderUpdatesKey(key: string): void {
+    const active = this.orderUpdatesKey
+    if (
+      active !== undefined &&
+      active !== key &&
+      !this.closeChannelIfIdle(active)
+    ) {
+      throw new Error(
+        `Hyperliquid supports one orderUpdates address per provider instance ` +
+          `(frames carry no user field). Unsubscribe ` +
+          `${active.slice('orderUpdates:'.length)} before subscribing ` +
+          `${key.slice('orderUpdates:'.length)}.`
+      )
+    }
+    this.orderUpdatesKey = key
   }
 
   /** Build sub-key + payload pairs for each sub-dex allMids subscription. */
@@ -169,6 +208,7 @@ export class HyperliquidWsProvider extends WsProviderBase {
   protected onClose(): void {
     this.subs.clear()
     this.midsBySubDex.clear()
+    this.orderUpdatesKey = undefined
   }
 
   protected onOpen(): void {
@@ -353,6 +393,11 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   private handleOrderUpdates(data: HlOrderDetail[]) {
+    // Untagged frame: attributable only via the single-address invariant.
+    const key = this.orderUpdatesKey
+    if (key === undefined) {
+      return
+    }
     const openOrders: OpenOrder[] = []
     const triggerOrders: TriggerOrder[] = []
     const terminated: string[] = []
@@ -394,7 +439,7 @@ export class HyperliquidWsProvider extends WsProviderBase {
         })
       }
     }
-    this.emitToPrefix('orderUpdates:', {
+    this.emit(key, {
       channel: 'orderUpdates',
       data: { openOrders, triggerOrders, terminated },
     })
