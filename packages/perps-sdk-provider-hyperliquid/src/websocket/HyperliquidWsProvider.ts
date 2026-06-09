@@ -88,7 +88,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
     subDexes: string[],
     client?: PerpsSDKClient
   ) {
-    super(new ReconnectingWebSocket(wsUrl), providerKey)
+    super(
+      new ReconnectingWebSocket(wsUrl, { pingPayload: '{"method":"ping"}' }),
+      providerKey
+    )
     this.subDexes = subDexes
     this.client = client
   }

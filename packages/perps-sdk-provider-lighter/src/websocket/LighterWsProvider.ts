@@ -51,7 +51,6 @@ import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
-const KEEPALIVE_INTERVAL_MS = 30_000
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -143,15 +142,16 @@ export class LighterWsProvider extends WsProviderBase {
   private readonly accountIndexCache = new Map<string, number>()
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
 
-  private keepaliveTimer: ReturnType<typeof setInterval> | undefined
-
   constructor(
     wsUrl: string = DEFAULT_WS_URL,
     providerKey = 'lighter',
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
   ) {
-    super(new ReconnectingWebSocket(wsUrl), providerKey)
+    super(
+      new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
+      providerKey
+    )
     this.restUrl = options.restUrl ?? DEFAULT_REST_URL
     this.authProvider = options.authProvider
     this.client = client
@@ -161,9 +161,6 @@ export class LighterWsProvider extends WsProviderBase {
         sym,
       ])
     )
-
-    // Keep-alive ping is Lighter-specific; the base does not wire 'close'.
-    this.rws.on('close', () => this.stopKeepalive())
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
@@ -208,14 +205,12 @@ export class LighterWsProvider extends WsProviderBase {
   }
 
   protected onClose(): void {
-    this.stopKeepalive()
     this.subs.clear()
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
   }
 
   protected async onOpen(): Promise<void> {
-    this.startKeepalive()
     for (const [, s] of this.subs) {
       // Isolate each resubscribe: an auth-token fetch can reject (e.g. RO
       // token revoked after reconnect), and one channel's failure must not
@@ -252,20 +247,6 @@ export class LighterWsProvider extends WsProviderBase {
       payload.auth = token
     }
     this.rws.send(JSON.stringify(payload))
-  }
-
-  private startKeepalive(): void {
-    this.stopKeepalive()
-    this.keepaliveTimer = setInterval(() => {
-      this.rws.send(JSON.stringify({ type: 'ping' }))
-    }, KEEPALIVE_INTERVAL_MS)
-  }
-
-  private stopKeepalive(): void {
-    if (this.keepaliveTimer !== undefined) {
-      clearInterval(this.keepaliveTimer)
-      this.keepaliveTimer = undefined
-    }
   }
 
   protected toKey(sub: Subscription): string {

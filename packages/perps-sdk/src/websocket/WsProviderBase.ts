@@ -138,7 +138,7 @@ export abstract class WsProviderBase implements WsProvider {
    */
   protected abstract openChannel(sub: Subscription): Promise<() => void>
 
-  /** Socket (re)opened: replay every recorded sub; start any keep-alive. */
+  /** Socket (re)opened: replay every recorded sub. */
   protected abstract onOpen(): void | Promise<void>
 
   /** Parse one inbound frame and route it via {@link emit}/{@link emitToPrefix}. */
