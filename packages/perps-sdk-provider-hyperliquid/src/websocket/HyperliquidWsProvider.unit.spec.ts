@@ -366,6 +366,148 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('rejects a second orderUpdates subscribe for a different address while the first is live', async () => {
+      const provider = createEnrichingProvider()
+      const listenerA = vi.fn()
+      const listenerB = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        listenerA
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+      ).rejects.toThrow(/one orderUpdates address/)
+
+      // No wire subscribe for the rejected address.
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).not.toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'orderUpdates', user: '0xbbb' },
+      })
+
+      // Frames keep flowing to the active subscriber only.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+      expect(listenerA).toHaveBeenCalledOnce()
+      expect(listenerB).not.toHaveBeenCalled()
+    })
+
+    it('rejects a conflicting orderUpdates subscribe even while the first open is still in flight', async () => {
+      const provider = createEnrichingProvider()
+
+      const subA = provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        vi.fn()
+      )
+      const subB = provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+        vi.fn()
+      )
+
+      await expect(subB).rejects.toThrow(/one orderUpdates address/)
+      await expect(subA).resolves.toBeTypeOf('function')
+    })
+
+    it('shares one orderUpdates channel across listeners for the same address regardless of casing', async () => {
+      const provider = createEnrichingProvider()
+      const listenerA = vi.fn()
+      const listenerB = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xAAA' },
+        listenerA
+      )
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        listenerB
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+      expect(listenerA).toHaveBeenCalledOnce()
+      expect(listenerB).toHaveBeenCalledOnce()
+    })
+
+    it('expires a lingering orderUpdates channel so an address switch within the linger succeeds', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        const listenerA = vi.fn()
+        const listenerB = vi.fn()
+
+        const unsubA = await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+          listenerA
+        )
+        unsubA() // teardown deferred by the linger window
+        getMockRwsInstance().sent = []
+
+        await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+
+        const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+        expect(payloads).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'orderUpdates', user: '0xaaa' },
+          },
+          {
+            method: 'subscribe',
+            subscription: { type: 'orderUpdates', user: '0xbbb' },
+          },
+        ])
+
+        // The expired channel's linger timer must not fire a second teardown.
+        getMockRwsInstance().sent = []
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+        expect(getMockRwsInstance().sent).toHaveLength(0)
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'orderUpdates', data: [] })
+        )
+        expect(listenerA).not.toHaveBeenCalled()
+        expect(listenerB).toHaveBeenCalledOnce()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('allows a different orderUpdates address after the previous channel fully tore down', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        const listenerB = vi.fn()
+
+        const unsubA = await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+          vi.fn()
+        )
+        unsubA()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+        await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'orderUpdates', data: [] })
+        )
+        expect(listenerB).toHaveBeenCalledOnce()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('should map fills subscription to userFills payload', async () => {
       const provider = createProvider()
 
@@ -650,7 +792,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit orderUpdates event using prefix matching', async () => {
+    it('should emit orderUpdates event to the subscribed address listener', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
 
