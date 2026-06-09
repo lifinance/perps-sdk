@@ -128,6 +128,40 @@ describe('WsProviderBase — ref-counted fan-out', () => {
   })
 })
 
+describe('WsProviderBase — open failure', () => {
+  it('rejects every concurrent subscriber when the shared open fails', async () => {
+    const p = new TestProvider(new MockRws())
+    let rejectOpen!: (e: Error) => void
+    p.openImpl = () =>
+      new Promise<() => void>((_, reject) => {
+        rejectOpen = reject
+      })
+
+    const s1 = p.subscribe(PRICES, vi.fn())
+    const s2 = p.subscribe(PRICES, vi.fn())
+    rejectOpen(new Error('WebSocket max reconnect attempts reached'))
+
+    await expect(s1).rejects.toThrow('WebSocket max reconnect attempts reached')
+    await expect(s2).rejects.toThrow('WebSocket max reconnect attempts reached')
+  })
+
+  it('evicts the entry on a failed open so a later subscribe re-opens', async () => {
+    const p = new TestProvider(new MockRws())
+    p.openImpl = async () => {
+      throw new Error('open failed')
+    }
+    await expect(p.subscribe(PRICES, vi.fn())).rejects.toThrow('open failed')
+
+    p.openImpl = async () => vi.fn()
+    const listener = vi.fn()
+    await p.subscribe(PRICES, listener)
+    expect(p.openCount).toBe(2)
+
+    p.deliver('prices', priceEvent)
+    expect(listener).toHaveBeenCalledWith(priceEvent)
+  })
+})
+
 describe('WsProviderBase — deferred teardown', () => {
   it('does not tear down synchronously; fires the teardown once after the linger', async () => {
     vi.useFakeTimers()

@@ -17,6 +17,9 @@ type WsEvent = keyof WsEventMap
  */
 const DEFAULT_MAX_RETRIES = 10
 
+const CLOSED_ERROR = 'WebSocket closed'
+const EXHAUSTED_ERROR = 'WebSocket max reconnect attempts reached'
+
 /**
  * Options for {@link ReconnectingWebSocket}.
  *
@@ -114,7 +117,7 @@ export class ReconnectingWebSocket {
   private reconnect() {
     if (this.attempt >= this.maxRetries) {
       for (const { reject } of this.readyResolvers) {
-        reject(new Error('WebSocket max reconnect attempts reached'))
+        reject(new Error(EXHAUSTED_ERROR))
       }
       this.readyResolvers = []
       this.setStatus('disconnected')
@@ -186,7 +189,7 @@ export class ReconnectingWebSocket {
     this.ws?.close()
     this.ws = null
     for (const { reject } of this.readyResolvers) {
-      reject(new Error('WebSocket closed'))
+      reject(new Error(CLOSED_ERROR))
     }
     this.readyResolvers = []
   }
@@ -240,13 +243,21 @@ export class ReconnectingWebSocket {
 
   /**
    * Resolve once the socket is open; reject if it closes or exhausts retries
-   * before opening.
+   * before opening. When the socket is already terminally dead — `close()`d or
+   * reconnect-exhausted (`disconnected`) — rejects immediately rather than
+   * queuing a waiter nothing would ever settle.
    *
    * @public
    */
   ready(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return Promise.resolve()
+    }
+    if (this.closed) {
+      return Promise.reject(new Error(CLOSED_ERROR))
+    }
+    if (this.status === 'disconnected') {
+      return Promise.reject(new Error(EXHAUSTED_ERROR))
     }
     return new Promise((resolve, reject) => {
       this.readyResolvers.push({ resolve, reject })
