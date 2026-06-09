@@ -1,6 +1,8 @@
+import type { OrderbookLevel, PerpsMarket, SpotMarket } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import {
   applySlippage,
+  buildQuote,
   calculateNotionalValue,
   calculatePositionSize,
   calculateRealizedPnlPercent,
@@ -11,6 +13,7 @@ import {
   estimateFees,
   liquidationDistancePercent,
   removableMargin,
+  walkOrderbook,
 } from './calculations.js'
 
 describe('calculatePositionSize', () => {
@@ -367,5 +370,171 @@ describe('calculateRealizedPnlPercent', () => {
 
   it('should use absolute size for negative sizes', () => {
     expect(calculateRealizedPnlPercent(50, -1, 500)).toBeCloseTo(10)
+  })
+})
+
+const asks: OrderbookLevel[] = [
+  { price: '100', size: '1' }, // 100 USD notional
+  { price: '101', size: '2' }, // 202 USD notional
+  { price: '102', size: '5' }, // 510 USD notional
+]
+
+const bids: OrderbookLevel[] = [
+  { price: '99', size: '1' },
+  { price: '98', size: '2' },
+]
+
+describe('walkOrderbook', () => {
+  it('fills entirely within the best level', () => {
+    const walk = walkOrderbook(asks, 50)
+    expect(walk.filledNotional).toBe(50)
+    expect(walk.baseSize).toBeCloseTo(0.5)
+    expect(walk.vwap).toBeCloseTo(100)
+    expect(walk.insufficientLiquidity).toBe(false)
+  })
+
+  it('walks across levels and computes the VWAP', () => {
+    // 100 USD @100 (1 base) + 101 USD @101 (1 base) = 201 USD, 2 base.
+    const walk = walkOrderbook(asks, 201)
+    expect(walk.filledNotional).toBe(201)
+    expect(walk.baseSize).toBeCloseTo(2)
+    expect(walk.vwap).toBeCloseTo(100.5)
+    expect(walk.insufficientLiquidity).toBe(false)
+  })
+
+  it('flags insufficient liquidity and returns the best obtainable fill', () => {
+    // Total book notional = 100 + 202 + 510 = 812; request 1000.
+    const walk = walkOrderbook(asks, 1000)
+    expect(walk.filledNotional).toBe(812)
+    expect(walk.baseSize).toBeCloseTo(8)
+    expect(walk.insufficientLiquidity).toBe(true)
+  })
+
+  it('returns a zero fill for an empty book', () => {
+    const walk = walkOrderbook([], 100)
+    expect(walk.baseSize).toBe(0)
+    expect(walk.filledNotional).toBe(0)
+    expect(walk.vwap).toBe(0)
+    expect(walk.insufficientLiquidity).toBe(true)
+  })
+})
+
+const perpsMarket: PerpsMarket = {
+  providerId: 'hyperliquid',
+  id: 'BTC',
+  categoryId: 'hyperliquid',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    displaySymbol: 'BTC',
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+  szDecimals: 5,
+  markPrice: '100',
+  maxLeverage: 50,
+  onlyIsolated: false,
+  funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
+}
+
+const spotMarket: SpotMarket = {
+  providerId: 'hyperliquid',
+  id: '@1',
+  categoryId: 'spot',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: '1',
+    displaySymbol: 'PURR',
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: '0',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+  szDecimals: 2,
+  markPrice: '100',
+}
+
+describe('buildQuote', () => {
+  it('quotes a buy off the asks with taker fee and positive price impact', () => {
+    const quote = buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'BTC',
+      type: 'perps',
+      side: 'buy',
+      sizeUsd: 201,
+      market: perpsMarket,
+      bids,
+      asks,
+      feeTier: { maker: '0.00015', taker: '0.00045' },
+      timestamp: 1700000000000,
+    })
+    expect(quote.expectedFillPrice).toBe('100.5')
+    expect(Number(quote.baseSize)).toBeCloseTo(2)
+    // (100.5 - 100) / 100 * 10000 = 50 bps.
+    expect(Number(quote.priceImpactBps)).toBeCloseTo(50)
+    // 201 * 0.00045 = 0.09045.
+    expect(Number(quote.feeUsd)).toBeCloseTo(0.09045)
+    expect(quote.isDefaultFeeTier).toBe(true)
+    expect(quote.funding).toEqual(perpsMarket.funding)
+    expect(quote.insufficientLiquidity).toBe(false)
+  })
+
+  it('quotes a sell off the bids', () => {
+    const quote = buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'BTC',
+      type: 'perps',
+      side: 'sell',
+      sizeUsd: 99,
+      market: perpsMarket,
+      bids,
+      asks,
+      feeTier: { maker: '0', taker: '0' },
+      timestamp: 1700000000000,
+    })
+    expect(quote.expectedFillPrice).toBe('99')
+    expect(Number(quote.priceImpactBps)).toBeCloseTo(100)
+    expect(quote.feeUsd).toBe('0')
+  })
+
+  it('returns null funding for spot markets', () => {
+    const quote = buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'PURR',
+      type: 'spot',
+      side: 'buy',
+      sizeUsd: 50,
+      market: spotMarket,
+      bids,
+      asks,
+      feeTier: { maker: '0', taker: '0' },
+      timestamp: 1700000000000,
+    })
+    expect(quote.funding).toBeNull()
+    expect(quote.type).toBe('spot')
+  })
+
+  it('flags insufficient liquidity from the walk', () => {
+    const quote = buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'BTC',
+      type: 'perps',
+      side: 'buy',
+      sizeUsd: 1000,
+      market: perpsMarket,
+      bids,
+      asks,
+      feeTier: { maker: '0', taker: '0' },
+      timestamp: 1700000000000,
+    })
+    expect(quote.insufficientLiquidity).toBe(true)
   })
 })

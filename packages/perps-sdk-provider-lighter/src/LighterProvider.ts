@@ -12,6 +12,8 @@ import {
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
+  type ProviderGetQuoteParams,
+  resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -32,6 +34,7 @@ import type {
   Position,
   PositionsResponse,
   ProviderAction,
+  Quote,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -44,6 +47,7 @@ import {
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
+  LIGHTER_BASE_FEE_TIER,
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
@@ -1115,6 +1119,19 @@ export const lighterProvider = (
           ...(responseCursor === undefined ? {} : { cursor: responseCursor }),
         },
       }
+    },
+
+    getQuote(
+      params: ProviderGetQuoteParams,
+      opts?: SDKRequestOptions
+    ): Promise<Quote> {
+      return resolveQuote(
+        requireClient(),
+        LIGHTER_PROVIDER_KEY,
+        params,
+        LIGHTER_BASE_FEE_TIER,
+        opts
+      )
     },
 
     getPortfolioSummary(

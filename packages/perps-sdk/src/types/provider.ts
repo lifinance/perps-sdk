@@ -14,8 +14,11 @@ import type {
   Position,
   PositionsResponse,
   ProviderAction,
+  Quote,
+  QuoteSide,
   SignedActionStep,
   SigningMethod,
+  TradeType,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import type {
@@ -159,6 +162,21 @@ export interface ProviderGetActivityParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getQuote}. `provider` is implicit
+ * in the provider instance and so is not duplicated here.
+ *
+ * @public
+ */
+export interface ProviderGetQuoteParams {
+  /** Human `displaySymbol`, e.g. `"BTC"`. Resolved against the provider's own markets, scoped by `type`. */
+  symbol: string
+  side: QuoteSide
+  /** USD notional to fill. */
+  size: number
+  type: TradeType
+}
+
+/**
  * Unbound provider plugin passed to {@link createPerpsClient}, modelled on
  * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type` (the wire
  * key — `'hyperliquid'`, `'lighter'`, …) and implements the read-side surface
@@ -232,6 +250,18 @@ export interface PerpsProviderPlugin {
     params: ProviderGetActivityParams,
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse>
+
+  /**
+   * Produce a one-shot fill {@link Quote} for `params.symbol` at `params.size`
+   * USD notional on this venue. The provider resolves the symbol against its
+   * own markets (matching `baseAsset.displaySymbol`, scoped by `params.type`),
+   * walks its orderbook for the VWAP fill, and applies its public base fee
+   * tier. Throws when no market matches the symbol+type.
+   */
+  getQuote(
+    params: ProviderGetQuoteParams,
+    options?: SDKRequestOptions
+  ): Promise<Quote>
 
   /**
    * Roll an already-fetched {@link AccountResponse} (plus its positions) up
