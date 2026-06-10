@@ -42,6 +42,7 @@ describe('request — error rehydration', () => {
     ['SDKError', PerpsErrorCode.SDKError],
     ['SignatureInvalid', PerpsErrorCode.SignatureInvalid],
     ['AgentUnauthorized', PerpsErrorCode.AgentUnauthorized],
+    ['TermsNotAccepted', PerpsErrorCode.TermsNotAccepted],
     ['ExchangeRejected', PerpsErrorCode.ExchangeRejected],
     ['InsufficientMargin', PerpsErrorCode.InsufficientMargin],
     ['InsufficientBalance', PerpsErrorCode.InsufficientBalance],
