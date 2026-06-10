@@ -7,7 +7,6 @@
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size
  */
 
-import { stringToFloat } from '@lifi/perps-sdk'
 import Big from 'big.js'
 
 /**
@@ -66,6 +65,9 @@ export function formatOrderSize(size: number, szDecimals: number): string {
  * - Integer prices always allowed regardless of significant figures
  * - Trailing zeroes must be removed for signing
  *
+ * Rounding is half-up (away from zero at exact halfway) on the true decimal
+ * value, not on the binary float — (1.005).toFixed(2) would give '1.00'.
+ *
  * @param price - The price value to format
  * @param szDecimals - The asset's szDecimals (affects max price decimals)
  * @param market - Optional market type (e.g. 'spot'). Defaults to perps rules.
@@ -79,18 +81,13 @@ export function formatOrderPrice(
 ): string {
   const maxPriceDecimals = getMaxPriceDecimals(szDecimals, market)
 
-  let rounded = stringToFloat(price.toFixed(maxPriceDecimals))
+  let rounded = new Big(price).round(maxPriceDecimals, Big.roundHalfUp)
 
-  if (Number.isInteger(rounded)) {
-    return rounded.toString()
+  // Integer prices bypass the 5 sig-fig rule; prec() is a no-op below 6 sig figs
+  if (!rounded.mod(1).eq(0)) {
+    rounded = rounded.prec(5, Big.roundHalfUp)
   }
 
-  const absStr = Math.abs(rounded).toString().replace('.', '')
-  const sigFigs = absStr.replace(/^0+/, '').length
-
-  if (sigFigs > 5) {
-    rounded = stringToFloat(rounded.toPrecision(5))
-  }
-
-  return rounded.toString()
+  // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
+  return rounded.eq(0) ? '0' : rounded.toFixed()
 }
