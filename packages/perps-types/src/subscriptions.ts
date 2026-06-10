@@ -17,18 +17,12 @@ export type OrderbookSubscription = {
   marketId: string
   depth?: number
   /**
-   * Significant-figures price-aggregation hint. Providers that aggregate the
-   * book server-side (Hyperliquid) bucket levels to this many significant
-   * figures; `undefined` requests full precision. Providers that stream the
-   * full book (Lighter) ignore it.
+   * Desired price granularity of streamed levels, in quote currency (e.g.
+   * `10` buckets a BTC book into $10-wide levels). Providers that aggregate
+   * the book server-side honour it best-effort; providers that stream the
+   * full book ignore it. `undefined` requests full precision.
    */
-  nSigFigs?: number
-  /**
-   * Finer sub-bucketing within the most-significant `nSigFigs` digit. Only
-   * meaningful alongside `nSigFigs`; ignored by providers that don't aggregate
-   * server-side.
-   */
-  mantissa?: number
+  priceStep?: number
 }
 /** @public */
 export type CandleSubscription = {
