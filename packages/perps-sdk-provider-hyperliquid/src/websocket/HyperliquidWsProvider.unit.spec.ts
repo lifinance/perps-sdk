@@ -1746,8 +1746,9 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().sent = [] // Clear initial subscribe messages
 
-      // Simulate reconnection
+      // Simulate reconnection; the base's replay loop awaits each send.
       getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
 
       // 2 allMids (default + xyz) + 1 l2Book
       expect(getMockRwsInstance().sent).toHaveLength(3)
@@ -1781,6 +1782,7 @@ describe('HyperliquidWsProvider', () => {
       expect(getMockRwsInstance().sent).toHaveLength(0)
 
       getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
 
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toEqual([
