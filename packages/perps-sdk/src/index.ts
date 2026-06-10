@@ -98,6 +98,7 @@ export type {
 } from './types/config.js'
 export type {
   ActionSignerContribution,
+  LiquidationEstimateParams,
   PerpsProvider,
   PerpsProviderPlugin,
   PerpsSDKClient,
@@ -159,6 +160,7 @@ export {
 export { stringToFloat } from './utils/parse.js'
 export {
   directionSign,
+  estimateIsolatedLiquidationPrice,
   predictAverageEntryPrice,
   predictNewLeverage,
   predictUnrealizedPnl,

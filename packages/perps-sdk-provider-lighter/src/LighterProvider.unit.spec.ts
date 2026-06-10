@@ -266,6 +266,31 @@ describe('LighterProvider — `type` field', () => {
   })
 })
 
+describe('LighterProvider — order formatting and liquidation surface', () => {
+  const btcMarket = {
+    ...MARKETS_RESPONSE.markets[0],
+    priceDecimals: 1,
+    maintenanceMarginRate: 0.012,
+  }
+
+  it('formats prices and sizes against the Lighter decimal budgets', () => {
+    const provider = lighterProvider()
+    expect(provider.formatOrderPrice(btcMarket, 50000.25)).toBe('50000.3')
+    expect(provider.formatOrderSize(btcMarket, 0.123456)).toBe('0.1234')
+  })
+
+  it('estimates liquidation from the market maintenanceMarginRate', () => {
+    const provider = lighterProvider()
+    // entry * (1 - 1/leverage) / (1 - mmr) = 50000 * 0.9 / 0.988
+    const liq = provider.estimateLiquidationPrice(btcMarket, {
+      entryPrice: 50000,
+      leverage: 10,
+      isLong: true,
+    })
+    expect(liq).toBeCloseTo(45546.559, 2)
+  })
+})
+
 describe('LighterProvider — auth token plumbing', () => {
   it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
     const provider = lighterProvider()

@@ -79,6 +79,9 @@ import {
 } from './utils/apiClient.js'
 import {
   classifyAndMapOrders,
+  estimateLiquidationPrice,
+  formatOrderPrice,
+  formatOrderSize,
   lighterAsset,
   mapFill,
   mapOrderDetail,
@@ -1123,6 +1126,12 @@ export const lighterProvider = (
     ): AccountSummary {
       return summarizeLighterAccount(account, positions)
     },
+
+    formatOrderPrice,
+
+    formatOrderSize,
+
+    estimateLiquidationPrice,
 
     projectConfig(
       config: AccountConfig,
