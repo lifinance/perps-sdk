@@ -23,3 +23,13 @@ export { mapPosition } from './mapPosition.js'
 export { lighterAsset, marketDisplay } from './marketDisplay.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
+export type { ScaleToIntegerPolicy } from './wireEncoding.js'
+export {
+  leverageToFraction,
+  mapOrderTypeToInt,
+  mapTimeInForceToInt,
+  marginFractionToMaxLeverage,
+  orderExpiryForTif,
+  resolveTimeInForce,
+  scaleToInteger,
+} from './wireEncoding.js'

@@ -100,10 +100,16 @@ importers:
       '@lifi/perps-types':
         specifier: workspace:*
         version: link:../perps-types
+      big.js:
+        specifier: ^7.0.1
+        version: 7.0.1
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:*
         version: link:../perps-sdk
+      '@types/big.js':
+        specifier: ^7.0.0
+        version: 7.0.0
       '@vitest/coverage-v8':
         specifier: ^2.1.8
         version: 2.1.9(vitest@2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3)))
