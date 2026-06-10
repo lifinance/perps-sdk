@@ -50,10 +50,6 @@ export async function request<T>(
     headers['x-lifi-api-key'] = config.apiKey
   }
 
-  if (sdkOptions?.lighterAuthToken) {
-    headers.Authorization = `Bearer ${sdkOptions.lighterAuthToken}`
-  }
-
   let finalOptions: RequestInit = {
     ...fetchInit,
     headers,
