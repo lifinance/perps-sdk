@@ -61,16 +61,6 @@ export type LtWsOrderBookMessage = LtWsMessage & {
 }
 
 /**
- * `/api/v1/account?by=l1_address` response. The provider only consumes the
- * `index` field — everything else is intentionally typed as unknown.
- * @public
- */
-export type LtWsAccountByL1Response = {
-  code: number
-  accounts?: Array<{ index: number; [k: string]: unknown }>
-}
-
-/**
  * Auth-channel payloads.
  *
  * The response `channel` field uses `:` as separator (e.g.
