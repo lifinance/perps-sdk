@@ -1,5 +1,5 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LighterWsProvider } from './LighterWsProvider.js'
 
 const getMarketsMock = vi.fn()
@@ -551,6 +551,68 @@ describe('LighterWsProvider', () => {
       expect(goodListener).toHaveBeenCalledOnce()
       errorSpy.mockRestore()
       p.close()
+    })
+  })
+
+  describe('keepalive framing', () => {
+    class MockWebSocket {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSING = 2
+      static CLOSED = 3
+      static instances: MockWebSocket[] = []
+
+      readyState = MockWebSocket.CONNECTING
+      onopen: ((ev: Event) => void) | null = null
+      onclose: ((ev: { code: number; reason: string }) => void) | null = null
+      onerror: ((ev: Event) => void) | null = null
+      onmessage: ((ev: { data: string }) => void) | null = null
+      sent: string[] = []
+
+      constructor(_url: string) {
+        MockWebSocket.instances.push(this)
+      }
+
+      send(data: string) {
+        this.sent.push(data)
+      }
+
+      close() {
+        this.readyState = MockWebSocket.CLOSED
+      }
+
+      simulateOpen() {
+        this.readyState = MockWebSocket.OPEN
+        this.onopen?.(new Event('open'))
+      }
+    }
+
+    const originalWebSocket = globalThis.WebSocket
+
+    beforeEach(() => {
+      MockWebSocket.instances = []
+      vi.useFakeTimers()
+      globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      globalThis.WebSocket = originalWebSocket
+    })
+
+    it('sends exactly one Lighter-native keepalive per interval and never a method-framed ping', () => {
+      const provider = makeProvider()
+      const ws = MockWebSocket.instances[0]
+      ws.simulateOpen()
+      ws.sent = []
+
+      vi.advanceTimersByTime(30_000)
+
+      expect(ws.sent).toEqual([JSON.stringify({ type: 'ping' })])
+      expect(ws.sent.some((frame) => frame.includes('"method":"ping"'))).toBe(
+        false
+      )
+      provider.close()
     })
   })
 

@@ -65,8 +65,10 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     sent: string[] = []
     closed = false
     status = 'connected'
+    options: unknown
 
-    constructor() {
+    constructor(_url?: string, options?: unknown) {
+      this.options = options
       instance = this
     }
 
@@ -175,6 +177,15 @@ function createEnrichingProvider(
 }
 
 describe('HyperliquidWsProvider', () => {
+  describe('keepalive framing', () => {
+    it('configures the socket keepalive with the Hyperliquid ping frame', () => {
+      createProvider()
+      expect(getMockRwsInstance().options).toEqual({
+        pingPayload: '{"method":"ping"}',
+      })
+    })
+  })
+
   describe('subscribe', () => {
     it('should send subscribe message for default and sub-dex allMids', async () => {
       const provider = createProvider()

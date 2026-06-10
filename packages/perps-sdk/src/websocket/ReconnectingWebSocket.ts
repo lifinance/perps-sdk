@@ -28,11 +28,17 @@ const EXHAUSTED_ERROR = 'WebSocket max reconnect attempts reached'
 export interface ReconnectingWebSocketOptions {
   maxRetries?: number
   pingIntervalMs?: number
+  /**
+   * Keepalive frame sent every `pingIntervalMs` while the socket is open.
+   * Framing is venue-specific, so when omitted no keepalive is sent.
+   */
+  pingPayload?: string
 }
 
 /**
  * A `WebSocket` wrapper that auto-reconnects with exponential backoff, buffers
- * sends while disconnected, and keep-alive pings the server.
+ * sends while disconnected, and keep-alive pings the server with the
+ * caller-supplied `pingPayload`.
  *
  * Hand-rolled rather than wrapping `partysocket` / `reconnecting-websocket`:
  * both expose only the raw `readyState`, which cannot distinguish a transient
@@ -49,6 +55,7 @@ export class ReconnectingWebSocket {
   private readonly url: string
   private readonly maxRetries: number
   private readonly pingIntervalMs: number
+  private readonly pingPayload: string | undefined
   private attempt = 0
   private closed = false
   private buffer: string[] = []
@@ -70,6 +77,7 @@ export class ReconnectingWebSocket {
     this.url = url
     this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES
     this.pingIntervalMs = options?.pingIntervalMs ?? 30_000
+    this.pingPayload = options?.pingPayload
     this.connect()
   }
 
@@ -151,9 +159,13 @@ export class ReconnectingWebSocket {
   }
 
   private startPing() {
+    const payload = this.pingPayload
+    if (payload === undefined) {
+      return
+    }
     this.pingTimer = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send('{"method":"ping"}')
+        this.ws.send(payload)
       }
     }, this.pingIntervalMs)
   }
