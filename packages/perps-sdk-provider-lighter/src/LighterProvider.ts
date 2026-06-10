@@ -633,8 +633,10 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
-      const token = await resolveAuthToken(opts, params.address)
+      const [account, token] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        resolveAuthToken(opts, params.address),
+      ])
 
       const [
         symbolLookup,
