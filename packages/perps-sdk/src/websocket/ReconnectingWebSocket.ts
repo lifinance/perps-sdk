@@ -4,6 +4,7 @@ import type {
 } from 'partysocket/ws'
 import PartySocketWebSocket from 'partysocket/ws'
 import type { WsConnectionStatus, WsStatusListener } from './types.js'
+import { wsLog } from './wsLog.js'
 
 type WsEventMap = {
   open: () => void
@@ -35,6 +36,7 @@ const MAX_RECONNECTION_DELAY_MS = 10_000
 
 const CLOSED_ERROR = 'WebSocket closed'
 const EXHAUSTED_ERROR = 'WebSocket max reconnect attempts reached'
+const WS_PROVIDER_KEY = 'reconnecting-websocket'
 
 /**
  * Options for {@link ReconnectingWebSocket}.
@@ -121,7 +123,7 @@ export class ReconnectingWebSocket {
     this.armWatchdog()
     this.setStatus('connected')
     for (const fn of this.listeners.open) {
-      fn()
+      this.callListener('open', fn)
     }
     for (const { resolve } of this.readyResolvers) {
       resolve()
@@ -136,7 +138,7 @@ export class ReconnectingWebSocket {
       return
     }
     for (const fn of this.listeners.close) {
-      fn(event.code, event.reason)
+      this.callListener('close', fn, event.code, event.reason)
     }
     // partysocket schedules the next attempt — incrementing retryCount —
     // before dispatching close, and exhausts silently: a retryCount at the cap
@@ -161,7 +163,7 @@ export class ReconnectingWebSocket {
 
   private handleError = (event: PartySocketErrorEvent) => {
     for (const fn of this.listeners.error) {
-      fn(event)
+      this.callListener('error', fn, event)
     }
   }
 
@@ -170,7 +172,7 @@ export class ReconnectingWebSocket {
     const data =
       typeof event.data === 'string' ? event.data : String(event.data)
     for (const fn of this.listeners.message) {
-      fn(data)
+      this.callListener('message', fn, data)
     }
   }
 
@@ -180,7 +182,19 @@ export class ReconnectingWebSocket {
     }
     this.status = status
     for (const fn of this.statusListeners) {
-      fn(status)
+      this.callListener('status', fn, status)
+    }
+  }
+
+  private callListener<TArgs extends unknown[]>(
+    listenerType: string,
+    listener: (...args: TArgs) => void,
+    ...args: TArgs
+  ) {
+    try {
+      listener(...args)
+    } catch (error) {
+      wsLog.listenerFailure(WS_PROVIDER_KEY, listenerType, error)
     }
   }
 

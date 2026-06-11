@@ -65,4 +65,18 @@ export const wsLog = {
   marketRefreshFailure(provider: string, error: unknown): void {
     console.warn(`[${provider}:ws] market registry refresh failed`, error)
   },
+  /**
+   * A consumer listener callback threw during fan-out. Logged and skipped so
+   * one bad listener cannot starve sibling listeners or break socket flow.
+   */
+  listenerFailure(
+    provider: string,
+    listenerType: string,
+    error: unknown
+  ): void {
+    console.error(
+      `[${provider}:ws] listener threw during '${listenerType}' fan-out`,
+      error
+    )
+  },
 } as const
