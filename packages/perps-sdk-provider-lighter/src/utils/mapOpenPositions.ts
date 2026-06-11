@@ -1,21 +1,26 @@
-import type { Position } from '@lifi/perps-types'
+import type { MarketDisplay, Position } from '@lifi/perps-types'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
+import { resolveMarketDisplay } from './marketDisplay.js'
 
 /**
  * Map one raw Lighter account position to a {@link Position}, resolving the
- * display symbol as backend lookup → wire `symbol` → synthetic `market_<id>`
+ * market as backend lookup → wire `symbol` → synthetic `market_<id>`
  * placeholder.
  *
  * @public
  */
 export const mapAccountPosition = (
   p: LtAccountPosition,
-  symbolLookup: ReadonlyMap<number, string>
+  byMarketId: ReadonlyMap<number, MarketDisplay>
 ): Position =>
   mapPosition(
     p,
-    symbolLookup.get(p.market_id) ?? p.symbol ?? `market_${p.market_id}`
+    resolveMarketDisplay(
+      byMarketId,
+      p.market_id,
+      p.symbol ?? `market_${p.market_id}`
+    )
   )
 
 /**
@@ -27,8 +32,8 @@ export const mapAccountPosition = (
  */
 export const mapOpenPositions = (
   positions: LtAccountPosition[],
-  symbolLookup: ReadonlyMap<number, string>
+  byMarketId: ReadonlyMap<number, MarketDisplay>
 ): Position[] =>
   positions
     .filter((p) => Number.parseFloat(p.position) !== 0)
-    .map((p) => mapAccountPosition(p, symbolLookup))
+    .map((p) => mapAccountPosition(p, byMarketId))

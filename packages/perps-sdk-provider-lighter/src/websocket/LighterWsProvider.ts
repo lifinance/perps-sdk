@@ -11,7 +11,12 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Fill, Position, Subscription } from '@lifi/perps-types'
+import type {
+  Fill,
+  MarketDisplay,
+  Position,
+  Subscription,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
@@ -33,6 +38,9 @@ import {
   fetchDetailedAccount,
   mapAccountPosition,
   mapFill,
+  marketDisplay,
+  resolveMarketDisplay,
+  toMarketDisplay,
 } from '../utils/index.js'
 
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
@@ -51,10 +59,10 @@ import {
 // and cached for the lifetime of the provider — Lighter's account index is
 // stable for a given L1 wallet.
 //
-// AssetId ↔ market_id mapping is sourced once from the backend's
-// `/perps/assets`. The canonical `assetId` for Lighter perps is
-// `String(market_id)` ("0", "1", …); `displaySymbol` ("BTC", "ETH") is kept
-// separately for `asset.displaySymbol` on mapped orders/fills/positions.
+// The market identity for each `market_id` is sourced once from the backend's
+// `/markets`. The canonical `Market.id` for Lighter perps is
+// `String(market_id)` ("0", "1", …); the full `MarketDisplay` (base/quote
+// `Asset`) is carried verbatim onto mapped orders/fills/positions.
 //
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
@@ -68,7 +76,7 @@ const LIGHTER_AUTH_CHANNEL = {
   positions: 'account_all_positions',
 } as const
 
-/** Channels whose handlers read `marketIdToDisplaySymbol`. */
+/** Channels whose handlers read `marketsById`. */
 function channelNeedsDisplaySymbols(channel: Subscription['channel']): boolean {
   return (
     channel === 'orderUpdates' || channel === 'fills' || channel === 'positions'
@@ -146,13 +154,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly positionsByAddress = new Map<string, Map<number, Position>>()
 
   /**
-   * `market_id → displaySymbol`. The canonical `assetId` for Lighter perps
-   * IS `String(market_id)` (backend `/perps/assets` emits it that way), so no
-   * id-to-id map is needed — `String(market_id)` is the wire key. We keep
-   * only the display-symbol lookup, used to populate `asset.displaySymbol`
-   * on mapped orders / fills / positions.
+   * `market_id → MarketDisplay`. `(providerId, market.id)` uniquely identifies
+   * a market and `providerId` is constant for Lighter, so the numeric
+   * `market_id` alone keys the map. Values carry the full backend market
+   * identity (base/quote `Asset`), carried verbatim onto mapped orders / fills
+   * / positions.
    */
-  private marketIdToDisplaySymbol: Map<number, string>
+  private marketsById: Map<number, MarketDisplay>
   private displaySymbolsPromise: Promise<void> | undefined
 
   private readonly accountIndexCache = new Map<string, number>()
@@ -178,10 +186,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
     this.authProvider = options.authProvider
     this.client = client
-    this.marketIdToDisplaySymbol = new Map(
+    this.marketsById = new Map(
       Object.entries(options.displaySymbolMap ?? {}).map(([id, sym]) => [
         Number(id),
-        sym,
+        marketDisplay(id, sym),
       ])
     )
   }
@@ -217,7 +225,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
 
     // Only the auth channels (orders/fills/positions) read
-    // `marketIdToDisplaySymbol`. `prices`/`orderbook` are keyed purely by
+    // `marketsById`. `prices`/`orderbook` are keyed purely by
     // `String(market_id)`, so gating them on the `/markets` fetch would let a
     // failed display-symbol lookup kill live price ticks.
     if (channelNeedsDisplaySymbols(sub.channel)) {
@@ -367,7 +375,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   private async ensureDisplaySymbols(): Promise<void> {
-    if (this.marketIdToDisplaySymbol.size > 0) {
+    if (this.marketsById.size > 0) {
       return
     }
     await cachePromise(
@@ -397,7 +405,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (!Number.isFinite(marketId)) {
         continue
       }
-      this.marketIdToDisplaySymbol.set(marketId, m.baseAsset.displaySymbol)
+      this.marketsById.set(marketId, toMarketDisplay(m))
     }
   }
 
@@ -481,10 +489,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
-    const data = classifyAndMapOrders(
-      raw,
-      (marketIndex) =>
-        this.marketIdToDisplaySymbol.get(marketIndex) ?? `market_${marketIndex}`
+    const data = classifyAndMapOrders(raw, (marketIndex) =>
+      resolveMarketDisplay(this.marketsById, marketIndex)
     )
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
@@ -506,7 +512,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       mapFill(
         t,
         accountIndex,
-        this.marketIdToDisplaySymbol.get(t.market_id) ?? `market_${t.market_id}`
+        resolveMarketDisplay(this.marketsById, t.market_id)
       )
     )
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
@@ -533,10 +539,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (Number.parseFloat(p.position) === 0) {
         state.delete(p.market_id)
       } else {
-        state.set(
-          p.market_id,
-          mapAccountPosition(p, this.marketIdToDisplaySymbol)
-        )
+        state.set(p.market_id, mapAccountPosition(p, this.marketsById))
       }
     }
     this.emit(`positions:${address}`, {

@@ -1,5 +1,10 @@
 import { isActiveOrderStatus } from '@lifi/perps-sdk'
-import type { OpenOrder, Order, TriggerOrder } from '@lifi/perps-types'
+import type {
+  MarketDisplay,
+  OpenOrder,
+  Order,
+  TriggerOrder,
+} from '@lifi/perps-types'
 import {
   OrderSide,
   OrderStatus,
@@ -7,7 +12,6 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import type { LtOrder } from '../types/index.js'
-import { marketDisplay } from './marketDisplay.js'
 
 // Lighter's `type` enum uses hyphens in the OpenAPI spec but earlier API
 // versions emitted underscores. Tolerate both so we don't silently fall
@@ -150,7 +154,7 @@ export const isTriggerOrder = (raw: LtOrder): boolean => {
  */
 export const mapTriggerOrder = (
   order: LtOrder,
-  displaySymbol: string
+  market: MarketDisplay
 ): TriggerOrder => {
   const type = mapOrderType(order.type)
   const isLimit =
@@ -162,7 +166,7 @@ export const mapTriggerOrder = (
     // this boundary — combined with `market.id` (=market_index), the
     // numeric `order_index` uniquely pins a Lighter order.
     orderId: String(order.order_index),
-    market: marketDisplay(String(order.market_index), displaySymbol),
+    market,
     type,
     size: order.initial_base_amount,
     triggerPrice: order.trigger_price,
@@ -173,12 +177,12 @@ export const mapTriggerOrder = (
 
 /**
  * Map a raw Lighter order to the generic OpenOrder type.
- * @param displaySymbol - Human-readable symbol for `market.baseAsset.displaySymbol`.
+ * @param market - Backend-resolved market identity for `order.market_index`.
  * @public
  */
-export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
+export const mapOrder = (order: LtOrder, market: MarketDisplay): OpenOrder => ({
   orderId: String(order.order_index),
-  market: marketDisplay(String(order.market_index), displaySymbol),
+  market,
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
   type: mapOrderType(order.type),
   size: order.initial_base_amount,
@@ -199,7 +203,7 @@ export const mapOrder = (order: LtOrder, displaySymbol: string): OpenOrder => ({
  */
 export const classifyAndMapOrders = (
   orders: LtOrder[],
-  resolveDisplaySymbol: (marketIndex: number) => string
+  resolveMarket: (marketIndex: number) => MarketDisplay
 ): {
   openOrders: OpenOrder[]
   triggerOrders: TriggerOrder[]
@@ -214,11 +218,11 @@ export const classifyAndMapOrders = (
       terminated.push(orderId)
       continue
     }
-    const displaySymbol = resolveDisplaySymbol(raw.market_index)
+    const market = resolveMarket(raw.market_index)
     if (isTriggerOrder(raw)) {
-      triggerOrders.push(mapTriggerOrder(raw, displaySymbol))
+      triggerOrders.push(mapTriggerOrder(raw, market))
     } else {
-      openOrders.push(mapOrder(raw, displaySymbol))
+      openOrders.push(mapOrder(raw, market))
     }
   }
   return { openOrders, triggerOrders, terminated }
@@ -231,10 +235,10 @@ export const classifyAndMapOrders = (
  */
 export const mapOrderDetail = (
   order: LtOrder,
-  displaySymbol: string
+  market: MarketDisplay
 ): Order => ({
   orderId: String(order.order_index),
-  market: marketDisplay(String(order.market_index), displaySymbol),
+  market,
   side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
   type: mapOrderType(order.type),
   price: order.price,

@@ -29,6 +29,7 @@ import type {
   Balance,
   FillsResponse,
   LighterAccountConfig,
+  MarketDisplay,
   Order,
   OrdersResponse,
   Position,
@@ -90,7 +91,8 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
-  marketDisplay,
+  resolveMarketDisplay,
+  toMarketDisplay,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -291,14 +293,14 @@ export const lighterProvider = (
   }
 
   /**
-   * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/markets`
-   * response. Used by every account-level read to populate
-   * `market.baseAsset.displaySymbol` on mapped wire shapes. Backend response is
-   * Valkey-cached so this is cheap.
+   * Build a `Map<market_id, MarketDisplay>` from the backend's `/perps/markets`
+   * response — the canonical, fully-populated market identity (baseAsset,
+   * quoteAsset, logos) carried verbatim onto mapped fills/positions/orders.
+   * Backend response is Valkey-cached so this is cheap.
    */
-  const buildSymbolLookup = async (
+  const buildMarketLookup = async (
     opts?: SDKRequestOptions
-  ): Promise<Map<number, string>> => {
+  ): Promise<Map<number, MarketDisplay>> => {
     const { markets } = await coreGetMarkets(
       requireClient(),
       { provider: LIGHTER_PROVIDER_KEY },
@@ -307,7 +309,7 @@ export const lighterProvider = (
     return new Map(
       markets
         .filter((m) => m.categoryId === LIGHTER_PROVIDER_KEY)
-        .map((m) => [Number(m.id), m.baseAsset.displaySymbol])
+        .map((m) => [Number(m.id), toMarketDisplay(m)])
     )
   }
 
@@ -643,13 +645,13 @@ export const lighterProvider = (
       ])
 
       const [
-        symbolLookup,
+        marketLookup,
         registeredKey,
         limitsResult,
         localKey,
         storedReadOnlyToken,
       ] = await Promise.all([
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         // No token is a legitimate unauthenticated read → undefined → zero fee
         // tier. A fetch error is NOT: it must propagate, never be coerced to a
@@ -674,7 +676,7 @@ export const lighterProvider = (
 
       const positions: Position[] = mapOpenPositions(
         account.positions,
-        symbolLookup
+        marketLookup
       )
 
       const totalMarginUsed = positions.reduce(
@@ -740,14 +742,14 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
       const client = apiClient(opts)
-      const [account, symbolLookup] = await Promise.all([
+      const [account, marketLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
       ])
 
       let positions: Position[] = mapOpenPositions(
         account.positions,
-        symbolLookup
+        marketLookup
       )
 
       if (params.marketId !== undefined) {
@@ -776,9 +778,9 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, symbolLookup] = await Promise.all([
+      const [account, marketLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
       ])
 
       const marketIds =
@@ -796,8 +798,7 @@ export const lighterProvider = (
 
       const { openOrders, triggerOrders } = classifyAndMapOrders(
         responses.flatMap((r) => r.orders),
-        (marketIndex) =>
-          symbolLookup.get(marketIndex) ?? `market_${marketIndex}`
+        (marketIndex) => resolveMarketDisplay(marketLookup, marketIndex)
       )
 
       const total = openOrders.length + triggerOrders.length
@@ -825,9 +826,9 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, symbolLookup] = await Promise.all([
+      const [account, marketLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
       ])
 
       // Native `order_index` route only. The cross-provider `Order.orderId`
@@ -863,7 +864,10 @@ export const lighterProvider = (
       for (const response of activeResponses) {
         const hit = response.orders.find(predicate as (o: unknown) => boolean)
         if (hit !== undefined) {
-          return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+          return mapOrderDetail(
+            hit,
+            resolveMarketDisplay(marketLookup, hit.market_index)
+          )
         }
       }
 
@@ -876,7 +880,10 @@ export const lighterProvider = (
       )
       const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
       if (hit !== undefined) {
-        return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+        return mapOrderDetail(
+          hit,
+          resolveMarketDisplay(marketLookup, hit.market_index)
+        )
       }
 
       throw new PerpsError(
@@ -899,9 +906,9 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, symbolLookup] = await Promise.all([
+      const [account, marketLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
       ])
 
       const queryParams: Record<string, string | number | boolean> = {
@@ -926,7 +933,7 @@ export const lighterProvider = (
         mapFill(
           t,
           account.index,
-          symbolLookup.get(t.market_id) ?? `market_${t.market_id}`
+          resolveMarketDisplay(marketLookup, t.market_id)
         )
       )
 
@@ -968,7 +975,7 @@ export const lighterProvider = (
             inputCursor
           )
         ),
-        buildSymbolLookup(opts),
+        buildMarketLookup(opts),
         buildTokenLookup(opts),
       ])
 
@@ -1000,10 +1007,7 @@ export const lighterProvider = (
             provider: LIGHTER_PROVIDER_KEY,
             timestamp: toIsoFromSeconds(f.timestamp),
             type: ActivityType.FUNDING,
-            market: marketDisplay(
-              String(f.market_id),
-              marketLookup.get(f.market_id) ?? ''
-            ),
+            market: resolveMarketDisplay(marketLookup, f.market_id),
             amount: f.change,
             positionSize: f.position_size,
             fundingRate: f.rate,
@@ -1020,10 +1024,7 @@ export const lighterProvider = (
             leverageType: l.type,
             liquidatedPositions: [
               {
-                market: marketDisplay(
-                  String(l.market_id),
-                  marketLookup.get(l.market_id) ?? ''
-                ),
+                market: resolveMarketDisplay(marketLookup, l.market_id),
                 size: '0',
               },
             ],

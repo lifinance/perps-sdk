@@ -1056,3 +1056,69 @@ describe('LighterProvider — getOrder', () => {
     ).rejects.toThrow(/looks like a tx hash/)
   })
 })
+
+describe('LighterProvider — getFills logos and realized PnL', () => {
+  const BTC_LOGO = 'https://cdn.test/btc.svg'
+  const MARKETS_WITH_LOGO = {
+    markets: [
+      {
+        ...MARKETS_RESPONSE.markets[0],
+        baseAsset: {
+          ...MARKETS_RESPONSE.markets[0].baseAsset,
+          logoURI: BTC_LOGO,
+        },
+      },
+    ],
+  }
+
+  // Viewer (account 42) closes a long: was long 1 @ entry 40000, sells 1 @
+  // 50000 → realized PnL (50000 - 40000) × 1 = 10000.
+  const REDUCING_TRADE = {
+    trade_id: 9,
+    tx_hash: '0xfeed',
+    type: 'trade',
+    market_id: 0,
+    size: '1',
+    price: '50000',
+    usd_amount: '50000',
+    ask_id: 7,
+    bid_id: 8,
+    ask_account_id: 42,
+    bid_account_id: 0,
+    is_maker_ask: false,
+    block_height: 1,
+    timestamp: 1_700_000_000_000,
+    taker_fee: 0.5,
+    maker_fee: 0.2,
+    transaction_time: 1_700_000_000_000,
+    taker_position_size_before: '1',
+    maker_position_size_before: '0',
+    taker_entry_quote_before: '40000',
+    maker_entry_quote_before: '0',
+  }
+
+  it('threads the backend registry logoURI onto fills and derives realizedPnl', async () => {
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_LOGO)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/trades')) {
+        return respond({ code: 0, next_cursor: '', trades: [REDUCING_TRADE] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const result = await provider.getFills({ address: ADDRESS })
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].market.baseAsset.logoURI).toBe(BTC_LOGO)
+    expect(result.items[0].realizedPnl).toBe('10000')
+  })
+})

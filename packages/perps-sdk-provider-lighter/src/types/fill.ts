@@ -26,6 +26,12 @@ export type LtTrade = {
   // strings: positive = long, negative = short, "0" / "0.00000" = flat.
   taker_position_size_before: string
   maker_position_size_before: string
+  // Per-counterparty entry-quote (notional cost basis) snapshot BEFORE the
+  // trade. Paired with `*_position_size_before`, avg entry =
+  // entry_quote_before / |position_size_before|. Optional: absent on older
+  // trade rows that predate the field.
+  taker_entry_quote_before?: string
+  maker_entry_quote_before?: string
 }
 
 /** @public */
