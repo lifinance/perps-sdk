@@ -91,6 +91,7 @@ export class PerpsWsClient {
   ): Promise<() => void> {
     const providerKey = sub.dex
     const provider = await this.getOrCreateProvider(providerKey)
+    provider.reconnect()
     return provider.subscribe(sub, listener as SubscriptionListener, onStatus)
   }
 
@@ -132,6 +133,16 @@ export class PerpsWsClient {
     }
     this.providers.clear()
     this.initPromises.clear()
+  }
+
+  /**
+   * Reconnect an already-created provider when its socket reached terminal
+   * `disconnected`. Safe no-op when the provider is unknown or not terminal.
+   *
+   * @public
+   */
+  reconnect(provider: string): void {
+    this.providers.get(provider)?.reconnect()
   }
 
   private async getOrCreateProvider(provider: string): Promise<WsProvider> {
