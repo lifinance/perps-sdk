@@ -1,5 +1,5 @@
 import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
-import { ActivityType } from '@lifi/perps-types'
+import { ActivityType, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
 import { LighterKeyStore } from './signers/LighterKeyStore.js'
@@ -141,6 +141,36 @@ const ORDER_BOOK_DETAILS_PAYLOAD = {
 
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
 
+// `ACCOUNT_PAYLOAD.accounts[0].index` is 42 — this trade has the viewer as the
+// bidder, so the mapped fill is a BUY taker on the BTC market.
+const TRADES_RESPONSE = {
+  code: 0,
+  next_cursor: '',
+  trades: [
+    {
+      trade_id: 7,
+      tx_hash: '0xfeed',
+      type: 'trade',
+      market_id: 0,
+      size: '0.5',
+      price: '50000',
+      usd_amount: '25000',
+      ask_id: 11,
+      bid_id: 22,
+      ask_account_id: 99,
+      bid_account_id: 42,
+      is_maker_ask: true,
+      block_height: 1,
+      timestamp: 1700000000000,
+      taker_fee: 12,
+      maker_fee: 3,
+      transaction_time: 1700000000000,
+      taker_position_size_before: '0',
+      maker_position_size_before: '0',
+    },
+  ],
+}
+
 // ---------------------------------------------------------------------------
 // fetch mock setup
 // ---------------------------------------------------------------------------
@@ -216,6 +246,9 @@ beforeEach(() => {
     }
     if (u.includes('/api/v1/positionFunding')) {
       return respond({ code: 0, position_fundings: [] })
+    }
+    if (u.includes('/api/v1/trades')) {
+      return respond(TRADES_RESPONSE)
     }
     if (u.includes('/api/v1/liquidations')) {
       return respond({ code: 0, liquidations: [] })
@@ -671,12 +704,45 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
     expect(activity.pagination.hasMore).toBe(false)
   })
 
+  it('getFills returns an empty page without hitting /api/v1/trades when no token is configured', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const fills = await provider.getFills({ address: ADDRESS })
+    expect(fills.items).toEqual([])
+    expect(fills.pagination.hasMore).toBe(false)
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/trades'))
+    ).toBeUndefined()
+  })
+
   it('getOrder throws when no token is configured', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getOrder({ address: ADDRESS, id: 'order_1' })
     ).rejects.toThrow(/auth token/i)
+  })
+})
+
+describe('LighterProvider — getFills authed path', () => {
+  it('forwards the read-only token to /api/v1/trades and maps fills', async () => {
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    provider.bind(STUB_CLIENT)
+    const fills = await provider.getFills({ address: ADDRESS })
+
+    const tradesCall = recorded.find((r) => r.url.includes('/api/v1/trades'))
+    expect(tradesCall).toBeDefined()
+    expect(tradesCall?.url).toContain('auth=pre-created-token')
+
+    expect(fills.items).toHaveLength(1)
+    expect(fills.items[0]).toMatchObject({
+      id: '7',
+      side: OrderSide.BUY,
+      size: '0.5',
+      price: '50000',
+      liquidity: LiquidityRole.TAKER,
+    })
+    expect(fills.pagination.hasMore).toBe(false)
   })
 })
 

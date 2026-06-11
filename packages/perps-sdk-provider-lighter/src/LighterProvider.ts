@@ -896,11 +896,19 @@ export const lighterProvider = (
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        return {
+          provider: LIGHTER_PROVIDER_KEY,
+          items: [],
+          pagination: { limit: params.limit ?? 0, hasMore: false },
+        }
+      }
+
       const client = apiClient(opts)
-      const [account, marketLookup, token] = await Promise.all([
+      const [account, marketLookup] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         buildMarketLookup(opts),
-        resolveAuthToken(opts, params.address),
       ])
 
       const queryParams: Record<string, string | number | boolean> = {
@@ -913,16 +921,13 @@ export const lighterProvider = (
         queryParams.cursor = params.cursor
       }
 
-      const response =
-        token !== undefined && token.length > 0
-          ? await retryOnRevoked(opts, params.address, token, (tok) =>
-              client.getAuthed<LtTradesResponse>(
-                '/api/v1/trades',
-                tok,
-                queryParams
-              )
-            )
-          : await client.get<LtTradesResponse>('/api/v1/trades', queryParams)
+      const response = await retryOnRevoked(
+        opts,
+        params.address,
+        token,
+        (tok) =>
+          client.getAuthed<LtTradesResponse>('/api/v1/trades', tok, queryParams)
+      )
 
       const items = response.trades.map((t) =>
         mapFill(
