@@ -7,7 +7,12 @@ import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlClearinghouseState } from '../types/index.js'
-import { mapPosition, perpsDexNames, requireMarket } from '../utils/index.js'
+import {
+  isOpenAssetPosition,
+  mapPosition,
+  perpsDexNames,
+  requireMarket,
+} from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -60,7 +65,7 @@ export const getPositions = async (
 
   let positions = stateResults.flatMap((state) =>
     state.assetPositions
-      .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
+      .filter(isOpenAssetPosition)
       .map((ap) => mapPosition(ap, requireMarket(byMarketId, ap.position.coin)))
   )
 

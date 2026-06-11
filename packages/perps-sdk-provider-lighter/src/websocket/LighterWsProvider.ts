@@ -28,8 +28,8 @@ import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
   classifyAndMapOrders,
   fetchDetailedAccount,
+  mapAccountPosition,
   mapFill,
-  mapOpenPositions,
 } from '../utils/index.js'
 
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
@@ -136,6 +136,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private lastPricesByAssetId: Record<string, string> = {}
 
   /**
+   * `address → market_id → Position`. `subscribed/...` frames reseed it and
+   * `update/...` frames upsert into it (zero size deletes), so every emission
+   * is a full open-position snapshot per the `PositionsEvent` contract.
+   */
+  private readonly positionsByAddress = new Map<string, Map<number, Position>>()
+
+  /**
    * `market_id → displaySymbol`. The canonical `assetId` for Lighter perps
    * IS `String(market_id)` (backend `/perps/assets` emits it that way), so no
    * id-to-id map is needed — `String(market_id)` is the wire key. We keep
@@ -208,6 +215,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
           this.orderbooks.delete(id)
         }
       }
+      if (sub.channel === 'positions') {
+        this.positionsByAddress.delete(sub.address.toLowerCase())
+      }
       this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
     }
   }
@@ -215,6 +225,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   protected onClose(): void {
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
+    this.positionsByAddress.clear()
   }
 
   protected async sendSubscribe({
@@ -432,7 +443,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/account_all_positions' ||
       msg.type === 'update/account_all_positions'
     ) {
-      this.handleAccountPositions(msg as LtWsAccountAllPositionsMessage)
+      this.handleAccountPositions(
+        msg as LtWsAccountAllPositionsMessage,
+        msg.type === 'subscribed/account_all_positions'
+      )
       return
     }
   }
@@ -474,7 +488,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
   }
 
-  private handleAccountPositions(msg: LtWsAccountAllPositionsMessage): void {
+  private handleAccountPositions(
+    msg: LtWsAccountAllPositionsMessage,
+    isSnapshot: boolean
+  ): void {
     const address = this.addressFromChannel(
       msg.channel,
       'account_all_positions'
@@ -483,13 +500,24 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtAccountPosition>(msg, 'positions')
-    const positions: Position[] = mapOpenPositions(
-      raw,
-      this.marketIdToDisplaySymbol
-    )
+    let state = this.positionsByAddress.get(address)
+    if (!state || isSnapshot) {
+      state = new Map()
+      this.positionsByAddress.set(address, state)
+    }
+    for (const p of raw) {
+      if (Number.parseFloat(p.position) === 0) {
+        state.delete(p.market_id)
+      } else {
+        state.set(
+          p.market_id,
+          mapAccountPosition(p, this.marketIdToDisplaySymbol)
+        )
+      }
+    }
     this.emit(`positions:${address}`, {
       channel: 'positions',
-      data: positions,
+      data: [...state.values()],
     })
   }
 

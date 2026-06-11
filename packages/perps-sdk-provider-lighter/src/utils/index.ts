@@ -11,7 +11,7 @@ export { LighterApiClient } from './apiClient.js'
 export { fetchDetailedAccount } from './fetchDetailedAccount.js'
 export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFill } from './mapFill.js'
-export { mapOpenPositions } from './mapOpenPositions.js'
+export { mapAccountPosition, mapOpenPositions } from './mapOpenPositions.js'
 export {
   classifyAndMapOrders,
   isTriggerOrder,

@@ -31,6 +31,7 @@ import type {
 } from '../types/index.js'
 import {
   findMarket,
+  isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
   mapOrderStatus,
@@ -489,6 +490,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   ) {
     const positions = data.clearinghouseStates.flatMap(([, state]) =>
       state.assetPositions.flatMap((ap) => {
+        if (!isOpenAssetPosition(ap as HlAssetPosition)) {
+          return []
+        }
         const market = this.resolveMarket(ap.position.coin)
         return market ? [mapPosition(ap as HlAssetPosition, market)] : []
       })

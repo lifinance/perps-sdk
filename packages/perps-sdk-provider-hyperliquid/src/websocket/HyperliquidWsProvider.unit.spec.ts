@@ -1184,6 +1184,64 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('drops zero-size assetPositions, matching the REST getPositions policy', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allDexsClearinghouseState',
+          data: {
+            user: '0xuser1',
+            clearinghouseStates: [
+              [
+                '',
+                {
+                  assetPositions: [
+                    {
+                      position: {
+                        coin: 'BTC',
+                        szi: '0.1',
+                        entryPx: '94000',
+                        positionValue: '9500',
+                        liquidationPx: '85000',
+                        unrealizedPnl: '100',
+                        marginUsed: '940',
+                        leverage: { type: 'cross', value: 10 },
+                      },
+                    },
+                    {
+                      position: {
+                        coin: 'ETH',
+                        szi: '0',
+                        entryPx: '3300',
+                        positionValue: '0',
+                        liquidationPx: null,
+                        unrealizedPnl: '0',
+                        marginUsed: '0',
+                        leverage: { type: 'cross', value: 10 },
+                      },
+                    },
+                  ],
+                },
+              ],
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('positions')
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0].market.id).toBe('BTC')
+    })
+
     it('enriches a spot order onto the backend BASE/QUOTE display and spot logo', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()

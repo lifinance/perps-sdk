@@ -89,7 +89,13 @@ export type OrderUpdatesEvent = {
 }
 /** @public */
 export type FillsEvent = { channel: 'fills'; data: Fill[] }
-/** @public */
+/**
+ * Positions stream frame. `data` is always the full set of currently open
+ * positions for the subscribed address, never a partial update: zero-size
+ * entries never appear, and a close is observed as the market's absence from
+ * the next frame. Consumers replace their state; they must not merge.
+ * @public
+ */
 export type PositionsEvent = { channel: 'positions'; data: Position[] }
 /**
  * Spot holdings as typed {@link Balance}s, each carrying the venue-locked
