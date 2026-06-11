@@ -2,15 +2,18 @@ import {
   cachePromise,
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
+  type ProviderGetQuoteParams,
+  type QuoteListener,
   ReconnectingWebSocket,
   resolveRetryPolicy,
+  resolveSubscribeQuote,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
 import type { Fill, Position, Subscription } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { LIGHTER_PROVIDER_KEY } from '../constants.js'
+import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -180,6 +183,27 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         Number(id),
         sym,
       ])
+    )
+  }
+
+  async subscribeQuote(
+    params: ProviderGetQuoteParams,
+    onQuote: QuoteListener
+  ): Promise<() => void> {
+    const client = this.client
+    if (client === undefined) {
+      throw new Error(
+        'LighterWsProvider: PerpsSDKClient not provided; cannot stream quotes. ' +
+          'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
+      )
+    }
+    return resolveSubscribeQuote(
+      client,
+      this.providerKey,
+      this,
+      params,
+      LIGHTER_BASE_FEE_TIER,
+      onQuote
     )
   }
 

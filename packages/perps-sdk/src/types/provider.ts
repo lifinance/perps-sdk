@@ -192,6 +192,14 @@ export interface ProviderGetQuoteParams {
 }
 
 /**
+ * Listener invoked with each freshly computed {@link Quote} on a streaming
+ * quote subscription.
+ *
+ * @public
+ */
+export type QuoteListener = (quote: Quote) => void
+
+/**
  * Unbound provider plugin passed to {@link createPerpsClient}, modelled on
  * `@lifi/sdk`'s `SDKProvider`. Each provider is identified by `type` (the wire
  * key — `'hyperliquid'`, `'lighter'`, …) and implements the read-side surface

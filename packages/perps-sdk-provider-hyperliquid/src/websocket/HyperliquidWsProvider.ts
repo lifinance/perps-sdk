@@ -3,7 +3,10 @@ import {
   getMarkets as coreGetMarkets,
   isActiveOrderStatus,
   type PerpsSDKClient,
+  type ProviderGetQuoteParams,
+  type QuoteListener,
   ReconnectingWebSocket,
+  resolveSubscribeQuote,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -17,6 +20,7 @@ import {
   type Subscription,
   type TriggerOrder,
 } from '@lifi/perps-types'
+import { HYPERLIQUID_FEE_TIER_FALLBACK } from '../constants.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -102,6 +106,27 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     this.subDexes = subDexes
     this.client = client
+  }
+
+  async subscribeQuote(
+    params: ProviderGetQuoteParams,
+    onQuote: QuoteListener
+  ): Promise<() => void> {
+    const client = this.client
+    if (client === undefined) {
+      throw new Error(
+        'HyperliquidWsProvider: PerpsSDKClient not provided; cannot stream quotes. ' +
+          'Construct via `hyperliquidWsProvider()` and register with PerpsWsClient.'
+      )
+    }
+    return resolveSubscribeQuote(
+      client,
+      this.providerKey,
+      this,
+      params,
+      HYPERLIQUID_FEE_TIER_FALLBACK,
+      onQuote
+    )
   }
 
   /**
