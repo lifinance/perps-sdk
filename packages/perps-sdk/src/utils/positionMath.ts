@@ -18,6 +18,43 @@ export function directionSign(isLong: boolean): 1 | -1 {
 }
 
 /**
+ * Estimated liquidation price for an isolated-margin position, parameterised
+ * by the venue's maintenance margin rate.
+ *
+ * Standard isolated-margin model (new position, no existing exposure):
+ *   margin_per_unit      = entryPrice / leverage
+ *   maintenance_per_unit = entryPrice * mmr
+ *   margin_available     = margin_per_unit - maintenance_per_unit
+ *   liq_price            = entryPrice - side * margin_available / (1 - mmr * side)
+ *
+ * For existing positions, prefer `Position.liquidationPrice` from the venue.
+ *
+ * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
+ *   (e.g. 0.01 = 1%).
+ * @returns Estimated liquidation price, or undefined if the inputs cannot
+ *   produce one (zero leverage, degenerate denominator).
+ * @public
+ */
+export function estimateIsolatedLiquidationPrice(params: {
+  entryPrice: number
+  leverage: number
+  isLong: boolean
+  maintenanceMarginRate: number
+}): number | undefined {
+  const { entryPrice, leverage, isLong, maintenanceMarginRate } = params
+  if (leverage === 0) {
+    return undefined
+  }
+  const side = directionSign(isLong)
+  const denominator = 1 - maintenanceMarginRate * side
+  if (denominator === 0) {
+    return undefined
+  }
+  const marginAvailable = entryPrice * (1 / leverage - maintenanceMarginRate)
+  return entryPrice - (side * marginAvailable) / denominator
+}
+
+/**
  * Predicted average entry price after adding to an existing position.
  *
  * Weighted average of the current entry and the new fill price, weighted by

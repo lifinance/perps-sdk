@@ -48,7 +48,6 @@ import {
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_BASE_FEE_TIER,
-  LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_PROVIDER_KEY,
@@ -83,10 +82,14 @@ import {
 } from './utils/apiClient.js'
 import {
   classifyAndMapOrders,
+  estimateLiquidationPrice,
+  fetchDetailedAccount,
+  formatOrderPrice,
+  formatOrderSize,
   lighterAsset,
   mapFill,
+  mapOpenPositions,
   mapOrderDetail,
-  mapPosition,
   marketDisplay,
 } from './utils/index.js'
 
@@ -484,40 +487,6 @@ export const lighterProvider = (
     }
   }
 
-  const fetchDetailedAccount = async (
-    client: LighterApiClient,
-    address: Address
-  ): Promise<LtDetailedAccount> => {
-    const { status, data } = await client.getWithStatus<{
-      code: number
-      accounts?: LtDetailedAccount[]
-      message?: string
-    }>('/api/v1/account', { by: 'l1_address', value: address })
-
-    if (status === 400 && data?.code === LIGHTER_CODE_ACCOUNT_NOT_FOUND) {
-      throw new PerpsError(
-        PerpsErrorCode.AccountNotFound,
-        `No Lighter account found for address: ${address}`
-      )
-    }
-
-    if (status < 200 || status >= 300) {
-      throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
-        `Lighter account request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
-      )
-    }
-
-    const accounts = data?.accounts
-    if (accounts === undefined || accounts.length === 0) {
-      throw new PerpsError(
-        PerpsErrorCode.AccountNotFound,
-        `No Lighter account found for address: ${address}`
-      )
-    }
-    return accounts[0]
-  }
-
   const fetchRegisteredApiKey = async (
     client: LighterApiClient,
     accountIndex: number,
@@ -668,8 +637,10 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
-      const token = await resolveAuthToken(opts, params.address)
+      const [account, token] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        resolveAuthToken(opts, params.address),
+      ])
 
       const [
         symbolLookup,
@@ -701,9 +672,10 @@ export const lighterProvider = (
         normalizeLighterPublicKey(localKey.apiKeyPublicKey) ===
           normalizeLighterPublicKey(registeredKey.public_key)
 
-      const positions: Position[] = account.positions
-        .filter((p) => Number.parseFloat(p.position) !== 0)
-        .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
+      const positions: Position[] = mapOpenPositions(
+        account.positions,
+        symbolLookup
+      )
 
       const totalMarginUsed = positions.reduce(
         (sum, p) => sum + Number.parseFloat(p.marginUsed),
@@ -773,9 +745,10 @@ export const lighterProvider = (
         buildSymbolLookup(opts),
       ])
 
-      let positions: Position[] = account.positions
-        .filter((p) => Number.parseFloat(p.position) !== 0)
-        .map((p) => mapPosition(p, symbolLookup.get(p.market_id) ?? p.symbol))
+      let positions: Position[] = mapOpenPositions(
+        account.positions,
+        symbolLookup
+      )
 
       if (params.marketId !== undefined) {
         positions = positions.filter((p) => p.market.id === params.marketId)
@@ -1140,6 +1113,12 @@ export const lighterProvider = (
     ): AccountSummary {
       return summarizeLighterAccount(account, positions)
     },
+
+    formatOrderPrice,
+
+    formatOrderSize,
+
+    estimateLiquidationPrice,
 
     projectConfig(
       config: AccountConfig,

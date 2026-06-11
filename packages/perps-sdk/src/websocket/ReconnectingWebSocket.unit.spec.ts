@@ -170,9 +170,10 @@ describe('ReconnectingWebSocket', () => {
   })
 
   describe('ping', () => {
-    it('should send ping messages at configured interval', () => {
+    it('should send the configured ping payload at the configured interval', () => {
       new ReconnectingWebSocket('wss://example.com', {
         pingIntervalMs: 1000,
+        pingPayload: '{"method":"ping"}',
       })
       latestWs().simulateOpen()
       latestWs().sent = [] // Clear any flushed messages
@@ -187,9 +188,22 @@ describe('ReconnectingWebSocket', () => {
       ])
     })
 
+    it('should send no keepalive when pingPayload is not configured', () => {
+      new ReconnectingWebSocket('wss://example.com', {
+        pingIntervalMs: 1000,
+      })
+      latestWs().simulateOpen()
+      latestWs().sent = []
+
+      vi.advanceTimersByTime(5000)
+
+      expect(latestWs().sent).toHaveLength(0)
+    })
+
     it('should stop ping on close', () => {
       const rws = new ReconnectingWebSocket('wss://example.com', {
         pingIntervalMs: 1000,
+        pingPayload: '{"method":"ping"}',
       })
       latestWs().simulateOpen()
       latestWs().sent = []
@@ -319,6 +333,25 @@ describe('ReconnectingWebSocket', () => {
       rws.close()
 
       await expect(readyPromise).rejects.toThrow('WebSocket closed')
+    })
+
+    it('should reject immediately when called after reconnect exhaustion', async () => {
+      const rws = new ReconnectingWebSocket('wss://example.com', {
+        maxRetries: 0,
+      })
+      latestWs().simulateClose()
+      expect(rws.getStatus()).toBe('disconnected')
+
+      await expect(rws.ready()).rejects.toThrow(
+        'WebSocket max reconnect attempts reached'
+      )
+    })
+
+    it('should reject immediately when called after manual close', async () => {
+      const rws = new ReconnectingWebSocket('wss://example.com')
+      rws.close()
+
+      await expect(rws.ready()).rejects.toThrow('WebSocket closed')
     })
   })
 

@@ -1,7 +1,7 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { type Market, PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { requireMarket } from './requireMarket.js'
+import { findMarket, requireMarket } from './requireMarket.js'
 
 const market: Market = {
   providerId: 'hyperliquid',
@@ -51,5 +51,25 @@ describe('requireMarket (Hyperliquid)', () => {
     expect(err.message).toContain(
       "No Hyperliquid market found for marketId 'DOGE'"
     )
+  })
+})
+
+describe('findMarket (Hyperliquid)', () => {
+  it('projects a found market down to its MarketDisplay fields', () => {
+    const byId = new Map<string, Market>([['BTC', market]])
+
+    expect(findMarket(byId, 'BTC')).toEqual({
+      providerId: 'hyperliquid',
+      id: 'BTC',
+      categoryId: 'hyperliquid',
+      baseAsset: market.baseAsset,
+      quoteAsset: market.quoteAsset,
+    })
+  })
+
+  it('returns undefined for an unknown id', () => {
+    const byId = new Map<string, Market>([['BTC', market]])
+
+    expect(findMarket(byId, 'DOGE')).toBeUndefined()
   })
 })

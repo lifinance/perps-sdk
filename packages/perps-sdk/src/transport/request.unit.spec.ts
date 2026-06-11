@@ -42,6 +42,7 @@ describe('request — error rehydration', () => {
     ['SDKError', PerpsErrorCode.SDKError],
     ['SignatureInvalid', PerpsErrorCode.SignatureInvalid],
     ['AgentUnauthorized', PerpsErrorCode.AgentUnauthorized],
+    ['TermsNotAccepted', PerpsErrorCode.TermsNotAccepted],
     ['ExchangeRejected', PerpsErrorCode.ExchangeRejected],
     ['InsufficientMargin', PerpsErrorCode.InsufficientMargin],
     ['InsufficientBalance', PerpsErrorCode.InsufficientBalance],
@@ -172,6 +173,27 @@ describe('request — error rehydration', () => {
       expect(e).toBeInstanceOf(PerpsError)
       expect(e.code).toBe(PerpsErrorCode.ServerError)
     }
+  })
+})
+
+describe('request — header handling', () => {
+  it('does not attach an Authorization header when lighterAuthToken is set', async () => {
+    let authorization: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        authorization = req.headers.get('Authorization')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(
+      client.config,
+      url,
+      { retry: false },
+      { lighterAuthToken: 'live-venue-credential' }
+    )
+    expect(result.ok).toBe(true)
+    expect(authorization).toBeNull()
   })
 })
 

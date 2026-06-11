@@ -1,5 +1,9 @@
 import { createMemoryStorage, createPerpsClient } from '@lifi/perps-sdk'
-import type { Eip712ActionStep } from '@lifi/perps-types'
+import type {
+  Eip712ActionStep,
+  PerpsMarket,
+  SpotMarket,
+} from '@lifi/perps-types'
 import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
@@ -66,6 +70,59 @@ describe('hyperliquidProvider', () => {
 
   it('declares type=hyperliquid', () => {
     expect(hyperliquidProvider().type).toBe('hyperliquid')
+  })
+
+  describe('order formatting and liquidation surface', () => {
+    const btcMarket: PerpsMarket = MARKETS_RESPONSE.markets[0]
+    const perpMarket: PerpsMarket = {
+      ...btcMarket,
+      szDecimals: 2,
+      maxLeverage: 50,
+    }
+    const spotMarket: SpotMarket = {
+      providerId: 'hyperliquid',
+      id: '@142',
+      categoryId: 'spot',
+      baseAsset: {
+        providerId: 'hyperliquid',
+        id: 'PURR',
+        displaySymbol: 'PURR',
+        logoURI: '',
+      },
+      quoteAsset: btcMarket.quoteAsset,
+      szDecimals: 2,
+      markPrice: '0.5',
+    }
+
+    it('formats prices with the HL 5-sig-fig + decimal-budget rules', () => {
+      const provider = hyperliquidProvider()
+      // szDecimals 5 => 1 price decimal, then capped to 5 significant figures
+      expect(provider.formatOrderPrice(btcMarket, 50000.25)).toBe('50000')
+      expect(provider.formatOrderPrice(btcMarket, 1234.5)).toBe('1234.5')
+    })
+
+    it('grants spot markets the wider 8-decimal budget', () => {
+      const provider = hyperliquidProvider()
+      // szDecimals 2: perps budget is 4 decimals, spot budget is 6
+      expect(provider.formatOrderPrice(perpMarket, 0.00012345)).toBe('0.0001')
+      expect(provider.formatOrderPrice(spotMarket, 0.00012345)).toBe('0.000123')
+    })
+
+    it('truncates sizes to szDecimals', () => {
+      const provider = hyperliquidProvider()
+      expect(provider.formatOrderSize(btcMarket, 0.123456)).toBe('0.12345')
+    })
+
+    it('estimates liquidation with mmr derived from the market maxLeverage', () => {
+      const provider = hyperliquidProvider()
+      // mmr = 1/(2*50) = 0.01; entry * (1 - 1/leverage) / (1 - mmr)
+      const liq = provider.estimateLiquidationPrice(perpMarket, {
+        entryPrice: 50000,
+        leverage: 10,
+        isLong: true,
+      })
+      expect(liq).toBeCloseTo(45454.545, 2)
+    })
   })
 
   it('routes account-level reads through the default api.hyperliquid.xyz base URL', async () => {

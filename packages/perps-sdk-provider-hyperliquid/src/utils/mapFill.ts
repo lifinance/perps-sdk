@@ -7,12 +7,16 @@ import {
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
+import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
-import { assetIsSpot } from './assetId.js'
 
 export { classifyFillFromPosition }
 
-/** @public */
+/**
+ * Spot-ness comes from the resolved market's category, not the coin string —
+ * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`.
+ * @public
+ */
 export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   id: String(fill.tid),
   orderId: String(fill.oid),
@@ -27,10 +31,11 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   fee: fill.fee,
   realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl,
   startPosition: fill.startPosition,
-  classification: assetIsSpot(fill.coin)
-    ? fill.side === 'B'
-      ? FillClassification.SPOT_BUY
-      : FillClassification.SPOT_SELL
-    : classifyFillFromPosition(fill.startPosition, fill.side, fill.sz),
+  classification:
+    market.categoryId === SPOT_MARKET_ID
+      ? fill.side === 'B'
+        ? FillClassification.SPOT_BUY
+        : FillClassification.SPOT_SELL
+      : classifyFillFromPosition(fill.startPosition, fill.side, fill.sz),
   createdAt: new Date(fill.time).toISOString(),
 })

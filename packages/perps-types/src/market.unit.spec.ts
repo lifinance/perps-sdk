@@ -29,11 +29,13 @@ const perpsMarket: PerpsMarket = {
   baseAsset: btc,
   quoteAsset: usdc,
   szDecimals: 5,
+  priceDecimals: 1,
   markPrice: '60000',
   maxLeverage: 50,
   onlyIsolated: false,
   funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
   openInterest: '1000',
+  maintenanceMarginRate: 0.01,
 }
 
 const spotMarket: SpotMarket = {
@@ -52,6 +54,11 @@ describe('PerpsMarket', () => {
     expect(perpsMarket.quoteAsset.displaySymbol).toBe('USDC')
     expect(perpsMarket.maxLeverage).toBe(50)
     expect(perpsMarket.funding.rate).toBe('0.0001')
+  })
+
+  it('optionally carries venue tick and margin metadata', () => {
+    expect(perpsMarket.priceDecimals).toBe(1)
+    expect(perpsMarket.maintenanceMarginRate).toBe(0.01)
   })
 })
 

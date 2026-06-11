@@ -109,6 +109,24 @@ const result = await perps.placeOrder({
 See [`examples/agent-trading.ts`](./examples/agent-trading.ts) for the full setup
 flow, including signing the user-gated steps.
 
+### Venue-correct order formatting
+
+Tick/lot rules and margin models differ per venue, so price/size formatting and
+liquidation previews are provider methods — always route them through the
+market's own provider rather than applying one venue's rules to another's
+markets:
+
+```typescript
+const provider = perps.client.getProvider(market.providerId)!
+const price = provider.formatOrderPrice(market, 95000.25)
+const size = provider.formatOrderSize(market, 0.123456)
+const liq = provider.estimateLiquidationPrice(market, {
+  entryPrice: 95000,
+  leverage: 10,
+  isLong: true,
+}) // number, or undefined when the venue model can't be evaluated client-side
+```
+
 ## Examples
 
 Runnable scripts in [`examples/`](./examples): market data, account management,

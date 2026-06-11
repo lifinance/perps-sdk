@@ -36,6 +36,10 @@ describe('mapMarket (Hyperliquid)', () => {
     expect(result.id).toBe('BTC')
     expect(result.categoryId).toBe('hyperliquid')
     expect(result.szDecimals).toBe(5)
+    // 6 - szDecimals
+    expect(result.priceDecimals).toBe(1)
+    // 1 / (2 * maxLeverage)
+    expect(result.maintenanceMarginRate).toBeCloseTo(0.01, 9)
     expect(result.markPrice).toBe('95000')
     expect(result.volume24h).toBe('987654')
     expect(result.prevDayPrice).toBe('94000')

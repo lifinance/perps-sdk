@@ -1,5 +1,5 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LighterWsProvider } from './LighterWsProvider.js'
 
 const getMarketsMock = vi.fn()
@@ -406,11 +406,12 @@ describe('LighterWsProvider', () => {
     })
   })
 
-  describe('onOpen resubscribe error isolation (ORD-516)', () => {
+  describe('resubscribe error isolation', () => {
     /**
-     * Drive onOpen with two active auth subs where the first channel's auth
-     * fetch rejects. The second must still be sent and the rejection must be
-     * caught (no unhandled promise rejection escaping the open handler).
+     * Drive the base's replay loop with two active auth subs where the first
+     * channel's auth fetch rejects. The second must still be sent and the
+     * rejection must be caught (no unhandled promise rejection escaping the
+     * open handler).
      */
     it('resubscribes remaining channels when one channel auth fetch rejects, and surfaces the failure', async () => {
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -426,18 +427,19 @@ describe('LighterWsProvider', () => {
       })
       const send = vi.fn()
       ;(provider as any).rws.send = send
-      ;(provider as any).subs.set(`orderUpdates:${failingAddr}`, {
+      // Socket is down, so registerSub records without sending.
+      await (provider as any).registerSub('account_all_orders/42', {
         channel: 'account_all_orders/42',
         address: failingAddr,
         needsAuth: true,
       })
-      ;(provider as any).subs.set(`orderUpdates:${okAddr}`, {
+      await (provider as any).registerSub('account_all_orders/7', {
         channel: 'account_all_orders/7',
         address: okAddr,
         needsAuth: true,
       })
 
-      await expect((provider as any).onOpen()).resolves.toBeUndefined()
+      await expect((provider as any).replaySubs()).resolves.toBeUndefined()
 
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
@@ -466,10 +468,10 @@ describe('LighterWsProvider', () => {
 
       await provider.subscribe({ channel: 'prices', dex: 'lighter' }, vi.fn())
 
-      // Nothing sent inline while disconnected — onOpen is the sole sender.
+      // Nothing sent inline while disconnected — the open replay is the sole sender.
       expect(send).not.toHaveBeenCalled()
 
-      await (provider as any).onOpen()
+      await (provider as any).replaySubs()
 
       expect(send).toHaveBeenCalledTimes(1)
       expect(send).toHaveBeenCalledWith(
@@ -554,8 +556,70 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('keepalive framing', () => {
+    class MockWebSocket {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSING = 2
+      static CLOSED = 3
+      static instances: MockWebSocket[] = []
+
+      readyState = MockWebSocket.CONNECTING
+      onopen: ((ev: Event) => void) | null = null
+      onclose: ((ev: { code: number; reason: string }) => void) | null = null
+      onerror: ((ev: Event) => void) | null = null
+      onmessage: ((ev: { data: string }) => void) | null = null
+      sent: string[] = []
+
+      constructor(_url: string) {
+        MockWebSocket.instances.push(this)
+      }
+
+      send(data: string) {
+        this.sent.push(data)
+      }
+
+      close() {
+        this.readyState = MockWebSocket.CLOSED
+      }
+
+      simulateOpen() {
+        this.readyState = MockWebSocket.OPEN
+        this.onopen?.(new Event('open'))
+      }
+    }
+
+    const originalWebSocket = globalThis.WebSocket
+
+    beforeEach(() => {
+      MockWebSocket.instances = []
+      vi.useFakeTimers()
+      globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      globalThis.WebSocket = originalWebSocket
+    })
+
+    it('sends exactly one Lighter-native keepalive per interval and never a method-framed ping', () => {
+      const provider = makeProvider()
+      const ws = MockWebSocket.instances[0]
+      ws.simulateOpen()
+      ws.sent = []
+
+      vi.advanceTimersByTime(30_000)
+
+      expect(ws.sent).toEqual([JSON.stringify({ type: 'ping' })])
+      expect(ws.sent.some((frame) => frame.includes('"method":"ping"'))).toBe(
+        false
+      )
+      provider.close()
+    })
+  })
+
   describe('display-symbol fetch coupling (ORD-482)', () => {
-    const fakeClient = {} as PerpsSDKClient
+    const fakeClient = { config: {} } as PerpsSDKClient
 
     beforeEach(() => {
       getMarketsMock.mockReset()
@@ -618,6 +682,151 @@ describe('LighterWsProvider', () => {
       expect(getMarketsMock).not.toHaveBeenCalled()
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'order_book/5' })
+      )
+      provider.close()
+    })
+
+    it('ignores the orderbook priceStep hint — Lighter streams the full book', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'lighter',
+          marketId: '5',
+          depth: 30,
+          priceStep: 10,
+        },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'order_book/5' })
+      )
+      provider.close()
+    })
+
+    it('retries the display-symbol fetch on the next subscribe after a transient failure', async () => {
+      getMarketsMock
+        .mockRejectedValueOnce(new Error('markets route 500'))
+        .mockResolvedValue({
+          markets: [
+            {
+              id: '0',
+              categoryId: 'lighter',
+              baseAsset: { displaySymbol: 'BTC' },
+            },
+          ],
+        })
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { authProvider: async () => 'token' },
+        fakeClient
+      )
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.send = vi.fn()
+      vi.spyOn(provider as any, 'resolveAccountIndex').mockResolvedValue(
+        ACCOUNT_IDX
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow('markets route 500')
+
+      // Connectivity restored — the next subscribe must refetch and succeed.
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect((provider as any).marketIdToDisplaySymbol.get(0)).toBe('BTC')
+      provider.close()
+    })
+
+    it('recovers the account-index lookup within one subscribe on a transient 405 (rate-limit retry)', async () => {
+      const accountFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('blocked', {
+            status: 405,
+            headers: { 'Retry-After': '0' },
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ code: 200, accounts: [{ index: ACCOUNT_IDX }] }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      vi.stubGlobal('fetch', accountFetch)
+      try {
+        const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
+          displaySymbolMap: { 0: 'BTC' },
+          authProvider: async () => 'token',
+        })
+        ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+        ;(provider as any).rws.getStatus = () => 'connected'
+        const send = vi.fn()
+        ;(provider as any).rws.send = send
+
+        await provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+
+        expect(accountFetch).toHaveBeenCalledTimes(2)
+        expect((provider as any).accountIndexCache.get(TEST_ADDR)).toBe(
+          ACCOUNT_IDX
+        )
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({
+            type: 'subscribe',
+            channel: `account_all_positions/${ACCOUNT_IDX}`,
+            auth: 'token',
+          })
+        )
+        provider.close()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('retries the account-index fetch on the next subscribe after a transient failure', async () => {
+      const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
+        displaySymbolMap: { 0: 'BTC' },
+        authProvider: async () => 'token',
+      })
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.send = vi.fn()
+      const fetchSpy = vi
+        .spyOn(provider as any, 'fetchAccountIndex')
+        .mockRejectedValueOnce(new Error('account route 500'))
+        .mockResolvedValue(ACCOUNT_IDX)
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow('account route 500')
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect((provider as any).accountIndexCache.get(TEST_ADDR)).toBe(
+        ACCOUNT_IDX
       )
       provider.close()
     })

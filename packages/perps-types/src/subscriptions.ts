@@ -16,6 +16,13 @@ export type OrderbookSubscription = {
   dex: string
   marketId: string
   depth?: number
+  /**
+   * Desired price granularity of streamed levels, in quote currency (e.g.
+   * `10` buckets a BTC book into $10-wide levels). Providers that aggregate
+   * the book server-side honour it best-effort; providers that stream the
+   * full book ignore it. `undefined` requests full precision.
+   */
+  priceStep?: number
 }
 /** @public */
 export type CandleSubscription = {

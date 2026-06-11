@@ -8,7 +8,10 @@ export {
   encodeActivityCursor,
 } from './activityCursor.js'
 export { LighterApiClient } from './apiClient.js'
+export { fetchDetailedAccount } from './fetchDetailedAccount.js'
+export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFill } from './mapFill.js'
+export { mapOpenPositions } from './mapOpenPositions.js'
 export {
   classifyAndMapOrders,
   isTriggerOrder,
@@ -21,3 +24,14 @@ export {
 export { mapPosition } from './mapPosition.js'
 export { lighterAsset, marketDisplay } from './marketDisplay.js'
 export { mapInterval } from './ohlcvInterval.js'
+export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
+export type { ScaleToIntegerPolicy } from './wireEncoding.js'
+export {
+  leverageToFraction,
+  mapOrderTypeToInt,
+  mapTimeInForceToInt,
+  marginFractionToMaxLeverage,
+  orderExpiryForTif,
+  resolveTimeInForce,
+  scaleToInteger,
+} from './wireEncoding.js'

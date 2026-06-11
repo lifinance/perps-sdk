@@ -1,5 +1,6 @@
 import {
   type ActionSignerContribution,
+  type LiquidationEstimateParams,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -24,9 +25,11 @@ import {
   ActionType,
   type ActivitiesResponse,
   type FillsResponse,
+  type Market,
   type Order,
   type OrdersResponse,
   PerpsErrorCode,
+  type PerpsMarket,
   PerpsSigner,
   type Position,
   type PositionsResponse,
@@ -42,6 +45,7 @@ import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
+  SPOT_MARKET_ID,
 } from './constants.js'
 import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
@@ -55,6 +59,8 @@ import {
   HyperliquidAgentStore,
 } from './signers/HyperliquidAgentStore.js'
 import { hyperliquidSignActions } from './signers/signActions.js'
+import { calculateLiquidationPrice } from './utils/liquidation.js'
+import { formatOrderPrice, formatOrderSize } from './utils/orderFormatting.js'
 
 /**
  * Options for {@link hyperliquidProvider}.
@@ -266,6 +272,27 @@ export function hyperliquidProvider(
       account: AccountResponse,
       positions: Position[]
     ): AccountSummary => summarizeHyperliquidAccount(account, positions),
+
+    formatOrderPrice: (market: Market, price: number): string =>
+      formatOrderPrice(
+        price,
+        market.szDecimals,
+        market.categoryId === SPOT_MARKET_ID ? 'spot' : undefined
+      ),
+
+    formatOrderSize: (market: Market, size: number): string =>
+      formatOrderSize(size, market.szDecimals),
+
+    estimateLiquidationPrice: (
+      market: PerpsMarket,
+      params: LiquidationEstimateParams
+    ): number | undefined =>
+      calculateLiquidationPrice(
+        params.entryPrice,
+        params.leverage,
+        params.isLong,
+        market.maxLeverage
+      ),
 
     projectConfig: (
       config: AccountConfig,

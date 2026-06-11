@@ -7,7 +7,7 @@
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size
  */
 
-import { stringToFloat } from '@lifi/perps-sdk'
+import Big from 'big.js'
 
 /**
  * Max combined decimals (size + price) enforced by Hyperliquid.
@@ -48,11 +48,12 @@ export function getMaxPriceDecimals(
  * @public
  */
 export function formatOrderSize(size: number, szDecimals: number): string {
-  // Truncate (don't round up) to avoid exceeding available balance
-  const multiplier = 10 ** szDecimals
-  const truncated = Math.floor(size * multiplier) / multiplier
-  // Remove trailing zeros by round-tripping through stringToFloat
-  return stringToFloat(truncated.toFixed(szDecimals)).toString()
+  // Big.roundDown truncates toward zero — never round a size up, it could
+  // exceed available balance. Exact decimal arithmetic: flooring the float
+  // product dropped a lot step (0.29 * 100 === 28.999999999999996).
+  const truncated = new Big(size).round(szDecimals, Big.roundDown)
+  // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
+  return truncated.eq(0) ? '0' : truncated.toFixed()
 }
 
 /**
@@ -63,6 +64,9 @@ export function formatOrderSize(size: number, szDecimals: number): string {
  * - Max decimals = MAX_DECIMALS - szDecimals (6 for perps, 8 for spot)
  * - Integer prices always allowed regardless of significant figures
  * - Trailing zeroes must be removed for signing
+ *
+ * Rounding is half-up (away from zero at exact halfway) on the true decimal
+ * value, not on the binary float — (1.005).toFixed(2) would give '1.00'.
  *
  * @param price - The price value to format
  * @param szDecimals - The asset's szDecimals (affects max price decimals)
@@ -77,18 +81,13 @@ export function formatOrderPrice(
 ): string {
   const maxPriceDecimals = getMaxPriceDecimals(szDecimals, market)
 
-  let rounded = stringToFloat(price.toFixed(maxPriceDecimals))
+  let rounded = new Big(price).round(maxPriceDecimals, Big.roundHalfUp)
 
-  if (Number.isInteger(rounded)) {
-    return rounded.toString()
+  // Integer prices bypass the 5 sig-fig rule; prec() is a no-op below 6 sig figs
+  if (!rounded.mod(1).eq(0)) {
+    rounded = rounded.prec(5, Big.roundHalfUp)
   }
 
-  const absStr = Math.abs(rounded).toString().replace('.', '')
-  const sigFigs = absStr.replace(/^0+/, '').length
-
-  if (sigFigs > 5) {
-    rounded = stringToFloat(rounded.toPrecision(5))
-  }
-
-  return rounded.toString()
+  // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
+  return rounded.eq(0) ? '0' : rounded.toFixed()
 }

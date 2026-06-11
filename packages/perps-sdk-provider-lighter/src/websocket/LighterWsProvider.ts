@@ -1,7 +1,9 @@
 import {
+  cachePromise,
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   ReconnectingWebSocket,
+  resolveRetryPolicy,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -16,14 +18,19 @@ import type {
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
   LtWsAccountAllTradesMessage,
-  LtWsAccountByL1Response,
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
   LtWsOrderBook,
   LtWsOrderBookMessage,
 } from '../types/index.js'
-import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
+import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
+import {
+  classifyAndMapOrders,
+  fetchDetailedAccount,
+  mapFill,
+  mapOpenPositions,
+} from '../utils/index.js'
 
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
 // Authenticated channels (require an `authProvider` option):
@@ -51,7 +58,6 @@ import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
-const KEEPALIVE_INTERVAL_MS = 30_000
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -121,12 +127,11 @@ export interface LighterWsProviderOptions {
  *
  * @public
  */
-export class LighterWsProvider extends WsProviderBase {
-  private readonly restUrl: string
+export class LighterWsProvider extends WsProviderBase<SubState> {
+  private readonly api: LighterApiClient
   private readonly authProvider: LighterAuthProvider | undefined
   private readonly client: PerpsSDKClient | undefined
 
-  private readonly subs = new Map<string, SubState>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -143,16 +148,24 @@ export class LighterWsProvider extends WsProviderBase {
   private readonly accountIndexCache = new Map<string, number>()
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
 
-  private keepaliveTimer: ReturnType<typeof setInterval> | undefined
-
   constructor(
     wsUrl: string = DEFAULT_WS_URL,
     providerKey = 'lighter',
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
   ) {
-    super(new ReconnectingWebSocket(wsUrl), providerKey)
-    this.restUrl = options.restUrl ?? DEFAULT_REST_URL
+    super(
+      new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
+      providerKey
+    )
+    this.api = new LighterApiClient(options.restUrl ?? DEFAULT_REST_URL, {
+      policy: resolveRetryPolicy(
+        LIGHTER_RETRY_DEFAULTS,
+        client?.config.retry,
+        LIGHTER_PROVIDER_KEY
+      ),
+      fetchImpl: client?.config.fetch,
+    })
     this.authProvider = options.authProvider
     this.client = client
     this.marketIdToDisplaySymbol = new Map(
@@ -161,9 +174,6 @@ export class LighterWsProvider extends WsProviderBase {
         sym,
       ])
     )
-
-    // Keep-alive ping is Lighter-specific; the base does not wire 'close'.
-    this.rws.on('close', () => this.stopKeepalive())
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
@@ -184,19 +194,14 @@ export class LighterWsProvider extends WsProviderBase {
     }
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
-    const key = this.toKey(sub)
 
-    this.subs.set(key, { channel, needsAuth, address })
-    // Only send now if already open; otherwise onOpen resubscribes it on
-    // (re)connect. Sending in both places double-subscribes — and for auth
-    // channels needlessly re-fetches a token.
-    if (this.rws.getStatus() === 'connected') {
-      await this.sendSubscribe(channel, needsAuth, address)
-    }
+    // Registry keyed by the wire channel (unique per sub), so replay-failure
+    // logs name the channel the venue knows.
+    await this.registerSub(channel, { channel, needsAuth, address })
     await this.rws.ready()
 
     return () => {
-      this.subs.delete(key)
+      this.unregisterSub(channel)
       if (sub.channel === 'orderbook') {
         const id = Number(sub.marketId)
         if (Number.isFinite(id)) {
@@ -208,31 +213,15 @@ export class LighterWsProvider extends WsProviderBase {
   }
 
   protected onClose(): void {
-    this.stopKeepalive()
-    this.subs.clear()
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
   }
 
-  protected async onOpen(): Promise<void> {
-    this.startKeepalive()
-    for (const [, s] of this.subs) {
-      // Isolate each resubscribe: an auth-token fetch can reject (e.g. RO
-      // token revoked after reconnect), and one channel's failure must not
-      // abort the rest of the loop or escape as an unhandled rejection.
-      try {
-        await this.sendSubscribe(s.channel, s.needsAuth, s.address)
-      } catch (err) {
-        wsLog.subscribeFailure(LIGHTER_PROVIDER_KEY, s.channel, err)
-      }
-    }
-  }
-
-  private async sendSubscribe(
-    channel: string,
-    needsAuth: boolean,
-    address: Address | undefined
-  ): Promise<void> {
+  protected async sendSubscribe({
+    channel,
+    needsAuth,
+    address,
+  }: SubState): Promise<void> {
     const payload: { type: 'subscribe'; channel: string; auth?: string } = {
       type: 'subscribe',
       channel,
@@ -252,20 +241,6 @@ export class LighterWsProvider extends WsProviderBase {
       payload.auth = token
     }
     this.rws.send(JSON.stringify(payload))
-  }
-
-  private startKeepalive(): void {
-    this.stopKeepalive()
-    this.keepaliveTimer = setInterval(() => {
-      this.rws.send(JSON.stringify({ type: 'ping' }))
-    }, KEEPALIVE_INTERVAL_MS)
-  }
-
-  private stopKeepalive(): void {
-    if (this.keepaliveTimer !== undefined) {
-      clearInterval(this.keepaliveTimer)
-      this.keepaliveTimer = undefined
-    }
   }
 
   protected toKey(sub: Subscription): string {
@@ -336,42 +311,37 @@ export class LighterWsProvider extends WsProviderBase {
     if (cached !== undefined) {
       return cached
     }
-    let pending = this.accountIndexPromises.get(addressKey)
-    if (!pending) {
-      pending = this.fetchAccountIndex(address).finally(() => {
-        this.accountIndexPromises.delete(addressKey)
-      })
-      this.accountIndexPromises.set(addressKey, pending)
-    }
-    const idx = await pending
+    const idx = await cachePromise(
+      () => this.accountIndexPromises.get(addressKey),
+      (p) => {
+        if (p === undefined) {
+          this.accountIndexPromises.delete(addressKey)
+        } else {
+          this.accountIndexPromises.set(addressKey, p)
+        }
+      },
+      () => this.fetchAccountIndex(address)
+    )
     this.accountIndexCache.set(addressKey, idx)
     return idx
   }
 
   private async fetchAccountIndex(address: Address): Promise<number> {
-    const url = `${this.restUrl}/api/v1/account?by=l1_address&value=${encodeURIComponent(address)}`
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(
-        `Failed to resolve Lighter account for ${address}: ${response.status}`
-      )
-    }
-    const body = (await response.json()) as LtWsAccountByL1Response
-    const idx = body.accounts?.[0]?.index
-    if (typeof idx !== 'number') {
-      throw new Error(`No Lighter account found for ${address}`)
-    }
-    return idx
+    const account = await fetchDetailedAccount(this.api, address)
+    return account.index
   }
 
   private async ensureDisplaySymbols(): Promise<void> {
     if (this.marketIdToDisplaySymbol.size > 0) {
       return
     }
-    if (!this.displaySymbolsPromise) {
-      this.displaySymbolsPromise = this.fetchDisplaySymbols()
-    }
-    await this.displaySymbolsPromise
+    await cachePromise(
+      () => this.displaySymbolsPromise,
+      (p) => {
+        this.displaySymbolsPromise = p
+      },
+      () => this.fetchDisplaySymbols()
+    )
   }
 
   private async fetchDisplaySymbols(): Promise<void> {
@@ -513,16 +483,10 @@ export class LighterWsProvider extends WsProviderBase {
       return
     }
     const raw = collectAuthChannelItems<LtAccountPosition>(msg, 'positions')
-    const positions: Position[] = raw
-      .filter((p) => parseFloat(p.position) !== 0)
-      .map((p) =>
-        mapPosition(
-          p,
-          this.marketIdToDisplaySymbol.get(p.market_id) ??
-            p.symbol ??
-            `market_${p.market_id}`
-        )
-      )
+    const positions: Position[] = mapOpenPositions(
+      raw,
+      this.marketIdToDisplaySymbol
+    )
     this.emit(`positions:${address}`, {
       channel: 'positions',
       data: positions,

@@ -10,6 +10,7 @@ import {
 } from '@lifi/perps-sdk'
 import {
   type Market,
+  type MarketDisplay,
   type OpenOrder,
   OrderSide,
   OrderType,
@@ -29,16 +30,23 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
+  findMarket,
   isTriggerOrder,
   mapFill,
   mapOrderStatus,
   mapOrderType,
   mapPosition,
-  requireMarket,
+  priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
 } from '../utils/index.js'
+
+/** HL's `l2Book` returns at most this many levels per side (slow/default mode). */
+const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
+/** Minimum gap between unknown-market-triggered registry refetches. */
+const MARKET_REFRESH_COOLDOWN_MS = 60_000
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -63,15 +71,23 @@ export const hyperliquidWsProvider =
  * orders, fills and spot balances over a single {@link ReconnectingWebSocket}.
  * Construct via {@link hyperliquidWsProvider}.
  *
+ * `orderUpdates` supports a single address per provider instance: HL delivers
+ * those frames without a user field, so frames from two concurrent address
+ * subscriptions on one socket cannot be attributed. Subscribing a second
+ * address rejects while the first still has listeners; once the first is
+ * released, an address switch reclaims the channel immediately.
+ *
  * @public
  */
-export class HyperliquidWsProvider extends WsProviderBase {
-  private subs = new Map<string, object>()
+export class HyperliquidWsProvider extends WsProviderBase<object> {
+  private orderUpdatesKey: string | undefined
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
   private midsBySubDex = new Map<string, Record<string, string>>()
   private byMarketId = new Map<string, Market>()
   private byMarketIdPromise: Promise<void> | undefined
+  private warnedMarketIds = new Set<string>()
+  private marketRefreshAfter = 0
 
   constructor(
     wsUrl: string,
@@ -79,7 +95,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
     subDexes: string[],
     client?: PerpsSDKClient
   ) {
-    super(new ReconnectingWebSocket(wsUrl), providerKey)
+    super(
+      new ReconnectingWebSocket(wsUrl, { pingPayload: '{"method":"ping"}' }),
+      providerKey
+    )
     this.subDexes = subDexes
     this.client = client
   }
@@ -94,7 +113,11 @@ export class HyperliquidWsProvider extends WsProviderBase {
     if (this.byMarketId.size > 0 || client === undefined) {
       return
     }
-    await cachePromise(
+    await this.fetchMarketMap(client)
+  }
+
+  private fetchMarketMap(client: PerpsSDKClient): Promise<void> {
+    return cachePromise(
       () => this.byMarketIdPromise,
       (p) => {
         this.byMarketIdPromise = p
@@ -104,11 +127,51 @@ export class HyperliquidWsProvider extends WsProviderBase {
           provider: this.providerKey,
         })
         this.byMarketId = new Map(markets.map((m) => [m.id, m]))
+        this.warnedMarketIds.clear()
       }
     )
   }
 
+  /**
+   * Resolve a wire market id against the registry without aborting the
+   * containing frame: a miss warns once per id, schedules a cooldown-gated
+   * registry refetch (the id may have listed after the snapshot) and returns
+   * `undefined` so the caller skips just that item.
+   */
+  private resolveMarket(marketId: string): MarketDisplay | undefined {
+    const market = findMarket(this.byMarketId, marketId)
+    if (market) {
+      return market
+    }
+    if (!this.warnedMarketIds.has(marketId)) {
+      this.warnedMarketIds.add(marketId)
+      wsLog.unknownMarket(this.providerKey, marketId)
+    }
+    this.refreshMarketMap()
+    return undefined
+  }
+
+  private refreshMarketMap(): void {
+    const client = this.client
+    const now = Date.now()
+    if (client === undefined || now < this.marketRefreshAfter) {
+      return
+    }
+    // Set synchronously so concurrent frames cannot trigger a refetch storm.
+    this.marketRefreshAfter = now + MARKET_REFRESH_COOLDOWN_MS
+    this.byMarketIdPromise = undefined
+    this.fetchMarketMap(client).catch((error) =>
+      wsLog.marketRefreshFailure(this.providerKey, error)
+    )
+  }
+
   protected async openChannel(sub: Subscription): Promise<() => void> {
+    // Must run synchronously, before any await, so two concurrent opens
+    // cannot both pass the exclusivity check.
+    if (sub.channel === 'orderUpdates') {
+      this.claimOrderUpdatesKey(this.toKey(sub))
+    }
+
     await this.ensureMarketMap()
 
     // Prices require multi-sub-dex allMids subscriptions under one logical key.
@@ -116,15 +179,14 @@ export class HyperliquidWsProvider extends WsProviderBase {
       const entries = this.getPriceSubEntries()
 
       for (const { subKey, payload } of entries) {
-        this.subs.set(subKey, payload)
-        this.sendSubscribe(payload)
+        await this.registerSub(subKey, payload)
       }
 
       await this.rws.ready()
 
       return () => {
         for (const { subKey, payload } of entries) {
-          this.subs.delete(subKey)
+          this.unregisterSub(subKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
           )
@@ -136,17 +198,42 @@ export class HyperliquidWsProvider extends WsProviderBase {
     // All other channels: single WS subscription per key
     const key = this.toKey(sub)
     const payload = this.toHlPayload(sub)
-    this.subs.set(key, payload)
-    this.sendSubscribe(payload)
+    await this.registerSub(key, payload)
 
     await this.rws.ready()
 
     return () => {
-      this.subs.delete(key)
+      this.unregisterSub(key)
+      if (this.orderUpdatesKey === key) {
+        this.orderUpdatesKey = undefined
+      }
       this.rws.send(
         JSON.stringify({ method: 'unsubscribe', subscription: payload })
       )
     }
+  }
+
+  /**
+   * Enforce the single-address `orderUpdates` invariant (HL frames carry no
+   * user field, so concurrent address subscriptions are unattributable). A
+   * listener-free lingering channel for another address is torn down eagerly
+   * so a wallet switch needn't wait out the teardown linger; a live one throws.
+   */
+  private claimOrderUpdatesKey(key: string): void {
+    const active = this.orderUpdatesKey
+    if (
+      active !== undefined &&
+      active !== key &&
+      !this.closeChannelIfIdle(active)
+    ) {
+      throw new Error(
+        `Hyperliquid supports one orderUpdates address per provider instance ` +
+          `(frames carry no user field). Unsubscribe ` +
+          `${active.slice('orderUpdates:'.length)} before subscribing ` +
+          `${key.slice('orderUpdates:'.length)}.`
+      )
+    }
+    this.orderUpdatesKey = key
   }
 
   /** Build sub-key + payload pairs for each sub-dex allMids subscription. */
@@ -164,35 +251,14 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   protected onClose(): void {
-    this.subs.clear()
     this.midsBySubDex.clear()
+    this.orderUpdatesKey = undefined
   }
 
-  protected onOpen(): void {
-    this.resubscribeAll()
-  }
-
-  private resubscribeAll() {
-    for (const payload of this.subs.values()) {
-      this.rws.send(
-        JSON.stringify({ method: 'subscribe', subscription: payload })
-      )
-    }
-  }
-
-  /**
-   * Put a subscribe frame on the wire only when the socket is already open.
-   * While it is down the sub is recorded in `this.subs` and `resubscribeAll`
-   * on the next open is the sole authority that sends it; sending here too
-   * would double-subscribe, which HL rejects with
-   * `{channel:'error',data:'Already subscribed: …'}`.
-   */
-  private sendSubscribe(payload: object) {
-    if (this.rws.getStatus() === 'connected') {
-      this.rws.send(
-        JSON.stringify({ method: 'subscribe', subscription: payload })
-      )
-    }
+  protected sendSubscribe(payload: object): void {
+    this.rws.send(
+      JSON.stringify({ method: 'subscribe', subscription: payload })
+    )
   }
 
   protected toKey(sub: Subscription): string {
@@ -224,7 +290,15 @@ export class HyperliquidWsProvider extends WsProviderBase {
         return {
           type: 'l2Book',
           coin: sub.marketId,
-          ...(sub.depth !== undefined ? { nLevels: sub.depth } : {}),
+          // HL's l2Book ignores any level-count field; it returns up to 20
+          // levels/side and controls granularity via nSigFigs (+ mantissa,
+          // valid only when nSigFigs === 5).
+          ...(sub.priceStep !== undefined
+            ? priceStepToAggregation(
+                sub.priceStep,
+                Number(this.byMarketId.get(sub.marketId)?.markPrice)
+              )
+            : {}),
         }
       case 'candle':
         return {
@@ -318,8 +392,12 @@ export class HyperliquidWsProvider extends WsProviderBase {
       data: {
         provider: this.providerKey,
         marketId: data.coin,
-        bids: data.levels[0].map((l) => ({ price: l.px, size: l.sz })),
-        asks: data.levels[1].map((l) => ({ price: l.px, size: l.sz })),
+        bids: data.levels[0]
+          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+          .map((l) => ({ price: l.px, size: l.sz })),
+        asks: data.levels[1]
+          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+          .map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
       },
     })
@@ -340,6 +418,11 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   private handleOrderUpdates(data: HlOrderDetail[]) {
+    // Untagged frame: attributable only via the single-address invariant.
+    const key = this.orderUpdatesKey
+    if (key === undefined) {
+      return
+    }
     const openOrders: OpenOrder[] = []
     const triggerOrders: TriggerOrder[] = []
     const terminated: string[] = []
@@ -351,7 +434,10 @@ export class HyperliquidWsProvider extends WsProviderBase {
         continue
       }
       const type = mapOrderType(o.orderType)
-      const market = requireMarket(this.byMarketId, o.coin)
+      const market = this.resolveMarket(o.coin)
+      if (!market) {
+        continue
+      }
       const createdAt = new Date(o.timestamp).toISOString()
       if (isTriggerOrder(o)) {
         const isLimit =
@@ -381,29 +467,31 @@ export class HyperliquidWsProvider extends WsProviderBase {
         })
       }
     }
-    this.emitToPrefix('orderUpdates:', {
+    this.emit(key, {
       channel: 'orderUpdates',
       data: { openOrders, triggerOrders, terminated },
     })
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.map((f) =>
-      mapFill(f as HlUserFill, requireMarket(this.byMarketId, f.coin))
-    )
-    this.emit(`userFills:${data.user}`, { channel: 'fills', data: items })
+    const items = data.fills.flatMap((f) => {
+      const market = this.resolveMarket(f.coin)
+      return market ? [mapFill(f as HlUserFill, market)] : []
+    })
+    this.emit(`userFills:${data.user.toLowerCase()}`, {
+      channel: 'fills',
+      data: items,
+    })
   }
 
   private handleAllDexsClearinghouseState(
     data: HlWsAllDexsClearinghouseStateData
   ) {
     const positions = data.clearinghouseStates.flatMap(([, state]) =>
-      state.assetPositions.map((ap) =>
-        mapPosition(
-          ap as HlAssetPosition,
-          requireMarket(this.byMarketId, ap.position.coin)
-        )
-      )
+      state.assetPositions.flatMap((ap) => {
+        const market = this.resolveMarket(ap.position.coin)
+        return market ? [mapPosition(ap as HlAssetPosition, market)] : []
+      })
     )
     this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',

@@ -26,6 +26,33 @@ const XYZ_BRENTOIL_MARKET: Market = {
   },
 } as Market
 
+const assetPositionOf = (coin: string) => ({
+  position: {
+    coin,
+    szi: '0.1',
+    entryPx: '94000',
+    positionValue: '9500',
+    liquidationPx: '85000',
+    unrealizedPnl: '100',
+    marginUsed: '940',
+    leverage: { type: 'cross', value: 10 },
+  },
+})
+
+const allDexsFrame = (user: string, states: Array<[string, string[]]>) =>
+  JSON.stringify({
+    channel: 'allDexsClearinghouseState',
+    data: {
+      user,
+      clearinghouseStates: states.map(([dex, coins]) => [
+        dex,
+        { assetPositions: coins.map(assetPositionOf) },
+      ]),
+    },
+  })
+
+const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0))
+
 // --- Mock ReconnectingWebSocket ---
 
 const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
@@ -38,8 +65,10 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
     sent: string[] = []
     closed = false
     status = 'connected'
+    options: unknown
 
-    constructor() {
+    constructor(_url?: string, options?: unknown) {
+      this.options = options
       instance = this
     }
 
@@ -68,7 +97,13 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
       this.sent.push(data)
     }
 
+    // Mirrors ReconnectingWebSocket.ready(): terminal 'disconnected' rejects.
     ready() {
+      if (this.status === 'disconnected') {
+        return Promise.reject(
+          new Error('WebSocket max reconnect attempts reached')
+        )
+      }
       return Promise.resolve()
     }
 
@@ -142,6 +177,15 @@ function createEnrichingProvider(
 }
 
 describe('HyperliquidWsProvider', () => {
+  describe('keepalive framing', () => {
+    it('configures the socket keepalive with the Hyperliquid ping frame', () => {
+      createProvider()
+      expect(getMockRwsInstance().options).toEqual({
+        pingPayload: '{"method":"ping"}',
+      })
+    })
+  })
+
   describe('subscribe', () => {
     it('should send subscribe message for default and sub-dex allMids', async () => {
       const provider = createProvider()
@@ -162,6 +206,23 @@ describe('HyperliquidWsProvider', () => {
         method: 'subscribe',
         subscription: { type: 'allMids', dex: 'xyz' },
       })
+    })
+
+    it('rejects subscribe after reconnect exhaustion instead of hanging, and a later subscribe retries', async () => {
+      const provider = createProvider()
+      getMockRwsInstance().simulateStatus('disconnected')
+
+      await expect(
+        provider.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      ).rejects.toThrow('WebSocket max reconnect attempts reached')
+
+      // The failed open must not be cached: a retry reaches the wire again.
+      getMockRwsInstance().simulateStatus('connected')
+      const unsub = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      expect(typeof unsub).toBe('function')
     })
 
     it('should return an unsubscribe function', async () => {
@@ -219,6 +280,89 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('maps priceStep onto nSigFigs against the market markPrice and never sends the ignored nLevels', async () => {
+      // BTC markPrice 95000: floor(log10) = 4, step 10 → nSigFigs 4.
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          depth: 30,
+          priceStep: 10,
+        },
+        vi.fn()
+      )
+
+      const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
+      expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 4 })
+      expect(subscription).not.toHaveProperty('nLevels')
+      expect(subscription).not.toHaveProperty('priceStep')
+    })
+
+    it('emits mantissa for a non-power-of-ten priceStep at the 5-sig-fig boundary', async () => {
+      // BTC markPrice 95000: step 2 → nSigFigs 5, mantissa 2.
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          priceStep: 2,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+        nSigFigs: 5,
+        mantissa: 2,
+      })
+    })
+
+    it('requests full precision when the priceStep is finer than HL resolves', async () => {
+      // BTC markPrice 95000: step 0.1 needs 6 sig figs, beyond HL's max of 5.
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          priceStep: 0.1,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+      })
+    })
+
+    it('requests full precision when no markPrice is available for the market', async () => {
+      // No client → empty market registry → no reference magnitude.
+      const provider = createProvider()
+
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          priceStep: 10,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
+        type: 'l2Book',
+        coin: 'BTC',
+      })
+    })
+
     it('should map candle subscription to candle payload', async () => {
       const provider = createProvider()
 
@@ -254,6 +398,148 @@ describe('HyperliquidWsProvider', () => {
         method: 'subscribe',
         subscription: { type: 'orderUpdates', user: '0xabc' },
       })
+    })
+
+    it('rejects a second orderUpdates subscribe for a different address while the first is live', async () => {
+      const provider = createEnrichingProvider()
+      const listenerA = vi.fn()
+      const listenerB = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        listenerA
+      )
+
+      await expect(
+        provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+      ).rejects.toThrow(/one orderUpdates address/)
+
+      // No wire subscribe for the rejected address.
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).not.toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'orderUpdates', user: '0xbbb' },
+      })
+
+      // Frames keep flowing to the active subscriber only.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+      expect(listenerA).toHaveBeenCalledOnce()
+      expect(listenerB).not.toHaveBeenCalled()
+    })
+
+    it('rejects a conflicting orderUpdates subscribe even while the first open is still in flight', async () => {
+      const provider = createEnrichingProvider()
+
+      const subA = provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        vi.fn()
+      )
+      const subB = provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+        vi.fn()
+      )
+
+      await expect(subB).rejects.toThrow(/one orderUpdates address/)
+      await expect(subA).resolves.toBeTypeOf('function')
+    })
+
+    it('shares one orderUpdates channel across listeners for the same address regardless of casing', async () => {
+      const provider = createEnrichingProvider()
+      const listenerA = vi.fn()
+      const listenerB = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xAAA' },
+        listenerA
+      )
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+        listenerB
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+      expect(listenerA).toHaveBeenCalledOnce()
+      expect(listenerB).toHaveBeenCalledOnce()
+    })
+
+    it('expires a lingering orderUpdates channel so an address switch within the linger succeeds', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        const listenerA = vi.fn()
+        const listenerB = vi.fn()
+
+        const unsubA = await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+          listenerA
+        )
+        unsubA() // teardown deferred by the linger window
+        getMockRwsInstance().sent = []
+
+        await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+
+        const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+        expect(payloads).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'orderUpdates', user: '0xaaa' },
+          },
+          {
+            method: 'subscribe',
+            subscription: { type: 'orderUpdates', user: '0xbbb' },
+          },
+        ])
+
+        // The expired channel's linger timer must not fire a second teardown.
+        getMockRwsInstance().sent = []
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+        expect(getMockRwsInstance().sent).toHaveLength(0)
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'orderUpdates', data: [] })
+        )
+        expect(listenerA).not.toHaveBeenCalled()
+        expect(listenerB).toHaveBeenCalledOnce()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('allows a different orderUpdates address after the previous channel fully tore down', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        const listenerB = vi.fn()
+
+        const unsubA = await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xaaa' },
+          vi.fn()
+        )
+        unsubA()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+        await provider.subscribe(
+          { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xbbb' },
+          listenerB
+        )
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'orderUpdates', data: [] })
+        )
+        expect(listenerB).toHaveBeenCalledOnce()
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('should map fills subscription to userFills payload', async () => {
@@ -469,6 +755,32 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('caps emitted orderbook levels at HL per-side limit of 20', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      const side = Array.from({ length: 25 }, (_, i) => ({
+        px: String(95000 - i),
+        sz: '1',
+        n: 1,
+      }))
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2Book',
+          data: { coin: 'BTC', levels: [side, side], time: 1704067200000 },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.bids).toHaveLength(20)
+      expect(event.data.asks).toHaveLength(20)
+    })
+
     it('should emit candle event for candle channel', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -514,7 +826,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit orderUpdates event using prefix matching', async () => {
+    it('should emit orderUpdates event to the subscribed address listener', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
 
@@ -613,6 +925,95 @@ describe('HyperliquidWsProvider', () => {
         fee: '4.70',
         status: FillStatus.FILLED,
       })
+    })
+
+    it('delivers fills when the venue echoes the user address in checksummed form', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xAbCdUser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xAbCdUser1',
+            fills: [
+              {
+                tid: 555,
+                coin: 'BTC',
+                side: 'B',
+                px: '94000',
+                sz: '0.1',
+                dir: 'Open Long',
+                fee: '4.70',
+                closedPnl: '0',
+                time: 1704067200000,
+                startPosition: '0.0',
+              },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('fills')
+      expect(event.data[0]).toMatchObject({ id: '555', market: { id: 'BTC' } })
+    })
+
+    it('routes every address-keyed channel case-insensitively on a checksummed echo', async () => {
+      const provider = createEnrichingProvider()
+      const address = '0xAbCdUser1'
+      const fillsListener = vi.fn()
+      const positionsListener = vi.fn()
+      const spotListener = vi.fn()
+      const ordersListener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address },
+        fillsListener
+      )
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address },
+        positionsListener
+      )
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address },
+        spotListener
+      )
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address },
+        ordersListener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: { isSnapshot: false, user: address, fills: [] },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        allDexsFrame(address, [['', ['BTC']]])
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotState',
+          data: { user: address, spotState: { balances: [] } },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [] })
+      )
+
+      expect(fillsListener).toHaveBeenCalledOnce()
+      expect(positionsListener).toHaveBeenCalledOnce()
+      expect(spotListener).toHaveBeenCalledOnce()
+      expect(ordersListener).toHaveBeenCalledOnce()
     })
 
     it('emits typed spot Balances keyed on the wire token index', async () => {
@@ -875,7 +1276,7 @@ describe('HyperliquidWsProvider', () => {
     it('surfaces (logs) a fill on a market absent from /markets instead of swallowing it', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const listener = vi.fn()
-      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await provider.subscribe(
         { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
@@ -906,9 +1307,9 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).not.toHaveBeenCalled()
-      expect(errorSpy).toHaveBeenCalledOnce()
-      errorSpy.mockRestore()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      expect(listener).toHaveBeenCalledWith({ channel: 'fills', data: [] })
+      warnSpy.mockRestore()
     })
 
     it('should ignore pong messages', async () => {
@@ -1019,7 +1420,7 @@ describe('HyperliquidWsProvider', () => {
     it('isolates a throwing frame so a later good frame on another channel still delivers', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const priceListener = vi.fn()
-      const fillListener = vi.fn()
+      const orderListener = vi.fn()
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
@@ -1027,32 +1428,35 @@ describe('HyperliquidWsProvider', () => {
         priceListener
       )
       await provider.subscribe(
-        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
-        fillListener
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        orderListener
       )
 
-      // Unknown-market fill frame: its handler throws MarketNotFound.
+      // Out-of-range timestamp: the handler throws while building createdAt.
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'userFills',
-          data: {
-            isSnapshot: false,
-            user: '0xuser1',
-            fills: [
-              {
-                tid: 555,
-                coin: '@142',
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: {
+                oid: 100,
+                coin: 'BTC',
                 side: 'B',
-                px: '94000',
-                sz: '0.1',
-                dir: 'Buy',
-                fee: '4.70',
-                closedPnl: '0',
-                time: 1704067200000,
-                startPosition: '0.0',
+                sz: '0.05',
+                limitPx: '93000',
+                orderType: 'Limit',
+                origSz: '0.1',
+                reduceOnly: false,
+                timestamp: 1e20,
+                tif: 'Gtc',
+                cloid: null,
+                triggerCondition: 'N/A',
+                triggerPx: null,
               },
-            ],
-          },
+              status: 'open',
+              statusTimestamp: 1704067200000,
+            },
+          ],
         })
       )
 
@@ -1065,7 +1469,7 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(errorSpy).toHaveBeenCalledOnce()
-      expect(fillListener).not.toHaveBeenCalled()
+      expect(orderListener).not.toHaveBeenCalled()
       expect(priceListener).toHaveBeenCalledWith({
         channel: 'prices',
         data: { BTC: '95000' },
@@ -1127,6 +1531,206 @@ describe('HyperliquidWsProvider', () => {
     })
   })
 
+  describe('unknown-market items in account streams', () => {
+    it('emits the known market positions when a frame also carries an unknown market', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        allDexsFrame('0xuser1', [
+          ['', ['BTC']],
+          ['xyz', ['xyz:BRENTOIL']],
+        ])
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('positions')
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({ market: { id: 'BTC' } })
+      expect(warnSpy).toHaveBeenCalledOnce()
+      warnSpy.mockRestore()
+    })
+
+    it('emits the known market fill when a frame also carries an unknown market', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const fill = {
+        side: 'B',
+        px: '94000',
+        sz: '0.1',
+        dir: 'Buy',
+        fee: '4.70',
+        closedPnl: '0',
+        time: 1704067200000,
+        startPosition: '0.0',
+      }
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: true,
+            user: '0xuser1',
+            fills: [
+              { ...fill, tid: 1, coin: '@999' },
+              { ...fill, tid: 2, coin: 'BTC' },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({ id: '2', market: { id: 'BTC' } })
+      warnSpy.mockRestore()
+    })
+
+    it('emits the known market order when a frame also carries an unknown market', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const order = {
+        side: 'B',
+        sz: '0.05',
+        limitPx: '93000',
+        orderType: 'Limit',
+        origSz: '0.1',
+        reduceOnly: false,
+        timestamp: 1704067200000,
+        tif: 'Gtc',
+        cloid: null,
+        triggerCondition: 'N/A',
+        triggerPx: null,
+      }
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: { ...order, oid: 100, coin: 'xyz:BRENTOIL' },
+              status: 'open',
+              statusTimestamp: 1704067200000,
+            },
+            {
+              order: { ...order, oid: 101, coin: 'BTC' },
+              status: 'open',
+              statusTimestamp: 1704067200000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders).toHaveLength(1)
+      expect(event.data.openOrders[0]).toMatchObject({
+        orderId: '101',
+        market: { id: 'BTC' },
+      })
+      warnSpy.mockRestore()
+    })
+
+    it('refetches the registry on an unknown market id and maps it on the next frame', async () => {
+      getMarketsMock.mockReset()
+      getMarketsMock
+        .mockResolvedValueOnce({ markets: HL_MARKETS })
+        .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
+      const provider = new HyperliquidWsProvider(
+        'wss://api.hyperliquid.xyz/ws',
+        providerKey,
+        subDexes,
+        fakeClient
+      )
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const frame = allDexsFrame('0xuser1', [
+        ['', ['BTC']],
+        ['xyz', ['xyz:BRENTOIL']],
+      ])
+      getMockRwsInstance().simulateMessage(frame)
+      await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(frame)
+
+      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(
+        listener.mock.calls[0][0].data.map((p: any) => p.market.id)
+      ).toEqual(['BTC'])
+      expect(
+        listener.mock.calls[1][0].data.map((p: any) => p.market.id)
+      ).toEqual(['BTC', 'xyz:BRENTOIL'])
+      warnSpy.mockRestore()
+    })
+
+    it('refetches at most once per cooldown window for a persistently unknown market', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        getMarketsMock.mockReset()
+        getMarketsMock.mockResolvedValue({ markets: HL_MARKETS })
+        const provider = new HyperliquidWsProvider(
+          'wss://api.hyperliquid.xyz/ws',
+          providerKey,
+          subDexes,
+          fakeClient
+        )
+        const listener = vi.fn()
+
+        await provider.subscribe(
+          { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+          listener
+        )
+        expect(getMarketsMock).toHaveBeenCalledTimes(1)
+
+        const frame = allDexsFrame('0xuser1', [['xyz', ['xyz:BRENTOIL']]])
+        getMockRwsInstance().simulateMessage(frame)
+        await flushMicrotasks()
+        expect(getMarketsMock).toHaveBeenCalledTimes(2)
+
+        getMockRwsInstance().simulateMessage(frame)
+        await flushMicrotasks()
+        expect(getMarketsMock).toHaveBeenCalledTimes(2)
+
+        vi.setSystemTime(Date.now() + 60_000)
+        getMockRwsInstance().simulateMessage(frame)
+        await flushMicrotasks()
+        expect(getMarketsMock).toHaveBeenCalledTimes(3)
+
+        // Every frame still emitted (empty — the only position is unknown).
+        expect(listener).toHaveBeenCalledTimes(3)
+      } finally {
+        warnSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    })
+  })
+
   describe('resubscribe on reconnect', () => {
     it('should resend all active subscriptions on open', async () => {
       const provider = createProvider()
@@ -1142,8 +1746,9 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().sent = [] // Clear initial subscribe messages
 
-      // Simulate reconnection
+      // Simulate reconnection; the base's replay loop awaits each send.
       getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
 
       // 2 allMids (default + xyz) + 1 l2Book
       expect(getMockRwsInstance().sent).toHaveLength(3)
@@ -1177,6 +1782,7 @@ describe('HyperliquidWsProvider', () => {
       expect(getMockRwsInstance().sent).toHaveLength(0)
 
       getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
 
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toEqual([

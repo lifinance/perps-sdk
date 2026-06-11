@@ -44,6 +44,33 @@ describe('wsLog', () => {
     })
   })
 
+  describe('unknownMarket', () => {
+    it('warns with the provider key and the unknown market id', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      wsLog.unknownMarket('hyperliquid', 'xyz:BRENTOIL')
+
+      expect(warn).toHaveBeenCalledOnce()
+      const [message] = warn.mock.calls[0]
+      expect(message).toContain('hyperliquid')
+      expect(message).toContain('xyz:BRENTOIL')
+    })
+  })
+
+  describe('marketRefreshFailure', () => {
+    it('warns with the provider key and the error', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const err = new Error('markets fetch failed')
+
+      wsLog.marketRefreshFailure('hyperliquid', err)
+
+      expect(warn).toHaveBeenCalledOnce()
+      const [message, logged] = warn.mock.calls[0]
+      expect(message).toContain('hyperliquid')
+      expect(logged).toBe(err)
+    })
+  })
+
   describe('subscribeFailure', () => {
     it('logs the error at error level with the provider key and channel', () => {
       const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
