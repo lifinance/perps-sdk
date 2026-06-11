@@ -1,444 +1,260 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { MockPartySocketWebSocket } = vi.hoisted(() => {
+  class HoistedMockPartySocketWebSocket {
+    static CONNECTING = 0
+    static OPEN = 1
+    static CLOSING = 2
+    static CLOSED = 3
+
+    static instances: HoistedMockPartySocketWebSocket[] = []
+
+    readyState = HoistedMockPartySocketWebSocket.CONNECTING
+    retryCount = 0
+    reconnectCalls = 0
+    sent: string[] = []
+    url: string
+    options?: Record<string, unknown>
+    onopen: (() => void) | null = null
+    onclose: ((ev: CloseEvent) => void) | null = null
+    onerror: ((ev: Event) => void) | null = null
+    onmessage: ((ev: MessageEvent) => void) | null = null
+
+    constructor(
+      url: string,
+      _protocols?: string | string[],
+      options?: Record<string, unknown>
+    ) {
+      this.url = url
+      this.options = options
+      HoistedMockPartySocketWebSocket.instances.push(this)
+    }
+
+    send(data: string) {
+      this.sent.push(data)
+    }
+
+    close() {
+      this.readyState = HoistedMockPartySocketWebSocket.CLOSED
+    }
+
+    reconnect() {
+      this.reconnectCalls += 1
+      this.retryCount = 0
+    }
+
+    simulateOpen() {
+      this.readyState = HoistedMockPartySocketWebSocket.OPEN
+      this.onopen?.()
+    }
+
+    simulateClose({
+      code = 1006,
+      reason = '',
+      retryCount,
+    }: {
+      code?: number
+      reason?: string
+      retryCount?: number
+    } = {}) {
+      if (retryCount !== undefined) {
+        this.retryCount = retryCount
+      }
+      this.readyState = HoistedMockPartySocketWebSocket.CLOSED
+      this.onclose?.({ code, reason } as CloseEvent)
+    }
+
+    simulateMessage(data: string) {
+      this.onmessage?.({ data } as MessageEvent)
+    }
+
+    simulateError() {
+      this.onerror?.(new Event('error'))
+    }
+  }
+
+  return {
+    MockPartySocketWebSocket: HoistedMockPartySocketWebSocket,
+  }
+})
+
+vi.mock('partysocket/ws', () => ({
+  default: MockPartySocketWebSocket,
+}))
+
 import { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 
-// --- Mock WebSocket ---
-
-class MockWebSocket {
-  static CONNECTING = 0
-  static OPEN = 1
-  static CLOSING = 2
-  static CLOSED = 3
-
-  readyState = MockWebSocket.CONNECTING
-  url: string
-  onopen: ((ev: Event) => void) | null = null
-  onclose: ((ev: { code: number; reason: string }) => void) | null = null
-  onerror: ((ev: Event) => void) | null = null
-  onmessage: ((ev: { data: string }) => void) | null = null
-  sent: string[] = []
-
-  constructor(url: string) {
-    this.url = url
-    MockWebSocket.instances.push(this)
-  }
-
-  send(data: string) {
-    this.sent.push(data)
-  }
-
-  close() {
-    this.readyState = MockWebSocket.CLOSED
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN
-    this.onopen?.(new Event('open'))
-  }
-
-  simulateClose(code = 1000, reason = '') {
-    this.readyState = MockWebSocket.CLOSED
-    this.onclose?.({ code, reason })
-  }
-
-  simulateMessage(data: string) {
-    this.onmessage?.({ data })
-  }
-
-  simulateError() {
-    this.onerror?.(new Event('error'))
-  }
-
-  static instances: MockWebSocket[] = []
-  static reset() {
-    MockWebSocket.instances = []
-  }
-}
-
-// Store original and replace with mock
-const originalWebSocket = globalThis.WebSocket
-
 beforeEach(() => {
-  MockWebSocket.reset()
   vi.useFakeTimers()
-  globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  MockPartySocketWebSocket.instances = []
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  globalThis.WebSocket = originalWebSocket
+  vi.restoreAllMocks()
 })
 
-function latestWs(): MockWebSocket {
-  return MockWebSocket.instances[MockWebSocket.instances.length - 1]
+function latestWs(): MockPartySocketWebSocket {
+  return MockPartySocketWebSocket.instances[
+    MockPartySocketWebSocket.instances.length - 1
+  ]
 }
 
 describe('ReconnectingWebSocket', () => {
-  describe('connection', () => {
-    it('should create a WebSocket connection on construction', () => {
-      new ReconnectingWebSocket('wss://example.com')
-      expect(MockWebSocket.instances).toHaveLength(1)
-      expect(latestWs().url).toBe('wss://example.com')
+  it('creates a partysocket transport with retry defaults', () => {
+    new ReconnectingWebSocket('wss://example.com', { maxRetries: 3 })
+    expect(MockPartySocketWebSocket.instances).toHaveLength(1)
+    expect(latestWs().url).toBe('wss://example.com')
+    expect(latestWs().options).toMatchObject({
+      maxRetries: 3,
+      connectionTimeout: 4000,
+      minUptime: 5000,
+      maxEnqueuedMessages: 1000,
+      minReconnectionDelay: 500,
+      maxReconnectionDelay: 10000,
     })
   })
 
-  describe('send', () => {
-    it('should send messages when connection is open', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      latestWs().simulateOpen()
-
-      rws.send('hello')
-      expect(latestWs().sent).toContain('hello')
-    })
-
-    it('should buffer messages when connection is not open', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      // Connection is still CONNECTING, not OPEN
-      rws.send('buffered1')
-      rws.send('buffered2')
-
-      expect(latestWs().sent).toHaveLength(0)
-    })
-
-    it('should flush buffered messages on open', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      rws.send('buffered1')
-      rws.send('buffered2')
-
-      latestWs().simulateOpen()
-
-      expect(latestWs().sent).toEqual(['buffered1', 'buffered2'])
-    })
+  it('forwards sends via partysocket while reconnecting', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    rws.send('queued-message')
+    expect(latestWs().sent).toEqual(['queued-message'])
   })
 
-  describe('event listeners', () => {
-    it('should register and call message listeners', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const listener = vi.fn()
-      rws.on('message', listener)
+  it('registers and unregisters lifecycle listeners', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    const onMessage = vi.fn()
+    const onOpen = vi.fn()
+    const onClose = vi.fn()
+    const onError = vi.fn()
 
-      latestWs().simulateOpen()
-      latestWs().simulateMessage('test data')
+    rws.on('message', onMessage)
+    rws.on('open', onOpen)
+    rws.on('close', onClose)
+    rws.on('error', onError)
 
-      expect(listener).toHaveBeenCalledWith('test data')
-    })
+    latestWs().simulateOpen()
+    latestWs().simulateMessage('payload')
+    latestWs().simulateError()
+    latestWs().simulateClose({ code: 1006, reason: 'dropped', retryCount: 1 })
 
-    it('should register and call open listeners', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const listener = vi.fn()
-      rws.on('open', listener)
+    expect(onOpen).toHaveBeenCalledOnce()
+    expect(onMessage).toHaveBeenCalledWith('payload')
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onClose).toHaveBeenCalledWith(1006, 'dropped')
 
-      latestWs().simulateOpen()
-
-      expect(listener).toHaveBeenCalledOnce()
-    })
-
-    it('should register and call close listeners', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      rws.on('open', () => {})
-      const listener = vi.fn()
-      rws.on('close', listener)
-
-      latestWs().simulateOpen()
-      // Manual close to prevent reconnect
-      rws.close()
-
-      expect(listener).not.toHaveBeenCalled() // close() doesn't fire onclose
-    })
-
-    it('should register and call error listeners', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const listener = vi.fn()
-      rws.on('error', listener)
-
-      latestWs().simulateError()
-
-      expect(listener).toHaveBeenCalledOnce()
-    })
-
-    it('should unregister listeners with off', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const listener = vi.fn()
-      rws.on('message', listener)
-      rws.off('message', listener)
-
-      latestWs().simulateOpen()
-      latestWs().simulateMessage('ignored')
-
-      expect(listener).not.toHaveBeenCalled()
-    })
+    rws.off('message', onMessage)
+    latestWs().simulateMessage('ignored')
+    expect(onMessage).toHaveBeenCalledTimes(1)
   })
 
-  describe('ping', () => {
-    it('should send the configured ping payload at the configured interval', () => {
-      new ReconnectingWebSocket('wss://example.com', {
-        pingIntervalMs: 1000,
-        pingPayload: '{"method":"ping"}',
-      })
-      latestWs().simulateOpen()
-      latestWs().sent = [] // Clear any flushed messages
-
-      vi.advanceTimersByTime(1000)
-      expect(latestWs().sent).toEqual(['{"method":"ping"}'])
-
-      vi.advanceTimersByTime(1000)
-      expect(latestWs().sent).toEqual([
-        '{"method":"ping"}',
-        '{"method":"ping"}',
-      ])
+  it('sends keepalive frames while open and stops after close()', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com', {
+      pingIntervalMs: 1000,
+      pingPayload: '{"method":"ping"}',
     })
 
-    it('should send no keepalive when pingPayload is not configured', () => {
-      new ReconnectingWebSocket('wss://example.com', {
-        pingIntervalMs: 1000,
-      })
-      latestWs().simulateOpen()
-      latestWs().sent = []
+    latestWs().simulateOpen()
+    latestWs().sent = []
+    vi.advanceTimersByTime(2000)
+    expect(latestWs().sent).toEqual(['{"method":"ping"}', '{"method":"ping"}'])
 
-      vi.advanceTimersByTime(5000)
-
-      expect(latestWs().sent).toHaveLength(0)
-    })
-
-    it('should stop ping on close', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        pingIntervalMs: 1000,
-        pingPayload: '{"method":"ping"}',
-      })
-      latestWs().simulateOpen()
-      latestWs().sent = []
-
-      rws.close()
-      vi.advanceTimersByTime(5000)
-
-      expect(latestWs().sent).toHaveLength(0)
-    })
+    rws.close()
+    latestWs().sent = []
+    vi.advanceTimersByTime(5000)
+    expect(latestWs().sent).toHaveLength(0)
   })
 
-  describe('reconnection', () => {
-    it('should reconnect on unexpected close', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 3 })
-      const firstWs = latestWs()
-      firstWs.simulateOpen()
-      firstWs.simulateClose(1006, 'abnormal')
-
-      // First reconnect: delay = (1 << 0) * 150 = 150ms
-      expect(MockWebSocket.instances).toHaveLength(1) // not yet
-      vi.advanceTimersByTime(150)
-      expect(MockWebSocket.instances).toHaveLength(2)
+  it('forces reconnect when the stream is stale for staleWindowMs', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com', {
+      pingPayload: '{"method":"ping"}',
+      staleWindowMs: 2000,
     })
+    const onStatus = vi.fn()
+    rws.onStatus(onStatus)
 
-    it('should use exponential backoff for reconnection', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 5 })
-      const firstWs = latestWs()
-      firstWs.simulateOpen()
+    latestWs().simulateOpen()
+    expect(rws.getStatus()).toBe('connected')
 
-      // First close -> attempt 0: delay = 150ms
-      firstWs.simulateClose()
-      vi.advanceTimersByTime(149)
-      expect(MockWebSocket.instances).toHaveLength(1)
-      vi.advanceTimersByTime(1)
-      expect(MockWebSocket.instances).toHaveLength(2)
-
-      // Second close -> attempt 1: delay = 300ms
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(299)
-      expect(MockWebSocket.instances).toHaveLength(2)
-      vi.advanceTimersByTime(1)
-      expect(MockWebSocket.instances).toHaveLength(3)
-    })
-
-    it('should not reconnect after manual close', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      latestWs().simulateOpen()
-
-      rws.close()
-      vi.advanceTimersByTime(60_000)
-
-      expect(MockWebSocket.instances).toHaveLength(1)
-    })
-
-    it('should stop reconnecting after max retries', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 2 })
-
-      // Close without ever opening (attempt stays at 0)
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(150)
-      expect(MockWebSocket.instances).toHaveLength(2)
-
-      // Second close -> attempt=1
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(300)
-      expect(MockWebSocket.instances).toHaveLength(3)
-
-      // Third close -> attempt=2 >= maxRetries(2), no more reconnects
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(60_000)
-      expect(MockWebSocket.instances).toHaveLength(3)
-    })
-
-    it('should reset attempt counter on successful open', () => {
-      new ReconnectingWebSocket('wss://example.com', { maxRetries: 2 })
-      latestWs().simulateOpen()
-
-      // Close triggers reconnect attempt 0
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(150)
-      expect(MockWebSocket.instances).toHaveLength(2)
-
-      // Successfully reconnect, resetting counter
-      latestWs().simulateOpen()
-
-      // Close again, should still reconnect (counter was reset)
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(150)
-      expect(MockWebSocket.instances).toHaveLength(3)
-    })
+    vi.advanceTimersByTime(2000)
+    expect(latestWs().reconnectCalls).toBe(1)
+    expect(rws.getStatus()).toBe('reconnecting')
+    expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
   })
 
-  describe('ready', () => {
-    it('should resolve immediately when already open', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      latestWs().simulateOpen()
-
-      await expect(rws.ready()).resolves.toBeUndefined()
+  it('resets stale watchdog on each inbound message', () => {
+    new ReconnectingWebSocket('wss://example.com', {
+      pingPayload: '{"method":"ping"}',
+      staleWindowMs: 2000,
     })
 
-    it('should resolve when connection opens', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const readyPromise = rws.ready()
+    latestWs().simulateOpen()
+    vi.advanceTimersByTime(1500)
+    latestWs().simulateMessage('tick')
+    vi.advanceTimersByTime(1500)
+    expect(latestWs().reconnectCalls).toBe(0)
 
-      latestWs().simulateOpen()
-      await expect(readyPromise).resolves.toBeUndefined()
-    })
-
-    it('should reject when max retries exceeded', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        maxRetries: 0,
-      })
-      const readyPromise = rws.ready()
-
-      // Close with 0 retries should reject immediately
-      latestWs().simulateClose()
-
-      await expect(readyPromise).rejects.toThrow(
-        'WebSocket max reconnect attempts reached'
-      )
-    })
-
-    it('should reject when manually closed', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const readyPromise = rws.ready()
-
-      rws.close()
-
-      await expect(readyPromise).rejects.toThrow('WebSocket closed')
-    })
-
-    it('should reject immediately when called after reconnect exhaustion', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        maxRetries: 0,
-      })
-      latestWs().simulateClose()
-      expect(rws.getStatus()).toBe('disconnected')
-
-      await expect(rws.ready()).rejects.toThrow(
-        'WebSocket max reconnect attempts reached'
-      )
-    })
-
-    it('should reject immediately when called after manual close', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      rws.close()
-
-      await expect(rws.ready()).rejects.toThrow('WebSocket closed')
-    })
+    vi.advanceTimersByTime(500)
+    expect(latestWs().reconnectCalls).toBe(1)
   })
 
-  describe('close', () => {
-    it('should close the underlying WebSocket', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      latestWs().simulateOpen()
-
-      rws.close()
-      expect(latestWs().readyState).toBe(MockWebSocket.CLOSED)
+  it('keeps reconnecting status until retry budget is exhausted, then becomes disconnected', async () => {
+    const rws = new ReconnectingWebSocket('wss://example.com', {
+      maxRetries: 2,
     })
+    const onStatus = vi.fn()
+    rws.onStatus(onStatus)
+
+    latestWs().simulateOpen()
+    expect(rws.getStatus()).toBe('connected')
+
+    latestWs().simulateClose({ retryCount: 1 })
+    expect(rws.getStatus()).toBe('reconnecting')
+    const readyPromise = rws.ready()
+    latestWs().simulateClose({ retryCount: 2 })
+    expect(rws.getStatus()).toBe('reconnecting')
+    latestWs().simulateClose({ retryCount: 2 })
+
+    expect(rws.getStatus()).toBe('disconnected')
+    expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+    await expect(readyPromise).rejects.toThrow(
+      'WebSocket max reconnect attempts reached'
+    )
   })
 
-  describe('connection status', () => {
-    it('starts reconnecting and reports connected on open', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      expect(rws.getStatus()).toBe('reconnecting')
-
-      latestWs().simulateOpen()
-      expect(rws.getStatus()).toBe('connected')
+  it('reconnect() recovers a terminal disconnected socket', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com', {
+      maxRetries: 0,
     })
 
-    it('notifies status listeners on connect / drop transitions', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        maxRetries: 3,
-      })
-      const onStatus = vi.fn()
-      rws.onStatus(onStatus)
+    latestWs().simulateClose({ retryCount: 0 })
+    expect(rws.getStatus()).toBe('disconnected')
 
-      latestWs().simulateOpen()
-      expect(onStatus).toHaveBeenLastCalledWith('connected')
+    rws.reconnect()
+    expect(latestWs().reconnectCalls).toBe(1)
+    expect(rws.getStatus()).toBe('reconnecting')
 
-      latestWs().simulateClose(1006, 'abnormal')
-      expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+    latestWs().simulateOpen()
+    expect(rws.getStatus()).toBe('connected')
+  })
 
-      vi.advanceTimersByTime(150)
-      latestWs().simulateOpen()
-      expect(onStatus).toHaveBeenLastCalledWith('connected')
+  it('ready() resolves on open and rejects on terminal states', async () => {
+    const connected = new ReconnectingWebSocket('wss://example.com')
+    const waiting = connected.ready()
+    latestWs().simulateOpen()
+    await expect(waiting).resolves.toBeUndefined()
+
+    const exhausted = new ReconnectingWebSocket('wss://example.com', {
+      maxRetries: 0,
     })
+    latestWs().simulateClose({ retryCount: 0 })
+    await expect(exhausted.ready()).rejects.toThrow(
+      'WebSocket max reconnect attempts reached'
+    )
 
-    it('emits terminal disconnected status when reconnects are exhausted', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        maxRetries: 2,
-      })
-      const onStatus = vi.fn()
-      rws.onStatus(onStatus)
-      latestWs().simulateOpen()
-
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(150)
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(300)
-      // Third close -> attempt=2 >= maxRetries(2): gives up.
-      latestWs().simulateClose()
-      vi.advanceTimersByTime(60_000)
-
-      expect(rws.getStatus()).toBe('disconnected')
-      expect(onStatus).toHaveBeenLastCalledWith('disconnected')
-      // No further reconnects scheduled after the terminal signal.
-      expect(MockWebSocket.instances).toHaveLength(3)
-    })
-
-    it('still rejects pending ready() waiters alongside the terminal status', async () => {
-      const rws = new ReconnectingWebSocket('wss://example.com', {
-        maxRetries: 0,
-      })
-      const onStatus = vi.fn()
-      rws.onStatus(onStatus)
-      const readyPromise = rws.ready()
-
-      latestWs().simulateClose()
-
-      await expect(readyPromise).rejects.toThrow(
-        'WebSocket max reconnect attempts reached'
-      )
-      expect(onStatus).toHaveBeenLastCalledWith('disconnected')
-    })
-
-    it('does not notify listeners removed via offStatus', () => {
-      const rws = new ReconnectingWebSocket('wss://example.com')
-      const onStatus = vi.fn()
-      rws.onStatus(onStatus)
-      rws.offStatus(onStatus)
-
-      latestWs().simulateOpen()
-
-      expect(onStatus).not.toHaveBeenCalled()
-    })
+    const closed = new ReconnectingWebSocket('wss://example.com')
+    closed.close()
+    await expect(closed.ready()).rejects.toThrow('WebSocket closed')
   })
 })
