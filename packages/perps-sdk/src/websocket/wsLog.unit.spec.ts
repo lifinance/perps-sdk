@@ -85,4 +85,19 @@ describe('wsLog', () => {
       expect(logged).toBe(err)
     })
   })
+
+  describe('listenerFailure', () => {
+    it('logs the listener type and provider key at error level', () => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const err = new Error('listener blew up')
+
+      wsLog.listenerFailure('hyperliquid', 'status', err)
+
+      expect(errorLog).toHaveBeenCalledOnce()
+      const [message, logged] = errorLog.mock.calls[0]
+      expect(message).toContain('hyperliquid')
+      expect(message).toContain('status')
+      expect(logged).toBe(err)
+    })
+  })
 })

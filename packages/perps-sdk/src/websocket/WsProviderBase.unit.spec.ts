@@ -295,6 +295,56 @@ describe('WsProviderBase — status fan-out', () => {
     rws.simulateStatus('disconnected')
     expect(onStatus).not.toHaveBeenCalled()
   })
+
+  it('isolates throwing status listeners so siblings still receive transitions', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    rws.status = 'connected'
+    const p = new TestProvider(rws)
+    const stableStatus = vi.fn()
+    const throwingStatus = vi.fn((status: WsConnectionStatus) => {
+      if (status === 'reconnecting') {
+        throw new Error('status listener failed')
+      }
+    })
+
+    await p.subscribe(PRICES, vi.fn(), throwingStatus)
+    await p.subscribe(PRICES, vi.fn(), stableStatus)
+    stableStatus.mockClear()
+
+    rws.simulateStatus('reconnecting')
+
+    expect(stableStatus).toHaveBeenCalledWith('reconnecting')
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining("listener threw during 'status' fan-out"),
+      expect.any(Error)
+    )
+    errorLog.mockRestore()
+  })
+})
+
+describe('WsProviderBase — emit fan-out', () => {
+  it('isolates a throwing subscription listener so sibling listeners still receive the frame', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const p = new TestProvider(new MockRws())
+    const stableListener = vi.fn()
+
+    await p.subscribe(PRICES, () => {
+      throw new Error('listener failed')
+    })
+    await p.subscribe(PRICES, stableListener)
+
+    p.deliver('prices', priceEvent)
+
+    expect(stableListener).toHaveBeenCalledWith(priceEvent)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "listener threw during 'subscription:prices' fan-out"
+      ),
+      expect.any(Error)
+    )
+    errorLog.mockRestore()
+  })
 })
 
 const flushAsync = () => new Promise<void>((r) => setTimeout(r, 0))

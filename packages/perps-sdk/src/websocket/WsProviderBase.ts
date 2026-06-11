@@ -71,7 +71,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     })
     this.rws.onStatus((status) => {
       for (const fn of this.statusListeners.keys()) {
-        fn(status)
+        this.callListener('status', fn, status)
       }
     })
   }
@@ -125,7 +125,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       return
     }
     for (const fn of entry.listeners.keys()) {
-      fn(event)
+      this.callListener(`subscription:${key}`, fn, event)
     }
   }
 
@@ -220,6 +220,18 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
 
   /** Release subclass-only resources on {@link close} (keep-alive, cached state). */
   protected onClose(): void {}
+
+  private callListener<TArgs extends unknown[]>(
+    listenerType: string,
+    listener: (...args: TArgs) => void,
+    ...args: TArgs
+  ): void {
+    try {
+      listener(...args)
+    } catch (error) {
+      wsLog.listenerFailure(this.providerKey, listenerType, error)
+    }
+  }
 
   private async acquireChannel(
     key: string,

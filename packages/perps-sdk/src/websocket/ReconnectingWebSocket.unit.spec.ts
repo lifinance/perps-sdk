@@ -149,6 +149,31 @@ describe('ReconnectingWebSocket', () => {
     expect(onMessage).toHaveBeenCalledTimes(1)
   })
 
+  it('isolates throwing status and open listeners so open setup still completes', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    const readyPromise = rws.ready()
+    const statusSibling = vi.fn()
+    const openSibling = vi.fn()
+
+    rws.onStatus(() => {
+      throw new Error('status listener failed')
+    })
+    rws.onStatus(statusSibling)
+    rws.on('open', () => {
+      throw new Error('open listener failed')
+    })
+    rws.on('open', openSibling)
+
+    latestWs().simulateOpen()
+
+    await expect(readyPromise).resolves.toBeUndefined()
+    expect(rws.getStatus()).toBe('connected')
+    expect(statusSibling).toHaveBeenCalledWith('connected')
+    expect(openSibling).toHaveBeenCalledOnce()
+    expect(errorLog).toHaveBeenCalledTimes(2)
+  })
+
   it('sends keepalive frames while open and stops after close()', () => {
     const rws = new ReconnectingWebSocket('wss://example.com', {
       pingIntervalMs: 1000,
