@@ -127,12 +127,11 @@ export interface LighterWsProviderOptions {
  *
  * @public
  */
-export class LighterWsProvider extends WsProviderBase {
+export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly api: LighterApiClient
   private readonly authProvider: LighterAuthProvider | undefined
   private readonly client: PerpsSDKClient | undefined
 
-  private readonly subs = new Map<string, SubState>()
   private readonly orderbooks = new Map<number, OrderbookState>()
   private lastPricesByAssetId: Record<string, string> = {}
 
@@ -195,19 +194,14 @@ export class LighterWsProvider extends WsProviderBase {
     }
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
-    const key = this.toKey(sub)
 
-    this.subs.set(key, { channel, needsAuth, address })
-    // Only send now if already open; otherwise onOpen resubscribes it on
-    // (re)connect. Sending in both places double-subscribes — and for auth
-    // channels needlessly re-fetches a token.
-    if (this.rws.getStatus() === 'connected') {
-      await this.sendSubscribe(channel, needsAuth, address)
-    }
+    // Registry keyed by the wire channel (unique per sub), so replay-failure
+    // logs name the channel the venue knows.
+    await this.registerSub(channel, { channel, needsAuth, address })
     await this.rws.ready()
 
     return () => {
-      this.subs.delete(key)
+      this.unregisterSub(channel)
       if (sub.channel === 'orderbook') {
         const id = Number(sub.marketId)
         if (Number.isFinite(id)) {
@@ -219,29 +213,15 @@ export class LighterWsProvider extends WsProviderBase {
   }
 
   protected onClose(): void {
-    this.subs.clear()
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
   }
 
-  protected async onOpen(): Promise<void> {
-    for (const [, s] of this.subs) {
-      // Isolate each resubscribe: an auth-token fetch can reject (e.g. RO
-      // token revoked after reconnect), and one channel's failure must not
-      // abort the rest of the loop or escape as an unhandled rejection.
-      try {
-        await this.sendSubscribe(s.channel, s.needsAuth, s.address)
-      } catch (err) {
-        wsLog.subscribeFailure(LIGHTER_PROVIDER_KEY, s.channel, err)
-      }
-    }
-  }
-
-  private async sendSubscribe(
-    channel: string,
-    needsAuth: boolean,
-    address: Address | undefined
-  ): Promise<void> {
+  protected async sendSubscribe({
+    channel,
+    needsAuth,
+    address,
+  }: SubState): Promise<void> {
     const payload: { type: 'subscribe'; channel: string; auth?: string } = {
       type: 'subscribe',
       channel,

@@ -79,8 +79,7 @@ export const hyperliquidWsProvider =
  *
  * @public
  */
-export class HyperliquidWsProvider extends WsProviderBase {
-  private subs = new Map<string, object>()
+export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
@@ -180,15 +179,14 @@ export class HyperliquidWsProvider extends WsProviderBase {
       const entries = this.getPriceSubEntries()
 
       for (const { subKey, payload } of entries) {
-        this.subs.set(subKey, payload)
-        this.sendSubscribe(payload)
+        await this.registerSub(subKey, payload)
       }
 
       await this.rws.ready()
 
       return () => {
         for (const { subKey, payload } of entries) {
-          this.subs.delete(subKey)
+          this.unregisterSub(subKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
           )
@@ -200,13 +198,12 @@ export class HyperliquidWsProvider extends WsProviderBase {
     // All other channels: single WS subscription per key
     const key = this.toKey(sub)
     const payload = this.toHlPayload(sub)
-    this.subs.set(key, payload)
-    this.sendSubscribe(payload)
+    await this.registerSub(key, payload)
 
     await this.rws.ready()
 
     return () => {
-      this.subs.delete(key)
+      this.unregisterSub(key)
       if (this.orderUpdatesKey === key) {
         this.orderUpdatesKey = undefined
       }
@@ -254,36 +251,14 @@ export class HyperliquidWsProvider extends WsProviderBase {
   }
 
   protected onClose(): void {
-    this.subs.clear()
     this.midsBySubDex.clear()
     this.orderUpdatesKey = undefined
   }
 
-  protected onOpen(): void {
-    this.resubscribeAll()
-  }
-
-  private resubscribeAll() {
-    for (const payload of this.subs.values()) {
-      this.rws.send(
-        JSON.stringify({ method: 'subscribe', subscription: payload })
-      )
-    }
-  }
-
-  /**
-   * Put a subscribe frame on the wire only when the socket is already open.
-   * While it is down the sub is recorded in `this.subs` and `resubscribeAll`
-   * on the next open is the sole authority that sends it; sending here too
-   * would double-subscribe, which HL rejects with
-   * `{channel:'error',data:'Already subscribed: …'}`.
-   */
-  private sendSubscribe(payload: object) {
-    if (this.rws.getStatus() === 'connected') {
-      this.rws.send(
-        JSON.stringify({ method: 'subscribe', subscription: payload })
-      )
-    }
+  protected sendSubscribe(payload: object): void {
+    this.rws.send(
+      JSON.stringify({ method: 'subscribe', subscription: payload })
+    )
   }
 
   protected toKey(sub: Subscription): string {

@@ -406,11 +406,12 @@ describe('LighterWsProvider', () => {
     })
   })
 
-  describe('onOpen resubscribe error isolation (ORD-516)', () => {
+  describe('resubscribe error isolation', () => {
     /**
-     * Drive onOpen with two active auth subs where the first channel's auth
-     * fetch rejects. The second must still be sent and the rejection must be
-     * caught (no unhandled promise rejection escaping the open handler).
+     * Drive the base's replay loop with two active auth subs where the first
+     * channel's auth fetch rejects. The second must still be sent and the
+     * rejection must be caught (no unhandled promise rejection escaping the
+     * open handler).
      */
     it('resubscribes remaining channels when one channel auth fetch rejects, and surfaces the failure', async () => {
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -426,18 +427,19 @@ describe('LighterWsProvider', () => {
       })
       const send = vi.fn()
       ;(provider as any).rws.send = send
-      ;(provider as any).subs.set(`orderUpdates:${failingAddr}`, {
+      // Socket is down, so registerSub records without sending.
+      await (provider as any).registerSub('account_all_orders/42', {
         channel: 'account_all_orders/42',
         address: failingAddr,
         needsAuth: true,
       })
-      ;(provider as any).subs.set(`orderUpdates:${okAddr}`, {
+      await (provider as any).registerSub('account_all_orders/7', {
         channel: 'account_all_orders/7',
         address: okAddr,
         needsAuth: true,
       })
 
-      await expect((provider as any).onOpen()).resolves.toBeUndefined()
+      await expect((provider as any).replaySubs()).resolves.toBeUndefined()
 
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
@@ -466,10 +468,10 @@ describe('LighterWsProvider', () => {
 
       await provider.subscribe({ channel: 'prices', dex: 'lighter' }, vi.fn())
 
-      // Nothing sent inline while disconnected — onOpen is the sole sender.
+      // Nothing sent inline while disconnected — the open replay is the sole sender.
       expect(send).not.toHaveBeenCalled()
 
-      await (provider as any).onOpen()
+      await (provider as any).replaySubs()
 
       expect(send).toHaveBeenCalledTimes(1)
       expect(send).toHaveBeenCalledWith(

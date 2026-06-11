@@ -49,10 +49,10 @@ class MockRws {
 }
 
 /** Concrete base subclass that records hook calls and lets each test drive `openChannel`. */
-class TestProvider extends WsProviderBase {
+class TestProvider extends WsProviderBase<{ id: string }> {
   openCount = 0
-  onOpenSpy = vi.fn()
   onCloseSpy = vi.fn()
+  sendSubscribeSpy = vi.fn()
   /** Overridable per test; defaults to a fresh teardown spy. */
   openImpl: (sub: Subscription) => Promise<() => void> = async () => vi.fn()
 
@@ -67,8 +67,8 @@ class TestProvider extends WsProviderBase {
     this.openCount += 1
     return this.openImpl(sub)
   }
-  protected onOpen(): void {
-    this.onOpenSpy()
+  protected sendSubscribe(state: { id: string }): void | Promise<void> {
+    return this.sendSubscribeSpy(state)
   }
   protected onClose(): void {
     this.onCloseSpy()
@@ -83,6 +83,14 @@ class TestProvider extends WsProviderBase {
   /** Test hook into the base's protected idle-channel reclaim. */
   expireIdle(key: string): boolean {
     return this.closeChannelIfIdle(key)
+  }
+
+  /** Test hooks into the base's protected wire-sub registry. */
+  register(key: string, state: { id: string }): Promise<void> {
+    return this.registerSub(key, state)
+  }
+  unregister(key: string): void {
+    this.unregisterSub(key)
   }
 }
 
@@ -287,13 +295,96 @@ describe('WsProviderBase — status fan-out', () => {
     rws.simulateStatus('disconnected')
     expect(onStatus).not.toHaveBeenCalled()
   })
+})
 
-  it('calls onOpen when the socket (re)opens', async () => {
-    const rws = new MockRws()
+const flushAsync = () => new Promise<void>((r) => setTimeout(r, 0))
+
+describe('WsProviderBase — wire-sub registry & replay', () => {
+  it('sends exactly one subscribe frame per cycle across open→close→reopen', async () => {
+    const rws = new MockRws() // starts 'connected'
     const p = new TestProvider(rws)
-    await p.subscribe(PRICES, vi.fn())
+    p.openImpl = async () => {
+      await p.register('prices', { id: 'prices' })
+      return vi.fn()
+    }
 
+    await p.subscribe(PRICES, vi.fn())
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
+
+    rws.simulateStatus('reconnecting')
+    rws.simulateStatus('connected')
     rws.simulateOpen()
-    expect(p.onOpenSpy).toHaveBeenCalledTimes(1)
+    await flushAsync()
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(2)
+    expect(p.sendSubscribeSpy).toHaveBeenNthCalledWith(2, { id: 'prices' })
+  })
+
+  it('records but does not send while the socket is down; the open replay is the sole sender', async () => {
+    const rws = new MockRws()
+    rws.status = 'reconnecting'
+    const p = new TestProvider(rws)
+
+    await p.register('prices', { id: 'prices' })
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+
+    rws.simulateStatus('connected')
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops replaying an unregistered sub', async () => {
+    const rws = new MockRws()
+    rws.status = 'reconnecting'
+    const p = new TestProvider(rws)
+
+    await p.register('prices', { id: 'prices' })
+    p.unregister('prices')
+
+    rws.simulateStatus('connected')
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
+  it('isolates a failing replay: remaining subs still resubscribe and the failure is logged', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    rws.status = 'reconnecting'
+    const p = new TestProvider(rws)
+
+    await p.register('bad', { id: 'bad' })
+    await p.register('ok', { id: 'ok' })
+    p.sendSubscribeSpy.mockImplementation(async (s: { id: string }) => {
+      if (s.id === 'bad') {
+        throw new Error('auth fetch rejected')
+      }
+    })
+
+    rws.simulateStatus('connected')
+    rws.simulateOpen()
+    await flushAsync()
+
+    expect(p.sendSubscribeSpy).toHaveBeenCalledWith({ id: 'ok' })
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'bad'"),
+      expect.any(Error)
+    )
+    errSpy.mockRestore()
+  })
+
+  it('drops the registry entry when the connected inline send fails, so the failed sub is not replayed', async () => {
+    const rws = new MockRws() // 'connected' — register sends inline
+    const p = new TestProvider(rws)
+    p.sendSubscribeSpy.mockRejectedValueOnce(new Error('no auth token'))
+
+    await expect(p.register('bad', { id: 'bad' })).rejects.toThrow(
+      'no auth token'
+    )
+
+    p.sendSubscribeSpy.mockClear()
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
   })
 })
