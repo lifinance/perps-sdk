@@ -619,7 +619,7 @@ describe('LighterWsProvider', () => {
   })
 
   describe('display-symbol fetch coupling (ORD-482)', () => {
-    const fakeClient = {} as PerpsSDKClient
+    const fakeClient = { config: {} } as PerpsSDKClient
 
     beforeEach(() => {
       getMarketsMock.mockReset()
@@ -750,6 +750,54 @@ describe('LighterWsProvider', () => {
       expect(getMarketsMock).toHaveBeenCalledTimes(2)
       expect((provider as any).marketIdToDisplaySymbol.get(0)).toBe('BTC')
       provider.close()
+    })
+
+    it('recovers the account-index lookup within one subscribe on a transient 405 (rate-limit retry)', async () => {
+      const accountFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('blocked', {
+            status: 405,
+            headers: { 'Retry-After': '0' },
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ code: 200, accounts: [{ index: ACCOUNT_IDX }] }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      vi.stubGlobal('fetch', accountFetch)
+      try {
+        const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
+          displaySymbolMap: { 0: 'BTC' },
+          authProvider: async () => 'token',
+        })
+        ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+        ;(provider as any).rws.getStatus = () => 'connected'
+        const send = vi.fn()
+        ;(provider as any).rws.send = send
+
+        await provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+
+        expect(accountFetch).toHaveBeenCalledTimes(2)
+        expect((provider as any).accountIndexCache.get(TEST_ADDR)).toBe(
+          ACCOUNT_IDX
+        )
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({
+            type: 'subscribe',
+            channel: `account_all_positions/${ACCOUNT_IDX}`,
+            auth: 'token',
+          })
+        )
+        provider.close()
+      } finally {
+        vi.unstubAllGlobals()
+      }
     })
 
     it('retries the account-index fetch on the next subscribe after a transient failure', async () => {

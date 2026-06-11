@@ -4,7 +4,8 @@
 /** @public */
 export type LtAccountPosition = {
   market_id: number
-  symbol: string
+  /** Present on REST `/api/v1/account` rows; WS position frames may omit it. */
+  symbol?: string
   initial_margin_fraction: string
   open_order_count: number
   pending_order_count: number

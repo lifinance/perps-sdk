@@ -3,6 +3,7 @@ import {
   getMarkets as coreGetMarkets,
   type PerpsSDKClient,
   ReconnectingWebSocket,
+  resolveRetryPolicy,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -17,14 +18,19 @@ import type {
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
   LtWsAccountAllTradesMessage,
-  LtWsAccountByL1Response,
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
   LtWsOrderBook,
   LtWsOrderBookMessage,
 } from '../types/index.js'
-import { classifyAndMapOrders, mapFill, mapPosition } from '../utils/index.js'
+import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
+import {
+  classifyAndMapOrders,
+  fetchDetailedAccount,
+  mapFill,
+  mapOpenPositions,
+} from '../utils/index.js'
 
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
 // Authenticated channels (require an `authProvider` option):
@@ -122,7 +128,7 @@ export interface LighterWsProviderOptions {
  * @public
  */
 export class LighterWsProvider extends WsProviderBase<SubState> {
-  private readonly restUrl: string
+  private readonly api: LighterApiClient
   private readonly authProvider: LighterAuthProvider | undefined
   private readonly client: PerpsSDKClient | undefined
 
@@ -152,7 +158,14 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
       providerKey
     )
-    this.restUrl = options.restUrl ?? DEFAULT_REST_URL
+    this.api = new LighterApiClient(options.restUrl ?? DEFAULT_REST_URL, {
+      policy: resolveRetryPolicy(
+        LIGHTER_RETRY_DEFAULTS,
+        client?.config.retry,
+        LIGHTER_PROVIDER_KEY
+      ),
+      fetchImpl: client?.config.fetch,
+    })
     this.authProvider = options.authProvider
     this.client = client
     this.marketIdToDisplaySymbol = new Map(
@@ -314,19 +327,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   private async fetchAccountIndex(address: Address): Promise<number> {
-    const url = `${this.restUrl}/api/v1/account?by=l1_address&value=${encodeURIComponent(address)}`
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(
-        `Failed to resolve Lighter account for ${address}: ${response.status}`
-      )
-    }
-    const body = (await response.json()) as LtWsAccountByL1Response
-    const idx = body.accounts?.[0]?.index
-    if (typeof idx !== 'number') {
-      throw new Error(`No Lighter account found for ${address}`)
-    }
-    return idx
+    const account = await fetchDetailedAccount(this.api, address)
+    return account.index
   }
 
   private async ensureDisplaySymbols(): Promise<void> {
@@ -481,16 +483,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtAccountPosition>(msg, 'positions')
-    const positions: Position[] = raw
-      .filter((p) => parseFloat(p.position) !== 0)
-      .map((p) =>
-        mapPosition(
-          p,
-          this.marketIdToDisplaySymbol.get(p.market_id) ??
-            p.symbol ??
-            `market_${p.market_id}`
-        )
-      )
+    const positions: Position[] = mapOpenPositions(
+      raw,
+      this.marketIdToDisplaySymbol
+    )
     this.emit(`positions:${address}`, {
       channel: 'positions',
       data: positions,

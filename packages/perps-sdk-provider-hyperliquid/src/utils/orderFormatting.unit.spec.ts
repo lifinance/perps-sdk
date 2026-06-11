@@ -157,4 +157,22 @@ describe('formatOrderPrice', () => {
   it('should handle zero price', () => {
     expect(formatOrderPrice(0, 2)).toBe('0')
   })
+
+  it('should round exact-halfway decimals half-up on the true decimal value', () => {
+    // binary 1.005 is 1.00499…; Number#toFixed(2) yields '1.00'
+    expect(formatOrderPrice(1.005, 4)).toBe('1.01')
+    expect(formatOrderPrice(-1.005, 4)).toBe('-1.01')
+  })
+
+  it('should round exact-halfway values half-up at the 5th significant figure', () => {
+    expect(formatOrderPrice(0.123455, 0)).toBe('0.12346')
+  })
+
+  it('should emit plain notation for prices at or above 1e21', () => {
+    expect(formatOrderPrice(1.5e21, 0)).toBe('1500000000000000000000')
+  })
+
+  it('should never emit -0', () => {
+    expect(formatOrderPrice(-0.00001, 4)).toBe('0')
+  })
 })

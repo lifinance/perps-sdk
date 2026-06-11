@@ -151,5 +151,13 @@ export const LT_ASSET_ID_USDC = 3
 
 /** @public */
 export const LT_NIL_TRIGGER_PRICE = 0
-/** @public */
+/**
+ * Sentinel the lighter-go WASM signer translates to "default 28-day expiry
+ * from now" at sign time (`wasm/main.go:325`, `wasm/main.go:898`). On the
+ * wire, `OrderExpiry` is an *absolute* Unix-ms timestamp, not a duration;
+ * `-1` lets the signer fill in the default, any positive int64 sets an
+ * explicit absolute expiry. Matches lighter-python's
+ * `DEFAULT_28_DAY_ORDER_EXPIRY`.
+ * @public
+ */
 export const LT_DEFAULT_ORDER_EXPIRY = -1
