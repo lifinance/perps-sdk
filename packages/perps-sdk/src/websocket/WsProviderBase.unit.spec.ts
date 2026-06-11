@@ -14,6 +14,7 @@ class MockRws {
   status: WsConnectionStatus = 'connected'
   sent: string[] = []
   closed = false
+  reconnectCalls = 0
 
   on(event: string, fn: (...args: any[]) => void) {
     if (event === 'open') {
@@ -35,7 +36,12 @@ class MockRws {
   close() {
     this.closed = true
   }
+  reconnect() {
+    this.reconnectCalls += 1
+    this.simulateStatus('reconnecting')
+  }
   simulateOpen() {
+    this.simulateStatus('connected')
     for (const fn of this.openHandlers) {
       fn()
     }
@@ -298,6 +304,67 @@ describe('WsProviderBase — status fan-out', () => {
 })
 
 const flushAsync = () => new Promise<void>((r) => setTimeout(r, 0))
+
+describe('WsProviderBase — reconnect recovery', () => {
+  it('reconnect() is a no-op unless the socket is terminal disconnected', () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+
+    p.reconnect()
+    expect(rws.reconnectCalls).toBe(0)
+
+    rws.simulateStatus('disconnected')
+    p.reconnect()
+    expect(rws.reconnectCalls).toBe(1)
+  })
+
+  it('auto-heals a disconnected socket on subscribe and replays after open', async () => {
+    const rws = new MockRws()
+    rws.status = 'disconnected'
+    const p = new TestProvider(rws)
+    const onStatus = vi.fn()
+    p.openImpl = async () => {
+      await p.register('prices', { id: 'prices' })
+      return vi.fn()
+    }
+
+    await p.subscribe(PRICES, vi.fn(), onStatus)
+
+    expect(rws.reconnectCalls).toBe(1)
+    expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+
+    rws.simulateOpen()
+    await flushAsync()
+    expect(onStatus).toHaveBeenLastCalledWith('connected')
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('replays live subscriptions across repeated disconnect/recover cycles', async () => {
+    const rws = new MockRws()
+    rws.status = 'disconnected'
+    const p = new TestProvider(rws)
+    const onStatus = vi.fn()
+    p.openImpl = async () => {
+      await p.register('prices', { id: 'prices' })
+      return vi.fn()
+    }
+
+    await p.subscribe(PRICES, vi.fn(), onStatus)
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
+
+    rws.simulateStatus('disconnected')
+    p.reconnect()
+    rws.simulateOpen()
+    await flushAsync()
+    expect(rws.reconnectCalls).toBe(2)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(2)
+    expect(onStatus).toHaveBeenCalledWith('reconnecting')
+    expect(onStatus).toHaveBeenLastCalledWith('connected')
+  })
+})
 
 describe('WsProviderBase — wire-sub registry & replay', () => {
   it('sends exactly one subscribe frame per cycle across open→close→reopen', async () => {

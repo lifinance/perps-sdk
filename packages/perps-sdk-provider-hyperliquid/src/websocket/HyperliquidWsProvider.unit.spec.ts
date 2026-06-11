@@ -111,6 +111,10 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
       this.closed = true
     }
 
+    reconnect() {
+      this.simulateStatus('reconnecting')
+    }
+
     simulateMessage(data: string) {
       for (const fn of this.onMessageHandlers) {
         fn(data)
@@ -208,21 +212,24 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('rejects subscribe after reconnect exhaustion instead of hanging, and a later subscribe retries', async () => {
+    it('auto-heals subscribe after reconnect exhaustion and stays recoverable', async () => {
       const provider = createProvider()
       getMockRwsInstance().simulateStatus('disconnected')
 
-      await expect(
-        provider.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
-      ).rejects.toThrow('WebSocket max reconnect attempts reached')
-
-      // The failed open must not be cached: a retry reaches the wire again.
-      getMockRwsInstance().simulateStatus('connected')
-      const unsub = await provider.subscribe(
+      const firstUnsub = await provider.subscribe(
         { channel: 'prices', dex: 'hyperliquid' },
         vi.fn()
       )
-      expect(typeof unsub).toBe('function')
+      expect(typeof firstUnsub).toBe('function')
+      expect(getMockRwsInstance().status).toBe('reconnecting')
+
+      // Repeated terminal drops remain recoverable via subscribe intent.
+      getMockRwsInstance().simulateStatus('disconnected')
+      const secondUnsub = await provider.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      expect(typeof secondUnsub).toBe('function')
     })
 
     it('should return an unsubscribe function', async () => {

@@ -56,6 +56,11 @@ export interface WsProvider {
     onStatus?: WsStatusListener
   ): Promise<() => void>
   /**
+   * Recover a terminally exhausted connection. Safe no-op unless status is
+   * `disconnected`.
+   */
+  reconnect(): void
+  /**
    * Stream live fill {@link Quote}s for `params.size` USD notional of
    * `params.symbol` on this venue, layered on the orderbook channel: the
    * provider resolves the symbol against its own markets and re-runs the

@@ -11,10 +11,12 @@ import { PerpsWsClient, type WsProviderFactory } from './PerpsWsClient.js'
 const mockSubscribe = vi.fn().mockResolvedValue(() => {})
 const mockSubscribeQuote = vi.fn().mockResolvedValue(() => {})
 const mockClose = vi.fn()
+const mockReconnect = vi.fn()
 
 const buildHlFactory = () =>
   vi.fn<WsProviderFactory>((_params) => ({
     subscribe: mockSubscribe,
+    reconnect: mockReconnect,
     subscribeQuote: mockSubscribeQuote,
     close: mockClose,
   }))
@@ -110,6 +112,22 @@ describe('PerpsWsClient', () => {
       await ws.subscribe(sub, listener)
 
       expect(mockSubscribe).toHaveBeenCalledWith(sub, listener, undefined)
+
+      ws.close()
+    })
+
+    it('attempts provider recovery before delegating subscribe', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+      const listener = vi.fn()
+      const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
+
+      await ws.subscribe(sub, listener)
+
+      expect(mockReconnect).toHaveBeenCalledOnce()
+      expect(mockReconnect.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSubscribe.mock.invocationCallOrder[0]
+      )
 
       ws.close()
     })
@@ -285,6 +303,28 @@ describe('PerpsWsClient', () => {
     it('should be safe to call close with no providers', () => {
       const ws = new PerpsWsClient(createClient())
       expect(() => ws.close()).not.toThrow()
+    })
+  })
+
+  describe('reconnect', () => {
+    it('reconnects an existing provider', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+
+      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      mockReconnect.mockClear()
+
+      ws.reconnect('hyperliquid')
+      expect(mockReconnect).toHaveBeenCalledOnce()
+
+      ws.close()
+    })
+
+    it('is a safe no-op for unknown providers', () => {
+      const ws = makeWs(buildHlFactory())
+
+      expect(() => ws.reconnect('hyperliquid')).not.toThrow()
+      expect(mockReconnect).not.toHaveBeenCalled()
     })
   })
 })

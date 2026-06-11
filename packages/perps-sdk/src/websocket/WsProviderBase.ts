@@ -81,6 +81,8 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     listener: SubscriptionListener,
     onStatus?: WsStatusListener
   ): Promise<() => void> {
+    this.reconnect()
+
     const key = this.toKey(sub)
     await this.acquireChannel(key, sub, listener)
 
@@ -103,6 +105,13 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       }
       this.releaseChannel(key, listener)
     }
+  }
+
+  reconnect(): void {
+    if (this.rws.getStatus() !== 'disconnected') {
+      return
+    }
+    this.rws.reconnect()
   }
 
   close(): void {
