@@ -6,6 +6,16 @@
  * values for critical financial parameters.
  */
 
+import type {
+  FeeTier,
+  Market,
+  OrderbookLevel,
+  PerpsMarket,
+  Quote,
+  QuoteSide,
+  TradeType,
+} from '@lifi/perps-types'
+
 /**
  * Calculate position size in asset units from margin.
  *
@@ -287,4 +297,111 @@ export function calculateRealizedPnlPercent(
     return 0
   }
   return (realizedPnl / positionValue) * 100
+}
+
+/** Result of {@link walkOrderbook} — the fill obtained for a USD-notional walk. */
+interface BookWalk {
+  /** Base amount filled. */
+  baseSize: number
+  /** Notional actually filled in USD (equals the requested size unless the book ran dry). */
+  filledNotional: number
+  /** Volume-weighted average fill price, or 0 when the book is empty. */
+  vwap: number
+  /** True when the levels could not absorb the requested notional. */
+  insufficientLiquidity: boolean
+}
+
+/**
+ * Walk one side of an orderbook to fill `sizeUsd` notional, accumulating base
+ * size and notional level-by-level to derive the VWAP fill. Levels are consumed
+ * in array order — the caller passes asks for a buy and bids for a sell, each
+ * already ordered best-price-first. When the book cannot absorb the full
+ * notional, the walk stops at the last level and flags `insufficientLiquidity`,
+ * returning the best obtainable fill.
+ *
+ * @public
+ */
+export function walkOrderbook(
+  levels: OrderbookLevel[],
+  sizeUsd: number
+): BookWalk {
+  let remaining = sizeUsd
+  let baseSize = 0
+  let filledNotional = 0
+  for (const level of levels) {
+    if (remaining <= 0) {
+      break
+    }
+    const price = Number.parseFloat(level.price)
+    const levelNotional = Number.parseFloat(level.size) * price
+    const take = Math.min(remaining, levelNotional)
+    filledNotional += take
+    baseSize += take / price
+    remaining -= take
+  }
+  return {
+    baseSize,
+    filledNotional,
+    vwap: baseSize === 0 ? 0 : filledNotional / baseSize,
+    insufficientLiquidity: remaining > 0,
+  }
+}
+
+/** Inputs to {@link buildQuote} — the resolved market, its book, and the trade ask. */
+interface BuildQuoteInput {
+  provider: string
+  symbol: string
+  type: TradeType
+  side: QuoteSide
+  sizeUsd: number
+  market: Market
+  bids: OrderbookLevel[]
+  asks: OrderbookLevel[]
+  /** Public base-tier fees for the venue; `isDefaultFeeTier` is always set true. */
+  feeTier: FeeTier
+  timestamp: number
+}
+
+const isPerpsMarket = (market: Market): market is PerpsMarket =>
+  'funding' in market
+
+/**
+ * Build a {@link Quote} from a resolved market and its orderbook snapshot. Pure:
+ * walks the relevant side (buy → asks, sell → bids) for the VWAP fill, derives
+ * the price impact in basis points versus mark, applies the base taker fee on
+ * the filled notional, and carries funding for perps (`null` for spot).
+ *
+ * @public
+ */
+export function buildQuote(input: BuildQuoteInput): Quote {
+  const { market, side, sizeUsd, feeTier } = input
+  const markPrice = Number.parseFloat(market.markPrice)
+  const levels = side === 'buy' ? input.asks : input.bids
+  const walk = walkOrderbook(levels, sizeUsd)
+  const priceImpactBps =
+    markPrice === 0 || walk.vwap === 0
+      ? 0
+      : Math.abs((walk.vwap - markPrice) / markPrice) * 10_000
+  const feeUsd = estimateFees(
+    walk.filledNotional,
+    Number.parseFloat(feeTier.taker)
+  )
+  return {
+    provider: input.provider,
+    symbol: input.symbol,
+    marketId: market.id,
+    type: input.type,
+    side,
+    sizeUsd: sizeUsd.toString(),
+    baseSize: walk.baseSize.toString(),
+    markPrice: market.markPrice,
+    expectedFillPrice: walk.vwap.toString(),
+    priceImpactBps: priceImpactBps.toString(),
+    feeTier,
+    isDefaultFeeTier: true,
+    feeUsd: feeUsd.toString(),
+    funding: isPerpsMarket(market) ? market.funding : null,
+    insufficientLiquidity: walk.insufficientLiquidity,
+    timestamp: input.timestamp,
+  }
 }

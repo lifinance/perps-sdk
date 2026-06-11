@@ -10,6 +10,8 @@ import {
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
+  type ProviderGetQuoteParams,
+  resolveQuote,
   type SDKRequestOptions,
   type SignActionsContext,
   type StorageAdapter,
@@ -32,6 +34,7 @@ import {
   type Position,
   type PositionsResponse,
   type ProviderAction,
+  type Quote,
   type SignedActionStep,
   type SigningMethod,
 } from '@lifi/perps-types'
@@ -40,6 +43,7 @@ import { projectHyperliquidConfigSettings } from './accountConfig.js'
 import { summarizeHyperliquidAccount } from './accountSummary.js'
 import {
   DEFAULT_HYPERLIQUID_API_URL,
+  HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
   SPOT_MARKET_ID,
 } from './constants.js'
@@ -249,6 +253,18 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           type: params.type,
         },
+        opts
+      ),
+
+    getQuote: (
+      params: ProviderGetQuoteParams,
+      opts?: SDKRequestOptions
+    ): Promise<Quote> =>
+      resolveQuote(
+        contextRef.require().client,
+        PROVIDER_KEY,
+        params,
+        HYPERLIQUID_FEE_TIER_FALLBACK,
         opts
       ),
 

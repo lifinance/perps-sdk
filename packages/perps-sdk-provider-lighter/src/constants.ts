@@ -1,3 +1,5 @@
+import type { FeeTier } from '@lifi/perps-types'
+
 /**
  * Lighter provider key as it appears on `Provider.key` from the backend.
  *
@@ -24,6 +26,15 @@ export const DEFAULT_TRADES_LIMIT = 50
  * @internal
  */
 export const LIGHTER_FEE_TICK_SCALE = 1_000_000
+
+/**
+ * Lighter's public base fee tier (Standard Account): 0% maker / 0% taker on all
+ * perps markets. Per-account Premium tiers exist but require auth to resolve;
+ * unauthenticated quotes use this public base. Fractions, not basis points.
+ *
+ * @public
+ */
+export const LIGHTER_BASE_FEE_TIER: FeeTier = { maker: '0', taker: '0' }
 
 /**
  * Wildcard `market_id` accepted by Lighter's per-market account endpoints to

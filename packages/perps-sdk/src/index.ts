@@ -49,7 +49,10 @@ export { getPositions } from './services/getPositions.js'
 export type { GetPricesParams } from './services/getPrices.js'
 export { getPrices } from './services/getPrices.js'
 export { getProviders } from './services/getProviders.js'
+export type { GetQuoteParams } from './services/getQuote.js'
+export { getQuote } from './services/getQuote.js'
 export { getTermsAcceptance } from './services/getTermsAcceptance.js'
+export { resolveQuote } from './services/resolveQuote.js'
 export {
   parseStoredRecord,
   readValidatedRecord,
@@ -108,12 +111,14 @@ export type {
   ProviderGetOrderParams,
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
+  ProviderGetQuoteParams,
   SignActionsContext,
 } from './types/provider.js'
 export { summarizeAccount } from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
+  buildQuote,
   calculateExpectedPnl,
   calculateNotionalValue,
   calculatePositionSize,
@@ -127,6 +132,7 @@ export {
   percentFromPrice,
   priceFromPercent,
   removableMargin,
+  walkOrderbook,
 } from './utils/calculations.js'
 export type { DepositProviderKey } from './utils/depositChain.js'
 export {
