@@ -1,3 +1,8 @@
+import type {
+  CloseEvent as PartySocketCloseEvent,
+  ErrorEvent as PartySocketErrorEvent,
+} from 'partysocket/ws'
+import PartySocketWebSocket from 'partysocket/ws'
 import type { WsConnectionStatus, WsStatusListener } from './types.js'
 
 type WsEventMap = {
@@ -10,12 +15,23 @@ type WsEventMap = {
 type WsEvent = keyof WsEventMap
 
 /**
- * Default reconnect attempt cap. With the exponential backoff capped at 10s,
- * ten attempts span ~39s of retries before the socket is declared
- * `disconnected` — long enough for a live trading feed to ride out a transient
- * network blip.
+ * Default reconnect attempt cap. With the jittered backoff below, ten attempts
+ * span roughly 20–60s of retries before the socket is declared `disconnected`
+ * — long enough for a live trading feed to ride out a transient network blip.
  */
 const DEFAULT_MAX_RETRIES = 10
+
+/** Default watchdog window: three keepalive intervals without inbound traffic. */
+const DEFAULT_STALE_WINDOW_PING_INTERVALS = 3
+
+const CONNECTION_TIMEOUT_MS = 4_000
+/** Uptime below which an open does not reset the retry budget, so an accept-then-drop server still exhausts. */
+const MIN_UPTIME_MS = 5_000
+const MAX_ENQUEUED_MESSAGES = 1_000
+/** First-retry delay is drawn once per socket from [500, 1500)ms to de-synchronize reconnect storms. */
+const MIN_RECONNECTION_DELAY_MS = 500
+const RECONNECTION_JITTER_MS = 1_000
+const MAX_RECONNECTION_DELAY_MS = 10_000
 
 const CLOSED_ERROR = 'WebSocket closed'
 const EXHAUSTED_ERROR = 'WebSocket max reconnect attempts reached'
@@ -33,33 +49,35 @@ export interface ReconnectingWebSocketOptions {
    * Framing is venue-specific, so when omitted no keepalive is sent.
    */
   pingPayload?: string
+  /**
+   * Stale-stream watchdog window. With `pingPayload` configured, the socket is
+   * force-reconnected when no inbound frame arrives within this window.
+   * Defaults to 3× `pingIntervalMs`.
+   */
+  staleWindowMs?: number
 }
 
 /**
- * A `WebSocket` wrapper that auto-reconnects with exponential backoff, buffers
- * sends while disconnected, and keep-alive pings the server with the
- * caller-supplied `pingPayload`.
- *
- * Hand-rolled rather than wrapping `partysocket` / `reconnecting-websocket`:
- * both expose only the raw `readyState`, which cannot distinguish a transient
- * `reconnecting` drop from a terminal `disconnected` after retry exhaustion,
- * and neither offers the {@link WsStatusListener} status feed or the
- * {@link ReconnectingWebSocket.ready} promise that rejects on exhaustion.
- * Reproducing the {@link WsConnectionStatus} state machine over either library
- * needs an adapter the size of this class.
+ * A `WebSocket` transport that auto-reconnects with jittered exponential
+ * backoff (`partysocket` internals), buffers sends (bounded) while
+ * disconnected, keepalive-pings with the caller-supplied `pingPayload`, and
+ * force-reconnects a silently stale stream. Surfaces the
+ * {@link WsConnectionStatus} state machine: `reconnecting` on transient drops,
+ * terminal `disconnected` once the retry budget is exhausted.
  *
  * @public
  */
 export class ReconnectingWebSocket {
-  private ws: WebSocket | null = null
-  private readonly url: string
+  private readonly socket: PartySocketWebSocket
   private readonly maxRetries: number
   private readonly pingIntervalMs: number
   private readonly pingPayload: string | undefined
-  private attempt = 0
+  private readonly staleWindowMs: number
   private closed = false
-  private buffer: string[] = []
+  private reconnectRequested = false
+  private lastCloseRetryCount: number
   private pingTimer: ReturnType<typeof setInterval> | null = null
+  private staleTimer: ReturnType<typeof setTimeout> | null = null
   private listeners = {
     open: new Set<WsEventMap['open']>(),
     close: new Set<WsEventMap['close']>(),
@@ -74,71 +92,86 @@ export class ReconnectingWebSocket {
   }> = []
 
   constructor(url: string, options?: ReconnectingWebSocketOptions) {
-    this.url = url
     this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES
     this.pingIntervalMs = options?.pingIntervalMs ?? 30_000
     this.pingPayload = options?.pingPayload
-    this.connect()
+    this.staleWindowMs =
+      options?.staleWindowMs ??
+      this.pingIntervalMs * DEFAULT_STALE_WINDOW_PING_INTERVALS
+    this.socket = new PartySocketWebSocket(url, undefined, {
+      maxRetries: this.maxRetries,
+      connectionTimeout: CONNECTION_TIMEOUT_MS,
+      minUptime: MIN_UPTIME_MS,
+      maxEnqueuedMessages: MAX_ENQUEUED_MESSAGES,
+      minReconnectionDelay:
+        MIN_RECONNECTION_DELAY_MS + Math.random() * RECONNECTION_JITTER_MS,
+      maxReconnectionDelay: MAX_RECONNECTION_DELAY_MS,
+    })
+    this.lastCloseRetryCount = this.socket.retryCount
+    // The onX handlers receive the raw events; addEventListener would hand out
+    // partysocket's clones, which rewrite an empty close reason in Node.
+    this.socket.onopen = this.handleOpen
+    this.socket.onclose = this.handleClose
+    this.socket.onerror = this.handleError
+    this.socket.onmessage = this.handleMessage
   }
 
-  private connect() {
-    this.ws = new WebSocket(this.url)
-
-    this.ws.onopen = () => {
-      this.attempt = 0
-      this.flush()
-      this.startPing()
-      this.setStatus('connected')
-      for (const fn of this.listeners.open) {
-        fn()
-      }
-      for (const { resolve } of this.readyResolvers) {
-        resolve()
-      }
-      this.readyResolvers = []
+  private handleOpen = () => {
+    this.startPing()
+    this.armWatchdog()
+    this.setStatus('connected')
+    for (const fn of this.listeners.open) {
+      fn()
     }
-
-    this.ws.onclose = (e) => {
-      this.stopPing()
-      for (const fn of this.listeners.close) {
-        fn(e.code, e.reason)
-      }
-      if (!this.closed) {
-        this.reconnect()
-      }
+    for (const { resolve } of this.readyResolvers) {
+      resolve()
     }
-
-    this.ws.onerror = (e) => {
-      for (const fn of this.listeners.error) {
-        fn(e)
-      }
-    }
-
-    this.ws.onmessage = (e) => {
-      const data = typeof e.data === 'string' ? e.data : String(e.data)
-      for (const fn of this.listeners.message) {
-        fn(data)
-      }
-    }
+    this.readyResolvers = []
   }
 
-  private reconnect() {
-    if (this.attempt >= this.maxRetries) {
+  private handleClose = (event: PartySocketCloseEvent) => {
+    this.stopPing()
+    this.clearWatchdog()
+    if (this.closed) {
+      return
+    }
+    for (const fn of this.listeners.close) {
+      fn(event.code, event.reason)
+    }
+    // partysocket schedules the next attempt — incrementing retryCount —
+    // before dispatching close, and exhausts silently: a retryCount at the cap
+    // that did not move since the previous close means no attempt was
+    // scheduled, i.e. the retry budget is spent.
+    const retryCount = this.socket.retryCount
+    const exhausted =
+      !this.reconnectRequested &&
+      retryCount >= this.maxRetries &&
+      retryCount === this.lastCloseRetryCount
+    this.lastCloseRetryCount = retryCount
+    if (exhausted) {
       for (const { reject } of this.readyResolvers) {
         reject(new Error(EXHAUSTED_ERROR))
       }
       this.readyResolvers = []
       this.setStatus('disconnected')
-      return
+    } else {
+      this.setStatus('reconnecting')
     }
-    this.setStatus('reconnecting')
-    const delay = Math.min((1 << this.attempt) * 150, 10_000)
-    this.attempt++
-    setTimeout(() => {
-      if (!this.closed) {
-        this.connect()
-      }
-    }, delay)
+  }
+
+  private handleError = (event: PartySocketErrorEvent) => {
+    for (const fn of this.listeners.error) {
+      fn(event)
+    }
+  }
+
+  private handleMessage = (event: MessageEvent) => {
+    this.armWatchdog()
+    const data =
+      typeof event.data === 'string' ? event.data : String(event.data)
+    for (const fn of this.listeners.message) {
+      fn(data)
+    }
   }
 
   private setStatus(status: WsConnectionStatus) {
@@ -151,21 +184,14 @@ export class ReconnectingWebSocket {
     }
   }
 
-  private flush() {
-    for (const msg of this.buffer) {
-      this.ws?.send(msg)
-    }
-    this.buffer = []
-  }
-
   private startPing() {
     const payload = this.pingPayload
     if (payload === undefined) {
       return
     }
     this.pingTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(payload)
+      if (this.socket.readyState === PartySocketWebSocket.OPEN) {
+        this.socket.send(payload)
       }
     }, this.pingIntervalMs)
   }
@@ -177,17 +203,33 @@ export class ReconnectingWebSocket {
     }
   }
 
+  private armWatchdog() {
+    if (this.pingPayload === undefined || this.closed) {
+      return
+    }
+    this.clearWatchdog()
+    this.staleTimer = setTimeout(() => {
+      // The keepalive went unanswered for the whole window: the connection is
+      // half-open and serving stale data — tear it down and reconnect.
+      this.reconnect()
+    }, this.staleWindowMs)
+  }
+
+  private clearWatchdog() {
+    if (this.staleTimer) {
+      clearTimeout(this.staleTimer)
+      this.staleTimer = null
+    }
+  }
+
   /**
-   * Send `data`, buffering it for replay when the socket is not yet open.
+   * Send `data`, buffering it (bounded) for replay when the socket is not yet
+   * open.
    *
    * @public
    */
   send(data: string) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data)
-    } else {
-      this.buffer.push(data)
-    }
+    this.socket.send(data)
   }
 
   /**
@@ -198,12 +240,30 @@ export class ReconnectingWebSocket {
   close() {
     this.closed = true
     this.stopPing()
-    this.ws?.close()
-    this.ws = null
+    this.clearWatchdog()
+    this.socket.close()
     for (const { reject } of this.readyResolvers) {
       reject(new Error(CLOSED_ERROR))
     }
     this.readyResolvers = []
+  }
+
+  /**
+   * Drop the current connection (if any) and reconnect with a fresh retry
+   * budget. Recovers a socket that reached terminal `disconnected`: status
+   * returns to `reconnecting` and the normal backoff cycle restarts.
+   *
+   * @public
+   */
+  reconnect() {
+    this.closed = false
+    // Suppress the exhaustion check for the synchronous teardown close the
+    // underlying reconnect dispatches — a fresh attempt is always scheduled.
+    this.reconnectRequested = true
+    this.socket.reconnect()
+    this.reconnectRequested = false
+    this.lastCloseRetryCount = this.socket.retryCount
+    this.setStatus('reconnecting')
   }
 
   /**
@@ -226,7 +286,8 @@ export class ReconnectingWebSocket {
 
   /**
    * Current connection health. `reconnecting` until the first open;
-   * `disconnected` once auto-reconnect is abandoned (terminal).
+   * `disconnected` once auto-reconnect is abandoned (terminal until
+   * {@link ReconnectingWebSocket.reconnect} is called).
    *
    * @public
    */
@@ -262,7 +323,7 @@ export class ReconnectingWebSocket {
    * @public
    */
   ready(): Promise<void> {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.socket.readyState === PartySocketWebSocket.OPEN) {
       return Promise.resolve()
     }
     if (this.closed) {

@@ -44,6 +44,9 @@ importers:
       '@lifi/types':
         specifier: 17.82.1
         version: 17.82.1
+      partysocket:
+        specifier: ^1.1.19
+        version: 1.1.19
       viem:
         specifier: ^2.48.8
         version: 2.48.8(typescript@5.9.3)(zod@4.4.3)
@@ -2075,6 +2078,9 @@ packages:
     resolution: {integrity: sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==}
     engines: {node: '>=0.10.0'}
 
+  event-target-polyfill@0.0.4:
+    resolution: {integrity: sha512-Gs6RLjzlLRdT8X9ZipJdIZI/Y6/HhRLyq9RdDlCsnpxr/+Nn6bU2EFGuC94GjxqhM+Nmij2Vcq98yoHrU8uNFQ==}
+
   eventemitter3@4.0.7:
     resolution: {integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==}
 
@@ -3143,6 +3149,14 @@ packages:
 
   parse-url@8.1.0:
     resolution: {integrity: sha512-xDvOoLU5XRrcOZvnI6b8zA6n9O9ejNk/GExuz1yBuWUGn9KA97GI6HTs6u02wKara1CeVmZhH+0TZFdWScR89w==}
+
+  partysocket@1.1.19:
+    resolution: {integrity: sha512-hPwsXSdUc8PKNCinET6TD3JQOxzQ2JaP0bUZQXBVl6UM8UuLn1odgf1LcJXHy4UHSQwWL/RU3AnyhEsGM+W+sg==}
+    peerDependencies:
+      react: '>=17'
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   path-exists@3.0.0:
     resolution: {integrity: sha512-bpC7GYwiDYQ4wYLe+FA8lhRjhQCMcQGuSgGGqDkg/QerRWw9CmGRT0iSOVRSZJ29NMLZgIzqaljJ63oaL4NIJQ==}
@@ -5866,6 +5880,8 @@ snapshots:
 
   esutils@2.0.3: {}
 
+  event-target-polyfill@0.0.4: {}
+
   eventemitter3@4.0.7: {}
 
   eventemitter3@5.0.1: {}
@@ -7263,6 +7279,10 @@ snapshots:
   parse-url@8.1.0:
     dependencies:
       parse-path: 7.1.0
+
+  partysocket@1.1.19:
+    dependencies:
+      event-target-polyfill: 0.0.4
 
   path-exists@3.0.0: {}
 
