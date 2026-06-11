@@ -58,6 +58,59 @@ Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
   SDK via a `link:` path resolve `dist/`, not `src/`. Source edits are invisible
   until you rebuild — you silently get stale `dist/`.
 
+## Architecture
+
+### Package layering
+
+`@lifi/perps-types` is a zero-dependency wire-type package at the base. The core `@lifi/perps-sdk` depends on it. Each provider plugin depends on `@lifi/perps-types` directly and takes the core SDK as a peer dependency — so your project installs exactly one copy of the SDK.
+
+```mermaid
+graph TD
+    S["@lifi/perps-sdk<br/>PerpsClient · services · websocket core"]
+    H["@lifi/perps-sdk-provider-hyperliquid"]
+    L["@lifi/perps-sdk-provider-lighter"]
+    T["@lifi/perps-types<br/>wire types, zero deps"]
+    S --> T
+    H --> T
+    L --> T
+    H -. peer .-> S
+    L -. peer .-> S
+```
+
+### Action lifecycle
+
+Every mutating action (order placement, cancellation, withdrawal, setup) follows the same pipeline. The developer experience is one wallet signature at setup time — the agent provisioned during setup signs all subsequent orders automatically, with no per-order wallet popups.
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant PC as PerpsClient
+    participant P as Provider plugin
+    participant BE as LI.FI backend
+    App->>PC: placeOrder(params)
+    PC->>BE: POST /createAction
+    BE-->>PC: unsigned ActionStep[]
+    PC->>P: signActions(steps)
+    P-->>PC: signed steps
+    PC->>BE: POST /executeAction
+    BE-->>PC: ExecuteActionResponse
+    PC-->>App: results
+```
+
+### Data-plane split
+
+Market-structure reads go through the LI.FI backend, which caches them in Valkey and fans out to each venue on your behalf. Per-user reads (account state, positions, orders, fills, activity) go from the SDK directly to the venue API using the end-user's own IP — this keeps venue rate limits per-user rather than concentrating them on the backend's single egress address.
+
+```mermaid
+graph LR
+    SDK[Perps SDK]
+    BE["LI.FI backend<br/>Valkey-cached"]
+    V[Venue API]
+    SDK -- "markets · assets · prices<br/>ohlcv · orderbook" --> BE
+    BE --> V
+    SDK -- "account · positions · orders<br/>fills · activity" --> V
+```
+
 ## Quick Start
 
 ### Fetch market data
@@ -67,8 +120,10 @@ import { createPerpsClient, getProviders, getMarkets, getPrices } from '@lifi/pe
 
 const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
 
+// getProviders returns the live provider list; provider: takes a key string
+// like 'hyperliquid' or 'lighter'.
 const { providers } = await getProviders(client)
-const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+const { markets } = await getMarkets(client, { provider: providers[0].key })
 const { prices } = await getPrices(client, {
   provider: 'hyperliquid',
   marketIds: markets.slice(0, 2).map((m) => m.id),
@@ -129,8 +184,15 @@ const liq = provider.estimateLiquidationPrice(market, {
 
 ## Examples
 
-Runnable scripts in [`examples/`](./examples): market data, account management,
-trading, agent-based signing, error handling, and custom storage.
+Runnable scripts in [`examples/`](./examples):
+
+| Script | What it shows |
+| --- | --- |
+| [`market-data.ts`](./examples/market-data.ts) | Fetching markets, assets, prices, orderbook, OHLCV |
+| [`account-data.ts`](./examples/account-data.ts) | Account state, positions, orders, fills |
+| [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
+| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
+| [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
 
 ## Development
 
