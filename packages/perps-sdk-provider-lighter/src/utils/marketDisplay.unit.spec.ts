@@ -10,6 +10,12 @@ describe('lighterAsset', () => {
       logoURI: '',
     })
   })
+
+  it('carries the supplied logoURI', () => {
+    expect(lighterAsset('0', 'BTC', 'https://cdn.test/btc.svg').logoURI).toBe(
+      'https://cdn.test/btc.svg'
+    )
+  })
 })
 
 describe('marketDisplay', () => {
@@ -38,5 +44,11 @@ describe('marketDisplay', () => {
     expect(display.id).toBe('42')
     expect(display.baseAsset.id).toBe('42')
     expect(display.baseAsset.displaySymbol).toBe('WIF')
+  })
+
+  it('threads logoURI onto the base asset only, leaving the USDC quote empty', () => {
+    const display = marketDisplay('1', 'ETH', 'https://cdn.test/eth.svg')
+    expect(display.baseAsset.logoURI).toBe('https://cdn.test/eth.svg')
+    expect(display.quoteAsset.logoURI).toBe('')
   })
 })

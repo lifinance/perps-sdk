@@ -22,6 +22,7 @@ export {
   mapTriggerOrder,
 } from './mapOrder.js'
 export { mapPosition } from './mapPosition.js'
+export type { LighterMarketMeta } from './marketDisplay.js'
 export { lighterAsset, marketDisplay } from './marketDisplay.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'

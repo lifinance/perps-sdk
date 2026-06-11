@@ -80,6 +80,7 @@ import {
   LighterApiClient,
   LighterAuthRejectedError,
 } from './utils/apiClient.js'
+import type { LighterMarketMeta } from './utils/index.js'
 import {
   classifyAndMapOrders,
   estimateLiquidationPrice,
@@ -291,14 +292,14 @@ export const lighterProvider = (
   }
 
   /**
-   * Build a `Map<market_id, displaySymbol>` from the backend's `/perps/markets`
-   * response. Used by every account-level read to populate
-   * `market.baseAsset.displaySymbol` on mapped wire shapes. Backend response is
-   * Valkey-cached so this is cheap.
+   * Build a `Map<market_id, { displaySymbol, logoURI }>` from the backend's
+   * `/perps/markets` response. Used by every account-level read to populate
+   * `market.baseAsset.displaySymbol` and `.logoURI` on mapped wire shapes.
+   * Backend response is Valkey-cached so this is cheap.
    */
   const buildSymbolLookup = async (
     opts?: SDKRequestOptions
-  ): Promise<Map<number, string>> => {
+  ): Promise<Map<number, LighterMarketMeta>> => {
     const { markets } = await coreGetMarkets(
       requireClient(),
       { provider: LIGHTER_PROVIDER_KEY },
@@ -307,7 +308,13 @@ export const lighterProvider = (
     return new Map(
       markets
         .filter((m) => m.categoryId === LIGHTER_PROVIDER_KEY)
-        .map((m) => [Number(m.id), m.baseAsset.displaySymbol])
+        .map((m) => [
+          Number(m.id),
+          {
+            displaySymbol: m.baseAsset.displaySymbol,
+            logoURI: m.baseAsset.logoURI,
+          },
+        ])
     )
   }
 
@@ -797,7 +804,8 @@ export const lighterProvider = (
       const { openOrders, triggerOrders } = classifyAndMapOrders(
         responses.flatMap((r) => r.orders),
         (marketIndex) =>
-          symbolLookup.get(marketIndex) ?? `market_${marketIndex}`
+          symbolLookup.get(marketIndex)?.displaySymbol ??
+          `market_${marketIndex}`
       )
 
       const total = openOrders.length + triggerOrders.length
@@ -863,7 +871,10 @@ export const lighterProvider = (
       for (const response of activeResponses) {
         const hit = response.orders.find(predicate as (o: unknown) => boolean)
         if (hit !== undefined) {
-          return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+          return mapOrderDetail(
+            hit,
+            symbolLookup.get(hit.market_index)?.displaySymbol ?? ''
+          )
         }
       }
 
@@ -876,7 +887,10 @@ export const lighterProvider = (
       )
       const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
       if (hit !== undefined) {
-        return mapOrderDetail(hit, symbolLookup.get(hit.market_index) ?? '')
+        return mapOrderDetail(
+          hit,
+          symbolLookup.get(hit.market_index)?.displaySymbol ?? ''
+        )
       }
 
       throw new PerpsError(
@@ -917,13 +931,15 @@ export const lighterProvider = (
             )
           : await client.get<LtTradesResponse>('/api/v1/trades', queryParams)
 
-      const items = response.trades.map((t) =>
-        mapFill(
+      const items = response.trades.map((t) => {
+        const meta = symbolLookup.get(t.market_id)
+        return mapFill(
           t,
           account.index,
-          symbolLookup.get(t.market_id) ?? `market_${t.market_id}`
+          meta?.displaySymbol ?? `market_${t.market_id}`,
+          meta?.logoURI ?? ''
         )
-      )
+      })
 
       return {
         provider: LIGHTER_PROVIDER_KEY,
@@ -997,7 +1013,8 @@ export const lighterProvider = (
             type: ActivityType.FUNDING,
             market: marketDisplay(
               String(f.market_id),
-              marketLookup.get(f.market_id) ?? ''
+              marketLookup.get(f.market_id)?.displaySymbol ?? '',
+              marketLookup.get(f.market_id)?.logoURI ?? ''
             ),
             amount: f.change,
             positionSize: f.position_size,
@@ -1017,7 +1034,8 @@ export const lighterProvider = (
               {
                 market: marketDisplay(
                   String(l.market_id),
-                  marketLookup.get(l.market_id) ?? ''
+                  marketLookup.get(l.market_id)?.displaySymbol ?? '',
+                  marketLookup.get(l.market_id)?.logoURI ?? ''
                 ),
                 size: '0',
               },

@@ -28,6 +28,7 @@ import type {
   LtWsOrderBookMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
+import type { LighterMarketMeta } from '../utils/index.js'
 import {
   classifyAndMapOrders,
   fetchDetailedAccount,
@@ -146,13 +147,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly positionsByAddress = new Map<string, Map<number, Position>>()
 
   /**
-   * `market_id → displaySymbol`. The canonical `assetId` for Lighter perps
-   * IS `String(market_id)` (backend `/perps/assets` emits it that way), so no
-   * id-to-id map is needed — `String(market_id)` is the wire key. We keep
-   * only the display-symbol lookup, used to populate `asset.displaySymbol`
-   * on mapped orders / fills / positions.
+   * `market_id → { displaySymbol, logoURI }`. The canonical `assetId` for
+   * Lighter perps IS `String(market_id)` (backend `/perps/assets` emits it
+   * that way), so no id-to-id map is needed — `String(market_id)` is the wire
+   * key. We keep the display symbol and token logo, used to populate
+   * `asset.displaySymbol` / `.logoURI` on mapped orders / fills / positions.
    */
-  private marketIdToDisplaySymbol: Map<number, string>
+  private marketIdToDisplaySymbol: Map<number, LighterMarketMeta>
   private displaySymbolsPromise: Promise<void> | undefined
 
   private readonly accountIndexCache = new Map<string, number>()
@@ -181,7 +182,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.marketIdToDisplaySymbol = new Map(
       Object.entries(options.displaySymbolMap ?? {}).map(([id, sym]) => [
         Number(id),
-        sym,
+        { displaySymbol: sym, logoURI: '' },
       ])
     )
   }
@@ -397,7 +398,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (!Number.isFinite(marketId)) {
         continue
       }
-      this.marketIdToDisplaySymbol.set(marketId, m.baseAsset.displaySymbol)
+      this.marketIdToDisplaySymbol.set(marketId, {
+        displaySymbol: m.baseAsset.displaySymbol,
+        logoURI: m.baseAsset.logoURI,
+      })
     }
   }
 
@@ -484,7 +488,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const data = classifyAndMapOrders(
       raw,
       (marketIndex) =>
-        this.marketIdToDisplaySymbol.get(marketIndex) ?? `market_${marketIndex}`
+        this.marketIdToDisplaySymbol.get(marketIndex)?.displaySymbol ??
+        `market_${marketIndex}`
     )
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
@@ -502,13 +507,15 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtTrade>(msg, 'trades')
-    const fills: Fill[] = raw.map((t) =>
-      mapFill(
+    const fills: Fill[] = raw.map((t) => {
+      const meta = this.marketIdToDisplaySymbol.get(t.market_id)
+      return mapFill(
         t,
         accountIndex,
-        this.marketIdToDisplaySymbol.get(t.market_id) ?? `market_${t.market_id}`
+        meta?.displaySymbol ?? `market_${t.market_id}`,
+        meta?.logoURI ?? ''
       )
-    )
+    })
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
   }
 

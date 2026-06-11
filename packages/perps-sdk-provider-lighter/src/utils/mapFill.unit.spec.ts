@@ -63,6 +63,16 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  it('threads the supplied logoURI onto the base asset', () => {
+    const fill = mapFill(
+      baseTrade(),
+      ACCOUNT_INDEX,
+      SYMBOL,
+      'https://cdn.test/eth.svg'
+    )
+    expect(fill.market.baseAsset.logoURI).toBe('https://cdn.test/eth.svg')
+  })
+
   // Lighter has no per-symbol category distinction — every fill carries the
   // literal `'lighter'` taxonomy entry regardless of the symbol shape.
   it("emits categoryId: 'lighter' regardless of symbol shape", () => {
@@ -484,6 +494,165 @@ describe('mapFill (Lighter)', () => {
         SYMBOL
       )
       expect(fill.fee).toBeUndefined()
+    })
+  })
+
+  describe('realizedPnl derivation', () => {
+    it('derives PnL when a long is closed (entry 40000, exit 50000)', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false, // viewer (asker) is taker
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('derives PnL when a short is closed (entry 50000, exit 40000)', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer (bidder) is taker
+          size: '1',
+          price: '40000',
+          taker_position_size_before: '-1',
+          taker_entry_quote_before: '50000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('realizes only the closed portion when a sell flips a long short', () => {
+      // Long 1 @ 40000, sell 2 @ 50000 → only the 1 closed unit realizes PnL.
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '2',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('partially reduces a long, scaling avg entry by the closed size', () => {
+      // Long 2 with entry quote 80000 (avg 40000), sell 1 @ 50000 → 10000.
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '2',
+          taker_entry_quote_before: '80000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('reads the maker entry quote when the viewer is the maker', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: true, // viewer (asker) is maker
+          size: '1',
+          price: '50000',
+          maker_position_size_before: '1',
+          maker_entry_quote_before: '40000',
+          taker_position_size_before: '0',
+          taker_entry_quote_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('leaves realizedPnl unset when opening a position', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '0',
+          taker_entry_quote_before: '0',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBeUndefined()
+    })
+
+    it('leaves realizedPnl unset when increasing an existing long', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBeUndefined()
+    })
+
+    it('leaves realizedPnl unset on older rows missing the entry quote', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          // taker_entry_quote_before intentionally absent
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBeUndefined()
+    })
+
+    it('reports null (not a value) when a close realizes exactly zero', () => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '40000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+        }),
+        ACCOUNT_INDEX,
+        SYMBOL
+      )
+      expect(fill.realizedPnl).toBeNull()
     })
   })
 })

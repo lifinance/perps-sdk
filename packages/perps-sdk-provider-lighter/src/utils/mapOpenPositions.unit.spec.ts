@@ -25,7 +25,7 @@ const rawPosition = (
   ...overrides,
 })
 
-const lookup = new Map([[0, 'BTC']])
+const lookup = new Map([[0, { displaySymbol: 'BTC', logoURI: '' }]])
 
 describe('mapOpenPositions', () => {
   it('drops zero-size rows and maps the rest', () => {
@@ -41,7 +41,7 @@ describe('mapOpenPositions', () => {
   it('prefers the backend lookup over the wire symbol', () => {
     const positions = mapOpenPositions(
       [rawPosition({ symbol: 'XBT' })],
-      new Map([[0, 'BTC']])
+      new Map([[0, { displaySymbol: 'BTC', logoURI: '' }]])
     )
     expect(positions[0].market.baseAsset.displaySymbol).toBe('BTC')
   })

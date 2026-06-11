@@ -1,6 +1,7 @@
 import type { Position } from '@lifi/perps-types'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
+import type { LighterMarketMeta } from './marketDisplay.js'
 
 /**
  * Map one raw Lighter account position to a {@link Position}, resolving the
@@ -11,11 +12,13 @@ import { mapPosition } from './mapPosition.js'
  */
 export const mapAccountPosition = (
   p: LtAccountPosition,
-  symbolLookup: ReadonlyMap<number, string>
+  symbolLookup: ReadonlyMap<number, LighterMarketMeta>
 ): Position =>
   mapPosition(
     p,
-    symbolLookup.get(p.market_id) ?? p.symbol ?? `market_${p.market_id}`
+    symbolLookup.get(p.market_id)?.displaySymbol ??
+      p.symbol ??
+      `market_${p.market_id}`
   )
 
 /**
@@ -27,7 +30,7 @@ export const mapAccountPosition = (
  */
 export const mapOpenPositions = (
   positions: LtAccountPosition[],
-  symbolLookup: ReadonlyMap<number, string>
+  symbolLookup: ReadonlyMap<number, LighterMarketMeta>
 ): Position[] =>
   positions
     .filter((p) => Number.parseFloat(p.position) !== 0)
