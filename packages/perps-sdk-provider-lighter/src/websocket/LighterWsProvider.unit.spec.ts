@@ -387,6 +387,103 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', () => {
+      const p = makeProvider()
+      primeProvider(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: {
+            '0': RAW_POSITION,
+            '1': { ...RAW_POSITION, market_id: 1, symbol: 'ETH' },
+          },
+        })
+      )
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: {
+            '0': { ...RAW_POSITION, position: '0', position_value: '0' },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const snapshot = listener.mock.calls[1][0]
+      expect(snapshot.data).toHaveLength(1)
+      expect(snapshot.data[0].market.id).toBe('1')
+      p.close()
+    })
+
+    it('merges partial updates into the snapshot instead of emitting them bare', () => {
+      const p = makeProvider()
+      primeProvider(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': RAW_POSITION },
+        })
+      )
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: {
+            '1': { ...RAW_POSITION, market_id: 1, symbol: 'ETH' },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const snapshot = listener.mock.calls[1][0]
+      expect(snapshot.data.map((pos: any) => pos.market.id).sort()).toEqual([
+        '0',
+        '1',
+      ])
+      p.close()
+    })
+
+    it('reseeds positions state from a fresh subscribed snapshot', () => {
+      const p = makeProvider()
+      primeProvider(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': RAW_POSITION },
+        })
+      )
+      // Reconnect resubscription: the new snapshot replaces prior state, so a
+      // market that closed while disconnected does not linger.
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: {
+            '1': { ...RAW_POSITION, market_id: 1, symbol: 'ETH' },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const snapshot = listener.mock.calls[1][0]
+      expect(snapshot.data).toHaveLength(1)
+      expect(snapshot.data[0].market.id).toBe('1')
+      p.close()
+    })
+
     it('ignores auth channel messages whose account index is not cached', () => {
       const p = makeProvider()
       // Intentionally do NOT populate accountIndexCache.

@@ -27,7 +27,7 @@ export {
   mapStatusReason,
   mapTriggerOrder,
 } from './mapOrder.js'
-export { mapPosition } from './mapPosition.js'
+export { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 export {
   formatOrderPrice,
   formatOrderSize,
