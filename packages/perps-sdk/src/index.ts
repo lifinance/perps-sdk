@@ -52,7 +52,11 @@ export { getProviders } from './services/getProviders.js'
 export type { GetQuoteParams } from './services/getQuote.js'
 export { getQuote } from './services/getQuote.js'
 export { getTermsAcceptance } from './services/getTermsAcceptance.js'
-export { resolveQuote } from './services/resolveQuote.js'
+export { resolveQuote, resolveQuoteMarket } from './services/resolveQuote.js'
+export {
+  QUOTE_THROTTLE_MS,
+  resolveSubscribeQuote,
+} from './services/resolveSubscribeQuote.js'
 export {
   parseStoredRecord,
   readValidatedRecord,
@@ -112,6 +116,7 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
+  QuoteListener,
   SignActionsContext,
 } from './types/provider.js'
 export { summarizeAccount } from './utils/accountSummary.js'

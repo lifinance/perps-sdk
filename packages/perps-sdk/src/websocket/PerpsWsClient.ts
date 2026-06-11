@@ -1,7 +1,8 @@
 import { PerpsErrorCode, type Subscription } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import { getProviders } from '../services/getProviders.js'
-import type { PerpsSDKClient } from '../types/provider.js'
+import type { GetQuoteParams } from '../services/getQuote.js'
+import type { PerpsSDKClient, QuoteListener } from '../types/provider.js'
 import { cachePromise } from './cachePromise.js'
 import type {
   EventForSubscription,
@@ -91,6 +92,33 @@ export class PerpsWsClient {
     const providerKey = sub.dex
     const provider = await this.getOrCreateProvider(providerKey)
     return provider.subscribe(sub, listener as SubscriptionListener, onStatus)
+  }
+
+  /**
+   * Stream live fill quotes for `params.symbol` on `params.provider`, lazily
+   * creating the provider's WS connection. The provider's WS plugin layers the
+   * quote on its orderbook channel, so a concurrent orderbook subscription on
+   * the same market shares one wire subscription. Returns an unsubscribe
+   * function.
+   *
+   * @throws {PerpsError} When no WS provider factory is registered for
+   *   `params.provider`, or no market matches the symbol+type.
+   * @public
+   */
+  async subscribeQuote(
+    params: GetQuoteParams,
+    onQuote: QuoteListener
+  ): Promise<() => void> {
+    const provider = await this.getOrCreateProvider(params.provider)
+    return provider.subscribeQuote(
+      {
+        symbol: params.symbol,
+        side: params.side,
+        size: params.size,
+        type: params.type,
+      },
+      onQuote
+    )
   }
 
   /**

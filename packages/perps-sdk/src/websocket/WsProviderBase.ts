@@ -1,4 +1,8 @@
 import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  ProviderGetQuoteParams,
+  QuoteListener,
+} from '../types/provider.js'
 import type { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 import type {
   SubscriptionListener,
@@ -186,6 +190,12 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       }
     }
   }
+
+  /** Venue-specific {@link WsProvider.subscribeQuote}; see `resolveSubscribeQuote`. */
+  abstract subscribeQuote(
+    params: ProviderGetQuoteParams,
+    onQuote: QuoteListener
+  ): Promise<() => void>
 
   /** Canonical fan-out key for `sub`; must match the key the subclass emits to. */
   protected abstract toKey(sub: Subscription): string

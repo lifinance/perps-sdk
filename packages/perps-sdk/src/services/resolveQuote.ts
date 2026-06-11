@@ -32,18 +32,7 @@ export async function resolveQuote(
   feeTier: FeeTier,
   options?: SDKRequestOptions
 ): Promise<Quote> {
-  const { markets } = await getMarkets(client, { provider }, options)
-  const market = markets.find(
-    (m) =>
-      m.baseAsset.displaySymbol === params.symbol &&
-      isMarketOfType(m, params.type)
-  )
-  if (market === undefined) {
-    throw new PerpsError(
-      PerpsErrorCode.MarketNotFound,
-      `No ${params.type} market found on '${provider}' for symbol '${params.symbol}'.`
-    )
-  }
+  const market = await resolveQuoteMarket(client, provider, params, options)
 
   const { bids, asks } = await getOrderbook(
     client,
@@ -63,6 +52,36 @@ export async function resolveQuote(
     feeTier,
     timestamp: Date.now(),
   })
+}
+
+/**
+ * Resolve `params.symbol` to a market on `provider` (matching
+ * `baseAsset.displaySymbol`, scoped by `params.type`). Shared by the one-shot
+ * {@link resolveQuote} and the streaming quote subscription so both quote the
+ * same market for a given symbol+type.
+ *
+ * @throws {PerpsError} `MarketNotFound` when no market matches symbol+type.
+ * @internal
+ */
+export async function resolveQuoteMarket(
+  client: PerpsSDKClient,
+  provider: string,
+  params: Pick<ProviderGetQuoteParams, 'symbol' | 'type'>,
+  options?: SDKRequestOptions
+): Promise<Market> {
+  const { markets } = await getMarkets(client, { provider }, options)
+  const market = markets.find(
+    (m) =>
+      m.baseAsset.displaySymbol === params.symbol &&
+      isMarketOfType(m, params.type)
+  )
+  if (market === undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.MarketNotFound,
+      `No ${params.type} market found on '${provider}' for symbol '${params.symbol}'.`
+    )
+  }
+  return market
 }
 
 const isMarketOfType = (

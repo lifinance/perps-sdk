@@ -9,11 +9,13 @@ import * as getProvidersModule from '../services/getProviders.js'
 import { PerpsWsClient, type WsProviderFactory } from './PerpsWsClient.js'
 
 const mockSubscribe = vi.fn().mockResolvedValue(() => {})
+const mockSubscribeQuote = vi.fn().mockResolvedValue(() => {})
 const mockClose = vi.fn()
 
 const buildHlFactory = () =>
   vi.fn<WsProviderFactory>((_params) => ({
     subscribe: mockSubscribe,
+    subscribeQuote: mockSubscribeQuote,
     close: mockClose,
   }))
 
@@ -212,6 +214,57 @@ describe('PerpsWsClient', () => {
       ])
 
       expect(factory).toHaveBeenCalledOnce()
+
+      ws.close()
+    })
+  })
+
+  describe('subscribeQuote', () => {
+    it('delegates to the provider with the SPI params and returns its unsubscribe', async () => {
+      useWsUrlHandler()
+      const mockUnsub = vi.fn()
+      mockSubscribeQuote.mockResolvedValueOnce(mockUnsub)
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
+      const onQuote = vi.fn()
+
+      const unsub = await ws.subscribeQuote(
+        {
+          provider: 'hyperliquid',
+          symbol: 'BTC',
+          side: 'buy',
+          size: 100,
+          type: 'perps',
+        },
+        onQuote
+      )
+
+      expect(factory).toHaveBeenCalledOnce()
+      expect(mockSubscribeQuote).toHaveBeenCalledWith(
+        { symbol: 'BTC', side: 'buy', size: 100, type: 'perps' },
+        onQuote
+      )
+      expect(unsub).toBe(mockUnsub)
+
+      ws.close()
+    })
+
+    it('throws when no factory is registered for the provider', async () => {
+      useWsUrlHandler()
+      const ws = new PerpsWsClient(createClient())
+
+      await expect(
+        ws.subscribeQuote(
+          {
+            provider: 'hyperliquid',
+            symbol: 'BTC',
+            side: 'buy',
+            size: 100,
+            type: 'perps',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow("No WS provider factory registered for 'hyperliquid'.")
 
       ws.close()
     })

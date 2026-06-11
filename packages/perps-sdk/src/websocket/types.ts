@@ -1,4 +1,8 @@
 import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  ProviderGetQuoteParams,
+  QuoteListener,
+} from '../types/provider.js'
 
 /**
  * The concrete {@link SubscriptionEvent} variant a given subscription `S`
@@ -50,6 +54,17 @@ export interface WsProvider {
     sub: Subscription,
     listener: SubscriptionListener,
     onStatus?: WsStatusListener
+  ): Promise<() => void>
+  /**
+   * Stream live fill {@link Quote}s for `params.size` USD notional of
+   * `params.symbol` on this venue, layered on the orderbook channel: the
+   * provider resolves the symbol against its own markets and re-runs the
+   * one-shot quote transform on each (throttled) book update, applying its
+   * public base fee tier. Returns an idempotent unsubscribe.
+   */
+  subscribeQuote(
+    params: ProviderGetQuoteParams,
+    onQuote: QuoteListener
   ): Promise<() => void>
   close(): void
 }
