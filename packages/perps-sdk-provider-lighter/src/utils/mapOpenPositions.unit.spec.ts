@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapOpenPositions } from './mapOpenPositions.js'
+import { marketDisplay } from './marketDisplay.js'
 
 const rawPosition = (
   overrides: Partial<LtAccountPosition> = {}
@@ -25,7 +26,7 @@ const rawPosition = (
   ...overrides,
 })
 
-const lookup = new Map([[0, { displaySymbol: 'BTC', logoURI: '' }]])
+const lookup = new Map([[0, marketDisplay('0', 'BTC')]])
 
 describe('mapOpenPositions', () => {
   it('drops zero-size rows and maps the rest', () => {
@@ -41,7 +42,7 @@ describe('mapOpenPositions', () => {
   it('prefers the backend lookup over the wire symbol', () => {
     const positions = mapOpenPositions(
       [rawPosition({ symbol: 'XBT' })],
-      new Map([[0, { displaySymbol: 'BTC', logoURI: '' }]])
+      new Map([[0, marketDisplay('0', 'BTC')]])
     )
     expect(positions[0].market.baseAsset.displaySymbol).toBe('BTC')
   })

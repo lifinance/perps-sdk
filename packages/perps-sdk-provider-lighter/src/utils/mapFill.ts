@@ -3,7 +3,7 @@ import {
   ExplorerChainId,
   explorerTxUrl,
 } from '@lifi/perps-sdk'
-import type { Fill } from '@lifi/perps-types'
+import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillStatus,
   LiquidityRole,
@@ -12,7 +12,6 @@ import {
 } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { LtTrade } from '../types/index.js'
-import { marketDisplay } from './marketDisplay.js'
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
@@ -56,15 +55,13 @@ const deriveRealizedPnl = (
 /**
  * Map a raw Lighter trade to the generic Fill type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
- * @param displaySymbol - Human-readable symbol for `asset.displaySymbol`.
- * @param logoURI - Base token logo URL for `market.baseAsset.logoURI`; empty when the market is unknown to the backend.
+ * @param market - Backend-resolved market identity for `trade.market_id`.
  * @public
  */
 export const mapFill = (
   trade: LtTrade,
   accountIndex: number,
-  displaySymbol: string,
-  logoURI = ''
+  market: MarketDisplay
 ): Fill => {
   const isBuyer = trade.bid_account_id === accountIndex
   const isMaker =
@@ -82,7 +79,7 @@ export const mapFill = (
   return {
     id: trade.trade_id.toString(),
     orderId: String(isBuyer ? trade.bid_id : trade.ask_id),
-    market: marketDisplay(String(trade.market_id), displaySymbol, logoURI),
+    market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
     type: OrderType.LIMIT,
     size: trade.size,

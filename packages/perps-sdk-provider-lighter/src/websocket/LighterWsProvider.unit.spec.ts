@@ -1,5 +1,6 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { marketDisplay } from '../utils/index.js'
 import { LighterWsProvider } from './LighterWsProvider.js'
 
 const getMarketsMock = vi.fn()
@@ -100,9 +101,22 @@ describe('LighterWsProvider', () => {
   /** Pre-populate caches so handleMessage can route without a live socket. */
   const primeProvider = (p: LighterWsProvider) => {
     ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
-    ;(p as any).marketIdToDisplaySymbol.set(0, {
-      displaySymbol: 'BTC',
-      logoURI: BTC_LOGO,
+    ;(p as any).marketsById.set(0, {
+      providerId: 'lighter',
+      id: '0',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '0',
+        displaySymbol: 'BTC',
+        logoURI: BTC_LOGO,
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
     })
   }
 
@@ -308,7 +322,7 @@ describe('LighterWsProvider', () => {
     it('emits orderUpdates when orders span multiple markets', () => {
       const p = makeProvider()
       primeProvider(p)
-      ;(p as any).marketIdToDisplaySymbol.set(1, 'ETH')
+      ;(p as any).marketsById.set(1, marketDisplay('1', 'ETH'))
       const listener = vi.fn()
       inject(p, `orderUpdates:${TEST_ADDR}`, listener)
 
@@ -826,7 +840,7 @@ describe('LighterWsProvider', () => {
 
       expect(getMarketsMock).toHaveBeenCalledTimes(2)
       expect(
-        (provider as any).marketIdToDisplaySymbol.get(0)?.displaySymbol
+        (provider as any).marketsById.get(0)?.baseAsset.displaySymbol
       ).toBe('BTC')
       provider.close()
     })
@@ -942,7 +956,7 @@ describe('LighterWsProvider', () => {
 
       expect(getMarketsMock).toHaveBeenCalledOnce()
       expect(
-        (provider as any).marketIdToDisplaySymbol.get(0)?.displaySymbol
+        (provider as any).marketsById.get(0)?.baseAsset.displaySymbol
       ).toBe('BTC')
 
       ;(provider as any).handleMessage(

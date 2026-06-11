@@ -8,9 +8,11 @@ import {
 import { describe, expect, it } from 'vitest'
 import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
+import { marketDisplay } from './marketDisplay.js'
 
 const ACCOUNT_INDEX = 42
 const SYMBOL = 'ETH'
+const MARKET = marketDisplay('1', SYMBOL)
 
 const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   trade_id: 7,
@@ -38,53 +40,17 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
 
 describe('mapFill (Lighter)', () => {
   it('stringifies trade_id into Fill.id', () => {
-    expect(mapFill(baseTrade({ trade_id: 7 }), ACCOUNT_INDEX, SYMBOL).id).toBe(
+    expect(mapFill(baseTrade({ trade_id: 7 }), ACCOUNT_INDEX, MARKET).id).toBe(
       '7'
     )
   })
 
-  it('builds the Lighter market display with USDC quote', () => {
-    expect(mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL).market).toEqual({
-      providerId: 'lighter',
-      id: '1',
-      categoryId: 'lighter',
-      baseAsset: {
-        providerId: 'lighter',
-        id: '1',
-        displaySymbol: SYMBOL,
-        logoURI: '',
-      },
-      quoteAsset: {
-        providerId: 'lighter',
-        id: 'USDC',
-        displaySymbol: 'USDC',
-        logoURI: '',
-      },
-    })
-  })
-
-  it('threads the supplied logoURI onto the base asset', () => {
-    const fill = mapFill(
-      baseTrade(),
-      ACCOUNT_INDEX,
-      SYMBOL,
-      'https://cdn.test/eth.svg'
-    )
-    expect(fill.market.baseAsset.logoURI).toBe('https://cdn.test/eth.svg')
-  })
-
-  // Lighter has no per-symbol category distinction — every fill carries the
-  // literal `'lighter'` taxonomy entry regardless of the symbol shape.
-  it("emits categoryId: 'lighter' regardless of symbol shape", () => {
-    for (const symbol of ['BTC', 'ETH', 'PURR', 'USDJPY']) {
-      expect(
-        mapFill(baseTrade(), ACCOUNT_INDEX, symbol).market.categoryId
-      ).toBe('lighter')
-    }
+  it('carries the resolved market identity onto the fill verbatim', () => {
+    expect(mapFill(baseTrade(), ACCOUNT_INDEX, MARKET).market).toEqual(MARKET)
   })
 
   it('always reports type LIMIT and status FILLED', () => {
-    const fill = mapFill(baseTrade(), ACCOUNT_INDEX, SYMBOL)
+    const fill = mapFill(baseTrade(), ACCOUNT_INDEX, MARKET)
     expect(fill.type).toBe(OrderType.LIMIT)
     expect(fill.status).toBe(FillStatus.FILLED)
   })
@@ -93,7 +59,7 @@ describe('mapFill (Lighter)', () => {
     const fill = mapFill(
       baseTrade({ timestamp: 1_700_000_000_000 }),
       ACCOUNT_INDEX,
-      SYMBOL
+      MARKET
     )
     expect(fill.createdAt).toBe(new Date(1_700_000_000_000).toISOString())
   })
@@ -111,7 +77,7 @@ describe('mapFill (Lighter)', () => {
           maker_fee: 0.3,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
       expect(fill.fee).toBe('0.7')
@@ -127,7 +93,7 @@ describe('mapFill (Lighter)', () => {
           maker_fee: 0.3,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
       expect(fill.fee).toBe('0.3')
@@ -143,7 +109,7 @@ describe('mapFill (Lighter)', () => {
           maker_fee: 0.3,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
       expect(fill.fee).toBe('0.3')
@@ -159,7 +125,7 @@ describe('mapFill (Lighter)', () => {
           maker_fee: 0.3,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
       expect(fill.fee).toBe('0.7')
@@ -178,7 +144,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '5', // counterparty — irrelevant here
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)
     })
@@ -194,7 +160,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '-5',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.OPENED_SHORT)
     })
@@ -210,7 +176,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.CLOSED_LONG)
     })
@@ -226,7 +192,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.CLOSED_SHORT)
     })
@@ -242,7 +208,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.REDUCED_LONG)
     })
@@ -258,7 +224,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.REDUCED_SHORT)
     })
@@ -274,7 +240,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
     })
@@ -290,7 +256,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.INCREASED_SHORT)
     })
@@ -306,7 +272,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.SWITCHED_SHORT)
     })
@@ -322,7 +288,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.SWITCHED_LONG)
     })
@@ -341,7 +307,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0', // counterparty was flat
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
     })
@@ -357,7 +323,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '-2', // viewer was short 2
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.classification).toBe(FillClassification.REDUCED_SHORT)
     })
@@ -375,7 +341,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(open.classification).toBe(FillClassification.OPENED_LONG)
 
@@ -391,7 +357,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(close.classification).toBe(FillClassification.CLOSED_LONG)
     })
@@ -408,7 +374,7 @@ describe('mapFill (Lighter)', () => {
           maker_position_size_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(switchSell.classification).toBe(FillClassification.SWITCHED_SHORT)
     })
@@ -428,7 +394,7 @@ describe('mapFill (Lighter)', () => {
           is_maker_ask,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.liquidity).toBe(expected)
     })
@@ -444,7 +410,7 @@ describe('mapFill (Lighter)', () => {
           ask_id: 99,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.orderId).toBe('42')
     })
@@ -458,7 +424,7 @@ describe('mapFill (Lighter)', () => {
           ask_id: 77,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.orderId).toBe('77')
     })
@@ -469,13 +435,13 @@ describe('mapFill (Lighter)', () => {
       const fill = mapFill(
         baseTrade({ tx_hash: '0000abcd' }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.explorerLink).toBe('https://scan.lighter.xyz/tx/0000abcd')
     })
 
     it('omits the link when the tx hash is empty', () => {
-      const fill = mapFill(baseTrade({ tx_hash: '' }), ACCOUNT_INDEX, SYMBOL)
+      const fill = mapFill(baseTrade({ tx_hash: '' }), ACCOUNT_INDEX, MARKET)
       expect(fill.explorerLink).toBeUndefined()
     })
   })
@@ -491,7 +457,7 @@ describe('mapFill (Lighter)', () => {
           maker_fee: 0.3,
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.fee).toBeUndefined()
     })
@@ -510,7 +476,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '40000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
     })
@@ -527,7 +493,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '50000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
     })
@@ -545,7 +511,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '40000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
     })
@@ -563,7 +529,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '80000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
     })
@@ -582,7 +548,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
     })
@@ -599,7 +565,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '0',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBeUndefined()
     })
@@ -616,7 +582,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '40000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBeUndefined()
     })
@@ -633,7 +599,7 @@ describe('mapFill (Lighter)', () => {
           // taker_entry_quote_before intentionally absent
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBeUndefined()
     })
@@ -650,7 +616,7 @@ describe('mapFill (Lighter)', () => {
           taker_entry_quote_before: '40000',
         }),
         ACCOUNT_INDEX,
-        SYMBOL
+        MARKET
       )
       expect(fill.realizedPnl).toBeNull()
     })
