@@ -182,6 +182,154 @@ const liq = provider.estimateLiquidationPrice(market, {
 }) // number, or undefined when the venue model can't be evaluated client-side
 ```
 
+## Realtime (WebSocket)
+
+`PerpsWsClient` from `@lifi/perps-sdk` is the realtime layer. It lazily
+creates one socket per provider on first subscribe, then fans events out to
+all listeners.
+
+### Construction
+
+```typescript
+import { PerpsWsClient, createPerpsClient } from '@lifi/perps-sdk'
+import { hyperliquidWsProvider } from '@lifi/perps-sdk-provider-hyperliquid'
+import { lighterWsProvider } from '@lifi/perps-sdk-provider-lighter'
+
+const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
+
+const ws = new PerpsWsClient(client, {
+  wsProviders: {
+    hyperliquid: hyperliquidWsProvider(),
+    lighter: lighterWsProvider({
+      // Required for authenticated Lighter channels (orderUpdates, positions).
+      // authProvider: (address) => myPlugin.resolveAuthToken(address),
+    }),
+  },
+})
+```
+
+`wsProviders` is a map of provider key → `WsProviderFactory`. Factories for
+Hyperliquid and Lighter ship in their respective provider packages. Subscribing
+to a key that has no registered factory throws a `PerpsError`.
+
+### Subscribing
+
+```typescript
+const unsubscribe = await ws.subscribe(
+  { channel: 'prices', dex: 'hyperliquid' },
+  (event) => {
+    // event.data: Record<string, string> — Market.id → last-trade price
+    console.log(event.data)
+  },
+  (status) => {
+    // Optional status listener: 'connected' | 'reconnecting' | 'disconnected'
+    console.log('WS status:', status)
+  }
+)
+
+// Unsubscribe when done.
+unsubscribe()
+```
+
+`subscribe` returns a `Promise<() => void>`. Calling the returned function
+releases the listener; the underlying socket stays open until no listeners
+remain.
+
+### Consumer contract — subscribe per consumer, the SDK dedupes
+
+**Do not deduplicate subscriptions yourself.** Multiple components or hooks
+may call `subscribe()` for the same channel independently. The SDK
+ref-counts listeners onto one wire subscription per channel key, and fans
+each inbound event out to every listener. A listener that throws is
+isolated — it does not prevent the others from receiving the event.
+
+```typescript
+// Two independent subscribers on the same channel — one wire subscription.
+const unsubA = await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, listenerA)
+const unsubB = await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, listenerB)
+```
+
+### Subscription lifecycle
+
+```mermaid
+sequenceDiagram
+    participant A as Consumer A
+    participant B as Consumer B
+    participant WC as PerpsWsClient
+    participant WP as Venue WsProvider
+    participant V as Venue WS
+    A->>WC: subscribe(sub, listenerA)
+    WC->>WP: first listener → open channel
+    WP->>V: subscribe frame
+    B->>WC: subscribe(same sub, listenerB)
+    Note over WP: ref-counted: one wire sub, two listeners
+    V-->>WP: message
+    WP-->>A: event
+    WP-->>B: event
+    A->>WC: unsubscribe()
+    B->>WC: unsubscribe()
+    Note over WP,V: 250 ms linger, then teardown<br/>on reconnect: active subs replayed automatically
+```
+
+**Linger on teardown.** When the last listener releases, the SDK waits
+250 ms (`WS_CHANNEL_TEARDOWN_LINGER_MS`) before sending the unsubscribe
+frame. A re-subscribe within that window cancels the pending teardown, so
+React StrictMode's synchronous unmount→remount cycle does not cause a
+subscribe→unsubscribe→subscribe round trip on the venue.
+
+### Reconnect semantics
+
+`ReconnectingWebSocket` auto-reconnects with jittered exponential backoff
+(default: up to 10 attempts, roughly 20–60 s). On every (re)open, active
+subscriptions are replayed automatically — consumers do nothing. The optional
+`onStatus` callback passed to `subscribe()` fires through each transition:
+
+| Status | Meaning |
+|---|---|
+| `connected` | Socket open, live data flowing. |
+| `reconnecting` | Transient drop; backoff reconnect in progress. Data may be stale. |
+| `disconnected` | Retry budget exhausted. Terminal. Call `ws.reconnect(provider)` to restart. |
+
+### Authenticated Lighter channels
+
+Lighter's account-scoped channels (`orderUpdates`, `positions`) require an
+auth token on the subscribe frame. Pass an `authProvider` to
+`lighterWsProvider()`:
+
+```typescript
+lighter: lighterWsProvider({
+  authProvider: (address) => myPlugin.resolveAuthToken(address),
+})
+```
+
+`authProvider` is called fresh on every subscribe send — including reconnects
+— so stale tokens are never replayed. Without an `authProvider`, subscribing
+to `orderUpdates` or `positions` throws at subscribe time.
+
+`fills` (`account_all_trades`) is publicly readable on Lighter and does not
+require a token.
+
+### Available channels
+
+| Channel | `dex` field | Auth required | Event `data` shape |
+|---|---|---|---|
+| `prices` | any | No | `Record<string, string>` — `Market.id → price` |
+| `orderbook` | any | No | `OrderbookResponse` (bids/asks with price+size) |
+| `candle` | `hyperliquid` | No | `Candle` (OHLCV bar) |
+| `orderUpdates` | any | Lighter only | `{ openOrders, triggerOrders, terminated }` |
+| `fills` | any | No | `Fill[]` |
+| `positions` | any | Lighter only | `Position[]` — full open-position snapshot |
+| `spotBalances` | `hyperliquid` | No | `(Balance & { locked })[]` |
+
+`positions` events carry the **full** open-position set for the subscribed
+address — consumers replace their state rather than merging.
+
+### Closing
+
+```typescript
+ws.close() // closes all open sockets and drops all cached providers
+```
+
 ## Examples
 
 Runnable scripts in [`examples/`](./examples):
@@ -193,6 +341,7 @@ Runnable scripts in [`examples/`](./examples):
 | [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
 | [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
 | [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
+| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | Realtime prices, orderbook, multi-listener dedup, status |
 
 ## Development
 
