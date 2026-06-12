@@ -7,22 +7,9 @@
  * the tick grid; sizes truncate to the lot grid.
  */
 
-import { PerpsError, stringToFloat } from '@lifi/perps-sdk'
+import { PerpsError } from '@lifi/perps-sdk'
 import { type Market, PerpsErrorCode } from '@lifi/perps-types'
-
-/**
- * Truncate toward zero to `decimals` places, trailing zeros stripped.
- * Operates on the value's decimal string so binary float artifacts cannot
- * shave a lot off the last kept digit (e.g. `8.2` stays `8.2`, not `8.19`).
- */
-function truncateToDecimals(value: number, decimals: number): string {
-  const repr = value.toString()
-  const fixed = repr.includes('e') ? value.toFixed(Math.max(decimals, 0)) : repr
-  const [whole, fraction = ''] = fixed.split('.')
-  const kept =
-    decimals > 0 ? fraction.slice(0, decimals).replace(/0+$/, '') : ''
-  return kept === '' ? whole : `${whole}.${kept}`
-}
+import Big from 'big.js'
 
 /**
  * Format a price onto a Lighter market's tick grid: rounded to the market's
@@ -41,7 +28,8 @@ export function formatOrderPrice(market: Market, price: number): string {
         `cannot be formatted without the market's tick grid.`
     )
   }
-  return stringToFloat(price.toFixed(market.priceDecimals)).toString()
+  const rounded = new Big(price).round(market.priceDecimals, Big.roundHalfUp)
+  return rounded.eq(0) ? '0' : rounded.toFixed()
 }
 
 /**
@@ -53,5 +41,6 @@ export function formatOrderPrice(market: Market, price: number): string {
  * @public
  */
 export function formatOrderSize(market: Market, size: number): string {
-  return truncateToDecimals(size, market.szDecimals)
+  const truncated = new Big(size).round(market.szDecimals, Big.roundDown)
+  return truncated.eq(0) ? '0' : truncated.toFixed()
 }

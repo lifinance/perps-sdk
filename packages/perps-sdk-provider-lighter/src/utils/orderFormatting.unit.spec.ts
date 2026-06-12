@@ -69,6 +69,18 @@ describe('formatOrderPrice (Lighter)', () => {
       expect((error as PerpsError).code).toBe(PerpsErrorCode.ValidationError)
     }
   })
+
+  it('rounds exact-halfway decimals half-up on the true decimal value', () => {
+    const twoDp = market({ priceDecimals: 2 })
+    expect(formatOrderPrice(twoDp, 1.005)).toBe('1.01')
+    expect(formatOrderPrice(twoDp, -1.005)).toBe('-1.01')
+  })
+
+  it('emits plain notation for prices at or above 1e21', () => {
+    expect(formatOrderPrice(market({ priceDecimals: 2 }), 1.5e21)).toBe(
+      '1500000000000000000000'
+    )
+  })
 })
 
 describe('formatOrderSize (Lighter)', () => {
@@ -93,5 +105,11 @@ describe('formatOrderSize (Lighter)', () => {
 
   it('handles sizes whose string form is exponential', () => {
     expect(formatOrderSize(btc, 2e-8)).toBe('0')
+  })
+
+  it('emits plain notation for sizes at or above 1e21', () => {
+    expect(formatOrderSize(market({ szDecimals: 2 }), 1.5e21)).toBe(
+      '1500000000000000000000'
+    )
   })
 })
