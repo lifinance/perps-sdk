@@ -1,4 +1,8 @@
-import { classifyFillFromPosition } from '@lifi/perps-sdk'
+import {
+  classifyFillFromPosition,
+  ExplorerChainId,
+  explorerTxUrl,
+} from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
@@ -18,6 +22,9 @@ export { classifyFillFromPosition }
  * @public
  */
 export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
+  ...(market.categoryId === SPOT_MARKET_ID
+    ? { realizedPnl: fill.closedPnl }
+    : { realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl }),
   id: String(fill.tid),
   orderId: String(fill.oid),
   market,
@@ -29,8 +36,8 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
   filledSize: fill.sz,
   fee: fill.fee,
-  realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl,
   startPosition: fill.startPosition,
+  explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, fill.hash),
   classification:
     market.categoryId === SPOT_MARKET_ID
       ? fill.side === 'B'

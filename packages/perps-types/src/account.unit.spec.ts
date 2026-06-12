@@ -225,12 +225,14 @@ describe('explorerLink on on-chain item types', () => {
       counterpartyAccountIndex: 1,
       asset: 'USDC',
       amount: '1',
-      explorerLink: 'https://scan.lighter.xyz/tx/0000abcd',
+      explorerLink: 'https://app.lighter.xyz/explorer/logs/0000abcd',
     }
 
     expect(deposit.explorerLink).toBe('https://etherscan.io/tx/0xabc')
     expect(withdrawal.explorerLink).toBe('https://etherscan.io/tx/0xdef')
-    expect(transfer.explorerLink).toBe('https://scan.lighter.xyz/tx/0000abcd')
+    expect(transfer.explorerLink).toBe(
+      'https://app.lighter.xyz/explorer/logs/0000abcd'
+    )
   })
 
   it('treats explorerLink as optional (absent ⇒ no on-chain tx)', () => {

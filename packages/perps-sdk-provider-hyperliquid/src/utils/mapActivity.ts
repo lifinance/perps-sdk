@@ -1,4 +1,3 @@
-import { ExplorerChainId, explorerTxUrl } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
   DepositActivity,
@@ -66,6 +65,9 @@ export const mapLedgerEntry = (
       asset: delta.token,
       amount: delta.amount,
       meta,
+      explorerLink: entry.hash
+        ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
+        : undefined,
     } satisfies TransferActivity
   }
 
@@ -102,6 +104,9 @@ export const mapLedgerEntry = (
       asset: delta.token,
       amount: delta.amount,
       meta,
+      explorerLink: entry.hash
+        ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
+        : undefined,
     } satisfies TransferActivity
   }
 
@@ -111,7 +116,9 @@ export const mapLedgerEntry = (
         ...base,
         type: ActivityType.DEPOSIT,
         amount: delta.usdc ?? '0',
-        explorerLink: explorerTxUrl(ExplorerChainId.ARBITRUM_ONE, entry.hash),
+        explorerLink: entry.hash
+          ? `https://scan.li.fi/tx/${entry.hash}`
+          : undefined,
       } satisfies DepositActivity
 
     case 'withdraw':
@@ -120,7 +127,9 @@ export const mapLedgerEntry = (
         type: ActivityType.WITHDRAWAL,
         amount: delta.usdc ?? '0',
         fee: (delta as { fee?: string }).fee ?? '0',
-        explorerLink: explorerTxUrl(ExplorerChainId.ARBITRUM_ONE, entry.hash),
+        explorerLink: entry.hash
+          ? `https://scan.li.fi/tx/${entry.hash}`
+          : undefined,
       } satisfies WithdrawalActivity
 
     case 'liquidation': {
@@ -131,16 +140,23 @@ export const mapLedgerEntry = (
         leverageType: string
         liquidatedPositions?: { coin: string; szi: string }[]
       }
+      const liquidatedPositions = (d.liquidatedPositions ?? []).map((p) => ({
+        market: resolveMarket(p.coin),
+        size: p.szi,
+      }))
+      // Liquidation rows must point to at least one market. Drop entries with
+      // missing/empty positions so downstream consumers can rely on that
+      // invariant and avoid rendering a market-less liquidation card.
+      if (liquidatedPositions.length === 0) {
+        return null
+      }
       return {
         ...base,
         type: ActivityType.LIQUIDATION,
         liquidatedNotionalPosition: d.liquidatedNtlPos,
         accountValue: d.accountValue,
         leverageType: d.leverageType,
-        liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
-          market: resolveMarket(p.coin),
-          size: p.szi,
-        })),
+        liquidatedPositions,
       } satisfies LiquidationActivity
     }
 

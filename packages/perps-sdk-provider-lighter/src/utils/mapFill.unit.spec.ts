@@ -443,7 +443,9 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.explorerLink).toBe('https://scan.lighter.xyz/tx/0000abcd')
+      expect(fill.explorerLink).toBe(
+        'https://app.lighter.xyz/explorer/logs/0000abcd'
+      )
     })
 
     it('omits the link when the tx hash is empty', () => {

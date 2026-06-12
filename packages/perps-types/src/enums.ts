@@ -180,6 +180,7 @@ export enum FundingClassification {
 export enum TransferClassification {
   DEPOSIT = 'Deposit',
   WITHDRAWAL = 'Withdrawal',
+  TRANSFER = 'Transfer',
 }
 
 /** @public */

@@ -939,7 +939,9 @@ export const lighterProvider = (
             timestamp: toIsoFromMs(d.timestamp),
             type: ActivityType.DEPOSIT,
             amount: d.amount,
-            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, d.l1_tx_hash),
+            explorerLink: d.l1_tx_hash
+              ? `https://scan.li.fi/tx/${d.l1_tx_hash}`
+              : undefined,
           })
         ),
         ...history.withdraws.withdraws.map(
@@ -950,7 +952,9 @@ export const lighterProvider = (
             type: ActivityType.WITHDRAWAL,
             amount: w.amount,
             fee: '0',
-            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, w.l1_tx_hash),
+            explorerLink: w.l1_tx_hash
+              ? `https://scan.li.fi/tx/${w.l1_tx_hash}`
+              : undefined,
           })
         ),
         ...history.fundings.position_fundings.map(

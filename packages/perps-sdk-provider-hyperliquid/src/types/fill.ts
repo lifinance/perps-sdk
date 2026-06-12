@@ -4,6 +4,7 @@
 export type HlUserFill = {
   tid: number
   oid: number
+  hash?: string
   coin: string
   side: string
   sz: string

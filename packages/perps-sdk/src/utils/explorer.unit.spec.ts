@@ -14,9 +14,15 @@ describe('explorerTxUrl', () => {
     )
   })
 
-  it('builds a Lighter scan URL for the Lighter L2', () => {
+  it('builds a Lighter explorer logs URL for the Lighter L2', () => {
     expect(explorerTxUrl(ExplorerChainId.LIGHTER, '0000abcd')).toBe(
-      'https://scan.lighter.xyz/tx/0000abcd'
+      'https://app.lighter.xyz/explorer/logs/0000abcd'
+    )
+  })
+
+  it('builds a Hyperliquid explorer URL for Hyperliquid L1 txs', () => {
+    expect(explorerTxUrl(ExplorerChainId.HYPERLIQUID, '0x1234')).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0x1234'
     )
   })
 

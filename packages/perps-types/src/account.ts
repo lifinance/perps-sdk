@@ -124,7 +124,7 @@ export interface Fill {
   classification: FillClassification
   createdAt: string
   // Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
-  // the fill has no on-chain tx (every Hyperliquid fill is off-chain).
+  // the fill has no on-chain settlement tx.
   explorerLink?: string
 }
 

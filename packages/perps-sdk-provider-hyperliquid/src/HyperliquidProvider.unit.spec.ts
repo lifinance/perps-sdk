@@ -216,6 +216,51 @@ describe('hyperliquidProvider', () => {
       ).rejects.toThrow()
     })
 
+    it('rotates the local agent when the matching remote extra-agent is expired', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        retry: false,
+        providers: [provider],
+      })
+
+      const first = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        [PerpsSigner.USER]
+      )
+      const firstAgent = first.params?.agentAddress as string
+
+      const expiredAgents = [
+        { address: firstAgent, validUntil: Date.now() - 60_000 },
+      ]
+      const spy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (_input, init) => {
+          const body = JSON.parse((init?.body as string) ?? '{}') as Record<
+            string,
+            unknown
+          >
+          if (body.type === 'extraAgents') {
+            return new Response(JSON.stringify(expiredAgents), { status: 200 })
+          }
+          return new Response('[]', { status: 200 })
+        })
+      restore = () => spy.mockRestore()
+
+      const second = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        [PerpsSigner.USER]
+      )
+      const secondAgent = second.params?.agentAddress as string
+
+      expect(spy).toHaveBeenCalled()
+      expect(secondAgent).not.toBe(firstAgent)
+      expect(await provider.getAgentAddress(ADDRESS)).toBe(secondAgent)
+    })
+
     it('signActions signs the EIP712 agent arm and removeAgent revokes it', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       // Provision the agent via the user-signed APPROVE_AGENT path.

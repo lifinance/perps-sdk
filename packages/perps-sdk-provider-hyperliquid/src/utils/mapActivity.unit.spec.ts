@@ -101,6 +101,9 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.counterpartyAccountIndex).toBeUndefined()
     expect(t.asset).toBe('USDC')
     expect(t.amount).toBe('12.5')
+    expect(t.explorerLink).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0xhash-spot'
+    )
     expect(t.provider).toBe(PROVIDER)
     expect(t.id).toBe('0xhash-spot')
     expect(t.timestamp).toBe(new Date(1_700_000_000_000).toISOString())
@@ -231,6 +234,9 @@ describe('mapLedgerEntry — sendAsset', () => {
     expect(t.counterpartyAccountIndex).toBeUndefined()
     expect(t.asset).toBe('USDC')
     expect(t.amount).toBe('20')
+    expect(t.explorerLink).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0xhash-send'
+    )
     expect(t.provider).toBe(PROVIDER)
     expect(t.id).toBe('0xhash-send')
     expect(t.timestamp).toBe(new Date(1_700_000_000_000).toISOString())
@@ -387,8 +393,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     ) as DepositActivity
     expect(result.type).toBe(ActivityType.DEPOSIT)
     expect(result.amount).toBe('100')
-    // HL deposits settle on Arbitrum; `entry.hash` is the Arbitrum tx.
-    expect(result.explorerLink).toBe('https://arbiscan.io/tx/0xdep')
+    expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
   })
 
   it('maps a withdrawal', () => {
@@ -406,7 +411,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
     expect(result.amount).toBe('50')
     expect(result.fee).toBe('0.5')
-    expect(result.explorerLink).toBe('https://arbiscan.io/tx/0xwdr')
+    expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
   })
 
   it('maps a liquidation', () => {
@@ -430,6 +435,35 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.LIQUIDATION)
     expect(result.liquidatedNotionalPosition).toBe('1000')
     expect(result.liquidatedPositions[0].market.id).toBe('ETH')
+  })
+
+  it('returns null for liquidation entries with missing liquidatedPositions', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-missing-positions',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '1000',
+        accountValue: '500',
+        leverageType: 'cross',
+      },
+    }
+    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+  })
+
+  it('returns null for liquidation entries with empty liquidatedPositions', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-empty-positions',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '1000',
+        accountValue: '500',
+        leverageType: 'cross',
+        liquidatedPositions: [],
+      },
+    }
+    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
   })
 
   it('returns null for unsupported delta types', () => {

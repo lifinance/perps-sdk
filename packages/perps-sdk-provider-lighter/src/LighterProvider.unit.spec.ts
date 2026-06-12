@@ -832,6 +832,7 @@ describe('LighterProvider — normalisation', () => {
     expect(result.pagination.cursor).toBeTypeOf('string')
     expect(result.items).toHaveLength(1)
     expect(result.items[0].type).toBe(ActivityType.DEPOSIT)
+    expect(result.items[0].explorerLink).toBe('https://scan.li.fi/tx/0xabc')
   })
 })
 
@@ -949,6 +950,12 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
       limit: 3,
     })
     expect(page1.items).toHaveLength(3)
+    expect(page1.items.find((item) => item.id === 'd1')?.explorerLink).toBe(
+      'https://scan.li.fi/tx/0xd1'
+    )
+    expect(page1.items.find((item) => item.id === 'w1')?.explorerLink).toBe(
+      'https://scan.li.fi/tx/0xw1'
+    )
     expect(page1.pagination.hasMore).toBe(true)
     expect(page1.pagination.cursor).toBeTypeOf('string')
   })

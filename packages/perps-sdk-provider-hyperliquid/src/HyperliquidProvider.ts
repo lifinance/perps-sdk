@@ -2,6 +2,7 @@ import {
   type ActionSignerContribution,
   type LiquidationEstimateParams,
   PerpsError,
+  PerpsErrorMessage,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
   type ProviderGetAccountParams,
@@ -38,7 +39,7 @@ import {
   type SignedActionStep,
   type SigningMethod,
 } from '@lifi/perps-types'
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, isAddress } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
 import { summarizeHyperliquidAccount } from './accountSummary.js'
 import {
@@ -59,6 +60,8 @@ import {
   HyperliquidAgentStore,
 } from './signers/HyperliquidAgentStore.js'
 import { hyperliquidSignActions } from './signers/signActions.js'
+import type { HlExtraAgents } from './types/index.js'
+import { hlInfoOptions, infoRequest } from './utils/infoClient.js'
 import { calculateLiquidationPrice } from './utils/liquidation.js'
 import { formatOrderPrice, formatOrderSize } from './utils/orderFormatting.js'
 
@@ -130,6 +133,72 @@ export function hyperliquidProvider(
   const agentStore = new HyperliquidAgentStore(options.storage)
   const contextRef = new HyperliquidContextRef(apiUrl)
 
+  const toLowerAddress = (value: unknown): string | null =>
+    typeof value === 'string' && isAddress(value) ? value.toLowerCase() : null
+
+  const toValidUntilMs = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+  }
+
+  const isKnownExpiredRemoteAgent = async (
+    address: Address,
+    localAgentAddress: Address
+  ): Promise<boolean> => {
+    let context: ReturnType<typeof contextRef.require> | null = null
+    try {
+      context = contextRef.require()
+    } catch {
+      // Unbound provider (e.g. direct unit tests) cannot query /info.
+      return false
+    }
+    const agents = await infoRequest<HlExtraAgents>(
+      apiUrl,
+      { type: 'extraAgents', user: address },
+      hlInfoOptions(context.client)
+    )
+    const local = localAgentAddress.toLowerCase()
+    const match = agents.find(
+      (agent) => toLowerAddress(agent.address) === local
+    ) as Record<string, unknown> | undefined
+    if (!match) {
+      return false
+    }
+    const validUntilMs = toValidUntilMs(match.validUntil)
+    return validUntilMs !== null && validUntilMs <= Date.now()
+  }
+
+  const resolveApproveAgentAddress = async (
+    address: Address
+  ): Promise<Address> => {
+    try {
+      const localAgent = await agentStore.get(address)
+      try {
+        if (await isKnownExpiredRemoteAgent(address, localAgent.address)) {
+          await agentStore.remove(address)
+          return (await agentStore.getOrCreate(address)).address
+        }
+      } catch {
+        // If the upstream extra-agent probe fails, keep the existing local key.
+      }
+      return localAgent.address
+    } catch (error) {
+      if (
+        error instanceof PerpsError &&
+        error.message === PerpsErrorMessage.AgentNotFound
+      ) {
+        return (await agentStore.getOrCreate(address)).address
+      }
+      throw error
+    }
+  }
+
   return {
     type: PROVIDER_KEY,
 
@@ -158,8 +227,8 @@ export function hyperliquidProvider(
       // provisioned on first use so its address is known before the backend
       // builds the typed data.
       if (action === ActionType.APPROVE_AGENT) {
-        const agent = await agentStore.getOrCreate(address)
-        return { params: { agentAddress: agent.address } }
+        const agentAddress = await resolveApproveAgentAddress(address)
+        return { params: { agentAddress } }
       }
       // Agent-signed actions (trades, account-mode) carry the agent as the
       // on-wire signerAddress. User-signed actions (builder-fee, withdrawal)

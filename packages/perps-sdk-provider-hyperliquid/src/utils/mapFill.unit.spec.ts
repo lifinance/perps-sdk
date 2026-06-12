@@ -215,7 +215,13 @@ describe('mapFill (Hyperliquid)', () => {
     })
   })
 
-  it('never sets explorerLink — Hyperliquid fills are off-chain', () => {
+  it('builds a Hyperliquid explorerLink when the fill carries a tx hash', () => {
+    expect(map(baseFill({ hash: '0xspot' })).explorerLink).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0xspot'
+    )
+  })
+
+  it('leaves explorerLink unset when the fill has no tx hash', () => {
     expect(map(baseFill()).explorerLink).toBeUndefined()
   })
 
@@ -228,12 +234,28 @@ describe('mapFill (Hyperliquid)', () => {
       expect(fill.classification).toBe(FillClassification.SPOT_BUY)
     })
 
+    it('preserves closedPnl "0" on SPOT_BUY fills so downstream can render neutral PnL', () => {
+      const fill = mapFill(
+        baseFill({ coin: '@230', side: 'B', closedPnl: '0' }),
+        spotMarket('@230')
+      )
+      expect(fill.realizedPnl).toBe('0')
+    })
+
     it('routes spot fills on the sell side to SPOT_SELL', () => {
       const fill = mapFill(
         baseFill({ coin: '@230', side: 'A' }),
         spotMarket('@230')
       )
       expect(fill.classification).toBe(FillClassification.SPOT_SELL)
+    })
+
+    it('preserves closedPnl "0" on SPOT_SELL fills so downstream can render neutral PnL', () => {
+      const fill = mapFill(
+        baseFill({ coin: '@230', side: 'A', closedPnl: '0' }),
+        spotMarket('@230')
+      )
+      expect(fill.realizedPnl).toBe('0')
     })
 
     it('routes canonical-pair spot fills (PURR/USDC) on the buy side to SPOT_BUY', () => {
