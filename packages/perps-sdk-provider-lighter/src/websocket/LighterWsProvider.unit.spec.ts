@@ -1,17 +1,16 @@
-import type { PerpsSDKClient } from '@lifi/perps-sdk'
+import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { marketDisplay } from '../utils/index.js'
 import { LighterWsProvider } from './LighterWsProvider.js'
 
-const getMarketsMock = vi.fn()
+// The market registry fetches `${apiUrl}/markets` over HTTP — served by the
+// global fetch stub installed in beforeEach below.
+const marketsFetchMock = vi.fn()
 
-vi.mock('@lifi/perps-sdk', async (importActual) => {
-  const actual = await importActual<typeof import('@lifi/perps-sdk')>()
-  return {
-    ...actual,
-    getMarkets: (...args: unknown[]) => getMarketsMock(...args),
-  }
-})
+const marketsFailureResponse = () =>
+  new Response(JSON.stringify({ code: 1, message: 'markets fetch failed' }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/json' },
+  })
 
 // Minimal valid Lighter raw payloads matching the perps-types shapes.
 const RAW_ORDER = {
@@ -88,20 +87,10 @@ const TEST_ADDR = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 const ACCOUNT_IDX = 42
 
 describe('LighterWsProvider', () => {
-  const makeProvider = () =>
-    new LighterWsProvider(
-      // Non-resolvable URL — we never open the socket in these tests.
-      'ws://127.0.0.1:1',
-      'lighter',
-      { displaySymbolMap: { 0: 'BTC', 1: 'ETH', 5: 'SOL' } }
-    )
-
   const BTC_LOGO = 'https://cdn.test/btc.svg'
 
-  /** Pre-populate caches so handleMessage can route without a live socket. */
-  const primeProvider = (p: LighterWsProvider) => {
-    ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
-    ;(p as any).marketsById.set(0, {
+  const LIGHTER_MARKETS = [
+    {
       providerId: 'lighter',
       id: '0',
       categoryId: 'lighter',
@@ -117,7 +106,70 @@ describe('LighterWsProvider', () => {
         displaySymbol: 'USDC',
         logoURI: '',
       },
-    })
+    },
+    {
+      providerId: 'lighter',
+      id: '1',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '1',
+        displaySymbol: 'ETH',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+    },
+  ]
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = input.toString()
+        if (!url.includes('/markets')) {
+          throw new Error(`Unexpected fetch: ${url}`)
+        }
+        const result = await marketsFetchMock()
+        return result instanceof Response
+          ? result
+          : new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+      }
+    )
+    marketsFetchMock.mockReset()
+    marketsFetchMock.mockResolvedValue({ markets: LIGHTER_MARKETS })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // Fresh client per provider: the market registry is cached per
+  // (client, provider) pair, so a shared client would leak registry state
+  // across tests.
+  const freshClient = () =>
+    createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
+
+  const makeProvider = () =>
+    new LighterWsProvider(
+      // Non-resolvable URL — we never open the socket in these tests.
+      'ws://127.0.0.1:1',
+      'lighter',
+      {},
+      freshClient()
+    )
+
+  /** Seed the account-index cache and sync the market registry so handleMessage can route without a live socket. */
+  const seedAccountAndMarkets = async (p: LighterWsProvider) => {
+    ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+    await (p as any).registry.sync()
   }
 
   /** Inject a listener directly, bypassing the subscribe WS path. */
@@ -296,9 +348,9 @@ describe('LighterWsProvider', () => {
   })
 
   describe('handleMessage — auth channels (indexed-by-market format)', () => {
-    it('emits orderUpdates when orders arrive as { marketIndex: [Order] } object', () => {
+    it('emits orderUpdates when orders arrive as { marketIndex: [Order] } object', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `orderUpdates:${TEST_ADDR}`, listener)
 
@@ -319,10 +371,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('emits orderUpdates when orders span multiple markets', () => {
+    it('emits orderUpdates when orders span multiple markets', async () => {
       const p = makeProvider()
-      primeProvider(p)
-      ;(p as any).marketsById.set(1, marketDisplay('1', 'ETH'))
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `orderUpdates:${TEST_ADDR}`, listener)
 
@@ -341,9 +392,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('emits fills when trades arrive as { marketIndex: [Trade] } object', () => {
+    it('emits fills when trades arrive as { marketIndex: [Trade] } object', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `fills:${TEST_ADDR}`, listener)
 
@@ -364,9 +415,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('emits fills with empty array on initial subscribed snapshot (trades: [])', () => {
+    it('emits fills with empty array on initial subscribed snapshot (trades: [])', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `fills:${TEST_ADDR}`, listener)
 
@@ -384,9 +435,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('emits positions when positions arrive as { marketIndex: Position } object', () => {
+    it('emits positions when positions arrive as { marketIndex: Position } object', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `positions:${TEST_ADDR}`, listener)
 
@@ -407,9 +458,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', () => {
+    it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `positions:${TEST_ADDR}`, listener)
 
@@ -440,9 +491,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('merges partial updates into the snapshot instead of emitting them bare', () => {
+    it('merges partial updates into the snapshot instead of emitting them bare', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `positions:${TEST_ADDR}`, listener)
 
@@ -472,9 +523,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('reseeds positions state from a fresh subscribed snapshot', () => {
+    it('reseeds positions state from a fresh subscribed snapshot', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const listener = vi.fn()
       inject(p, `positions:${TEST_ADDR}`, listener)
 
@@ -633,9 +684,9 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('logs a throwing handler instead of swallowing it, and keeps handling later frames', () => {
+    it('logs a throwing handler instead of swallowing it, and keeps handling later frames', async () => {
       const p = makeProvider()
-      primeProvider(p)
+      await seedAccountAndMarkets(p)
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       const throwingListener = vi.fn(() => {
@@ -709,19 +760,13 @@ describe('LighterWsProvider', () => {
     })
   })
 
-  describe('display-symbol fetch coupling (ORD-482)', () => {
-    const fakeClient = { config: {} } as PerpsSDKClient
-
-    beforeEach(() => {
-      getMarketsMock.mockReset()
-    })
-
-    /** No displaySymbolMap → ensureDisplaySymbols would hit coreGetMarkets. */
+  describe('markets fetch coupling (ORD-482)', () => {
     const makeFetchingProvider = () =>
-      new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, fakeClient)
+      new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, freshClient())
 
-    it('subscribes to prices even when the /markets display-symbol fetch rejects', async () => {
-      getMarketsMock.mockRejectedValue(new Error('markets route 500'))
+    it('subscribes to prices even when the /markets fetch fails', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock.mockResolvedValue(marketsFailureResponse())
       const provider = makeFetchingProvider()
       // Stub the socket as open so subscribe sends inline without a real connection.
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -736,7 +781,7 @@ describe('LighterWsProvider', () => {
       )
 
       expect(typeof unsubscribe).toBe('function')
-      expect(getMarketsMock).not.toHaveBeenCalled()
+      expect(marketsFetchMock).not.toHaveBeenCalled()
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
       )
@@ -756,8 +801,9 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('subscribes to orderbook even when the /markets display-symbol fetch rejects', async () => {
-      getMarketsMock.mockRejectedValue(new Error('markets route 500'))
+    it('subscribes to orderbook even when the /markets fetch fails', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock.mockResolvedValue(marketsFailureResponse())
       const provider = makeFetchingProvider()
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.getStatus = () => 'connected'
@@ -770,7 +816,7 @@ describe('LighterWsProvider', () => {
       )
 
       expect(typeof unsubscribe).toBe('function')
-      expect(getMarketsMock).not.toHaveBeenCalled()
+      expect(marketsFetchMock).not.toHaveBeenCalled()
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'order_book/5' })
       )
@@ -801,23 +847,16 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('retries the display-symbol fetch on the next subscribe after a transient failure', async () => {
-      getMarketsMock
-        .mockRejectedValueOnce(new Error('markets route 500'))
-        .mockResolvedValue({
-          markets: [
-            {
-              id: '0',
-              categoryId: 'lighter',
-              baseAsset: { displaySymbol: 'BTC' },
-            },
-          ],
-        })
+    it('retries the markets fetch on the next subscribe after a transient failure', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock
+        .mockResolvedValueOnce(marketsFailureResponse())
+        .mockResolvedValue({ markets: LIGHTER_MARKETS })
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
         'lighter',
         { authProvider: async () => 'token' },
-        fakeClient
+        freshClient()
       )
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.send = vi.fn()
@@ -830,7 +869,7 @@ describe('LighterWsProvider', () => {
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow('markets route 500')
+      ).rejects.toThrow('markets fetch failed')
 
       // Connectivity restored — the next subscribe must refetch and succeed.
       await provider.subscribe(
@@ -838,10 +877,10 @@ describe('LighterWsProvider', () => {
         vi.fn()
       )
 
-      expect(getMarketsMock).toHaveBeenCalledTimes(2)
-      expect(
-        (provider as any).marketsById.get(0)?.baseAsset.displaySymbol
-      ).toBe('BTC')
+      expect(marketsFetchMock).toHaveBeenCalledTimes(2)
+      expect((provider as any).registry.get('0')?.baseAsset.displaySymbol).toBe(
+        'BTC'
+      )
       provider.close()
     })
 
@@ -863,7 +902,6 @@ describe('LighterWsProvider', () => {
       vi.stubGlobal('fetch', accountFetch)
       try {
         const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
-          displaySymbolMap: { 0: 'BTC' },
           authProvider: async () => 'token',
         })
         ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -895,7 +933,6 @@ describe('LighterWsProvider', () => {
 
     it('retries the account-index fetch on the next subscribe after a transient failure', async () => {
       const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
-        displaySymbolMap: { 0: 'BTC' },
         authProvider: async () => 'token',
       })
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -924,21 +961,12 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('still resolves display symbols for auth channels (positions)', async () => {
-      getMarketsMock.mockResolvedValue({
-        markets: [
-          {
-            id: '0',
-            categoryId: 'lighter',
-            baseAsset: { displaySymbol: 'BTC' },
-          },
-        ],
-      })
+    it('still syncs the market registry for auth channels (positions)', async () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
         'lighter',
         { authProvider: async () => 'token' },
-        fakeClient
+        freshClient()
       )
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.send = vi.fn()
@@ -954,10 +982,10 @@ describe('LighterWsProvider', () => {
         listener
       )
 
-      expect(getMarketsMock).toHaveBeenCalledOnce()
-      expect(
-        (provider as any).marketsById.get(0)?.baseAsset.displaySymbol
-      ).toBe('BTC')
+      expect(marketsFetchMock).toHaveBeenCalledOnce()
+      expect((provider as any).registry.get('0')?.baseAsset.displaySymbol).toBe(
+        'BTC'
+      )
 
       ;(provider as any).handleMessage(
         JSON.stringify({

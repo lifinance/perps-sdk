@@ -1,7 +1,4 @@
-import {
-  getMarkets as coreGetMarkets,
-  type SDKRequestOptions,
-} from '@lifi/perps-sdk'
+import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type { PositionsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
@@ -11,7 +8,6 @@ import {
   isOpenAssetPosition,
   mapPosition,
   perpsDexNames,
-  requireMarket,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -41,12 +37,8 @@ export const getPositions = async (
   params: GetPositionsParams,
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> => {
-  const { markets } = await coreGetMarkets(
-    client,
-    { provider: PROVIDER_KEY },
-    options
-  )
-  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  const markets = await registry.sync()
   const infoOpts = hlInfoOptions(client, options)
 
   const stateResults = await Promise.all(
@@ -66,7 +58,7 @@ export const getPositions = async (
   let positions = stateResults.flatMap((state) =>
     state.assetPositions
       .filter(isOpenAssetPosition)
-      .map((ap) => mapPosition(ap, requireMarket(byMarketId, ap.position.coin)))
+      .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
   )
 
   if (params.marketId !== undefined) {

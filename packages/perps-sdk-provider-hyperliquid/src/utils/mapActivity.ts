@@ -4,13 +4,13 @@ import type {
   DepositActivity,
   FundingActivity,
   LiquidationActivity,
+  MarketDisplay,
   TransferActivity,
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
 import { isSendAssetDelta, isSpotTransferDelta } from '../types/index.js'
-import { marketDisplayFromCoin } from './deriveMarket.js'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
@@ -24,7 +24,8 @@ import { marketDisplayFromCoin } from './deriveMarket.js'
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
   providerKey: string,
-  queriedAddress: string
+  queriedAddress: string,
+  resolveMarket: (coin: string) => MarketDisplay
 ): ActivityItem | null => {
   const { delta } = entry
   const base = {
@@ -137,7 +138,7 @@ export const mapLedgerEntry = (
         accountValue: d.accountValue,
         leverageType: d.leverageType,
         liquidatedPositions: (d.liquidatedPositions ?? []).map((p) => ({
-          market: marketDisplayFromCoin(p.coin),
+          market: resolveMarket(p.coin),
           size: p.szi,
         })),
       } satisfies LiquidationActivity
@@ -151,13 +152,14 @@ export const mapLedgerEntry = (
 /** @public */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
-  providerKey: string
+  providerKey: string,
+  resolveMarket: (coin: string) => MarketDisplay
 ): FundingActivity => ({
   id: entry.hash,
   provider: providerKey,
   timestamp: new Date(entry.time).toISOString(),
   type: ActivityType.FUNDING,
-  market: marketDisplayFromCoin(entry.delta.coin),
+  market: resolveMarket(entry.delta.coin),
   amount: entry.delta.usdc,
   positionSize: entry.delta.szi,
   fundingRate: entry.delta.fundingRate,

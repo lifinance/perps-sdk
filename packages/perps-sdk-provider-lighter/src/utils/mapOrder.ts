@@ -199,11 +199,12 @@ export const mapOrder = (order: LtOrder, market: MarketDisplay): OpenOrder => ({
  * a terminal state (filled / cancelled / rejected / expired) — consumers
  * applying WS deltas evict those from the cached buckets. REST callers
  * see `terminated: []` because `accountActiveOrders` returns active only.
+ * An order whose market the resolver does not know is skipped.
  * @public
  */
 export const classifyAndMapOrders = (
   orders: LtOrder[],
-  resolveMarket: (marketIndex: number) => MarketDisplay
+  resolveMarket: (marketIndex: number) => MarketDisplay | undefined
 ): {
   openOrders: OpenOrder[]
   triggerOrders: TriggerOrder[]
@@ -219,6 +220,9 @@ export const classifyAndMapOrders = (
       continue
     }
     const market = resolveMarket(raw.market_index)
+    if (market === undefined) {
+      continue
+    }
     if (isTriggerOrder(raw)) {
       triggerOrders.push(mapTriggerOrder(raw, market))
     } else {

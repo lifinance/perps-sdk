@@ -3,11 +3,6 @@
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
-export {
-  deriveMarket,
-  marketDisplayFromCoin,
-  perpsDexNames,
-} from './deriveMarket.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
@@ -28,13 +23,13 @@ export {
   mapTriggerOrder,
 } from './mapOrder.js'
 export { isOpenAssetPosition, mapPosition } from './mapPosition.js'
+export { coinAsset, perpsDexNames } from './marketDisplay.js'
 export {
   formatOrderPrice,
   formatOrderSize,
   getMaxPriceDecimals,
 } from './orderFormatting.js'
 export { priceStepToAggregation } from './priceStepToAggregation.js'
-export { findMarket, requireMarket } from './requireMarket.js'
 export {
   spotAssetFromToken,
   spotBalance,

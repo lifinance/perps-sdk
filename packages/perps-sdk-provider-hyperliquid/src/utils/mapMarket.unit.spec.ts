@@ -31,7 +31,7 @@ describe('mapMarket (Hyperliquid)', () => {
   it('maps universe + assetCtx fields onto a PerpsMarket', () => {
     vi.setSystemTime(new Date('2024-01-01T00:30:00Z'))
 
-    const result = mapMarket(universe, assetCtx)
+    const result = mapMarket(universe, assetCtx, 'hyperliquid')
 
     expect(result.id).toBe('BTC')
     expect(result.categoryId).toBe('hyperliquid')
@@ -53,7 +53,9 @@ describe('mapMarket (Hyperliquid)', () => {
     vi.setSystemTime(new Date('2024-01-01T00:30:00Z'))
     const expected = Math.ceil(Date.now() / HOUR_MS) * HOUR_MS
 
-    expect(mapMarket(universe, assetCtx).funding.nextFundingTime).toBe(expected)
+    expect(
+      mapMarket(universe, assetCtx, 'hyperliquid').funding.nextFundingTime
+    ).toBe(expected)
     // 00:30 rounds up to 01:00.
     expect(new Date(expected).toISOString()).toBe('2024-01-01T01:00:00.000Z')
   })
@@ -61,15 +63,17 @@ describe('mapMarket (Hyperliquid)', () => {
   it('keeps nextFundingTime at the boundary when already on the hour', () => {
     vi.setSystemTime(new Date('2024-01-01T02:00:00.000Z'))
 
-    expect(mapMarket(universe, assetCtx).funding.nextFundingTime).toBe(
-      Date.parse('2024-01-01T02:00:00.000Z')
-    )
+    expect(
+      mapMarket(universe, assetCtx, 'hyperliquid').funding.nextFundingTime
+    ).toBe(Date.parse('2024-01-01T02:00:00.000Z'))
   })
 
   it('coerces a missing onlyIsolated flag to false', () => {
     vi.setSystemTime(new Date('2024-01-01T00:00:00Z'))
     const { onlyIsolated, ...rest } = universe
 
-    expect(mapMarket(rest as HlUniverseItem, assetCtx).onlyIsolated).toBe(false)
+    expect(
+      mapMarket(rest as HlUniverseItem, assetCtx, 'hyperliquid').onlyIsolated
+    ).toBe(false)
   })
 })

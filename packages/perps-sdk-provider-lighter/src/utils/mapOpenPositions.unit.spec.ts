@@ -1,7 +1,7 @@
+import type { MarketDisplay } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapOpenPositions } from './mapOpenPositions.js'
-import { marketDisplay } from './marketDisplay.js'
 
 const rawPosition = (
   overrides: Partial<LtAccountPosition> = {}
@@ -26,40 +26,34 @@ const rawPosition = (
   ...overrides,
 })
 
-const lookup = new Map([[0, marketDisplay('0', 'BTC')]])
+const market = (id: number, symbol: string): MarketDisplay => ({
+  providerId: 'lighter',
+  id: String(id),
+  categoryId: 'lighter',
+  baseAsset: { providerId: 'lighter', id: String(id), displaySymbol: symbol },
+  quoteAsset: { providerId: 'lighter', id: 'USDC', displaySymbol: 'USDC' },
+})
+
+const SYMBOLS: Record<number, string> = { 0: 'BTC', 1: 'ETH' }
+const resolveMarket = (id: number): MarketDisplay => market(id, SYMBOLS[id])
 
 describe('mapOpenPositions', () => {
   it('drops zero-size rows and maps the rest', () => {
     const positions = mapOpenPositions(
       [rawPosition(), rawPosition({ position: '0' })],
-      lookup
+      resolveMarket
     )
     expect(positions).toHaveLength(1)
     expect(positions[0].size).toBe('1')
     expect(positions[0].market.baseAsset.displaySymbol).toBe('BTC')
   })
 
-  it('prefers the backend lookup over the wire symbol', () => {
+  it('resolves each position market by market_id', () => {
     const positions = mapOpenPositions(
-      [rawPosition({ symbol: 'XBT' })],
-      new Map([[0, marketDisplay('0', 'BTC')]])
+      [rawPosition({ market_id: 1, symbol: 'WETH' })],
+      resolveMarket
     )
-    expect(positions[0].market.baseAsset.displaySymbol).toBe('BTC')
-  })
-
-  it('falls back to the wire symbol when the lookup misses', () => {
-    const positions = mapOpenPositions(
-      [rawPosition({ market_id: 9, symbol: 'SOL' })],
-      lookup
-    )
-    expect(positions[0].market.baseAsset.displaySymbol).toBe('SOL')
-  })
-
-  it('falls back to a synthetic market_<id> when both lookup and wire symbol miss', () => {
-    const positions = mapOpenPositions(
-      [rawPosition({ market_id: 9, symbol: undefined })],
-      lookup
-    )
-    expect(positions[0].market.baseAsset.displaySymbol).toBe('market_9')
+    expect(positions[0].market.id).toBe('1')
+    expect(positions[0].market.baseAsset.displaySymbol).toBe('ETH')
   })
 })

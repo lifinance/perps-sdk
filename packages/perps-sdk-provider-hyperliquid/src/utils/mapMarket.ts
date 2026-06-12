@@ -1,28 +1,37 @@
 import type { PerpsMarket } from '@lifi/perps-types'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HlAssetCtx, HlUniverseItem } from '../types/index.js'
-import { deriveMarket, marketDisplayFromCoin } from './deriveMarket.js'
 import { calculateMaintenanceMarginRate } from './liquidation.js'
+import { coinAsset } from './marketDisplay.js'
 import { getMaxPriceDecimals } from './orderFormatting.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
-/** @public */
+/** Hyperliquid quotes every perp market in USDC. */
+const QUOTE_SYMBOL = 'USDC'
+
+/**
+ * Map a Hyperliquid universe entry + asset context to a {@link PerpsMarket}.
+ * `categoryId` is the `Provider.categories[].id` of the dex the entry was
+ * fetched from — known to the caller at fetch time, never re-derived from
+ * the coin string.
+ * @public
+ */
 export const mapMarket = (
   universe: HlUniverseItem,
-  assetCtx: HlAssetCtx
+  assetCtx: HlAssetCtx,
+  categoryId: string
 ): PerpsMarket => {
   const now = Date.now()
   const nextFundingTime =
     Math.ceil(now / NEXT_FUNDING_INTERVAL_MS) * NEXT_FUNDING_INTERVAL_MS
 
-  const display = marketDisplayFromCoin(universe.name)
-
   return {
-    providerId: display.providerId,
-    id: display.id,
-    categoryId: deriveMarket(universe.name),
-    baseAsset: display.baseAsset,
-    quoteAsset: display.quoteAsset,
+    providerId: PROVIDER_KEY,
+    id: universe.name,
+    categoryId,
+    baseAsset: coinAsset(universe.name),
+    quoteAsset: coinAsset(QUOTE_SYMBOL),
     szDecimals: universe.szDecimals,
     priceDecimals: getMaxPriceDecimals(universe.szDecimals),
     markPrice: assetCtx.markPx,

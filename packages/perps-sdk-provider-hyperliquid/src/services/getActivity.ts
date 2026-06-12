@@ -1,13 +1,8 @@
-import {
-  getMarkets as coreGetMarkets,
-  type SDKRequestOptions,
-} from '@lifi/perps-sdk'
+import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
-  FundingActivity,
-  LiquidationActivity,
-  Market,
+  MarketDisplay,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -22,11 +17,7 @@ import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
-import {
-  mapFundingActivity,
-  mapLedgerEntry,
-  requireMarket,
-} from '../utils/index.js'
+import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
 import {
   hlInfoOptions,
   type InfoRequestOptions,
@@ -48,34 +39,11 @@ export interface GetActivityParams {
   type?: ActivityType[]
 }
 
-const enrichActivityItem = (
-  item: ActivityItem,
-  byMarketId: Map<string, Market>
-): ActivityItem => {
-  if (item.type === ActivityType.FUNDING) {
-    const funding = item as FundingActivity
-    return {
-      ...funding,
-      market: requireMarket(byMarketId, funding.market.id),
-    }
-  }
-  if (item.type === ActivityType.LIQUIDATION) {
-    const liq = item as LiquidationActivity
-    return {
-      ...liq,
-      liquidatedPositions: liq.liquidatedPositions.map((p) => ({
-        ...p,
-        market: requireMarket(byMarketId, p.market.id),
-      })),
-    }
-  }
-  return item
-}
-
 const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
   timeParams: { user: Address; startTime: number; endTime?: number },
+  resolveMarket: (coin: string) => MarketDisplay,
   options?: InfoRequestOptions
 ): Promise<ActivityItem[]> => {
   const needLedger =
@@ -100,11 +68,13 @@ const fetchActivityData = async (
   ])
 
   const ledgerItems: ActivityItem[] = ledgerUpdates
-    .map((entry) => mapLedgerEntry(entry, PROVIDER_KEY, timeParams.user))
+    .map((entry) =>
+      mapLedgerEntry(entry, PROVIDER_KEY, timeParams.user, resolveMarket)
+    )
     .filter((item): item is ActivityItem => item !== null)
 
   const fundingItems: ActivityItem[] = fundingUpdates.map((entry) =>
-    mapFundingActivity(entry, PROVIDER_KEY)
+    mapFundingActivity(entry, PROVIDER_KEY, resolveMarket)
   )
 
   const merged = [...ledgerItems, ...fundingItems].sort(
@@ -135,12 +105,8 @@ export const getActivity = async (
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
-  const { markets } = await coreGetMarkets(
-    client,
-    { provider: PROVIDER_KEY },
-    options
-  )
-  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  await registry.sync()
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(
@@ -163,6 +129,7 @@ export const getActivity = async (
     apiUrl,
     params.type,
     timeParams,
+    (coin) => registry.require(coin),
     infoOpts
   )
 
@@ -178,9 +145,7 @@ export const getActivity = async (
         )
 
   const hasMore = filtered.length > limit
-  const items = filtered
-    .slice(0, limit)
-    .map((item) => enrichActivityItem(item, byMarketId))
+  const items = filtered.slice(0, limit)
 
   return {
     provider: PROVIDER_KEY,

@@ -2,13 +2,15 @@ import { stringToFloat } from '@lifi/perps-sdk'
 import type { Asset, Balance, Market } from '@lifi/perps-types'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlSpotBalance } from '../types/index.js'
-import { marketDisplayFromCoin } from './deriveMarket.js'
+import { coinAsset } from './marketDisplay.js'
 
 /**
  * USD mark price keyed by spot token index: each spot market's `markPrice`
  * under its base-asset id, and every market's quote-asset id at $1.
  */
-export const spotPriceById = (markets: Market[]): Map<string, number> => {
+export const spotPriceById = (
+  markets: readonly Market[]
+): Map<string, number> => {
   const map = new Map<string, number>()
   for (const m of markets) {
     if (m.categoryId === SPOT_MARKET_ID) {
@@ -29,7 +31,7 @@ export const spotPriceById = (markets: Market[]): Map<string, number> => {
  * — with display fields derived from the coin.
  */
 export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
-  ...marketDisplayFromCoin(b.coin).baseAsset,
+  ...coinAsset(b.coin),
   id: String(b.token),
 })
 

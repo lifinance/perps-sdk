@@ -11,7 +11,6 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
-import { marketDisplayFromCoin } from './deriveMarket.js'
 
 /**
  * Map a Hyperliquid orderType string to the OrderType enum.
@@ -191,13 +190,16 @@ const mapTimeInForce = (tif: string | undefined): TimeInForce | undefined => {
 }
 
 /** @public */
-export const mapOrder = (detail: HlOrderDetail): Order => {
+export const mapOrder = (
+  detail: HlOrderDetail,
+  market: MarketDisplay
+): Order => {
   const o = detail.order
   const filled = parseFloat(o.origSz) - parseFloat(o.sz)
 
   return {
     orderId: String(o.oid),
-    market: marketDisplayFromCoin(o.coin),
+    market,
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     type: mapOrderType(o.orderType),
     price: o.limitPx,

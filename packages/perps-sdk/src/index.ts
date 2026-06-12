@@ -18,6 +18,13 @@ export {
 export { PerpsClient } from './client/PerpsClient.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
+// Registries
+export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
+export {
+  getMarketRegistry,
+  MarketRegistry,
+  toMarketDisplay,
+} from './registry/marketRegistry.js'
 // Services
 export type { CreateActionParams } from './services/createAction.js'
 export { createAction } from './services/createAction.js'

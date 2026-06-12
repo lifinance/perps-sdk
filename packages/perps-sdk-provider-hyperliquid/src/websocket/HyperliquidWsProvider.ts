@@ -1,7 +1,7 @@
 import {
-  cachePromise,
-  getMarkets as coreGetMarkets,
+  getMarketRegistry,
   isActiveOrderStatus,
+  type MarketRegistry,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
@@ -12,8 +12,6 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import {
-  type Market,
-  type MarketDisplay,
   type OpenOrder,
   OrderSide,
   OrderType,
@@ -34,7 +32,6 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
-  findMarket,
   isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
@@ -49,9 +46,6 @@ import {
 
 /** HL's `l2Book` returns at most this many levels per side (slow/default mode). */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
-
-/** Minimum gap between unknown-market-triggered registry refetches. */
-const MARKET_REFRESH_COOLDOWN_MS = 60_000
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -88,11 +82,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
   private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
+  private readonly registry: MarketRegistry | undefined
   private midsBySubDex = new Map<string, Record<string, string>>()
-  private byMarketId = new Map<string, Market>()
-  private byMarketIdPromise: Promise<void> | undefined
-  private warnedMarketIds = new Set<string>()
-  private marketRefreshAfter = 0
 
   constructor(
     wsUrl: string,
@@ -106,6 +97,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     this.subDexes = subDexes
     this.client = client
+    this.registry = client && getMarketRegistry(client, providerKey)
   }
 
   async subscribeQuote(
@@ -129,68 +121,6 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
   }
 
-  /**
-   * Fetch the backend's enriched `/markets` registry once per provider
-   * instance and key it by `Market.id`, used to re-key venue-synthesised
-   * displays on mapped positions/orders/fills. No-op without a client.
-   */
-  private async ensureMarketMap(): Promise<void> {
-    const client = this.client
-    if (this.byMarketId.size > 0 || client === undefined) {
-      return
-    }
-    await this.fetchMarketMap(client)
-  }
-
-  private fetchMarketMap(client: PerpsSDKClient): Promise<void> {
-    return cachePromise(
-      () => this.byMarketIdPromise,
-      (p) => {
-        this.byMarketIdPromise = p
-      },
-      async () => {
-        const { markets } = await coreGetMarkets(client, {
-          provider: this.providerKey,
-        })
-        this.byMarketId = new Map(markets.map((m) => [m.id, m]))
-        this.warnedMarketIds.clear()
-      }
-    )
-  }
-
-  /**
-   * Resolve a wire market id against the registry without aborting the
-   * containing frame: a miss warns once per id, schedules a cooldown-gated
-   * registry refetch (the id may have listed after the snapshot) and returns
-   * `undefined` so the caller skips just that item.
-   */
-  private resolveMarket(marketId: string): MarketDisplay | undefined {
-    const market = findMarket(this.byMarketId, marketId)
-    if (market) {
-      return market
-    }
-    if (!this.warnedMarketIds.has(marketId)) {
-      this.warnedMarketIds.add(marketId)
-      wsLog.unknownMarket(this.providerKey, marketId)
-    }
-    this.refreshMarketMap()
-    return undefined
-  }
-
-  private refreshMarketMap(): void {
-    const client = this.client
-    const now = Date.now()
-    if (client === undefined || now < this.marketRefreshAfter) {
-      return
-    }
-    // Set synchronously so concurrent frames cannot trigger a refetch storm.
-    this.marketRefreshAfter = now + MARKET_REFRESH_COOLDOWN_MS
-    this.byMarketIdPromise = undefined
-    this.fetchMarketMap(client).catch((error) =>
-      wsLog.marketRefreshFailure(this.providerKey, error)
-    )
-  }
-
   protected async openChannel(sub: Subscription): Promise<() => void> {
     // Must run synchronously, before any await, so two concurrent opens
     // cannot both pass the exclusivity check.
@@ -198,7 +128,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       this.claimOrderUpdatesKey(this.toKey(sub))
     }
 
-    await this.ensureMarketMap()
+    await this.registry?.sync()
 
     // Prices require multi-sub-dex allMids subscriptions under one logical key.
     if (sub.channel === 'prices') {
@@ -322,7 +252,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           ...(sub.priceStep !== undefined
             ? priceStepToAggregation(
                 sub.priceStep,
-                Number(this.byMarketId.get(sub.marketId)?.markPrice)
+                Number(this.registry?.get(sub.marketId)?.markPrice)
               )
             : {}),
         }
@@ -460,7 +390,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         continue
       }
       const type = mapOrderType(o.orderType)
-      const market = this.resolveMarket(o.coin)
+      // A miss warns once and schedules a cooldown-gated registry refetch
+      // (the id may have listed after the snapshot); skip just this item.
+      const market = this.registry?.get(o.coin)
       if (!market) {
         continue
       }
@@ -501,7 +433,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private handleUserFills(data: HlWsUserFillsData) {
     const items = data.fills.flatMap((f) => {
-      const market = this.resolveMarket(f.coin)
+      const market = this.registry?.get(f.coin)
       return market ? [mapFill(f as HlUserFill, market)] : []
     })
     this.emit(`userFills:${data.user.toLowerCase()}`, {
@@ -518,7 +450,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         if (!isOpenAssetPosition(ap as HlAssetPosition)) {
           return []
         }
-        const market = this.resolveMarket(ap.position.coin)
+        const market = this.registry?.get(ap.position.coin)
         return market ? [mapPosition(ap as HlAssetPosition, market)] : []
       })
     )
@@ -529,7 +461,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleSpotState(data: HlWsSpotStateData) {
-    const priceById = spotPriceById([...this.byMarketId.values()])
+    const priceById = spotPriceById(this.registry?.markets ?? [])
     this.emit(`spotState:${data.user.toLowerCase()}`, {
       channel: 'spotBalances',
       data: data.spotState.balances.map((b) => ({

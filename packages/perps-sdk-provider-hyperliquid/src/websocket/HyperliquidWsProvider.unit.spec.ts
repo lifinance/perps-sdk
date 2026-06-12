@@ -1,5 +1,5 @@
 import {
-  type PerpsSDKClient,
+  createPerpsClient,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
 } from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
@@ -139,17 +139,35 @@ const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
   return { MockRws, getMockRwsInstance: () => instance }
 })
 
-const { getMarketsMock } = vi.hoisted(() => ({
-  getMarketsMock: vi.fn(),
-}))
-
 vi.mock('@lifi/perps-sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@lifi/perps-sdk')>()
   return {
     ...actual,
     ReconnectingWebSocket: MockRws,
-    getMarkets: getMarketsMock,
   }
+})
+
+// The market registry fetches `${apiUrl}/markets` over HTTP — serve it here.
+const marketsFetchMock = vi.fn()
+
+const marketsFailureResponse = () =>
+  new Response(JSON.stringify({ code: 1, message: 'markets fetch failed' }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
+  const url = input.toString()
+  if (!url.includes('/markets')) {
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  const result = await marketsFetchMock()
+  return result instanceof Response
+    ? result
+    : new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
 })
 
 // --- Test setup ---
@@ -165,18 +183,20 @@ function createProvider(): HyperliquidWsProvider {
   )
 }
 
-const fakeClient = {} as PerpsSDKClient
+// Fresh client per provider: the market registry is cached per (client, provider).
+const freshClient = () =>
+  createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
 
-/** Provider wired to a client whose `getMarkets` returns `markets`. */
+/** Provider whose market registry is served `markets`. */
 function createEnrichingProvider(
   markets = [...HL_MARKETS, HL_SPOT_MARKET]
 ): HyperliquidWsProvider {
-  getMarketsMock.mockResolvedValue({ markets })
+  marketsFetchMock.mockResolvedValue({ markets })
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
     providerKey,
     subDexes,
-    fakeClient
+    freshClient()
   )
 }
 
@@ -602,16 +622,16 @@ describe('HyperliquidWsProvider', () => {
       }
     })
 
-    it('retries the market-map fetch on the next subscribe after a transient failure', async () => {
-      getMarketsMock.mockReset()
-      getMarketsMock
-        .mockRejectedValueOnce(new Error('coreGetMarkets boom'))
+    it('retries the markets fetch on the next subscribe after a transient failure', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock
+        .mockResolvedValueOnce(marketsFailureResponse())
         .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
         subDexes,
-        fakeClient
+        freshClient()
       )
 
       await expect(
@@ -619,7 +639,7 @@ describe('HyperliquidWsProvider', () => {
           { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
           vi.fn()
         )
-      ).rejects.toThrow('coreGetMarkets boom')
+      ).rejects.toThrow('markets fetch failed')
 
       const listener = vi.fn()
       await provider.subscribe(
@@ -657,7 +677,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect(marketsFetchMock).toHaveBeenCalledTimes(2)
       expect(listener).toHaveBeenCalledOnce()
       expect(listener.mock.calls[0][0].data[0]).toMatchObject({
         market: { id: 'BTC' },
@@ -1716,15 +1736,15 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('refetches the registry on an unknown market id and maps it on the next frame', async () => {
-      getMarketsMock.mockReset()
-      getMarketsMock
+      marketsFetchMock.mockReset()
+      marketsFetchMock
         .mockResolvedValueOnce({ markets: HL_MARKETS })
         .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
         subDexes,
-        fakeClient
+        freshClient()
       )
       const listener = vi.fn()
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -1742,7 +1762,7 @@ describe('HyperliquidWsProvider', () => {
       await flushMicrotasks()
       getMockRwsInstance().simulateMessage(frame)
 
-      expect(getMarketsMock).toHaveBeenCalledTimes(2)
+      expect(marketsFetchMock).toHaveBeenCalledTimes(2)
       expect(listener).toHaveBeenCalledTimes(2)
       expect(
         listener.mock.calls[0][0].data.map((p: any) => p.market.id)
@@ -1757,13 +1777,13 @@ describe('HyperliquidWsProvider', () => {
       vi.useFakeTimers({ toFake: ['Date'] })
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       try {
-        getMarketsMock.mockReset()
-        getMarketsMock.mockResolvedValue({ markets: HL_MARKETS })
+        marketsFetchMock.mockReset()
+        marketsFetchMock.mockResolvedValue({ markets: HL_MARKETS })
         const provider = new HyperliquidWsProvider(
           'wss://api.hyperliquid.xyz/ws',
           providerKey,
           subDexes,
-          fakeClient
+          freshClient()
         )
         const listener = vi.fn()
 
@@ -1771,21 +1791,21 @@ describe('HyperliquidWsProvider', () => {
           { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
           listener
         )
-        expect(getMarketsMock).toHaveBeenCalledTimes(1)
+        expect(marketsFetchMock).toHaveBeenCalledTimes(1)
 
         const frame = allDexsFrame('0xuser1', [['xyz', ['xyz:BRENTOIL']]])
         getMockRwsInstance().simulateMessage(frame)
         await flushMicrotasks()
-        expect(getMarketsMock).toHaveBeenCalledTimes(2)
+        expect(marketsFetchMock).toHaveBeenCalledTimes(2)
 
         getMockRwsInstance().simulateMessage(frame)
         await flushMicrotasks()
-        expect(getMarketsMock).toHaveBeenCalledTimes(2)
+        expect(marketsFetchMock).toHaveBeenCalledTimes(2)
 
         vi.setSystemTime(Date.now() + 60_000)
         getMockRwsInstance().simulateMessage(frame)
         await flushMicrotasks()
-        expect(getMarketsMock).toHaveBeenCalledTimes(3)
+        expect(marketsFetchMock).toHaveBeenCalledTimes(3)
 
         // Every frame still emitted (empty — the only position is unknown).
         expect(listener).toHaveBeenCalledTimes(3)

@@ -1,3 +1,4 @@
+import type { MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
   FillStatus,
@@ -8,11 +9,16 @@ import {
 import { describe, expect, it } from 'vitest'
 import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
-import { marketDisplay } from './marketDisplay.js'
 
 const ACCOUNT_INDEX = 42
 const SYMBOL = 'ETH'
-const MARKET = marketDisplay('1', SYMBOL)
+const MARKET: MarketDisplay = {
+  providerId: 'lighter',
+  id: '1',
+  categoryId: 'lighter',
+  baseAsset: { providerId: 'lighter', id: '1', displaySymbol: SYMBOL },
+  quoteAsset: { providerId: 'lighter', id: 'USDC', displaySymbol: 'USDC' },
+}
 
 const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   trade_id: 7,

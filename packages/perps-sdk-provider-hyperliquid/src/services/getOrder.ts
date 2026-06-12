@@ -1,5 +1,5 @@
 import {
-  getMarket as coreGetMarket,
+  getMarketRegistry,
   PerpsError,
   type ProviderGetOrderParams,
   type SDKRequestOptions,
@@ -55,11 +55,7 @@ export const getOrder = async (
     throw err
   }
 
-  const order = mapOrder(status.order)
-  const market = await coreGetMarket(
-    client,
-    { provider: PROVIDER_KEY, marketId: order.market.id },
-    options
-  )
-  return { ...order, market }
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  await registry.sync()
+  return mapOrder(status.order, registry.require(status.order.order.coin))
 }

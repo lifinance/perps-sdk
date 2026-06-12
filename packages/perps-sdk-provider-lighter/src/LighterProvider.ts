@@ -1,8 +1,8 @@
 import {
-  getAssets as coreGetAssets,
-  getMarkets as coreGetMarkets,
   ExplorerChainId,
   explorerTxUrl,
+  getAssetRegistry,
+  getMarketRegistry,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -29,7 +29,6 @@ import type {
   Balance,
   FillsResponse,
   LighterAccountConfig,
-  MarketDisplay,
   Order,
   OrdersResponse,
   Position,
@@ -91,8 +90,8 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
-  resolveMarketDisplay,
-  toMarketDisplay,
+  toIsoFromMs,
+  toIsoFromSeconds,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -106,11 +105,6 @@ const projectFeeTier = (
   maker: tickToFeeString(limits.current_maker_fee_tick),
   taker: tickToFeeString(limits.current_taker_fee_tick),
 })
-
-const toIsoFromSeconds = (seconds: number): string =>
-  new Date(seconds * 1000).toISOString()
-
-const toIsoFromMs = (ms: number): string => new Date(ms).toISOString()
 
 const orderCountFor = (p: LtDetailedAccountPosition): number =>
   (p.open_order_count ?? 0) +
@@ -290,44 +284,6 @@ export const lighterProvider = (
       ),
       fetchImpl: client.config.fetch,
     })
-  }
-
-  /**
-   * Build a `Map<market_id, MarketDisplay>` from the backend's `/perps/markets`
-   * response — the canonical, fully-populated market identity (baseAsset,
-   * quoteAsset, logos) carried verbatim onto mapped fills/positions/orders.
-   * Backend response is Valkey-cached so this is cheap.
-   */
-  const buildMarketLookup = async (
-    opts?: SDKRequestOptions
-  ): Promise<Map<number, MarketDisplay>> => {
-    const { markets } = await coreGetMarkets(
-      requireClient(),
-      { provider: LIGHTER_PROVIDER_KEY },
-      opts
-    )
-    return new Map(
-      markets
-        .filter((m) => m.categoryId === LIGHTER_PROVIDER_KEY)
-        .map((m) => [Number(m.id), toMarketDisplay(m)])
-    )
-  }
-
-  /**
-   * Resolve the `Asset.id → Asset.displaySymbol` map from the backend's
-   * `/perps/assets` token registry. The backend response is Valkey-cached so
-   * this is cheap to call per read; no client-side memo (a long-lived instance
-   * would otherwise serve a stale registry).
-   */
-  const buildTokenLookup = async (
-    opts?: SDKRequestOptions
-  ): Promise<Map<string, string>> => {
-    const { assets } = await coreGetAssets(
-      requireClient(),
-      { provider: LIGHTER_PROVIDER_KEY },
-      opts
-    )
-    return new Map(assets.map((a) => [a.id, a.displaySymbol]))
   }
 
   const getStandardAuthToken = async (
@@ -644,26 +600,22 @@ export const lighterProvider = (
         resolveAuthToken(opts, params.address),
       ])
 
-      const [
-        marketLookup,
-        registeredKey,
-        limitsResult,
-        localKey,
-        storedReadOnlyToken,
-      ] = await Promise.all([
-        buildMarketLookup(opts),
-        fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
-        // No token is a legitimate unauthenticated read → undefined → zero fee
-        // tier. A fetch error is NOT: it must propagate, never be coerced to a
-        // fabricated 0%/0% fee tier.
-        token === undefined
-          ? Promise.resolve(undefined)
-          : retryOnRevoked(opts, params.address, token, (t) =>
-              fetchAccountLimits(client, account.index, t)
-            ),
-        keyStore ? keyStore.get(params.address) : Promise.resolve(null),
-        readOnlyTokenManager.get(params.address, account.index),
-      ])
+      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const [, registeredKey, limitsResult, localKey, storedReadOnlyToken] =
+        await Promise.all([
+          registry.sync(),
+          fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
+          // No token is a legitimate unauthenticated read → undefined → zero fee
+          // tier. A fetch error is NOT: it must propagate, never be coerced to a
+          // fabricated 0%/0% fee tier.
+          token === undefined
+            ? Promise.resolve(undefined)
+            : retryOnRevoked(opts, params.address, token, (t) =>
+                fetchAccountLimits(client, account.index, t)
+              ),
+          keyStore ? keyStore.get(params.address) : Promise.resolve(null),
+          readOnlyTokenManager.get(params.address, account.index),
+        ])
 
       // REGISTER_API_KEY is satisfied only when the locally-held keypair
       // matches the key registered on-chain at this slot — existence alone is
@@ -674,9 +626,8 @@ export const lighterProvider = (
         normalizeLighterPublicKey(localKey.apiKeyPublicKey) ===
           normalizeLighterPublicKey(registeredKey.public_key)
 
-      const positions: Position[] = mapOpenPositions(
-        account.positions,
-        marketLookup
+      const positions: Position[] = mapOpenPositions(account.positions, (id) =>
+        registry.require(String(id))
       )
 
       const totalMarginUsed = positions.reduce(
@@ -742,14 +693,14 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
       const client = apiClient(opts)
-      const [account, marketLookup] = await Promise.all([
+      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildMarketLookup(opts),
+        registry.sync(),
       ])
 
-      let positions: Position[] = mapOpenPositions(
-        account.positions,
-        marketLookup
+      let positions: Position[] = mapOpenPositions(account.positions, (id) =>
+        registry.require(String(id))
       )
 
       if (params.marketId !== undefined) {
@@ -778,9 +729,10 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, marketLookup] = await Promise.all([
+      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildMarketLookup(opts),
+        registry.sync(),
       ])
 
       const marketIds =
@@ -798,7 +750,7 @@ export const lighterProvider = (
 
       const { openOrders, triggerOrders } = classifyAndMapOrders(
         responses.flatMap((r) => r.orders),
-        (marketIndex) => resolveMarketDisplay(marketLookup, marketIndex)
+        (marketIndex) => registry.require(String(marketIndex))
       )
 
       const total = openOrders.length + triggerOrders.length
@@ -826,9 +778,10 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, marketLookup] = await Promise.all([
+      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildMarketLookup(opts),
+        registry.sync(),
       ])
 
       // Native `order_index` route only. The cross-provider `Order.orderId`
@@ -864,10 +817,7 @@ export const lighterProvider = (
       for (const response of activeResponses) {
         const hit = response.orders.find(predicate as (o: unknown) => boolean)
         if (hit !== undefined) {
-          return mapOrderDetail(
-            hit,
-            resolveMarketDisplay(marketLookup, hit.market_index)
-          )
+          return mapOrderDetail(hit, registry.require(String(hit.market_index)))
         }
       }
 
@@ -880,10 +830,7 @@ export const lighterProvider = (
       )
       const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
       if (hit !== undefined) {
-        return mapOrderDetail(
-          hit,
-          resolveMarketDisplay(marketLookup, hit.market_index)
-        )
+        return mapOrderDetail(hit, registry.require(String(hit.market_index)))
       }
 
       throw new PerpsError(
@@ -906,9 +853,10 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const [account, marketLookup] = await Promise.all([
+      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
-        buildMarketLookup(opts),
+        registry.sync(),
       ])
 
       const queryParams: Record<string, string | number | boolean> = {
@@ -930,11 +878,7 @@ export const lighterProvider = (
       )
 
       const items = response.trades.map((t) =>
-        mapFill(
-          t,
-          account.index,
-          resolveMarketDisplay(marketLookup, t.market_id)
-        )
+        mapFill(t, account.index, registry.require(String(t.market_id)))
       )
 
       return {
@@ -964,7 +908,15 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const [history, marketLookup, tokensById] = await Promise.all([
+      const marketRegistry = getMarketRegistry(
+        requireClient(),
+        LIGHTER_PROVIDER_KEY
+      )
+      const assetRegistry = getAssetRegistry(
+        requireClient(),
+        LIGHTER_PROVIDER_KEY
+      )
+      const [history] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
           fetchAllHistory(
             client,
@@ -975,8 +927,8 @@ export const lighterProvider = (
             inputCursor
           )
         ),
-        buildMarketLookup(opts),
-        buildTokenLookup(opts),
+        marketRegistry.sync(),
+        assetRegistry.sync(),
       ])
 
       const items: ActivityItem[] = [
@@ -1007,7 +959,7 @@ export const lighterProvider = (
             provider: LIGHTER_PROVIDER_KEY,
             timestamp: toIsoFromSeconds(f.timestamp),
             type: ActivityType.FUNDING,
-            market: resolveMarketDisplay(marketLookup, f.market_id),
+            market: marketRegistry.require(String(f.market_id)),
             amount: f.change,
             positionSize: f.position_size,
             fundingRate: f.rate,
@@ -1024,7 +976,7 @@ export const lighterProvider = (
             leverageType: l.type,
             liquidatedPositions: [
               {
-                market: resolveMarketDisplay(marketLookup, l.market_id),
+                market: marketRegistry.require(String(l.market_id)),
                 size: '0',
               },
             ],
@@ -1042,7 +994,9 @@ export const lighterProvider = (
             type: ActivityType.TRANSFER,
             direction,
             counterpartyAccountIndex,
-            asset: tokensById.get(String(t.asset_id)) ?? String(t.asset_id),
+            asset:
+              assetRegistry.get(String(t.asset_id))?.displaySymbol ??
+              String(t.asset_id),
             amount: t.amount,
             explorerLink: explorerTxUrl(ExplorerChainId.LIGHTER, t.tx_hash),
             meta: {

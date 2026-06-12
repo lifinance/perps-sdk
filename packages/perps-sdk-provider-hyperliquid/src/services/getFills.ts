@@ -1,7 +1,4 @@
-import {
-  getMarkets as coreGetMarkets,
-  type SDKRequestOptions,
-} from '@lifi/perps-sdk'
+import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type { FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
@@ -11,7 +8,7 @@ import {
 } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
-import { mapFill, requireMarket } from '../utils/index.js'
+import { mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -48,12 +45,8 @@ export const getFills = async (
   params: GetFillsParams,
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
-  const { markets } = await coreGetMarkets(
-    client,
-    { provider: PROVIDER_KEY },
-    options
-  )
-  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  await registry.sync()
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(
@@ -89,7 +82,7 @@ export const getFills = async (
   const hasMore = filtered.length > limit
   const items = filtered
     .slice(0, limit)
-    .map((f) => mapFill(f, requireMarket(byMarketId, f.coin)))
+    .map((f) => mapFill(f, registry.require(f.coin)))
 
   return {
     provider: PROVIDER_KEY,

@@ -1,7 +1,4 @@
-import {
-  getMarkets as coreGetMarkets,
-  type SDKRequestOptions,
-} from '@lifi/perps-sdk'
+import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type { OpenOrder, OrdersResponse, TriggerOrder } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
@@ -15,7 +12,6 @@ import {
   mapOpenOrder,
   mapTriggerOrder,
   perpsDexNames,
-  requireMarket,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -46,12 +42,8 @@ export const getOrders = async (
   params: GetOrdersParams,
   options?: SDKRequestOptions
 ): Promise<OrdersResponse> => {
-  const { markets } = await coreGetMarkets(
-    client,
-    { provider: PROVIDER_KEY },
-    options
-  )
-  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  const markets = await registry.sync()
   const infoOpts = hlInfoOptions(client, options)
 
   const ordersResults = await Promise.all(
@@ -81,15 +73,15 @@ export const getOrders = async (
 
   let openOrders: OpenOrder[] = nonChild
     .filter((o) => !isTriggerOrder(o))
-    .map((o) => mapOpenOrder(o, requireMarket(byMarketId, o.coin)))
+    .map((o) => mapOpenOrder(o, registry.require(o.coin)))
 
   let triggerOrders: TriggerOrder[] = [
     ...nonChild
       .filter((o) => isTriggerOrder(o))
-      .map((o) => mapTriggerOrder(o, requireMarket(byMarketId, o.coin))),
+      .map((o) => mapTriggerOrder(o, registry.require(o.coin))),
     ...raw
       .filter((o) => childOids.has(o.oid))
-      .map((o) => mapTriggerOrder(o, requireMarket(byMarketId, o.coin))),
+      .map((o) => mapTriggerOrder(o, registry.require(o.coin))),
   ]
 
   if (params.marketId !== undefined) {

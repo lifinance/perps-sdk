@@ -1,6 +1,7 @@
 import {
   cachePromise,
-  getMarkets as coreGetMarkets,
+  getMarketRegistry,
+  type MarketRegistry,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
@@ -11,12 +12,7 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
-import type {
-  Fill,
-  MarketDisplay,
-  Position,
-  Subscription,
-} from '@lifi/perps-types'
+import type { Fill, Position, Subscription } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
@@ -36,11 +32,8 @@ import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
   classifyAndMapOrders,
   fetchDetailedAccount,
-  mapAccountPosition,
   mapFill,
-  marketDisplay,
-  resolveMarketDisplay,
-  toMarketDisplay,
+  mapPosition,
 } from '../utils/index.js'
 
 // Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
@@ -59,10 +52,10 @@ import {
 // and cached for the lifetime of the provider — Lighter's account index is
 // stable for a given L1 wallet.
 //
-// The market identity for each `market_id` is sourced once from the backend's
-// `/markets`. The canonical `Market.id` for Lighter perps is
-// `String(market_id)` ("0", "1", …); the full `MarketDisplay` (base/quote
-// `Asset`) is carried verbatim onto mapped orders/fills/positions.
+// The market identity for each `market_id` is resolved from the shared
+// MarketRegistry. The canonical `Market.id` for Lighter is `String(market_id)`
+// ("0", "1", …); the full market identity (base/quote `Asset`) is carried
+// verbatim onto mapped orders/fills/positions.
 //
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
@@ -76,8 +69,8 @@ const LIGHTER_AUTH_CHANNEL = {
   positions: 'account_all_positions',
 } as const
 
-/** Channels whose handlers read `marketsById`. */
-function channelNeedsDisplaySymbols(channel: Subscription['channel']): boolean {
+/** Channels whose handlers resolve market identity from the registry. */
+function channelNeedsMarkets(channel: Subscription['channel']): boolean {
   return (
     channel === 'orderUpdates' || channel === 'fills' || channel === 'positions'
   )
@@ -119,11 +112,6 @@ export interface LighterWsProviderOptions {
   /** REST base URL for `/api/v1/account` lookups. Defaults to mainnet. */
   restUrl?: string
   /**
-   * Pre-populated `market_id → displaySymbol` map (e.g. `{ 0: 'BTC' }`).
-   * Skips the backend `/perps/assets` fetch — primarily for tests.
-   */
-  displaySymbolMap?: Record<number, string>
-  /**
    * Async function returning a Lighter auth token for an address. Required
    * for authenticated channels (orderUpdates, positions). Without it those
    * subscriptions will throw at subscribe time.
@@ -153,15 +141,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    */
   private readonly positionsByAddress = new Map<string, Map<number, Position>>()
 
-  /**
-   * `market_id → MarketDisplay`. `(providerId, market.id)` uniquely identifies
-   * a market and `providerId` is constant for Lighter, so the numeric
-   * `market_id` alone keys the map. Values carry the full backend market
-   * identity (base/quote `Asset`), carried verbatim onto mapped orders / fills
-   * / positions.
-   */
-  private marketsById: Map<number, MarketDisplay>
-  private displaySymbolsPromise: Promise<void> | undefined
+  private readonly registry: MarketRegistry | undefined
 
   private readonly accountIndexCache = new Map<string, number>()
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
@@ -186,12 +166,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
     this.authProvider = options.authProvider
     this.client = client
-    this.marketsById = new Map(
-      Object.entries(options.displaySymbolMap ?? {}).map(([id, sym]) => [
-        Number(id),
-        marketDisplay(id, sym),
-      ])
-    )
+    this.registry = client && getMarketRegistry(client, providerKey)
   }
 
   async subscribeQuote(
@@ -224,12 +199,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return () => {}
     }
 
-    // Only the auth channels (orders/fills/positions) read
-    // `marketsById`. `prices`/`orderbook` are keyed purely by
-    // `String(market_id)`, so gating them on the `/markets` fetch would let a
-    // failed display-symbol lookup kill live price ticks.
-    if (channelNeedsDisplaySymbols(sub.channel)) {
-      await this.ensureDisplaySymbols()
+    // Only the auth channels (orders/fills/positions) resolve markets.
+    // `prices`/`orderbook` are keyed purely by `String(market_id)`, so gating
+    // them on the registry sync would let a failed `/markets` fetch kill live
+    // price ticks.
+    if (channelNeedsMarkets(sub.channel)) {
+      await this.registry?.sync()
     }
 
     const { channel, needsAuth, address } = await this.resolveChannel(sub)
@@ -374,41 +349,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return account.index
   }
 
-  private async ensureDisplaySymbols(): Promise<void> {
-    if (this.marketsById.size > 0) {
-      return
-    }
-    await cachePromise(
-      () => this.displaySymbolsPromise,
-      (p) => {
-        this.displaySymbolsPromise = p
-      },
-      () => this.fetchDisplaySymbols()
-    )
-  }
-
-  private async fetchDisplaySymbols(): Promise<void> {
-    if (this.client === undefined) {
-      throw new Error(
-        'LighterWsProvider: PerpsSDKClient not provided; cannot fetch display symbols. ' +
-          'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
-      )
-    }
-    const { markets } = await coreGetMarkets(this.client, {
-      provider: LIGHTER_PROVIDER_KEY,
-    })
-    for (const m of markets) {
-      if (m.categoryId !== LIGHTER_PROVIDER_KEY) {
-        continue
-      }
-      const marketId = Number(m.id)
-      if (!Number.isFinite(marketId)) {
-        continue
-      }
-      this.marketsById.set(marketId, toMarketDisplay(m))
-    }
-  }
-
   protected handleMessage(raw: string): void {
     let msg: LtWsMessage
     try {
@@ -489,8 +429,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
+    // A registry miss warns once and schedules a cooldown-gated refetch (the
+    // id may have listed after the snapshot); the order is skipped.
     const data = classifyAndMapOrders(raw, (marketIndex) =>
-      resolveMarketDisplay(this.marketsById, marketIndex)
+      this.registry?.get(String(marketIndex))
     )
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
@@ -508,13 +450,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtTrade>(msg, 'trades')
-    const fills: Fill[] = raw.map((t) =>
-      mapFill(
-        t,
-        accountIndex,
-        resolveMarketDisplay(this.marketsById, t.market_id)
-      )
-    )
+    const fills: Fill[] = raw.flatMap((t) => {
+      const market = this.registry?.get(String(t.market_id))
+      return market ? [mapFill(t, accountIndex, market)] : []
+    })
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
   }
 
@@ -539,7 +478,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (Number.parseFloat(p.position) === 0) {
         state.delete(p.market_id)
       } else {
-        state.set(p.market_id, mapAccountPosition(p, this.marketsById))
+        const market = this.registry?.get(String(p.market_id))
+        if (market) {
+          state.set(p.market_id, mapPosition(p, market))
+        }
       }
     }
     this.emit(`positions:${address}`, {
@@ -742,8 +684,8 @@ function collectAuthChannelItems<T>(
  * `WsProviderFactory` constructor for Lighter — pass to
  * `new PerpsWsClient(client, { wsProviders: { lighter: lighterWsProvider({ authProvider }) } })`.
  *
- * Closes over the per-instance options (auth provider, displaySymbolMap, restUrl
- * override) so `PerpsWsClient` can call the returned factory with just
+ * Closes over the per-instance options (auth provider, restUrl override) so
+ * `PerpsWsClient` can call the returned factory with just
  * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
  * unused — Lighter advertises a single venue, no sub-DEX filtering.
  *

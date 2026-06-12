@@ -1,5 +1,5 @@
 import {
-  getMarkets as coreGetMarkets,
+  getMarketRegistry,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
@@ -21,7 +21,6 @@ import {
 } from '../types/index.js'
 import {
   perpsDexNames,
-  requireMarket,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
@@ -154,12 +153,8 @@ export const getAccount = async (
   params: GetAccountParams,
   options?: SDKRequestOptions
 ): Promise<AccountResponse> => {
-  const { markets } = await coreGetMarkets(
-    client,
-    { provider: PROVIDER_KEY },
-    options
-  )
-  const byMarketId = new Map(markets.map((m) => [m.id, m]))
+  const registry = getMarketRegistry(client, PROVIDER_KEY)
+  const markets = await registry.sync()
   const dexNames = perpsDexNames(markets)
   const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
   const priceById = spotPriceById(markets)
@@ -211,7 +206,7 @@ export const getAccount = async (
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions
       .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
-      .map((ap) => mapPosition(ap, requireMarket(byMarketId, ap.position.coin)))
+      .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
   )
 
   const stateByDex = new Map<string, HlClearinghouseState>()
