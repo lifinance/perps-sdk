@@ -99,13 +99,13 @@ sequenceDiagram
 
 ### Data-plane split
 
-Market-structure reads go through the LI.FI backend, which caches them in Valkey and fans out to each venue on your behalf. Per-user reads (account state, positions, orders, fills, activity) go from the SDK directly to the venue API using the end-user's own IP — this keeps venue rate limits per-user rather than concentrating them on the backend's single egress address.
+Market-structure reads go through the LI.FI backend, which fans out to each venue on your behalf. Per-user reads (account state, positions, orders, fills, activity) go from the SDK directly to the venue API using the end-user's own IP — this keeps venue rate limits per-user rather than concentrating them on the backend's single egress address.
 
 ```mermaid
 graph LR
     SDK[Perps SDK]
-    BE["LI.FI backend<br/>Valkey-cached"]
-    V[Venue API]
+    BE[LI.FI backend]
+    V[Perps Dex API]
     SDK -- "markets · assets · prices<br/>ohlcv · orderbook" --> BE
     BE --> V
     SDK -- "account · positions · orders<br/>fills · activity" --> V
