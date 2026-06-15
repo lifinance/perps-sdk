@@ -11,57 +11,54 @@
     "trading",
     "cross-chain"
   ],
-  "homepage": "https://github.com/lifinance/perps-types",
+  "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
-    "url": "https://github.com/lifinance/perps-types"
+    "url": "https://github.com/lifinance/perps-sdk/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/lifinance/perps-types.git"
+    "url": "https://github.com/lifinance/perps-sdk.git"
   },
   "license": "Apache-2.0",
-  "author": "LI.FI <github@li.finance>",
+  "author": "LI.FI <dev@li.fi>",
   "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "typings": "./dist/types/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
-      "import": {
-        "types": "./src/_types/index.d.ts",
-        "default": "./src/_esm/index.js"
-      },
-      "require": {
-        "types": "./src/_types/index.d.ts",
-        "default": "./src/_cjs/index.js"
-      }
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "default": "./dist/cjs/index.js"
     },
     "./package.json": "./package.json"
   },
-  "main": "./src/_cjs/index.js",
-  "module": "./src/_esm/index.js",
-  "types": "./src/_types/index.d.ts",
-  "typings": "./src/_types/index.d.ts",
-  "sideEffects": false,
   "files": [
-    "src",
-    "!src/**/*.tsbuildinfo",
-    "!src/**/*.unit.spec.ts"
+    "dist/**",
+    "!dist/**/*.tsbuildinfo",
+    "src/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/*.test.ts",
+    "!src/**/*.tsbuildinfo"
   ],
   "scripts": {
-    "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types",
-    "build:cjs": "tsc --project ./tsconfig.build.json --module commonjs --outDir ./src/_cjs --removeComments --verbatimModuleSyntax false && printf '{\"type\":\"commonjs\"}' > ./src/_cjs/package.json",
-    "build:esm": "tsc --project ./tsconfig.build.json --module es2022 --outDir ./src/_esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/_esm/package.json",
-    "build:types": "tsc --project ./tsconfig.build.json --module esnext --declarationDir ./src/_types --emitDeclarationOnly --declaration --declarationMap",
-    "build:prerelease": "pnpm build && pnpm node scripts/prepublishOnly.js",
+    "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:clean",
+    "build:cjs": "tsc --project ./tsconfig.json --module commonjs --outDir ./dist/cjs --removeComments --verbatimModuleSyntax false && mkdir -p ./dist/cjs && printf '{\"type\":\"commonjs\"}' > ./dist/cjs/package.json",
+    "build:esm": "tsc --project ./tsconfig.json --module es2022 --outDir ./dist/esm && mkdir -p ./dist/esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./dist/esm/package.json",
+    "build:types": "tsc --project ./tsconfig.json --module esnext --declarationDir ./dist/types --emitDeclarationOnly --declaration --declarationMap",
+    "build:clean": "rm -rf tsconfig.tsbuildinfo ./dist/tsconfig.tsbuildinfo",
+    "build:prerelease": "pnpm build && pnpm node ../../scripts/prerelease.js",
+    "clean": "pnpm build:clean && rm -rf dist",
     "check:types": "tsc --noEmit",
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo src/tsconfig.build.tsbuildinfo src/_esm src/_cjs src/_types",
     "test": "vitest --run",
     "test:cov": "vitest --run --coverage",
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
     "@vitest/coverage-v8": "^2.1.8",
-    "fs-extra": "^11.2.0",
     "madge": "^8.0.0",
     "typescript": "^5.9.2",
     "vitest": "^2.1.8"

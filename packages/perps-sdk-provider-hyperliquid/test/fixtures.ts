@@ -11,7 +11,7 @@ import type {
   HlUserFills,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
-} from '@lifi/perps-types/providers/hyperliquid'
+} from '../src/types/index.js'
 
 export const HL_PERP_DEXS_MAIN_ONLY: HlPerpDexs = [null]
 
