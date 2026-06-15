@@ -33,7 +33,7 @@ importers:
         specifier: ^9.5.0
         version: 9.5.0
       typescript:
-        specifier: ^5.7.2
+        specifier: ^5.9.2
         version: 5.9.3
 
   packages/perps-sdk:
@@ -134,6 +134,9 @@ importers:
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
+      '@vitest/coverage-v8':
+        specifier: ^2.1.8
+        version: 2.1.9(vitest@2.1.9(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3)))
       fs-extra:
         specifier: ^11.2.0
         version: 11.3.5

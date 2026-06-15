@@ -21,7 +21,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "pnpm -r --filter './packages/**' build",
-    "clean": "pnpm -r --parallel --filter './packages/**' clean",
+    "clean": "pnpm -r --parallel --filter './packages/**' run clean",
     "clean:modules": "find . -name \"node_modules\" -type d -prune -exec rm -rf {} +",
     "release": "pnpm release:version && pnpm build && pnpm standard-version -a -s",
     "release:alpha": "pnpm release:version --preid alpha && pnpm build && pnpm standard-version -a -s --prerelease alpha --skip.changelog",
@@ -61,7 +61,7 @@
     "knip": "^5.82.1",
     "lerna": "^9.0.7",
     "standard-version": "^9.5.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.9.2"
   },
   "publishConfig": {
     "access": "public"

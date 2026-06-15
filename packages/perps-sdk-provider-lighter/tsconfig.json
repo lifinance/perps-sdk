@@ -11,7 +11,10 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "composite": true,
+    "rootDir": "./src",
     "outDir": "./dist",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "resolveJsonModule": true
   },
   "include": ["./src/**/*"],
