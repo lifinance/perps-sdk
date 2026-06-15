@@ -353,9 +353,12 @@ pnpm workspace. From the repository root:
 | `pnpm build` | Build every package (CJS + ESM + types) |
 | `pnpm test` | Run all package tests (vitest) |
 | `pnpm test:unit` | Unit tests only |
+| `pnpm test:cov` | Tests with coverage |
 | `pnpm check` | Biome lint/format check |
 | `pnpm check:write` | Biome auto-fix |
 | `pnpm check:types` | TypeScript type checking across packages |
+| `pnpm check:circular-deps` | madge circular-dependency check |
+| `pnpm knip:check` | Report unused files, deps, and exports |
 
 ## Documentation
 
