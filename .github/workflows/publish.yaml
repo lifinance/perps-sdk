@@ -1,43 +1,75 @@
+# Changesets-driven release: push to main opens/refreshes a "version packages"
+# PR; merging it publishes the bumped packages to npm.
+#
+# npm auth is OIDC trusted publishing, pinned on npmjs.org to this workflow
+# path. Do NOT rename publish.yaml — renaming breaks publishing until the
+# trusted-publisher entry is updated.
 name: Release & Publish
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+-alpha.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+    branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
 jobs:
-  release:
+  verify:
+    name: Verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/checks.yaml
+
+  changesets:
+    name: Version
+    needs: verify
     permissions:
       contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+      - name: Create version PR
+        id: changesets
+        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1.8.0
+        with:
+          version: pnpm changeset:version
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          generate_release_notes: true
-          name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-  publish:
+
+  release:
+    name: Release
+    needs: changesets
+    if: needs.changesets.outputs.hasChangesets == 'false'
     permissions:
       contents: write
       id-token: write
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install dependencies
         uses: ./.github/actions/pnpm-install
-      - name: Build
-        run: pnpm build
       - name: Publish to npm
-        run: |
-          pnpm release:publish${{ contains(github.ref_name, 'alpha') && ':alpha' || contains(github.ref_name, 'beta') && ':beta' || '' }}
+        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1.8.0
+        with:
+          publish: pnpm changeset:publish
+          createGithubReleases: true
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true

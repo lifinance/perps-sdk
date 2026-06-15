@@ -1,0 +1,27 @@
+name: Checks
+
+on:
+  workflow_call:
+  pull_request:
+    paths-ignore: ['README.md', 'LICENSE', '.editorconfig']
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+      - name: Lint and format
+        run: pnpm check
+      - name: Build
+        run: pnpm build
+      - name: Check types
+        run: pnpm check:types
+      - name: Check circular dependencies
+        run: pnpm check:circular-deps
+      - name: Knip
+        run: pnpm knip:check
+      - name: Test
+        run: pnpm test
