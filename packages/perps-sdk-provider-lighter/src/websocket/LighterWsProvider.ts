@@ -229,7 +229,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
   }
 
-  protected onClose(): void {
+  protected override onClose(): void {
     this.orderbooks.clear()
     this.lastPricesByAssetId = {}
     this.positionsByAddress.clear()

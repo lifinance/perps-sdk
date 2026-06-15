@@ -206,7 +206,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     ]
   }
 
-  protected onClose(): void {
+  protected override onClose(): void {
     this.midsBySubDex.clear()
     this.orderUpdatesKey = undefined
   }
