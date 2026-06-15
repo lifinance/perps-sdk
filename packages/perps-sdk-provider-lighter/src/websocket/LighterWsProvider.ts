@@ -27,6 +27,8 @@ import type {
   LtWsMessage,
   LtWsOrderBook,
   LtWsOrderBookMessage,
+  LtWsSpotMarketStats,
+  LtWsSpotMarketStatsAllMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
@@ -36,7 +38,8 @@ import {
   mapPosition,
 } from '../utils/index.js'
 
-// Public channels: `prices` (market_stats/all), `orderbook` (order_book/N).
+// Public channels: `prices` (market_stats/all + spot_market_stats/all),
+// `orderbook` (order_book/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -207,15 +210,21 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       await this.registry?.sync()
     }
 
-    const { channel, needsAuth, address } = await this.resolveChannel(sub)
+    const wireChannels = await this.resolveChannel(sub)
 
     // Registry keyed by the wire channel (unique per sub), so replay-failure
-    // logs name the channel the venue knows.
-    await this.registerSub(channel, { channel, needsAuth, address })
+    // logs name the channel the venue knows. A logical sub may fan out to
+    // several wire channels (e.g. `prices`), each registered independently.
+    for (const { channel, needsAuth, address } of wireChannels) {
+      await this.registerSub(channel, { channel, needsAuth, address })
+    }
     await this.rws.ready()
 
     return () => {
-      this.unregisterSub(channel)
+      for (const { channel } of wireChannels) {
+        this.unregisterSub(channel)
+        this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
+      }
       if (sub.channel === 'orderbook') {
         const id = Number(sub.marketId)
         if (Number.isFinite(id)) {
@@ -225,7 +234,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (sub.channel === 'positions') {
         this.positionsByAddress.delete(sub.address.toLowerCase())
       }
-      this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
     }
   }
 
@@ -282,13 +290,21 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
   }
 
-  private async resolveChannel(sub: Subscription): Promise<{
-    channel: string
-    needsAuth: boolean
-    address?: Address
-  }> {
+  private async resolveChannel(sub: Subscription): Promise<
+    Array<{
+      channel: string
+      needsAuth: boolean
+      address?: Address
+    }>
+  > {
     if (sub.channel === 'prices') {
-      return { channel: 'market_stats/all', needsAuth: false }
+      // Lighter splits stats across two wire channels: perp markets on
+      // `market_stats/all`, spot markets on `spot_market_stats/all`. Both feed
+      // the single aggregated `prices` emit.
+      return [
+        { channel: 'market_stats/all', needsAuth: false },
+        { channel: 'spot_market_stats/all', needsAuth: false },
+      ]
     }
     if (sub.channel === 'orderbook') {
       const id = Number(sub.marketId)
@@ -298,7 +314,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
             'MarketId must be a numeric market_id string.'
         )
       }
-      return { channel: `order_book/${id}`, needsAuth: false }
+      return [{ channel: `order_book/${id}`, needsAuth: false }]
     }
     if (
       sub.channel === 'orderUpdates' ||
@@ -312,11 +328,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       // we don't currently use to scope further. Skip the token here so a
       // user without a registered API key still gets their fill stream.
       const needsAuth = sub.channel !== 'fills'
-      return {
-        channel: `${lighterChannel}/${accountIndex}`,
-        needsAuth,
-        address: sub.address,
-      }
+      return [
+        {
+          channel: `${lighterChannel}/${accountIndex}`,
+          needsAuth,
+          address: sub.address,
+        },
+      ]
     }
     throw new Error(
       `Lighter WS does not support channel: ${(sub as { channel: string }).channel}.`
@@ -380,7 +398,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/market_stats' ||
       msg.type === 'update/market_stats'
     ) {
-      this.handleMarketStats(msg as LtWsMarketStatsAllMessage)
+      this.handleMarketStats((msg as LtWsMarketStatsAllMessage).market_stats)
+      return
+    }
+
+    if (
+      msg.type === 'subscribed/spot_market_stats' ||
+      msg.type === 'update/spot_market_stats'
+    ) {
+      this.handleMarketStats(
+        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats
+      )
       return
     }
 
@@ -520,14 +548,14 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return null
   }
 
-  private handleMarketStats(msg: LtWsMarketStatsAllMessage): void {
-    const stats = msg.market_stats
+  private handleMarketStats(
+    stats?: Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+  ): void {
     if (!stats) {
       return
     }
     const updates: Record<string, string> = {}
-    for (const value of Object.values(stats)) {
-      const entry = value as LtWsMarketStats
+    for (const entry of Object.values(stats)) {
       updates[String(entry.market_id)] = entry.last_trade_price
     }
     if (Object.keys(updates).length === 0) {

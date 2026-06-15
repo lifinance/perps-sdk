@@ -641,9 +641,13 @@ describe('LighterWsProvider', () => {
 
       await (provider as any).replaySubs()
 
-      expect(send).toHaveBeenCalledTimes(1)
+      // `prices` fans out to perp + spot stats channels.
+      expect(send).toHaveBeenCalledTimes(2)
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
+      )
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/all' })
       )
       provider.close()
     })
@@ -785,6 +789,9 @@ describe('LighterWsProvider', () => {
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
       )
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/all' })
+      )
 
       // Price ticks (keyed by String(market_id)) reach the listener.
       ;(provider as any).handleMessage(
@@ -797,6 +804,22 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0]).toEqual({
         channel: 'prices',
         data: { '0': '50000' },
+      })
+
+      // Spot ticks (2048+ ids) arrive on the spot channel and merge into the
+      // same `prices` emit.
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/spot_market_stats',
+          spot_market_stats: {
+            '2048': { market_id: 2048, last_trade_price: '1814.34' },
+          },
+        })
+      )
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(listener.mock.calls[1][0]).toEqual({
+        channel: 'prices',
+        data: { '0': '50000', '2048': '1814.34' },
       })
       provider.close()
     })

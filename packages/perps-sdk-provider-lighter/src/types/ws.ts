@@ -4,7 +4,8 @@
 //     ...payload }
 //
 // Channels we subscribe to:
-//   - market_stats/all        → public prices across all markets
+//   - market_stats/all        → public prices across all perp markets
+//   - spot_market_stats/all   → public prices across all spot markets
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
 
 /** @public */
@@ -39,6 +40,36 @@ export type LtWsMarketStats = {
 export type LtWsMarketStatsAllMessage = LtWsMessage & {
   type: 'subscribed/market_stats' | 'update/market_stats'
   market_stats?: Record<string, LtWsMarketStats>
+}
+
+/**
+ * Spot market stats carry no funding/open-interest fields and address
+ * markets by their spot `market_id` (2048+).
+ * @public
+ */
+export type LtWsSpotMarketStats = {
+  market_id: number
+  symbol: string
+  index_price: string
+  mid_price: string
+  best_ask_price: string
+  best_bid_price: string
+  last_trade_price: string
+  daily_base_token_volume: number
+  daily_quote_token_volume: number
+  daily_price_low: number
+  daily_price_high: number
+  daily_price_change: number
+}
+
+/**
+ * `spot_market_stats/all` is the spot-market counterpart to
+ * `market_stats/all`; both feed the same aggregated `prices` emit.
+ * @public
+ */
+export type LtWsSpotMarketStatsAllMessage = LtWsMessage & {
+  type: 'subscribed/spot_market_stats' | 'update/spot_market_stats'
+  spot_market_stats?: Record<string, LtWsSpotMarketStats>
 }
 
 /** @public */
