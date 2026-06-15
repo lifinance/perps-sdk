@@ -20,7 +20,7 @@
 
 ## Packages
 
-A pnpm + Lerna monorepo. Published packages live under [`packages/`](./packages):
+A pnpm + Changesets monorepo. Published packages live under [`packages/`](./packages):
 
 | Package | Install for | Description |
 | --- | --- | --- |
@@ -359,6 +359,48 @@ pnpm workspace. From the repository root:
 | `pnpm check:types` | TypeScript type checking across packages |
 | `pnpm check:circular-deps` | madge circular-dependency check |
 | `pnpm knip:check` | Report unused files, deps, and exports |
+
+## Releasing
+
+Releases are driven by [Changesets](https://github.com/changesets/changesets) and
+published from CI only — npm auth uses OIDC trusted publishing bound to
+`.github/workflows/publish.yaml`, so you cannot publish from a local machine.
+
+**Every change that should ship needs a changeset.** Run `pnpm changeset` on your
+branch, pick the affected packages and bump levels, and commit the generated
+`.changeset/*.md` file with your PR.
+
+### Stable releases (`latest`)
+
+1. Land your PR (with its changeset) on `main`.
+2. CI opens/refreshes a **"chore: version packages"** PR that applies the pending
+   changesets — bumping versions and updating each `CHANGELOG.md`.
+3. Merge that PR. CI publishes every bumped package to npm under the `latest`
+   dist-tag and creates the GitHub Releases.
+
+A stable version can only be cut by merging to `main` — there is no branch-based
+shortcut.
+
+### Preview releases (`preview` dist-tag)
+
+To publish a real, installable build of in-progress work **without merging to
+`main`** — and without messy local `link:`/`file:` overrides — add the
+**`release-preview`** label to an open PR. CI snapshot-publishes the PR's packages
+as `0.0.0-preview-<sha>` under the `preview` dist-tag and comments the exact
+install commands on the PR. The PR must contain a changeset (that's what marks
+which packages to publish).
+
+```bash
+# install a specific preview build (recommended — pin the exact version)
+npm i @lifi/perps-sdk@0.0.0-preview-<sha>
+
+# or track the newest preview across PRs (the @preview tag moves)
+npm i @lifi/perps-sdk@preview
+```
+
+A `0.0.0-preview-*` version can never become `latest`. The label is removed
+automatically after a successful publish — re-add it to publish a new snapshot
+after pushing more commits.
 
 ## Documentation
 
