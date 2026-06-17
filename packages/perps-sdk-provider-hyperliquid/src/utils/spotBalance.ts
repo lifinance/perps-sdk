@@ -5,16 +5,19 @@ import type { HlSpotBalance } from '../types/index.js'
 import { coinAsset } from './marketDisplay.js'
 
 /**
- * USD mark price keyed by spot token index: each spot market's `markPrice`
- * under its base-asset id, and every market's quote-asset id at $1.
+ * USD price keyed by spot token index: each spot market's live USD price
+ * (from `priceByMarketId`, keyed by `Market.id`) under its base-asset id, and
+ * every market's quote-asset id at $1. A spot market absent from
+ * `priceByMarketId` values its token at 0.
  */
 export const spotPriceById = (
-  markets: readonly Market[]
+  markets: readonly Market[],
+  priceByMarketId: ReadonlyMap<string, number>
 ): Map<string, number> => {
   const map = new Map<string, number>()
   for (const m of markets) {
     if (m.categoryId === SPOT_MARKET_ID) {
-      map.set(m.baseAsset.id, stringToFloat(m.markPrice))
+      map.set(m.baseAsset.id, priceByMarketId.get(m.id) ?? 0)
     }
   }
   for (const m of markets) {

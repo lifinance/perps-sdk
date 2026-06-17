@@ -252,7 +252,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           ...(sub.priceStep !== undefined
             ? priceStepToAggregation(
                 sub.priceStep,
-                Number(this.registry?.get(sub.marketId)?.markPrice)
+                this.mergedMids().get(sub.marketId) ?? Number.NaN
               )
             : {}),
         }
@@ -340,6 +340,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
 
     this.emit('allMids', { channel: 'prices', data: merged })
+  }
+
+  /** Latest mid per `Market.id`, merged across sub-dex allMids frames. */
+  private mergedMids(): Map<string, number> {
+    const map = new Map<string, number>()
+    for (const mids of this.midsBySubDex.values()) {
+      for (const [id, mid] of Object.entries(mids)) {
+        map.set(id, Number(mid))
+      }
+    }
+    return map
   }
 
   private handleL2Book(data: HlWsL2BookData) {
@@ -461,7 +472,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleSpotState(data: HlWsSpotStateData) {
-    const priceById = spotPriceById(this.registry?.markets ?? [])
+    const priceById = spotPriceById(
+      this.registry?.markets ?? [],
+      this.mergedMids()
+    )
     this.emit(`spotState:${data.user.toLowerCase()}`, {
       channel: 'spotBalances',
       data: data.spotState.balances.map((b) => ({

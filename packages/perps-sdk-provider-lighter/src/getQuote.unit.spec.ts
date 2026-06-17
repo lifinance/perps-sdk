@@ -22,9 +22,18 @@ const MARKETS = {
         logoURI: '',
       },
       szDecimals: 5,
-      markPrice: '100',
       maxLeverage: 50,
       onlyIsolated: false,
+    },
+  ],
+}
+
+const PRICES = {
+  prices: [
+    {
+      marketId: '1',
+      price: '100',
+      markPrice: '100',
       funding: { rate: '0.0002', nextFundingTime: 1704067200000 },
     },
   ],
@@ -46,6 +55,9 @@ const installMock = () =>
     const url = typeof input === 'string' ? input : input.toString()
     if (url.includes('/orderbook')) {
       return new Response(JSON.stringify(BOOK), { status: 200 })
+    }
+    if (url.includes('/prices')) {
+      return new Response(JSON.stringify(PRICES), { status: 200 })
     }
     if (url.includes('/markets')) {
       return new Response(JSON.stringify(MARKETS), { status: 200 })
@@ -88,7 +100,7 @@ describe('lighterProvider.getQuote', () => {
     expect(quote.feeTier).toEqual(LIGHTER_BASE_FEE_TIER)
     expect(quote.feeUsd).toBe('0')
     expect(quote.isDefaultFeeTier).toBe(true)
-    expect(quote.funding).toEqual(MARKETS.markets[0].funding)
+    expect(quote.funding).toEqual(PRICES.prices[0].funding)
   })
 
   it('flags insufficient liquidity for an oversized sell', async () => {

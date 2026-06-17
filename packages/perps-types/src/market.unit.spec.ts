@@ -30,11 +30,8 @@ const perpsMarket: PerpsMarket = {
   quoteAsset: usdc,
   szDecimals: 5,
   priceDecimals: 1,
-  markPrice: '60000',
   maxLeverage: 50,
   onlyIsolated: false,
-  funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
-  openInterest: '1000',
   maintenanceMarginRate: 0.01,
 }
 
@@ -45,7 +42,6 @@ const spotMarket: SpotMarket = {
   baseAsset: { ...btc, id: 'PURR', displaySymbol: 'PURR' },
   quoteAsset: usdc,
   szDecimals: 2,
-  markPrice: '0.5',
 }
 
 describe('PerpsMarket', () => {
@@ -53,7 +49,7 @@ describe('PerpsMarket', () => {
     expect(perpsMarket.baseAsset.displaySymbol).toBe('BTC')
     expect(perpsMarket.quoteAsset.displaySymbol).toBe('USDC')
     expect(perpsMarket.maxLeverage).toBe(50)
-    expect(perpsMarket.funding.rate).toBe('0.0001')
+    expect(perpsMarket.onlyIsolated).toBe(false)
   })
 
   it('optionally carries venue tick and margin metadata', () => {
@@ -85,10 +81,30 @@ describe('MarketDisplay', () => {
 })
 
 describe('MarketPrice', () => {
-  it('references a market by opaque marketId', () => {
-    const price: MarketPrice = { marketId: 'BTC', price: '60000' }
+  it('carries the mid plus the live mark/stats fields for a perp market', () => {
+    const price: MarketPrice = {
+      marketId: 'BTC',
+      price: '60000',
+      markPrice: '60010',
+      prevDayPrice: '59000',
+      volume24h: '123456',
+      openInterest: '1000',
+      funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
+    }
     expect(price.marketId).toBe('BTC')
     expect(price.price).toBe('60000')
+    expect(price.markPrice).toBe('60010')
+    expect(price.funding?.rate).toBe('0.0001')
+  })
+
+  it('omits the perp-only fields for a spot market', () => {
+    const price: MarketPrice = {
+      marketId: '@142',
+      price: '0.5',
+      markPrice: '0.5',
+    }
+    expect(price.openInterest).toBeUndefined()
+    expect(price.funding).toBeUndefined()
   })
 })
 

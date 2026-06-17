@@ -107,10 +107,8 @@ export const HL_MARKETS: Market[] = [
     baseAsset: baseAsset('BTC'),
     quoteAsset: USDC_ASSET,
     szDecimals: 5,
-    markPrice: '95000',
     maxLeverage: 50,
     onlyIsolated: false,
-    funding: { rate: '0', nextFundingTime: 0 },
   },
   {
     providerId: 'hyperliquid',
@@ -119,10 +117,8 @@ export const HL_MARKETS: Market[] = [
     baseAsset: baseAsset('ETH'),
     quoteAsset: USDC_ASSET,
     szDecimals: 4,
-    markPrice: '3400',
     maxLeverage: 50,
     onlyIsolated: false,
-    funding: { rate: '0', nextFundingTime: 0 },
   },
 ]
 
@@ -144,10 +140,6 @@ export const HL_SPOT_MARKET: Market = {
   },
   quoteAsset: USDC_ASSET,
   szDecimals: 5,
-  markPrice: '95000',
-  maxLeverage: 1,
-  onlyIsolated: false,
-  funding: { rate: '0', nextFundingTime: 0 },
 }
 
 export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {

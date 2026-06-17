@@ -22,9 +22,18 @@ const MARKETS = {
         logoURI: '',
       },
       szDecimals: 5,
-      markPrice: '100',
       maxLeverage: 50,
       onlyIsolated: false,
+    },
+  ],
+}
+
+const PRICES = {
+  prices: [
+    {
+      marketId: 'BTC',
+      price: '100',
+      markPrice: '100',
       funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
     },
   ],
@@ -46,6 +55,9 @@ const installMock = () =>
     const url = typeof input === 'string' ? input : input.toString()
     if (url.includes('/orderbook')) {
       return new Response(JSON.stringify(BOOK), { status: 200 })
+    }
+    if (url.includes('/prices')) {
+      return new Response(JSON.stringify(PRICES), { status: 200 })
     }
     if (url.includes('/markets')) {
       return new Response(JSON.stringify(MARKETS), { status: 200 })
@@ -88,7 +100,7 @@ describe('hyperliquidProvider.getQuote', () => {
     expect(quote.feeTier).toEqual(HYPERLIQUID_FEE_TIER_FALLBACK)
     expect(quote.isDefaultFeeTier).toBe(true)
     expect(Number(quote.feeUsd)).toBeCloseTo(201 * 0.00045)
-    expect(quote.funding).toEqual(MARKETS.markets[0].funding)
+    expect(quote.funding).toEqual(PRICES.prices[0].funding)
   })
 
   it('throws when the symbol does not match a perps market', async () => {

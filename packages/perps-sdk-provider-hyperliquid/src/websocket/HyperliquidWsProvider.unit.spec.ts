@@ -53,6 +53,13 @@ const allDexsFrame = (user: string, states: Array<[string, string[]]>) =>
 
 const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0))
 
+// Seed the provider's live mids by replaying an `allMids` frame on the socket
+// (created in the constructor), so reference-price lookups resolve.
+const seedMids = (mids: Record<string, string>) =>
+  getMockRwsInstance().simulateMessage(
+    JSON.stringify({ channel: 'allMids', data: { mids } })
+  )
+
 // --- Mock ReconnectingWebSocket ---
 
 const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
@@ -307,9 +314,10 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('maps priceStep onto nSigFigs against the market markPrice and never sends the ignored nLevels', async () => {
-      // BTC markPrice 95000: floor(log10) = 4, step 10 → nSigFigs 4.
+    it('maps priceStep onto nSigFigs against the live mid and never sends the ignored nLevels', async () => {
+      // BTC mid 95000: floor(log10) = 4, step 10 → nSigFigs 4.
       const provider = createEnrichingProvider()
+      seedMids({ BTC: '95000' })
 
       await provider.subscribe(
         {
@@ -329,8 +337,9 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('emits mantissa for a non-power-of-ten priceStep at the 5-sig-fig boundary', async () => {
-      // BTC markPrice 95000: step 2 → nSigFigs 5, mantissa 2.
+      // BTC mid 95000: step 2 → nSigFigs 5, mantissa 2.
       const provider = createEnrichingProvider()
+      seedMids({ BTC: '95000' })
 
       await provider.subscribe(
         {
@@ -351,8 +360,9 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('requests full precision when the priceStep is finer than HL resolves', async () => {
-      // BTC markPrice 95000: step 0.1 needs 6 sig figs, beyond HL's max of 5.
+      // BTC mid 95000: step 0.1 needs 6 sig figs, beyond HL's max of 5.
       const provider = createEnrichingProvider()
+      seedMids({ BTC: '95000' })
 
       await provider.subscribe(
         {
@@ -370,8 +380,8 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('requests full precision when no markPrice is available for the market', async () => {
-      // No client → empty market registry → no reference magnitude.
+    it('requests full precision when no live mid is available for the market', async () => {
+      // No allMids frame received → no reference magnitude.
       const provider = createProvider()
 
       await provider.subscribe(
@@ -1061,13 +1071,11 @@ describe('HyperliquidWsProvider', () => {
           logoURI: '',
         },
         szDecimals: 2,
-        markPrice: '0.5',
-        maxLeverage: 1,
-        onlyIsolated: false,
-        funding: { rate: '0', nextFundingTime: 0 },
       } as Market
       const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
       const listener = vi.fn()
+
+      seedMids({ 'PURR/USDC': '0.5' })
 
       await provider.subscribe(
         { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },

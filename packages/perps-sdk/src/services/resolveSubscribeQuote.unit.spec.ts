@@ -1,5 +1,6 @@
 import type {
   Market,
+  MarketPrice,
   OrderbookResponse,
   PerpsMarket,
   SubscriptionEvent,
@@ -36,11 +37,18 @@ const BTC_PERP: PerpsMarket = {
     logoURI: '',
   },
   szDecimals: 5,
-  markPrice: '100',
   maxLeverage: 50,
   onlyIsolated: false,
-  funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 }
+
+const PRICES: MarketPrice[] = [
+  {
+    marketId: 'BTC',
+    price: '100',
+    markPrice: '100',
+    funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
+  },
+]
 
 const BOOK: OrderbookResponse = {
   provider: 'hyperliquid',
@@ -63,7 +71,12 @@ const bookEvent = (data: OrderbookResponse): SubscriptionEvent => ({
 
 const installMarkets = (markets: Market[]) => {
   server.use(
-    http.get(`${DEFAULT_API_URL}/markets`, () => HttpResponse.json({ markets }))
+    http.get(`${DEFAULT_API_URL}/markets`, () =>
+      HttpResponse.json({ markets })
+    ),
+    http.get(`${DEFAULT_API_URL}/prices`, () =>
+      HttpResponse.json({ prices: PRICES })
+    )
   )
 }
 
@@ -130,7 +143,7 @@ describe('resolveSubscribeQuote', () => {
     // 100 USD @100 + 101 USD @101 → vwap 100.5.
     expect(quote.expectedFillPrice).toBe('100.5')
     expect(Number(quote.feeUsd)).toBeCloseTo(201 * 0.00045)
-    expect(quote.funding).toEqual(BTC_PERP.funding)
+    expect(quote.funding).toEqual(PRICES[0].funding)
     expect(quote.insufficientLiquidity).toBe(false)
   })
 
