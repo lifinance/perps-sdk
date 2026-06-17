@@ -1,5 +1,6 @@
 import type {
   Market,
+  MarketPrice,
   OrderbookResponse,
   PerpsMarket,
   SpotMarket,
@@ -32,10 +33,8 @@ const BTC_PERP: PerpsMarket = {
     logoURI: '',
   },
   szDecimals: 5,
-  markPrice: '100',
   maxLeverage: 50,
   onlyIsolated: false,
-  funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 }
 
 // Same displaySymbol on the spot leg — disambiguated by `type`.
@@ -56,8 +55,17 @@ const BTC_SPOT: SpotMarket = {
     logoURI: '',
   },
   szDecimals: 2,
-  markPrice: '100',
 }
+
+const PRICES: MarketPrice[] = [
+  {
+    marketId: 'BTC',
+    price: '100',
+    markPrice: '100',
+    funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
+  },
+  { marketId: '@1', price: '100', markPrice: '100' },
+]
 
 const BOOK: OrderbookResponse = {
   provider: 'hyperliquid',
@@ -78,7 +86,10 @@ const installMarketAndBook = (markets: Market[], book: OrderbookResponse) => {
     http.get(`${DEFAULT_API_URL}/markets`, () =>
       HttpResponse.json({ markets })
     ),
-    http.get(`${DEFAULT_API_URL}/orderbook`, () => HttpResponse.json(book))
+    http.get(`${DEFAULT_API_URL}/orderbook`, () => HttpResponse.json(book)),
+    http.get(`${DEFAULT_API_URL}/prices`, () =>
+      HttpResponse.json({ prices: PRICES })
+    )
   )
 }
 
@@ -101,7 +112,7 @@ describe('resolveQuote', () => {
     expect(quote.expectedFillPrice).toBe('100.5')
     expect(Number(quote.priceImpactBps)).toBeCloseTo(50)
     expect(Number(quote.feeUsd)).toBeCloseTo(201 * 0.00045)
-    expect(quote.funding).toEqual(BTC_PERP.funding)
+    expect(quote.funding).toEqual(PRICES[0].funding)
     expect(quote.insufficientLiquidity).toBe(false)
   })
 

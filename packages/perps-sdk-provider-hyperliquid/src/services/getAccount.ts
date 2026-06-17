@@ -1,7 +1,9 @@
 import {
   getMarketRegistry,
+  getPrices,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
+  stringToFloat,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
@@ -157,51 +159,62 @@ export const getAccount = async (
   const markets = await registry.sync()
   const dexNames = perpsDexNames(markets)
   const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
-  const priceById = spotPriceById(markets)
   const quoteAssetByCategory = new Map(
     markets.map((m) => [m.categoryId, m.quoteAsset])
   )
   const infoOpts = hlInfoOptions(client, options)
 
-  const [feesResult, abstractionResult, agentsResult, spotState, stateResults] =
-    await Promise.all([
-      infoRequest<HlUserFees>(
-        apiUrl,
-        { type: 'userFees', user: params.address },
-        infoOpts
-      ),
-      // "Never set abstraction" is a successful 200 `null` body, not an error —
-      // so a fetch failure must propagate, never be coerced to `null` (which
-      // would silently route margin/balance down the wrong, non-unified branch).
-      infoRequest<HlAbstractionMode | null>(
-        apiUrl,
-        { type: 'userAbstraction', user: params.address },
-        infoOpts
-      ),
-      infoRequest<HlExtraAgents>(
-        apiUrl,
-        { type: 'extraAgents', user: params.address },
-        infoOpts
-      ),
-      infoRequest<HlSpotClearinghouseState>(
-        apiUrl,
-        { type: 'spotClearinghouseState', user: params.address },
-        infoOpts
-      ),
-      Promise.all(
-        dexNames.map((name) =>
-          infoRequest<HlClearinghouseState>(
-            apiUrl,
-            {
-              type: 'clearinghouseState',
-              user: params.address,
-              ...(name ? { dex: name } : {}),
-            },
-            infoOpts
-          )
+  const [
+    feesResult,
+    abstractionResult,
+    agentsResult,
+    spotState,
+    stateResults,
+    { prices },
+  ] = await Promise.all([
+    infoRequest<HlUserFees>(
+      apiUrl,
+      { type: 'userFees', user: params.address },
+      infoOpts
+    ),
+    // "Never set abstraction" is a successful 200 `null` body, not an error —
+    // so a fetch failure must propagate, never be coerced to `null` (which
+    // would silently route margin/balance down the wrong, non-unified branch).
+    infoRequest<HlAbstractionMode | null>(
+      apiUrl,
+      { type: 'userAbstraction', user: params.address },
+      infoOpts
+    ),
+    infoRequest<HlExtraAgents>(
+      apiUrl,
+      { type: 'extraAgents', user: params.address },
+      infoOpts
+    ),
+    infoRequest<HlSpotClearinghouseState>(
+      apiUrl,
+      { type: 'spotClearinghouseState', user: params.address },
+      infoOpts
+    ),
+    Promise.all(
+      dexNames.map((name) =>
+        infoRequest<HlClearinghouseState>(
+          apiUrl,
+          {
+            type: 'clearinghouseState',
+            user: params.address,
+            ...(name ? { dex: name } : {}),
+          },
+          infoOpts
         )
-      ),
-    ])
+      )
+    ),
+    getPrices(client, { provider: PROVIDER_KEY }, options),
+  ])
+
+  const priceById = spotPriceById(
+    markets,
+    new Map(prices.map((p) => [p.marketId, stringToFloat(p.markPrice)]))
+  )
 
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions

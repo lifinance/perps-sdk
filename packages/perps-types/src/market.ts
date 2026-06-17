@@ -23,17 +23,12 @@ export interface BaseMarket {
    * `formatOrderPrice` rather than applying this field directly.
    */
   priceDecimals?: number
-  markPrice: string
-  volume24h?: string
-  prevDayPrice?: string
 }
 
 /** @public */
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
   onlyIsolated: boolean
-  funding: FundingInfo
-  openInterest?: string
   /**
    * Venue maintenance margin rate for this market as a fraction (e.g. `0.012`
    * = 1.2%). Feeds client-side liquidation-price estimates via the provider's
@@ -70,10 +65,20 @@ export interface MarketsResponse {
   markets: Market[]
 }
 
-/** @public */
+/**
+ * Live per-market data for the `/prices` endpoint. `price` is the mid;
+ * `markPrice`, `prevDayPrice` and `volume24h` apply to every market type,
+ * while `openInterest` and `funding` are perp-only and absent for spot.
+ * @public
+ */
 export interface MarketPrice {
   marketId: string
   price: string
+  markPrice: string
+  prevDayPrice?: string
+  volume24h?: string
+  openInterest?: string
+  funding?: FundingInfo
 }
 
 /** @public */

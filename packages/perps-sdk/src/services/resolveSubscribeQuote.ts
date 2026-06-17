@@ -6,7 +6,7 @@ import type {
 } from '../types/provider.js'
 import { buildQuote } from '../utils/calculations.js'
 import type { WsProvider } from '../websocket/types.js'
-import { resolveQuoteMarket } from './resolveQuote.js'
+import { resolveQuoteMarket, resolveQuotePrice } from './resolveQuote.js'
 
 /**
  * Minimum gap between successive streamed {@link Quote} emissions — the same
@@ -44,6 +44,7 @@ export async function resolveSubscribeQuote(
   onQuote: QuoteListener
 ): Promise<() => void> {
   const market = await resolveQuoteMarket(client, provider, params)
+  const price = await resolveQuotePrice(client, provider, market.id)
 
   let latestBook: OrderbookResponse | undefined
   let lastEmitAt = Number.NEGATIVE_INFINITY
@@ -62,6 +63,7 @@ export async function resolveSubscribeQuote(
         side: params.side,
         sizeUsd: params.size,
         market,
+        price,
         bids: latestBook.bids,
         asks: latestBook.asks,
         feeTier,

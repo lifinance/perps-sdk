@@ -1,4 +1,9 @@
-import type { OrderbookLevel, PerpsMarket, SpotMarket } from '@lifi/perps-types'
+import type {
+  MarketPrice,
+  OrderbookLevel,
+  PerpsMarket,
+  SpotMarket,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import {
   applySlippage,
@@ -436,9 +441,14 @@ const perpsMarket: PerpsMarket = {
     logoURI: '',
   },
   szDecimals: 5,
-  markPrice: '100',
   maxLeverage: 50,
   onlyIsolated: false,
+}
+
+const perpsPrice: MarketPrice = {
+  marketId: 'BTC',
+  price: '100',
+  markPrice: '100',
   funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 }
 
@@ -459,6 +469,11 @@ const spotMarket: SpotMarket = {
     logoURI: '',
   },
   szDecimals: 2,
+}
+
+const spotPrice: MarketPrice = {
+  marketId: '@1',
+  price: '100',
   markPrice: '100',
 }
 
@@ -471,6 +486,7 @@ describe('buildQuote', () => {
       side: 'buy',
       sizeUsd: 201,
       market: perpsMarket,
+      price: perpsPrice,
       bids,
       asks,
       feeTier: { maker: '0.00015', taker: '0.00045' },
@@ -483,7 +499,7 @@ describe('buildQuote', () => {
     // 201 * 0.00045 = 0.09045.
     expect(Number(quote.feeUsd)).toBeCloseTo(0.09045)
     expect(quote.isDefaultFeeTier).toBe(true)
-    expect(quote.funding).toEqual(perpsMarket.funding)
+    expect(quote.funding).toEqual(perpsPrice.funding)
     expect(quote.insufficientLiquidity).toBe(false)
   })
 
@@ -495,6 +511,7 @@ describe('buildQuote', () => {
       side: 'sell',
       sizeUsd: 99,
       market: perpsMarket,
+      price: perpsPrice,
       bids,
       asks,
       feeTier: { maker: '0', taker: '0' },
@@ -513,6 +530,7 @@ describe('buildQuote', () => {
       side: 'buy',
       sizeUsd: 50,
       market: spotMarket,
+      price: spotPrice,
       bids,
       asks,
       feeTier: { maker: '0', taker: '0' },
@@ -530,6 +548,7 @@ describe('buildQuote', () => {
       side: 'buy',
       sizeUsd: 1000,
       market: perpsMarket,
+      price: perpsPrice,
       bids,
       asks,
       feeTier: { maker: '0', taker: '0' },

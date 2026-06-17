@@ -32,10 +32,8 @@ const MARKETS_RESPONSE = {
         logoURI: '',
       },
       szDecimals: 5,
-      markPrice: '0',
       maxLeverage: 50,
       onlyIsolated: false,
-      funding: { rate: '0', nextFundingTime: 0 },
     },
   ],
 }
@@ -51,6 +49,9 @@ const installSplitMock = () => {
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/prices')) {
+        return new Response(JSON.stringify({ prices: [] }), { status: 200 })
+      }
       if (url.includes('/markets')) {
         return new Response(JSON.stringify(MARKETS_RESPONSE), { status: 200 })
       }
@@ -91,7 +92,6 @@ describe('hyperliquidProvider', () => {
       },
       quoteAsset: btcMarket.quoteAsset,
       szDecimals: 2,
-      markPrice: '0.5',
     }
 
     it('formats prices with the HL 5-sig-fig + decimal-budget rules', () => {

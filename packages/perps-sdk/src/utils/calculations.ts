@@ -9,8 +9,8 @@
 import type {
   FeeTier,
   Market,
+  MarketPrice,
   OrderbookLevel,
-  PerpsMarket,
   Quote,
   QuoteSide,
   TradeType,
@@ -347,7 +347,7 @@ export function walkOrderbook(
   }
 }
 
-/** Inputs to {@link buildQuote} — the resolved market, its book, and the trade ask. */
+/** Inputs to {@link buildQuote} — the resolved market, its live price, its book, and the trade ask. */
 interface BuildQuoteInput {
   provider: string
   symbol: string
@@ -355,6 +355,7 @@ interface BuildQuoteInput {
   side: QuoteSide
   sizeUsd: number
   market: Market
+  price: MarketPrice
   bids: OrderbookLevel[]
   asks: OrderbookLevel[]
   /** Public base-tier fees for the venue; `isDefaultFeeTier` is always set true. */
@@ -362,20 +363,18 @@ interface BuildQuoteInput {
   timestamp: number
 }
 
-const isPerpsMarket = (market: Market): market is PerpsMarket =>
-  'funding' in market
-
 /**
- * Build a {@link Quote} from a resolved market and its orderbook snapshot. Pure:
- * walks the relevant side (buy → asks, sell → bids) for the VWAP fill, derives
- * the price impact in basis points versus mark, applies the base taker fee on
- * the filled notional, and carries funding for perps (`null` for spot).
+ * Build a {@link Quote} from a resolved market, its live {@link MarketPrice},
+ * and its orderbook snapshot. Pure: walks the relevant side (buy → asks,
+ * sell → bids) for the VWAP fill, derives the price impact in basis points
+ * versus mark, applies the base taker fee on the filled notional, and carries
+ * the market's `funding` (`null` for spot, which has none).
  *
  * @public
  */
 export function buildQuote(input: BuildQuoteInput): Quote {
-  const { market, side, sizeUsd, feeTier } = input
-  const markPrice = Number.parseFloat(market.markPrice)
+  const { market, price, side, sizeUsd, feeTier } = input
+  const markPrice = Number.parseFloat(price.markPrice)
   const levels = side === 'buy' ? input.asks : input.bids
   const walk = walkOrderbook(levels, sizeUsd)
   const priceImpactBps =
@@ -394,13 +393,13 @@ export function buildQuote(input: BuildQuoteInput): Quote {
     side,
     sizeUsd: sizeUsd.toString(),
     baseSize: walk.baseSize.toString(),
-    markPrice: market.markPrice,
+    markPrice: price.markPrice,
     expectedFillPrice: walk.vwap.toString(),
     priceImpactBps: priceImpactBps.toString(),
     feeTier,
     isDefaultFeeTier: true,
     feeUsd: feeUsd.toString(),
-    funding: isPerpsMarket(market) ? market.funding : null,
+    funding: price.funding ?? null,
     insufficientLiquidity: walk.insufficientLiquidity,
     timestamp: input.timestamp,
   }
