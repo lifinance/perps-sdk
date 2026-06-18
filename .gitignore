@@ -51,10 +51,6 @@ CLAUDE.local.md
 
 # Cursor project config
 .cursor/*
-!.cursor/rules/
-!.cursor/rules/**
-!.cursor/skills/
-!.cursor/skills/**
 .cursor/mcp.json
 .cursor/settings.local.json
 .cursor/**/*.local.*
