@@ -764,7 +764,7 @@ describe('LighterWsProvider', () => {
     })
   })
 
-  describe('markets fetch coupling (ORD-482)', () => {
+  describe('markets fetch coupling', () => {
     const makeFetchingProvider = () =>
       new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, freshClient())
 

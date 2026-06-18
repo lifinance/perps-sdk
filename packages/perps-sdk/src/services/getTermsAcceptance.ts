@@ -9,9 +9,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * given address has accepted them. Provider-independent — reads from the
  * platform `meta` surface, not a venue plugin.
  *
- * @param client - The SDK client instance
  * @param address - Address whose acceptance status to resolve
- * @param options - Request options (e.g., AbortSignal)
  * @throws {PerpsError} On backend error responses, network, or parsing errors.
  *
  * @example

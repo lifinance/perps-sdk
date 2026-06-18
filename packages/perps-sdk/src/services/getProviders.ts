@@ -6,8 +6,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
 /**
  * Get all available providers.
  *
- * @param client - The SDK client instance
- * @param options - Request options (e.g., AbortSignal)
  * @returns List of supported providers with their authorization requirements
  * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors

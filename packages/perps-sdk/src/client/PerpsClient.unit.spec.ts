@@ -522,7 +522,7 @@ describe('PerpsClient', () => {
         ...approveAgentSetupAction,
       })
 
-      // The removed auto-upgrade was the only setup-path account read.
+      // Setup performs no account read, so getAccount must not be called.
       expect(stubGetAccount).not.toHaveBeenCalled()
     })
 
@@ -941,8 +941,8 @@ describe('PerpsClient', () => {
 
   // ---------------------------------------------------------------------------
   // Signer-agnostic core: Lighter (no agent) end-to-end + both-plugin
-  // orchestration. Regression for ORD-500 — the agent code path is gone, so a
-  // Lighter setup flow cannot reach it.
+  // orchestration. A Lighter plugin with no agent machinery drives a full
+  // setup + execute flow without core ever resolving an agent signer.
   // ---------------------------------------------------------------------------
 
   describe('signer-agnostic orchestration', () => {
