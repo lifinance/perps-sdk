@@ -58,4 +58,3 @@ Runnable scripts in [`examples/`](./examples):
 
 - [Full documentation](https://public-perps-docs.mintlify.app/)
 - [API reference](https://public-perps-docs.mintlify.app/api-reference)
-- [Changelog](./CHANGELOG.md)
