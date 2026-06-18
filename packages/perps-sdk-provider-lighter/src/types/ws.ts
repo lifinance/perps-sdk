@@ -43,6 +43,17 @@ export type LtWsMarketStatsAllMessage = LtWsMessage & {
 }
 
 /**
+ * Per-market `market_stats/{MARKET_INDEX}` push. Unlike `market_stats/all`
+ * (a Record), the per-market `market_stats` field is a single object — branch
+ * on the response `channel` suffix (`:{id}` vs `:all`) to parse correctly.
+ * @public
+ */
+export type LtWsMarketStatsMessage = LtWsMessage & {
+  type: 'subscribed/market_stats' | 'update/market_stats'
+  market_stats?: LtWsMarketStats
+}
+
+/**
  * Spot market stats carry no funding/open-interest fields and address
  * markets by their spot `market_id` (2048+).
  * @public
@@ -70,6 +81,16 @@ export type LtWsSpotMarketStats = {
 export type LtWsSpotMarketStatsAllMessage = LtWsMessage & {
   type: 'subscribed/spot_market_stats' | 'update/spot_market_stats'
   spot_market_stats?: Record<string, LtWsSpotMarketStats>
+}
+
+/**
+ * Per-market `spot_market_stats/{MARKET_INDEX}` push — single object, the
+ * spot counterpart to {@link LtWsMarketStatsMessage}.
+ * @public
+ */
+export type LtWsSpotMarketStatsMessage = LtWsMessage & {
+  type: 'subscribed/spot_market_stats' | 'update/spot_market_stats'
+  spot_market_stats?: LtWsSpotMarketStats
 }
 
 /** @public */

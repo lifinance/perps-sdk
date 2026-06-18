@@ -400,6 +400,43 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('should map marketContext subscription to activeAssetCtx payload', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: { type: 'activeAssetCtx', coin: 'BTC' },
+      })
+    })
+
+    it('tears down the activeAssetCtx subscription when the marketContext listener unsubscribes', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+
+        const unsub = await provider.subscribe(
+          { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+          vi.fn()
+        )
+
+        getMockRwsInstance().sent = []
+        unsub()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+        expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+          method: 'unsubscribe',
+          subscription: { type: 'activeAssetCtx', coin: 'BTC' },
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('should map candle subscription to candle payload', async () => {
       const provider = createProvider()
 
@@ -816,6 +853,57 @@ describe('HyperliquidWsProvider', () => {
       const event = listener.mock.calls[0][0]
       expect(event.data.bids).toHaveLength(20)
       expect(event.data.asks).toHaveLength(20)
+    })
+
+    it('emits marketContext with oraclePrice mapped from activeAssetCtx.oraclePx', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: { oraclePx: '95012.5', markPx: '95010' },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'marketContext',
+        marketId: 'BTC',
+        data: { oraclePrice: '95012.5' },
+      })
+    })
+
+    it('routes activeAssetCtx frames to the matching market listener only', async () => {
+      const provider = createProvider()
+      const btcListener = vi.fn()
+      const ethListener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        btcListener
+      )
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'ETH' },
+        ethListener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: { coin: 'BTC', ctx: { oraclePx: '95012.5', markPx: '95010' } },
+        })
+      )
+
+      expect(btcListener).toHaveBeenCalledOnce()
+      expect(ethListener).not.toHaveBeenCalled()
     })
 
     it('should emit candle event for candle channel', async () => {

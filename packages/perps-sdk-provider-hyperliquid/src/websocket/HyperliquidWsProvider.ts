@@ -23,6 +23,7 @@ import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
+  HlWsActiveAssetCtx,
   HlWsAllDexsClearinghouseStateData,
   HlWsAllMidsData,
   HlWsCandleData,
@@ -225,6 +226,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return `l2Book:${sub.marketId}`
       case 'candle':
         return `candle:${sub.marketId}:${sub.interval}`
+      case 'marketContext':
+        return `activeAssetCtx:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -262,6 +265,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           coin: sub.marketId,
           interval: sub.interval,
         }
+      case 'marketContext':
+        return { type: 'activeAssetCtx', coin: sub.marketId }
       case 'orderUpdates':
         return { type: 'orderUpdates', user: sub.address }
       case 'fills':
@@ -309,6 +314,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'candle':
           this.handleCandle(msg.data as HlWsCandleData)
+          break
+        case 'activeAssetCtx':
+          this.handleActiveAssetCtx(msg.data as HlWsActiveAssetCtx)
           break
         case 'orderUpdates':
           this.handleOrderUpdates(msg.data as HlOrderDetail[])
@@ -367,6 +375,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           .map((l) => ({ price: l.px, size: l.sz })),
         timestamp: data.time,
       },
+    })
+  }
+
+  private handleActiveAssetCtx(data: HlWsActiveAssetCtx) {
+    this.emit(`activeAssetCtx:${data.coin}`, {
+      channel: 'marketContext',
+      marketId: data.coin,
+      data: { oraclePrice: data.ctx.oraclePx },
     })
   }
 
@@ -513,6 +529,8 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
       )
     case 'candle':
       return typeof data.s === 'string' && typeof data.i === 'string'
+    case 'activeAssetCtx':
+      return typeof data.coin === 'string' && isObject(data.ctx)
     case 'orderUpdates':
       return Array.isArray(data)
     case 'userFills':

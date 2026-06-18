@@ -297,6 +297,122 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
+  describe('marketContext', () => {
+    it('subscribes to both per-market perp and spot stats channels', async () => {
+      const provider = makeProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '3' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/3' })
+      )
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/3' })
+      )
+      provider.close()
+    })
+
+    it('rejects a marketContext subscription for a non-numeric marketId', async () => {
+      const provider = makeProvider()
+      await expect(
+        provider.subscribe(
+          { channel: 'marketContext', dex: 'lighter', marketId: 'BTC' },
+          vi.fn()
+        )
+      ).rejects.toThrow(/unknown market/)
+      provider.close()
+    })
+
+    it('emits oraclePrice from a per-market perp market_stats single-object frame', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketContext:3', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats:3',
+          market_stats: {
+            market_id: 3,
+            index_price: '64210.5',
+            mark_price: '64200',
+            last_trade_price: '64205',
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'marketContext',
+        marketId: '3',
+        data: { oraclePrice: '64210.5' },
+      })
+      p.close()
+    })
+
+    it('emits oraclePrice from a per-market spot_market_stats single-object frame', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketContext:2049', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/spot_market_stats',
+          channel: 'spot_market_stats:2049',
+          spot_market_stats: {
+            market_id: 2049,
+            symbol: 'LIT/USDC',
+            index_price: '1.2345',
+            mid_price: '1.23',
+            last_trade_price: '1.24',
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'marketContext',
+        marketId: '2049',
+        data: { oraclePrice: '1.2345' },
+      })
+      p.close()
+    })
+
+    it('keeps the :all Record path feeding prices and never the marketContext key', () => {
+      const p = makeProvider()
+      const pricesListener = vi.fn()
+      const ctxListener = vi.fn()
+      inject(p, 'prices', pricesListener)
+      inject(p, 'marketContext:0', ctxListener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats:all',
+          market_stats: {
+            '0': {
+              market_id: 0,
+              index_price: '50010',
+              last_trade_price: '50000',
+            },
+          },
+        })
+      )
+
+      expect(pricesListener).toHaveBeenCalledWith({
+        channel: 'prices',
+        data: { '0': '50000' },
+      })
+      expect(ctxListener).not.toHaveBeenCalled()
+      p.close()
+    })
+  })
+
   describe('addressFromChannel', () => {
     it('resolves address with slash separator (subscribe format)', () => {
       const p = makeProvider()

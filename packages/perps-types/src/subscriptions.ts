@@ -31,6 +31,19 @@ export type CandleSubscription = {
   marketId: string
   interval: OhlcvInterval
 }
+/**
+ * Per-market live context for one viewed market, page-scoped like
+ * {@link OrderbookSubscription} and {@link CandleSubscription}. Each venue
+ * sources it from its own per-market wire channel (HL `activeAssetCtx`,
+ * Lighter `market_stats/{id}`), so it is keyed by `marketId` rather than
+ * riding the market-agnostic {@link PricesSubscription}.
+ * @public
+ */
+export type MarketContextSubscription = {
+  channel: 'marketContext'
+  dex: string
+  marketId: string
+}
 /** @public */
 export type OrderUpdatesSubscription = {
   channel: 'orderUpdates'
@@ -61,6 +74,7 @@ export type Subscription =
   | PricesSubscription
   | OrderbookSubscription
   | CandleSubscription
+  | MarketContextSubscription
   | OrderUpdatesSubscription
   | FillsSubscription
   | PositionsSubscription
@@ -72,6 +86,18 @@ export type PricesEvent = { channel: 'prices'; data: Record<string, string> }
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 /** @public */
 export type CandleEvent = { channel: 'candle'; data: Candle }
+/**
+ * Per-market context payload. `oraclePrice` is the venue oracle price; absent
+ * until the venue first streams one for the market.
+ * @public
+ */
+export type MarketContext = { oraclePrice?: string }
+/** @public */
+export type MarketContextEvent = {
+  channel: 'marketContext'
+  marketId: string
+  data: MarketContext
+}
 /** @public */
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
@@ -112,6 +138,7 @@ export type SubscriptionEvent =
   | PricesEvent
   | OrderbookEvent
   | CandleEvent
+  | MarketContextEvent
   | OrderUpdatesEvent
   | FillsEvent
   | PositionsEvent

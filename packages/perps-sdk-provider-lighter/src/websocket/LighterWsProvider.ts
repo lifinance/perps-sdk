@@ -24,11 +24,13 @@ import type {
   LtWsAccountAllTradesMessage,
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
+  LtWsMarketStatsMessage,
   LtWsMessage,
   LtWsOrderBook,
   LtWsOrderBookMessage,
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
+  LtWsSpotMarketStatsMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
@@ -275,6 +277,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         return 'prices'
       case 'orderbook':
         return `orderbook:${sub.marketId}`
+      case 'marketContext':
+        return `marketContext:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -315,6 +319,21 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       return [{ channel: `order_book/${id}`, needsAuth: false }]
+    }
+    if (sub.channel === 'marketContext') {
+      const id = Number(sub.marketId)
+      if (!Number.isFinite(id)) {
+        throw new Error(
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
+        )
+      }
+      // The viewed market is either perp or spot; subscribe both per-market
+      // stats channels and let the one the venue serves drive the emit.
+      return [
+        { channel: `market_stats/${id}`, needsAuth: false },
+        { channel: `spot_market_stats/${id}`, needsAuth: false },
+      ]
     }
     if (
       sub.channel === 'orderUpdates' ||
@@ -398,7 +417,15 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/market_stats' ||
       msg.type === 'update/market_stats'
     ) {
-      this.handleMarketStats((msg as LtWsMarketStatsAllMessage).market_stats)
+      const marketId = perMarketStatsId(msg.channel)
+      if (marketId !== null) {
+        this.handleMarketContext(
+          marketId,
+          (msg as LtWsMarketStatsMessage).market_stats
+        )
+      } else {
+        this.handleMarketStats((msg as LtWsMarketStatsAllMessage).market_stats)
+      }
       return
     }
 
@@ -406,9 +433,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/spot_market_stats' ||
       msg.type === 'update/spot_market_stats'
     ) {
-      this.handleMarketStats(
-        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats
-      )
+      const marketId = perMarketStatsId(msg.channel)
+      if (marketId !== null) {
+        this.handleMarketContext(
+          marketId,
+          (msg as LtWsSpotMarketStatsMessage).spot_market_stats
+        )
+      } else {
+        this.handleMarketStats(
+          (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats
+        )
+      }
       return
     }
 
@@ -568,6 +603,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
   }
 
+  private handleMarketContext(
+    marketId: string,
+    stats?: LtWsMarketStats | LtWsSpotMarketStats
+  ): void {
+    if (!stats) {
+      return
+    }
+    this.emit(`marketContext:${marketId}`, {
+      channel: 'marketContext',
+      marketId,
+      data: { oraclePrice: stats.index_price },
+    })
+  }
+
   private handleOrderBook(
     msg: LtWsOrderBookMessage,
     isSnapshot: boolean
@@ -620,6 +669,23 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
+
+/**
+ * Numeric market id from a per-market `(spot_)market_stats` response channel
+ * (`market_stats:3` → `'3'`), or `null` for the all-markets `:all` form (and
+ * anything non-numeric). The response uses `:`; the subscribe payload uses
+ * `/` — both separators are accepted.
+ */
+function perMarketStatsId(channel: string | undefined): string | null {
+  if (!channel) {
+    return null
+  }
+  const sep = channel.lastIndexOf(':') >= 0 ? ':' : '/'
+  const tail = channel.slice(channel.lastIndexOf(sep) + 1)
+  return tail !== 'all' && Number.isFinite(Number(tail)) && tail !== ''
+    ? tail
+    : null
+}
 
 /**
  * Minimal presence/type check of the discriminating `type` and the required
