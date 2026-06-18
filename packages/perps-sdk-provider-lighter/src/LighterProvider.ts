@@ -41,7 +41,7 @@ import type {
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
-import { summarizeLighterAccount } from './accountSummary.js'
+import { getAccountSummary } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,
@@ -1071,11 +1071,11 @@ export const lighterProvider = (
       )
     },
 
-    getPortfolioSummary(
+    getAccountSummary(
       account: AccountResponse,
       positions: Position[]
     ): AccountSummary {
-      return summarizeLighterAccount(account, positions)
+      return getAccountSummary(account, positions)
     },
 
     formatOrderPrice,

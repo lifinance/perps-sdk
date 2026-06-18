@@ -6,7 +6,7 @@ import type {
 } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { summarizeLighterAccount } from './accountSummary.js'
+import { getAccountSummary } from './accountSummary.js'
 
 const USDC: Asset = {
   providerId: 'lighter',
@@ -62,10 +62,10 @@ const account = (
   },
 })
 
-describe('summarizeLighterAccount', () => {
+describe('getAccountSummary', () => {
   it('treats collateral as free margin; available margin is the collateral as-is', () => {
     // available_balance 800 is free; locked margin 200 lives in the position
-    const summary = summarizeLighterAccount(account([balance('800')]), [
+    const summary = getAccountSummary(account([balance('800')]), [
       position('200', '50'),
     ])
     expect(summary.availableMargin).toBe('800')
@@ -76,7 +76,7 @@ describe('summarizeLighterAccount', () => {
   })
 
   it('adds non-collateral balances to portfolio value only', () => {
-    const summary = summarizeLighterAccount(
+    const summary = getAccountSummary(
       account([balance('800')], [balance('250')]),
       [position('200', '0')]
     )
@@ -86,7 +86,7 @@ describe('summarizeLighterAccount', () => {
   })
 
   it('aggregates margin used and pnl across multiple positions', () => {
-    const summary = summarizeLighterAccount(account([balance('1000')]), [
+    const summary = getAccountSummary(account([balance('1000')]), [
       position('100', '10'),
       position('150', '-30'),
     ])
@@ -96,7 +96,7 @@ describe('summarizeLighterAccount', () => {
   })
 
   it('returns string scalars for an empty account', () => {
-    const summary = summarizeLighterAccount(account([]), [])
+    const summary = getAccountSummary(account([]), [])
     expect(summary).toEqual({
       portfolioValue: '0',
       availableMargin: '0',

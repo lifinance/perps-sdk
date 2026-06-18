@@ -163,6 +163,7 @@ The main exports from `@lifi/perps-sdk-provider-lighter`:
 | `LighterSigner` | class | WASM-backed signer for key generation, signing, and auth-token creation |
 | `LighterKeyStore` | class | Persists the user's Lighter API keypair |
 | `LighterReadOnlyTokenManager` | class | Creates and persists the long-lived read-only bearer token |
+| `getAccountSummary` | function | Rolls a fetched `AccountResponse` plus positions into an `AccountSummary` (pure, no I/O) |
 | `createAuthToken` | function | Creates a fresh standard auth token from an API key + signer |
 | `isReadOnlyTokenExpiringSoon` | function | Returns `true` when the stored read-only token expires within a threshold |
 | `loadLighterWasm` | function | Loads the WASM binary (memoized) |

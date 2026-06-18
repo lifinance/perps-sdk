@@ -160,7 +160,7 @@ import {
 
   // Account utilities
   projectHyperliquidConfigSettings,
-  summarizeHyperliquidAccount,
+  getAccountSummary,
 
   // Constants
   DEFAULT_HYPERLIQUID_API_URL,
