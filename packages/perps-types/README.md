@@ -15,8 +15,6 @@ Types for the LI.FI Perps SDK.
 
 This package contains the shared, zero-dependency types for the [LI.FI Perps SDK](https://www.npmjs.com/package/@lifi/perps-sdk) and its provider plugins — a workspace package of the `perps-sdk` monorepo. You rarely install it directly; it arrives transitively with `@lifi/perps-sdk`.
 
-Check out the [Changelog](./CHANGELOG.md) to see what changed in recent releases.
-
 ## Installation
 
 ```bash
