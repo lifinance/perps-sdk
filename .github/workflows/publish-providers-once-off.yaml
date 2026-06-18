@@ -1,0 +1,53 @@
+# TEMPORARY one-off publish for the provider packages.
+#
+# npm OIDC trusted publishing can't do the *first* publish of a package: there's
+# no package on the registry yet to attach a trusted-publisher config to. This
+# workflow bootstraps that first publish for the two provider packages using an
+# ephemeral token (secret NPM_ONCE_OFF_TOKEN). Trigger it by hand from the
+# Actions tab. Once both packages exist on npm, configure trusted publishing on
+# them and DELETE this workflow + revoke the token — the normal publish.yaml path
+# takes over from then on.
+#
+# This copy lives on the default branch only so GitHub registers the
+# workflow_dispatch trigger. Run it against the `beta` ref — beta's checkout is
+# what actually builds and publishes; this copy never executes.
+name: Publish providers (one-off token)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publish-providers-once-off
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish hl + lighter providers
+    if: github.repository == 'lifinance/perps-sdk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+      # Full build + the prerelease package.json transform every package expects,
+      # then publish ONLY the two providers. pnpm rewrites their workspace:* deps
+      # to real versions on publish; postpublish restores the source package.json.
+      - name: Publish providers to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ONCE_OFF_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+        run: |
+          pnpm changeset:prepublish
+          pnpm \
+            --filter @lifi/perps-sdk-provider-hyperliquid \
+            --filter @lifi/perps-sdk-provider-lighter \
+            publish --access public --provenance --no-git-checks
+          pnpm changeset:postpublish
