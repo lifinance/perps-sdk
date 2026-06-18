@@ -24,11 +24,6 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/cjs/index.js"
     },
-    "./realtime": {
-      "types": "./dist/types/realtime/index.d.ts",
-      "import": "./dist/esm/realtime/index.js",
-      "default": "./dist/cjs/realtime/index.js"
-    },
     "./utils": {
       "types": "./dist/types/utils/index.d.ts",
       "import": "./dist/esm/utils/index.js",
