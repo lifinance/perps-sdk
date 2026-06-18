@@ -8,7 +8,6 @@
  * - Percentage suffixes (%)
  * - Whitespace
  *
- * @param value - The string to parse
  * @returns Parsed number; `0` for empty/blank input, `NaN` when a non-empty
  *   string contains no parseable number
  * @example

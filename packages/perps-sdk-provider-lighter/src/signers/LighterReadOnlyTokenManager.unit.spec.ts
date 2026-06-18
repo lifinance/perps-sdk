@@ -244,8 +244,8 @@ describe('LighterReadOnlyTokenManager', () => {
     it('treats a token with a non-numeric expiry as absent (not valid forever)', async () => {
       const storage = createMemoryStorage()
       const key = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`
-      // A corrupt expiry: NaN <= now is false, so the old `isExpired` check
-      // would treat this token as valid forever.
+      // A corrupt expiry must be treated as absent: NaN comparisons are false,
+      // so the token must not pass as valid-forever.
       await storage.set(
         key,
         JSON.stringify({
