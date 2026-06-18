@@ -24,7 +24,7 @@ const isUnifiedMode = (account: AccountResponse): boolean =>
  *
  * @public
  */
-export function summarizeHyperliquidAccount(
+export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {

@@ -295,7 +295,7 @@ export interface PerpsProviderPlugin {
    * `unifiedAccount`/`portfolioMargin` spot holds the whole account), whereas
    * Lighter has a single flat collateral model. Pure — does no I/O.
    */
-  getPortfolioSummary(
+  getAccountSummary(
     account: AccountResponse,
     positions: Position[]
   ): AccountSummary

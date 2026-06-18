@@ -299,11 +299,11 @@ export class PerpsClient {
    * into an {@link AccountSummary}, delegating to the owning provider so the
    * venue-specific collateral and margin semantics are applied correctly.
    */
-  getPortfolioSummary(
+  getAccountSummary(
     account: AccountResponse,
     positions: Position[]
   ): AccountSummary {
-    return this.requireProvider(account.provider).getPortfolioSummary(
+    return this.requireProvider(account.provider).getAccountSummary(
       account,
       positions
     )

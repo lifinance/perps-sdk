@@ -6,7 +6,7 @@ import type {
 } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { summarizeHyperliquidAccount } from './accountSummary.js'
+import { getAccountSummary } from './accountSummary.js'
 import { HlAbstractionMode } from './types/index.js'
 
 const USDC: Asset = {
@@ -57,7 +57,7 @@ const account = (
   config: { provider: 'hyperliquid', abstractionMode, agents: [] },
 })
 
-describe('summarizeHyperliquidAccount', () => {
+describe('getAccountSummary', () => {
   // Standard (unset) and disabled modes: venue collateral rows are free margin
   // (accountValue is net of locked margin), so margin is added back for gross.
   describe.each([
@@ -67,7 +67,7 @@ describe('summarizeHyperliquidAccount', () => {
   ])('non-unified mode: %s', (_label, mode) => {
     it('treats collateral rows as free; available margin equals total collateral', () => {
       // spot USDC 500 (free) + venue equity 10000 (free) = 10500 free
-      const summary = summarizeHyperliquidAccount(
+      const summary = getAccountSummary(
         account(mode as HlAbstractionMode | null, [
           balance('spot', '500'),
           balance('hyperliquid', '10000'),
@@ -83,7 +83,7 @@ describe('summarizeHyperliquidAccount', () => {
     })
 
     it('adds non-collateral balances to portfolio value only', () => {
-      const summary = summarizeHyperliquidAccount(
+      const summary = getAccountSummary(
         account(
           mode as HlAbstractionMode | null,
           [balance('hyperliquid', '1000')],
@@ -105,7 +105,7 @@ describe('summarizeHyperliquidAccount', () => {
     ['portfolioMargin', HlAbstractionMode.PORTFOLIO_MARGIN],
   ])('unified mode: %s', (_label, mode) => {
     it('treats collateral as gross; available margin subtracts margin used', () => {
-      const summary = summarizeHyperliquidAccount(
+      const summary = getAccountSummary(
         account(mode, [balance('spot', '10000')]),
         [position('940', '100')]
       )
@@ -117,7 +117,7 @@ describe('summarizeHyperliquidAccount', () => {
   })
 
   it('aggregates margin used and pnl across multiple positions', () => {
-    const summary = summarizeHyperliquidAccount(
+    const summary = getAccountSummary(
       account(null, [balance('hyperliquid', '1000')]),
       [position('100', '10'), position('150', '-30')]
     )
@@ -128,7 +128,7 @@ describe('summarizeHyperliquidAccount', () => {
   })
 
   it('returns string scalars for an empty account', () => {
-    const summary = summarizeHyperliquidAccount(account(null, []), [])
+    const summary = getAccountSummary(account(null, []), [])
     expect(summary).toEqual({
       portfolioValue: '0',
       availableMargin: '0',

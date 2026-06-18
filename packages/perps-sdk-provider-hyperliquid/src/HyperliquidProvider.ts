@@ -41,7 +41,7 @@ import {
 } from '@lifi/perps-types'
 import { type Address, type Hex, isAddress } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
-import { summarizeHyperliquidAccount } from './accountSummary.js'
+import { getAccountSummary } from './accountSummary.js'
 import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
@@ -337,10 +337,10 @@ export function hyperliquidProvider(
         opts
       ),
 
-    getPortfolioSummary: (
+    getAccountSummary: (
       account: AccountResponse,
       positions: Position[]
-    ): AccountSummary => summarizeHyperliquidAccount(account, positions),
+    ): AccountSummary => getAccountSummary(account, positions),
 
     formatOrderPrice: (market: Market, price: number): string =>
       formatOrderPrice(

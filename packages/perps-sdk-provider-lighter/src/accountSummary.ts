@@ -14,7 +14,7 @@ import type {
  *
  * @public
  */
-export function summarizeLighterAccount(
+export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {
