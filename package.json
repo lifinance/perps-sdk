@@ -1,6 +1,5 @@
 {
-  "name": "perps-sdk-monorepo",
-  "version": "0.2.0-alpha.0",
+  "name": "perps-sdk",
   "private": true,
   "description": "LI.FI Perps SDK monorepo",
   "homepage": "https://github.com/lifinance/perps-sdk",
