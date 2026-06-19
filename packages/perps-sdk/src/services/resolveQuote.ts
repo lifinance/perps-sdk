@@ -13,8 +13,8 @@ import type {
 } from '../types/provider.js'
 import { buildQuote } from '../utils/calculations.js'
 import { getMarkets } from './getMarkets.js'
+import { getMarketsContext } from './getMarketsContext.js'
 import { getOrderbook } from './getOrderbook.js'
-import { getPrices } from './getPrices.js'
 
 /**
  * Shared provider-side `getQuote` implementation: resolve `params.symbol` to a
@@ -106,7 +106,7 @@ export async function resolveQuotePrice(
   marketId: string,
   options?: SDKRequestOptions
 ): Promise<MarketContext> {
-  const { prices } = await getPrices(
+  const { prices } = await getMarketsContext(
     client,
     { provider, marketIds: [marketId] },
     options

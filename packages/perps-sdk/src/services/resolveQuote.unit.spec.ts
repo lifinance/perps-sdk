@@ -87,7 +87,7 @@ const installMarketAndBook = (markets: Market[], book: OrderbookResponse) => {
       HttpResponse.json({ markets })
     ),
     http.get(`${DEFAULT_API_URL}/orderbook`, () => HttpResponse.json(book)),
-    http.get(`${DEFAULT_API_URL}/prices`, () =>
+    http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
       HttpResponse.json({ prices: PRICES })
     )
   )

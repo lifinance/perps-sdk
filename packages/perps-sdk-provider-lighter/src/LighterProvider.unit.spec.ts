@@ -769,7 +769,7 @@ describe('LighterProvider — direct-REST (no LI.FI backend fallback)', () => {
 })
 
 describe('LighterProvider — normalisation', () => {
-  // getPrices / getAssets normalisation now happens server-side (LI.FI backend
+  // getMarketsContext / getAssets normalisation now happens server-side (LI.FI backend
   // calls Lighter directly, maps to generic types, caches in Valkey, returns
   // post-mapped shape). Plugin delegates these methods to the core SDK
   // service, so there's nothing left to normalise in this package.

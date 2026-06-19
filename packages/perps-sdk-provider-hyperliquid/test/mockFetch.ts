@@ -15,8 +15,8 @@ const jsonResponse = (value: unknown, status = 200): Response =>
 /**
  * Install a `vi.spyOn(globalThis, 'fetch')` for account-read specs. Serves the
  * backend `/markets` GET route from `markets` (the enriched source of truth) —
- * `getMarket` filters by the `marketIds` query param — the `/prices` GET route
- * from `prices`, and resolves each Hyperliquid `/info` POST from `responses`
+ * `getMarket` filters by the `marketIds` query param — the `/marketsContext` GET
+ * route from `prices`, and resolves each Hyperliquid `/info` POST from `responses`
  * keyed by the body's `type` field. Only `/info` requests are recorded.
  * Unknown `type` values raise so tests can't rely on default fixtures.
  */
@@ -34,7 +34,7 @@ export function installInfoFetchMock(
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
 
-      if (url.includes('/prices')) {
+      if (url.includes('/marketsContext')) {
         const marketIds = new URL(url).searchParams.get('marketIds')
         const filtered = marketIds
           ? prices.filter((p) => marketIds.split(',').includes(p.marketId))

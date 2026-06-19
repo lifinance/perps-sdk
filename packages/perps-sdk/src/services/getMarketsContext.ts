@@ -4,28 +4,29 @@ import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 
 /**
- * Parameters for {@link getPrices}.
+ * Parameters for {@link getMarketsContext}.
  *
  * @public
  */
-export interface GetPricesParams {
+export interface GetMarketsContextParams {
   provider: string
   /** Optional filter — opaque `Market.id`s (not display symbols). */
   marketIds?: string[]
 }
 
 /**
- * Get current prices for markets, optionally filtered by `Market.id`.
+ * Get current market context (mid/mark/oracle) for markets, optionally filtered
+ * by `Market.id`.
  *
  * @throws {PerpsError} On backend error responses, network, or parsing errors.
  * @public
  */
-export async function getPrices(
+export async function getMarketsContext(
   client: PerpsSDKClient,
-  params: GetPricesParams,
+  params: GetMarketsContextParams,
   options?: SDKRequestOptions
 ): Promise<PricesResponse> {
-  const url = buildUrl(`${client.config.apiUrl}/prices`, {
+  const url = buildUrl(`${client.config.apiUrl}/marketsContext`, {
     provider: params.provider,
     marketIds: params.marketIds?.join(','),
   })
