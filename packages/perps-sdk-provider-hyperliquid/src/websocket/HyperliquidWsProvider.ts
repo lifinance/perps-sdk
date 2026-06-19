@@ -19,7 +19,7 @@ import {
   type Subscription,
   type TriggerOrder,
 } from '@lifi/perps-types'
-import { HYPERLIQUID_FEE_TIER_FALLBACK, SPOT_MARKET_ID } from '../constants.js'
+import { HYPERLIQUID_FEE_TIER_FALLBACK } from '../constants.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -354,9 +354,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   /**
    * Build the all-markets context map: every perp asset context across sub-dexs
-   * (mark/oracle/metadata), with each perp's mid overlaid from the
-   * high-frequency `allMids` feed when present; plus a mid-only entry for each
-   * registry spot market priced by `allMids` (HL streams no spot mark/oracle).
+   * (mark/oracle/metadata), with each market's mid overlaid from the
+   * high-frequency `allMids` feed. A registry market that has an `allMids` mid
+   * but no asset-context frame yet (HL's `allDexsAssetCtxs` is slow/idle, and
+   * spot has none at all) still gets a mid-only entry, so price ticks without
+   * waiting on the aggregate feed.
    */
   private emitMarketsContext() {
     const data: Record<string, MarketContext> = {}
@@ -371,12 +373,13 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
     for (const market of this.registry?.markets ?? []) {
-      if (market.categoryId !== SPOT_MARKET_ID) {
+      if (data[market.id] !== undefined) {
         continue
       }
       const mid = this.midsByMarketId[market.id]
       if (mid !== undefined) {
-        // Spot mid stands in for the required mark; HL streams no spot mark.
+        // No asset-context frame for this market yet — mid stands in for the
+        // required mark until one arrives.
         data[market.id] = { marketId: market.id, midPrice: mid, markPrice: mid }
       }
     }
