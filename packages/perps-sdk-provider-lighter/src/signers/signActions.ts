@@ -10,6 +10,7 @@ import type {
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { parseAbi } from 'viem'
+import { waitForTransactionReceipt } from 'viem/actions'
 import { DEFAULT_API_KEY_INDEX } from '../constants.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -225,10 +226,11 @@ async function requireApiKey(
 
 /**
  * Sign and broadcast a sequence of `EVM_TX` actions via the user's wallet
- * client. Steps are submitted serially so a later step (e.g. deposit) can
- * rely on an earlier step (e.g. approve) having mined. Each step's
- * `txParams` carries chainId, target, function name, args, and a
- * human-readable abi from the backend.
+ * client. Each leg is broadcast then confirmed to a successful receipt before
+ * the next is broadcast, so a later step (e.g. deposit) can rely on an earlier
+ * step (e.g. approve) having mined. A reverted leg throws and aborts the
+ * remaining legs. Each step's `txParams` carries chainId, target, function
+ * name, args, and a human-readable abi from the backend.
  * @internal
  */
 export async function signEvmTxActions(
@@ -262,6 +264,17 @@ export async function signEvmTxActions(
       chain: walletSigner.chain,
       account: walletSigner.account,
     })
+
+    const receipt = await waitForTransactionReceipt(walletSigner, {
+      hash: txHash,
+    })
+    if (receipt.status === 'reverted') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `EVM_TX leg '${step.action}' reverted (tx ${txHash}); aborting the ` +
+          'remaining legs.'
+      )
+    }
 
     signed.push({
       action: step.action,
