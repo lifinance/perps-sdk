@@ -84,7 +84,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
-  private spotMids: Record<string, string> = {}
+  // Latest mid per `Market.id` from `allMids` (carries both perp and spot
+  // mids). High-frequency, so it keeps mid ticking between the rarer
+  // `allDexsAssetCtxs` frames that supply mark/oracle/metadata.
+  private midsByMarketId: Record<string, string> = {}
 
   constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
@@ -125,9 +128,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     await this.registry?.sync()
 
-    // Markets context aggregates the all-dexs perp asset-context feed (mid,
-    // mark, oracle, funding, OI) with the default `allMids` frame, whose spot
-    // mids HL publishes nowhere else.
+    // Markets context aggregates the all-dexs perp asset-context feed (mark,
+    // oracle, funding, OI) with the default `allMids` frame, which supplies the
+    // high-frequency mid for every market (perp and spot).
     if (sub.channel === 'marketsContext') {
       const entries = this.getMarketsContextSubEntries()
 
@@ -145,7 +148,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           )
         }
         this.perpCtxBySubDex.clear()
-        this.spotMids = {}
+        this.midsByMarketId = {}
       }
     }
 
@@ -192,8 +195,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   /**
    * Sub-key + payload pairs for the markets-context aggregation: the all-dexs
-   * perp asset-context feed plus the default `allMids` frame (the only feed
-   * carrying spot mids).
+   * perp asset-context feed plus the default `allMids` frame (the high-frequency
+   * mid source for every market, and HL's only aggregate spot-mid feed).
    */
   private getMarketsContextSubEntries(): Array<{
     subKey: string
@@ -207,7 +210,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   protected override onClose(): void {
     this.perpCtxBySubDex.clear()
-    this.spotMids = {}
+    this.midsByMarketId = {}
     this.orderUpdatesKey = undefined
   }
 
@@ -345,27 +348,33 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleAllMids(data: HlWsAllMidsData) {
-    this.spotMids = { ...this.spotMids, ...data.mids }
+    this.midsByMarketId = { ...this.midsByMarketId, ...data.mids }
     this.emitMarketsContext()
   }
 
   /**
-   * Build the all-markets context map: every perp asset context across sub-dexs,
-   * plus a mid-only entry for each registry spot market priced by `allMids` (HL
-   * publishes no aggregate spot mark/oracle over WS).
+   * Build the all-markets context map: every perp asset context across sub-dexs
+   * (mark/oracle/metadata), with each perp's mid overlaid from the
+   * high-frequency `allMids` feed when present; plus a mid-only entry for each
+   * registry spot market priced by `allMids` (HL streams no spot mark/oracle).
    */
   private emitMarketsContext() {
     const data: Record<string, MarketContext> = {}
     for (const byMarketId of this.perpCtxBySubDex.values()) {
       for (const [marketId, ctx] of Object.entries(byMarketId)) {
-        data[marketId] = mapMarketContext(marketId, ctx)
+        const base = mapMarketContext(marketId, ctx)
+        // `allMids` ticks far more often than `allDexsAssetCtxs`; overlay its
+        // mid so price isn't frozen between the rarer asset-context frames.
+        const fastMid = this.midsByMarketId[marketId]
+        data[marketId] =
+          fastMid !== undefined ? { ...base, midPrice: fastMid } : base
       }
     }
     for (const market of this.registry?.markets ?? []) {
       if (market.categoryId !== SPOT_MARKET_ID) {
         continue
       }
-      const mid = this.spotMids[market.id]
+      const mid = this.midsByMarketId[market.id]
       if (mid !== undefined) {
         // Spot mid stands in for the required mark; HL streams no spot mark.
         data[market.id] = { marketId: market.id, midPrice: mid, markPrice: mid }
@@ -374,7 +383,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.emit('marketsContext', { channel: 'marketsContext', data })
   }
 
-  /** Latest mid per `Market.id` across the perp ctx feed and the spot mids. */
+  /** Latest mid per `Market.id` across the perp ctx feed and the `allMids` feed. */
   private mergedMids(): Map<string, number> {
     const map = new Map<string, number>()
     for (const byMarketId of this.perpCtxBySubDex.values()) {
@@ -383,7 +392,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         map.set(id, Number(mid))
       }
     }
-    for (const [id, mid] of Object.entries(this.spotMids)) {
+    for (const [id, mid] of Object.entries(this.midsByMarketId)) {
       map.set(id, Number(mid))
     }
     return map
