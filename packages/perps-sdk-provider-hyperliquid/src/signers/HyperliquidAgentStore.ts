@@ -52,6 +52,12 @@ const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
  * Owns the Hyperliquid agent keypair lifecycle: generate, persist, look up,
  * and revoke. Keyed per user L1 address. Persisted via the injected
  * {@link StorageAdapter} (browser `localStorage` by default).
+ *
+ * @security The default adapter is browser `localStorage`, so the stored agent
+ * private key is readable by any same-origin script (e.g. via XSS). Pass a more
+ * secure {@link StorageAdapter} to the constructor to harden this. Blast radius
+ * is limited to agent trading: fund withdrawal still requires L1 `APPROVE_AGENT`
+ * consent that the agent key alone cannot grant.
  */
 export class HyperliquidAgentStore {
   private storage: StorageAdapter
