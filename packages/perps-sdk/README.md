@@ -157,8 +157,8 @@ const ws = new PerpsWsClient(client, {
 })
 
 const unsubscribe = await ws.subscribe(
-  { channel: 'prices', dex: 'hyperliquid' },
-  (event) => console.log(event.data), // Market.id → last-trade price
+  { channel: 'marketsContext', dex: 'hyperliquid' },
+  (event) => console.log(event.data), // Market.id → MarketContext (mid/mark/oracle)
   (status) => console.log(status),     // 'connected' | 'reconnecting' | 'disconnected'
 )
 

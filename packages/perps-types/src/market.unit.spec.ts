@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Asset } from './asset.js'
 import type {
   BaseMarket,
+  MarketContext,
   MarketDisplay,
-  MarketPrice,
   PerpsMarket,
   SpotMarket,
 } from './market.js'
@@ -80,31 +80,34 @@ describe('MarketDisplay', () => {
   })
 })
 
-describe('MarketPrice', () => {
-  it('carries the mid plus the live mark/stats fields for a perp market', () => {
-    const price: MarketPrice = {
+describe('MarketContext', () => {
+  it('carries mid/mark/oracle plus the live stats fields for a perp market', () => {
+    const ctx: MarketContext = {
       marketId: 'BTC',
-      price: '60000',
+      midPrice: '60000',
       markPrice: '60010',
+      oraclePrice: '59995',
       prevDayPrice: '59000',
       volume24h: '123456',
       openInterest: '1000',
       funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
     }
-    expect(price.marketId).toBe('BTC')
-    expect(price.price).toBe('60000')
-    expect(price.markPrice).toBe('60010')
-    expect(price.funding?.rate).toBe('0.0001')
+    expect(ctx.marketId).toBe('BTC')
+    expect(ctx.midPrice).toBe('60000')
+    expect(ctx.markPrice).toBe('60010')
+    expect(ctx.oraclePrice).toBe('59995')
+    expect(ctx.funding?.rate).toBe('0.0001')
   })
 
-  it('omits the perp-only fields for a spot market', () => {
-    const price: MarketPrice = {
+  it('omits oracle and the perp-only fields for a spot market', () => {
+    const ctx: MarketContext = {
       marketId: '@142',
-      price: '0.5',
+      midPrice: '0.5',
       markPrice: '0.5',
     }
-    expect(price.openInterest).toBeUndefined()
-    expect(price.funding).toBeUndefined()
+    expect(ctx.oraclePrice).toBeUndefined()
+    expect(ctx.openInterest).toBeUndefined()
+    expect(ctx.funding).toBeUndefined()
   })
 })
 

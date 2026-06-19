@@ -10,8 +10,8 @@ const QUOTE_SYMBOL = 'USDC'
 
 /**
  * Map a Hyperliquid universe entry to a {@link PerpsMarket}'s static instrument
- * metadata. Live mark/stats fields live on the `/prices` item — see
- * {@link mapMarketPrice}. `categoryId` is the `Provider.categories[].id` of the
+ * metadata. Live mark/stats fields live on the {@link MarketContext} — see
+ * {@link mapMarketContext}. `categoryId` is the `Provider.categories[].id` of the
  * dex the entry was fetched from — known to the caller at fetch time, never
  * re-derived from the coin string.
  * @public

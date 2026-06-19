@@ -12,6 +12,7 @@ export { fetchDetailedAccount } from './fetchDetailedAccount.js'
 export { lighterAsset } from './lighterAsset.js'
 export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFill } from './mapFill.js'
+export { mapMarketContext } from './mapMarketContext.js'
 export { mapOpenPositions } from './mapOpenPositions.js'
 export {
   classifyAndMapOrders,

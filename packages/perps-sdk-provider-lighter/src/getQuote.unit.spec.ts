@@ -32,7 +32,7 @@ const PRICES = {
   prices: [
     {
       marketId: '1',
-      price: '100',
+      midPrice: '100',
       markPrice: '100',
       funding: { rate: '0.0002', nextFundingTime: 1704067200000 },
     },

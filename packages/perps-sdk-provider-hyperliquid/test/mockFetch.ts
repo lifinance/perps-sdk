@@ -1,4 +1,4 @@
-import type { Market, MarketPrice } from '@lifi/perps-types'
+import type { Market, MarketContext } from '@lifi/perps-types'
 import { vi } from 'vitest'
 
 export interface RecordedRequest {
@@ -23,7 +23,7 @@ const jsonResponse = (value: unknown, status = 200): Response =>
 export function installInfoFetchMock(
   responses: Record<string, unknown>,
   markets: Market[] = [],
-  prices: MarketPrice[] = []
+  prices: MarketContext[] = []
 ): {
   requests: RecordedRequest[]
   restore: () => void
