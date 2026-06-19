@@ -812,6 +812,56 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data['xyz:BRENTOIL'].midPrice).toBe('70.49')
     })
 
+    it('overlays the high-frequency allMids mid onto a perp without clearing mark/oracle', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1000000',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+            ],
+          },
+        })
+      )
+
+      // A later allMids frame updates only the mid; the rarer asset-context
+      // feed's mark/oracle/metadata must persist (field-level last-write-wins).
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'allMids', data: { mids: { BTC: '95500' } } })
+      )
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.data.BTC).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95500',
+        markPrice: '95000',
+        oraclePrice: '94998',
+        openInterest: '100',
+      })
+    })
+
     it('folds a spot market mid from allMids into the marketsContext map', async () => {
       marketsFetchMock.mockReset()
       const provider = createEnrichingProvider()
