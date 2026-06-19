@@ -1,7 +1,7 @@
 // Hyperliquid WebSocket incoming message types.
 
 import type { HlClearinghouseState, HlSpotBalance } from './account.js'
-import type { HlAllMids, HlCandle, HlL2Book } from './asset.js'
+import type { HlCandle, HlL2Book } from './asset.js'
 import type { HlUserFill } from './fill.js'
 
 /**
@@ -36,10 +36,15 @@ export type HlWsMessage = {
   data: unknown
 }
 
-/** @public */
-export type HlWsAllMidsData = {
-  mids: HlAllMids
-  dex?: string
+/**
+ * Per-coin entry from the compressed `fastAssetCtxs` feed (mark + mid only,
+ * keyed by coin across all dexes). `midPx` is null when the book is empty;
+ * fields are omitted from incremental frames when unchanged.
+ * @public
+ */
+export type HlWsFastAssetCtx = {
+  markPx?: string
+  midPx?: string | null
 }
 
 /** @public */

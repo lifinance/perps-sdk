@@ -30,9 +30,6 @@ export type HlMetaAndAssetCtxs = [HlMeta, HlAssetCtx[]]
 export type HlUniverse = HlMeta['universe']
 
 /** @public */
-export type HlAllMids = Record<string, string>
-
-/** @public */
 export type HlCandle = {
   t: number
   o: string
