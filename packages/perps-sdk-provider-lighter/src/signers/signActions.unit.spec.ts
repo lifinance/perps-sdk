@@ -1,10 +1,14 @@
 import { createMemoryStorage } from '@lifi/perps-sdk'
 import type {
+  EvmTxActionStep,
+  EvmTxSignedActionStep,
   WasmBlobActionStep,
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { ActionType, SigningMethod } from '@lifi/perps-types'
-import type { Address } from 'viem'
+import { type Address, createWalletClient, custom } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { arbitrum } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -246,6 +250,148 @@ describe('lighterSignActions', () => {
     })
   })
 
+  describe('EVM_TX — sequential broadcast with receipt confirmation', () => {
+    const ACCOUNT = privateKeyToAccount(`0x${'11'.repeat(32)}`)
+
+    /**
+     * A wallet client backed by a `custom` transport that records the order of
+     * `eth_sendRawTransaction` (broadcast) vs `eth_getTransactionReceipt`
+     * (confirmation) calls, assigns each broadcast leg a distinct hash, and
+     * returns the per-leg receipt status the test prescribes.
+     */
+    function makeRecordingWallet(legStatuses: ('0x1' | '0x0')[]) {
+      const order: string[] = []
+      const broadcastHashes: string[] = []
+      let broadcastIndex = 0
+
+      const transport = custom({
+        async request({ method }) {
+          switch (method) {
+            case 'eth_chainId':
+              return `0x${arbitrum.id.toString(16)}`
+            case 'eth_getTransactionCount':
+              return `0x${broadcastIndex.toString(16)}`
+            case 'eth_estimateGas':
+              return '0x5208'
+            case 'eth_maxPriorityFeePerGas':
+              return '0x1'
+            case 'eth_getBlockByNumber':
+              return {
+                baseFeePerGas: '0x1',
+                number: '0x1',
+                timestamp: '0x1',
+                gasLimit: '0x1',
+                hash: `0x${'00'.repeat(32)}`,
+              }
+            case 'eth_sendRawTransaction': {
+              const hash = `0x${(broadcastIndex + 1)
+                .toString(16)
+                .padStart(64, '0')}`
+              order.push(`broadcast:${broadcastIndex}`)
+              broadcastHashes.push(hash)
+              broadcastIndex += 1
+              return hash
+            }
+            case 'eth_getTransactionReceipt': {
+              const leg = broadcastHashes.length - 1
+              order.push(`receipt:${leg}`)
+              return {
+                transactionHash: broadcastHashes[leg],
+                blockNumber: '0x10',
+                blockHash: `0x${'bb'.repeat(32)}`,
+                status: legStatuses[leg],
+                from: ACCOUNT.address,
+                to: `0x${'22'.repeat(20)}`,
+                cumulativeGasUsed: '0x1',
+                gasUsed: '0x1',
+                effectiveGasPrice: '0x1',
+                logs: [],
+                logsBloom: `0x${'00'.repeat(256)}`,
+                contractAddress: null,
+                transactionIndex: '0x0',
+                type: '0x2',
+              }
+            }
+            default:
+              return null
+          }
+        },
+      })
+
+      const wallet = createWalletClient({
+        account: ACCOUNT,
+        chain: arbitrum,
+        transport,
+      })
+      return { wallet, order, broadcastHashes }
+    }
+
+    function makeStep(functionName: string): EvmTxActionStep {
+      return {
+        action: ActionType.DEPOSIT,
+        txParams: {
+          chainId: arbitrum.id,
+          to: `0x${'22'.repeat(20)}`,
+          functionName,
+          args: [`0x${'33'.repeat(20)}`, 100n],
+          abi: [
+            'function approve(address spender, uint256 amount) returns (bool)',
+            'function deposit(address to, uint256 amount) returns (bool)',
+          ],
+        },
+      }
+    }
+
+    it('awaits each leg receipt before broadcasting the next (strict order)', async () => {
+      const { wallet, order, broadcastHashes } = makeRecordingWallet([
+        '0x1',
+        '0x1',
+      ])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+
+      const result = (await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet }
+      )) as EvmTxSignedActionStep[]
+
+      expect(order).toEqual([
+        'broadcast:0',
+        'receipt:0',
+        'broadcast:1',
+        'receipt:1',
+      ])
+      expect(result).toHaveLength(2)
+      expect(result.map((r) => r.txHash)).toEqual(broadcastHashes)
+    })
+
+    it('aborts the sequence when leg 1 reverts and never broadcasts leg 2', async () => {
+      const { wallet, order } = makeRecordingWallet(['0x0', '0x1'])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+
+      await expect(
+        lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
+          userWallet: wallet,
+        })
+      ).rejects.toThrow(/revert/i)
+
+      expect(order).toEqual(['broadcast:0', 'receipt:0'])
+    })
+
+    it('throws a clear error when no end-user wallet is supplied', async () => {
+      await expect(
+        lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStep('approve')],
+          ADDRESS
+        )
+      ).rejects.toThrow(/end-user wallet/i)
+    })
+  })
+
   describe('method routing', () => {
     it('refuses EIP712 — Lighter declares no EIP712 actions', async () => {
       const { deps } = makeDeps()
@@ -255,3 +401,7 @@ describe('lighterSignActions', () => {
     })
   })
 })
+
+function deps_(): LighterSignActionsDeps {
+  return makeDeps().deps
+}
