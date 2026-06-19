@@ -862,6 +862,30 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('emits a perp mid from allMids even with no allDexsAssetCtxs frame', async () => {
+      marketsFetchMock.mockReset()
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      // No allDexsAssetCtxs frame at all (HL's aggregate feed is idle); the
+      // high-frequency allMids feed alone must still drive the perp's mid.
+      seedSpotMids({ ETH: '3400' })
+      seedSpotMids({ ETH: '3411' })
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.ETH).toEqual({
+        marketId: 'ETH',
+        midPrice: '3411',
+        markPrice: '3411',
+      })
+    })
+
     it('folds a spot market mid from allMids into the marketsContext map', async () => {
       marketsFetchMock.mockReset()
       const provider = createEnrichingProvider()
