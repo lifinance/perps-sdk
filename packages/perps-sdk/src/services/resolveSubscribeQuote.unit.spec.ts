@@ -74,7 +74,7 @@ const installMarkets = (markets: Market[]) => {
     http.get(`${DEFAULT_API_URL}/markets`, () =>
       HttpResponse.json({ markets })
     ),
-    http.get(`${DEFAULT_API_URL}/prices`, () =>
+    http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
       HttpResponse.json({ prices: PRICES })
     )
   )

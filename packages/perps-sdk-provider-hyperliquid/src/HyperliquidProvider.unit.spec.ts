@@ -49,7 +49,7 @@ const installSplitMock = () => {
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/prices')) {
+      if (url.includes('/marketsContext')) {
         return new Response(JSON.stringify({ prices: [] }), { status: 200 })
       }
       if (url.includes('/markets')) {

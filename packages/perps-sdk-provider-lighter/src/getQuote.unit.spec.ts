@@ -56,7 +56,7 @@ const installMock = () =>
     if (url.includes('/orderbook')) {
       return new Response(JSON.stringify(BOOK), { status: 200 })
     }
-    if (url.includes('/prices')) {
+    if (url.includes('/marketsContext')) {
       return new Response(JSON.stringify(PRICES), { status: 200 })
     }
     if (url.includes('/markets')) {
