@@ -66,15 +66,17 @@ export interface MarketsResponse {
 }
 
 /**
- * Live per-market data for the `/prices` endpoint. `price` is the mid;
- * `markPrice`, `prevDayPrice` and `volume24h` apply to every market type,
- * while `openInterest` and `funding` are perp-only and absent for spot.
+ * Live per-market context: `midPrice` is the order-book mid, `markPrice` the
+ * venue mark, `oraclePrice` the venue oracle/index price where the venue
+ * publishes one. `prevDayPrice` and `volume24h` apply to every market type;
+ * `openInterest` and `funding` are perp-only and absent for spot.
  * @public
  */
-export interface MarketPrice {
+export interface MarketContext {
   marketId: string
-  price: string
+  midPrice: string
   markPrice: string
+  oraclePrice?: string
   prevDayPrice?: string
   volume24h?: string
   openInterest?: string
@@ -83,7 +85,7 @@ export interface MarketPrice {
 
 /** @public */
 export interface PricesResponse {
-  prices: MarketPrice[]
+  prices: MarketContext[]
 }
 
 /** @public */

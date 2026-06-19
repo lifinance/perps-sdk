@@ -53,9 +53,33 @@ const allDexsFrame = (user: string, states: Array<[string, string[]]>) =>
 
 const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0))
 
-// Seed the provider's live mids by replaying an `allMids` frame on the socket
-// (created in the constructor), so reference-price lookups resolve.
+const perpCtx = (coin: string, midPx: string) => ({
+  coin,
+  funding: '0.0001',
+  openInterest: '100',
+  dayNtlVlm: '1000000',
+  prevDayPx: midPx,
+  markPx: midPx,
+  midPx,
+  oraclePx: midPx,
+})
+
+// Seed the provider's live perp mids by replaying an `allDexsAssetCtxs` frame,
+// so reference-price lookups resolve.
 const seedMids = (mids: Record<string, string>) =>
+  getMockRwsInstance().simulateMessage(
+    JSON.stringify({
+      channel: 'allDexsAssetCtxs',
+      data: {
+        assetCtxs: [
+          ['', Object.entries(mids).map(([coin, mid]) => perpCtx(coin, mid))],
+        ],
+      },
+    })
+  )
+
+// Seed spot mids via `allMids` — HL's only aggregate spot-mid feed.
+const seedSpotMids = (mids: Record<string, string>) =>
   getMockRwsInstance().simulateMessage(
     JSON.stringify({ channel: 'allMids', data: { mids } })
   )
@@ -180,14 +204,9 @@ vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
 // --- Test setup ---
 
 const providerKey = 'hyperliquid'
-const subDexes = ['xyz']
 
 function createProvider(): HyperliquidWsProvider {
-  return new HyperliquidWsProvider(
-    'wss://api.hyperliquid.xyz/ws',
-    providerKey,
-    subDexes
-  )
+  return new HyperliquidWsProvider('wss://api.hyperliquid.xyz/ws', providerKey)
 }
 
 // Fresh client per provider: the market registry is cached per (client, provider).
@@ -202,7 +221,6 @@ function createEnrichingProvider(
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
     providerKey,
-    subDexes,
     freshClient()
   )
 }
@@ -218,12 +236,12 @@ describe('HyperliquidWsProvider', () => {
   })
 
   describe('subscribe', () => {
-    it('should send subscribe message for default and sub-dex allMids', async () => {
+    it('subscribes to allDexsAssetCtxs plus the default allMids spot feed', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -231,11 +249,11 @@ describe('HyperliquidWsProvider', () => {
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids' },
+        subscription: { type: 'allDexsAssetCtxs' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids', dex: 'xyz' },
+        subscription: { type: 'allMids' },
       })
     })
 
@@ -244,7 +262,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateStatus('disconnected')
 
       const firstUnsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       expect(typeof firstUnsub).toBe('function')
@@ -253,7 +271,7 @@ describe('HyperliquidWsProvider', () => {
       // Repeated terminal drops remain recoverable via subscribe intent.
       getMockRwsInstance().simulateStatus('disconnected')
       const secondUnsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       expect(typeof secondUnsub).toBe('function')
@@ -262,20 +280,20 @@ describe('HyperliquidWsProvider', () => {
     it('should return an unsubscribe function', async () => {
       const provider = createProvider()
       const unsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
 
       expect(typeof unsub).toBe('function')
     })
 
-    it('unsubscribes both default + xyz allMids when the prices listener unsubscribes', async () => {
+    it('unsubscribes both wire feeds when the marketsContext listener unsubscribes', async () => {
       vi.useFakeTimers()
       try {
         const provider = createProvider()
 
         const unsub = await provider.subscribe(
-          { channel: 'prices', dex: 'hyperliquid' },
+          { channel: 'marketsContext', dex: 'hyperliquid' },
           vi.fn()
         )
 
@@ -289,11 +307,11 @@ describe('HyperliquidWsProvider', () => {
         )
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
-          subscription: { type: 'allMids' },
+          subscription: { type: 'allDexsAssetCtxs' },
         })
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
-          subscription: { type: 'allMids', dex: 'xyz' },
+          subscription: { type: 'allMids' },
         })
       } finally {
         vi.useRealTimers()
@@ -640,7 +658,6 @@ describe('HyperliquidWsProvider', () => {
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
-        subDexes,
         freshClient()
       )
 
@@ -697,63 +714,128 @@ describe('HyperliquidWsProvider', () => {
   })
 
   describe('message handling', () => {
-    it('should emit prices event for allMids channel', async () => {
+    it('emits marketsContext with oracle/mark/mid for the allDexsAssetCtxs feed', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000', ETH: '3400' } },
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1000000',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+            ],
+          },
         })
       )
 
-      expect(listener).toHaveBeenCalledWith({
-        channel: 'prices',
-        data: { BTC: '95000', ETH: '3400' },
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.BTC).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95001',
+        markPrice: '95000',
+        oraclePrice: '94998',
       })
     })
 
-    it('should merge sub-dex allMids with default mids', async () => {
+    it('merges perp asset contexts across sub-dexs into the marketsContext map', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
-      // Default allMids
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000', ETH: '3400' } },
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+              [
+                'xyz',
+                [
+                  {
+                    coin: 'xyz:BRENTOIL',
+                    funding: '0.0002',
+                    openInterest: '50',
+                    dayNtlVlm: '2',
+                    prevDayPx: '70',
+                    markPx: '70.50',
+                    midPx: '70.49',
+                    oraclePx: '70.48',
+                  },
+                ],
+              ],
+            ],
+          },
         })
       )
 
-      // xyz sub-dex allMids
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { dex: 'xyz', mids: { BRENTOIL: '70.50', GOLD: '2300' } },
-        })
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(Object.keys(event.data).sort()).toEqual(['BTC', 'xyz:BRENTOIL'])
+      expect(event.data['xyz:BRENTOIL'].midPrice).toBe('70.49')
+    })
+
+    it('folds a spot market mid from allMids into the marketsContext map', async () => {
+      marketsFetchMock.mockReset()
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
       )
 
-      expect(listener).toHaveBeenCalledTimes(2)
-      const lastEvent = listener.mock.calls[1][0]
-      expect(lastEvent).toEqual({
-        channel: 'prices',
-        data: {
-          BTC: '95000',
-          ETH: '3400',
-          BRENTOIL: '70.50',
-          GOLD: '2300',
-        },
+      seedMids({ BTC: '95001' })
+      seedSpotMids({ '@142': '95010' })
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.BTC).toMatchObject({
+        midPrice: '95001',
+        oraclePrice: '95001',
+      })
+      // HL_SPOT_MARKET is id '@142'; spot carries a mid only.
+      expect(event.data['@142']).toEqual({
+        marketId: '@142',
+        midPrice: '95010',
+        markPrice: '95010',
       })
     })
 
@@ -1075,7 +1157,7 @@ describe('HyperliquidWsProvider', () => {
       const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
       const listener = vi.fn()
 
-      seedMids({ 'PURR/USDC': '0.5' })
+      seedSpotMids({ 'PURR/USDC': '0.5' })
 
       await provider.subscribe(
         { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
@@ -1410,7 +1492,7 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1424,7 +1506,7 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1444,7 +1526,7 @@ describe('HyperliquidWsProvider', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1462,7 +1544,7 @@ describe('HyperliquidWsProvider', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1517,7 +1599,7 @@ describe('HyperliquidWsProvider', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         priceListener
       )
       await provider.subscribe(
@@ -1554,19 +1636,13 @@ describe('HyperliquidWsProvider', () => {
       )
 
       // A subsequent good frame on a different channel must still be delivered.
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000' } },
-        })
-      )
+      seedMids({ BTC: '95000' })
 
       expect(errorSpy).toHaveBeenCalledOnce()
       expect(orderListener).not.toHaveBeenCalled()
-      expect(priceListener).toHaveBeenCalledWith({
-        channel: 'prices',
-        data: { BTC: '95000' },
-      })
+      const event = priceListener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.BTC.midPrice).toBe('95000')
       errorSpy.mockRestore()
     })
 
@@ -1575,18 +1651,13 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       const unsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       unsub()
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '96000' } },
-        })
-      )
+      seedMids({ BTC: '96000' })
 
       expect(listener).not.toHaveBeenCalled()
     })
@@ -1751,7 +1822,6 @@ describe('HyperliquidWsProvider', () => {
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
-        subDexes,
         freshClient()
       )
       const listener = vi.fn()
@@ -1790,7 +1860,6 @@ describe('HyperliquidWsProvider', () => {
         const provider = new HyperliquidWsProvider(
           'wss://api.hyperliquid.xyz/ws',
           providerKey,
-          subDexes,
           freshClient()
         )
         const listener = vi.fn()
@@ -1829,7 +1898,7 @@ describe('HyperliquidWsProvider', () => {
       const provider = createProvider()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       await provider.subscribe(
@@ -1843,16 +1912,16 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateOpen()
       await flushMicrotasks()
 
-      // 2 allMids (default + xyz) + 1 l2Book
+      // allDexsAssetCtxs + default allMids + l2Book
       expect(getMockRwsInstance().sent).toHaveLength(3)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids' },
+        subscription: { type: 'allDexsAssetCtxs' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids', dex: 'xyz' },
+        subscription: { type: 'allMids' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
@@ -1893,7 +1962,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatus = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatus
       )
@@ -1913,7 +1982,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatus = vi.fn()
 
       const unsubscribe = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatus
       )
@@ -1930,7 +1999,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatusB = vi.fn()
 
       const unsubA = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatusA
       )
@@ -1963,18 +2032,13 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       provider.close()
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000' } },
-        })
-      )
+      seedMids({ BTC: '95000' })
 
       expect(listener).not.toHaveBeenCalled()
     })

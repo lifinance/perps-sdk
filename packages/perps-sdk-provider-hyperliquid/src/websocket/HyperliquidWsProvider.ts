@@ -12,22 +12,25 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import {
+  type MarketContext,
   type OpenOrder,
   OrderSide,
   OrderType,
   type Subscription,
   type TriggerOrder,
 } from '@lifi/perps-types'
-import { HYPERLIQUID_FEE_TIER_FALLBACK } from '../constants.js'
+import { HYPERLIQUID_FEE_TIER_FALLBACK, SPOT_MARKET_ID } from '../constants.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
+  HlWsAllDexsAssetCtxsData,
   HlWsAllDexsClearinghouseStateData,
   HlWsAllMidsData,
   HlWsCandleData,
   HlWsL2BookData,
   HlWsMessage,
+  HlWsPerpAssetCtx,
   HlWsSpotStateData,
   HlWsUserFillsData,
 } from '../types/index.js'
@@ -35,6 +38,7 @@ import {
   isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
+  mapMarketContext,
   mapOrderStatus,
   mapOrderType,
   mapPosition,
@@ -51,23 +55,20 @@ const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
  * `WsProviderFactory` constructor for Hyperliquid — pass to
  * `new PerpsWsClient(client, { wsProviders: { hyperliquid: hyperliquidWsProvider() } })`.
  *
- * Derives the active sub-DEX set from the `markets` list `PerpsWsClient`
- * passes in (the provider's own key and `'spot'` are excluded — they
- * aren't sub-DEX subscriptions on the HL wire). Higher-order shape mirrors
- * `lighterWsProvider(options)` so the two factories register identically.
+ * Higher-order shape mirrors `lighterWsProvider(options)` so the two factories
+ * register identically.
  *
  * @public
  */
 export const hyperliquidWsProvider =
   (): WsProviderFactory =>
-  ({ provider, wsUrl, markets, client }) => {
-    const subDexes = markets.filter((m) => m !== provider && m !== 'spot')
-    return new HyperliquidWsProvider(wsUrl, provider, subDexes, client)
-  }
+  ({ provider, wsUrl, client }) =>
+    new HyperliquidWsProvider(wsUrl, provider, client)
 
 /**
- * Hyperliquid realtime {@link WsProvider}: multiplexes prices, positions,
- * orders, fills and spot balances over a single {@link ReconnectingWebSocket}.
+ * Hyperliquid realtime {@link WsProvider}: multiplexes markets context,
+ * positions, orders, fills and spot balances over a single
+ * {@link ReconnectingWebSocket}.
  * Construct via {@link hyperliquidWsProvider}.
  *
  * `orderUpdates` supports a single address per provider instance: HL delivers
@@ -80,22 +81,16 @@ export const hyperliquidWsProvider =
  */
 export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
-  private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
-  private midsBySubDex = new Map<string, Record<string, string>>()
+  private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
+  private spotMids: Record<string, string> = {}
 
-  constructor(
-    wsUrl: string,
-    providerKey: string,
-    subDexes: string[],
-    client?: PerpsSDKClient
-  ) {
+  constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"method":"ping"}' }),
       providerKey
     )
-    this.subDexes = subDexes
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
   }
@@ -130,9 +125,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     await this.registry?.sync()
 
-    // Prices require multi-sub-dex allMids subscriptions under one logical key.
-    if (sub.channel === 'prices') {
-      const entries = this.getPriceSubEntries()
+    // Markets context aggregates the all-dexs perp asset-context feed (mid,
+    // mark, oracle, funding, OI) with the default `allMids` frame, whose spot
+    // mids HL publishes nowhere else.
+    if (sub.channel === 'marketsContext') {
+      const entries = this.getMarketsContextSubEntries()
 
       for (const { subKey, payload } of entries) {
         await this.registerSub(subKey, payload)
@@ -147,7 +144,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
           )
         }
-        this.midsBySubDex.clear()
+        this.perpCtxBySubDex.clear()
+        this.spotMids = {}
       }
     }
 
@@ -192,22 +190,24 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.orderUpdatesKey = key
   }
 
-  /** Build sub-key + payload pairs for each sub-dex allMids subscription. */
-  private getPriceSubEntries(): Array<{ subKey: string; payload: object }> {
+  /**
+   * Sub-key + payload pairs for the markets-context aggregation: the all-dexs
+   * perp asset-context feed plus the default `allMids` frame (the only feed
+   * carrying spot mids).
+   */
+  private getMarketsContextSubEntries(): Array<{
+    subKey: string
+    payload: object
+  }> {
     return [
-      {
-        subKey: 'allMids:default',
-        payload: { type: 'allMids' },
-      },
-      ...this.subDexes.map((dex) => ({
-        subKey: `allMids:${dex}`,
-        payload: { type: 'allMids', dex },
-      })),
+      { subKey: 'allDexsAssetCtxs', payload: { type: 'allDexsAssetCtxs' } },
+      { subKey: 'allMids:default', payload: { type: 'allMids' } },
     ]
   }
 
   protected override onClose(): void {
-    this.midsBySubDex.clear()
+    this.perpCtxBySubDex.clear()
+    this.spotMids = {}
     this.orderUpdatesKey = undefined
   }
 
@@ -219,8 +219,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
-      case 'prices':
-        return 'allMids'
+      case 'marketsContext':
+        return 'marketsContext'
       case 'orderbook':
         return `l2Book:${sub.marketId}`
       case 'candle':
@@ -238,10 +238,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private toHlPayload(sub: Subscription): object {
     switch (sub.channel) {
-      case 'prices':
-        // Prices are handled via getPriceSubEntries in subscribe()
-        // and never reach toHlPayload, but TS requires exhaustive cases.
-        return { type: 'allMids' }
+      case 'marketsContext':
+        // Handled via getMarketsContextSubEntries in openChannel; never reaches
+        // toHlPayload, but TS requires an exhaustive switch.
+        return { type: 'allDexsAssetCtxs' }
       case 'orderbook':
         return {
           type: 'l2Book',
@@ -301,6 +301,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     try {
       switch (msg.channel) {
+        case 'allDexsAssetCtxs':
+          this.handleAllDexsAssetCtxs(msg.data as HlWsAllDexsAssetCtxsData)
+          break
         case 'allMids':
           this.handleAllMids(msg.data as HlWsAllMidsData)
           break
@@ -330,25 +333,58 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
   }
 
-  private handleAllMids(data: HlWsAllMidsData) {
-    const subDexKey = data.dex || 'default'
-    this.midsBySubDex.set(subDexKey, data.mids)
-
-    const merged: Record<string, string> = {}
-    for (const mids of this.midsBySubDex.values()) {
-      Object.assign(merged, mids)
+  private handleAllDexsAssetCtxs(data: HlWsAllDexsAssetCtxsData) {
+    for (const [dex, ctxs] of data.assetCtxs) {
+      const byMarketId: Record<string, HlWsPerpAssetCtx> = {}
+      for (const ctx of ctxs) {
+        byMarketId[ctx.coin] = ctx
+      }
+      this.perpCtxBySubDex.set(dex || 'default', byMarketId)
     }
-
-    this.emit('allMids', { channel: 'prices', data: merged })
+    this.emitMarketsContext()
   }
 
-  /** Latest mid per `Market.id`, merged across sub-dex allMids frames. */
+  private handleAllMids(data: HlWsAllMidsData) {
+    this.spotMids = { ...this.spotMids, ...data.mids }
+    this.emitMarketsContext()
+  }
+
+  /**
+   * Build the all-markets context map: every perp asset context across sub-dexs,
+   * plus a mid-only entry for each registry spot market priced by `allMids` (HL
+   * publishes no aggregate spot mark/oracle over WS).
+   */
+  private emitMarketsContext() {
+    const data: Record<string, MarketContext> = {}
+    for (const byMarketId of this.perpCtxBySubDex.values()) {
+      for (const [marketId, ctx] of Object.entries(byMarketId)) {
+        data[marketId] = mapMarketContext(marketId, ctx)
+      }
+    }
+    for (const market of this.registry?.markets ?? []) {
+      if (market.categoryId !== SPOT_MARKET_ID) {
+        continue
+      }
+      const mid = this.spotMids[market.id]
+      if (mid !== undefined) {
+        // Spot mid stands in for the required mark; HL streams no spot mark.
+        data[market.id] = { marketId: market.id, midPrice: mid, markPrice: mid }
+      }
+    }
+    this.emit('marketsContext', { channel: 'marketsContext', data })
+  }
+
+  /** Latest mid per `Market.id` across the perp ctx feed and the spot mids. */
   private mergedMids(): Map<string, number> {
     const map = new Map<string, number>()
-    for (const mids of this.midsBySubDex.values()) {
-      for (const [id, mid] of Object.entries(mids)) {
+    for (const byMarketId of this.perpCtxBySubDex.values()) {
+      for (const [id, ctx] of Object.entries(byMarketId)) {
+        const mid = ctx.midPx ?? ctx.markPx
         map.set(id, Number(mid))
       }
+    }
+    for (const [id, mid] of Object.entries(this.spotMids)) {
+      map.set(id, Number(mid))
     }
     return map
   }
@@ -501,6 +537,8 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
     return false
   }
   switch (channel) {
+    case 'allDexsAssetCtxs':
+      return Array.isArray(data.assetCtxs)
     case 'allMids':
       return isObject(data.mids)
     case 'l2Book':

@@ -12,7 +12,12 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Fill, Position, Subscription } from '@lifi/perps-types'
+import type {
+  Fill,
+  MarketContext,
+  Position,
+  Subscription,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
@@ -35,10 +40,11 @@ import {
   classifyAndMapOrders,
   fetchDetailedAccount,
   mapFill,
+  mapMarketContext,
   mapPosition,
 } from '../utils/index.js'
 
-// Public channels: `prices` (market_stats/all + spot_market_stats/all),
+// Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `orderbook` (order_book/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
@@ -124,7 +130,7 @@ export interface LighterWsProviderOptions {
 
 /**
  * Lighter realtime WS provider (extends {@link WsProviderBase}): subscribes to
- * Lighter's WS channels (orderbook, prices, orders, positions), attaching auth
+ * Lighter's WS channels (orderbook, marketsContext, orders, positions), attaching auth
  * tokens to gated channels. Construct via {@link lighterWsProvider}.
  *
  * @public
@@ -135,7 +141,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly client: PerpsSDKClient | undefined
 
   private readonly orderbooks = new Map<number, OrderbookState>()
-  private lastPricesByAssetId: Record<string, string> = {}
+  private marketsContext: Record<string, MarketContext> = {}
 
   /**
    * `address → market_id → Position`. `subscribed/...` frames reseed it and
@@ -203,9 +209,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
 
     // Only the auth channels (orders/fills/positions) resolve markets.
-    // `prices`/`orderbook` are keyed purely by `String(market_id)`, so gating
-    // them on the registry sync would let a failed `/markets` fetch kill live
-    // price ticks.
+    // `marketsContext`/`orderbook` are keyed purely by `String(market_id)`, so
+    // gating them on the registry sync would let a failed `/markets` fetch kill
+    // live price ticks.
     if (channelNeedsMarkets(sub.channel)) {
       await this.registry?.sync()
     }
@@ -214,7 +220,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     // Registry keyed by the wire channel (unique per sub), so replay-failure
     // logs name the channel the venue knows. A logical sub may fan out to
-    // several wire channels (e.g. `prices`), each registered independently.
+    // several wire channels (e.g. `marketsContext`), each registered independently.
     for (const { channel, needsAuth, address } of wireChannels) {
       await this.registerSub(channel, { channel, needsAuth, address })
     }
@@ -239,7 +245,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   protected override onClose(): void {
     this.orderbooks.clear()
-    this.lastPricesByAssetId = {}
+    this.marketsContext = {}
     this.positionsByAddress.clear()
   }
 
@@ -271,8 +277,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
-      case 'prices':
-        return 'prices'
+      case 'marketsContext':
+        return 'marketsContext'
       case 'orderbook':
         return `orderbook:${sub.marketId}`
       case 'orderUpdates':
@@ -297,10 +303,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       address?: Address
     }>
   > {
-    if (sub.channel === 'prices') {
+    if (sub.channel === 'marketsContext') {
       // Lighter splits stats across two wire channels: perp markets on
       // `market_stats/all`, spot markets on `spot_market_stats/all`. Both feed
-      // the single aggregated `prices` emit.
+      // the single aggregated `marketsContext` emit.
       return [
         { channel: 'market_stats/all', needsAuth: false },
         { channel: 'spot_market_stats/all', needsAuth: false },
@@ -554,17 +560,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     if (!stats) {
       return
     }
-    const updates: Record<string, string> = {}
-    for (const entry of Object.values(stats)) {
-      updates[String(entry.market_id)] = entry.last_trade_price
-    }
-    if (Object.keys(updates).length === 0) {
+    const entries = Object.values(stats)
+    if (entries.length === 0) {
       return
     }
-    this.lastPricesByAssetId = { ...this.lastPricesByAssetId, ...updates }
-    this.emit('prices', {
-      channel: 'prices',
-      data: this.lastPricesByAssetId,
+    for (const entry of entries) {
+      const ctx = mapMarketContext(entry)
+      this.marketsContext[ctx.marketId] = ctx
+    }
+    this.emit('marketsContext', {
+      channel: 'marketsContext',
+      data: this.marketsContext,
     })
   }
 

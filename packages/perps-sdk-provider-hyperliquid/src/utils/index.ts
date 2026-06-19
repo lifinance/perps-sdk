@@ -12,7 +12,7 @@ export {
 export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export { mapMarket } from './mapMarket.js'
-export { mapMarketPrice } from './mapMarketPrice.js'
+export { mapMarketContext } from './mapMarketContext.js'
 export {
   isTriggerOrder,
   isTriggerType,
