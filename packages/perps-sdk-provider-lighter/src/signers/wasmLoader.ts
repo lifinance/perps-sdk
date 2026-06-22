@@ -109,13 +109,41 @@ export interface LighterWasmExports {
     apiKeyIndex: number,
     accountIndex: number
   ) => SignResult & { messageToSign?: string }
+  /**
+   * Go WASM exports take positional primitives, so TS cannot type the
+   * arguments — `WASM_FUNCTION_NAMES` only validates that each function
+   * *exists* at load time, never its arity or order. A `.wasm` bump that
+   * shifts or adds an argument therefore compiles, passes the existence
+   * check, and only fails at runtime (Lighter code 20001 "invalid param").
+   * The expected positional contract below is the authority; it MUST stay in
+   * sync with the call site in `LighterSigner.dispatch`. All sign exports end
+   * with `(nonce, apiKeyIndex, accountIndex)`.
+   *
+   * 13 args: marketIndex, clientOrderIndex, baseAmount, price, isAsk,
+   * orderType, timeInForce, reduceOnly, triggerPrice, orderExpiry, then the
+   * trailing three.
+   */
   SignCreateOrder: (...args: unknown[]) => SignResult
+  /** 5 args: marketIndex, orderIndex, then the trailing three. */
   SignCancelOrder: (...args: unknown[]) => SignResult
+  /** 5 args: timeInForce, timestampMs, then the trailing three. */
   SignCancelAllOrders: (...args: unknown[]) => SignResult
+  /**
+   * 7 args: toAccount, usdcAmount, fee, memo, then the trailing three. `memo`
+   * is copied into a Go `[32]byte`, so its UTF-8 byte length must be exactly
+   * 32 or Go rejects it before signing.
+   */
   SignTransfer: (...args: unknown[]) => SignResult
+  /** 4 args: amount, then the trailing three. */
   SignWithdraw: (...args: unknown[]) => SignResult
+  /** 6 args: marketIndex, fraction, marginMode, then the trailing three. */
   SignUpdateLeverage: (...args: unknown[]) => SignResult
+  /**
+   * 8 args: marketIndex, orderIndex, baseAmount, price, triggerPrice, then the
+   * trailing three.
+   */
   SignModifyOrder: (...args: unknown[]) => SignResult
+  /** 6 args: marketIndex, usdcAmount, direction, then the trailing three. */
   SignUpdateMargin: (...args: unknown[]) => SignResult
 }
 
