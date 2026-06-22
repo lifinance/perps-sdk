@@ -1,1 +1,6 @@
-overrides: {}
+packages:
+  - packages/*
+allowBuilds:
+  esbuild: true
+  msw: true
+  nx: true

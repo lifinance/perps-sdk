@@ -1,8 +1,8 @@
 # build
 dist
-cjs
-esm
-types
+**/dist/cjs/
+**/dist/esm/
+**/dist/types/
 _esm/
 _cjs/
 _types/
@@ -45,3 +45,14 @@ Thumbs.db
 # Claude Code (local config)
 CLAUDE.local.md
 .claude/
+
+# Git worktrees
+.worktrees/
+
+# Cursor project config
+.cursor/*
+.cursor/mcp.json
+.cursor/settings.local.json
+.cursor/**/*.local.*
+.cursor/**/tmp/
+.cursor/**/cache/

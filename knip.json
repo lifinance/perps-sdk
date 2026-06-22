@@ -1,4 +1,13 @@
 {
-  "ignore": ["scripts/**", "examples/**", "**/version.ts"],
-  "ignoreDependencies": ["@vitest/coverage-v8", "@lifi/perps-types"]
+  "ignore": [
+    "scripts/**",
+    "examples/**",
+    "**/version.ts",
+    "packages/*/wasm/**",
+    "packages/*/src/**",
+    "packages/*/test/**",
+    "packages/*/scripts/**",
+    "packages/*/vitest.config.ts"
+  ],
+  "ignoreDependencies": ["@vitest/coverage-v8", "@types/fs-extra", "fs-extra"]
 }

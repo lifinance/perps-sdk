@@ -1,1 +1,2 @@
+sh scripts/check-no-local-links.sh
 pnpm pre-commit

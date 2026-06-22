@@ -1,0 +1,149 @@
+/**
+ * Pure-function helpers for predicting how a perp position changes after a
+ * fill.
+ *
+ * Sign convention: long = +1, short = -1. Sizes passed to these helpers are
+ * always non-negative magnitudes; direction is carried by `isLong`.
+ */
+
+/**
+ * Direction sign for a position.
+ *
+ * @param isLong - True for long positions, false for short.
+ * @returns +1 for long, -1 for short.
+ * @public
+ */
+export function directionSign(isLong: boolean): 1 | -1 {
+  return isLong ? 1 : -1
+}
+
+/**
+ * Estimated liquidation price for an isolated-margin position, parameterised
+ * by the venue's maintenance margin rate.
+ *
+ * Standard isolated-margin model (new position, no existing exposure):
+ *   margin_per_unit      = entryPrice / leverage
+ *   maintenance_per_unit = entryPrice * mmr
+ *   margin_available     = margin_per_unit - maintenance_per_unit
+ *   liq_price            = entryPrice - side * margin_available / (1 - mmr * side)
+ *
+ * For existing positions, prefer `Position.liquidationPrice` from the venue.
+ *
+ * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
+ *   (e.g. 0.01 = 1%).
+ * @returns Estimated liquidation price, or undefined if the inputs cannot
+ *   produce one (zero leverage, degenerate denominator).
+ * @public
+ */
+export function estimateIsolatedLiquidationPrice(params: {
+  entryPrice: number
+  leverage: number
+  isLong: boolean
+  maintenanceMarginRate: number
+}): number | undefined {
+  const { entryPrice, leverage, isLong, maintenanceMarginRate } = params
+  if (leverage === 0) {
+    return undefined
+  }
+  const side = directionSign(isLong)
+  const denominator = 1 - maintenanceMarginRate * side
+  if (denominator === 0) {
+    return undefined
+  }
+  const marginAvailable = entryPrice * (1 / leverage - maintenanceMarginRate)
+  return entryPrice - (side * marginAvailable) / denominator
+}
+
+/**
+ * Predicted average entry price after adding to an existing position.
+ *
+ * Weighted average of the current entry and the new fill price, weighted by
+ * the size of each leg in coin units. Both legs assumed in the same direction
+ * (this helper is for adding to, not flipping, a position).
+ *
+ * @param currentSize - Existing position size in coin units (>= 0).
+ * @param currentEntry - Existing position's average entry price.
+ * @param addSize - Size being added in coin units (>= 0).
+ * @param fillPrice - Price the new size is expected to fill at (mid for
+ *   market, limitPrice for limit orders).
+ * @returns The new weighted-average entry price, or undefined if the inputs
+ *   cannot produce a valid average (zero combined size, non-finite values).
+ * @public
+ */
+export function predictAverageEntryPrice(params: {
+  currentSize: number
+  currentEntry: number
+  addSize: number
+  fillPrice: number
+}): number | undefined {
+  const { currentSize, currentEntry, addSize, fillPrice } = params
+  const totalSize = currentSize + addSize
+  if (totalSize <= 0) {
+    return undefined
+  }
+  if (!Number.isFinite(currentEntry) || !Number.isFinite(fillPrice)) {
+    return undefined
+  }
+  return (currentSize * currentEntry + addSize * fillPrice) / totalSize
+}
+
+/**
+ * Predicted effective leverage after adding margin and notional.
+ *
+ * leverage = totalNotional / totalMargin. The caller computes notional from
+ * size and price (`calculateNotionalValue`) and supplies the additional
+ * margin the user is about to put up.
+ *
+ * @returns The new effective leverage, or undefined if total margin is
+ *   non-positive.
+ * @public
+ */
+export function predictNewLeverage(params: {
+  currentNotional: number
+  currentMargin: number
+  addNotional: number
+  addMargin: number
+}): number | undefined {
+  const { currentNotional, currentMargin, addNotional, addMargin } = params
+  const totalMargin = currentMargin + addMargin
+  if (totalMargin <= 0) {
+    return undefined
+  }
+  return (currentNotional + addNotional) / totalMargin
+}
+
+/**
+ * Predicted unrealised PnL at the current mark price.
+ *
+ * `pnl = (markPrice - entryPrice) * size * directionSign(isLong)`
+ *
+ * @param size - Position size as a non-negative magnitude.
+ * @public
+ */
+export function predictUnrealizedPnl(params: {
+  entryPrice: number
+  markPrice: number
+  size: number
+  isLong: boolean
+}): number {
+  const { entryPrice, markPrice, size, isLong } = params
+  return (markPrice - entryPrice) * size * directionSign(isLong)
+}
+
+/**
+ * Realised PnL on the portion of a position being closed.
+ *
+ * `rPnl = (closePrice - entryPrice) * closeSize * directionSign(isLong)`
+ *
+ * @param closeSize - Size being closed as a non-negative magnitude.
+ * @public
+ */
+export function realizedPnlOnClose(params: {
+  entryPrice: number
+  closePrice: number
+  closeSize: number
+  isLong: boolean
+}): number {
+  const { entryPrice, closePrice, closeSize, isLong } = params
+  return (closePrice - entryPrice) * closeSize * directionSign(isLong)
+}

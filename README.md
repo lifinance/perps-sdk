@@ -9,69 +9,52 @@
 
 <h1 align="center">LI.FI Perps SDK</h1>
 
-[**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) is a TypeScript SDK for trading perpetuals across multiple DEXes through a unified interface.
+[**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) is a TypeScript SDK for trading perpetuals across multiple DEXes through one unified interface. This repository is the pnpm + Changesets monorepo that builds and publishes it.
 
-- Unified interface across perpetual DEXes (Hyperliquid and more)
-- Two signing modes: **USER** (wallet signs each action) and **USER_AGENT** (agent auto-signs, no popups)
-- Low-level service functions and high-level `PerpsClient`
-- Real-time WebSocket subscriptions for prices, orderbook, and fills
-- Full TypeScript support with all types exported
+**Using the SDK?** Start with the [`@lifi/perps-sdk` package README](./packages/perps-sdk) for installation, quick start, and the realtime API, or read the [full documentation](https://public-perps-docs.mintlify.app/). The rest of this page is for working *on* the repository.
 
-## Installation
+## Packages
 
-```bash
-pnpm add @lifi/perps-sdk
-# or
-npm install @lifi/perps-sdk
-```
+Published packages live under [`packages/`](./packages). `@lifi/perps-types` sits at the base with zero dependencies; the core `@lifi/perps-sdk` depends on it; each provider plugin depends on the types directly and takes the core SDK as a peer dependency.
 
-## Quick Start
+| Package | Install for | Description |
+| --- | --- | --- |
+| [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, realtime client |
+| [`@lifi/perps-sdk-provider-hyperliquid`](./packages/perps-sdk-provider-hyperliquid/README.md) | Hyperliquid | Hyperliquid provider plugin |
+| [`@lifi/perps-sdk-provider-lighter`](./packages/perps-sdk-provider-lighter/README.md) | Lighter | Lighter provider plugin |
+| [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
-Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
+## Development
 
-### Fetch Market Data
+pnpm workspace — Node `>=24`. From the repository root:
 
-```typescript
-import { createPerpsClient, getProviders, getAssets, getPrices } from '@lifi/perps-sdk'
-
-const client = createPerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
-
-const { providers } = await getProviders(client)
-const { assets } = await getAssets(client, { provider: 'hyperliquid' })
-const { prices } = await getPrices(client, { provider: 'hyperliquid', symbols: ['BTC', 'ETH'] })
-```
-
-### Trade with PerpsClient
-
-```typescript
-import { PerpsClient, OrderSide, OrderType } from '@lifi/perps-sdk'
-
-const perps = new PerpsClient({ integrator: 'my-app', apiKey: 'your-api-key' })
-
-// Enable agent signing mode (one-time setup, requires user wallet signature)
-await perps.setSigningMode(address, 'hyperliquid', 'USER_AGENT')
-
-// Place orders without wallet popups
-const result = await perps.placeOrder({
-  provider: 'hyperliquid',
-  address,
-  asset: { assetId: 'BTC', market: 'hyperliquid' },
-  side: OrderSide.BUY,
-  type: OrderType.MARKET,
-  size: '0.1',
-  price: '95000.00',
-})
-```
+| Command | Does |
+| --- | --- |
+| `pnpm install` | Install workspace dependencies |
+| `pnpm build` | Build every package (CJS + ESM + types) |
+| `pnpm test` | Run all package tests (vitest) |
+| `pnpm test:unit` | Unit tests only |
+| `pnpm test:cov` | Tests with coverage |
+| `pnpm check` | Biome lint/format check |
+| `pnpm check:write` | Biome auto-fix |
+| `pnpm check:types` | TypeScript type checking across packages |
+| `pnpm check:circular-deps` | madge circular-dependency check |
+| `pnpm knip:check` | Report unused files, deps, and exports |
 
 ## Examples
 
-See the [`examples/`](./examples) folder for runnable code covering market data, account management, trading, agent-based signing, error handling, and custom storage.
+Runnable scripts in [`examples/`](./examples):
+
+| Script | What it shows |
+| --- | --- |
+| [`market-data.ts`](./examples/market-data.ts) | Fetching markets, assets, prices, orderbook, OHLCV |
+| [`account-data.ts`](./examples/account-data.ts) | Account state, positions, orders, fills |
+| [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
+| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
+| [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
+| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | Realtime prices, orderbook, multi-listener dedup, status |
 
 ## Documentation
 
 - [Full documentation](https://public-perps-docs.mintlify.app/)
 - [API reference](https://public-perps-docs.mintlify.app/api-reference)
-
-## Changelog
-
-See [CHANGELOG.md](./CHANGELOG.md).

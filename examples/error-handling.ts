@@ -1,4 +1,5 @@
 import {
+  getMarkets,
   OrderSide,
   OrderType,
   PerpsClient,
@@ -13,10 +14,18 @@ async function run() {
   })
 
   try {
+    const { markets } = await getMarkets(perps.client, {
+      provider: 'hyperliquid',
+    })
+    const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
+    if (!btc) {
+      throw new Error('BTC market not found')
+    }
+
     await perps.placeOrder({
       address: '0x1234...',
       provider: 'hyperliquid',
-      asset: { assetId: 'BTC', market: 'hyperliquid' },
+      market: { marketId: btc.id, categoryId: btc.categoryId },
       side: OrderSide.BUY,
       type: OrderType.MARKET,
       size: '0.1',

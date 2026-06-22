@@ -1,0 +1,407 @@
+import { createMemoryStorage } from '@lifi/perps-sdk'
+import type {
+  EvmTxActionStep,
+  EvmTxSignedActionStep,
+  WasmBlobActionStep,
+  WasmBlobSignedActionStep,
+} from '@lifi/perps-types'
+import { ActionType, SigningMethod } from '@lifi/perps-types'
+import { type Address, createWalletClient, custom } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { arbitrum } from 'viem/chains'
+import { describe, expect, it, vi } from 'vitest'
+import { LighterKeyStore } from './LighterKeyStore.js'
+import type { LighterSigner } from './LighterSigner.js'
+import {
+  type LighterSignActionsDeps,
+  lighterSignActions,
+} from './signActions.js'
+
+const ADDRESS: Address = '0x1111111111111111111111111111111111111111'
+
+const STD_SIGNED = {
+  txType: 7,
+  txInfo: '{"std":"info"}',
+  txHash: 'std-hash',
+}
+
+const REGISTER_SIGNED = {
+  txType: 11,
+  txInfo: '{"L1Sig":""}',
+  txHash: 'register-hash',
+  messageToSign: 'lighter-register-msg',
+}
+
+function makeDeps(overrides: Partial<LighterSigner> = {}): {
+  deps: LighterSignActionsDeps
+  signer: { [K in keyof LighterSigner]?: unknown }
+  keyStore: LighterKeyStore
+} {
+  const baseSigner = {
+    sign: vi.fn(async () => STD_SIGNED),
+    generateAPIKey: vi.fn(async () => ({
+      publicKey: '0xpub',
+      privateKey: '0xpriv',
+    })),
+    signChangePubKey: vi.fn(async () => REGISTER_SIGNED),
+    embedL1Signature: vi.fn(
+      (txInfo: string, l1: string) =>
+        JSON.parse(txInfo) &&
+        JSON.stringify({ ...JSON.parse(txInfo), L1Sig: l1 })
+    ),
+    createAuthToken: vi.fn(async () => 'auth-token-xyz'),
+  }
+  const signer = { ...baseSigner, ...overrides } as unknown as LighterSigner
+  const keyStore = new LighterKeyStore(createMemoryStorage())
+  return {
+    deps: {
+      signer,
+      keyStore,
+      resolveAccountIndex: vi.fn(async () => 99),
+    },
+    signer: signer as unknown as { [K in keyof LighterSigner]?: unknown },
+    keyStore,
+  }
+}
+
+describe('lighterSignActions', () => {
+  describe('WASM_BLOB — standard wasm action', () => {
+    it('uses the stored API key to sign and returns the signedTx envelope', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const step: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: { market_index: 0, nonce: 1 },
+      }
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [step],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(1)
+      expect(result[0].action).toBe(ActionType.PLACE_ORDER)
+      expect(result[0].wasmSignParams).toEqual({ market_index: 0, nonce: 1 })
+      expect(result[0].signedTx).toEqual(STD_SIGNED)
+      expect((signer.sign as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([
+        ActionType.PLACE_ORDER,
+        { market_index: 0, nonce: 1 },
+        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
+      ])
+    })
+
+    it('throws when no Lighter API key is registered for the address', async () => {
+      const { deps } = makeDeps()
+      const step: WasmBlobActionStep = {
+        action: ActionType.CANCEL_ORDER,
+        wasmSignParams: { market_index: 0, order_index: 1, nonce: 1 },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).rejects.toThrow(/No Lighter API key registered/)
+    })
+  })
+
+  describe('WASM_BLOB — REGISTER_API_KEY hybrid flow', () => {
+    it('creates a fresh keypair, calls signChangePubKey, embeds the L1 signature, and persists the keypair', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xl1sig'),
+      }
+      const step: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { api_key_index: 7, nonce: 42 },
+      }
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [step],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(1)
+      expect(result[0].action).toBe(ActionType.REGISTER_API_KEY)
+      expect(result[0].wasmSignParams).toMatchObject({
+        api_key_index: 7,
+        nonce: 42,
+        new_public_key: '0xpub',
+      })
+      expect(JSON.parse(result[0].signedTx.txInfo)).toEqual({
+        L1Sig: '0xl1sig',
+      })
+      expect(result[0].signedTx.txType).toBe(REGISTER_SIGNED.txType)
+      expect(result[0].signedTx.txHash).toBe(REGISTER_SIGNED.txHash)
+
+      expect(
+        (signer.signChangePubKey as ReturnType<typeof vi.fn>).mock.calls[0]
+      ).toEqual(['0xpub', '0xpriv', 42, 7, 99, 0])
+      expect(walletStub.signMessage).toHaveBeenCalledWith({
+        account: walletStub.account,
+        message: REGISTER_SIGNED.messageToSign,
+      })
+
+      // The newly created keypair was persisted via the keystore.
+      const stored = await keyStore.get(ADDRESS)
+      expect(stored).toMatchObject({
+        accountIndex: 99,
+        apiKeyIndex: 7,
+        apiKeyPrivateKey: '0xpriv',
+        apiKeyPublicKey: '0xpub',
+      })
+    })
+
+    it('throws a clear error when no end-user wallet is supplied', async () => {
+      const { deps } = makeDeps()
+      const step: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { api_key_index: 7, nonce: 42 },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).rejects.toThrow(/end-user wallet/i)
+    })
+
+    it('throws when wasmSignParams is missing `nonce`', async () => {
+      const { deps } = makeDeps()
+      const step: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { api_key_index: 7 },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS, {
+          userWallet: {
+            account: { address: ADDRESS },
+            signMessage: vi.fn(),
+          } as never,
+        })
+      ).rejects.toThrow(/missing `nonce`/)
+    })
+  })
+
+  describe('WASM_BLOB — ACCOUNT_TYPE (changeAccountTier)', () => {
+    it('creates a Lighter auth token via the WASM signer and parks it in txInfo', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const step: WasmBlobActionStep = {
+        action: ActionType.ACCOUNT_TYPE,
+        wasmSignParams: {
+          kind: 'changeAccountTier',
+          account_index: 99,
+          new_tier: 'premium',
+          nonce: -1,
+        },
+      }
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [step],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result[0].signedTx.txInfo).toBe('auth-token-xyz')
+      // `/changeAccountTier` reads only `txInfo`; txType / txHash carry placeholders.
+      expect(result[0].signedTx.txType).toBe(0)
+      expect(result[0].signedTx.txHash).toBe('')
+      expect(result[0].action).toBe(ActionType.ACCOUNT_TYPE)
+      expect(result[0].wasmSignParams).toMatchObject({
+        kind: 'changeAccountTier',
+        account_index: 99,
+        new_tier: 'premium',
+      })
+      const createAuthCalls = (
+        signer.createAuthToken as ReturnType<typeof vi.fn>
+      ).mock.calls
+      expect(createAuthCalls).toHaveLength(1)
+      // Deadline is unix-seconds + 1h; check it's in the future.
+      const [deadline, ctx] = createAuthCalls[0]
+      expect(deadline).toBeGreaterThan(Math.floor(Date.now() / 1000))
+      expect(ctx).toEqual({
+        apiKeyPrivateKey: '0xabc',
+        apiKeyIndex: 42,
+        accountIndex: 99,
+      })
+    })
+
+    it('throws when no API key is registered for the address', async () => {
+      const { deps } = makeDeps()
+      const step: WasmBlobActionStep = {
+        action: ActionType.ACCOUNT_TYPE,
+        wasmSignParams: { kind: 'changeAccountTier', nonce: -1 },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).rejects.toThrow(/No Lighter API key registered/)
+    })
+  })
+
+  describe('EVM_TX — sequential broadcast with receipt confirmation', () => {
+    const ACCOUNT = privateKeyToAccount(`0x${'11'.repeat(32)}`)
+
+    /**
+     * A wallet client backed by a `custom` transport that records the order of
+     * `eth_sendRawTransaction` (broadcast) vs `eth_getTransactionReceipt`
+     * (confirmation) calls, assigns each broadcast leg a distinct hash, and
+     * returns the per-leg receipt status the test prescribes.
+     */
+    function makeRecordingWallet(legStatuses: ('0x1' | '0x0')[]) {
+      const order: string[] = []
+      const broadcastHashes: string[] = []
+      let broadcastIndex = 0
+
+      const transport = custom({
+        async request({ method }) {
+          switch (method) {
+            case 'eth_chainId':
+              return `0x${arbitrum.id.toString(16)}`
+            case 'eth_getTransactionCount':
+              return `0x${broadcastIndex.toString(16)}`
+            case 'eth_estimateGas':
+              return '0x5208'
+            case 'eth_maxPriorityFeePerGas':
+              return '0x1'
+            case 'eth_getBlockByNumber':
+              return {
+                baseFeePerGas: '0x1',
+                number: '0x1',
+                timestamp: '0x1',
+                gasLimit: '0x1',
+                hash: `0x${'00'.repeat(32)}`,
+              }
+            case 'eth_sendRawTransaction': {
+              const hash = `0x${(broadcastIndex + 1)
+                .toString(16)
+                .padStart(64, '0')}`
+              order.push(`broadcast:${broadcastIndex}`)
+              broadcastHashes.push(hash)
+              broadcastIndex += 1
+              return hash
+            }
+            case 'eth_getTransactionReceipt': {
+              const leg = broadcastHashes.length - 1
+              order.push(`receipt:${leg}`)
+              return {
+                transactionHash: broadcastHashes[leg],
+                blockNumber: '0x10',
+                blockHash: `0x${'bb'.repeat(32)}`,
+                status: legStatuses[leg],
+                from: ACCOUNT.address,
+                to: `0x${'22'.repeat(20)}`,
+                cumulativeGasUsed: '0x1',
+                gasUsed: '0x1',
+                effectiveGasPrice: '0x1',
+                logs: [],
+                logsBloom: `0x${'00'.repeat(256)}`,
+                contractAddress: null,
+                transactionIndex: '0x0',
+                type: '0x2',
+              }
+            }
+            default:
+              return null
+          }
+        },
+      })
+
+      const wallet = createWalletClient({
+        account: ACCOUNT,
+        chain: arbitrum,
+        transport,
+      })
+      return { wallet, order, broadcastHashes }
+    }
+
+    function makeStep(functionName: string): EvmTxActionStep {
+      return {
+        action: ActionType.DEPOSIT,
+        txParams: {
+          chainId: arbitrum.id,
+          to: `0x${'22'.repeat(20)}`,
+          functionName,
+          args: [`0x${'33'.repeat(20)}`, 100n],
+          abi: [
+            'function approve(address spender, uint256 amount) returns (bool)',
+            'function deposit(address to, uint256 amount) returns (bool)',
+          ],
+        },
+      }
+    }
+
+    it('awaits each leg receipt before broadcasting the next (strict order)', async () => {
+      const { wallet, order, broadcastHashes } = makeRecordingWallet([
+        '0x1',
+        '0x1',
+      ])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+
+      const result = (await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet }
+      )) as EvmTxSignedActionStep[]
+
+      expect(order).toEqual([
+        'broadcast:0',
+        'receipt:0',
+        'broadcast:1',
+        'receipt:1',
+      ])
+      expect(result).toHaveLength(2)
+      expect(result.map((r) => r.txHash)).toEqual(broadcastHashes)
+    })
+
+    it('aborts the sequence when leg 1 reverts and never broadcasts leg 2', async () => {
+      const { wallet, order } = makeRecordingWallet(['0x0', '0x1'])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+
+      await expect(
+        lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
+          userWallet: wallet,
+        })
+      ).rejects.toThrow(/revert/i)
+
+      expect(order).toEqual(['broadcast:0', 'receipt:0'])
+    })
+
+    it('throws a clear error when no end-user wallet is supplied', async () => {
+      await expect(
+        lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStep('approve')],
+          ADDRESS
+        )
+      ).rejects.toThrow(/end-user wallet/i)
+    })
+  })
+
+  describe('method routing', () => {
+    it('refuses EIP712 — Lighter declares no EIP712 actions', async () => {
+      const { deps } = makeDeps()
+      await expect(
+        lighterSignActions(deps, SigningMethod.EIP712, [], ADDRESS)
+      ).rejects.toThrow(/no EIP712 actions/)
+    })
+  })
+})
+
+function deps_(): LighterSignActionsDeps {
+  return makeDeps().deps
+}

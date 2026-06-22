@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/*.md", "!**/*.lock", "!**/*.json"]
+    "includes": [
+      "**",
+      "!**/*.md",
+      "!**/*.lock",
+      "!**/*.json",
+      "!**/wasm",
+      "!**/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -80,21 +87,6 @@
       }
     },
     {
-      "includes": [
-        "src/index.ts",
-        "src/utils/orderFormatting.ts",
-        "src/utils/hyperliquid/index.ts"
-      ],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noBarrelFile": "off",
-            "noReExportAll": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["examples/**"],
       "linter": {
         "rules": {
@@ -108,15 +100,22 @@
       }
     },
     {
-      "includes": [
-        "src/realtime/hyperliquid/HyperliquidWsProvider.ts",
-        "src/realtime/hyperliquid/types.ts",
-        "src/utils/accountSummary.ts"
-      ],
+      "includes": ["packages/perps-types/src/**/index.ts"],
       "linter": {
         "rules": {
-          "correctness": {
-            "useImportExtensions": "off"
+          "performance": {
+            "noBarrelFile": "off",
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/perps-types/src/**/*.unit.spec.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExportsInTest": "off"
           }
         }
       }
