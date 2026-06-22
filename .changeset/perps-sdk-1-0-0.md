@@ -1,8 +1,5 @@
 ---
 "@lifi/perps-sdk": major
-"@lifi/perps-sdk-provider-hyperliquid": major
-"@lifi/perps-sdk-provider-lighter": major
-"@lifi/perps-types": major
 ---
 
 First stable release of the LI.FI Perps SDK — a unified TypeScript interface for trading perpetuals across multiple DEXes. This release reshapes the SDK into a focused set of packages and finalizes the public API.
@@ -22,14 +19,6 @@ First stable release of the LI.FI Perps SDK — a unified TypeScript interface f
 
 - A single `PerpsProvider` plugin SPI: register provider plugins on the client and route every call by provider key.
 - Descriptor-driven signing — each action declares its signing method (agent key, wallet EIP-712, or EVM transaction) and is dispatched automatically. One-time setup (`checkSetup` → `executeSetup`) provisions a per-user signing agent, after which orders need no wallet prompt.
-
-**Hyperliquid**
-
-- Agent-keypair signing with client-side key storage, typed account configuration, spot support, and ledger/activity enrichment.
-
-**Lighter**
-
-- Bundled Go WASM signer with a persisted API-key store, signed withdrawals and transfers, and an auth-token model: a standard token plus a long-lived read-only token created and persisted through your storage adapter.
 
 **Realtime**
 
