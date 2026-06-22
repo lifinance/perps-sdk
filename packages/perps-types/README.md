@@ -19,6 +19,4 @@ This package contains the shared, zero-dependency types for the [LI.FI Perps SDK
 
 ```bash
 pnpm add @lifi/perps-types
-# or
-npm install @lifi/perps-types
 ```
