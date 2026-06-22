@@ -60,6 +60,10 @@ export interface LoadLighterWasmOptions {
    * URL on serve, breaking the IIFE that installs `globalThis.Go`. Pass via
    * a `?raw` import (Vite) or equivalent so the original source survives
    * intact.
+   *
+   * @security This string is evaluated via `new Function(...)`. The caller is
+   * responsible for ensuring it originates from the bundled `wasm_exec.js`;
+   * attacker-controlled content would execute arbitrary code in the host.
    */
   wasmExecJsSource?: string
 }
@@ -242,8 +246,9 @@ async function loadWasmUncached(
   ])
 
   // wasm_exec.js is an IIFE that installs `globalThis.Go = class { ... }` plus
-  // fs/process/crypto polyfills. Evaluate it in a Function scope so the class
-  // attaches to globalThis and we read it back from there.
+  // fs/process/crypto polyfills. Evaluating it is required to attach the class;
+  // Go ships no fork-free alternative. The trust boundary is the caller-supplied
+  // source — see the `@security` note on `LoadLighterWasmOptions.wasmExecJsSource`.
   const installGo = new Function(`${wasmExecSource}; return globalThis.Go`)
   const Go = installGo() as GoClass
 
