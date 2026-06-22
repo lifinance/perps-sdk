@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-types",
-  "version": "0.2.0-alpha.0",
+  "version": "1.0.0",
   "description": "Shared types for the LI.FI perps stack",
   "keywords": [
     "lifi",
