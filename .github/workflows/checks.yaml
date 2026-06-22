@@ -4,7 +4,7 @@ on:
   workflow_call:
   pull_request:
     paths-ignore: ['README.md', 'LICENSE', '.editorconfig']
-    branches: [main]
+    branches: [main, develop, staging]
 
 jobs:
   checks:
