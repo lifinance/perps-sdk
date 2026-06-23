@@ -243,10 +243,20 @@ export const mockMarkets: MarketsResponse = {
 }
 
 export const mockPrices: PricesResponse = {
-  prices: {
-    BTC: '95000.00',
-    ETH: '3400.00',
-  },
+  prices: [
+    {
+      marketId: 'BTC',
+      midPrice: '95000.00',
+      markPrice: '95010.00',
+      oraclePrice: '95005.00',
+    },
+    {
+      marketId: 'ETH',
+      midPrice: '3400.00',
+      markPrice: '3401.00',
+      oraclePrice: '3400.50',
+    },
+  ],
 }
 
 export const mockOhlcv: OhlcvResponse = {
@@ -553,7 +563,7 @@ export const handlers = [
     return HttpResponse.json(market)
   }),
 
-  http.get(`${BASE_URL}/prices`, () => HttpResponse.json(mockPrices)),
+  http.get(`${BASE_URL}/marketsContext`, () => HttpResponse.json(mockPrices)),
 
   http.get(`${BASE_URL}/ohlcv`, () => HttpResponse.json(mockOhlcv)),
 

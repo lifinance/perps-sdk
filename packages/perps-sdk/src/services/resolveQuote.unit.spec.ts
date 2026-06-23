@@ -1,6 +1,6 @@
 import type {
   Market,
-  MarketPrice,
+  MarketContext,
   OrderbookResponse,
   PerpsMarket,
   SpotMarket,
@@ -57,14 +57,14 @@ const BTC_SPOT: SpotMarket = {
   szDecimals: 2,
 }
 
-const PRICES: MarketPrice[] = [
+const PRICES: MarketContext[] = [
   {
     marketId: 'BTC',
-    price: '100',
+    midPrice: '100',
     markPrice: '100',
     funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
   },
-  { marketId: '@1', price: '100', markPrice: '100' },
+  { marketId: '@1', midPrice: '100', markPrice: '100' },
 ]
 
 const BOOK: OrderbookResponse = {
@@ -87,7 +87,7 @@ const installMarketAndBook = (markets: Market[], book: OrderbookResponse) => {
       HttpResponse.json({ markets })
     ),
     http.get(`${DEFAULT_API_URL}/orderbook`, () => HttpResponse.json(book)),
-    http.get(`${DEFAULT_API_URL}/prices`, () =>
+    http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
       HttpResponse.json({ prices: PRICES })
     )
   )

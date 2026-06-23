@@ -9,7 +9,7 @@
 import type {
   FeeTier,
   Market,
-  MarketPrice,
+  MarketContext,
   OrderbookLevel,
   Quote,
   QuoteSide,
@@ -355,7 +355,7 @@ interface BuildQuoteInput {
   side: QuoteSide
   sizeUsd: number
   market: Market
-  price: MarketPrice
+  price: MarketContext
   bids: OrderbookLevel[]
   asks: OrderbookLevel[]
   /** Public base-tier fees for the venue; `isDefaultFeeTier` is always set true. */
@@ -364,7 +364,7 @@ interface BuildQuoteInput {
 }
 
 /**
- * Build a {@link Quote} from a resolved market, its live {@link MarketPrice},
+ * Build a {@link Quote} from a resolved market, its live {@link MarketContext},
  * and its orderbook snapshot. Pure: walks the relevant side (buy → asks,
  * sell → bids) for the VWAP fill, derives the price impact in basis points
  * versus mark, applies the base taker fee on the filled notional, and carries

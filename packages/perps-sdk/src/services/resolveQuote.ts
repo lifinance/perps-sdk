@@ -1,7 +1,7 @@
 import {
   type FeeTier,
   type Market,
-  type MarketPrice,
+  type MarketContext,
   PerpsErrorCode,
   type Quote,
 } from '@lifi/perps-types'
@@ -13,8 +13,8 @@ import type {
 } from '../types/provider.js'
 import { buildQuote } from '../utils/calculations.js'
 import { getMarkets } from './getMarkets.js'
+import { getMarketsContext } from './getMarketsContext.js'
 import { getOrderbook } from './getOrderbook.js'
-import { getPrices } from './getPrices.js'
 
 /**
  * Shared provider-side `getQuote` implementation: resolve `params.symbol` to a
@@ -92,7 +92,7 @@ const isMarketOfType = (
 ): boolean => ('maxLeverage' in market ? type === 'perps' : type === 'spot')
 
 /**
- * Fetch the live {@link MarketPrice} for `marketId` on `provider`, the source
+ * Fetch the live {@link MarketContext} for `marketId` on `provider`, the source
  * of the `markPrice` and `funding` a {@link Quote} carries. Shared by the
  * one-shot {@link resolveQuote} and the streaming quote subscription.
  *
@@ -105,8 +105,8 @@ export async function resolveQuotePrice(
   provider: string,
   marketId: string,
   options?: SDKRequestOptions
-): Promise<MarketPrice> {
-  const { prices } = await getPrices(
+): Promise<MarketContext> {
+  const { prices } = await getMarketsContext(
     client,
     { provider, marketIds: [marketId] },
     options

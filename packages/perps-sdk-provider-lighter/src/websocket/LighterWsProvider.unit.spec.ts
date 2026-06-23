@@ -226,7 +226,7 @@ describe('LighterWsProvider', () => {
     const onStatusB = vi.fn()
 
     const unsubA = await provider.subscribe(
-      { channel: 'prices', dex: 'lighter' },
+      { channel: 'marketsContext', dex: 'lighter' },
       vi.fn(),
       onStatusA
     )
@@ -255,7 +255,7 @@ describe('LighterWsProvider', () => {
     const listener = vi.fn()
 
     const unsubscribe = await provider.subscribe(
-      { channel: 'prices', dex: 'lighter' },
+      { channel: 'marketsContext', dex: 'lighter' },
       listener
     )
     unsubscribe()
@@ -634,14 +634,17 @@ describe('LighterWsProvider', () => {
       ;(provider as any).rws.send = send
       // Socket is still connecting (real rws getStatus stays 'reconnecting').
 
-      await provider.subscribe({ channel: 'prices', dex: 'lighter' }, vi.fn())
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'lighter' },
+        vi.fn()
+      )
 
       // Nothing sent inline while disconnected — the open replay is the sole sender.
       expect(send).not.toHaveBeenCalled()
 
       await (provider as any).replaySubs()
 
-      // `prices` fans out to perp + spot stats channels.
+      // `marketsContext` fans out to perp + spot stats channels.
       expect(send).toHaveBeenCalledTimes(2)
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'market_stats/all' })
@@ -768,7 +771,7 @@ describe('LighterWsProvider', () => {
     const makeFetchingProvider = () =>
       new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, freshClient())
 
-    it('subscribes to prices even when the /markets fetch fails', async () => {
+    it('subscribes to marketsContext even when the /markets fetch fails', async () => {
       marketsFetchMock.mockReset()
       marketsFetchMock.mockResolvedValue(marketsFailureResponse())
       const provider = makeFetchingProvider()
@@ -780,7 +783,7 @@ describe('LighterWsProvider', () => {
 
       const listener = vi.fn()
       const unsubscribe = await provider.subscribe(
-        { channel: 'prices', dex: 'lighter' },
+        { channel: 'marketsContext', dex: 'lighter' },
         listener
       )
 
@@ -793,33 +796,70 @@ describe('LighterWsProvider', () => {
         JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/all' })
       )
 
-      // Price ticks (keyed by String(market_id)) reach the listener.
+      // Perp context (keyed by String(market_id)) carries oracle/mark/mid.
       ;(provider as any).handleMessage(
         JSON.stringify({
           type: 'update/market_stats',
-          market_stats: { '0': { market_id: 0, last_trade_price: '50000' } },
+          market_stats: {
+            '0': {
+              market_id: 0,
+              index_price: '49998',
+              mark_price: '50000',
+              mid_price: '50001',
+              open_interest: '12.5',
+              last_trade_price: '50002',
+              current_funding_rate: '0.0001',
+              funding_rate: '0.00009',
+              funding_timestamp: 1704067200000,
+              daily_base_token_volume: '10',
+              daily_quote_token_volume: '500000',
+              daily_price_change: '1.2',
+            },
+          },
         })
       )
       expect(listener).toHaveBeenCalledOnce()
-      expect(listener.mock.calls[0][0]).toEqual({
-        channel: 'prices',
-        data: { '0': '50000' },
+      const perpEvent = listener.mock.calls[0][0]
+      expect(perpEvent.channel).toBe('marketsContext')
+      expect(perpEvent.data['0']).toMatchObject({
+        marketId: '0',
+        midPrice: '50001',
+        markPrice: '50000',
+        oraclePrice: '49998',
+        openInterest: '12.5',
       })
 
       // Spot ticks (2048+ ids) arrive on the spot channel and merge into the
-      // same `prices` emit.
+      // same `marketsContext` emit; spot carries oracle + mid, mark folds to mid.
       ;(provider as any).handleMessage(
         JSON.stringify({
           type: 'update/spot_market_stats',
           spot_market_stats: {
-            '2048': { market_id: 2048, last_trade_price: '1814.34' },
+            '2048': {
+              market_id: 2048,
+              symbol: 'LIT/USDC',
+              index_price: '1814.00',
+              mid_price: '1814.34',
+              best_ask_price: '1814.40',
+              best_bid_price: '1814.28',
+              last_trade_price: '1814.34',
+              daily_base_token_volume: 100,
+              daily_quote_token_volume: 200,
+              daily_price_low: 1800,
+              daily_price_high: 1820,
+              daily_price_change: 0.5,
+            },
           },
         })
       )
       expect(listener).toHaveBeenCalledTimes(2)
-      expect(listener.mock.calls[1][0]).toEqual({
-        channel: 'prices',
-        data: { '0': '50000', '2048': '1814.34' },
+      const spotEvent = listener.mock.calls[1][0]
+      expect(Object.keys(spotEvent.data).sort()).toEqual(['0', '2048'])
+      expect(spotEvent.data['2048']).toMatchObject({
+        marketId: '2048',
+        midPrice: '1814.34',
+        markPrice: '1814.34',
+        oraclePrice: '1814.00',
       })
       provider.close()
     })

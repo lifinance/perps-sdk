@@ -53,12 +53,58 @@ const allDexsFrame = (user: string, states: Array<[string, string[]]>) =>
 
 const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0))
 
-// Seed the provider's live mids by replaying an `allMids` frame on the socket
-// (created in the constructor), so reference-price lookups resolve.
+const perpCtx = (coin: string, midPx: string) => ({
+  coin,
+  funding: '0.0001',
+  openInterest: '100',
+  dayNtlVlm: '1000000',
+  prevDayPx: midPx,
+  markPx: midPx,
+  midPx,
+  oraclePx: midPx,
+})
+
+// Seed the provider's live perp mids by replaying an `allDexsAssetCtxs` frame,
+// so reference-price lookups resolve.
 const seedMids = (mids: Record<string, string>) =>
   getMockRwsInstance().simulateMessage(
-    JSON.stringify({ channel: 'allMids', data: { mids } })
+    JSON.stringify({
+      channel: 'allDexsAssetCtxs',
+      data: {
+        assetCtxs: [
+          ['', Object.entries(mids).map(([coin, mid]) => perpCtx(coin, mid))],
+        ],
+      },
+    })
   )
+
+// Encode a `fastAssetCtxs` payload the way HL does: base64 + raw DEFLATE.
+const encodeFast = async (
+  ctxs: Record<string, { markPx?: string; midPx?: string | null }>
+): Promise<string> => {
+  const bytes = new TextEncoder().encode(JSON.stringify(ctxs))
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new CompressionStream('deflate-raw'))
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer())
+  let bin = ''
+  for (const b of buf) {
+    bin += String.fromCharCode(b)
+  }
+  return btoa(bin)
+}
+
+// Seed mid/mark via a `fastAssetCtxs` frame. The provider decodes the payload
+// off the microtask/threadpool queue; await lets that settle before asserting.
+const seedFast = async (
+  ctxs: Record<string, { markPx?: string; midPx?: string | null }>
+) => {
+  const data = await encodeFast(ctxs)
+  getMockRwsInstance().simulateMessage(
+    JSON.stringify({ channel: 'fastAssetCtxs', data })
+  )
+  await new Promise((resolve) => setTimeout(resolve, 10))
+}
 
 // --- Mock ReconnectingWebSocket ---
 
@@ -180,14 +226,9 @@ vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
 // --- Test setup ---
 
 const providerKey = 'hyperliquid'
-const subDexes = ['xyz']
 
 function createProvider(): HyperliquidWsProvider {
-  return new HyperliquidWsProvider(
-    'wss://api.hyperliquid.xyz/ws',
-    providerKey,
-    subDexes
-  )
+  return new HyperliquidWsProvider('wss://api.hyperliquid.xyz/ws', providerKey)
 }
 
 // Fresh client per provider: the market registry is cached per (client, provider).
@@ -202,7 +243,6 @@ function createEnrichingProvider(
   return new HyperliquidWsProvider(
     'wss://api.hyperliquid.xyz/ws',
     providerKey,
-    subDexes,
     freshClient()
   )
 }
@@ -218,12 +258,12 @@ describe('HyperliquidWsProvider', () => {
   })
 
   describe('subscribe', () => {
-    it('should send subscribe message for default and sub-dex allMids', async () => {
+    it('subscribes to allDexsAssetCtxs plus the fastAssetCtxs feed', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -231,11 +271,11 @@ describe('HyperliquidWsProvider', () => {
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids' },
+        subscription: { type: 'allDexsAssetCtxs' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids', dex: 'xyz' },
+        subscription: { type: 'fastAssetCtxs' },
       })
     })
 
@@ -244,7 +284,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateStatus('disconnected')
 
       const firstUnsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       expect(typeof firstUnsub).toBe('function')
@@ -253,7 +293,7 @@ describe('HyperliquidWsProvider', () => {
       // Repeated terminal drops remain recoverable via subscribe intent.
       getMockRwsInstance().simulateStatus('disconnected')
       const secondUnsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       expect(typeof secondUnsub).toBe('function')
@@ -262,20 +302,20 @@ describe('HyperliquidWsProvider', () => {
     it('should return an unsubscribe function', async () => {
       const provider = createProvider()
       const unsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
 
       expect(typeof unsub).toBe('function')
     })
 
-    it('unsubscribes both default + xyz allMids when the prices listener unsubscribes', async () => {
+    it('unsubscribes both wire feeds when the marketsContext listener unsubscribes', async () => {
       vi.useFakeTimers()
       try {
         const provider = createProvider()
 
         const unsub = await provider.subscribe(
-          { channel: 'prices', dex: 'hyperliquid' },
+          { channel: 'marketsContext', dex: 'hyperliquid' },
           vi.fn()
         )
 
@@ -289,11 +329,11 @@ describe('HyperliquidWsProvider', () => {
         )
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
-          subscription: { type: 'allMids' },
+          subscription: { type: 'allDexsAssetCtxs' },
         })
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
-          subscription: { type: 'allMids', dex: 'xyz' },
+          subscription: { type: 'fastAssetCtxs' },
         })
       } finally {
         vi.useRealTimers()
@@ -381,7 +421,7 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('requests full precision when no live mid is available for the market', async () => {
-      // No allMids frame received → no reference magnitude.
+      // No fastAssetCtxs frame received → no reference magnitude.
       const provider = createProvider()
 
       await provider.subscribe(
@@ -640,7 +680,6 @@ describe('HyperliquidWsProvider', () => {
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
-        subDexes,
         freshClient()
       )
 
@@ -697,63 +736,208 @@ describe('HyperliquidWsProvider', () => {
   })
 
   describe('message handling', () => {
-    it('should emit prices event for allMids channel', async () => {
+    it('emits marketsContext with oracle/mark/mid for the allDexsAssetCtxs feed', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000', ETH: '3400' } },
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1000000',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+            ],
+          },
         })
       )
 
-      expect(listener).toHaveBeenCalledWith({
-        channel: 'prices',
-        data: { BTC: '95000', ETH: '3400' },
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.BTC).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95001',
+        markPrice: '95000',
+        oraclePrice: '94998',
       })
     })
 
-    it('should merge sub-dex allMids with default mids', async () => {
+    it('merges perp asset contexts across sub-dexs into the marketsContext map', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
-      // Default allMids
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000', ETH: '3400' } },
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+              [
+                'xyz',
+                [
+                  {
+                    coin: 'xyz:BRENTOIL',
+                    funding: '0.0002',
+                    openInterest: '50',
+                    dayNtlVlm: '2',
+                    prevDayPx: '70',
+                    markPx: '70.50',
+                    midPx: '70.49',
+                    oraclePx: '70.48',
+                  },
+                ],
+              ],
+            ],
+          },
         })
       )
 
-      // xyz sub-dex allMids
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(Object.keys(event.data).sort()).toEqual(['BTC', 'xyz:BRENTOIL'])
+      expect(event.data['xyz:BRENTOIL'].midPrice).toBe('70.49')
+    })
+
+    it('overlays fastAssetCtxs mid+mark onto a perp without clearing oracle/metadata', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'allMids',
-          data: { dex: 'xyz', mids: { BRENTOIL: '70.50', GOLD: '2300' } },
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              [
+                '',
+                [
+                  {
+                    coin: 'BTC',
+                    funding: '0.0001',
+                    openInterest: '100',
+                    dayNtlVlm: '1000000',
+                    prevDayPx: '94000',
+                    markPx: '95000',
+                    midPx: '95001',
+                    oraclePx: '94998',
+                  },
+                ],
+              ],
+            ],
+          },
         })
       )
 
-      expect(listener).toHaveBeenCalledTimes(2)
-      const lastEvent = listener.mock.calls[1][0]
-      expect(lastEvent).toEqual({
-        channel: 'prices',
-        data: {
-          BTC: '95000',
-          ETH: '3400',
-          BRENTOIL: '70.50',
-          GOLD: '2300',
-        },
+      // A later fastAssetCtxs frame updates mid + mark; the rarer asset-context
+      // feed's oracle/metadata must persist (field-level last-write-wins).
+      await seedFast({ BTC: { midPx: '95500', markPx: '95480' } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({
+          marketId: 'BTC',
+          midPrice: '95500',
+          markPrice: '95480',
+          oraclePrice: '94998',
+          openInterest: '100',
+        })
+      })
+    })
+
+    it('emits a perp mid+mark from fastAssetCtxs with no allDexsAssetCtxs frame', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      // No allDexsAssetCtxs frame at all (HL's aggregate feed is idle); the
+      // high-frequency fastAssetCtxs feed alone drives mid + mark.
+      await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
+      await seedFast({ ETH: { midPx: '3411', markPx: '3412' } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.channel).toBe('marketsContext')
+        expect(event.data.ETH).toEqual({
+          marketId: 'ETH',
+          midPrice: '3411',
+          markPrice: '3412',
+        })
+      })
+    })
+
+    it('updates a builder/sub-dex coin and merges incremental frames', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      await seedFast({
+        BTC: { midPx: '95000', markPx: '95001' },
+        'xyz:NVDA': { midPx: '145.2', markPx: '145.3' },
+      })
+      // Incremental frame: only BTC changes; xyz:NVDA must persist, and BTC's
+      // mark (absent from this frame) keeps its prior value.
+      await seedFast({ BTC: { midPx: '95500' } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toEqual({
+          marketId: 'BTC',
+          midPrice: '95500',
+          markPrice: '95001',
+        })
+        expect(event.data['xyz:NVDA']).toEqual({
+          marketId: 'xyz:NVDA',
+          midPrice: '145.2',
+          markPrice: '145.3',
+        })
       })
     })
 
@@ -1075,7 +1259,7 @@ describe('HyperliquidWsProvider', () => {
       const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
       const listener = vi.fn()
 
-      seedMids({ 'PURR/USDC': '0.5' })
+      await seedFast({ 'PURR/USDC': { midPx: '0.5' } })
 
       await provider.subscribe(
         { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
@@ -1410,7 +1594,7 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1424,7 +1608,7 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1444,7 +1628,7 @@ describe('HyperliquidWsProvider', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
@@ -1462,14 +1646,14 @@ describe('HyperliquidWsProvider', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'error',
-          data: 'Already subscribed: {"type":"allMids"}',
+          data: 'Already subscribed: {"type":"fastAssetCtxs"}',
         })
       )
 
@@ -1478,7 +1662,7 @@ describe('HyperliquidWsProvider', () => {
       expect(errorSpy).toHaveBeenCalledOnce()
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('server error'),
-        'Already subscribed: {"type":"allMids"}'
+        'Already subscribed: {"type":"fastAssetCtxs"}'
       )
       warnSpy.mockRestore()
       errorSpy.mockRestore()
@@ -1517,7 +1701,7 @@ describe('HyperliquidWsProvider', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         priceListener
       )
       await provider.subscribe(
@@ -1554,19 +1738,13 @@ describe('HyperliquidWsProvider', () => {
       )
 
       // A subsequent good frame on a different channel must still be delivered.
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000' } },
-        })
-      )
+      seedMids({ BTC: '95000' })
 
       expect(errorSpy).toHaveBeenCalledOnce()
       expect(orderListener).not.toHaveBeenCalled()
-      expect(priceListener).toHaveBeenCalledWith({
-        channel: 'prices',
-        data: { BTC: '95000' },
-      })
+      const event = priceListener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(event.data.BTC.midPrice).toBe('95000')
       errorSpy.mockRestore()
     })
 
@@ -1575,18 +1753,13 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       const unsub = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       unsub()
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '96000' } },
-        })
-      )
+      seedMids({ BTC: '96000' })
 
       expect(listener).not.toHaveBeenCalled()
     })
@@ -1751,7 +1924,6 @@ describe('HyperliquidWsProvider', () => {
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
-        subDexes,
         freshClient()
       )
       const listener = vi.fn()
@@ -1790,7 +1962,6 @@ describe('HyperliquidWsProvider', () => {
         const provider = new HyperliquidWsProvider(
           'wss://api.hyperliquid.xyz/ws',
           providerKey,
-          subDexes,
           freshClient()
         )
         const listener = vi.fn()
@@ -1829,7 +2000,7 @@ describe('HyperliquidWsProvider', () => {
       const provider = createProvider()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       await provider.subscribe(
@@ -1843,16 +2014,16 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateOpen()
       await flushMicrotasks()
 
-      // 2 allMids (default + xyz) + 1 l2Book
+      // allDexsAssetCtxs + fastAssetCtxs + l2Book
       expect(getMockRwsInstance().sent).toHaveLength(3)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids' },
+        subscription: { type: 'allDexsAssetCtxs' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allMids', dex: 'xyz' },
+        subscription: { type: 'fastAssetCtxs' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
@@ -1893,7 +2064,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatus = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatus
       )
@@ -1913,7 +2084,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatus = vi.fn()
 
       const unsubscribe = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatus
       )
@@ -1930,7 +2101,7 @@ describe('HyperliquidWsProvider', () => {
       const onStatusB = vi.fn()
 
       const unsubA = await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn(),
         onStatusA
       )
@@ -1963,18 +2134,13 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
 
       await provider.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         listener
       )
 
       provider.close()
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allMids',
-          data: { mids: { BTC: '95000' } },
-        })
-      )
+      seedMids({ BTC: '95000' })
 
       expect(listener).not.toHaveBeenCalled()
     })

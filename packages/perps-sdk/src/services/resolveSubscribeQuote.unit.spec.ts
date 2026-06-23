@@ -1,6 +1,6 @@
 import type {
   Market,
-  MarketPrice,
+  MarketContext,
   OrderbookResponse,
   PerpsMarket,
   SubscriptionEvent,
@@ -41,10 +41,10 @@ const BTC_PERP: PerpsMarket = {
   onlyIsolated: false,
 }
 
-const PRICES: MarketPrice[] = [
+const PRICES: MarketContext[] = [
   {
     marketId: 'BTC',
-    price: '100',
+    midPrice: '100',
     markPrice: '100',
     funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
   },
@@ -74,7 +74,7 @@ const installMarkets = (markets: Market[]) => {
     http.get(`${DEFAULT_API_URL}/markets`, () =>
       HttpResponse.json({ markets })
     ),
-    http.get(`${DEFAULT_API_URL}/prices`, () =>
+    http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
       HttpResponse.json({ prices: PRICES })
     )
   )
@@ -150,7 +150,7 @@ describe('resolveSubscribeQuote', () => {
   it('ignores events from other channels', async () => {
     const { onQuote, pushRaw } = await setup()
 
-    pushRaw({ channel: 'prices', data: {} })
+    pushRaw({ channel: 'marketsContext', data: {} })
 
     expect(onQuote).not.toHaveBeenCalled()
   })

@@ -1,6 +1,6 @@
 import {
   getMarketRegistry,
-  getPrices,
+  getMarketsContext,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
@@ -208,7 +208,7 @@ export const getAccount = async (
         )
       )
     ),
-    getPrices(client, { provider: PROVIDER_KEY }, options),
+    getMarketsContext(client, { provider: PROVIDER_KEY }, options),
   ])
 
   const priceById = spotPriceById(

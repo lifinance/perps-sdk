@@ -3,6 +3,7 @@
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
+export { decodeFastAssetCtxs } from './decodeFastAssetCtxs.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
@@ -12,7 +13,7 @@ export {
 export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export { mapMarket } from './mapMarket.js'
-export { mapMarketPrice } from './mapMarketPrice.js'
+export { mapMarketContext } from './mapMarketContext.js'
 export {
   isTriggerOrder,
   isTriggerType,

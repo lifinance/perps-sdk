@@ -29,15 +29,15 @@ async function run() {
     throw new Error('BTC market not found')
   }
 
-  // --- Prices subscription ---
+  // --- Markets-context subscription ---
   // subscribe() returns an unsubscribe function. Multiple consumers may call
   // subscribe() for the same channel independently — the SDK ref-counts them
   // to one wire subscription and fans events out to every listener.
-  const unsubPricesA = await ws.subscribe(
-    { channel: 'prices', dex: 'hyperliquid' },
+  const unsubContextA = await ws.subscribe(
+    { channel: 'marketsContext', dex: 'hyperliquid' },
     (event) => {
-      // event.data is Record<string, string>: Market.id → last-trade price
-      console.log('Listener A — prices:', event.data)
+      // event.data is Record<string, MarketContext>: Market.id → mid/mark/oracle
+      console.log('Listener A — markets context:', event.data)
     },
     (status) => {
       // Optional: observe connection health across the lifecycle.
@@ -49,10 +49,10 @@ async function run() {
 
   // A second independent listener on the same channel — no second wire
   // subscription is opened; both listeners share the existing one.
-  const unsubPricesB = await ws.subscribe(
-    { channel: 'prices', dex: 'hyperliquid' },
+  const unsubContextB = await ws.subscribe(
+    { channel: 'marketsContext', dex: 'hyperliquid' },
     (event) => {
-      console.log('Listener B — prices:', event.data)
+      console.log('Listener B — markets context:', event.data)
     }
   )
 
@@ -74,8 +74,8 @@ async function run() {
   // Unsubscribe both listeners. The SDK keeps the wire subscription alive for
   // 250 ms after the last listener releases (WS_CHANNEL_TEARDOWN_LINGER_MS),
   // so a React StrictMode unmount→remount cycle does not thrash the wire.
-  unsubPricesA()
-  unsubPricesB()
+  unsubContextA()
+  unsubContextB()
   unsubOrderbook()
 
   // Drain the linger window before closing.

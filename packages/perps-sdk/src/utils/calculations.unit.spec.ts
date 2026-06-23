@@ -1,5 +1,5 @@
 import type {
-  MarketPrice,
+  MarketContext,
   OrderbookLevel,
   PerpsMarket,
   SpotMarket,
@@ -445,9 +445,9 @@ const perpsMarket: PerpsMarket = {
   onlyIsolated: false,
 }
 
-const perpsPrice: MarketPrice = {
+const perpsPrice: MarketContext = {
   marketId: 'BTC',
-  price: '100',
+  midPrice: '100',
   markPrice: '100',
   funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 }
@@ -471,9 +471,9 @@ const spotMarket: SpotMarket = {
   szDecimals: 2,
 }
 
-const spotPrice: MarketPrice = {
+const spotPrice: MarketContext = {
   marketId: '@1',
-  price: '100',
+  midPrice: '100',
   markPrice: '100',
 }
 

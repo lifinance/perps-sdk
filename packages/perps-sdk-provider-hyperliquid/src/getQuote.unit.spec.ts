@@ -32,7 +32,7 @@ const PRICES = {
   prices: [
     {
       marketId: 'BTC',
-      price: '100',
+      midPrice: '100',
       markPrice: '100',
       funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
     },
@@ -56,7 +56,7 @@ const installMock = () =>
     if (url.includes('/orderbook')) {
       return new Response(JSON.stringify(BOOK), { status: 200 })
     }
-    if (url.includes('/prices')) {
+    if (url.includes('/marketsContext')) {
       return new Response(JSON.stringify(PRICES), { status: 200 })
     }
     if (url.includes('/markets')) {

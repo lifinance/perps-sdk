@@ -12,6 +12,7 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import {
+  type MarketContext,
   type OpenOrder,
   OrderSide,
   OrderType,
@@ -23,18 +24,22 @@ import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
+  HlWsAllDexsAssetCtxsData,
   HlWsAllDexsClearinghouseStateData,
-  HlWsAllMidsData,
   HlWsCandleData,
+  HlWsFastAssetCtx,
   HlWsL2BookData,
   HlWsMessage,
+  HlWsPerpAssetCtx,
   HlWsSpotStateData,
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
+  decodeFastAssetCtxs,
   isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
+  mapMarketContext,
   mapOrderStatus,
   mapOrderType,
   mapPosition,
@@ -51,23 +56,20 @@ const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
  * `WsProviderFactory` constructor for Hyperliquid — pass to
  * `new PerpsWsClient(client, { wsProviders: { hyperliquid: hyperliquidWsProvider() } })`.
  *
- * Derives the active sub-DEX set from the `markets` list `PerpsWsClient`
- * passes in (the provider's own key and `'spot'` are excluded — they
- * aren't sub-DEX subscriptions on the HL wire). Higher-order shape mirrors
- * `lighterWsProvider(options)` so the two factories register identically.
+ * Higher-order shape mirrors `lighterWsProvider(options)` so the two factories
+ * register identically.
  *
  * @public
  */
 export const hyperliquidWsProvider =
   (): WsProviderFactory =>
-  ({ provider, wsUrl, markets, client }) => {
-    const subDexes = markets.filter((m) => m !== provider && m !== 'spot')
-    return new HyperliquidWsProvider(wsUrl, provider, subDexes, client)
-  }
+  ({ provider, wsUrl, client }) =>
+    new HyperliquidWsProvider(wsUrl, provider, client)
 
 /**
- * Hyperliquid realtime {@link WsProvider}: multiplexes prices, positions,
- * orders, fills and spot balances over a single {@link ReconnectingWebSocket}.
+ * Hyperliquid realtime {@link WsProvider}: multiplexes markets context,
+ * positions, orders, fills and spot balances over a single
+ * {@link ReconnectingWebSocket}.
  * Construct via {@link hyperliquidWsProvider}.
  *
  * `orderUpdates` supports a single address per provider instance: HL delivers
@@ -80,22 +82,23 @@ export const hyperliquidWsProvider =
  */
 export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
-  private readonly subDexes: string[]
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
-  private midsBySubDex = new Map<string, Record<string, string>>()
+  private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
+  // Latest mid/mark per `Market.id` from the high-frequency `fastAssetCtxs`
+  // feed (all dexes, incl. builder/sub-dex coins). Merged incrementally —
+  // frames carry only changed coins — and overlaid onto the slower
+  // `allDexsAssetCtxs` context (which supplies oracle/funding/OI/metadata).
+  private fastCtxByMarketId: Record<string, HlWsFastAssetCtx> = {}
+  // `fastAssetCtxs` payloads are base64 + raw-DEFLATE; decode is async, so
+  // chain decodes to apply incremental frames in arrival order.
+  private fastDecodeChain: Promise<void> = Promise.resolve()
 
-  constructor(
-    wsUrl: string,
-    providerKey: string,
-    subDexes: string[],
-    client?: PerpsSDKClient
-  ) {
+  constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"method":"ping"}' }),
       providerKey
     )
-    this.subDexes = subDexes
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
   }
@@ -130,9 +133,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     await this.registry?.sync()
 
-    // Prices require multi-sub-dex allMids subscriptions under one logical key.
-    if (sub.channel === 'prices') {
-      const entries = this.getPriceSubEntries()
+    // Markets context aggregates the all-dexs perp asset-context feed
+    // (oracle, funding, OI, metadata) with the high-frequency `fastAssetCtxs`
+    // feed, which supplies fast mid + mark for every market across all dexes.
+    if (sub.channel === 'marketsContext') {
+      const entries = this.getMarketsContextSubEntries()
 
       for (const { subKey, payload } of entries) {
         await this.registerSub(subKey, payload)
@@ -147,7 +152,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
           )
         }
-        this.midsBySubDex.clear()
+        this.perpCtxBySubDex.clear()
+        this.fastCtxByMarketId = {}
       }
     }
 
@@ -192,22 +198,24 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.orderUpdatesKey = key
   }
 
-  /** Build sub-key + payload pairs for each sub-dex allMids subscription. */
-  private getPriceSubEntries(): Array<{ subKey: string; payload: object }> {
+  /**
+   * Sub-key + payload pairs for the markets-context aggregation: the all-dexs
+   * perp asset-context feed (oracle/funding/OI/metadata) plus the compressed
+   * `fastAssetCtxs` feed (high-frequency mid + mark across every dex).
+   */
+  private getMarketsContextSubEntries(): Array<{
+    subKey: string
+    payload: object
+  }> {
     return [
-      {
-        subKey: 'allMids:default',
-        payload: { type: 'allMids' },
-      },
-      ...this.subDexes.map((dex) => ({
-        subKey: `allMids:${dex}`,
-        payload: { type: 'allMids', dex },
-      })),
+      { subKey: 'allDexsAssetCtxs', payload: { type: 'allDexsAssetCtxs' } },
+      { subKey: 'fastAssetCtxs', payload: { type: 'fastAssetCtxs' } },
     ]
   }
 
   protected override onClose(): void {
-    this.midsBySubDex.clear()
+    this.perpCtxBySubDex.clear()
+    this.fastCtxByMarketId = {}
     this.orderUpdatesKey = undefined
   }
 
@@ -219,8 +227,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
-      case 'prices':
-        return 'allMids'
+      case 'marketsContext':
+        return 'marketsContext'
       case 'orderbook':
         return `l2Book:${sub.marketId}`
       case 'candle':
@@ -238,10 +246,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private toHlPayload(sub: Subscription): object {
     switch (sub.channel) {
-      case 'prices':
-        // Prices are handled via getPriceSubEntries in subscribe()
-        // and never reach toHlPayload, but TS requires exhaustive cases.
-        return { type: 'allMids' }
+      case 'marketsContext':
+        // Handled via getMarketsContextSubEntries in openChannel; never reaches
+        // toHlPayload, but TS requires an exhaustive switch.
+        return { type: 'allDexsAssetCtxs' }
       case 'orderbook':
         return {
           type: 'l2Book',
@@ -301,8 +309,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     try {
       switch (msg.channel) {
-        case 'allMids':
-          this.handleAllMids(msg.data as HlWsAllMidsData)
+        case 'allDexsAssetCtxs':
+          this.handleAllDexsAssetCtxs(msg.data as HlWsAllDexsAssetCtxsData)
+          break
+        case 'fastAssetCtxs':
+          this.handleFastAssetCtxs(msg.data as string)
           break
         case 'l2Book':
           this.handleL2Book(msg.data as HlWsL2BookData)
@@ -330,23 +341,86 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
   }
 
-  private handleAllMids(data: HlWsAllMidsData) {
-    const subDexKey = data.dex || 'default'
-    this.midsBySubDex.set(subDexKey, data.mids)
-
-    const merged: Record<string, string> = {}
-    for (const mids of this.midsBySubDex.values()) {
-      Object.assign(merged, mids)
+  private handleAllDexsAssetCtxs(data: HlWsAllDexsAssetCtxsData) {
+    for (const [dex, ctxs] of data.assetCtxs) {
+      const byMarketId: Record<string, HlWsPerpAssetCtx> = {}
+      for (const ctx of ctxs) {
+        byMarketId[ctx.coin] = ctx
+      }
+      this.perpCtxBySubDex.set(dex || 'default', byMarketId)
     }
-
-    this.emit('allMids', { channel: 'prices', data: merged })
+    this.emitMarketsContext()
   }
 
-  /** Latest mid per `Market.id`, merged across sub-dex allMids frames. */
+  /**
+   * Decode a `fastAssetCtxs` frame (base64 + raw-DEFLATE) and merge its changed
+   * coins into the per-market fast-context store. Frames are incremental, so a
+   * field absent from this frame keeps its prior value. Decodes are chained to
+   * preserve arrival order across the async boundary.
+   */
+  private handleFastAssetCtxs(base64: string) {
+    this.fastDecodeChain = this.fastDecodeChain
+      .then(async () => {
+        const ctxs = await decodeFastAssetCtxs(base64)
+        for (const [marketId, ctx] of Object.entries(ctxs)) {
+          const prev = this.fastCtxByMarketId[marketId]
+          this.fastCtxByMarketId[marketId] = {
+            markPx: 'markPx' in ctx ? ctx.markPx : prev?.markPx,
+            midPx: 'midPx' in ctx ? ctx.midPx : prev?.midPx,
+          }
+        }
+        this.emitMarketsContext()
+      })
+      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+  }
+
+  /**
+   * Build the all-markets context map: every perp asset context across sub-dexs
+   * (oracle/funding/OI/metadata), with mid + mark overlaid from the
+   * high-frequency `fastAssetCtxs` feed. A market present in `fastAssetCtxs` but
+   * without an asset-context frame yet (the aggregate feed is slow/idle) still
+   * gets a mid+mark entry, so price ticks without waiting on the aggregate.
+   */
+  private emitMarketsContext() {
+    const data: Record<string, MarketContext> = {}
+    for (const byMarketId of this.perpCtxBySubDex.values()) {
+      for (const [marketId, ctx] of Object.entries(byMarketId)) {
+        const base = mapMarketContext(marketId, ctx)
+        const fast = this.fastCtxByMarketId[marketId]
+        data[marketId] = {
+          ...base,
+          midPrice: fast?.midPx != null ? fast.midPx : base.midPrice,
+          markPrice: fast?.markPx != null ? fast.markPx : base.markPrice,
+        }
+      }
+    }
+    for (const [marketId, fast] of Object.entries(this.fastCtxByMarketId)) {
+      if (data[marketId] !== undefined) {
+        continue
+      }
+      // No asset-context frame for this market yet — each price stands in for
+      // the other where the fast feed carries only one of mid/mark.
+      const midPrice = fast.midPx ?? fast.markPx
+      const markPrice = fast.markPx ?? fast.midPx
+      if (midPrice != null && markPrice != null) {
+        data[marketId] = { marketId, midPrice, markPrice }
+      }
+    }
+    this.emit('marketsContext', { channel: 'marketsContext', data })
+  }
+
+  /** Latest mid per `Market.id` across the perp ctx feed and `fastAssetCtxs`. */
   private mergedMids(): Map<string, number> {
     const map = new Map<string, number>()
-    for (const mids of this.midsBySubDex.values()) {
-      for (const [id, mid] of Object.entries(mids)) {
+    for (const byMarketId of this.perpCtxBySubDex.values()) {
+      for (const [id, ctx] of Object.entries(byMarketId)) {
+        const mid = ctx.midPx ?? ctx.markPx
+        map.set(id, Number(mid))
+      }
+    }
+    for (const [id, fast] of Object.entries(this.fastCtxByMarketId)) {
+      const mid = fast.midPx ?? fast.markPx
+      if (mid != null) {
         map.set(id, Number(mid))
       }
     }
@@ -497,12 +571,16 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
  * to the dispatch switch, which silently ignores them.
  */
 function isValidHlFrame(channel: string, data: unknown): boolean {
+  // `fastAssetCtxs` carries a base64 string payload, not an object.
+  if (channel === 'fastAssetCtxs') {
+    return typeof data === 'string'
+  }
   if (!isObject(data)) {
     return false
   }
   switch (channel) {
-    case 'allMids':
-      return isObject(data.mids)
+    case 'allDexsAssetCtxs':
+      return Array.isArray(data.assetCtxs)
     case 'l2Book':
       return (
         typeof data.coin === 'string' &&
