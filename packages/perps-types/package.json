@@ -20,7 +20,7 @@
     "url": "https://github.com/lifinance/perps-sdk.git"
   },
   "license": "Apache-2.0",
-  "author": "LI.FI <dev@li.fi>",
+  "author": "Aaron Boyd <aaron@li.finance>",
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",

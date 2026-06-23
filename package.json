@@ -15,7 +15,7 @@
     "node": ">=24"
   },
   "license": "Apache-2.0",
-  "author": "LI.FI <dev@li.fi>",
+  "author": "Aaron Boyd <aaron@li.finance>",
   "type": "module",
   "sideEffects": false,
   "scripts": {
