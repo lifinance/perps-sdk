@@ -24,4 +24,4 @@ jobs:
       - name: Knip
         run: pnpm knip:check
       - name: Test
-        run: pnpm test
+        run: pnpm -r --workspace-concurrency=1 --filter './packages/**' test
