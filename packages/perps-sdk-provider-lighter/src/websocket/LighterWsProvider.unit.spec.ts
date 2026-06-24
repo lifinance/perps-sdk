@@ -347,6 +347,120 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('public trades', () => {
+    it('subscribes to the trade channel for the market', async () => {
+      const provider = makeProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'trades', dex: 'lighter', marketId: '5' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'trade/5' })
+      )
+      provider.close()
+    })
+
+    it('maps update/trade frames to the trades event (is_maker_ask → taker side)', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/trade',
+          channel: 'trade:0',
+          trades: [
+            {
+              trade_id: 16164557907,
+              size: '0.1336',
+              price: '2181.83',
+              is_maker_ask: false,
+              timestamp: 1773854156654,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'trades',
+        data: [
+          {
+            provider: 'lighter',
+            marketId: '0',
+            price: '2181.83',
+            size: '0.1336',
+            timestamp: 1773854156654,
+            side: 'sell',
+            id: '16164557907',
+          },
+        ],
+      })
+      p.close()
+    })
+
+    it('treats is_maker_ask=true as a taker buy and prefers trade_id_str', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/trade',
+          channel: 'trade:0',
+          trades: [
+            {
+              trade_id: 1,
+              trade_id_str: '99999999999999',
+              size: '0.5',
+              price: '50000',
+              is_maker_ask: true,
+              timestamp: 1000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'trades',
+        data: [
+          {
+            provider: 'lighter',
+            marketId: '0',
+            price: '50000',
+            size: '0.5',
+            timestamp: 1000,
+            side: 'buy',
+            id: '99999999999999',
+          },
+        ],
+      })
+      p.close()
+    })
+
+    it('emits nothing for an empty trades batch', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/trade',
+          channel: 'trade:0',
+          trades: [],
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      p.close()
+    })
+  })
+
   describe('handleMessage — auth channels (indexed-by-market format)', () => {
     it('emits orderUpdates when orders arrive as { marketIndex: [Order] } object', async () => {
       const p = makeProvider()

@@ -51,11 +51,46 @@ export type HlWsFastAssetCtx = {
 export type HlWsL2BookData = HlL2Book & { coin: string }
 
 /** @public */
+export type HlWsL2Data = {
+  s?: HlL2Book & { coin: string }
+  c?: string
+  u?: HlWsCompressedL2Data
+}
+
+/** @public */
+export type HlWsCompressedL2Level = {
+  p: string
+  s: string
+}
+
+/** @public */
+export type HlWsCompressedL2Data = {
+  c: string
+  t: number
+  l: [HlWsCompressedL2Level[], HlWsCompressedL2Level[]]
+  r?: [
+    Array<number | string | { p: string }>,
+    Array<number | string | { p: string }>,
+  ]
+}
+
+/** @public */
 export type HlWsCandleData = HlCandle & {
   T: number
   s: string
   i: string
   n: number
+}
+
+/** @public */
+export type HlWsTrade = {
+  coin: string
+  side: string
+  px: string
+  sz: string
+  time: number
+  tid?: number
+  hash?: string
 }
 
 /** @public */

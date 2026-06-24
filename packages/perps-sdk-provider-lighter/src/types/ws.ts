@@ -93,6 +93,27 @@ export type LtWsOrderBookMessage = LtWsMessage & {
 }
 
 /**
+ * Public market trade. `is_maker_ask` is the side of the *resting* maker order,
+ * so the taker (aggressor) bought when it is `true` and sold when `false`.
+ * @public
+ */
+export type LtWsTrade = {
+  trade_id: number
+  trade_id_str?: string
+  market_id?: number
+  size: string
+  price: string
+  is_maker_ask: boolean
+  timestamp: number
+}
+
+/** @public */
+export type LtWsTradeMessage = LtWsMessage & {
+  type: 'subscribed/trade' | 'update/trade'
+  trades?: LtWsTrade[]
+}
+
+/**
  * Auth-channel payloads.
  *
  * The response `channel` field uses `:` as separator (e.g.

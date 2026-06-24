@@ -34,6 +34,7 @@ import type {
   LtWsOrderBookMessage,
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
+  LtWsTradeMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
@@ -45,7 +46,7 @@ import {
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
-// `orderbook` (order_book/N).
+// `orderbook` (order_book/N), `trades` (trade/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -281,6 +282,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         return 'marketsContext'
       case 'orderbook':
         return `orderbook:${sub.marketId}`
+      case 'trades':
+        return `trades:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -321,6 +324,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       return [{ channel: `order_book/${id}`, needsAuth: false }]
+    }
+    if (sub.channel === 'trades') {
+      const id = Number(sub.marketId)
+      if (!Number.isFinite(id)) {
+        throw new Error(
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
+        )
+      }
+      return [{ channel: `trade/${id}`, needsAuth: false }]
     }
     if (
       sub.channel === 'orderUpdates' ||
@@ -426,6 +439,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         msg as LtWsOrderBookMessage,
         msg.type === 'subscribed/order_book'
       )
+      return
+    }
+
+    if (msg.type === 'subscribed/trade' || msg.type === 'update/trade') {
+      this.handleTrades(msg as LtWsTradeMessage)
       return
     }
 
@@ -611,11 +629,38 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
   }
 
-  private marketIdFromChannel(channel: string | undefined): number | null {
-    if (!channel?.startsWith('order_book')) {
+  private handleTrades(msg: LtWsTradeMessage): void {
+    const marketId = this.marketIdFromChannel(msg.channel, 'trade')
+    if (marketId === null) {
+      return
+    }
+    const trades = msg.trades ?? []
+    if (trades.length === 0) {
+      return
+    }
+    const assetId = String(marketId)
+    this.emit(`trades:${assetId}`, {
+      channel: 'trades',
+      data: trades.map((t) => ({
+        provider: this.providerKey,
+        marketId: assetId,
+        price: t.price,
+        size: t.size,
+        timestamp: t.timestamp,
+        side: t.is_maker_ask ? 'buy' : 'sell',
+        id: t.trade_id_str ?? String(t.trade_id),
+      })),
+    })
+  }
+
+  private marketIdFromChannel(
+    channel: string | undefined,
+    prefix = 'order_book'
+  ): number | null {
+    if (!channel?.startsWith(prefix)) {
       return null
     }
-    const tail = channel.slice('order_book'.length)
+    const tail = channel.slice(prefix.length)
     if (tail.length < 2 || (tail[0] !== '/' && tail[0] !== ':')) {
       return null
     }

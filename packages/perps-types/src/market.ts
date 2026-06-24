@@ -137,3 +137,14 @@ export interface OrderbookResponse {
   asks: OrderbookLevel[]
   timestamp: number
 }
+
+/** @public */
+export interface Trade {
+  provider: string
+  marketId: string
+  price: string
+  size: string
+  timestamp: number
+  side: 'buy' | 'sell'
+  id?: string
+}
