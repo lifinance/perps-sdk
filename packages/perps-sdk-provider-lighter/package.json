@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-lighter",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Lighter provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
@@ -11,7 +11,7 @@
     "url": "https://github.com/lifinance/perps-sdk.git"
   },
   "license": "Apache-2.0",
-  "author": "LI.FI <dev@li.fi>",
+  "author": "Aaron Boyd <aaron@li.finance>",
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -59,20 +59,19 @@
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests"
   },
   "dependencies": {
-    "@lifi/perps-types": "workspace:*",
-    "big.js": "^7.0.1"
-  },
-  "peerDependencies": {
-    "@lifi/perps-sdk": "workspace:*",
+    "@lifi/perps-types": "workspace:^",
+    "big.js": "^7.0.1",
     "viem": "^2.48.8"
   },
+  "peerDependencies": {
+    "@lifi/perps-sdk": "workspace:^"
+  },
   "devDependencies": {
-    "@lifi/perps-sdk": "workspace:*",
+    "@lifi/perps-sdk": "workspace:^",
     "@types/big.js": "^7.0.0",
     "@vitest/coverage-v8": "^2.1.8",
     "madge": "^8.0.0",
     "typescript": "^5.9.2",
-    "viem": "2.48.8",
     "vitest": "^2.1.8"
   },
   "publishConfig": {
