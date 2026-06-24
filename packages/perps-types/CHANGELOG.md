@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.1.0
+
+### Minor Changes
+
+- [#135](https://github.com/lifinance/perps-sdk/pull/135) [`4e3977c`](https://github.com/lifinance/perps-sdk/commit/4e3977c33ac7f93a631899d1b270afb1499e7ea8) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Rename and extend the SDK's all-markets price surface into a market-context surface, and re-source it from the providers' all-markets context feeds so it carries oracle + mark + mid for every market.
+
 ## 1.0.1
 
 ### Patch Changes
