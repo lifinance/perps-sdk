@@ -41,6 +41,59 @@ pnpm workspace — Node `>=24`. From the repository root:
 | `pnpm check:circular-deps` | madge circular-dependency check |
 | `pnpm knip:check` | Report unused files, deps, and exports |
 
+## Publishing
+
+Releases are automated with [Changesets](https://github.com/changesets/changesets). You never edit versions or run `npm publish` by hand — you describe each change in a *changeset*, and CI ([`.github/workflows/publish.yaml`](./.github/workflows/publish.yaml)) versions and publishes from `main`.
+
+### Every package change needs a changeset
+
+After a change that affects a published package, add a changeset:
+
+```bash
+pnpm changeset
+```
+
+It asks which packages changed and the bump level for each, then writes a markdown file under `.changeset/`. Commit that file with your PR. A changeset records exactly two things:
+
+| Field | Controls |
+| --- | --- |
+| package + `patch` / `minor` / `major` | the semver bump magnitude |
+| summary | the changelog entry |
+
+Choose the bump by consumer impact: `patch` for fixes, `minor` for backward-compatible additions, `major` for breaking changes.
+
+A PR that touches no published code (CI, `examples/`, root config) needs no release — record that explicitly with an empty changeset so the intent is visible:
+
+```bash
+pnpm changeset --empty
+```
+
+### How a release happens
+
+1. Merge your PR (with its changeset) to `main`.
+2. CI opens or refreshes a **`chore: version packages`** PR that consumes all pending changesets, bumps versions, and updates changelogs.
+3. Merge that PR → CI publishes the bumped packages to npm (OIDC trusted publishing) and creates GitHub releases.
+
+### Release channels
+
+The bump level never selects a channel — the channel is whole-repo state, not a per-changeset field.
+
+| Channel | npm dist-tag | How |
+| --- | --- | --- |
+| Stable | `latest` | default; merge changesets as above |
+| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` |
+| Alpha / Beta | `alpha` / `beta` | enter pre-release mode (below) |
+
+For a sustained pre-release line, enter pre mode on `main`:
+
+```bash
+pnpm changeset pre enter beta   # commit the generated .changeset/pre.json
+# every release from main is now X.Y.Z-beta.N on the `beta` dist-tag
+pnpm changeset pre exit         # commit the deletion to return to stable
+```
+
+While in pre mode, authors still write ordinary changesets — pre mode applies the `-beta.N` suffix to all of them. Consumers opt in with `npm i @lifi/perps-sdk@beta`.
+
 ## Examples
 
 Runnable scripts in [`examples/`](./examples):

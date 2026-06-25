@@ -274,9 +274,12 @@ async function loadWasmUncached(
   ])
 
   // wasm_exec.js is an IIFE that installs `globalThis.Go = class { ... }` plus
-  // fs/process/crypto polyfills. Evaluating it is required to attach the class;
-  // Go ships no fork-free alternative. The trust boundary is the caller-supplied
-  // source — see the `@security` note on `LoadLighterWasmOptions.wasmExecJsSource`.
+  // fs/process/crypto polyfills. Evaluating it as a string keeps Go's runtime
+  // opaque to consumer bundlers — it references require/process/fs/crypto, which
+  // Vite/webpack choke on if they try to parse it as a module. The default-path
+  // source is our build-time-vendored, trusted wasm_exec.js — see the `@security`
+  // note on `LoadLighterWasmOptions.wasmExecJsSource` for the caller-override boundary.
+  // nosec
   const installGo = new Function(`${wasmExecSource}; return globalThis.Go`)
   const Go = installGo() as GoClass
 
