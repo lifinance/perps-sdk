@@ -53,8 +53,7 @@ const allDexsFrame = (user: string, states: Array<[string, string[]]>) =>
 
 const flushMicrotasks = () => new Promise<void>((r) => setTimeout(r, 0))
 
-const perpCtx = (coin: string, midPx: string) => ({
-  coin,
+const indexedPerpCtx = (midPx: string) => ({
   funding: '0.0001',
   openInterest: '100',
   dayNtlVlm: '1000000',
@@ -62,6 +61,11 @@ const perpCtx = (coin: string, midPx: string) => ({
   markPx: midPx,
   midPx,
   oraclePx: midPx,
+})
+
+const perpCtx = (coin: string, midPx: string) => ({
+  coin,
+  ...indexedPerpCtx(midPx),
 })
 
 // Seed the provider's live perp mids by replaying an `allDexsAssetCtxs` frame,
@@ -256,7 +260,7 @@ describe('HyperliquidWsProvider', () => {
   })
 
   describe('subscribe', () => {
-    it('subscribes to allDexsAssetCtxs plus the fastAssetCtxs feed', async () => {
+    it('subscribes to pac, sac, and the fastAssetCtxs feed', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
@@ -265,11 +269,15 @@ describe('HyperliquidWsProvider', () => {
         listener
       )
 
-      expect(getMockRwsInstance().sent).toHaveLength(2)
+      expect(getMockRwsInstance().sent).toHaveLength(3)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allDexsAssetCtxs' },
+        subscription: { type: 'pac' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'sac' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
@@ -307,7 +315,7 @@ describe('HyperliquidWsProvider', () => {
       expect(typeof unsub).toBe('function')
     })
 
-    it('unsubscribes both wire feeds when the marketsContext listener unsubscribes', async () => {
+    it('unsubscribes all marketsContext wire feeds when the listener unsubscribes', async () => {
       vi.useFakeTimers()
       try {
         const provider = createProvider()
@@ -317,17 +325,21 @@ describe('HyperliquidWsProvider', () => {
           vi.fn()
         )
 
-        getMockRwsInstance().sent = [] // Clear the two subscribe messages.
+        getMockRwsInstance().sent = [] // Clear subscribe messages.
         unsub()
         vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS) // fire the deferred teardown
 
-        expect(getMockRwsInstance().sent).toHaveLength(2)
+        expect(getMockRwsInstance().sent).toHaveLength(3)
         const unsubPayloads = getMockRwsInstance().sent.map((s) =>
           JSON.parse(s)
         )
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
-          subscription: { type: 'allDexsAssetCtxs' },
+          subscription: { type: 'pac' },
+        })
+        expect(unsubPayloads).toContainEqual({
+          method: 'unsubscribe',
+          subscription: { type: 'sac' },
         })
         expect(unsubPayloads).toContainEqual({
           method: 'unsubscribe',
@@ -976,6 +988,172 @@ describe('HyperliquidWsProvider', () => {
         midPrice: '95001',
         markPrice: '95000',
         oraclePrice: '94998',
+      })
+    })
+
+    it('maps live allDexsAssetCtxs ctxs entries by registry order', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allDexsAssetCtxs',
+          data: {
+            ctxs: [['', [indexedPerpCtx('95001'), indexedPerpCtx('3401')]]],
+          },
+        })
+      )
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.channel).toBe('marketsContext')
+      expect(Object.keys(event.data).sort()).toEqual(['BTC', 'ETH'])
+      expect(event.data.BTC).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95001',
+      })
+      expect(event.data.ETH).toMatchObject({
+        marketId: 'ETH',
+        midPrice: '3401',
+      })
+    })
+
+    it('emits perp context from compressed pac and merges partial updates', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [indexedPerpCtx('95001'), indexedPerpCtx('3401')]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({
+          marketId: 'BTC',
+          midPrice: '95001',
+          prevDayPrice: '95001',
+          openInterest: '100',
+        })
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [{ markPx: '95100', midPx: '95101' }, { midPx: '3410' }]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({
+          marketId: 'BTC',
+          midPrice: '95101',
+          markPrice: '95100',
+          prevDayPrice: '95001',
+          openInterest: '100',
+        })
+        expect(event.data.ETH).toMatchObject({
+          marketId: 'ETH',
+          midPrice: '3410',
+          markPrice: '3401',
+        })
+      })
+    })
+
+    it('emits known spot context from compressed sac and ignores unknown keys', async () => {
+      const spotMarket: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            PURR: {
+              prevDayPx: '1',
+              dayNtlVlm: '2',
+              markPx: '3',
+              midPx: '4',
+            },
+            'PURR/USDC': {
+              prevDayPx: '94000',
+              dayNtlVlm: '1234567.89',
+              markPx: '95000',
+              midPx: '95001',
+              dayBaseVlm: '13',
+              circulatingSupply: '100',
+            },
+            '#999': {
+              prevDayPx: '1',
+              dayNtlVlm: '2',
+              markPx: '3',
+              midPx: '4',
+            },
+          }),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data['PURR/USDC']).toMatchObject({
+          marketId: 'PURR/USDC',
+          midPrice: '95001',
+          markPrice: '95000',
+          prevDayPrice: '94000',
+          volume24h: '1234567.89',
+          marketCap: '9500000',
+        })
+        expect(event.data['PURR/USDC'].openInterest).toBeUndefined()
+        expect(event.data['#999']).toBeUndefined()
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': { dayNtlVlm: '1235000' },
+          }),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data['PURR/USDC']).toMatchObject({
+          midPrice: '95001',
+          markPrice: '95000',
+          prevDayPrice: '94000',
+          volume24h: '1235000',
+          marketCap: '9500000',
+        })
       })
     })
 
@@ -2397,12 +2575,16 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateOpen()
       await flushMicrotasks()
 
-      // allDexsAssetCtxs + fastAssetCtxs + compact l2 orderbook
-      expect(getMockRwsInstance().sent).toHaveLength(3)
+      // pac + sac + fastAssetCtxs + compact l2 orderbook
+      expect(getMockRwsInstance().sent).toHaveLength(4)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'allDexsAssetCtxs' },
+        subscription: { type: 'pac' },
+      })
+      expect(payloads).toContainEqual({
+        method: 'subscribe',
+        subscription: { type: 'sac' },
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
