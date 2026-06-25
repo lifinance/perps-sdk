@@ -4,6 +4,8 @@ import type { HlClearinghouseState, HlSpotBalance } from './account.js'
 import type { HlCandle, HlL2Book } from './asset.js'
 import type { HlUserFill } from './fill.js'
 
+type HlWsNumberString = string | number
+
 /**
  * Perp asset context as carried on the `allDexsAssetCtxs` WS feed. Extends the
  * REST `/info` `HlAssetCtx` shape with the wire-only `coin` tag, the order-book
@@ -21,14 +23,26 @@ export type HlWsPerpAssetCtx = {
   oraclePx: string
 }
 
+/** @public */
+export type HlWsPerpAssetCtxPayload = Partial<HlWsPerpAssetCtx>
+
 /**
  * `allDexsAssetCtxs` carries one `[dex, ctxs]` pair per perp sub-DEX, mirroring
  * `allDexsClearinghouseState`. Spot contexts arrive separately.
  * @public
  */
 export type HlWsAllDexsAssetCtxsData = {
-  assetCtxs: [string, HlWsPerpAssetCtx[]][]
+  assetCtxs?: [string, HlWsPerpAssetCtx[]][]
+  ctxs?: [string, HlWsPerpAssetCtxPayload[]][]
 }
+
+/**
+ * Compressed perp asset-context feed. Snapshot/update frames carry one
+ * `[dex, ctxs]` pair per perp sub-DEX. Updates can omit unchanged fields inside
+ * each context.
+ * @public
+ */
+export type HlWsPacData = [string, HlWsPerpAssetCtxPayload[]][]
 
 /** @public */
 export type HlWsMessage = {
@@ -46,6 +60,23 @@ export type HlWsFastAssetCtx = {
   markPx?: string
   midPx?: string | null
 }
+
+/** @public */
+export type HlWsSpotAssetCtx = {
+  dayNtlVlm?: HlWsNumberString
+  prevDayPx?: HlWsNumberString
+  markPx?: HlWsNumberString
+  midPx?: HlWsNumberString | null
+  dayBaseVlm?: HlWsNumberString
+  circulatingSupply?: HlWsNumberString
+}
+
+/**
+ * Compressed spot asset-context feed. The first frame is a broad snapshot; later
+ * frames only carry changed fields.
+ * @public
+ */
+export type HlWsSacData = Record<string, HlWsSpotAssetCtx>
 
 /** @public */
 export type HlWsL2BookData = HlL2Book & { coin: string }

@@ -940,6 +940,7 @@ describe('LighterWsProvider', () => {
         midPrice: '50001',
         markPrice: '50000',
         oraclePrice: '49998',
+        priceChange24h: '1.2',
         openInterest: '12.5',
       })
 
@@ -974,6 +975,7 @@ describe('LighterWsProvider', () => {
         midPrice: '1814.34',
         markPrice: '1814.34',
         oraclePrice: '1814.00',
+        priceChange24h: '0.5',
       })
       provider.close()
     })

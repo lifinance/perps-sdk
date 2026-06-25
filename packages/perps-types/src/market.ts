@@ -68,8 +68,10 @@ export interface MarketsResponse {
 /**
  * Live per-market context: `midPrice` is the order-book mid, `markPrice` the
  * venue mark, `oraclePrice` the venue oracle/index price where the venue
- * publishes one. `prevDayPrice` and `volume24h` apply to every market type;
- * `openInterest` and `funding` are perp-only and absent for spot.
+ * publishes one. `prevDayPrice`, `priceChange24h` and `volume24h` apply to
+ * every market type; `marketCap` is present when the venue publishes
+ * circulating supply, while `openInterest` and `funding` are perp-only and
+ * absent for spot.
  * @public
  */
 export interface MarketContext {
@@ -78,7 +80,9 @@ export interface MarketContext {
   markPrice: string
   oraclePrice?: string
   prevDayPrice?: string
+  priceChange24h?: string
   volume24h?: string
+  marketCap?: string
   openInterest?: string
   funding?: FundingInfo
 }
