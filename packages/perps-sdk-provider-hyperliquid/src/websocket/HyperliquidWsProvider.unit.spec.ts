@@ -78,11 +78,9 @@ const seedMids = (mids: Record<string, string>) =>
     })
   )
 
-// Encode a `fastAssetCtxs` payload the way HL does: base64 + raw DEFLATE.
-const encodeFast = async (
-  ctxs: Record<string, { markPx?: string; midPx?: string | null }>
-): Promise<string> => {
-  const bytes = new TextEncoder().encode(JSON.stringify(ctxs))
+// Encode a compressed payload the way HL does: base64 + raw DEFLATE.
+const encodeCompressed = async (payload: unknown): Promise<string> => {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
   const stream = new Blob([bytes])
     .stream()
     .pipeThrough(new CompressionStream('deflate-raw'))
@@ -99,7 +97,7 @@ const encodeFast = async (
 const seedFast = async (
   ctxs: Record<string, { markPx?: string; midPx?: string | null }>
 ) => {
-  const data = await encodeFast(ctxs)
+  const data = await encodeCompressed(ctxs)
   getMockRwsInstance().simulateMessage(
     JSON.stringify({ channel: 'fastAssetCtxs', data })
   )
@@ -340,7 +338,7 @@ describe('HyperliquidWsProvider', () => {
       }
     })
 
-    it('should map orderbook subscription to l2Book payload', async () => {
+    it('subscribes to the compact l2 orderbook stream', async () => {
       const provider = createProvider()
 
       await provider.subscribe(
@@ -348,13 +346,90 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'subscribe',
-        subscription: { type: 'l2Book', coin: 'BTC' },
-      })
+      const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+      expect(payloads).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'l2', c: 'BTC', s: null, m: null },
+        },
+      ])
     })
 
-    it('maps priceStep onto nSigFigs against the live mid and never sends the ignored nLevels', async () => {
+    it('dedupes orderbook steps that collapse to the same l2 payload', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+
+        const unsubFine = await provider.subscribe(
+          {
+            channel: 'orderbook',
+            dex: 'hyperliquid',
+            marketId: 'BTC',
+            priceStep: 0.1,
+          },
+          vi.fn()
+        )
+        const unsubCoarser = await provider.subscribe(
+          {
+            channel: 'orderbook',
+            dex: 'hyperliquid',
+            marketId: 'BTC',
+            priceStep: 1,
+          },
+          vi.fn()
+        )
+
+        expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+          {
+            method: 'subscribe',
+            subscription: { type: 'l2', c: 'BTC', s: null, m: null },
+          },
+        ])
+
+        getMockRwsInstance().sent = []
+        unsubFine()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent).toEqual([])
+
+        unsubCoarser()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'l2', c: 'BTC', s: null, m: null },
+          },
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('unsubscribes the compact l2 orderbook stream', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const unsub = await provider.subscribe(
+          { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+          vi.fn()
+        )
+
+        getMockRwsInstance().sent = []
+        unsub()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+        const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+        expect(payloads).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'l2', c: 'BTC', s: null, m: null },
+          },
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('maps priceStep onto compact l2 significant figures against the live mid', async () => {
       // BTC mid 95000: floor(log10) = 4, step 10 → nSigFigs 4.
       const provider = createEnrichingProvider()
       seedMids({ BTC: '95000' })
@@ -371,9 +446,69 @@ describe('HyperliquidWsProvider', () => {
       )
 
       const subscription = JSON.parse(getMockRwsInstance().sent[0]).subscription
-      expect(subscription).toEqual({ type: 'l2Book', coin: 'BTC', nSigFigs: 4 })
+      expect(subscription).toEqual({
+        type: 'l2',
+        c: 'BTC',
+        s: 4,
+        m: null,
+      })
       expect(subscription).not.toHaveProperty('nLevels')
       expect(subscription).not.toHaveProperty('priceStep')
+    })
+
+    it('reopens the orderbook wire subscription when priceStep changes', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        seedMids({ BTC: '95000' })
+
+        const unsub = await provider.subscribe(
+          {
+            channel: 'orderbook',
+            dex: 'hyperliquid',
+            marketId: 'BTC',
+            priceStep: 1,
+          },
+          vi.fn()
+        )
+
+        getMockRwsInstance().sent = []
+        unsub()
+
+        await provider.subscribe(
+          {
+            channel: 'orderbook',
+            dex: 'hyperliquid',
+            marketId: 'BTC',
+            priceStep: 10,
+          },
+          vi.fn()
+        )
+
+        const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
+        expect(payloads).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: {
+              type: 'l2',
+              c: 'BTC',
+              s: 5,
+              m: null,
+            },
+          },
+          {
+            method: 'subscribe',
+            subscription: {
+              type: 'l2',
+              c: 'BTC',
+              s: 4,
+              m: null,
+            },
+          },
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('emits mantissa for a non-power-of-ten priceStep at the 5-sig-fig boundary', async () => {
@@ -392,10 +527,10 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
-        type: 'l2Book',
-        coin: 'BTC',
-        nSigFigs: 5,
-        mantissa: 2,
+        type: 'l2',
+        c: 'BTC',
+        s: 5,
+        m: 2,
       })
     })
 
@@ -415,8 +550,56 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
-        type: 'l2Book',
-        coin: 'BTC',
+        type: 'l2',
+        c: 'BTC',
+        s: null,
+        m: null,
+      })
+    })
+
+    it('uses the latest book mid to aggregate when market context is unavailable', async () => {
+      const provider = createProvider()
+      const unsub = await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [{ px: '62500', sz: '1', n: 1 }],
+                [{ px: '62600', sz: '1', n: 1 }],
+              ],
+              time: 1704067200000,
+            },
+          },
+        })
+      )
+
+      getMockRwsInstance().sent = []
+      unsub()
+      await provider.subscribe(
+        {
+          channel: 'orderbook',
+          dex: 'hyperliquid',
+          marketId: 'BTC',
+          priceStep: 100,
+        },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent.at(-1) ?? '{}')).toEqual({
+        method: 'subscribe',
+        subscription: {
+          type: 'l2',
+          c: 'BTC',
+          s: 3,
+          m: null,
+        },
       })
     })
 
@@ -435,8 +618,10 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(JSON.parse(getMockRwsInstance().sent[0]).subscription).toEqual({
-        type: 'l2Book',
-        coin: 'BTC',
+        type: 'l2',
+        c: 'BTC',
+        s: null,
+        m: null,
       })
     })
 
@@ -456,6 +641,20 @@ describe('HyperliquidWsProvider', () => {
       expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
         method: 'subscribe',
         subscription: { type: 'candle', coin: 'BTC', interval: '1h' },
+      })
+    })
+
+    it('should map trades subscription to trades payload', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'trades', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: { type: 'trades', coin: 'BTC' },
       })
     })
 
@@ -941,7 +1140,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit orderbook event for l2Book channel', async () => {
+    it('emits orderbook event for compact l2 snapshot frames', async () => {
       const provider = createProvider()
       const listener = vi.fn()
 
@@ -952,14 +1151,16 @@ describe('HyperliquidWsProvider', () => {
 
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'l2Book',
+          channel: 'l2',
           data: {
-            coin: 'BTC',
-            levels: [
-              [{ px: '94999', sz: '1.5', n: 3 }],
-              [{ px: '95001', sz: '1.0', n: 2 }],
-            ],
-            time: 1704067200000,
+            s: {
+              coin: 'BTC',
+              levels: [
+                [{ px: '94999', sz: '1.5', n: 3 }],
+                [{ px: '95001', sz: '1.0', n: 2 }],
+              ],
+              time: 1704067200000,
+            },
           },
         })
       )
@@ -972,6 +1173,145 @@ describe('HyperliquidWsProvider', () => {
           bids: [{ price: '94999', size: '1.5' }],
           asks: [{ price: '95001', size: '1.0' }],
           timestamp: 1704067200000,
+        },
+      })
+    })
+
+    it('applies compressed l2 deltas to the latest snapshot', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [
+                  { px: '95000', sz: '1.0', n: 1 },
+                  { px: '94990', sz: '2.0', n: 1 },
+                  { px: '94980', sz: '3.0', n: 1 },
+                ],
+                [
+                  { px: '95010', sz: '1.5', n: 1 },
+                  { px: '95020', sz: '2.5', n: 1 },
+                ],
+              ],
+              time: 1704067200000,
+            },
+          },
+        })
+      )
+      const compressed = await encodeCompressed({
+        c: 'BTC',
+        t: 1704067200500,
+        l: [
+          [
+            { p: '95000', s: '1.1' },
+            { p: '94995', s: '0.4' },
+          ],
+          [{ p: '95010', s: '0' }],
+        ],
+        r: [['94980'], []],
+      })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: { c: compressed },
+        })
+      )
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event).toEqual({
+        channel: 'orderbook',
+        data: {
+          provider: 'hyperliquid',
+          marketId: 'BTC',
+          bids: [
+            { price: '95000', size: '1.1' },
+            { price: '94995', size: '0.4' },
+            { price: '94990', size: '2.0' },
+          ],
+          asks: [{ price: '95020', size: '2.5' }],
+          timestamp: 1704067200500,
+        },
+      })
+    })
+
+    it('applies uncompressed l2 update frames with index removals', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'STX' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'STX',
+              levels: [
+                [
+                  { px: '0.17698', sz: '9142.2', n: 1 },
+                  { px: '0.1769', sz: '100', n: 1 },
+                ],
+                [
+                  { px: '0.1772', sz: '505.9', n: 1 },
+                  { px: '0.17721', sz: '9049.3', n: 1 },
+                  { px: '0.17811', sz: '3548.9', n: 1 },
+                ],
+              ],
+              time: 1782230105000,
+            },
+          },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            u: {
+              c: 'STX',
+              t: 1782230105876,
+              l: [
+                [],
+                [
+                  { p: '0.1772', s: '600' },
+                  { p: '0.17811', s: '3000' },
+                ],
+              ],
+              r: [[], [1]],
+              s: '0.00015',
+            },
+          },
+        })
+      )
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event).toEqual({
+        channel: 'orderbook',
+        data: {
+          provider: 'hyperliquid',
+          marketId: 'STX',
+          bids: [
+            { price: '0.17698', size: '9142.2' },
+            { price: '0.1769', size: '100' },
+          ],
+          asks: [
+            { price: '0.1772', size: '600' },
+            { price: '0.17811', size: '3000' },
+          ],
+          timestamp: 1782230105876,
         },
       })
     })
@@ -992,8 +1332,10 @@ describe('HyperliquidWsProvider', () => {
       }))
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
-          channel: 'l2Book',
-          data: { coin: 'BTC', levels: [side, side], time: 1704067200000 },
+          channel: 'l2',
+          data: {
+            s: { coin: 'BTC', levels: [side, side], time: 1704067200000 },
+          },
         })
       )
 
@@ -1044,6 +1386,47 @@ describe('HyperliquidWsProvider', () => {
           c: '95000',
           v: '100',
         },
+      })
+    })
+
+    it('emits public trades for the subscribed market', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'trades', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'trades',
+          data: [
+            {
+              coin: 'BTC',
+              side: 'B',
+              px: '94000',
+              sz: '0.1',
+              time: 1704067200000,
+              tid: 123,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'trades',
+        data: [
+          {
+            provider: 'hyperliquid',
+            marketId: 'BTC',
+            price: '94000',
+            size: '0.1',
+            timestamp: 1704067200000,
+            side: 'buy',
+            id: '123',
+          },
+        ],
       })
     })
 
@@ -2014,7 +2397,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateOpen()
       await flushMicrotasks()
 
-      // allDexsAssetCtxs + fastAssetCtxs + l2Book
+      // allDexsAssetCtxs + fastAssetCtxs + compact l2 orderbook
       expect(getMockRwsInstance().sent).toHaveLength(3)
       const payloads = getMockRwsInstance().sent.map((s) => JSON.parse(s))
       expect(payloads).toContainEqual({
@@ -2027,7 +2410,7 @@ describe('HyperliquidWsProvider', () => {
       })
       expect(payloads).toContainEqual({
         method: 'subscribe',
-        subscription: { type: 'l2Book', coin: 'BTC' },
+        subscription: { type: 'l2', c: 'BTC', s: null, m: null },
       })
     })
 

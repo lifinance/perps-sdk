@@ -14,6 +14,8 @@ import {
 import {
   type MarketContext,
   type OpenOrder,
+  type OrderbookLevel,
+  type OrderbookResponse,
   OrderSide,
   OrderType,
   type Subscription,
@@ -27,14 +29,18 @@ import type {
   HlWsAllDexsAssetCtxsData,
   HlWsAllDexsClearinghouseStateData,
   HlWsCandleData,
+  HlWsCompressedL2Data,
   HlWsFastAssetCtx,
   HlWsL2BookData,
+  HlWsL2Data,
   HlWsMessage,
   HlWsPerpAssetCtx,
   HlWsSpotStateData,
+  HlWsTrade,
   HlWsUserFillsData,
 } from '../types/index.js'
 import {
+  decodeCompressedJson,
   decodeFastAssetCtxs,
   isOpenAssetPosition,
   isTriggerOrder,
@@ -49,7 +55,7 @@ import {
   spotPriceById,
 } from '../utils/index.js'
 
-/** HL's `l2Book` returns at most this many levels per side (slow/default mode). */
+/** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
 
 /**
@@ -85,6 +91,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
+  private orderbookKeysByMarketId = new Map<string, Set<string>>()
+  private latestOrderbookByMarketId = new Map<string, OrderbookResponse>()
   // Latest mid/mark per `Market.id` from the high-frequency `fastAssetCtxs`
   // feed (all dexes, incl. builder/sub-dex coins). Merged incrementally —
   // frames carry only changed coins — and overlaid onto the slower
@@ -93,6 +101,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   // `fastAssetCtxs` payloads are base64 + raw-DEFLATE; decode is async, so
   // chain decodes to apply incremental frames in arrival order.
   private fastDecodeChain: Promise<void> = Promise.resolve()
+  private orderbookDecodeChain: Promise<void> = Promise.resolve()
 
   constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
@@ -159,8 +168,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     // All other channels: single WS subscription per key
     const key = this.toKey(sub)
+    if (sub.channel === 'orderbook') {
+      this.claimOrderbookKey(sub.marketId, key)
+    }
     const payload = this.toHlPayload(sub)
     await this.registerSub(key, payload)
+    if (sub.channel === 'orderbook') {
+      this.registerOrderbook(sub.marketId, key)
+    }
 
     await this.rws.ready()
 
@@ -170,8 +185,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         this.orderUpdatesKey = undefined
       }
       this.rws.send(
-        JSON.stringify({ method: 'unsubscribe', subscription: payload })
+        JSON.stringify({
+          method: 'unsubscribe',
+          subscription: payload,
+        })
       )
+      if (sub.channel === 'orderbook') {
+        this.releaseOrderbook(sub.marketId, key)
+      }
     }
   }
 
@@ -198,6 +219,25 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.orderUpdatesKey = key
   }
 
+  private claimOrderbookKey(marketId: string, key: string): void {
+    const activeKeys = this.orderbookKeysByMarketId.get(marketId)
+    if (activeKeys === undefined) {
+      return
+    }
+
+    for (const activeKey of [...activeKeys]) {
+      if (activeKey === key) {
+        continue
+      }
+      if (!this.closeChannelIfIdle(activeKey)) {
+        throw new Error(
+          `Hyperliquid supports one orderbook aggregation per market per ` +
+            `provider instance. Unsubscribe ${activeKey} before subscribing ${key}.`
+        )
+      }
+    }
+  }
+
   /**
    * Sub-key + payload pairs for the markets-context aggregation: the all-dexs
    * perp asset-context feed (oracle/funding/OI/metadata) plus the compressed
@@ -213,9 +253,35 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     ]
   }
 
+  private registerOrderbook(marketId: string, orderbookKey: string): void {
+    let activeKeys = this.orderbookKeysByMarketId.get(marketId)
+    if (activeKeys === undefined) {
+      activeKeys = new Set()
+      this.orderbookKeysByMarketId.set(marketId, activeKeys)
+    }
+
+    activeKeys.add(orderbookKey)
+  }
+
+  private releaseOrderbook(marketId: string, orderbookKey: string): void {
+    const activeKeys = this.orderbookKeysByMarketId.get(marketId)
+    if (activeKeys === undefined) {
+      return
+    }
+
+    activeKeys.delete(orderbookKey)
+    if (activeKeys.size > 0) {
+      return
+    }
+
+    this.orderbookKeysByMarketId.delete(marketId)
+  }
+
   protected override onClose(): void {
     this.perpCtxBySubDex.clear()
     this.fastCtxByMarketId = {}
+    this.orderbookKeysByMarketId.clear()
+    this.latestOrderbookByMarketId.clear()
     this.orderUpdatesKey = undefined
   }
 
@@ -230,9 +296,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       case 'marketsContext':
         return 'marketsContext'
       case 'orderbook':
-        return `l2Book:${sub.marketId}`
+        return `l2:${sub.marketId}:${this.orderbookAggregationKey(
+          sub.marketId,
+          sub.priceStep
+        )}`
       case 'candle':
         return `candle:${sub.marketId}:${sub.interval}`
+      case 'trades':
+        return `trades:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -244,31 +315,60 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
   }
 
+  private orderbookAggregation(
+    marketId: string,
+    priceStep: number | undefined
+  ): { nSigFigs?: number; mantissa?: number } {
+    if (priceStep === undefined) {
+      return {}
+    }
+    return priceStepToAggregation(
+      priceStep,
+      this.orderbookReferencePrice(marketId)
+    )
+  }
+
+  private orderbookAggregationKey(
+    marketId: string,
+    priceStep: number | undefined
+  ): string {
+    const aggregation = this.orderbookAggregation(marketId, priceStep)
+    const nSigFigs = aggregation.nSigFigs ?? null
+    const mantissa = aggregation.mantissa ?? null
+    if (nSigFigs === null && mantissa === null) {
+      return 'full'
+    }
+    return `s:${nSigFigs}:m:${mantissa}`
+  }
+
   private toHlPayload(sub: Subscription): object {
     switch (sub.channel) {
       case 'marketsContext':
         // Handled via getMarketsContextSubEntries in openChannel; never reaches
         // toHlPayload, but TS requires an exhaustive switch.
         return { type: 'allDexsAssetCtxs' }
-      case 'orderbook':
+      case 'orderbook': {
+        const aggregation = this.orderbookAggregation(
+          sub.marketId,
+          sub.priceStep
+        )
         return {
-          type: 'l2Book',
-          coin: sub.marketId,
-          // HL's l2Book ignores any level-count field; it returns up to 20
-          // levels/side and controls granularity via nSigFigs (+ mantissa,
-          // valid only when nSigFigs === 5).
-          ...(sub.priceStep !== undefined
-            ? priceStepToAggregation(
-                sub.priceStep,
-                this.mergedMids().get(sub.marketId) ?? Number.NaN
-              )
-            : {}),
+          type: 'l2',
+          c: sub.marketId,
+          s: aggregation.nSigFigs ?? null,
+          m: aggregation.mantissa ?? null,
         }
+      }
       case 'candle':
         return {
           type: 'candle',
           coin: sub.marketId,
           interval: sub.interval,
+        }
+      case 'trades':
+        return {
+          type: 'trades',
+          coin: sub.marketId,
         }
       case 'orderUpdates':
         return { type: 'orderUpdates', user: sub.address }
@@ -315,11 +415,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         case 'fastAssetCtxs':
           this.handleFastAssetCtxs(msg.data as string)
           break
+        case 'l2':
+          this.handleL2(msg.data as HlWsL2Data)
+          break
         case 'l2Book':
           this.handleL2Book(msg.data as HlWsL2BookData)
           break
         case 'candle':
           this.handleCandle(msg.data as HlWsCandleData)
+          break
+        case 'trades':
+          this.handleTrades(msg.data as HlWsTrade[])
           break
         case 'orderUpdates':
           this.handleOrderUpdates(msg.data as HlOrderDetail[])
@@ -427,21 +533,93 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     return map
   }
 
+  private orderbookReferencePrice(marketId: string): number {
+    const mid = this.mergedMids().get(marketId)
+    if (mid !== undefined) {
+      return mid
+    }
+
+    const book = this.latestOrderbookByMarketId.get(marketId)
+    const bid = book?.bids[0]?.price
+    const ask = book?.asks[0]?.price
+    if (bid !== undefined && ask !== undefined) {
+      return (Number(bid) + Number(ask)) / 2
+    }
+
+    return Number.NaN
+  }
+
   private handleL2Book(data: HlWsL2BookData) {
-    this.emit(`l2Book:${data.coin}`, {
-      channel: 'orderbook',
-      data: {
-        provider: this.providerKey,
-        marketId: data.coin,
-        bids: data.levels[0]
-          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
-          .map((l) => ({ price: l.px, size: l.sz })),
-        asks: data.levels[1]
-          .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
-          .map((l) => ({ price: l.px, size: l.sz })),
-        timestamp: data.time,
-      },
-    })
+    const book = {
+      provider: this.providerKey,
+      marketId: data.coin,
+      bids: data.levels[0]
+        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+        .map((l) => ({ price: l.px, size: l.sz })),
+      asks: data.levels[1]
+        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+        .map((l) => ({ price: l.px, size: l.sz })),
+      timestamp: data.time,
+    }
+    this.latestOrderbookByMarketId.set(data.coin, book)
+    this.emitOrderbook(data.coin, book)
+  }
+
+  private handleL2(data: HlWsL2Data) {
+    if (data.s !== undefined) {
+      this.handleL2Book(data.s)
+    }
+    if (data.u !== undefined) {
+      this.handleCompactL2Delta(data.u)
+    }
+    if (data.c === undefined) {
+      return
+    }
+    const compressed = data.c
+    this.orderbookDecodeChain = this.orderbookDecodeChain
+      .then(async () => {
+        this.handleCompactL2Delta(
+          await decodeCompressedJson<HlWsCompressedL2Data>(compressed)
+        )
+      })
+      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+  }
+
+  private handleCompactL2Delta(delta: HlWsCompressedL2Data) {
+    const previous = this.latestOrderbookByMarketId.get(delta.c)
+    if (previous === undefined) {
+      return
+    }
+
+    const book: OrderbookResponse = {
+      provider: this.providerKey,
+      marketId: delta.c,
+      bids: applyCompressedL2Side(
+        previous.bids,
+        delta.l[0],
+        delta.r?.[0] ?? [],
+        'bid'
+      ),
+      asks: applyCompressedL2Side(
+        previous.asks,
+        delta.l[1],
+        delta.r?.[1] ?? [],
+        'ask'
+      ),
+      timestamp: delta.t,
+    }
+    this.latestOrderbookByMarketId.set(delta.c, book)
+    this.emitOrderbook(delta.c, book)
+  }
+
+  private emitOrderbook(marketId: string, book: OrderbookResponse) {
+    const keys = this.orderbookKeysByMarketId.get(marketId)
+    if (keys === undefined) {
+      return
+    }
+    for (const key of keys) {
+      this.emit(key, { channel: 'orderbook', data: book })
+    }
   }
 
   private handleCandle(data: HlWsCandleData) {
@@ -456,6 +634,25 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         v: data.v,
       },
     })
+  }
+
+  private handleTrades(data: HlWsTrade[]) {
+    for (const trade of data) {
+      this.emit(`trades:${trade.coin}`, {
+        channel: 'trades',
+        data: [
+          {
+            provider: this.providerKey,
+            marketId: trade.coin,
+            price: trade.px,
+            size: trade.sz,
+            timestamp: trade.time,
+            side: trade.side === 'B' ? 'buy' : 'sell',
+            id: trade.tid !== undefined ? String(trade.tid) : trade.hash,
+          },
+        ],
+      })
+    }
   }
 
   private handleOrderUpdates(data: HlOrderDetail[]) {
@@ -563,6 +760,47 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
 
+function compactRemovalPrice(
+  levels: OrderbookLevel[],
+  value: number | string | { p: string }
+): string | undefined {
+  if (typeof value === 'number') {
+    return levels[value]?.price
+  }
+  return typeof value === 'string' ? value : value.p
+}
+
+function applyCompressedL2Side(
+  previous: OrderbookLevel[],
+  updates: HlWsCompressedL2Data['l'][number],
+  removals: NonNullable<HlWsCompressedL2Data['r']>[number],
+  side: 'bid' | 'ask'
+): OrderbookLevel[] {
+  const byPrice = new Map(previous.map((level) => [level.price, level.size]))
+  for (const removal of removals) {
+    const price = compactRemovalPrice(previous, removal)
+    if (price !== undefined) {
+      byPrice.delete(price)
+    }
+  }
+  for (const update of updates) {
+    if (Number(update.s) === 0) {
+      byPrice.delete(update.p)
+    } else {
+      byPrice.set(update.p, update.s)
+    }
+  }
+
+  return [...byPrice.entries()]
+    .map(([price, size]) => ({ price, size }))
+    .sort((a, b) =>
+      side === 'bid'
+        ? Number(b.price) - Number(a.price)
+        : Number(a.price) - Number(b.price)
+    )
+    .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
+}
+
 /**
  * Minimal presence/type check of the channel-discriminating and required
  * fields the matching handler dereferences without its own guard. A frame
@@ -589,8 +827,12 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
         Array.isArray(data.levels[1]) &&
         typeof data.time === 'number'
       )
+    case 'l2':
+      return typeof data.c === 'string' || isObject(data.s) || isObject(data.u)
     case 'candle':
       return typeof data.s === 'string' && typeof data.i === 'string'
+    case 'trades':
+      return Array.isArray(data)
     case 'orderUpdates':
       return Array.isArray(data)
     case 'userFills':

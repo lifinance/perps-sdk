@@ -10,6 +10,7 @@ import type {
   MarketContext,
   OhlcvInterval,
   OrderbookResponse,
+  Trade,
 } from './market.js'
 import type { Address } from './primitives.js'
 
@@ -38,6 +39,12 @@ export type CandleSubscription = {
   dex: string
   marketId: string
   interval: OhlcvInterval
+}
+/** @public */
+export type TradesSubscription = {
+  channel: 'trades'
+  dex: string
+  marketId: string
 }
 /** @public */
 export type OrderUpdatesSubscription = {
@@ -69,6 +76,7 @@ export type Subscription =
   | MarketsContextSubscription
   | OrderbookSubscription
   | CandleSubscription
+  | TradesSubscription
   | OrderUpdatesSubscription
   | FillsSubscription
   | PositionsSubscription
@@ -83,6 +91,8 @@ export type MarketsContextEvent = {
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 /** @public */
 export type CandleEvent = { channel: 'candle'; data: Candle }
+/** @public */
+export type TradesEvent = { channel: 'trades'; data: Trade[] }
 /** @public */
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
@@ -123,6 +133,7 @@ export type SubscriptionEvent =
   | MarketsContextEvent
   | OrderbookEvent
   | CandleEvent
+  | TradesEvent
   | OrderUpdatesEvent
   | FillsEvent
   | PositionsEvent
