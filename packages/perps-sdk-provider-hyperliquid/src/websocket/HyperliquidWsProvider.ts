@@ -11,7 +11,6 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
-import Big from 'big.js'
 import {
   type MarketContext,
   type OpenOrder,
@@ -22,6 +21,7 @@ import {
   type Subscription,
   type TriggerOrder,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import { HYPERLIQUID_FEE_TIER_FALLBACK, SPOT_MARKET_ID } from '../constants.js'
 import type {
   HlAssetPosition,
