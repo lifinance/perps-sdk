@@ -24,11 +24,6 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/cjs/index.js"
     },
-    "./websocket": {
-      "types": "./dist/types/websocket/LighterWsProvider.d.ts",
-      "import": "./dist/esm/websocket/LighterWsProvider.js",
-      "default": "./dist/cjs/websocket/LighterWsProvider.js"
-    },
     "./wasm/*": "./wasm/*",
     "./package.json": "./package.json"
   },
