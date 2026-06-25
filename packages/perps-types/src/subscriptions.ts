@@ -20,6 +20,12 @@ export type MarketsContextSubscription = {
   dex: string
 }
 /** @public */
+export type MarketContextSubscription = {
+  channel: 'marketContext'
+  dex: string
+  marketId: string
+}
+/** @public */
 export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
@@ -74,6 +80,7 @@ export type SpotBalancesSubscription = {
 /** @public */
 export type Subscription =
   | MarketsContextSubscription
+  | MarketContextSubscription
   | OrderbookSubscription
   | CandleSubscription
   | TradesSubscription
@@ -86,6 +93,11 @@ export type Subscription =
 export type MarketsContextEvent = {
   channel: 'marketsContext'
   data: Record<string, MarketContext>
+}
+/** @public */
+export type MarketContextEvent = {
+  channel: 'marketContext'
+  data: MarketContext
 }
 /** @public */
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
@@ -131,6 +143,7 @@ export type SpotBalancesEvent = {
 /** @public */
 export type SubscriptionEvent =
   | MarketsContextEvent
+  | MarketContextEvent
   | OrderbookEvent
   | CandleEvent
   | TradesEvent

@@ -8,11 +8,12 @@ import type { FeeTier } from '@lifi/perps-types'
 export const LIGHTER_PROVIDER_KEY = 'lighter'
 
 /**
- * Default mainnet REST base URL for Lighter.
+ * Default mainnet REST and WS base URL for Lighter.
  *
  * @public
  */
 export const DEFAULT_LIGHTER_REST_URL = 'https://mainnet.zklighter.elliot.ai'
+export const DEFAULT_LIGHTER_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 
 /** @internal */
 export const DEFAULT_TRADES_LIMIT = 50

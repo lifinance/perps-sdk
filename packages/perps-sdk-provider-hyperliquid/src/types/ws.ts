@@ -71,6 +71,18 @@ export type HlWsSpotAssetCtx = {
   circulatingSupply?: HlWsNumberString
 }
 
+/** @public */
+export type HlWsActiveAssetCtxData = {
+  coin: string
+  ctx: Partial<Record<keyof HlWsPerpAssetCtx, HlWsNumberString | null>>
+}
+
+/** @public */
+export type HlWsActiveSpotAssetCtxData = {
+  coin: string
+  ctx: HlWsSpotAssetCtx
+}
+
 /**
  * Compressed spot asset-context feed. The first frame is a broad snapshot; later
  * frames only carry changed fields.

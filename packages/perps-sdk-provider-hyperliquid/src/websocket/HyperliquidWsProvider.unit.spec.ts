@@ -285,6 +285,20 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('maps marketContext subscription to activeAssetCtx payload', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: { type: 'activeAssetCtx', coin: 'BTC' },
+      })
+    })
+
     it('auto-heals subscribe after reconnect exhaustion and stays recoverable', async () => {
       const provider = createProvider()
       getMockRwsInstance().simulateStatus('disconnected')
@@ -986,6 +1000,82 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data.BTC).toMatchObject({
         marketId: 'BTC',
         midPrice: '95001',
+        markPrice: '95000',
+        oraclePrice: '94998',
+      })
+    })
+
+    it('emits marketContext with oracle/mark/funding/volume from activeAssetCtx', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              midPx: 95001,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: 'BTC',
+          midPrice: '95001',
+          markPrice: '95000',
+          oraclePrice: '94998',
+          volume24h: '1000000',
+          funding: { rate: '0.0001' },
+        },
+      })
+    })
+
+    it('emits marketContext from activeAssetCtx when midPx is omitted', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95000',
         markPrice: '95000',
         oraclePrice: '94998',
       })

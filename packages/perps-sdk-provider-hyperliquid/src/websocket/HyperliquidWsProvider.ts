@@ -27,6 +27,8 @@ import type {
   HlAssetPosition,
   HlOrderDetail,
   HlUserFill,
+  HlWsActiveAssetCtxData,
+  HlWsActiveSpotAssetCtxData,
   HlWsAllDexsAssetCtxsData,
   HlWsAllDexsClearinghouseStateData,
   HlWsCandleData,
@@ -309,6 +311,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     switch (sub.channel) {
       case 'marketsContext':
         return 'marketsContext'
+      case 'marketContext':
+        return `marketContext:${sub.marketId}`
       case 'orderbook':
         return `l2:${sub.marketId}:${this.orderbookAggregationKey(
           sub.marketId,
@@ -361,6 +365,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         // Handled via getMarketsContextSubEntries in openChannel; never reaches
         // toHlPayload, but TS requires an exhaustive switch.
         return { type: 'allDexsAssetCtxs' }
+      case 'marketContext':
+        return {
+          type: 'activeAssetCtx',
+          coin: sub.marketId,
+        }
       case 'orderbook': {
         const aggregation = this.orderbookAggregation(
           sub.marketId,
@@ -434,6 +443,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'fastAssetCtxs':
           this.handleFastAssetCtxs(msg.data as string)
+          break
+        case 'activeAssetCtx':
+          this.handleActiveAssetCtx(msg.data as HlWsActiveAssetCtxData)
+          break
+        case 'activeSpotAssetCtx':
+          this.handleActiveSpotAssetCtx(msg.data as HlWsActiveSpotAssetCtxData)
           break
         case 'l2':
           this.handleL2(msg.data as HlWsL2Data)
@@ -580,21 +595,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
     for (const [marketId, ctx] of Object.entries(this.spotCtxByMarketId)) {
-      const midPrice = toMarketContextString(ctx.midPx ?? ctx.markPx)
-      const markPrice = toMarketContextString(ctx.markPx)
-      if (midPrice === undefined || markPrice === undefined) {
+      const context = mapSpotMarketContext(
+        marketId,
+        ctx,
+        this.fastCtxByMarketId[marketId]
+      )
+      if (context === undefined) {
         continue
       }
-      const fast = this.fastCtxByMarketId[marketId]
-      const emittedMarkPrice = fast?.markPx != null ? fast.markPx : markPrice
-      data[marketId] = {
-        marketId,
-        midPrice: fast?.midPx != null ? fast.midPx : midPrice,
-        markPrice: emittedMarkPrice,
-        prevDayPrice: toMarketContextString(ctx.prevDayPx),
-        volume24h: toMarketContextString(ctx.dayNtlVlm),
-        marketCap: toMarketCapString(emittedMarkPrice, ctx.circulatingSupply),
-      }
+      data[marketId] = context
     }
     for (const [marketId, fast] of Object.entries(this.fastCtxByMarketId)) {
       if (data[marketId] !== undefined) {
@@ -609,6 +618,28 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
     this.emit('marketsContext', { channel: 'marketsContext', data })
+  }
+
+  private handleActiveAssetCtx(data: HlWsActiveAssetCtxData) {
+    const ctx = activePerpAssetCtx(data.coin, data.ctx)
+    if (ctx === undefined) {
+      return
+    }
+    this.emit(`marketContext:${data.coin}`, {
+      channel: 'marketContext',
+      data: mapMarketContext(data.coin, ctx),
+    })
+  }
+
+  private handleActiveSpotAssetCtx(data: HlWsActiveSpotAssetCtxData) {
+    const context = mapSpotMarketContext(data.coin, data.ctx)
+    if (context === undefined) {
+      return
+    }
+    this.emit(`marketContext:${data.coin}`, {
+      channel: 'marketContext',
+      data: context,
+    })
   }
 
   /** Latest mid per `Market.id` across asset-context and fast feeds. */
@@ -932,6 +963,66 @@ function allDexsAssetCtxEntries(
   return data.assetCtxs ?? data.ctxs ?? []
 }
 
+function activePerpAssetCtx(
+  marketId: string,
+  ctx: HlWsActiveAssetCtxData['ctx']
+): HlWsPerpAssetCtx | undefined {
+  const funding = toMarketContextString(ctx.funding)
+  const openInterest = toMarketContextString(ctx.openInterest)
+  const dayNtlVlm = toMarketContextString(ctx.dayNtlVlm)
+  const prevDayPx = toMarketContextString(ctx.prevDayPx)
+  const markPx = toMarketContextString(ctx.markPx)
+  const midPx =
+    ctx.midPx === undefined || ctx.midPx === null
+      ? null
+      : (toMarketContextString(ctx.midPx) ?? null)
+  const oraclePx = toMarketContextString(ctx.oraclePx)
+
+  if (
+    funding === undefined ||
+    openInterest === undefined ||
+    dayNtlVlm === undefined ||
+    prevDayPx === undefined ||
+    markPx === undefined ||
+    oraclePx === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    coin: marketId,
+    funding,
+    openInterest,
+    dayNtlVlm,
+    prevDayPx,
+    markPx,
+    midPx,
+    oraclePx,
+  }
+}
+
+function mapSpotMarketContext(
+  marketId: string,
+  ctx: HlWsSpotAssetCtx,
+  fast?: HlWsFastAssetCtx
+): MarketContext | undefined {
+  const midPrice = toMarketContextString(ctx.midPx ?? ctx.markPx)
+  const markPrice = toMarketContextString(ctx.markPx)
+  if (midPrice === undefined || markPrice === undefined) {
+    return undefined
+  }
+
+  const emittedMarkPrice = fast?.markPx != null ? fast.markPx : markPrice
+  return {
+    marketId,
+    midPrice: fast?.midPx != null ? fast.midPx : midPrice,
+    markPrice: emittedMarkPrice,
+    prevDayPrice: toMarketContextString(ctx.prevDayPx),
+    volume24h: toMarketContextString(ctx.dayNtlVlm),
+    marketCap: toMarketCapString(emittedMarkPrice, ctx.circulatingSupply),
+  }
+}
+
 function compactRemovalPrice(
   levels: OrderbookLevel[],
   value: number | string | { p: string }
@@ -991,6 +1082,9 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
   switch (channel) {
     case 'allDexsAssetCtxs':
       return Array.isArray(data.assetCtxs) || Array.isArray(data.ctxs)
+    case 'activeAssetCtx':
+    case 'activeSpotAssetCtx':
+      return typeof data.coin === 'string' && isObject(data.ctx)
     case 'l2Book':
       return (
         typeof data.coin === 'string' &&
