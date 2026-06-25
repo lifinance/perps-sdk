@@ -991,7 +991,7 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('maps live allDexsAssetCtxs ctxs entries by registry order', async () => {
+    it('ignores unkeyed allDexsAssetCtxs ctxs entries', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
 
@@ -1011,15 +1011,7 @@ describe('HyperliquidWsProvider', () => {
 
       const event = listener.mock.calls.at(-1)?.[0]
       expect(event.channel).toBe('marketsContext')
-      expect(Object.keys(event.data).sort()).toEqual(['BTC', 'ETH'])
-      expect(event.data.BTC).toMatchObject({
-        marketId: 'BTC',
-        midPrice: '95001',
-      })
-      expect(event.data.ETH).toMatchObject({
-        marketId: 'ETH',
-        midPrice: '3401',
-      })
+      expect(event.data).toEqual({})
     })
 
     it('emits perp context from compressed pac and merges partial updates', async () => {
@@ -1035,7 +1027,7 @@ describe('HyperliquidWsProvider', () => {
         JSON.stringify({
           channel: 'pac',
           data: await encodeCompressed([
-            ['', [indexedPerpCtx('95001'), indexedPerpCtx('3401')]],
+            ['', [perpCtx('BTC', '95001'), perpCtx('ETH', '3401')]],
           ]),
         })
       )
@@ -1054,7 +1046,13 @@ describe('HyperliquidWsProvider', () => {
         JSON.stringify({
           channel: 'pac',
           data: await encodeCompressed([
-            ['', [{ markPx: '95100', midPx: '95101' }, { midPx: '3410' }]],
+            [
+              '',
+              [
+                { coin: 'BTC', markPx: '95100', midPx: '95101' },
+                { coin: 'ETH', midPx: '3410' },
+              ],
+            ],
           ]),
         })
       )
@@ -1073,6 +1071,30 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '3410',
           markPrice: '3401',
         })
+      })
+    })
+
+    it('does not assign unkeyed compressed pac entries by registry order', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [indexedPerpCtx('0.000392'), indexedPerpCtx('13.339')]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data).toEqual({})
       })
     })
 
@@ -1099,6 +1121,12 @@ describe('HyperliquidWsProvider', () => {
           channel: 'sac',
           data: await encodeCompressed({
             PURR: {
+              prevDayPx: '1',
+              dayNtlVlm: '2',
+              markPx: '3',
+              midPx: '4',
+            },
+            '@142': {
               prevDayPx: '1',
               dayNtlVlm: '2',
               markPx: '3',

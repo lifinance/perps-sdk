@@ -482,13 +482,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     entries: [string, HlWsPerpAssetCtxPayload[]][]
   ) {
     for (const [dex, ctxs] of entries) {
-      const marketIds = this.marketIdsForAssetCtxDex(dex)
       const previous = this.perpCtxBySubDex.get(dex || 'default')
       const byMarketId: Record<string, HlWsPerpAssetCtx> = {
         ...(previous ?? {}),
       }
-      for (const [index, ctx] of ctxs.entries()) {
-        const marketId = ctx.coin ?? marketIds[index]
+      for (const ctx of ctxs) {
+        const marketId = ctx.coin
         if (marketId === undefined) {
           continue
         }
@@ -499,17 +498,6 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       this.perpCtxBySubDex.set(dex || 'default', byMarketId)
     }
-  }
-
-  private marketIdsForAssetCtxDex(dex: string): string[] {
-    const markets = this.registry?.markets
-    if (markets === undefined) {
-      return []
-    }
-    const categoryId = dex || this.providerKey
-    return markets
-      .filter((market) => market.categoryId === categoryId)
-      .map((market) => market.id)
   }
 
   private handleSac(base64: string) {
@@ -543,9 +531,6 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         `${market.baseAsset.displaySymbol}/${market.quoteAsset.displaySymbol}`,
         market.id
       )
-      map.set(market.baseAsset.id, market.id)
-      map.set(`@${market.baseAsset.id}`, market.id)
-      map.set(`#${market.baseAsset.id}`, market.id)
     }
     return map
   }
