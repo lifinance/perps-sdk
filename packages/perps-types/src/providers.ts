@@ -3,9 +3,6 @@ import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
 /** @public */
-export type ProviderKey = 'hyperliquid' | 'lighter'
-
-/** @public */
 export interface ParamOption {
   value: string
   label: string
@@ -74,7 +71,7 @@ export interface ProviderCategory {
 
 /** @public */
 export interface Provider {
-  key: ProviderKey
+  key: string
   name: string
   logoURI: string
   signingMethod: SigningMethod
