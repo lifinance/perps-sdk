@@ -24,11 +24,7 @@ export type HlWsPerpAssetCtx = {
 }
 
 /** @public */
-export type HlWsPerpAssetCtxPayload = Partial<
-  Omit<HlWsPerpAssetCtx, 'coin'>
-> & {
-  coin?: string
-}
+export type HlWsPerpAssetCtxPayload = Partial<HlWsPerpAssetCtx>
 
 /**
  * `allDexsAssetCtxs` carries one `[dex, ctxs]` pair per perp sub-DEX, mirroring

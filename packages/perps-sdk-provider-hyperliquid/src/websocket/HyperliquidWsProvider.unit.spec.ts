@@ -1133,12 +1133,12 @@ describe('HyperliquidWsProvider', () => {
               midPx: '4',
             },
             'PURR/USDC': {
-              prevDayPx: '94000',
+              prevDayPx: '0.09',
               dayNtlVlm: '1234567.89',
-              markPx: '95000',
-              midPx: '95001',
+              markPx: '0.1',
+              midPx: '0.1',
               dayBaseVlm: '13',
-              circulatingSupply: '100',
+              circulatingSupply: '590000000000000.123456',
             },
             '#999': {
               prevDayPx: '1',
@@ -1154,11 +1154,11 @@ describe('HyperliquidWsProvider', () => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data['PURR/USDC']).toMatchObject({
           marketId: 'PURR/USDC',
-          midPrice: '95001',
-          markPrice: '95000',
-          prevDayPrice: '94000',
+          midPrice: '0.1',
+          markPrice: '0.1',
+          prevDayPrice: '0.09',
           volume24h: '1234567.89',
-          marketCap: '9500000',
+          marketCap: '59000000000000.0123456',
         })
         expect(event.data['PURR/USDC'].openInterest).toBeUndefined()
         expect(event.data['#999']).toBeUndefined()
@@ -1176,11 +1176,11 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data['PURR/USDC']).toMatchObject({
-          midPrice: '95001',
-          markPrice: '95000',
-          prevDayPrice: '94000',
+          midPrice: '0.1',
+          markPrice: '0.1',
+          prevDayPrice: '0.09',
           volume24h: '1235000',
-          marketCap: '9500000',
+          marketCap: '59000000000000.0123456',
         })
       })
     })

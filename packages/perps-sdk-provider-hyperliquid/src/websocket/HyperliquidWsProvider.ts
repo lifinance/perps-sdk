@@ -11,6 +11,7 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
+import Big from 'big.js'
 import {
   type MarketContext,
   type OpenOrder,
@@ -291,6 +292,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.fastCtxByMarketId = {}
     this.orderbookKeysByMarketId.clear()
     this.latestOrderbookByMarketId.clear()
+    this.fastDecodeChain = Promise.resolve()
+    this.pacDecodeChain = Promise.resolve()
+    this.sacDecodeChain = Promise.resolve()
+    this.orderbookDecodeChain = Promise.resolve()
     this.orderUpdatesKey = undefined
   }
 
@@ -866,17 +871,22 @@ const toMarketCapString = (
   price: unknown,
   circulatingSupply: unknown
 ): string | undefined => {
-  const parsedPrice = Number(price)
-  const parsedSupply = Number(circulatingSupply)
-  if (
-    !Number.isFinite(parsedPrice) ||
-    !Number.isFinite(parsedSupply) ||
-    parsedPrice <= 0 ||
-    parsedSupply <= 0
-  ) {
+  const priceString = toMarketContextString(price)
+  const supplyString = toMarketContextString(circulatingSupply)
+  if (priceString === undefined || supplyString === undefined) {
     return undefined
   }
-  return String(parsedPrice * parsedSupply)
+
+  try {
+    const parsedPrice = new Big(priceString)
+    const parsedSupply = new Big(supplyString)
+    if (parsedPrice.lte(0) || parsedSupply.lte(0)) {
+      return undefined
+    }
+    return parsedPrice.times(parsedSupply).toFixed()
+  } catch {
+    return undefined
+  }
 }
 
 function mergePerpAssetCtx(
