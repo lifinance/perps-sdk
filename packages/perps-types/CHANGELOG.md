@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.2.0
+
+### Minor Changes
+
+- [#140](https://github.com/lifinance/perps-sdk/pull/140) [`a2b6f9e`](https://github.com/lifinance/perps-sdk/commit/a2b6f9eaa88aa02c10b63c9f11ef1cd3f128fea8) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Add public trades subscription channel for Hyperliquid and Lighter; migrate Hyperliquid orderbook to the compact l2 feed.
+
 ## 1.1.0
 
 ### Minor Changes
