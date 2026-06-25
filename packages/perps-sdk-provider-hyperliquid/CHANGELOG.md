@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.3.0
+
+### Minor Changes
+
+- [#141](https://github.com/lifinance/perps-sdk/pull/141) [`906cce8`](https://github.com/lifinance/perps-sdk/commit/906cce8d610f90ff155fc1e830c28689e3a70411) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Added compressed pac, sac channel on hl
+
+### Patch Changes
+
+- Updated dependencies [[`906cce8`](https://github.com/lifinance/perps-sdk/commit/906cce8d610f90ff155fc1e830c28689e3a70411)]:
+  - @lifi/perps-types@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes
