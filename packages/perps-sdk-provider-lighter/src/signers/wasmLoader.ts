@@ -224,16 +224,41 @@ async function readUrlBytes(url: string | URL): Promise<ArrayBuffer> {
   return response.arrayBuffer()
 }
 
+function buildValidatedUrl(baseUrl: string): string {
+  try {
+    // Minimal path validation
+    if (baseUrl.includes('/../') || /\/%2e%2e\//i.test(baseUrl)) {
+      throw new Error('Invalid path');
+    }
+    
+    const url = new URL(baseUrl);
+    
+    // Protocol + host checks
+    const allowedDomains = ['example.com']; // add your allowed domains here
+    if (!allowedDomains.includes(url.hostname)) {
+      throw new Error('Invalid host');
+    }
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+    
+    return url.href;
+  } catch {
+    throw new Error('Invalid URL');
+  }
+}
+
 async function readUrlText(url: string | URL): Promise<string> {
   const u = toResolvedUrl(url)
   if (u.protocol === 'file:') {
     const buf = await readNodeFile(u)
     return new TextDecoder('utf-8').decode(buf)
   }
-  const response = await fetch(u)
+  const validatedUrl = buildValidatedUrl(u.href)
+  const response = await fetch(validatedUrl)
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch ${u.href}: ${response.status} ${response.statusText}`
+      `Failed to fetch ${validatedUrl}: ${response.status} ${response.statusText}`
     )
   }
   return response.text()
