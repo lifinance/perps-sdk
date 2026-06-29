@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.3.1
+
+### Patch Changes
+
+- [#147](https://github.com/lifinance/perps-sdk/pull/147) [`3a310ff`](https://github.com/lifinance/perps-sdk/commit/3a310ff1333123949e9ade7a520c93d8fb0c133e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Consolidate the default Lighter REST host through `DEFAULT_LIGHTER_REST_URL`.
+
+- [#150](https://github.com/lifinance/perps-sdk/pull/150) [`ff8eaa4`](https://github.com/lifinance/perps-sdk/commit/ff8eaa4209f9a123546b675e745490c6e4ad1cf3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add SET_REFERRAL action type for the Hyperliquid setReferrer setup gate; classify it as having no account-config projection in both provider mappers.
+
+- Updated dependencies [[`ff8eaa4`](https://github.com/lifinance/perps-sdk/commit/ff8eaa4209f9a123546b675e745490c6e4ad1cf3)]:
+  - @lifi/perps-types@1.4.0
+
 ## 1.3.0
 
 ### Minor Changes
