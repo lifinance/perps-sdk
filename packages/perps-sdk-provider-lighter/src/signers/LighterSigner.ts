@@ -1,4 +1,5 @@
 import { ActionType } from '@lifi/perps-types'
+import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
 import {
   type LighterWasmExports,
   type LoadLighterWasmOptions,
@@ -48,7 +49,6 @@ export interface ApiKeyPair {
   privateKey: string
 }
 
-const DEFAULT_API_URL = 'https://mainnet.zklighter.elliot.ai'
 const DEFAULT_CHAIN_ID = 304
 
 /** @public */
@@ -60,7 +60,7 @@ export class LighterSigner {
   private readonly registeredClients = new Set<string>()
 
   constructor(config: LighterSignerConfig = {}) {
-    this.apiUrl = config.apiUrl ?? DEFAULT_API_URL
+    this.apiUrl = config.apiUrl ?? DEFAULT_LIGHTER_REST_URL
     this.chainId = config.chainId ?? DEFAULT_CHAIN_ID
     this.loaderOptions = {
       wasmBinaryUrl: config.wasmBinaryUrl,

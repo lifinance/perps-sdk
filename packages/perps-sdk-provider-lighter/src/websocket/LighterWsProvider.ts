@@ -19,7 +19,11 @@ import type {
   Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
+import {
+  DEFAULT_LIGHTER_REST_URL,
+  LIGHTER_BASE_FEE_TIER,
+  LIGHTER_PROVIDER_KEY,
+} from '../constants.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -71,7 +75,6 @@ import {
 // messages are deltas where size=0 deletes a level.
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
-const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -166,14 +169,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
       providerKey
     )
-    this.api = new LighterApiClient(options.restUrl ?? DEFAULT_REST_URL, {
-      policy: resolveRetryPolicy(
-        LIGHTER_RETRY_DEFAULTS,
-        client?.config.retry,
-        LIGHTER_PROVIDER_KEY
-      ),
-      fetchImpl: client?.config.fetch,
-    })
+    this.api = new LighterApiClient(
+      options.restUrl ?? DEFAULT_LIGHTER_REST_URL,
+      {
+        policy: resolveRetryPolicy(
+          LIGHTER_RETRY_DEFAULTS,
+          client?.config.retry,
+          LIGHTER_PROVIDER_KEY
+        ),
+        fetchImpl: client?.config.fetch,
+      }
+    )
     this.authProvider = options.authProvider
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
