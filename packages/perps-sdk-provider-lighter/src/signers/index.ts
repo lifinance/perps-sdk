@@ -16,7 +16,6 @@ export type {
   LighterTokenFetcher,
 } from './LighterReadOnlyTokenManager.js'
 export {
-  DEFAULT_LIGHTER_API_URL,
   DEFAULT_READ_ONLY_TOKEN_NAME,
   defaultLighterTokenFetcher,
   LighterReadOnlyTokenManager,
