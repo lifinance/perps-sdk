@@ -130,4 +130,18 @@ describe('projectHyperliquidConfigSettings', () => {
       projectHyperliquidConfigSettings(baseConfig, [badDescriptor], [])
     ).toThrow(/no projection for descriptor type/)
   })
+
+  it('throws for SET_REFERRAL — referral code is injected backend-side, no SDK projection', () => {
+    const setReferralSetup: ProviderAction = {
+      type: ActionType.SET_REFERRAL,
+      title: 'Set referrer',
+      description: 'Attach the LI.FI referral code.',
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.EIP712,
+      params: [],
+    }
+    expect(() =>
+      projectHyperliquidConfigSettings(baseConfig, [setReferralSetup], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
 })
