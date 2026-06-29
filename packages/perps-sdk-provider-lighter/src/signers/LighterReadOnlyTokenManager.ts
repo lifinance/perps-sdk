@@ -15,13 +15,6 @@ import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
 const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
 
 /**
- * Default Lighter HTTP host the SDK posts the create request to. Callers
- * pointing at testnet pass an override via {@link LighterReadOnlyTokenManagerOptions.lighterApiUrl}.
- * @public
- */
-export const DEFAULT_LIGHTER_API_URL = DEFAULT_LIGHTER_REST_URL
-
-/**
  * Default token name persisted alongside Lighter's `tokens/create` row.
  * Lighter requires a non-empty `name` form field; the literal here is what
  * surfaces in Lighter's UI listing under `app.lighter.xyz/read-only-tokens`.
@@ -80,7 +73,7 @@ export type LighterTokenFetcher = (params: {
 /** @public */
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
-  /** Lighter API host. Defaults to {@link DEFAULT_LIGHTER_API_URL}. */
+  /** Lighter API host. Defaults to {@link DEFAULT_LIGHTER_REST_URL}. */
   lighterApiUrl?: string
   /** Override the multipart POST. Defaults to a `fetch`-based implementation. */
   fetcher?: LighterTokenFetcher
@@ -151,7 +144,7 @@ export class LighterReadOnlyTokenManager {
 
   constructor(options: LighterReadOnlyTokenManagerOptions = {}) {
     this.storage = options.storage ?? localStorageAdapter
-    this.lighterApiUrl = options.lighterApiUrl ?? DEFAULT_LIGHTER_API_URL
+    this.lighterApiUrl = options.lighterApiUrl ?? DEFAULT_LIGHTER_REST_URL
     this.fetcher = options.fetcher ?? defaultLighterTokenFetcher
     this.now = options.now ?? (() => Date.now())
   }

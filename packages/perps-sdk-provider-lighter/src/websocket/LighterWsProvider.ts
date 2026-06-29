@@ -75,7 +75,6 @@ import {
 // messages are deltas where size=0 deletes a level.
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
-const DEFAULT_REST_URL = DEFAULT_LIGHTER_REST_URL
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -170,14 +169,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
       providerKey
     )
-    this.api = new LighterApiClient(options.restUrl ?? DEFAULT_REST_URL, {
-      policy: resolveRetryPolicy(
-        LIGHTER_RETRY_DEFAULTS,
-        client?.config.retry,
-        LIGHTER_PROVIDER_KEY
-      ),
-      fetchImpl: client?.config.fetch,
-    })
+    this.api = new LighterApiClient(
+      options.restUrl ?? DEFAULT_LIGHTER_REST_URL,
+      {
+        policy: resolveRetryPolicy(
+          LIGHTER_RETRY_DEFAULTS,
+          client?.config.retry,
+          LIGHTER_PROVIDER_KEY
+        ),
+        fetchImpl: client?.config.fetch,
+      }
+    )
     this.authProvider = options.authProvider
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
