@@ -10,6 +10,7 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
 
 const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
 
@@ -18,7 +19,7 @@ const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
  * pointing at testnet pass an override via {@link LighterReadOnlyTokenManagerOptions.lighterApiUrl}.
  * @public
  */
-export const DEFAULT_LIGHTER_API_URL = 'https://mainnet.zklighter.elliot.ai'
+export const DEFAULT_LIGHTER_API_URL = DEFAULT_LIGHTER_REST_URL
 
 /**
  * Default token name persisted alongside Lighter's `tokens/create` row.

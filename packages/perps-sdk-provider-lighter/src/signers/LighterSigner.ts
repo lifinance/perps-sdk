@@ -1,4 +1,5 @@
 import { ActionType } from '@lifi/perps-types'
+import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
 import {
   type LighterWasmExports,
   type LoadLighterWasmOptions,
@@ -48,7 +49,7 @@ export interface ApiKeyPair {
   privateKey: string
 }
 
-const DEFAULT_API_URL = 'https://mainnet.zklighter.elliot.ai'
+const DEFAULT_API_URL = DEFAULT_LIGHTER_REST_URL
 const DEFAULT_CHAIN_ID = 304
 
 /** @public */

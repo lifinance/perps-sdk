@@ -19,7 +19,11 @@ import type {
   Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
+import {
+  DEFAULT_LIGHTER_REST_URL,
+  LIGHTER_BASE_FEE_TIER,
+  LIGHTER_PROVIDER_KEY,
+} from '../constants.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -71,7 +75,7 @@ import {
 // messages are deltas where size=0 deletes a level.
 
 const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
-const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
+const DEFAULT_REST_URL = DEFAULT_LIGHTER_REST_URL
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
