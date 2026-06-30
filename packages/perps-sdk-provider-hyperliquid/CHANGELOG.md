@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.3.1
+
+### Patch Changes
+
+- [#150](https://github.com/lifinance/perps-sdk/pull/150) [`ff8eaa4`](https://github.com/lifinance/perps-sdk/commit/ff8eaa4209f9a123546b675e745490c6e4ad1cf3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add SET_REFERRAL action type for the Hyperliquid setReferrer setup gate; classify it as having no account-config projection in both provider mappers.
+
+- Updated dependencies [[`ff8eaa4`](https://github.com/lifinance/perps-sdk/commit/ff8eaa4209f9a123546b675e745490c6e4ad1cf3)]:
+  - @lifi/perps-types@1.4.0
+
 ## 1.3.0
 
 ### Minor Changes
