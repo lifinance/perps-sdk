@@ -1,6 +1,7 @@
 import {
   createPerpsClient,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
@@ -1079,6 +1080,39 @@ describe('HyperliquidWsProvider', () => {
         markPrice: '95000',
         oraclePrice: '94998',
       })
+    })
+
+    it('logs and drops activeAssetCtx snapshots with missing required fields', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const parseFailure = vi
+        .spyOn(wsLog, 'parseFailure')
+        .mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      const raw = JSON.stringify({
+        channel: 'activeAssetCtx',
+        data: {
+          coin: 'BTC',
+          ctx: {
+            funding: 0.0001,
+            openInterest: 100,
+            dayNtlVlm: 1000000,
+            prevDayPx: 94000,
+            midPx: 95001,
+            oraclePx: 94998,
+          },
+        },
+      })
+      getMockRwsInstance().simulateMessage(raw)
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(parseFailure).toHaveBeenCalledWith(providerKey, raw)
+      parseFailure.mockRestore()
     })
 
     it('ignores unkeyed allDexsAssetCtxs ctxs entries', async () => {

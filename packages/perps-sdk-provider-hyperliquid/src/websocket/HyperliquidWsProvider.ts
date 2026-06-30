@@ -445,7 +445,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           this.handleFastAssetCtxs(msg.data as string)
           break
         case 'activeAssetCtx':
-          this.handleActiveAssetCtx(msg.data as HlWsActiveAssetCtxData)
+          this.handleActiveAssetCtx(msg.data as HlWsActiveAssetCtxData, raw)
           break
         case 'activeSpotAssetCtx':
           this.handleActiveSpotAssetCtx(msg.data as HlWsActiveSpotAssetCtxData)
@@ -620,9 +620,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.emit('marketsContext', { channel: 'marketsContext', data })
   }
 
-  private handleActiveAssetCtx(data: HlWsActiveAssetCtxData) {
+  private handleActiveAssetCtx(data: HlWsActiveAssetCtxData, raw: string) {
     const ctx = activePerpAssetCtx(data.coin, data.ctx)
     if (ctx === undefined) {
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
     this.emit(`marketContext:${data.coin}`, {
