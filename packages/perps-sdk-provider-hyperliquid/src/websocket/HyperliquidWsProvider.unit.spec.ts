@@ -1082,6 +1082,51 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('emits marketContext from activeSpotAssetCtx', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        {
+          channel: 'marketContext',
+          dex: 'hyperliquid',
+          marketId: 'PURR/USDC',
+        },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeSpotAssetCtx',
+          data: {
+            coin: 'PURR/USDC',
+            ctx: {
+              prevDayPx: '0.09',
+              dayNtlVlm: '1234567.89',
+              markPx: '0.1',
+              midPx: '0.11',
+              circulatingSupply: '590000000000000.123456',
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: 'PURR/USDC',
+          midPrice: '0.11',
+          markPrice: '0.1',
+          prevDayPrice: '0.09',
+          volume24h: '1234567.89',
+          marketCap: '59000000000000.0123456',
+        },
+      })
+      expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
+      expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
+    })
+
     it('logs and drops activeAssetCtx snapshots with missing required fields', async () => {
       const provider = createProvider()
       const listener = vi.fn()
