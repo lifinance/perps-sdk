@@ -5,6 +5,7 @@ import {
   PerpsErrorMessage,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
+  type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
   type ProviderGetFillsParams,
@@ -50,6 +51,7 @@ import {
 } from './constants.js'
 import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
+import { getAccountExists } from './services/getAccountExists.js'
 import { getActivity } from './services/getActivity.js'
 import { getFills } from './services/getFills.js'
 import { getOrder } from './services/getOrder.js'
@@ -253,6 +255,12 @@ export function hyperliquidProvider(
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> =>
       getAccount(contextRef.require(), { address: params.address }, opts),
+
+    accountExists: (
+      params: ProviderAccountExistsParams,
+      opts?: SDKRequestOptions
+    ): Promise<boolean> =>
+      getAccountExists(contextRef.require(), { address: params.address }, opts),
 
     getPositions: (
       params: ProviderGetPositionsParams,

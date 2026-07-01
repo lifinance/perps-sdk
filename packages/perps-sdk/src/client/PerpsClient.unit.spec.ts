@@ -883,15 +883,15 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // accountExists — boolean wrapper over getAccount + AccountNotFound
+  // accountExists — thin delegate to the provider plugin's own signal
   // ---------------------------------------------------------------------------
 
   describe('accountExists', () => {
-    const stubGetAccount = vi.fn()
+    const stubAccountExists = vi.fn()
     let stubbedClient: PerpsClient
 
     beforeEach(() => {
-      stubGetAccount.mockReset()
+      stubAccountExists.mockReset()
       stubbedClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -899,31 +899,30 @@ describe('PerpsClient', () => {
           {
             type: 'hyperliquid',
             bind: vi.fn(),
-            getAccount: stubGetAccount,
+            accountExists: stubAccountExists,
             projectConfig: vi.fn(() => []),
           } as unknown as PerpsProviderPlugin,
         ],
       })
     })
 
-    it('returns true when the plugin resolves an account', async () => {
-      stubGetAccount.mockResolvedValue(mockAccount)
+    it('delegates to the plugin with the address and returns its result', async () => {
+      stubAccountExists.mockResolvedValue(true)
       await expect(
         stubbedClient.accountExists(provider, userAddress)
       ).resolves.toBe(true)
+      expect(stubAccountExists).toHaveBeenCalledWith({ address: userAddress })
     })
 
-    it('returns false when the plugin reports AccountNotFound', async () => {
-      stubGetAccount.mockRejectedValue(
-        new PerpsError(PerpsErrorCode.AccountNotFound, 'account not found')
-      )
+    it('returns false when the plugin reports the account does not exist', async () => {
+      stubAccountExists.mockResolvedValue(false)
       await expect(
         stubbedClient.accountExists(provider, userAddress)
       ).resolves.toBe(false)
     })
 
-    it('rethrows on any other PerpsError code', async () => {
-      stubGetAccount.mockRejectedValue(
+    it('propagates the plugin probe error', async () => {
+      stubAccountExists.mockRejectedValue(
         new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
       )
       await expect(
@@ -931,11 +930,79 @@ describe('PerpsClient', () => {
       ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
     })
 
-    it('rethrows on network / transport failures', async () => {
-      stubGetAccount.mockRejectedValue(new Error('network down'))
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
       await expect(
-        stubbedClient.accountExists(provider, userAddress)
-      ).rejects.toThrow()
+        noProviderClient.accountExists(provider, userAddress)
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // checkSetup — deposit-first gate on accountExists
+  // ---------------------------------------------------------------------------
+
+  describe('checkSetup — accountExists gate', () => {
+    const BASE_URL = DEFAULT_API_URL
+
+    it('short-circuits with no setup steps and no createAction calls when the account does not exist', async () => {
+      const accountExists = vi.fn(async () => false)
+      const gatedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            accountExists,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCallCount = 0
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCallCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await gatedClient.checkSetup({
+        provider,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({
+        accountExists: false,
+        setup: [],
+        isReady: false,
+      })
+      expect(createCallCount).toBe(0)
+    })
+
+    it('builds setup steps when the account exists', async () => {
+      await agentProvider.createAgent(userAddress)
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action }],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await client.checkSetup({
+        provider,
+        address: userAddress,
+      })
+
+      expect(result.accountExists).toBe(true)
+      expect(result.setup.length).toBeGreaterThan(0)
+      expect(result.isReady).toBe(false)
     })
   })
 
@@ -970,6 +1037,7 @@ describe('PerpsClient', () => {
       return {
         type: 'lighter',
         bind: vi.fn(),
+        accountExists: vi.fn(async () => true),
         projectConfig: vi.fn(() => []),
         signActions,
       } as unknown as PerpsProviderPlugin & {

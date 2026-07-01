@@ -191,6 +191,13 @@ export interface GetSetupParams {
  * @public
  */
 export interface ProviderSetup {
+  /**
+   * Whether a provider account exists at all. `false` for a brand-new address
+   * whose account has not yet been funded (Hyperliquid accounts are created by
+   * their first deposit). When `false`, `setup` is empty and `isReady` is
+   * `false` — the consumer prompts the deposit flow before any setup steps.
+   */
+  accountExists: boolean
   /** Unsatisfied setup steps, ordered by descriptor `sequence`. */
   setup: ActionStep[]
   /** Whether all setup items are already satisfied (ready to trade) */
