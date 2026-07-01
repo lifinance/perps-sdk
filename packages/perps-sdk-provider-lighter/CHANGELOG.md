@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.5.1
+
+### Patch Changes
+
+- [#156](https://github.com/lifinance/perps-sdk/pull/156) [`c4848fb`](https://github.com/lifinance/perps-sdk/commit/c4848fb38f13ae8e02ceccd29049b50af484cbae) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getAccount` now returns the `positions` array it already computes, so consumers no longer need a second `getPositions` call (and its duplicate `clearinghouseState` fan-out) to obtain positions.
+
+- Updated dependencies [[`c4848fb`](https://github.com/lifinance/perps-sdk/commit/c4848fb38f13ae8e02ceccd29049b50af484cbae)]:
+  - @lifi/perps-types@1.5.1
+
 ## 1.5.0
 
 ### Minor Changes
