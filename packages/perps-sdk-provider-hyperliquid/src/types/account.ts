@@ -58,6 +58,16 @@ export type HlUserFees = {
 export type HlExtraAgents = Record<string, unknown>[]
 
 /**
+ * Response of the `preTransferCheck` info query. `userExists` is `false` until
+ * the account's first deposit (which pays the one-time creation `fee`); only
+ * `userExists` is read here.
+ * @public
+ */
+export type HlPreTransferCheck = {
+  userExists: boolean
+}
+
+/**
  * Possible values returned by the `userAbstraction` info endpoint.
  * `null` means abstraction has never been set (standard mode).
  * @public

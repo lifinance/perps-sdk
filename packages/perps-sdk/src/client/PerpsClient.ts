@@ -310,28 +310,17 @@ export class PerpsClient {
   }
 
   /**
-   * Thin existence check for a provider account at `address`. Returns
-   * `true` when `getAccount` resolves, `false` when the backend reports
-   * `PerpsErrorCode.AccountNotFound`, and re-throws on any other error
-   * (transport failures, validation errors, server errors).
+   * Existence check for a provider account at `address`, delegated to the
+   * provider plugin's own `accountExists` signal (Hyperliquid probes
+   * `preTransferCheck.userExists`; Lighter its `getAccount` → `AccountNotFound`
+   * semantics).
    *
-   * @throws {PerpsError} On any backend error other than
-   *   `PerpsErrorCode.AccountNotFound`.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   plugin's existence probe fails.
    * @public
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
-    try {
-      await fetchAccount(this.sdkClient, { provider, address })
-      return true
-    } catch (err) {
-      if (
-        err instanceof PerpsError &&
-        err.code === PerpsErrorCode.AccountNotFound
-      ) {
-        return false
-      }
-      throw err
-    }
+    return this.requireProvider(provider).accountExists({ address })
   }
 
   /**
@@ -347,12 +336,19 @@ export class PerpsClient {
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
 
+    // Gate on existence first: an unfunded account has no setup, so short-circuit
+    // before any createAction round-trip and let the consumer prompt a deposit.
+    if (!(await this.accountExists(provider, address))) {
+      return { accountExists: false, setup: [], isReady: false }
+    }
+
     // The backend filters already-satisfied setup actions and returns typed
     // data for those still outstanding; each plugin contributes its own
     // signer-bearing request fields.
     const { actions } = await this.buildProviderSetup({ provider, address })
 
     return {
+      accountExists: true,
       setup: actions,
       isReady: actions.length === 0,
     }

@@ -114,6 +114,15 @@ export interface ProviderGetAccountParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.accountExists}.
+ *
+ * @public
+ */
+export interface ProviderAccountExistsParams {
+  address: Address
+}
+
+/**
  * Read params for {@link PerpsProvider.getPositions}.
  *
  * @public
@@ -248,6 +257,18 @@ export interface PerpsProviderPlugin {
     params: ProviderGetAccountParams,
     options?: SDKRequestOptions
   ): Promise<AccountResponse>
+
+  /**
+   * Whether a provider account exists for `params.address`. Each venue owns its
+   * own existence signal: Hyperliquid probes `preTransferCheck.userExists` (an
+   * account exists once it has been funded, paying the one-time creation fee),
+   * whereas Lighter resolves it from its `getAccount` → `AccountNotFound`
+   * semantics. Used by `PerpsClient.checkSetup` to gate the deposit-first flow.
+   */
+  accountExists(
+    params: ProviderAccountExistsParams,
+    options?: SDKRequestOptions
+  ): Promise<boolean>
 
   getPositions(
     params: ProviderGetPositionsParams,

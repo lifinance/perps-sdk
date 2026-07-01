@@ -58,6 +58,7 @@ export function createTestAgentProvider(
 
   return {
     bind: () => {},
+    accountExists: () => Promise.resolve(true),
     ...partial,
     type: partial.type,
     createAgent,
