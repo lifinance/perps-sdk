@@ -116,6 +116,7 @@ export type {
   PerpsProvider,
   PerpsProviderPlugin,
   PerpsSDKClient,
+  ProviderAccountExistsParams,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
   ProviderGetFillsParams,

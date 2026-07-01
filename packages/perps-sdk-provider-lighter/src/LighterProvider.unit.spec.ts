@@ -1,6 +1,7 @@
 import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
 import { ActivityType, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LIGHTER_CODE_ACCOUNT_NOT_FOUND } from './constants.js'
 import { lighterProvider } from './LighterProvider.js'
 import { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterSigner } from './signers/LighterSigner.js'
@@ -1127,5 +1128,49 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
     expect(result.items).toHaveLength(1)
     expect(result.items[0].market.baseAsset.logoURI).toBe(BTC_LOGO)
     expect(result.items[0].realizedPnl).toBe('10000')
+  })
+})
+
+describe('LighterProvider — accountExists', () => {
+  it('returns true when the account resolves', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
+      true
+    )
+  })
+
+  it('returns false when Lighter reports the account-not-found body code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond({ code: LIGHTER_CODE_ACCOUNT_NOT_FOUND }, 400)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
+      false
+    )
+  })
+
+  it('rethrows on a non-account-not-found account error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return new Response('boom', { status: 500 })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(provider.accountExists({ address: ADDRESS })).rejects.toThrow()
   })
 })

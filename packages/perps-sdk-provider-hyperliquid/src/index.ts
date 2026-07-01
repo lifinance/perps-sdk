@@ -25,6 +25,8 @@ export {
 } from './HyperliquidProvider.js'
 export type { GetAccountParams } from './services/getAccount.js'
 export { getAccount } from './services/getAccount.js'
+export type { GetAccountExistsParams } from './services/getAccountExists.js'
+export { getAccountExists } from './services/getAccountExists.js'
 export type { GetActivityParams } from './services/getActivity.js'
 export { getActivity } from './services/getActivity.js'
 export type { GetFillsParams } from './services/getFills.js'
