@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.4.0
+
+### Minor Changes
+
+- [#153](https://github.com/lifinance/perps-sdk/pull/153) [`91e3e01`](https://github.com/lifinance/perps-sdk/commit/91e3e01d1d5c1e1fdd5e883b81747b8e4e73591f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a per-plugin `accountExists` capability and surface it on `checkSetup`, which now short-circuits with `{ accountExists: false, setup: [], isReady: false }` for unfunded accounts so consumers can gate the deposit-first flow.
+
 ## 1.3.1
 
 ### Patch Changes
