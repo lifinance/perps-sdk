@@ -303,6 +303,7 @@ export const mockAccount: AccountResponse = {
   // `balances` is now keyed by venue/category — tests target the
   // `hyperliquid` perps venue.
   balances: { hyperliquid: [{ currency: 'USDC', amount: '10000.00' }] },
+  positions: [],
   marginUsed: '500.00',
   unrealizedPnl: '125.50',
   feeTier: { maker: '0.0002', taker: '0.0005' },

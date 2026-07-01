@@ -11,6 +11,7 @@ import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { HlAbstractionMode } from '../types/index.js'
 import { getAccount } from './getAccount.js'
+import { getPositions } from './getPositions.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 const client = createPerpsClient({
@@ -86,6 +87,30 @@ describe('getAccount', () => {
     ])
     expect(result.marginUsed).toBe('500')
     expect(result.unrealizedPnl).toBe('100')
+  })
+
+  it('carries the positions array, deep-equal to getPositions output for identical fixtures', async () => {
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
+    const account = await getAccount(ctx, { address: ADDRESS })
+    restore()
+
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
+    const { positions } = await getPositions(ctx, { address: ADDRESS })
+
+    expect(account.positions).toEqual(positions)
+  })
+
+  it('does not issue extra clearinghouseState calls to carry positions', async () => {
+    const mock = installInfoFetchMock(defaultResponses(), HL_MARKETS)
+    restore = mock.restore
+
+    await getAccount(ctx, { address: ADDRESS })
+
+    const clearinghouseCalls = mock.requests.filter(
+      (r) => r.body.type === 'clearinghouseState'
+    )
+    // One per supported perps sub-dex — the single-dex fixture yields exactly one.
+    expect(clearinghouseCalls).toHaveLength(1)
   })
 
   it('does not surface a builderFeeApproval field (lives at a higher layer)', async () => {

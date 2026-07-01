@@ -28,7 +28,7 @@ import {
   spotPriceById,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
-import { mapPosition } from '../utils/mapPosition.js'
+import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
 
 /**
  * Parameters for {@link getAccount}.
@@ -218,7 +218,7 @@ export const getAccount = async (
 
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions
-      .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
+      .filter(isOpenAssetPosition)
       .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
   )
 
@@ -252,6 +252,7 @@ export const getAccount = async (
     address: params.address,
     balances,
     collateralBalances,
+    positions,
     marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
     unrealizedPnl: totalUnrealizedPnl.toString(),
     feeTier: {
