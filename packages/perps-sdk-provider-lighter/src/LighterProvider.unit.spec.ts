@@ -725,6 +725,70 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
   })
 })
 
+describe('LighterProvider — getAccount carries positions', () => {
+  const accountWithPosition = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '5.00',
+            open_order_count: 0,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '1.0',
+            avg_entry_price: '50000',
+            position_value: '50000',
+            unrealized_pnl: '10',
+            realized_pnl: '0',
+            liquidation_price: '40000',
+            total_funding_paid_out: '0',
+            margin_mode: 0,
+            allocated_margin: '2500',
+            total_discount: '0',
+          },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      recorded.push({ url: u })
+      if (u.includes('/api/v1/account?')) {
+        return respond(accountWithPosition)
+      }
+      if (u.includes('/api/v1/apikeys')) {
+        return respond(APIKEYS_EMPTY)
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+  })
+
+  it('exposes positions deep-equal to getPositions for identical fixtures', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(account.positions).toEqual(positions)
+    expect(account.positions).toHaveLength(1)
+    expect(account.positions[0].market.id).toBe('0')
+  })
+})
+
 describe('LighterProvider — getFills authed path', () => {
   it('forwards the read-only token to /api/v1/trades and maps fills', async () => {
     const provider = lighterProvider({ authToken: 'pre-created-token' })
