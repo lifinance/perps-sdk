@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.5.0
+
+### Minor Changes
+
+- [#152](https://github.com/lifinance/perps-sdk/pull/152) [`14ee156`](https://github.com/lifinance/perps-sdk/commit/14ee156ce5529dd98148568ae6fcf3a1d86907c6) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Per-market_id streaming for Hyperliquid&Lighter
+
 ## 1.4.0
 
 ### Minor Changes
