@@ -980,6 +980,117 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
+    it('subscribes to one perp marketContext channel and emits a single context', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock.mockResolvedValue(marketsFailureResponse())
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '0' },
+        listener
+      )
+
+      expect(marketsFetchMock).not.toHaveBeenCalled()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/0' })
+      )
+
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats/0',
+          market_stats: {
+            market_id: 0,
+            index_price: '49998',
+            mark_price: '50000',
+            mid_price: '50001',
+            open_interest: '12.5',
+            last_trade_price: '50002',
+            current_funding_rate: '0.0001',
+            funding_rate: '0.00009',
+            funding_timestamp: 1704067200000,
+            daily_base_token_volume: '10',
+            daily_quote_token_volume: '500000',
+            daily_price_change: '1.2',
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: '0',
+          midPrice: '50001',
+          markPrice: '50000',
+          oraclePrice: '49998',
+          volume24h: '500000',
+          funding: { rate: '0.0001' },
+        },
+      })
+      provider.close()
+    })
+
+    it('subscribes to one spot marketContext channel and emits a single context', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '2048' },
+        listener
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/2048' })
+      )
+
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/spot_market_stats',
+          channel: 'spot_market_stats/2048',
+          spot_market_stats: {
+            market_id: 2048,
+            symbol: 'LIT/USDC',
+            index_price: '1814.00',
+            mid_price: '1814.34',
+            best_ask_price: '1814.40',
+            best_bid_price: '1814.28',
+            last_trade_price: '1814.34',
+            daily_base_token_volume: 100,
+            daily_quote_token_volume: 200,
+            daily_price_low: 1800,
+            daily_price_high: 1820,
+            daily_price_change: 0.5,
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: '2048',
+          midPrice: '1814.34',
+          markPrice: '1814.34',
+          oraclePrice: '1814.00',
+          volume24h: '200',
+          priceChange24h: '0.5',
+        },
+      })
+      expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
+      expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
+      provider.close()
+    })
+
     it('subscribes to orderbook even when the /markets fetch fails', async () => {
       marketsFetchMock.mockReset()
       marketsFetchMock.mockResolvedValue(marketsFailureResponse())

@@ -21,6 +21,7 @@ import type {
 import type { Address } from 'viem'
 import {
   DEFAULT_LIGHTER_REST_URL,
+  DEFAULT_LIGHTER_WS_URL,
   LIGHTER_BASE_FEE_TIER,
   LIGHTER_PROVIDER_KEY,
 } from '../constants.js'
@@ -50,7 +51,8 @@ import {
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
-// `orderbook` (order_book/N), `trades` (trade/N).
+// `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
+// (order_book/N), `trades` (trade/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -74,7 +76,7 @@ import {
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
 
-const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
+const LIGHTER_SPOT_MARKET_ID_OFFSET = 2048
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -160,7 +162,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
 
   constructor(
-    wsUrl: string = DEFAULT_WS_URL,
+    wsUrl: string = DEFAULT_LIGHTER_WS_URL,
     providerKey = 'lighter',
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
@@ -286,6 +288,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     switch (sub.channel) {
       case 'marketsContext':
         return 'marketsContext'
+      case 'marketContext':
+        return `marketContext:${sub.marketId}`
       case 'orderbook':
         return `orderbook:${sub.marketId}`
       case 'trades':
@@ -320,6 +324,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         { channel: 'market_stats/all', needsAuth: false },
         { channel: 'spot_market_stats/all', needsAuth: false },
       ]
+    }
+    if (sub.channel === 'marketContext') {
+      const id = Number(sub.marketId)
+      if (!Number.isFinite(id)) {
+        throw new Error(
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
+        )
+      }
+      const prefix =
+        id >= LIGHTER_SPOT_MARKET_ID_OFFSET
+          ? 'spot_market_stats'
+          : 'market_stats'
+      return [{ channel: `${prefix}/${id}`, needsAuth: false }]
     }
     if (sub.channel === 'orderbook') {
       const id = Number(sub.marketId)
@@ -423,7 +441,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/market_stats' ||
       msg.type === 'update/market_stats'
     ) {
-      this.handleMarketStats((msg as LtWsMarketStatsAllMessage).market_stats)
+      this.handleMarketStats(
+        (msg as LtWsMarketStatsAllMessage).market_stats,
+        msg.channel,
+        'market_stats'
+      )
       return
     }
 
@@ -432,7 +454,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'update/spot_market_stats'
     ) {
       this.handleMarketStats(
-        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats
+        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats,
+        msg.channel,
+        'spot_market_stats'
       )
       return
     }
@@ -579,13 +603,32 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   private handleMarketStats(
-    stats?: Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+    stats:
+      | LtWsMarketStats
+      | LtWsSpotMarketStats
+      | Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+      | undefined,
+    channel: string | undefined,
+    prefix: 'market_stats' | 'spot_market_stats'
   ): void {
     if (!stats) {
       return
     }
-    const entries = Object.values(stats)
+    const entries = marketStatsEntries(stats)
     if (entries.length === 0) {
+      return
+    }
+    const channelMarketId = this.marketIdFromChannel(channel, prefix)
+    if (channelMarketId !== null) {
+      for (const entry of entries) {
+        const ctx = mapMarketContext(entry)
+        if (ctx.marketId === String(channelMarketId)) {
+          this.emit(`marketContext:${ctx.marketId}`, {
+            channel: 'marketContext',
+            data: ctx,
+          })
+        }
+      }
       return
     }
     for (const entry of entries) {
@@ -700,6 +743,21 @@ function isValidLighterFrame(msg: LtWsMessage): boolean {
     )
   }
   return true
+}
+
+function marketStatsEntries(
+  stats:
+    | LtWsMarketStats
+    | LtWsSpotMarketStats
+    | Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+): Array<LtWsMarketStats | LtWsSpotMarketStats> {
+  return isMarketStatsEntry(stats) ? [stats] : Object.values(stats)
+}
+
+function isMarketStatsEntry(
+  value: unknown
+): value is LtWsMarketStats | LtWsSpotMarketStats {
+  return isObject(value) && typeof value.market_id === 'number'
 }
 
 function applyLevels(

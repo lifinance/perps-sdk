@@ -1,6 +1,7 @@
 import {
   createPerpsClient,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type { Market } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
@@ -282,6 +283,20 @@ describe('HyperliquidWsProvider', () => {
       expect(payloads).toContainEqual({
         method: 'subscribe',
         subscription: { type: 'fastAssetCtxs' },
+      })
+    })
+
+    it('maps marketContext subscription to activeAssetCtx payload', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: { type: 'activeAssetCtx', coin: 'BTC' },
       })
     })
 
@@ -989,6 +1004,160 @@ describe('HyperliquidWsProvider', () => {
         markPrice: '95000',
         oraclePrice: '94998',
       })
+    })
+
+    it('emits marketContext with oracle/mark/funding/volume from activeAssetCtx', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              midPx: 95001,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: 'BTC',
+          midPrice: '95001',
+          markPrice: '95000',
+          oraclePrice: '94998',
+          volume24h: '1000000',
+          funding: { rate: '0.0001' },
+        },
+      })
+    })
+
+    it('emits marketContext from activeAssetCtx when midPx is omitted', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        marketId: 'BTC',
+        midPrice: '95000',
+        markPrice: '95000',
+        oraclePrice: '94998',
+      })
+    })
+
+    it('emits marketContext from activeSpotAssetCtx', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        {
+          channel: 'marketContext',
+          dex: 'hyperliquid',
+          marketId: 'PURR/USDC',
+        },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeSpotAssetCtx',
+          data: {
+            coin: 'PURR/USDC',
+            ctx: {
+              prevDayPx: '0.09',
+              dayNtlVlm: '1234567.89',
+              markPx: '0.1',
+              midPx: '0.11',
+              circulatingSupply: '590000000000000.123456',
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: 'PURR/USDC',
+          midPrice: '0.11',
+          markPrice: '0.1',
+          prevDayPrice: '0.09',
+          volume24h: '1234567.89',
+          marketCap: '59000000000000.0123456',
+        },
+      })
+      expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
+      expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
+    })
+
+    it('logs and drops activeAssetCtx snapshots with missing required fields', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      const parseFailure = vi
+        .spyOn(wsLog, 'parseFailure')
+        .mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      const raw = JSON.stringify({
+        channel: 'activeAssetCtx',
+        data: {
+          coin: 'BTC',
+          ctx: {
+            funding: 0.0001,
+            openInterest: 100,
+            dayNtlVlm: 1000000,
+            prevDayPx: 94000,
+            midPx: 95001,
+            oraclePx: 94998,
+          },
+        },
+      })
+      getMockRwsInstance().simulateMessage(raw)
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(parseFailure).toHaveBeenCalledWith(providerKey, raw)
+      parseFailure.mockRestore()
     })
 
     it('ignores unkeyed allDexsAssetCtxs ctxs entries', async () => {
