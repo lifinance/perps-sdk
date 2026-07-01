@@ -679,6 +679,7 @@ export const lighterProvider = (
         address: params.address,
         balances,
         collateralBalances,
+        positions,
         marginUsed: totalMarginUsed.toString(),
         unrealizedPnl: totalUnrealizedPnl.toString(),
         feeTier:
