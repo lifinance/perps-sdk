@@ -3,6 +3,7 @@ import type {
   MarketContext,
   OrderbookResponse,
   PerpsMarket,
+  Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
@@ -90,11 +91,13 @@ const PARAMS = {
 
 const setup = async () => {
   installMarkets([BTC_PERP])
-  let listener: SubscriptionListener = () => {}
-  const wireUnsub = vi.fn()
+  const listeners = new Map<string, SubscriptionListener>()
+  const wireUnsubs: ReturnType<typeof vi.fn>[] = []
   const subscribe = vi.fn(
-    async (_sub: unknown, l: SubscriptionListener): Promise<() => void> => {
-      listener = l
+    async (sub: Subscription, l: SubscriptionListener): Promise<() => void> => {
+      listeners.set(sub.channel, l)
+      const wireUnsub = vi.fn()
+      wireUnsubs.push(wireUnsub)
       return wireUnsub
     }
   )
@@ -109,11 +112,14 @@ const setup = async () => {
   )
   return {
     subscribe,
-    wireUnsub,
+    wireUnsubs,
     onQuote,
     unsubscribe,
-    push: (data: OrderbookResponse) => listener(bookEvent(data)),
-    pushRaw: (event: SubscriptionEvent) => listener(event),
+    push: (data: OrderbookResponse) =>
+      listeners.get('orderbook')?.(bookEvent(data)),
+    pushRaw: (event: SubscriptionEvent) => listeners.get('orderbook')?.(event),
+    pushContext: (data: MarketContext) =>
+      listeners.get('marketContext')?.({ channel: 'marketContext', data }),
   }
 }
 
@@ -122,11 +128,15 @@ describe('resolveSubscribeQuote', () => {
     vi.useRealTimers()
   })
 
-  it('subscribes to the orderbook channel of the resolved market', async () => {
+  it('subscribes to the orderbook and marketContext channels of the resolved market', async () => {
     const { subscribe } = await setup()
 
     expect(subscribe).toHaveBeenCalledWith(
       { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+      expect.any(Function)
+    )
+    expect(subscribe).toHaveBeenCalledWith(
+      { channel: 'marketContext', dex: 'hyperliquid', marketId: 'BTC' },
       expect.any(Function)
     )
   })
@@ -171,8 +181,8 @@ describe('resolveSubscribeQuote', () => {
     expect(onQuote.mock.calls[1][0].expectedFillPrice).toBe('120')
   })
 
-  it('tears down the underlying subscription exactly once and cancels a pending emission', async () => {
-    const { onQuote, push, wireUnsub, unsubscribe } = await setup()
+  it('tears down every underlying subscription exactly once and cancels a pending emission', async () => {
+    const { onQuote, push, wireUnsubs, unsubscribe } = await setup()
     vi.useFakeTimers()
 
     push(BOOK)
@@ -182,9 +192,60 @@ describe('resolveSubscribeQuote', () => {
     unsubscribe()
     unsubscribe()
 
-    expect(wireUnsub).toHaveBeenCalledTimes(1)
+    for (const wireUnsub of wireUnsubs) {
+      expect(wireUnsub).toHaveBeenCalledTimes(1)
+    }
     vi.advanceTimersByTime(QUOTE_THROTTLE_MS * 2)
     expect(onQuote).toHaveBeenCalledTimes(1)
+  })
+
+  it('rebuilds quotes against the live market context, not the subscribe-time snapshot', async () => {
+    const { onQuote, push, pushContext } = await setup()
+    vi.useFakeTimers()
+
+    push(BOOK)
+    expect(onQuote).toHaveBeenCalledTimes(1)
+    expect(onQuote.mock.calls[0][0].markPrice).toBe('100')
+
+    const movedContext: MarketContext = {
+      marketId: 'BTC',
+      midPrice: '100.5',
+      markPrice: '100.5',
+      funding: { rate: '0.0002', nextFundingTime: 1704070800000 },
+    }
+    pushContext(movedContext)
+    vi.advanceTimersByTime(QUOTE_THROTTLE_MS)
+    push({ ...BOOK, asks: [{ price: '100.5', size: '10' }] })
+
+    expect(onQuote).toHaveBeenCalledTimes(2)
+    const quote = onQuote.mock.calls[1][0]
+    expect(quote.markPrice).toBe('100.5')
+    expect(quote.funding).toEqual(movedContext.funding)
+    // Execution at mark after the move → 0 impact, not ~50bps phantom.
+    expect(quote.priceImpactBps).toBe('0')
+  })
+
+  it('releases the marketContext subscription when the orderbook subscribe fails', async () => {
+    installMarkets([BTC_PERP])
+    const contextUnsub = vi.fn()
+    const subscribe = vi.fn(async (sub: Subscription): Promise<() => void> => {
+      if (sub.channel === 'orderbook') {
+        throw new Error('wire failure')
+      }
+      return contextUnsub
+    })
+
+    await expect(
+      resolveSubscribeQuote(
+        client,
+        'hyperliquid',
+        { subscribe },
+        PARAMS,
+        FEE,
+        vi.fn()
+      )
+    ).rejects.toThrow('wire failure')
+    expect(contextUnsub).toHaveBeenCalledTimes(1)
   })
 
   it('throws MarketNotFound when no market matches the symbol+type', async () => {

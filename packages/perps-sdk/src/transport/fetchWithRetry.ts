@@ -13,11 +13,24 @@ export interface FetchWithRetryOptions {
 }
 
 /**
+ * True when `error` is an `AbortSignal` cancellation (the native `fetch` abort
+ * rejection) rather than a genuine network failure. An abort is a deliberate
+ * caller action, so it is rethrown untouched instead of being retried.
+ *
+ * @internal
+ */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+/**
  * Wrap `fetch` with policy-driven retry. Honors `Retry-After` (when present
  * and `respectRetryAfter` is true), otherwise falls back to exponential
  * backoff with full jitter, capped by `maxDelayMs`. Network errors (thrown
  * `fetch` rejections) are treated as `retry-network` — same retry budget as
- * 5xx. An aborted signal short-circuits without further attempts.
+ * 5xx. Aborts (a pre-aborted signal, a mid-flight abort rejection, or a signal
+ * that fires during a between-retries backoff) reject with the abort reason
+ * without any further attempt.
  *
  * @public
  */
@@ -40,6 +53,9 @@ export async function fetchWithRetry(
     try {
       response = await fetchImpl(input, mergedInit)
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error
+      }
       networkError = error
     }
 
@@ -78,7 +94,7 @@ export async function fetchWithRetry(
 
     const delayMs = computeDelay(policy, attempt, response)
     if (delayMs > 0) {
-      await sleep(delayMs)
+      await sleep(delayMs, signal)
     }
     attempt++
   }

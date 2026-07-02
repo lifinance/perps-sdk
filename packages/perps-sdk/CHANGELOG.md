@@ -1,5 +1,26 @@
 # @lifi/perps-sdk
 
+## 1.5.5
+
+### Patch Changes
+
+- [#167](https://github.com/lifinance/perps-sdk/pull/167) [`f7c77aa`](https://github.com/lifinance/perps-sdk/commit/f7c77aad84d81fbb2b9e9ac540298704f373af4b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Stop misclassifying aborted requests as retryable server errors: `fetchWithRetry` now rethrows `AbortError` immediately (no retry, no backoff sleep), backoff sleeps are signal-aware, and `request` no longer wraps a cancellation as a `ServerError`.
+
+## 1.5.4
+
+### Patch Changes
+
+- [#161](https://github.com/lifinance/perps-sdk/pull/161) [`bfdfd6c`](https://github.com/lifinance/perps-sdk/commit/bfdfd6cf53b7e79ed035378ad2430a9ffdf03ab5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Streamed quotes from `subscribeQuote` now track the live market context (mark price and funding) instead of the snapshot taken at subscribe time, so price impact no longer drifts as the market moves.
+
+## 1.5.3
+
+### Patch Changes
+
+- [#165](https://github.com/lifinance/perps-sdk/pull/165) [`e2da3cf`](https://github.com/lifinance/perps-sdk/commit/e2da3cf245ebe2f8b6adab24fa269cbef2f49f4f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Make `PerpsWsClient.close()` terminal: a subscription whose provider init is suspended mid-flight when `close()` runs now aborts instead of resurrecting a live auto-reconnecting socket, and `subscribe`/`subscribeQuote` calls after `close()` reject with a typed error.
+
+- Updated dependencies [[`0390904`](https://github.com/lifinance/perps-sdk/commit/0390904489fdacee26af87dce33cbe960e8d8f4e)]:
+  - @lifi/perps-types@1.6.0
+
 ## 1.5.2
 
 ### Patch Changes

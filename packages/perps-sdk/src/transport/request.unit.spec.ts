@@ -1,6 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
@@ -173,6 +173,40 @@ describe('request — error rehydration', () => {
       expect(e).toBeInstanceOf(PerpsError)
       expect(e.code).toBe(PerpsErrorCode.ServerError)
     }
+  })
+
+  it('rethrows a mid-flight abort as a native AbortError, not a ServerError', async () => {
+    const abortError = new DOMException(
+      'The operation was aborted',
+      'AbortError'
+    )
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw abortError
+    })
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(request(config, url, { retry: false })).rejects.toBe(
+      abortError
+    )
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry or wrap a mid-flight abort under an active retry policy', async () => {
+    const abortError = new DOMException(
+      'The operation was aborted',
+      'AbortError'
+    )
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw abortError
+    })
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(
+      request(config, url, {
+        retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+      })
+    ).rejects.toBe(abortError)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
 
