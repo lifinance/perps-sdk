@@ -10,8 +10,15 @@ const REFRESH_COOLDOWN_MS = 60_000
  * NOT a cache: it holds no freshness policy of its own. Every {@link sync}
  * refetches through the HTTP layer, whose `cache-control` headers decide
  * whether the response comes from disk or the network. A lookup miss
- * schedules a cooldown-gated background refetch that bypasses the HTTP
- * cache — the id may have listed after the cached snapshot.
+ * schedules a background refetch that bypasses the HTTP cache — the id may
+ * have listed after the cached snapshot.
+ *
+ * Refetch policy: an id not yet refetched-for triggers one immediate bypass
+ * refetch so a just-listed id resolves promptly; repeated misses for an
+ * already-refetched id are gated by {@link REFRESH_COOLDOWN_MS} (measured from
+ * the previous refetch's completion), and only one bypass refetch runs at a
+ * time. Concurrent loads install in generation order — a slower fetch that
+ * started earlier can never overwrite the index a later fetch already installed.
  *
  * @internal
  */
@@ -20,6 +27,9 @@ export abstract class ReferenceDataRegistry<T> {
   private current: readonly T[] = []
   private inflight: Promise<readonly T[]> | undefined
   private warnedIds = new Set<string>()
+  private refetchedIds = new Set<string>()
+  private generation = 0
+  private refreshInflight = false
   private refreshAfter = 0
 
   protected constructor(
@@ -54,8 +64,8 @@ export abstract class ReferenceDataRegistry<T> {
   }
 
   /**
-   * O(1) lookup by primary key. A miss warns once per id and schedules the
-   * cooldown-gated, cache-bypassing background refetch.
+   * O(1) lookup by primary key. A miss warns once per id and schedules a
+   * cache-bypassing background refetch per the class's refetch policy.
    */
   get(id: string): T | undefined {
     const item = this.index.get(id)
@@ -66,30 +76,48 @@ export abstract class ReferenceDataRegistry<T> {
       this.warnedIds.add(id)
       console.warn(`[${this.provider}] unknown ${this.kind} id '${id}'`)
     }
-    this.scheduleRefresh()
+    this.scheduleRefresh(id)
     return undefined
   }
 
   private async load(bypassHttpCache: boolean): Promise<readonly T[]> {
+    const generation = ++this.generation
     const items = await this.fetchItems(bypassHttpCache)
-    this.index = new Map(items.map((item) => [this.keyOf(item), item]))
-    this.current = items
-    this.warnedIds.clear()
+    // Install only if no later load has started since this fetch began, so a
+    // slow stale response can never replace a fresher index.
+    if (generation === this.generation) {
+      this.index = new Map(items.map((item) => [this.keyOf(item), item]))
+      this.current = items
+      this.warnedIds.clear()
+    }
     return items
   }
 
-  private scheduleRefresh(): void {
-    const now = Date.now()
-    if (now < this.refreshAfter) {
+  private scheduleRefresh(id: string): void {
+    // One bypass refetch reloads the whole list, covering every pending
+    // unknown id, so never run two at once.
+    if (this.refreshInflight) {
+      this.refetchedIds.add(id)
       return
     }
-    // Set before any await so concurrent misses cannot trigger a refetch storm.
-    this.refreshAfter = now + REFRESH_COOLDOWN_MS
-    this.load(true).catch((error) =>
-      console.error(
-        `[${this.provider}] ${this.kind} registry refresh failed`,
-        error
+    // A not-yet-refetched id gets one immediate refetch even inside the
+    // cooldown, so a just-listed id isn't withheld by an unrelated miss;
+    // repeated misses for the same id stay cooldown-gated.
+    if (this.refetchedIds.has(id) && Date.now() < this.refreshAfter) {
+      return
+    }
+    this.refreshInflight = true
+    this.refetchedIds.add(id)
+    this.load(true)
+      .catch((error) =>
+        console.error(
+          `[${this.provider}] ${this.kind} registry refresh failed`,
+          error
+        )
       )
-    )
+      .finally(() => {
+        this.refreshInflight = false
+        this.refreshAfter = Date.now() + REFRESH_COOLDOWN_MS
+      })
   }
 }

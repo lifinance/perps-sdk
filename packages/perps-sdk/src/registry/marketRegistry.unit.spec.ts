@@ -119,7 +119,7 @@ describe('MarketRegistry', () => {
     expect(requests[1].cache).toBe('no-cache')
   })
 
-  it('cooldown-gates miss-triggered refetches', async () => {
+  it('cooldown-gates repeated misses for the same id', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const requests = serveMarkets([{ markets: [BTC] }])
     const registry = getMarketRegistry(freshClient(), 'hyperliquid')
@@ -127,9 +127,32 @@ describe('MarketRegistry', () => {
 
     registry.get('unknown-1')
     await vi.waitFor(() => expect(requests).toHaveLength(2))
-    registry.get('unknown-2')
+    // Let the refetch settle so its cooldown is armed before the next miss.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    registry.get('unknown-1')
 
     expect(requests).toHaveLength(2)
+  })
+
+  it('a not-yet-seen id refetches even inside another id’s cooldown', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const requests = serveMarkets([
+      { markets: [BTC] }, // initial sync
+      { markets: [BTC] }, // 'junk' refetch: BRENT not yet listed
+      { markets: [BTC, BRENT] }, // BRENT refetch: now listed upstream
+    ])
+    const registry = getMarketRegistry(freshClient(), 'hyperliquid')
+    await registry.sync()
+
+    registry.get('junk')
+    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    // Settle the 'junk' refetch so its cooldown is fully armed.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await vi.waitFor(() => {
+      expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
+    })
+    expect(requests).toHaveLength(3)
   })
 
   it('require throws MarketNotFound for an id the backend does not know', async () => {
