@@ -64,14 +64,15 @@ describe('getFills', () => {
     expect(byTime!.body.endTime).toBe(2000)
   })
 
-  it('drops fills at or above the cursor tid', async () => {
+  it('drops fills at or above the composite cursor', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
     const result = await getFills(ctx, {
       address: ADDRESS,
-      cursor: '100',
+      // The only fill has (time 1704067200000, tid 100); the cursor is
+      // exclusive so a cursor pointing at it filters it out.
+      cursor: '1704067200000:100',
     })
-    // The only fill has tid 100; cursor is exclusive so it's filtered out.
     expect(result.items).toHaveLength(0)
   })
 
@@ -105,7 +106,37 @@ describe('getFills', () => {
     expect((err as PerpsError).code).toBe(PerpsErrorCode.MarketNotFound)
   })
 
-  it('returns the last item id as the next cursor and reports hasMore against the limit', async () => {
+  it('paginates completely without duplicates or gaps when the upstream response is ascending-time with non-monotonic tids', async () => {
+    // Ascending time order with a tid that dips mid-sequence — HL's docs
+    // guarantee neither newest-first ordering nor monotonic tid.
+    const unsortedFills = [
+      { ...HL_USER_FILLS[0], tid: 100, time: 1000 },
+      { ...HL_USER_FILLS[0], tid: 300, time: 2000 },
+      { ...HL_USER_FILLS[0], tid: 200, time: 3000 },
+      { ...HL_USER_FILLS[0], tid: 400, time: 4000 },
+    ]
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userFills: unsortedFills },
+      HL_MARKETS
+    ))
+
+    const page1 = await getFills(ctx, { address: ADDRESS, limit: 2 })
+    expect(page1.items.map((i) => i.id)).toEqual(['400', '200'])
+    expect(page1.pagination.hasMore).toBe(true)
+
+    const page2 = await getFills(ctx, {
+      address: ADDRESS,
+      limit: 2,
+      cursor: page1.pagination.cursor,
+    })
+    expect(page2.items.map((i) => i.id)).toEqual(['300', '100'])
+    expect(page2.pagination.hasMore).toBe(false)
+
+    const seenIds = [...page1.items, ...page2.items].map((i) => i.id)
+    expect(new Set(seenIds).size).toBe(4)
+  })
+
+  it('returns the last item composite (time, tid) as the next cursor and reports hasMore against the limit', async () => {
     const manyFills = Array.from({ length: 3 }, (_, i) => ({
       ...HL_USER_FILLS[0],
       tid: 200 + i,
@@ -126,6 +157,6 @@ describe('getFills', () => {
 
     expect(result.items).toHaveLength(2)
     expect(result.pagination.hasMore).toBe(true)
-    expect(result.pagination.cursor).toBe(result.items[1].id)
+    expect(result.pagination.cursor).toBe('1704067200001:201')
   })
 })
