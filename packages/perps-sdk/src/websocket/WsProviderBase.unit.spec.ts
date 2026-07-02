@@ -145,6 +145,19 @@ describe('WsProviderBase — ref-counted fan-out', () => {
     p.deliver('prices', priceEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
+
+  it('double-invoking one unsubscribe closure does not drop a sibling subscription', async () => {
+    const p = new TestProvider(new MockRws())
+    const listener: SubscriptionListener = vi.fn()
+
+    const unsub1 = await p.subscribe(PRICES, listener)
+    await p.subscribe(PRICES, listener) // same reference, count → 2
+
+    unsub1() // count → 1, still registered
+    unsub1() // repeat invocation must be a no-op, not a second decrement
+    p.deliver('prices', priceEvent)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('WsProviderBase — open failure', () => {
