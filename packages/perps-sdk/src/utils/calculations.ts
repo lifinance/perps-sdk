@@ -6,15 +6,17 @@
  * values for critical financial parameters.
  */
 
-import type {
-  FeeTier,
-  Market,
-  MarketContext,
-  OrderbookLevel,
-  Quote,
-  QuoteSide,
-  TradeType,
+import {
+  type FeeTier,
+  type Market,
+  type MarketContext,
+  type OrderbookLevel,
+  PerpsErrorCode,
+  type Quote,
+  type QuoteSide,
+  type TradeType,
 } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 
 /**
  * Calculate position size in asset units from margin.
@@ -319,6 +321,8 @@ interface BookWalk {
  * notional, the walk stops at the last level and flags `insufficientLiquidity`,
  * returning the best obtainable fill.
  *
+ * @throws {PerpsError} `ValidationError` when a level's `price` or `size`
+ *   does not parse to a finite number.
  * @public
  */
 export function walkOrderbook(
@@ -333,7 +337,14 @@ export function walkOrderbook(
       break
     }
     const price = Number.parseFloat(level.price)
-    const levelNotional = Number.parseFloat(level.size) * price
+    const size = Number.parseFloat(level.size)
+    if (!Number.isFinite(price) || !Number.isFinite(size)) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `Malformed orderbook level: price='${level.price}', size='${level.size}'`
+      )
+    }
+    const levelNotional = size * price
     const take = Math.min(remaining, levelNotional)
     filledNotional += take
     baseSize += take / price
@@ -370,6 +381,8 @@ interface BuildQuoteInput {
  * versus mark, applies the base taker fee on the filled notional, and carries
  * the market's `funding` (`null` for spot, which has none).
  *
+ * @throws {PerpsError} `ValidationError` when a book level does not parse to
+ *   a finite number — see {@link walkOrderbook}.
  * @public
  */
 export function buildQuote(input: BuildQuoteInput): Quote {
