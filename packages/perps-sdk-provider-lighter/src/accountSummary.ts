@@ -18,5 +18,5 @@ export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {
-  return summarizeAccount(account, positions, false)
+  return summarizeAccount(account, positions, 'free')
 }

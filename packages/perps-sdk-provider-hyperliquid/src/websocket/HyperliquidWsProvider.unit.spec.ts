@@ -1858,6 +1858,53 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('evicts a siblingFilledCanceled TP/SL leg into terminated instead of re-emitting it as active', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        {
+          channel: 'orderUpdates',
+          dex: 'hyperliquid',
+          address: '0xuser1',
+        },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: {
+                oid: 200,
+                coin: 'BTC',
+                side: 'A',
+                sz: '0.05',
+                limitPx: '0',
+                orderType: 'Stop Market',
+                origSz: '0.05',
+                reduceOnly: true,
+                timestamp: 1704067200000,
+                tif: null,
+                cloid: null,
+                triggerCondition: 'Stop Loss',
+                triggerPx: '90000',
+              },
+              status: 'siblingFilledCanceled',
+              statusTimestamp: 1704067201000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders).toHaveLength(0)
+      expect(event.data.triggerOrders).toHaveLength(0)
+      expect(event.data.terminated).toEqual(['200'])
+    })
+
     it('should emit fills event for userFills channel', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
@@ -1904,6 +1951,107 @@ describe('HyperliquidWsProvider', () => {
         fee: '4.70',
         status: FillStatus.FILLED,
       })
+    })
+
+    it('suppresses the isSnapshot history and emits only the subsequent live fill', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const historical = (tid: number) => ({
+        tid,
+        coin: 'BTC',
+        side: 'B',
+        px: '90000',
+        sz: '0.1',
+        dir: 'Open Long',
+        fee: '4.50',
+        closedPnl: '0',
+        time: 1704067200000,
+        startPosition: '0.0',
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: true,
+            user: '0xuser1',
+            fills: [historical(1), historical(2), historical(3)],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'fills',
+        data: [],
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [{ ...historical(999), px: '94000' }],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      const live = listener.mock.calls[1][0]
+      expect(live.data).toHaveLength(1)
+      expect(live.data[0]).toMatchObject({ id: '999', price: '94000' })
+    })
+
+    it('does not re-emit snapshot fills when a reconnect replays the subscription', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const snapshotFrame = JSON.stringify({
+        channel: 'userFills',
+        data: {
+          isSnapshot: true,
+          user: '0xuser1',
+          fills: [
+            {
+              tid: 42,
+              coin: 'BTC',
+              side: 'B',
+              px: '90000',
+              sz: '0.1',
+              dir: 'Open Long',
+              fee: '4.50',
+              closedPnl: '0',
+              time: 1704067200000,
+              startPosition: '0.0',
+            },
+          ],
+        },
+      })
+
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+
+      // Reconnect: the base replays the subscribe and the venue re-sends the
+      // same snapshot.
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      for (const call of listener.mock.calls) {
+        expect(call[0].data).toHaveLength(0)
+      }
     })
 
     it('delivers fills when the venue echoes the user address in checksummed form', async () => {
@@ -2606,7 +2754,7 @@ describe('HyperliquidWsProvider', () => {
         JSON.stringify({
           channel: 'userFills',
           data: {
-            isSnapshot: true,
+            isSnapshot: false,
             user: '0xuser1',
             fills: [
               { ...fill, tid: 1, coin: '@999' },
