@@ -55,21 +55,17 @@ describe('AssetRegistry', () => {
     expect(registry.get('1')).toEqual(ETH)
   })
 
-  it('on a miss: warns once per id and refetches bypassing the HTTP cache', async () => {
+  it('on a miss: warns once per id and does not refetch', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const requests = serveAssets([{ assets: [USDC] }, { assets: [USDC, ETH] }])
+    const requests = serveAssets([{ assets: [USDC] }])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await registry.sync()
 
     expect(registry.get('1')).toBeUndefined()
     expect(registry.get('1')).toBeUndefined()
-    expect(warn).toHaveBeenCalledTimes(1)
 
-    await vi.waitFor(() => {
-      expect(registry.get('1')).toEqual(ETH)
-    })
-    expect(requests).toHaveLength(2)
-    expect(requests[1].cache).toBe('no-cache')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(requests).toHaveLength(1)
   })
 
   it('returns the same instance per (client, provider)', () => {

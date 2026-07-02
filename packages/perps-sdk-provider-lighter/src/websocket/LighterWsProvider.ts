@@ -511,8 +511,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
-    // A registry miss warns once and schedules a cooldown-gated refetch (the
-    // id may have listed after the snapshot); the order is skipped.
+    // Unknown market id (absent from the synced snapshot); the order is skipped.
     const data = classifyAndMapOrders(raw, (marketIndex) =>
       this.registry?.get(String(marketIndex))
     )

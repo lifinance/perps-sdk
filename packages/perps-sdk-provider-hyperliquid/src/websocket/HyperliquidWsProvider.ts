@@ -806,8 +806,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         continue
       }
       const type = mapOrderType(o.orderType)
-      // A miss warns once and schedules a cooldown-gated registry refetch
-      // (the id may have listed after the snapshot); skip just this item.
+      // Unknown market id (absent from the synced snapshot); skip just this item.
       const market = this.registry?.get(o.coin)
       if (!market) {
         continue
