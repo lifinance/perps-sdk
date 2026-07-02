@@ -59,15 +59,32 @@ const account = (
 })
 
 describe('getAccountSummary', () => {
-  // Standard (unset) and disabled modes: venue collateral rows are free margin
-  // (accountValue is net of locked margin), so margin is added back for gross.
+  // Standard (unset), disabled and dexAbstraction modes: venue collateral rows
+  // hold `accountValue` = total venue equity, which already includes locked
+  // margin AND unrealized PnL — nothing may be added back on top of it.
   describe.each([
     ['standard (null abstraction)', null],
     ['disabled', HlAbstractionMode.DISABLED],
     ['dexAbstraction', HlAbstractionMode.DEX_ABSTRACTION],
   ])('non-unified mode: %s', (_label, mode) => {
-    it('treats collateral rows as free; available margin equals total collateral', () => {
-      // spot USDC 500 (free) + venue equity 10000 (free) = 10500 free
+    it('does not double-count marginUsed or unrealized pnl embedded in accountValue', () => {
+      // Deposit 1000, open a position locking 100 margin, uPnL +50:
+      // HL reports accountValue 1050 (equity = cash 1000 + uPnL 50).
+      const summary = getAccountSummary(
+        account(mode as HlAbstractionMode | null, [
+          balance('hyperliquid', '1050'),
+        ]),
+        [position('100', '50')]
+      )
+      // free margin = equity − locked margin, NOT equity itself
+      expect(summary.availableMargin).toBe('950')
+      // portfolio = equity as-is; adding marginUsed/uPnL would double-count
+      expect(summary.portfolioValue).toBe('1050')
+      expect(summary.marginUsed).toBe('100')
+      expect(summary.unrealizedPnl).toBe('50')
+    })
+
+    it('sums spot collateral (cash) and venue equity rows', () => {
       const summary = getAccountSummary(
         account(mode as HlAbstractionMode | null, [
           balance('spot', '500'),
@@ -75,10 +92,8 @@ describe('getAccountSummary', () => {
         ]),
         [position('940', '100')]
       )
-      // free collateral is shown as available, untouched by marginUsed
-      expect(summary.availableMargin).toBe('10500')
-      // gross = free + locked margin; portfolio adds unrealized pnl
-      expect(summary.portfolioValue).toBe('11540')
+      expect(summary.availableMargin).toBe('9560')
+      expect(summary.portfolioValue).toBe('10500')
       expect(summary.marginUsed).toBe('940')
       expect(summary.unrealizedPnl).toBe('100')
     })
@@ -92,10 +107,10 @@ describe('getAccountSummary', () => {
         ),
         [position('200', '0')]
       )
-      // available = free collateral only (1000), not the non-collateral 250
-      expect(summary.availableMargin).toBe('1000')
-      // portfolio = balances 250 + gross collateral (1000 + 200) + pnl 0
-      expect(summary.portfolioValue).toBe('1450')
+      // available = venue equity 1000 − locked margin 200
+      expect(summary.availableMargin).toBe('800')
+      // portfolio = balances 250 + venue equity 1000
+      expect(summary.portfolioValue).toBe('1250')
     })
   })
 
@@ -124,8 +139,8 @@ describe('getAccountSummary', () => {
     )
     expect(summary.marginUsed).toBe('250')
     expect(summary.unrealizedPnl).toBe('-20')
-    // non-unified: available = free collateral (1000)
-    expect(summary.availableMargin).toBe('1000')
+    // non-unified: available = venue equity 1000 − aggregate locked margin 250
+    expect(summary.availableMargin).toBe('750')
   })
 
   it('returns string scalars for an empty account', () => {
