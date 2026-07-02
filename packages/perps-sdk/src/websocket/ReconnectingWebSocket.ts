@@ -238,16 +238,21 @@ export class ReconnectingWebSocket {
 
   /**
    * Send `data`, buffering it (bounded) for replay when the socket is not yet
-   * open.
+   * open. Throws once {@link ReconnectingWebSocket.close} has been called —
+   * there is no socket left to buffer against.
    *
    * @public
    */
   send(data: string) {
+    if (this.closed) {
+      throw new Error(CLOSED_ERROR)
+    }
     this.socket.send(data)
   }
 
   /**
-   * Permanently close the socket and suppress further reconnection.
+   * Permanently close the socket, suppress further reconnection, and set
+   * status to terminal `disconnected`.
    *
    * @public
    */
@@ -256,6 +261,7 @@ export class ReconnectingWebSocket {
     this.stopPing()
     this.clearWatchdog()
     this.socket.close()
+    this.setStatus('disconnected')
     for (const { reject } of this.readyResolvers) {
       reject(new Error(CLOSED_ERROR))
     }
@@ -300,8 +306,9 @@ export class ReconnectingWebSocket {
 
   /**
    * Current connection health. `reconnecting` until the first open;
-   * `disconnected` once auto-reconnect is abandoned (terminal until
-   * {@link ReconnectingWebSocket.reconnect} is called).
+   * `disconnected` once auto-reconnect is abandoned or {@link
+   * ReconnectingWebSocket.close} is called (terminal until {@link
+   * ReconnectingWebSocket.reconnect} is called).
    *
    * @public
    */

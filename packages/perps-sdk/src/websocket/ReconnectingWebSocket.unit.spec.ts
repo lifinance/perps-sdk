@@ -282,4 +282,39 @@ describe('ReconnectingWebSocket', () => {
     closed.close()
     await expect(closed.ready()).rejects.toThrow('WebSocket closed')
   })
+
+  it('close() transitions status to terminal disconnected and getStatus() reflects it', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    const onStatus = vi.fn()
+    rws.onStatus(onStatus)
+
+    latestWs().simulateOpen()
+    expect(rws.getStatus()).toBe('connected')
+
+    rws.close()
+    expect(rws.getStatus()).toBe('disconnected')
+    expect(onStatus).toHaveBeenLastCalledWith('disconnected')
+  })
+
+  it('send() after close() throws instead of writing into the dead socket', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    latestWs().simulateOpen()
+    rws.close()
+    latestWs().sent = []
+
+    expect(() => rws.send('late-message')).toThrow('WebSocket closed')
+    expect(latestWs().sent).toHaveLength(0)
+  })
+
+  it('a close event delivered after close() does not re-arm reconnect/backoff', () => {
+    const rws = new ReconnectingWebSocket('wss://example.com')
+    latestWs().simulateOpen()
+    rws.close()
+    expect(rws.getStatus()).toBe('disconnected')
+
+    latestWs().simulateClose({ code: 1006, reason: 'dropped', retryCount: 1 })
+
+    expect(rws.getStatus()).toBe('disconnected')
+    expect(latestWs().reconnectCalls).toBe(0)
+  })
 })

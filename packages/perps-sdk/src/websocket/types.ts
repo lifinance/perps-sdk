@@ -28,9 +28,9 @@ export type SubscriptionListener = (event: SubscriptionEvent) => void
  * - `connected` — socket open, live data flowing.
  * - `reconnecting` — socket dropped; auto-reconnect with backoff in progress.
  *   Data may be stale until it returns to `connected`.
- * - `disconnected` — reconnection abandoned after the retry cap. The
- *   connection is permanently dead and will not recover on its own; the
- *   subscription's data is stale. Terminal.
+ * - `disconnected` — reconnection abandoned after the retry cap, or the
+ *   connection was explicitly closed. The connection is permanently dead and
+ *   will not recover on its own; the subscription's data is stale. Terminal.
  *
  * @public
  */
