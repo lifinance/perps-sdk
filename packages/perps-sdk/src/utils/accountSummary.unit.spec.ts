@@ -83,16 +83,28 @@ describe('summarizeAccount', () => {
   })
 
   describe("'gross' collateral", () => {
-    it('subtracts margin used to reach available margin and adds pnl to portfolio', () => {
+    it('adds profit uPnL to available margin: buying power = gross − margin + pnl', () => {
       const summary = summarizeAccount(
         account([balance('10000')]),
         [position('940', '100')],
         'gross'
       )
-      expect(summary.availableMargin).toBe('9060')
+      expect(summary.availableMargin).toBe('9160')
       expect(summary.portfolioValue).toBe('10100')
       expect(summary.marginUsed).toBe('940')
       expect(summary.unrealizedPnl).toBe('100')
+    })
+
+    it('subtracts loss uPnL from available margin so buying power is not overstated', () => {
+      const summary = summarizeAccount(
+        account([balance('10000')]),
+        [position('940', '-100')],
+        'gross'
+      )
+      expect(summary.availableMargin).toBe('8960')
+      expect(summary.portfolioValue).toBe('9900')
+      expect(summary.marginUsed).toBe('940')
+      expect(summary.unrealizedPnl).toBe('-100')
     })
   })
 
