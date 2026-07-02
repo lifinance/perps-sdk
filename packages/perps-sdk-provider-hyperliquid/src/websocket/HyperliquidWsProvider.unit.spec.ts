@@ -97,8 +97,9 @@ const encodeCompressed = async (payload: unknown): Promise<string> => {
   return btoa(bin)
 }
 
-// Seed mid/mark via a `fastAssetCtxs` frame. The provider decodes the payload
-// off the microtask/threadpool queue; await lets that settle before asserting.
+// Dispatch a `fastAssetCtxs` frame. The provider decodes the payload off the
+// async DecompressionStream queue, so callers must `vi.waitFor` the resulting
+// emission rather than asserting against a fixed decode-time budget.
 const seedFast = async (
   ctxs: Record<string, { markPx?: string; midPx?: string | null }>
 ) => {
@@ -106,7 +107,6 @@ const seedFast = async (
   getMockRwsInstance().simulateMessage(
     JSON.stringify({ channel: 'fastAssetCtxs', data })
   )
-  await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
 // --- Mock ReconnectingWebSocket ---
@@ -1601,22 +1601,25 @@ describe('HyperliquidWsProvider', () => {
           data: { c: compressed },
         })
       )
-      await new Promise((resolve) => setTimeout(resolve, 10))
 
-      const event = listener.mock.calls.at(-1)?.[0]
-      expect(event).toEqual({
-        channel: 'orderbook',
-        data: {
-          provider: 'hyperliquid',
-          marketId: 'BTC',
-          bids: [
-            { price: '95000', size: '1.1' },
-            { price: '94995', size: '0.4' },
-            { price: '94990', size: '2.0' },
-          ],
-          asks: [{ price: '95020', size: '2.5' }],
-          timestamp: 1704067200500,
-        },
+      // The compressed delta decodes off the microtask/threadpool queue; poll
+      // until the decoded-delta event lands rather than racing a fixed timeout.
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event).toEqual({
+          channel: 'orderbook',
+          data: {
+            provider: 'hyperliquid',
+            marketId: 'BTC',
+            bids: [
+              { price: '95000', size: '1.1' },
+              { price: '94995', size: '0.4' },
+              { price: '94990', size: '2.0' },
+            ],
+            asks: [{ price: '95020', size: '2.5' }],
+            timestamp: 1704067200500,
+          },
+        })
       })
     })
 
@@ -2226,7 +2229,20 @@ describe('HyperliquidWsProvider', () => {
       const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
       const listener = vi.fn()
 
+      // The fast mid decodes off the async DecompressionStream queue; observe it
+      // via marketsContext and wait until it has applied, so the single spotState
+      // frame prices against a known mid instead of racing the decode.
+      const midProbe = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        midProbe
+      )
       await seedFast({ 'PURR/USDC': { midPx: '0.5' } })
+      await vi.waitFor(() => {
+        expect(
+          midProbe.mock.calls.at(-1)?.[0]?.data['PURR/USDC']?.midPrice
+        ).toBe('0.5')
+      })
 
       await provider.subscribe(
         { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
