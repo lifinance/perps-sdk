@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.5.3
+
+### Patch Changes
+
+- [#163](https://github.com/lifinance/perps-sdk/pull/163) [`7c3bc71`](https://github.com/lifinance/perps-sdk/commit/7c3bc71b1c9f6100a19dbb9d11b89f44edb2db29) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Suppress the Hyperliquid `userFills` snapshot frame so historical fills are no longer emitted as live fill events on subscribe or reconnect.
+
+- [#164](https://github.com/lifinance/perps-sdk/pull/164) [`0390904`](https://github.com/lifinance/perps-sdk/commit/0390904489fdacee26af87dce33cbe960e8d8f4e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix Hyperliquid fill order-type detection: maker fills are now reported as `LIMIT` and taker fills leave `Fill.type` undefined, instead of every fill being reported as `MARKET`. `Fill.type` is now optional.
+
+- Updated dependencies [[`0390904`](https://github.com/lifinance/perps-sdk/commit/0390904489fdacee26af87dce33cbe960e8d8f4e)]:
+  - @lifi/perps-types@1.6.0
+
 ## 1.5.2
 
 ### Patch Changes
