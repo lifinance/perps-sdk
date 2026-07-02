@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.5.3
+
+### Patch Changes
+
+- [#168](https://github.com/lifinance/perps-sdk/pull/168) [`573d4c9`](https://github.com/lifinance/perps-sdk/commit/573d4c9e18e6f42381468c0187b0dda9382e953c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Harden the Lighter auth-token lifecycle: a failed read-only token creation now retries with bounded backoff instead of downgrading reads to the write-capable standard token for the whole session, the requested read-only expiry keeps a clock-skew margin under Lighter's 10-year cap, and a server-side-revoked standard token is re-signed on retry instead of failing reads until it expires.
+
 ## 1.5.2
 
 ### Patch Changes
