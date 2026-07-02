@@ -112,9 +112,19 @@ interface SubState {
   needsAuth: boolean
 }
 
+/**
+ * A maintained book level, keyed in {@link OrderbookState} by its price string.
+ * `priceNum` is the price parsed once on insert so the emit-time sort orders by
+ * a cached number instead of re-parsing every price on every comparison.
+ */
+interface BookLevel {
+  size: string
+  priceNum: number
+}
+
 interface OrderbookState {
-  bids: Map<string, string>
-  asks: Map<string, string>
+  bids: Map<string, BookLevel>
+  asks: Map<string, BookLevel>
   assetId: string
 }
 
@@ -665,14 +675,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       data: {
         provider: this.providerKey,
         marketId: assetId,
-        bids: mapToLevels(
-          state.bids,
-          (a, b) => Number(b.price) - Number(a.price)
-        ),
-        asks: mapToLevels(
-          state.asks,
-          (a, b) => Number(a.price) - Number(b.price)
-        ),
+        bids: mapToLevels(state.bids, true),
+        asks: mapToLevels(state.asks, false),
         timestamp: Date.now(),
       },
     })
@@ -761,25 +765,34 @@ function isMarketStatsEntry(
 }
 
 function applyLevels(
-  book: Map<string, string>,
+  book: Map<string, BookLevel>,
   levels: LtWsOrderBook['bids']
 ): void {
   for (const level of levels) {
     if (level.size === '0' || Number(level.size) === 0) {
       book.delete(level.price)
     } else {
-      book.set(level.price, level.size)
+      const existing = book.get(level.price)
+      if (existing) {
+        existing.size = level.size
+      } else {
+        book.set(level.price, {
+          size: level.size,
+          priceNum: Number(level.price),
+        })
+      }
     }
   }
 }
 
 function mapToLevels(
-  book: Map<string, string>,
-  compare: (a: { price: string }, b: { price: string }) => number
+  book: Map<string, BookLevel>,
+  descending: boolean
 ): Array<{ price: string; size: string }> {
-  const levels = [...book].map(([price, size]) => ({ price, size }))
-  levels.sort(compare)
-  return levels
+  const entries = [...book].sort(([, a], [, b]) =>
+    descending ? b.priceNum - a.priceNum : a.priceNum - b.priceNum
+  )
+  return entries.map(([price, { size }]) => ({ price, size }))
 }
 
 /**
