@@ -95,64 +95,21 @@ describe('MarketRegistry', () => {
     expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
     await registry.sync()
 
-    expect(requests).toHaveLength(3) // 2 syncs + 1 miss-triggered refresh
+    expect(requests).toHaveLength(2)
     expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
   })
 
-  it('on a miss: warns once per id and refetches bypassing the HTTP cache', async () => {
+  it('on a miss: warns once per id and does not refetch', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const requests = serveMarkets([
-      { markets: [BTC] },
-      { markets: [BTC, BRENT] },
-    ])
-    const registry = getMarketRegistry(freshClient(), 'hyperliquid')
-    await registry.sync()
-
-    expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
-    expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
-    expect(warn).toHaveBeenCalledTimes(1)
-
-    await vi.waitFor(() => {
-      expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
-    })
-    expect(requests).toHaveLength(2)
-    expect(requests[1].cache).toBe('no-cache')
-  })
-
-  it('cooldown-gates repeated misses for the same id', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
     const requests = serveMarkets([{ markets: [BTC] }])
     const registry = getMarketRegistry(freshClient(), 'hyperliquid')
     await registry.sync()
 
-    registry.get('unknown-1')
-    await vi.waitFor(() => expect(requests).toHaveLength(2))
-    // Let the refetch settle so its cooldown is armed before the next miss.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    registry.get('unknown-1')
+    expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
+    expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
 
-    expect(requests).toHaveLength(2)
-  })
-
-  it('a not-yet-seen id refetches even inside another id’s cooldown', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const requests = serveMarkets([
-      { markets: [BTC] }, // initial sync
-      { markets: [BTC] }, // 'junk' refetch: BRENT not yet listed
-      { markets: [BTC, BRENT] }, // BRENT refetch: now listed upstream
-    ])
-    const registry = getMarketRegistry(freshClient(), 'hyperliquid')
-    await registry.sync()
-
-    registry.get('junk')
-    await vi.waitFor(() => expect(requests).toHaveLength(2))
-    // Settle the 'junk' refetch so its cooldown is fully armed.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    await vi.waitFor(() => {
-      expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
-    })
-    expect(requests).toHaveLength(3)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(requests).toHaveLength(1)
   })
 
   it('require throws MarketNotFound for an id the backend does not know', async () => {

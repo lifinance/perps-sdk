@@ -21,15 +21,13 @@ export class AssetRegistry extends ReferenceDataRegistry<Asset> {
     return this.items
   }
 
-  protected fetchItems(bypassHttpCache: boolean): Promise<Asset[]> {
+  protected fetchItems(): Promise<Asset[]> {
     const url = buildUrl(`${this.client.config.apiUrl}/assets`, {
       provider: this.provider,
     })
-    return request<AssetsResponse>(
-      this.client.config,
-      url,
-      bypassHttpCache ? { cache: 'no-cache' } : {}
-    ).then((response) => response.assets)
+    return request<AssetsResponse>(this.client.config, url).then(
+      (response) => response.assets
+    )
   }
 
   protected keyOf(asset: Asset): string {
