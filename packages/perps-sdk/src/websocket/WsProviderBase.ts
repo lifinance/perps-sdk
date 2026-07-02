@@ -188,7 +188,15 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
   }
 
   private async replaySubs(): Promise<void> {
-    for (const [key, state] of this.wireSubs) {
+    // Snapshot at replay start, and re-check the live registry before each
+    // send. An async sendSubscribe (e.g. Lighter's auth-token fetch) suspends
+    // the loop; status is already 'connected' while open listeners run, so a
+    // subscribe landing mid-replay is sent inline by registerSub — it must not
+    // be revisited here, and an entry unregistered mid-replay must be skipped.
+    for (const [key, state] of [...this.wireSubs]) {
+      if (this.wireSubs.get(key) !== state) {
+        continue
+      }
       // Isolate each resubscribe: a send can reject (e.g. an auth-token fetch
       // after reconnect), and one sub's failure must not abort the rest of
       // the loop or escape as an unhandled rejection.
