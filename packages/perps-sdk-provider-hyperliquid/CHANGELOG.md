@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.5.4
+
+### Patch Changes
+
+- [#169](https://github.com/lifinance/perps-sdk/pull/169) [`5e83cc6`](https://github.com/lifinance/perps-sdk/commit/5e83cc6b119d80c99e5413fd45903c76de7b99f2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix HyperliquidAgentStore silently regenerating the approved agent key when a custom StorageAdapter throws a non-PerpsError during lookup; the transient error now propagates and the stored key is left untouched.
+
+- [#187](https://github.com/lifinance/perps-sdk/pull/187) [`62451af`](https://github.com/lifinance/perps-sdk/commit/62451af391daea9aaabd05c51a68f8433ca44068) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - mapStatusReason now returns a specific human-readable reason for every documented Hyperliquid terminal cancel/reject status (e.g. perpMarginRejected, oracleRejected, insufficientSpotBalanceRejected), instead of undefined for those that lacked an explicit case.
+
 ## 1.5.3
 
 ### Patch Changes
