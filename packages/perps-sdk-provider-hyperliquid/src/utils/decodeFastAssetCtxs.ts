@@ -1,12 +1,20 @@
 import type { HlWsFastAssetCtx } from '../types/index.js'
 
+/** Decode a base64 + raw-DEFLATE (RFC 1951) payload into parsed JSON. */
 export async function decodeCompressedJson<T>(base64: string): Promise<T> {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-  const stream = new Blob([bytes])
-    .stream()
-    .pipeThrough(new DecompressionStream('deflate-raw'))
-  const text = await new Response(stream).text()
-  return JSON.parse(text) as T
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  const stream = new DecompressionStream('deflate-raw')
+  const text = new Response(stream.readable).text()
+  const writer = stream.writable.getWriter()
+  // Write-side failures (bad DEFLATE) also error the readable and reject
+  // `text`; detach these rejections to avoid unhandled duplicates.
+  writer.write(bytes).catch(() => undefined)
+  writer.close().catch(() => undefined)
+  return JSON.parse(await text) as T
 }
 
 /**

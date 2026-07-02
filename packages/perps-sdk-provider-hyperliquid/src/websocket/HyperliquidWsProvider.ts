@@ -61,6 +61,7 @@ import {
   spotBalance,
   spotPriceById,
 } from '../utils/index.js'
+import { DecodeChain } from './decodeChain.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
@@ -107,12 +108,29 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   // frames carry only changed coins — and overlaid onto asset contexts that
   // carry oracle/funding/OI/metadata.
   private fastCtxByMarketId: Record<string, HlWsFastAssetCtx> = {}
-  // `fastAssetCtxs` payloads are base64 + raw-DEFLATE; decode is async, so
-  // chain decodes to apply incremental frames in arrival order.
-  private fastDecodeChain: Promise<void> = Promise.resolve()
-  private pacDecodeChain: Promise<void> = Promise.resolve()
-  private sacDecodeChain: Promise<void> = Promise.resolve()
-  private orderbookDecodeChain: Promise<void> = Promise.resolve()
+  private readonly reportDecodeFailure = (error: unknown) =>
+    wsLog.handlerFailure(this.providerKey, error)
+  // Compressed payloads (base64 + raw-DEFLATE) decode async, so each channel
+  // chains decodes to apply frames in arrival order. Only the fast feed
+  // coalesces a stall backlog to its newest frame: a coin's dropped tick is
+  // refreshed by its next one. pac/sac field-merges and l2 deltas depend on
+  // every frame, so they must not coalesce.
+  private readonly fastDecodeChain = new DecodeChain(
+    'latest',
+    this.reportDecodeFailure
+  )
+  private readonly pacDecodeChain = new DecodeChain(
+    'every',
+    this.reportDecodeFailure
+  )
+  private readonly sacDecodeChain = new DecodeChain(
+    'every',
+    this.reportDecodeFailure
+  )
+  private readonly orderbookDecodeChain = new DecodeChain(
+    'every',
+    this.reportDecodeFailure
+  )
 
   constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
@@ -297,10 +315,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.marketsContextByMarketId = {}
     this.orderbookKeysByMarketId.clear()
     this.latestOrderbookByMarketId.clear()
-    this.fastDecodeChain = Promise.resolve()
-    this.pacDecodeChain = Promise.resolve()
-    this.sacDecodeChain = Promise.resolve()
-    this.orderbookDecodeChain = Promise.resolve()
+    this.fastDecodeChain.reset()
+    this.pacDecodeChain.reset()
+    this.sacDecodeChain.reset()
+    this.orderbookDecodeChain.reset()
     this.orderUpdatesKey = undefined
   }
 
@@ -492,15 +510,13 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handlePac(base64: string) {
-    this.pacDecodeChain = this.pacDecodeChain
-      .then(async () => {
-        this.emitMarketsContext(
-          this.mergePerpAssetCtxEntries(
-            await decodeCompressedJson<HlWsPacData>(base64)
-          )
+    this.pacDecodeChain.push(async () => {
+      this.emitMarketsContext(
+        this.mergePerpAssetCtxEntries(
+          await decodeCompressedJson<HlWsPacData>(base64)
         )
-      })
-      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+      )
+    })
   }
 
   /** Merge perp asset contexts in place; returns the marketIds this frame touched. */
@@ -530,25 +546,23 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleSac(base64: string) {
-    this.sacDecodeChain = this.sacDecodeChain
-      .then(async () => {
-        const spotMarketIdBySacKey = this.spotMarketIdBySacKey()
-        const ctxs = await decodeCompressedJson<HlWsSacData>(base64)
-        const touched = new Set<string>()
-        for (const [sacKey, ctx] of Object.entries(ctxs)) {
-          const marketId = spotMarketIdBySacKey.get(sacKey)
-          if (marketId === undefined) {
-            continue
-          }
-          this.spotCtxByMarketId[marketId] = {
-            ...this.spotCtxByMarketId[marketId],
-            ...ctx,
-          }
-          touched.add(marketId)
+    this.sacDecodeChain.push(async () => {
+      const spotMarketIdBySacKey = this.spotMarketIdBySacKey()
+      const ctxs = await decodeCompressedJson<HlWsSacData>(base64)
+      const touched = new Set<string>()
+      for (const [sacKey, ctx] of Object.entries(ctxs)) {
+        const marketId = spotMarketIdBySacKey.get(sacKey)
+        if (marketId === undefined) {
+          continue
         }
-        this.emitMarketsContext(touched)
-      })
-      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+        this.spotCtxByMarketId[marketId] = {
+          ...this.spotCtxByMarketId[marketId],
+          ...ctx,
+        }
+        touched.add(marketId)
+      }
+      this.emitMarketsContext(touched)
+    })
   }
 
   private spotMarketIdBySacKey(): Map<string, string> {
@@ -570,22 +584,21 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
    * Decode a `fastAssetCtxs` frame (base64 + raw-DEFLATE) and merge its changed
    * coins into the per-market fast-context store. Frames are incremental, so a
    * field absent from this frame keeps its prior value. Decodes are chained to
-   * preserve arrival order across the async boundary.
+   * preserve arrival order across the async boundary; a backlog coalesces to
+   * its newest frame (see the chain's mode).
    */
   private handleFastAssetCtxs(base64: string) {
-    this.fastDecodeChain = this.fastDecodeChain
-      .then(async () => {
-        const ctxs = await decodeFastAssetCtxs(base64)
-        for (const [marketId, ctx] of Object.entries(ctxs)) {
-          const prev = this.fastCtxByMarketId[marketId]
-          this.fastCtxByMarketId[marketId] = {
-            markPx: 'markPx' in ctx ? ctx.markPx : prev?.markPx,
-            midPx: 'midPx' in ctx ? ctx.midPx : prev?.midPx,
-          }
+    this.fastDecodeChain.push(async () => {
+      const ctxs = await decodeFastAssetCtxs(base64)
+      for (const [marketId, ctx] of Object.entries(ctxs)) {
+        const prev = this.fastCtxByMarketId[marketId]
+        this.fastCtxByMarketId[marketId] = {
+          markPx: 'markPx' in ctx ? ctx.markPx : prev?.markPx,
+          midPx: 'midPx' in ctx ? ctx.midPx : prev?.midPx,
         }
-        this.emitMarketsContext(Object.keys(ctxs))
-      })
-      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+      }
+      this.emitMarketsContext(Object.keys(ctxs))
+    })
   }
 
   /**
@@ -735,13 +748,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       return
     }
     const compressed = data.c
-    this.orderbookDecodeChain = this.orderbookDecodeChain
-      .then(async () => {
-        this.handleCompactL2Delta(
-          await decodeCompressedJson<HlWsCompressedL2Data>(compressed)
-        )
-      })
-      .catch((error) => wsLog.handlerFailure(this.providerKey, error))
+    this.orderbookDecodeChain.push(async () => {
+      this.handleCompactL2Delta(
+        await decodeCompressedJson<HlWsCompressedL2Data>(compressed)
+      )
+    })
   }
 
   private handleCompactL2Delta(delta: HlWsCompressedL2Data) {
