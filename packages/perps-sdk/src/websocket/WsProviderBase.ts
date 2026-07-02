@@ -94,7 +94,12 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       onStatus(this.rws.getStatus())
     }
 
+    let released = false
     return () => {
+      if (released) {
+        return
+      }
+      released = true
       if (onStatus) {
         const remaining = (this.statusListeners.get(onStatus) ?? 0) - 1
         if (remaining > 0) {
