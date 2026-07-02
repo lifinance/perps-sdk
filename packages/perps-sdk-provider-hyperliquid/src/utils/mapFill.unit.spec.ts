@@ -147,21 +147,24 @@ describe('mapFill (Hyperliquid)', () => {
     expect(map(baseFill({ side: 'A' })).side).toBe(OrderSide.SELL)
   })
 
-  it('maps a dir containing "Limit" to OrderType.LIMIT', () => {
-    expect(map(baseFill({ dir: 'Open Long Limit' })).type).toBe(OrderType.LIMIT)
-  })
+  describe('order type from liquidity (crossed)', () => {
+    it('classifies a maker fill (crossed: false) as LIMIT — a maker fill can only come from a resting limit order', () => {
+      expect(map(baseFill({ crossed: false, dir: 'Open Long' })).type).toBe(
+        OrderType.LIMIT
+      )
+    })
 
-  it('maps a dir without "Limit" to OrderType.MARKET', () => {
-    expect(map(baseFill({ dir: 'Open Long' })).type).toBe(OrderType.MARKET)
-  })
+    it('classifies a maker fill as LIMIT regardless of the dir descriptor', () => {
+      expect(map(baseFill({ crossed: false, dir: 'Close Short' })).type).toBe(
+        OrderType.LIMIT
+      )
+    })
 
-  it('treats undefined dir as a market fill', () => {
-    // `dir` is typed as required, but the live API has been observed to omit
-    // it for some entries; the mapper uses optional chaining to fall back to
-    // MARKET, which we lock in here.
-    expect(map(baseFill({ dir: undefined as unknown as string })).type).toBe(
-      OrderType.MARKET
-    )
+    it('leaves the order type undefined for taker fills (crossed: true) — market vs aggressive-limit is not derivable from the fill payload', () => {
+      expect(
+        map(baseFill({ crossed: true, dir: 'Open Long' })).type
+      ).toBeUndefined()
+    })
   })
 
   it('preserves size, price, and fee as raw strings', () => {

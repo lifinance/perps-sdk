@@ -114,7 +114,12 @@ export interface Fill {
   orderId: string
   market: MarketDisplay
   side: OrderSide
-  type: OrderType
+  /**
+   * The originating order type, when derivable from the fill. Absent when a
+   * provider's fill payload doesn't carry it and it can't be inferred (e.g. a
+   * Hyperliquid taker fill, which may be a market or an aggressive limit order).
+   */
+  type?: OrderType
   size: string
   price: string
   status: FillStatus

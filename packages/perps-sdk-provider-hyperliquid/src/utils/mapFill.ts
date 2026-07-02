@@ -29,7 +29,11 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   orderId: String(fill.oid),
   market,
   side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-  type: fill.dir?.includes('Limit') ? OrderType.LIMIT : OrderType.MARKET,
+  // HL fills don't carry the originating order type. A maker fill (crossed:
+  // false) can only come from a resting order, so it's necessarily a limit;
+  // a taker fill (crossed: true) may be a market OR an aggressive limit order,
+  // which the payload can't distinguish, so the type is left undefined.
+  type: fill.crossed ? undefined : OrderType.LIMIT,
   size: fill.sz,
   price: fill.px,
   status: FillStatus.FILLED,
