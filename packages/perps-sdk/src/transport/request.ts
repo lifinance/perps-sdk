@@ -3,7 +3,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
 import { version } from '../version.js'
-import { fetchWithRetry } from './fetchWithRetry.js'
+import { fetchWithRetry, isAbortError } from './fetchWithRetry.js'
 import {
   LIFI_REQUEST_KEY,
   LIFI_RETRY_DEFAULTS,
@@ -91,6 +91,10 @@ export async function request<T>(
     return (await response.json()) as T
   } catch (error) {
     if (error instanceof PerpsError) {
+      throw error
+    }
+
+    if (isAbortError(error)) {
       throw error
     }
 
