@@ -57,12 +57,12 @@ const account = (
 })
 
 describe('summarizeAccount', () => {
-  describe('free collateral (collateralIsGross: false)', () => {
+  describe("'free' collateral", () => {
     it('reports collateral as available margin and adds locked margin back for gross', () => {
       const summary = summarizeAccount(
         account([balance('800')]),
         [position('200', '50')],
-        false
+        'free'
       )
       expect(summary.availableMargin).toBe('800')
       expect(summary.marginUsed).toBe('200')
@@ -75,19 +75,19 @@ describe('summarizeAccount', () => {
       const summary = summarizeAccount(
         account([balance('800')], [balance('250')]),
         [position('200', '0')],
-        false
+        'free'
       )
       expect(summary.availableMargin).toBe('800')
       expect(summary.portfolioValue).toBe('1250')
     })
   })
 
-  describe('gross collateral (collateralIsGross: true)', () => {
-    it('subtracts margin used to reach available margin', () => {
+  describe("'gross' collateral", () => {
+    it('subtracts margin used to reach available margin and adds pnl to portfolio', () => {
       const summary = summarizeAccount(
         account([balance('10000')]),
         [position('940', '100')],
-        true
+        'gross'
       )
       expect(summary.availableMargin).toBe('9060')
       expect(summary.portfolioValue).toBe('10100')
@@ -96,11 +96,47 @@ describe('summarizeAccount', () => {
     })
   })
 
+  describe("'equity' collateral", () => {
+    it('adds nothing on top: margin and pnl are already embedded', () => {
+      // cash 1000, locked margin 100, uPnL +50 → equity rows sum to 1050
+      const summary = summarizeAccount(
+        account([balance('1050')]),
+        [position('100', '50')],
+        'equity'
+      )
+      expect(summary.availableMargin).toBe('950')
+      expect(summary.portfolioValue).toBe('1050')
+      expect(summary.marginUsed).toBe('100')
+      expect(summary.unrealizedPnl).toBe('50')
+    })
+
+    it('does not overstate available margin when the embedded pnl is negative', () => {
+      // cash 1000, locked margin 100, uPnL -200 → equity rows sum to 800
+      const summary = summarizeAccount(
+        account([balance('800')]),
+        [position('100', '-200')],
+        'equity'
+      )
+      expect(summary.availableMargin).toBe('700')
+      expect(summary.portfolioValue).toBe('800')
+    })
+
+    it('adds non-collateral balances to portfolio value only', () => {
+      const summary = summarizeAccount(
+        account([balance('1050')], [balance('250')]),
+        [position('100', '50')],
+        'equity'
+      )
+      expect(summary.availableMargin).toBe('950')
+      expect(summary.portfolioValue).toBe('1300')
+    })
+  })
+
   it('aggregates margin used and pnl across multiple positions', () => {
     const summary = summarizeAccount(
       account([balance('1000')]),
       [position('100', '10'), position('150', '-30')],
-      false
+      'free'
     )
     expect(summary.marginUsed).toBe('250')
     expect(summary.unrealizedPnl).toBe('-20')
@@ -108,7 +144,7 @@ describe('summarizeAccount', () => {
   })
 
   it('returns string scalars for an empty account', () => {
-    expect(summarizeAccount(account([]), [], false)).toEqual({
+    expect(summarizeAccount(account([]), [], 'free')).toEqual({
       portfolioValue: '0',
       availableMargin: '0',
       marginUsed: '0',

@@ -56,9 +56,9 @@ describe('getAccount', () => {
     expect(
       result.config.provider === 'hyperliquid' ? result.config.agents : []
     ).toEqual(HL_EXTRA_AGENTS)
-    // Standard mode: spot USDC + free perps venue equity (accountValue, net of
-    // locked margin) are both category-quote collateral; no non-collateral
-    // balances.
+    // Standard mode: spot USDC + total perps venue equity (accountValue,
+    // locked margin and uPnL included) are both category-quote collateral;
+    // no non-collateral balances.
     expect(result.balances).toEqual([])
     expect(result.collateralBalances).toEqual([
       {
@@ -87,6 +87,30 @@ describe('getAccount', () => {
     ])
     expect(result.marginUsed).toBe('500')
     expect(result.unrealizedPnl).toBe('100')
+  })
+
+  it('reads marginSummary (whole account), not the cross-only crossMarginSummary', async () => {
+    // Isolated positions diverge the two summaries: marginSummary carries the
+    // full account equity/margin, crossMarginSummary only the cross subset.
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          marginSummary: { accountValue: '1200', totalMarginUsed: '300' },
+          crossMarginSummary: { accountValue: '1000', totalMarginUsed: '100' },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    const venue = result.collateralBalances.find(
+      (b) => b.categoryId === 'hyperliquid'
+    )
+    expect(venue?.valueUsd).toBe('1200')
+    expect(result.marginUsed).toBe('300')
   })
 
   it('carries the positions array, deep-equal to getPositions output for identical fixtures', async () => {
@@ -166,7 +190,7 @@ describe('getAccount', () => {
       address: ADDRESS,
     })
 
-    // DEX_ABSTRACTION: spot USDC + free venue equity, both collateral.
+    // DEX_ABSTRACTION: spot USDC + total venue equity, both collateral.
     expect(result.collateralBalances.map((b) => b.categoryId).sort()).toEqual([
       'hyperliquid',
       'spot',
