@@ -97,6 +97,7 @@ function projectLighterDescriptor(
 
     case ActionType.APPROVE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
+    case ActionType.SET_REFERRAL:
     case ActionType.SEND_ASSET:
     case ActionType.WITHDRAWAL:
     case ActionType.TRANSFER:

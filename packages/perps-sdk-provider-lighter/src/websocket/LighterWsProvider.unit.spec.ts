@@ -347,6 +347,120 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('public trades', () => {
+    it('subscribes to the trade channel for the market', async () => {
+      const provider = makeProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'trades', dex: 'lighter', marketId: '5' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'trade/5' })
+      )
+      provider.close()
+    })
+
+    it('maps update/trade frames to the trades event (is_maker_ask → taker side)', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/trade',
+          channel: 'trade:0',
+          trades: [
+            {
+              trade_id: 16164557907,
+              size: '0.1336',
+              price: '2181.83',
+              is_maker_ask: false,
+              timestamp: 1773854156654,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'trades',
+        data: [
+          {
+            provider: 'lighter',
+            marketId: '0',
+            price: '2181.83',
+            size: '0.1336',
+            timestamp: 1773854156654,
+            side: 'sell',
+            id: '16164557907',
+          },
+        ],
+      })
+      p.close()
+    })
+
+    it('treats is_maker_ask=true as a taker buy and prefers trade_id_str', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/trade',
+          channel: 'trade:0',
+          trades: [
+            {
+              trade_id: 1,
+              trade_id_str: '99999999999999',
+              size: '0.5',
+              price: '50000',
+              is_maker_ask: true,
+              timestamp: 1000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'trades',
+        data: [
+          {
+            provider: 'lighter',
+            marketId: '0',
+            price: '50000',
+            size: '0.5',
+            timestamp: 1000,
+            side: 'buy',
+            id: '99999999999999',
+          },
+        ],
+      })
+      p.close()
+    })
+
+    it('emits nothing for an empty trades batch', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:0', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/trade',
+          channel: 'trade:0',
+          trades: [],
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      p.close()
+    })
+  })
+
   describe('handleMessage — auth channels (indexed-by-market format)', () => {
     it('emits orderUpdates when orders arrive as { marketIndex: [Order] } object', async () => {
       const p = makeProvider()
@@ -826,6 +940,7 @@ describe('LighterWsProvider', () => {
         midPrice: '50001',
         markPrice: '50000',
         oraclePrice: '49998',
+        priceChange24h: '1.2',
         openInterest: '12.5',
       })
 
@@ -860,7 +975,119 @@ describe('LighterWsProvider', () => {
         midPrice: '1814.34',
         markPrice: '1814.34',
         oraclePrice: '1814.00',
+        priceChange24h: '0.5',
       })
+      provider.close()
+    })
+
+    it('subscribes to one perp marketContext channel and emits a single context', async () => {
+      marketsFetchMock.mockReset()
+      marketsFetchMock.mockResolvedValue(marketsFailureResponse())
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '0' },
+        listener
+      )
+
+      expect(marketsFetchMock).not.toHaveBeenCalled()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/0' })
+      )
+
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats/0',
+          market_stats: {
+            market_id: 0,
+            index_price: '49998',
+            mark_price: '50000',
+            mid_price: '50001',
+            open_interest: '12.5',
+            last_trade_price: '50002',
+            current_funding_rate: '0.0001',
+            funding_rate: '0.00009',
+            funding_timestamp: 1704067200000,
+            daily_base_token_volume: '10',
+            daily_quote_token_volume: '500000',
+            daily_price_change: '1.2',
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: '0',
+          midPrice: '50001',
+          markPrice: '50000',
+          oraclePrice: '49998',
+          volume24h: '500000',
+          funding: { rate: '0.0001' },
+        },
+      })
+      provider.close()
+    })
+
+    it('subscribes to one spot marketContext channel and emits a single context', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '2048' },
+        listener
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/2048' })
+      )
+
+      ;(provider as any).handleMessage(
+        JSON.stringify({
+          type: 'update/spot_market_stats',
+          channel: 'spot_market_stats/2048',
+          spot_market_stats: {
+            market_id: 2048,
+            symbol: 'LIT/USDC',
+            index_price: '1814.00',
+            mid_price: '1814.34',
+            best_ask_price: '1814.40',
+            best_bid_price: '1814.28',
+            last_trade_price: '1814.34',
+            daily_base_token_volume: 100,
+            daily_quote_token_volume: 200,
+            daily_price_low: 1800,
+            daily_price_high: 1820,
+            daily_price_change: 0.5,
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toMatchObject({
+        channel: 'marketContext',
+        data: {
+          marketId: '2048',
+          midPrice: '1814.34',
+          markPrice: '1814.34',
+          oraclePrice: '1814.00',
+          volume24h: '200',
+          priceChange24h: '0.5',
+        },
+      })
+      expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
+      expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
       provider.close()
     })
 

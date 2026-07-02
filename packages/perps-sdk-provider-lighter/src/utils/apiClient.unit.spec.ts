@@ -81,4 +81,37 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
       client.getAuthed('/api/v1/accountLimits', 'tok')
     ).rejects.toBeInstanceOf(LighterAuthRejectedError)
   })
+
+  it('throws ThirdPartyError (not TypeError) on a 200 body with a non-auth error code', async () => {
+    const client = clientWith(
+      stubFetch(200, { code: 21100, message: 'account not found' })
+    )
+    await expect(
+      client.getAuthed('/api/v1/accountActiveOrders', 'tok')
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+  })
+
+  it('does not raise the non-auth body error as LighterAuthRejectedError', async () => {
+    const client = clientWith(
+      stubFetch(200, { code: 21100, message: 'account not found' })
+    )
+    await expect(
+      client.getAuthed('/api/v1/accountActiveOrders', 'tok')
+    ).rejects.not.toBeInstanceOf(LighterAuthRejectedError)
+  })
+
+  it('throws ThirdPartyError on a non-2xx HTTP status', async () => {
+    const client = clientWith(stubFetch(500, { message: 'boom' }))
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toBeInstanceOf(PerpsError)
+  })
+
+  it('returns the parsed body when the 200 response carries a success code', async () => {
+    const payload = { code: 200, orders: [] }
+    const client = clientWith(stubFetch(200, payload))
+    await expect(
+      client.getAuthed('/api/v1/accountActiveOrders', 'tok')
+    ).resolves.toEqual(payload)
+  })
 })

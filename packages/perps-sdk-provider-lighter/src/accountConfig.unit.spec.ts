@@ -153,4 +153,18 @@ describe('projectLighterConfigSettings', () => {
       projectLighterConfigSettings(baseConfig, [badDescriptor], [])
     ).toThrow(/no projection for descriptor type/)
   })
+
+  it('throws for SET_REFERRAL — Hyperliquid-only, no Lighter projection', () => {
+    const setReferralSetup: ProviderAction = {
+      type: ActionType.SET_REFERRAL,
+      title: 'Set referrer',
+      description: 'HL-only — should not appear here.',
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.EIP712,
+      params: [],
+    }
+    expect(() =>
+      projectLighterConfigSettings(baseConfig, [setReferralSetup], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
 })

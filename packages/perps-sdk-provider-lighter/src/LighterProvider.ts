@@ -6,6 +6,7 @@ import {
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
+  type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
   type ProviderGetFillsParams,
@@ -678,6 +679,7 @@ export const lighterProvider = (
         address: params.address,
         balances,
         collateralBalances,
+        positions,
         marginUsed: totalMarginUsed.toString(),
         unrealizedPnl: totalUnrealizedPnl.toString(),
         feeTier:
@@ -685,6 +687,24 @@ export const lighterProvider = (
             ? ZERO_FEE_TIER
             : projectFeeTier(limitsResult),
         config,
+      }
+    },
+
+    async accountExists(
+      params: ProviderAccountExistsParams,
+      opts?: SDKRequestOptions
+    ): Promise<boolean> {
+      try {
+        await fetchDetailedAccount(apiClient(opts), params.address)
+        return true
+      } catch (err) {
+        if (
+          err instanceof PerpsError &&
+          err.code === PerpsErrorCode.AccountNotFound
+        ) {
+          return false
+        }
+        throw err
       }
     },
 

@@ -40,6 +40,7 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.midPrice).toBe('95001')
     expect(result.markPrice).toBe('95000')
     expect(result.oraclePrice).toBe('94998')
+    expect(result.priceChange24h).toBe('1.5')
     expect(result.volume24h).toBe('987654')
     expect(result.openInterest).toBe('1234.5')
     expect(result.funding).toEqual({
@@ -55,6 +56,7 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.midPrice).toBe('3.21')
     expect(result.markPrice).toBe('3.21')
     expect(result.oraclePrice).toBe('3.2')
+    expect(result.priceChange24h).toBe('0.1')
     expect(result.volume24h).toBe('321')
     expect(result.openInterest).toBeUndefined()
     expect(result.funding).toBeUndefined()

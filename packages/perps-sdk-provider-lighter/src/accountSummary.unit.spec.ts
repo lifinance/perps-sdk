@@ -49,6 +49,7 @@ const account = (
   address: '0x0000000000000000000000000000000000000001',
   balances,
   collateralBalances,
+  positions: [],
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },

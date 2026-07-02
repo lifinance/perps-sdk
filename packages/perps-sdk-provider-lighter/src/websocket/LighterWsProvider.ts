@@ -19,7 +19,12 @@ import type {
   Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { LIGHTER_BASE_FEE_TIER, LIGHTER_PROVIDER_KEY } from '../constants.js'
+import {
+  DEFAULT_LIGHTER_REST_URL,
+  DEFAULT_LIGHTER_WS_URL,
+  LIGHTER_BASE_FEE_TIER,
+  LIGHTER_PROVIDER_KEY,
+} from '../constants.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -34,6 +39,7 @@ import type {
   LtWsOrderBookMessage,
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
+  LtWsTradeMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
@@ -45,7 +51,8 @@ import {
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
-// `orderbook` (order_book/N).
+// `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
+// (order_book/N), `trades` (trade/N).
 // Authenticated channels (require an `authProvider` option):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -69,8 +76,7 @@ import {
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
 
-const DEFAULT_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
-const DEFAULT_REST_URL = 'https://mainnet.zklighter.elliot.ai'
+const LIGHTER_SPOT_MARKET_ID_OFFSET = 2048
 
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
@@ -156,7 +162,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
 
   constructor(
-    wsUrl: string = DEFAULT_WS_URL,
+    wsUrl: string = DEFAULT_LIGHTER_WS_URL,
     providerKey = 'lighter',
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
@@ -165,14 +171,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       new ReconnectingWebSocket(wsUrl, { pingPayload: '{"type":"ping"}' }),
       providerKey
     )
-    this.api = new LighterApiClient(options.restUrl ?? DEFAULT_REST_URL, {
-      policy: resolveRetryPolicy(
-        LIGHTER_RETRY_DEFAULTS,
-        client?.config.retry,
-        LIGHTER_PROVIDER_KEY
-      ),
-      fetchImpl: client?.config.fetch,
-    })
+    this.api = new LighterApiClient(
+      options.restUrl ?? DEFAULT_LIGHTER_REST_URL,
+      {
+        policy: resolveRetryPolicy(
+          LIGHTER_RETRY_DEFAULTS,
+          client?.config.retry,
+          LIGHTER_PROVIDER_KEY
+        ),
+        fetchImpl: client?.config.fetch,
+      }
+    )
     this.authProvider = options.authProvider
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
@@ -279,8 +288,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     switch (sub.channel) {
       case 'marketsContext':
         return 'marketsContext'
+      case 'marketContext':
+        return `marketContext:${sub.marketId}`
       case 'orderbook':
         return `orderbook:${sub.marketId}`
+      case 'trades':
+        return `trades:${sub.marketId}`
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
@@ -312,6 +325,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         { channel: 'spot_market_stats/all', needsAuth: false },
       ]
     }
+    if (sub.channel === 'marketContext') {
+      const id = Number(sub.marketId)
+      if (!Number.isFinite(id)) {
+        throw new Error(
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
+        )
+      }
+      const prefix =
+        id >= LIGHTER_SPOT_MARKET_ID_OFFSET
+          ? 'spot_market_stats'
+          : 'market_stats'
+      return [{ channel: `${prefix}/${id}`, needsAuth: false }]
+    }
     if (sub.channel === 'orderbook') {
       const id = Number(sub.marketId)
       if (!Number.isFinite(id)) {
@@ -321,6 +348,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       return [{ channel: `order_book/${id}`, needsAuth: false }]
+    }
+    if (sub.channel === 'trades') {
+      const id = Number(sub.marketId)
+      if (!Number.isFinite(id)) {
+        throw new Error(
+          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
+            'MarketId must be a numeric market_id string.'
+        )
+      }
+      return [{ channel: `trade/${id}`, needsAuth: false }]
     }
     if (
       sub.channel === 'orderUpdates' ||
@@ -404,7 +441,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'subscribed/market_stats' ||
       msg.type === 'update/market_stats'
     ) {
-      this.handleMarketStats((msg as LtWsMarketStatsAllMessage).market_stats)
+      this.handleMarketStats(
+        (msg as LtWsMarketStatsAllMessage).market_stats,
+        msg.channel,
+        'market_stats'
+      )
       return
     }
 
@@ -413,7 +454,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       msg.type === 'update/spot_market_stats'
     ) {
       this.handleMarketStats(
-        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats
+        (msg as LtWsSpotMarketStatsAllMessage).spot_market_stats,
+        msg.channel,
+        'spot_market_stats'
       )
       return
     }
@@ -426,6 +469,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         msg as LtWsOrderBookMessage,
         msg.type === 'subscribed/order_book'
       )
+      return
+    }
+
+    if (msg.type === 'subscribed/trade' || msg.type === 'update/trade') {
+      this.handleTrades(msg as LtWsTradeMessage)
       return
     }
 
@@ -555,13 +603,32 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   private handleMarketStats(
-    stats?: Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+    stats:
+      | LtWsMarketStats
+      | LtWsSpotMarketStats
+      | Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+      | undefined,
+    channel: string | undefined,
+    prefix: 'market_stats' | 'spot_market_stats'
   ): void {
     if (!stats) {
       return
     }
-    const entries = Object.values(stats)
+    const entries = marketStatsEntries(stats)
     if (entries.length === 0) {
+      return
+    }
+    const channelMarketId = this.marketIdFromChannel(channel, prefix)
+    if (channelMarketId !== null) {
+      for (const entry of entries) {
+        const ctx = mapMarketContext(entry)
+        if (ctx.marketId === String(channelMarketId)) {
+          this.emit(`marketContext:${ctx.marketId}`, {
+            channel: 'marketContext',
+            data: ctx,
+          })
+        }
+      }
       return
     }
     for (const entry of entries) {
@@ -611,11 +678,38 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
   }
 
-  private marketIdFromChannel(channel: string | undefined): number | null {
-    if (!channel?.startsWith('order_book')) {
+  private handleTrades(msg: LtWsTradeMessage): void {
+    const marketId = this.marketIdFromChannel(msg.channel, 'trade')
+    if (marketId === null) {
+      return
+    }
+    const trades = msg.trades ?? []
+    if (trades.length === 0) {
+      return
+    }
+    const assetId = String(marketId)
+    this.emit(`trades:${assetId}`, {
+      channel: 'trades',
+      data: trades.map((t) => ({
+        provider: this.providerKey,
+        marketId: assetId,
+        price: t.price,
+        size: t.size,
+        timestamp: t.timestamp,
+        side: t.is_maker_ask ? 'buy' : 'sell',
+        id: t.trade_id_str ?? String(t.trade_id),
+      })),
+    })
+  }
+
+  private marketIdFromChannel(
+    channel: string | undefined,
+    prefix = 'order_book'
+  ): number | null {
+    if (!channel?.startsWith(prefix)) {
       return null
     }
-    const tail = channel.slice('order_book'.length)
+    const tail = channel.slice(prefix.length)
     if (tail.length < 2 || (tail[0] !== '/' && tail[0] !== ':')) {
       return null
     }
@@ -649,6 +743,21 @@ function isValidLighterFrame(msg: LtWsMessage): boolean {
     )
   }
   return true
+}
+
+function marketStatsEntries(
+  stats:
+    | LtWsMarketStats
+    | LtWsSpotMarketStats
+    | Record<string, LtWsMarketStats | LtWsSpotMarketStats>
+): Array<LtWsMarketStats | LtWsSpotMarketStats> {
+  return isMarketStatsEntry(stats) ? [stats] : Object.values(stats)
+}
+
+function isMarketStatsEntry(
+  value: unknown
+): value is LtWsMarketStats | LtWsSpotMarketStats {
+  return isObject(value) && typeof value.market_id === 'number'
 }
 
 function applyLevels(

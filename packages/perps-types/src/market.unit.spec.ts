@@ -88,7 +88,9 @@ describe('MarketContext', () => {
       markPrice: '60010',
       oraclePrice: '59995',
       prevDayPrice: '59000',
+      priceChange24h: '1.71',
       volume24h: '123456',
+      marketCap: '1200000000000',
       openInterest: '1000',
       funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
     }
@@ -96,6 +98,8 @@ describe('MarketContext', () => {
     expect(ctx.midPrice).toBe('60000')
     expect(ctx.markPrice).toBe('60010')
     expect(ctx.oraclePrice).toBe('59995')
+    expect(ctx.priceChange24h).toBe('1.71')
+    expect(ctx.marketCap).toBe('1200000000000')
     expect(ctx.funding?.rate).toBe('0.0001')
   })
 

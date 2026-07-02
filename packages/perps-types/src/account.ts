@@ -65,6 +65,8 @@ export interface AccountResponse {
   balances: Balance[]
   /** SDK-determined collateral subset: spot balances in a category's quote asset. */
   collateralBalances: Balance[]
+  /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
+  positions: Position[]
   marginUsed: string
   unrealizedPnl: string
   feeTier: FeeTier

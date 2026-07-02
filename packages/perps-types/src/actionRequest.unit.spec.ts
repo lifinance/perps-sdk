@@ -53,6 +53,13 @@ const approveBuilderFeeCreate: CreateActionRequest = {
   params: {},
 }
 
+const setReferralCreate: CreateActionRequest = {
+  provider: 'hyperliquid',
+  address: SOME_ADDRESS,
+  action: ActionType.SET_REFERRAL,
+  params: {},
+}
+
 const placeOrderExecute: ExecuteActionRequest = {
   provider: 'hyperliquid',
   address: SOME_ADDRESS,
@@ -162,6 +169,13 @@ type _CreateApproveBuilderFeeParams = Expect<
   >
 >
 
+type _CreateSetReferralParams = Expect<
+  Equals<
+    Extract<CreateActionRequest, { action: ActionType.SET_REFERRAL }>['params'],
+    Record<string, never>
+  >
+>
+
 // `signerAddress?` must remain optional on every branch.
 type _SignerAddressOptional = Expect<
   Equals<
@@ -197,6 +211,7 @@ export const _fixtures = {
   withdrawalCreate,
   transferCreate,
   approveBuilderFeeCreate,
+  setReferralCreate,
   placeOrderExecute,
   withdrawalExecute,
   badPlaceOrderWithWithdrawalParams,
@@ -210,6 +225,7 @@ export type _TypeAssertions = [
   _CreateWithdrawalParams,
   _CreateTransferParams,
   _CreateApproveBuilderFeeParams,
+  _CreateSetReferralParams,
   _SignerAddressOptional,
   _CreateActionFieldNarrows,
   _ExecuteActionFieldNarrows,
@@ -236,9 +252,10 @@ describe('CreateActionRequest discriminated union', () => {
     }
   })
 
-  it('admits the empty-object params for TRANSFER and APPROVE_BUILDER_FEE', () => {
+  it('admits the empty-object params for TRANSFER, APPROVE_BUILDER_FEE and SET_REFERRAL', () => {
     expect(transferCreate.params).toEqual({})
     expect(approveBuilderFeeCreate.params).toEqual({})
+    expect(setReferralCreate.params).toEqual({})
   })
 
   it('keeps signerAddress optional across branches', () => {
