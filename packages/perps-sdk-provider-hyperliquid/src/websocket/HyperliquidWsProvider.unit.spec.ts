@@ -1858,6 +1858,53 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('evicts a siblingFilledCanceled TP/SL leg into terminated instead of re-emitting it as active', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        {
+          channel: 'orderUpdates',
+          dex: 'hyperliquid',
+          address: '0xuser1',
+        },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: {
+                oid: 200,
+                coin: 'BTC',
+                side: 'A',
+                sz: '0.05',
+                limitPx: '0',
+                orderType: 'Stop Market',
+                origSz: '0.05',
+                reduceOnly: true,
+                timestamp: 1704067200000,
+                tif: null,
+                cloid: null,
+                triggerCondition: 'Stop Loss',
+                triggerPx: '90000',
+              },
+              status: 'siblingFilledCanceled',
+              statusTimestamp: 1704067201000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders).toHaveLength(0)
+      expect(event.data.triggerOrders).toHaveLength(0)
+      expect(event.data.terminated).toEqual(['200'])
+    })
+
     it('should emit fills event for userFills channel', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
