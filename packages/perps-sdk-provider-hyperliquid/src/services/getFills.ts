@@ -7,7 +7,11 @@ import {
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type { HlUserFills, HlUserFillsByTime } from '../types/index.js'
+import type {
+  HlUserFill,
+  HlUserFills,
+  HlUserFillsByTime,
+} from '../types/index.js'
 import { mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -19,12 +23,30 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 export interface GetFillsParams {
   address: Address
   limit?: number
-  /** `tid` of the oldest fill to return (returned items have `tid < cursor`). */
+  /** Opaque pagination cursor from a previous page's `pagination.cursor`. */
   cursor?: string
   /** Inclusive lower bound in ms-since-epoch — switches to the `userFillsByTime` endpoint. */
   startTime?: number
   /** Inclusive upper bound in ms-since-epoch — switches to the `userFillsByTime` endpoint. */
   endTime?: number
+}
+
+interface FillCursor {
+  time: number
+  tid: number
+}
+
+// HL's docs specify neither newest-first ordering nor monotonic `tid` for
+// `userFills`/`userFillsByTime`, so pagination can't rely on upstream order —
+// it must impose its own (time desc, tid desc as tiebreaker for same-time fills).
+const compareFillsDesc = (a: FillCursor, b: FillCursor): number =>
+  b.time - a.time || b.tid - a.tid
+
+const encodeCursor = (fill: FillCursor): string => `${fill.time}:${fill.tid}`
+
+const decodeCursor = (cursor: string): FillCursor => {
+  const [time, tid] = cursor.split(':').map(Number)
+  return { time, tid }
 }
 
 /**
@@ -34,9 +56,9 @@ export interface GetFillsParams {
  * list supplies the display fields; only the fills endpoint is read direct
  * from HL.
  *
- * Pagination is cursor-based on the fill's `tid`: results with
- * `tid < cursor` are kept and the last-page's tail `id` is returned as the
- * next cursor.
+ * The response is sorted (time desc, `tid` as tiebreaker) before pagination —
+ * see {@link compareFillsDesc}. The cursor encodes the last returned fill's
+ * `(time, tid)`; the next page keeps fills that sort strictly after it.
  * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
  * @public
  */
@@ -74,15 +96,19 @@ export const getFills = async (
         infoOpts
       )
 
+  const sorted = [...allFills].sort(compareFillsDesc)
+
   const filtered =
     params.cursor === undefined
-      ? allFills
-      : allFills.filter((f) => f.tid < Number.parseInt(params.cursor!, 10))
+      ? sorted
+      : sorted.filter(
+          (f) => compareFillsDesc(f, decodeCursor(params.cursor!)) > 0
+        )
 
   const hasMore = filtered.length > limit
-  const items = filtered
-    .slice(0, limit)
-    .map((f) => mapFill(f, registry.require(f.coin)))
+  const page = filtered.slice(0, limit)
+  const items = page.map((f) => mapFill(f, registry.require(f.coin)))
+  const lastPageFill: HlUserFill | undefined = page[page.length - 1]
 
   return {
     provider: PROVIDER_KEY,
@@ -90,7 +116,7 @@ export const getFills = async (
     pagination: {
       limit,
       hasMore,
-      cursor: items.length > 0 ? items[items.length - 1].id : undefined,
+      cursor: lastPageFill ? encodeCursor(lastPageFill) : undefined,
     },
   }
 }
