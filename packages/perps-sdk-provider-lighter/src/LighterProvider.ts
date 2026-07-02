@@ -124,10 +124,26 @@ const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
 /**
  * Expiry requested when the SDK lazily creates a Lighter read-only token for
- * authenticated reads. 10 years — Lighter caps read-only tokens at the
- * venue's maximum, so a single token covers the account's lifetime.
+ * authenticated reads. One day under Lighter's 10-year maximum: the cap is
+ * enforced against the server clock, so the margin keeps a client clock
+ * running ahead from tipping the request over it.
  */
-const DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS = 10 * 365 * 24 * 60 * 60
+const DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS =
+  10 * 365 * 24 * 60 * 60 - 24 * 60 * 60
+
+/**
+ * Exponential backoff for re-attempting read-only token creation after a
+ * failure. Reads fall back to the standard token only while the current
+ * window is open; the next read after it elapses re-attempts creation.
+ */
+const READ_ONLY_CREATION_BACKOFF_BASE_MS = 30_000
+const READ_ONLY_CREATION_BACKOFF_MAX_MS = 10 * 60_000
+
+interface ReadOnlyCreationBackoff {
+  /** Epoch ms; creation may be re-attempted once the clock passes this. */
+  retryAtMs: number
+  attempt: number
+}
 
 /** Compare Lighter public keys irrespective of `0x` prefix / casing. */
 const normalizeLighterPublicKey = (key: string): string =>
@@ -267,12 +283,13 @@ export const lighterProvider = (
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
-  // Single-flight + failure-cache for lazy read-only token creation. Without
-  // these, concurrent reads on first load all race `tokens/create`, and any
-  // sustained failure (CORS preflight, body validation, etc.) is retried on
-  // every subsequent read — flooding the endpoint. Keyed by lowercase address.
+  // Single-flight + backoff for lazy read-only token creation. Without these,
+  // concurrent reads on first load all race `tokens/create`, and any sustained
+  // failure (CORS preflight, body validation, etc.) is retried on every
+  // subsequent read — flooding the endpoint. Keyed by lowercase address.
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
-  const readOnlyCreationFailed: Set<string> = new Set()
+  const readOnlyCreationBackoff: Map<string, ReadOnlyCreationBackoff> =
+    new Map()
 
   const apiClient = (opts?: SDKRequestOptions): LighterApiClient => {
     const client = requireClient()
@@ -330,8 +347,9 @@ export const lighterProvider = (
    *   4. A read-only token created on first use (via signer + registered API
    *      key) and persisted for reuse.
    *   5. A standard auth token (read+write, 8h max) as a last resort — used
-   *      both as the fallback when creation is unavailable/failed and as the
-   *      credential that authorises read-only token creation.
+   *      as the credential that authorises read-only token creation, and as
+   *      the fallback while creation is failing, bounded by the
+   *      creation-retry backoff.
    * Returns `undefined` when no source can produce a token — reads degrade
    * gracefully.
    */
@@ -365,7 +383,8 @@ export const lighterProvider = (
     }
 
     const flightKey = address.toLowerCase()
-    if (readOnlyCreationFailed.has(flightKey)) {
+    const backoff = readOnlyCreationBackoff.get(flightKey)
+    if (backoff !== undefined && Date.now() < backoff.retryAtMs) {
       return standardToken()
     }
     const inFlight = readOnlyCreationInFlight.get(flightKey)
@@ -375,9 +394,10 @@ export const lighterProvider = (
 
     // No read-only token yet — create and persist one. The standard token
     // (API-key-signed) authorises Lighter's `tokens/create`; the returned
-    // read-only bearer is what we forward on reads. On failure we mark this
-    // address as "skip ro creation for the session" so subsequent reads use
-    // the standard token directly instead of hammering `tokens/create`.
+    // read-only bearer is what we forward on reads. On failure reads fall
+    // back to the standard token until the backoff window elapses, then
+    // creation is re-attempted — keeping the write-capable token's exposure
+    // in read URLs time-bounded.
     const attempt = (async (): Promise<string> => {
       try {
         const { token } = await readOnlyTokenManager.approve(
@@ -391,12 +411,22 @@ export const lighterProvider = (
             scope: 'all',
           }
         )
+        readOnlyCreationBackoff.delete(flightKey)
         return token.token
       } catch (err) {
-        readOnlyCreationFailed.add(flightKey)
+        const attemptNumber =
+          (readOnlyCreationBackoff.get(flightKey)?.attempt ?? 0) + 1
+        const delayMs = Math.min(
+          READ_ONLY_CREATION_BACKOFF_BASE_MS * 2 ** (attemptNumber - 1),
+          READ_ONLY_CREATION_BACKOFF_MAX_MS
+        )
+        readOnlyCreationBackoff.set(flightKey, {
+          retryAtMs: Date.now() + delayMs,
+          attempt: attemptNumber,
+        })
         console.warn(
-          '[lighter] read-only token creation failed; ' +
-            'falling back to standard auth tokens for this session.',
+          '[lighter] read-only token creation failed; using the standard ' +
+            `auth token for reads and retrying creation in ${Math.round(delayMs / 1000)}s.`,
           err
         )
         return standardToken()
@@ -408,8 +438,13 @@ export const lighterProvider = (
     return attempt
   }
 
-  const evictReadOnlyToken = async (address: Address): Promise<void> => {
-    readOnlyCreationFailed.delete(address.toLowerCase())
+  const evictResolvedTokens = async (address: Address): Promise<void> => {
+    const cacheKey = address.toLowerCase()
+    readOnlyCreationBackoff.delete(cacheKey)
+    // The cached standard token may itself be the revoked credential — it
+    // rides reads during the creation-failure fallback and authorises
+    // read-only token creation — so a revocation must re-sign it too.
+    standardTokenByAddress.delete(cacheKey)
     const apiKey = keyStore ? await keyStore.get(address) : null
     if (apiKey !== null) {
       await readOnlyTokenManager.remove(address, apiKey.accountIndex)
@@ -419,9 +454,10 @@ export const lighterProvider = (
   /**
    * Run an auth-gated read; if Lighter rejects the token (revoked server-side —
    * invisible to `checkSetup`, since the read-only token is a client-only
-   * concern), evict the stored read-only token and retry once with a freshly
-   * resolved one. Only self-heals tokens the SDK itself resolved — a
-   * caller-supplied `lighterAuthToken`/`authToken` source is the caller's to fix.
+   * concern), evict the SDK-resolved credentials (stored read-only token and
+   * cached standard token) and retry once with freshly resolved ones. Only
+   * self-heals tokens the SDK itself resolved — a caller-supplied
+   * `lighterAuthToken`/`authToken` source is the caller's to fix.
    */
   const retryOnRevoked = async <T>(
     opts: SDKRequestOptions | undefined,
@@ -437,7 +473,7 @@ export const lighterProvider = (
       if (!(err instanceof LighterAuthRejectedError) || !sdkOwnsToken) {
         throw err
       }
-      await evictReadOnlyToken(address)
+      await evictResolvedTokens(address)
       const fresh = await resolveAuthToken(opts, address)
       if (fresh === undefined || fresh === token) {
         throw err
