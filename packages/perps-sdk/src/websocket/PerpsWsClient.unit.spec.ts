@@ -304,6 +304,64 @@ describe('PerpsWsClient', () => {
       const ws = new PerpsWsClient(createClient())
       expect(() => ws.close()).not.toThrow()
     })
+
+    it('aborts an init suspended at getProviders: no socket, map stays empty, subscribe rejects', async () => {
+      let resolveProviders!: (value: typeof providersWithWsUrl) => void
+      const deferred = new Promise<typeof providersWithWsUrl>((resolve) => {
+        resolveProviders = resolve
+      })
+      const getProvidersMock = vi
+        .spyOn(getProvidersModule, 'getProviders')
+        .mockReturnValue(deferred)
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
+
+      const subPromise = ws.subscribe(
+        { channel: 'prices', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      ws.close()
+      resolveProviders(providersWithWsUrl)
+
+      await expect(subPromise).rejects.toThrow('PerpsWsClient is closed')
+      expect(factory).not.toHaveBeenCalled()
+      ws.reconnect('hyperliquid')
+      expect(mockReconnect).not.toHaveBeenCalled()
+
+      getProvidersMock.mockRestore()
+    })
+
+    it('rejects subscribe() issued after close()', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+
+      ws.close()
+
+      await expect(
+        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      ).rejects.toThrow('PerpsWsClient is closed')
+    })
+
+    it('rejects subscribeQuote() issued after close()', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+
+      ws.close()
+
+      await expect(
+        ws.subscribeQuote(
+          {
+            provider: 'hyperliquid',
+            symbol: 'BTC',
+            side: 'buy',
+            size: 100,
+            type: 'perps',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow('PerpsWsClient is closed')
+    })
   })
 
   describe('reconnect', () => {
