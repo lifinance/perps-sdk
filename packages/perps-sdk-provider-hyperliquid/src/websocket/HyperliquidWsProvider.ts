@@ -517,10 +517,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
-    const items = data.fills.flatMap((f) => {
-      const market = this.registry?.get(f.coin)
-      return market ? [mapFill(f as HlUserFill, market)] : []
-    })
+    // The snapshot frame carries up to ~2000 historical fills and is replayed
+    // on every reconnect via `replaySubs`; emitting them would surface old
+    // fills as live events on each network blip. Suppress it to an empty event
+    // (fill history is available via REST `getFills`) so only live fills are
+    // delivered as events.
+    const items = data.isSnapshot
+      ? []
+      : data.fills.flatMap((f) => {
+          const market = this.registry?.get(f.coin)
+          return market ? [mapFill(f as HlUserFill, market)] : []
+        })
     this.emit(`userFills:${data.user.toLowerCase()}`, {
       channel: 'fills',
       data: items,
