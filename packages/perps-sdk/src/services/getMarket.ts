@@ -1,4 +1,6 @@
 import type { Market, MarketsResponse } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 import { buildUrl, request } from '../transport/request.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
@@ -21,10 +23,11 @@ export interface GetMarketParams {
 /**
  * Get a specific market by its opaque marketId. Requests the single market
  * from the backend `/markets` route (filtered by `marketIds`) and returns the
- * first match; the backend responds 404 (thrown as a {@link PerpsError}) when
- * nothing matches.
+ * first match; throws a `MarketNotFound` {@link PerpsError} both when the
+ * backend responds 404 and when it responds 200 with an empty list, matching
+ * `MarketRegistry.require`'s miss behaviour.
  *
- * @throws {PerpsError} On backend (e.g. 404), network, or parsing errors.
+ * @throws {PerpsError} On backend (e.g. 404 or empty match), network, or parsing errors.
  * @example
  * ```ts
  * const client = createPerpsClient({ integrator: 'my-app' })
@@ -48,5 +51,14 @@ export async function getMarket(
     {},
     options
   )
-  return markets[0]
+  const market = markets[0]
+  if (market === undefined) {
+    const error = new PerpsError(
+      PerpsErrorCode.MarketNotFound,
+      `No ${params.provider} market found for marketId '${params.marketId}'`
+    )
+    error.tool = params.provider
+    throw error
+  }
+  return market
 }

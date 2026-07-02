@@ -114,21 +114,34 @@ describe('getAccountSummary', () => {
     })
   })
 
-  // Unified/portfolio-margin modes: spot holds the whole account, so collateral
-  // rows are already gross — margin must be subtracted to reach free.
+  // Unified/portfolio-margin modes: spot holds the whole account as gross
+  // collateral (locked margin included, unrealized PnL carried by the
+  // positions). HL counts cross-position uPnL toward buying power, so
+  // available margin = spot collateral − locked margin + uPnL.
   describe.each([
     ['unifiedAccount', HlAbstractionMode.UNIFIED_ACCOUNT],
     ['portfolioMargin', HlAbstractionMode.PORTFOLIO_MARGIN],
   ])('unified mode: %s', (_label, mode) => {
-    it('treats collateral as gross; available margin subtracts margin used', () => {
+    it('adds profit uPnL to available margin on top of gross spot collateral', () => {
       const summary = getAccountSummary(
         account(mode, [balance('spot', '10000')]),
         [position('940', '100')]
       )
-      expect(summary.availableMargin).toBe('9060')
+      expect(summary.availableMargin).toBe('9160')
       expect(summary.portfolioValue).toBe('10100')
       expect(summary.marginUsed).toBe('940')
       expect(summary.unrealizedPnl).toBe('100')
+    })
+
+    it('subtracts loss uPnL from available margin so buying power is not overstated', () => {
+      const summary = getAccountSummary(
+        account(mode, [balance('spot', '10000')]),
+        [position('940', '-100')]
+      )
+      expect(summary.availableMargin).toBe('8960')
+      expect(summary.portfolioValue).toBe('9900')
+      expect(summary.marginUsed).toBe('940')
+      expect(summary.unrealizedPnl).toBe('-100')
     })
   })
 

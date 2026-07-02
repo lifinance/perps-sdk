@@ -461,6 +461,144 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe('orderbook', () => {
+    const feedBook = (
+      p: LighterWsProvider,
+      type: 'subscribed/order_book' | 'update/order_book',
+      bids: Array<{ price: string; size: string }>,
+      asks: Array<{ price: string; size: string }>
+    ) =>
+      (p as any).handleMessage(
+        JSON.stringify({
+          type,
+          channel: 'order_book:0',
+          order_book: { bids, asks },
+        })
+      )
+
+    it('emits bids high→low and asks low→high, sorted by numeric price', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+
+      // Wire order is deliberately unsorted and mixes single- and multi-digit
+      // integers so a lexical sort would misorder ('9' vs '100').
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [
+          { price: '100', size: '1' },
+          { price: '9', size: '2' },
+          { price: '99.5', size: '3' },
+        ],
+        [
+          { price: '101', size: '4' },
+          { price: '9.5', size: '5' },
+          { price: '100.5', size: '6' },
+        ]
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const book = listener.mock.calls[0][0]
+      expect(book.channel).toBe('orderbook')
+      expect(book.data.provider).toBe('lighter')
+      expect(book.data.marketId).toBe('0')
+      expect(book.data.bids).toEqual([
+        { price: '100', size: '1' },
+        { price: '99.5', size: '3' },
+        { price: '9', size: '2' },
+      ])
+      expect(book.data.asks).toEqual([
+        { price: '9.5', size: '5' },
+        { price: '100.5', size: '6' },
+        { price: '101', size: '4' },
+      ])
+      p.close()
+    })
+
+    it('applies deltas incrementally: inserts, size updates, and zero-size deletes', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [
+          { price: '100', size: '1' },
+          { price: '99', size: '2' },
+        ],
+        [{ price: '101', size: '3' }]
+      )
+      // Insert a new bid, resize an existing bid, delete a bid (size 0).
+      feedBook(
+        p,
+        'update/order_book',
+        [
+          { price: '99.5', size: '9' },
+          { price: '100', size: '5' },
+          { price: '99', size: '0' },
+        ],
+        []
+      )
+
+      const book = listener.mock.calls[1][0]
+      expect(book.data.bids).toEqual([
+        { price: '100', size: '5' },
+        { price: '99.5', size: '9' },
+      ])
+      expect(book.data.asks).toEqual([{ price: '101', size: '3' }])
+      p.close()
+    })
+
+    it('reseeds the book from a fresh snapshot rather than merging into stale state', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [{ price: '100', size: '1' }],
+        [{ price: '101', size: '2' }]
+      )
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [{ price: '200', size: '7' }],
+        [{ price: '201', size: '8' }]
+      )
+
+      const book = listener.mock.calls[1][0]
+      expect(book.data.bids).toEqual([{ price: '200', size: '7' }])
+      expect(book.data.asks).toEqual([{ price: '201', size: '8' }])
+      p.close()
+    })
+
+    it('maintains full depth (no level cap) — Lighter streams the whole book', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+
+      const bids = Array.from({ length: 50 }, (_, i) => ({
+        price: String(1000 - i),
+        size: '1',
+      }))
+      const asks = Array.from({ length: 50 }, (_, i) => ({
+        price: String(1001 + i),
+        size: '1',
+      }))
+      feedBook(p, 'subscribed/order_book', bids, asks)
+
+      const book = listener.mock.calls[0][0]
+      expect(book.data.bids).toHaveLength(50)
+      expect(book.data.asks).toHaveLength(50)
+      expect(book.data.bids[0].price).toBe('1000')
+      expect(book.data.asks[0].price).toBe('1001')
+      p.close()
+    })
+  })
+
   describe('handleMessage — auth channels (indexed-by-market format)', () => {
     it('emits orderUpdates when orders arrive as { marketIndex: [Order] } object', async () => {
       const p = makeProvider()

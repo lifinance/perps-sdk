@@ -64,7 +64,7 @@ export const getOrders = async (
 
   const childOids = new Set<number>()
   for (const o of raw) {
-    for (const child of o.children) {
+    for (const child of o.children ?? []) {
       childOids.add(child.oid)
     }
   }

@@ -35,6 +35,7 @@ class MockRws {
   }
   close() {
     this.closed = true
+    this.simulateStatus('disconnected')
   }
   reconnect() {
     this.reconnectCalls += 1
@@ -142,6 +143,19 @@ describe('WsProviderBase — ref-counted fan-out', () => {
     await p.subscribe(PRICES, listener) // same reference, count → 2
 
     unsub1() // count → 1, still registered
+    p.deliver('prices', priceEvent)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('double-invoking one unsubscribe closure does not drop a sibling subscription', async () => {
+    const p = new TestProvider(new MockRws())
+    const listener: SubscriptionListener = vi.fn()
+
+    const unsub1 = await p.subscribe(PRICES, listener)
+    await p.subscribe(PRICES, listener) // same reference, count → 2
+
+    unsub1() // count → 1, still registered
+    unsub1() // repeat invocation must be a no-op, not a second decrement
     p.deliver('prices', priceEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
@@ -490,6 +504,16 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     errSpy.mockRestore()
   })
 
+  it('does not send a registered sub after close() drives status to disconnected', async () => {
+    const rws = new MockRws() // starts 'connected'
+    const p = new TestProvider(rws)
+
+    p.close()
+    await p.register('prices', { id: 'prices' })
+
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
   it('drops the registry entry when the connected inline send fails, so the failed sub is not replayed', async () => {
     const rws = new MockRws() // 'connected' — register sends inline
     const p = new TestProvider(rws)
@@ -503,5 +527,81 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     rws.simulateOpen()
     await flushAsync()
     expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('WsProviderBase — resubscribe replay races a concurrent subscribe', () => {
+  const CHANNEL_C = { channel: 'c', dex: 'test' } as Subscription
+
+  /** Gate every `sendSubscribe` on a resolver the test releases explicitly. */
+  const gateSends = (p: TestProvider): Array<() => void> => {
+    const pending: Array<() => void> = []
+    p.sendSubscribeSpy.mockReset()
+    p.sendSubscribeSpy.mockImplementation(
+      () => new Promise<void>((resolve) => pending.push(resolve))
+    )
+    return pending
+  }
+
+  const drain = async (pending: Array<() => void>): Promise<void> => {
+    while (pending.length > 0) {
+      for (const resolve of pending.splice(0)) {
+        resolve()
+      }
+      await flushAsync()
+    }
+  }
+
+  const idsSent = (p: TestProvider): string[] =>
+    p.sendSubscribeSpy.mock.calls.map((call) => (call[0] as { id: string }).id)
+
+  it('sends exactly one subscribe per channel when a subscribe lands mid-replay', async () => {
+    const rws = new MockRws() // 'connected' — inline register sends immediately
+    const p = new TestProvider(rws)
+    await p.register('a', { id: 'a' })
+    await p.register('b', { id: 'b' })
+
+    const pending = gateSends(p)
+
+    // Reconnect open → replaySubs parks awaiting the first entry's send.
+    rws.simulateOpen()
+    await flushAsync()
+
+    // New channel while replay is suspended; status is 'connected', so
+    // registerSub sends its frame inline.
+    p.openImpl = async () => {
+      await p.register('c', { id: 'c' })
+      return vi.fn()
+    }
+    const subC = p.subscribe(CHANNEL_C, vi.fn())
+    await flushAsync()
+
+    await drain(pending)
+    await subC
+
+    const ids = idsSent(p)
+    expect(ids.filter((id) => id === 'c')).toHaveLength(1)
+    expect(ids.filter((id) => id === 'a')).toHaveLength(1)
+    expect(ids.filter((id) => id === 'b')).toHaveLength(1)
+  })
+
+  it('does not send a subscribe for an entry unregistered mid-replay', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    await p.register('a', { id: 'a' })
+    await p.register('b', { id: 'b' })
+
+    const pending = gateSends(p)
+
+    rws.simulateOpen()
+    await flushAsync()
+
+    p.unregister('b')
+
+    await drain(pending)
+
+    const ids = idsSent(p)
+    expect(ids).toContain('a')
+    expect(ids).not.toContain('b')
   })
 })

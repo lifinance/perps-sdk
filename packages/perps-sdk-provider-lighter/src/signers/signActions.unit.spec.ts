@@ -8,7 +8,7 @@ import type {
 import { ActionType, SigningMethod } from '@lifi/perps-types'
 import { type Address, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrum } from 'viem/chains'
+import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -259,7 +259,10 @@ describe('lighterSignActions', () => {
      * (confirmation) calls, assigns each broadcast leg a distinct hash, and
      * returns the per-leg receipt status the test prescribes.
      */
-    function makeRecordingWallet(legStatuses: ('0x1' | '0x0')[]) {
+    function makeRecordingWallet(
+      legStatuses: ('0x1' | '0x0')[],
+      chain = arbitrum
+    ) {
       const order: string[] = []
       const broadcastHashes: string[] = []
       let broadcastIndex = 0
@@ -268,7 +271,7 @@ describe('lighterSignActions', () => {
         async request({ method }) {
           switch (method) {
             case 'eth_chainId':
-              return `0x${arbitrum.id.toString(16)}`
+              return `0x${chain.id.toString(16)}`
             case 'eth_getTransactionCount':
               return `0x${broadcastIndex.toString(16)}`
             case 'eth_estimateGas':
@@ -320,7 +323,7 @@ describe('lighterSignActions', () => {
 
       const wallet = createWalletClient({
         account: ACCOUNT,
-        chain: arbitrum,
+        chain,
         transport,
       })
       return { wallet, order, broadcastHashes }
@@ -389,6 +392,26 @@ describe('lighterSignActions', () => {
           ADDRESS
         )
       ).rejects.toThrow(/end-user wallet/i)
+    })
+
+    it('refuses to broadcast when the wallet chain differs from txParams.chainId', async () => {
+      // Wallet on mainnet; the step targets arbitrum. Broadcasting here would
+      // sign on the wrong chain (the reported bug), so it must throw first.
+      const { wallet, order } = makeRecordingWallet(['0x1'], mainnet)
+
+      await expect(
+        lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStep('approve')],
+          ADDRESS,
+          {
+            userWallet: wallet,
+          }
+        )
+      ).rejects.toThrow(/chain/i)
+
+      expect(order).toEqual([])
     })
   })
 

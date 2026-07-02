@@ -97,8 +97,9 @@ const encodeCompressed = async (payload: unknown): Promise<string> => {
   return btoa(bin)
 }
 
-// Seed mid/mark via a `fastAssetCtxs` frame. The provider decodes the payload
-// off the microtask/threadpool queue; await lets that settle before asserting.
+// Dispatch a `fastAssetCtxs` frame. The provider decodes the payload off the
+// async DecompressionStream queue, so callers must `vi.waitFor` the resulting
+// emission rather than asserting against a fixed decode-time budget.
 const seedFast = async (
   ctxs: Record<string, { markPx?: string; midPx?: string | null }>
 ) => {
@@ -106,7 +107,6 @@ const seedFast = async (
   getMockRwsInstance().simulateMessage(
     JSON.stringify({ channel: 'fastAssetCtxs', data })
   )
-  await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
 // --- Mock ReconnectingWebSocket ---
@@ -1515,6 +1515,129 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('keeps untouched markets referentially stable across incremental frames', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      seedMids({ BTC: '95001', ETH: '3401' })
+      const first = listener.mock.calls.at(-1)?.[0]
+
+      // fastAssetCtxs frame touches only BTC.
+      await seedFast({ BTC: { midPx: '95500' } })
+
+      await vi.waitFor(() => {
+        const second = listener.mock.calls.at(-1)?.[0]
+        expect(second.data).not.toBe(first.data)
+        expect(second.data.ETH).toBe(first.data.ETH)
+        expect(second.data.BTC).not.toBe(first.data.BTC)
+        expect(second.data.BTC.midPrice).toBe('95500')
+        // The earlier snapshot must not have been mutated by the later frame.
+        expect(first.data.BTC.midPrice).toBe('95001')
+      })
+
+      const second = listener.mock.calls.at(-1)?.[0]
+
+      // pac frame touches only ETH.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [{ coin: 'ETH', midPx: '3410' }]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const third = listener.mock.calls.at(-1)?.[0]
+        expect(third.data).not.toBe(second.data)
+        expect(third.data.BTC).toBe(second.data.BTC)
+        expect(third.data.ETH).not.toBe(second.data.ETH)
+        expect(third.data.ETH.midPrice).toBe('3410')
+      })
+    })
+
+    it('drops a fast-only market whose mid is nulled and no other feed covers it', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      await seedFast({ ETH: { midPx: '3400' } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.ETH).toEqual({
+          marketId: 'ETH',
+          midPrice: '3400',
+          markPrice: '3400',
+        })
+      })
+
+      // HL sends midPx null when the book empties; with no mark and no
+      // asset-context frame the market no longer maps to a context.
+      await seedFast({ ETH: { midPx: null } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.ETH).toBeUndefined()
+      })
+    })
+
+    it('keeps perp entries referentially stable across sac frames touching only spot', async () => {
+      const spotMarket: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      seedMids({ BTC: '95001' })
+      const first = listener.mock.calls.at(-1)?.[0]
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          }),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const second = listener.mock.calls.at(-1)?.[0]
+        expect(second.data).not.toBe(first.data)
+        expect(second.data.BTC).toBe(first.data.BTC)
+        expect(second.data['PURR/USDC']).toMatchObject({
+          marketId: 'PURR/USDC',
+          midPrice: '0.11',
+          markPrice: '0.1',
+        })
+      })
+    })
+
     it('emits orderbook event for compact l2 snapshot frames', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -1601,23 +1724,87 @@ describe('HyperliquidWsProvider', () => {
           data: { c: compressed },
         })
       )
+
+      // The compressed delta decodes off the microtask/threadpool queue; poll
+      // until the decoded-delta event lands rather than racing a fixed timeout.
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event).toEqual({
+          channel: 'orderbook',
+          data: {
+            provider: 'hyperliquid',
+            marketId: 'BTC',
+            bids: [
+              { price: '95000', size: '1.1' },
+              { price: '94995', size: '0.4' },
+              { price: '94990', size: '2.0' },
+            ],
+            asks: [{ price: '95020', size: '2.5' }],
+            timestamp: 1704067200500,
+          },
+        })
+      })
+    })
+
+    it('discards a compact delta that decodes after a newer frame applied', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [{ px: '95000', sz: '1.0', n: 1 }],
+                [{ px: '95010', sz: '1.5', n: 1 }],
+              ],
+              time: 1000,
+            },
+          },
+        })
+      )
+
+      // Compressed delta with an older timestamp; its decode is async and
+      // completes only after the synchronous update below has been applied.
+      const stale = await encodeCompressed({
+        c: 'BTC',
+        t: 1500,
+        l: [[{ p: '95000', s: '9.9' }], []],
+        r: [[], []],
+      })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'l2', data: { c: stale } })
+      )
+
+      // Uncompressed update with a NEWER timestamp applies synchronously,
+      // before the compressed delta finishes decoding.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            u: {
+              c: 'BTC',
+              t: 2000,
+              l: [[{ p: '95000', s: '5.5' }], []],
+              r: [[], []],
+            },
+          },
+        })
+      )
+
+      // Release the deferred decode of the compressed delta.
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       const event = listener.mock.calls.at(-1)?.[0]
-      expect(event).toEqual({
-        channel: 'orderbook',
-        data: {
-          provider: 'hyperliquid',
-          marketId: 'BTC',
-          bids: [
-            { price: '95000', size: '1.1' },
-            { price: '94995', size: '0.4' },
-            { price: '94990', size: '2.0' },
-          ],
-          asks: [{ price: '95020', size: '2.5' }],
-          timestamp: 1704067200500,
-        },
-      })
+      expect(event.data.bids).toEqual([{ price: '95000', size: '5.5' }])
+      expect(event.data.timestamp).toBe(2000)
     })
 
     it('applies uncompressed l2 update frames with index removals', async () => {
@@ -2165,7 +2352,20 @@ describe('HyperliquidWsProvider', () => {
       const provider = createEnrichingProvider([...HL_MARKETS, PURR_SPOT])
       const listener = vi.fn()
 
+      // The fast mid decodes off the async DecompressionStream queue; observe it
+      // via marketsContext and wait until it has applied, so the single spotState
+      // frame prices against a known mid instead of racing the decode.
+      const midProbe = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        midProbe
+      )
       await seedFast({ 'PURR/USDC': { midPx: '0.5' } })
+      await vi.waitFor(() => {
+        expect(
+          midProbe.mock.calls.at(-1)?.[0]?.data['PURR/USDC']?.midPrice
+        ).toBe('0.5')
+      })
 
       await provider.subscribe(
         { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
@@ -2822,11 +3022,9 @@ describe('HyperliquidWsProvider', () => {
       warnSpy.mockRestore()
     })
 
-    it('refetches the registry on an unknown market id and maps it on the next frame', async () => {
+    it('skips an unknown market id without refetching the registry', async () => {
       marketsFetchMock.mockReset()
-      marketsFetchMock
-        .mockResolvedValueOnce({ markets: HL_MARKETS })
-        .mockResolvedValue({ markets: [...HL_MARKETS, XYZ_BRENTOIL_MARKET] })
+      marketsFetchMock.mockResolvedValue({ markets: HL_MARKETS })
       const provider = new HyperliquidWsProvider(
         'wss://api.hyperliquid.xyz/ws',
         providerKey,
@@ -2839,6 +3037,7 @@ describe('HyperliquidWsProvider', () => {
         { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
+      expect(marketsFetchMock).toHaveBeenCalledTimes(1)
 
       const frame = allDexsFrame('0xuser1', [
         ['', ['BTC']],
@@ -2848,56 +3047,15 @@ describe('HyperliquidWsProvider', () => {
       await flushMicrotasks()
       getMockRwsInstance().simulateMessage(frame)
 
-      expect(marketsFetchMock).toHaveBeenCalledTimes(2)
+      expect(marketsFetchMock).toHaveBeenCalledTimes(1)
       expect(listener).toHaveBeenCalledTimes(2)
       expect(
         listener.mock.calls[0][0].data.map((p: any) => p.market.id)
       ).toEqual(['BTC'])
       expect(
         listener.mock.calls[1][0].data.map((p: any) => p.market.id)
-      ).toEqual(['BTC', 'xyz:BRENTOIL'])
+      ).toEqual(['BTC'])
       warnSpy.mockRestore()
-    })
-
-    it('refetches at most once per cooldown window for a persistently unknown market', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] })
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      try {
-        marketsFetchMock.mockReset()
-        marketsFetchMock.mockResolvedValue({ markets: HL_MARKETS })
-        const provider = new HyperliquidWsProvider(
-          'wss://api.hyperliquid.xyz/ws',
-          providerKey,
-          freshClient()
-        )
-        const listener = vi.fn()
-
-        await provider.subscribe(
-          { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
-          listener
-        )
-        expect(marketsFetchMock).toHaveBeenCalledTimes(1)
-
-        const frame = allDexsFrame('0xuser1', [['xyz', ['xyz:BRENTOIL']]])
-        getMockRwsInstance().simulateMessage(frame)
-        await flushMicrotasks()
-        expect(marketsFetchMock).toHaveBeenCalledTimes(2)
-
-        getMockRwsInstance().simulateMessage(frame)
-        await flushMicrotasks()
-        expect(marketsFetchMock).toHaveBeenCalledTimes(2)
-
-        vi.setSystemTime(Date.now() + 60_000)
-        getMockRwsInstance().simulateMessage(frame)
-        await flushMicrotasks()
-        expect(marketsFetchMock).toHaveBeenCalledTimes(3)
-
-        // Every frame still emitted (empty — the only position is unknown).
-        expect(listener).toHaveBeenCalledTimes(3)
-      } finally {
-        warnSpy.mockRestore()
-        vi.useRealTimers()
-      }
     })
   })
 
