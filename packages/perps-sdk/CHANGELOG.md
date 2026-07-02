@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 1.5.3
+
+### Patch Changes
+
+- [#165](https://github.com/lifinance/perps-sdk/pull/165) [`e2da3cf`](https://github.com/lifinance/perps-sdk/commit/e2da3cf245ebe2f8b6adab24fa269cbef2f49f4f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Make `PerpsWsClient.close()` terminal: a subscription whose provider init is suspended mid-flight when `close()` runs now aborts instead of resurrecting a live auto-reconnecting socket, and `subscribe`/`subscribeQuote` calls after `close()` reject with a typed error.
+
+- Updated dependencies [[`0390904`](https://github.com/lifinance/perps-sdk/commit/0390904489fdacee26af87dce33cbe960e8d8f4e)]:
+  - @lifi/perps-types@1.6.0
+
 ## 1.5.2
 
 ### Patch Changes
