@@ -39,4 +39,32 @@ describe('sleep', () => {
     await vi.advanceTimersByTimeAsync(499)
     expect(resolved).toBe(false)
   })
+
+  it('rejects immediately when the signal is already aborted', async () => {
+    const controller = new AbortController()
+    const reason = new DOMException('cancelled', 'AbortError')
+    controller.abort(reason)
+
+    await expect(sleep(1000, controller.signal)).rejects.toBe(reason)
+  })
+
+  it('rejects with the abort reason when the signal aborts mid-sleep', async () => {
+    const controller = new AbortController()
+    const reason = new DOMException('cancelled', 'AbortError')
+    const promise = sleep(1000, controller.signal)
+    const assertion = expect(promise).rejects.toBe(reason)
+
+    await vi.advanceTimersByTimeAsync(500)
+    controller.abort(reason)
+
+    await assertion
+  })
+
+  it('resolves normally when the signal never aborts', async () => {
+    const controller = new AbortController()
+    const promise = sleep(1000, controller.signal)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(promise).resolves.toBeUndefined()
+  })
 })

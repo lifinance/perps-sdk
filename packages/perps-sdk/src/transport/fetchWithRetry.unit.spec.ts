@@ -76,6 +76,83 @@ describe('fetchWithRetry — abort handling', () => {
     ).rejects.toBe(reason)
     expect(fetchImpl).not.toHaveBeenCalled()
   })
+
+  it('rethrows a mid-flight abort rejection without retrying or sleeping', async () => {
+    // Non-zero jitter: a network misclassification would schedule a backoff.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const controller = new AbortController()
+    const abortError = new DOMException(
+      'The operation was aborted',
+      'AbortError'
+    )
+    const fetchImpl = vi.fn(async () => {
+      controller.abort()
+      throw abortError
+    })
+
+    await expect(
+      fetchWithRetry('https://x', undefined, {
+        policy: policy({ maxAttempts: 3, baseDelayMs: 500 }),
+        fetchImpl,
+        signal: controller.signal,
+      })
+    ).rejects.toBe(abortError)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(scheduledDelays()).toEqual([])
+  })
+
+  it('rethrows a fetch abort even without a signal (name-based classification)', async () => {
+    const abortError = new DOMException(
+      'The operation was aborted',
+      'AbortError'
+    )
+    const fetchImpl = vi.fn(async () => {
+      throw abortError
+    })
+
+    await expect(
+      fetchWithRetry('https://x', undefined, {
+        policy: policy({ maxAttempts: 3, baseDelayMs: 0 }),
+        fetchImpl,
+      })
+    ).rejects.toBe(abortError)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('settles promptly when the signal aborts during a between-retries backoff', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999999)
+    const controller = new AbortController()
+    const reason = new DOMException('cancelled', 'AbortError')
+    const networkError = new TypeError('Failed to fetch')
+    const fetchImpl = vi.fn(async () => {
+      throw networkError
+    })
+
+    const promise = fetchWithRetry('https://x', undefined, {
+      policy: policy({
+        maxAttempts: 5,
+        baseDelayMs: 10_000,
+        maxDelayMs: 60_000,
+      }),
+      fetchImpl,
+      signal: controller.signal,
+    })
+    const assertion = expect(promise).rejects.toBe(reason)
+
+    // First attempt fails with a genuine network error and schedules a long backoff.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // baseDelayMs window 10_000, jittered by the mocked ~1 random.
+    expect(scheduledDelays()).toEqual([9_999])
+
+    // Aborting mid-sleep must reject now, not after the ~10s backoff elapses.
+    controller.abort(reason)
+    await assertion
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('fetchWithRetry — classification', () => {
