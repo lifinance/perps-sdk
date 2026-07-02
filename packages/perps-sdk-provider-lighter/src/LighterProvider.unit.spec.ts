@@ -1,5 +1,14 @@
-import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
-import { ActivityType, LiquidityRole, OrderSide } from '@lifi/perps-types'
+import {
+  createMemoryStorage,
+  PerpsError,
+  type PerpsSDKClient,
+} from '@lifi/perps-sdk'
+import {
+  ActivityType,
+  LiquidityRole,
+  OrderSide,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_CODE_ACCOUNT_NOT_FOUND } from './constants.js'
 import { lighterProvider } from './LighterProvider.js'
@@ -671,6 +680,129 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
 
     expect(tokenFetcher).toHaveBeenCalledTimes(0) // never created an SDK-owned token
     expect(limitsCalls).toBe(1) // 401 surfaced, not retried
+  })
+})
+
+describe('LighterProvider — authed read body-error handling (getOrders)', () => {
+  const accountWithOpenOrder = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '5.00',
+            open_order_count: 1,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '1.0',
+            avg_entry_price: '50000',
+            position_value: '50000',
+            unrealized_pnl: '10',
+            realized_pnl: '0',
+            liquidation_price: '40000',
+            total_funding_paid_out: '0',
+            margin_mode: 0,
+            allocated_margin: '2500',
+            total_discount: '0',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('surfaces a 200-with-error-code authed response as a PerpsError, not a TypeError', async () => {
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(accountWithOpenOrder)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({ code: 21100, message: 'account not found' })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+    const provider = lighterProvider({ authToken: 'caller-token' })
+    provider.bind(STUB_CLIENT)
+
+    const err = await provider
+      .getOrders({ address: ADDRESS })
+      .then(() => undefined)
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(PerpsError)
+    expect(err).not.toBeInstanceOf(TypeError)
+    expect(err.code).toBe(PerpsErrorCode.ThirdPartyError)
+  })
+
+  it('routes a 200-with-invalid-auth-code authed response through the evict/retry flow', async () => {
+    const keyStore = new LighterKeyStore(createMemoryStorage())
+    await keyStore.set(ADDRESS, {
+      accountIndex: 42,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xabc',
+      apiKeyPublicKey: '0xdef',
+    })
+
+    let createCount = 0
+    const tokenFetcher = vi.fn(async () => {
+      createCount += 1
+      return {
+        api_token: createCount === 1 ? 'ro-stale' : 'ro-fresh',
+        account_index: 42,
+        expiry: FAR_EXPIRY_SECONDS,
+        scopes: 'all',
+      }
+    })
+
+    let activeOrderCalls = 0
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(accountWithOpenOrder)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        activeOrderCalls += 1
+        return u.includes('auth=ro-stale')
+          ? respond({ code: 20013, message: 'invalid auth string' })
+          : respond({ code: 0, next_cursor: '', orders: [] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+    const provider = lighterProvider({
+      signer: {
+        createAuthToken: vi.fn(async (d: number) => `std-${d}`),
+      } as unknown as LighterSigner,
+      keyStore,
+      readOnlyTokenOptions: {
+        storage: createMemoryStorage(),
+        fetcher: tokenFetcher,
+      },
+    })
+    provider.bind(STUB_CLIENT)
+
+    const orders = await provider.getOrders({ address: ADDRESS })
+
+    expect(tokenFetcher).toHaveBeenCalledTimes(2) // stale, then fresh after eviction
+    expect(activeOrderCalls).toBe(2) // rejected once, retried once
+    expect(orders.openOrders).toEqual([])
+    expect(orders.triggerOrders).toEqual([])
   })
 })
 
