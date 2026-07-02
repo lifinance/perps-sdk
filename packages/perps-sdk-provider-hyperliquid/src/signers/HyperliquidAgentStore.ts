@@ -115,7 +115,7 @@ export class HyperliquidAgentStore {
       return await this.get(address)
     } catch (error) {
       if (
-        error instanceof PerpsError &&
+        !(error instanceof PerpsError) ||
         error.message !== PerpsErrorMessage.AgentNotFound
       ) {
         throw error
