@@ -1620,6 +1620,67 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('discards a compact delta that decodes after a newer frame applied', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [{ px: '95000', sz: '1.0', n: 1 }],
+                [{ px: '95010', sz: '1.5', n: 1 }],
+              ],
+              time: 1000,
+            },
+          },
+        })
+      )
+
+      // Compressed delta with an older timestamp; its decode is async and
+      // completes only after the synchronous update below has been applied.
+      const stale = await encodeCompressed({
+        c: 'BTC',
+        t: 1500,
+        l: [[{ p: '95000', s: '9.9' }], []],
+        r: [[], []],
+      })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'l2', data: { c: stale } })
+      )
+
+      // Uncompressed update with a NEWER timestamp applies synchronously,
+      // before the compressed delta finishes decoding.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            u: {
+              c: 'BTC',
+              t: 2000,
+              l: [[{ p: '95000', s: '5.5' }], []],
+              r: [[], []],
+            },
+          },
+        })
+      )
+
+      // Release the deferred decode of the compressed delta.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const event = listener.mock.calls.at(-1)?.[0]
+      expect(event.data.bids).toEqual([{ price: '95000', size: '5.5' }])
+      expect(event.data.timestamp).toBe(2000)
+    })
+
     it('applies uncompressed l2 update frames with index removals', async () => {
       const provider = createProvider()
       const listener = vi.fn()
