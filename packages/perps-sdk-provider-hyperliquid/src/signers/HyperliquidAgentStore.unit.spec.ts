@@ -1,6 +1,6 @@
-import { createMemoryStorage } from '@lifi/perps-sdk'
+import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
 import { isAddress } from 'viem'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HyperliquidAgentStore } from './HyperliquidAgentStore.js'
 
 describe('HyperliquidAgentStore', () => {
@@ -128,6 +128,23 @@ describe('HyperliquidAgentStore', () => {
     await expect(badKeyStore.getOrCreate(userAddress)).rejects.toThrow(
       /malformed/i
     )
+  })
+
+  it('propagates a non-PerpsError from storage.get without regenerating the agent', async () => {
+    const setSpy = vi.fn(async () => {})
+    const throwingStorage: StorageAdapter = {
+      get: async () => {
+        throw new Error('quota exceeded')
+      },
+      set: setSpy,
+      remove: async () => {},
+    }
+    const throwingStore = new HyperliquidAgentStore(throwingStorage)
+
+    await expect(throwingStore.getOrCreate(userAddress)).rejects.toThrow(
+      'quota exceeded'
+    )
+    expect(setSpy).not.toHaveBeenCalled()
   })
 
   it('regenerates on genuine absence (not a corrupt record)', async () => {
