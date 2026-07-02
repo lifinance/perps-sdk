@@ -65,6 +65,7 @@ export class PerpsWsClient {
   private readonly options: PerpsWsClientOptions
   private providers = new Map<string, WsProvider>()
   private initPromises = new Map<string, Promise<WsProvider>>()
+  private closed = false
 
   constructor(client: PerpsSDKClient, options: PerpsWsClientOptions = {}) {
     this.client = client
@@ -124,10 +125,14 @@ export class PerpsWsClient {
 
   /**
    * Close every open provider WS connection and drop all cached providers.
+   * Terminal: after `close()` the client is dead — `subscribe` and
+   * `subscribeQuote` reject, and any provider init still suspended mid-flight
+   * aborts without opening a socket. Create a new instance to subscribe again.
    *
    * @public
    */
   close() {
+    this.closed = true
     for (const p of this.providers.values()) {
       p.close()
     }
@@ -145,7 +150,18 @@ export class PerpsWsClient {
     this.providers.get(provider)?.reconnect()
   }
 
+  private assertOpen(): void {
+    if (this.closed) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'PerpsWsClient is closed. Create a new instance to subscribe again.'
+      )
+    }
+  }
+
   private async getOrCreateProvider(provider: string): Promise<WsProvider> {
+    this.assertOpen()
+
     const existing = this.providers.get(provider)
     if (existing) {
       return existing
@@ -175,6 +191,7 @@ export class PerpsWsClient {
     }
 
     const { providers } = await getProviders(this.client)
+    this.assertOpen()
 
     const providerInfo = providers.find((d) => d.key === provider)
     if (!providerInfo?.wsUrl) {
