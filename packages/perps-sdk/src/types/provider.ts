@@ -310,11 +310,11 @@ export interface PerpsProviderPlugin {
   /**
    * Roll an already-fetched {@link AccountResponse} (plus its positions) up
    * into an {@link AccountSummary}. Owned by the provider because the
-   * gross/free meaning of collateral and the margin handling are
-   * venue-specific: Hyperliquid branches on its abstraction mode (in
-   * `disabled`/`dexAbstraction` the venue equity is already free margin; in
-   * `unifiedAccount`/`portfolioMargin` spot holds the whole account), whereas
-   * Lighter has a single flat collateral model. Pure — does no I/O.
+   * margin/PnL content of the collateral rows is venue-specific: Hyperliquid
+   * branches on its abstraction mode (in `disabled`/`dexAbstraction` the
+   * venue rows are total equity — locked margin and unrealized PnL included;
+   * in `unifiedAccount`/`portfolioMargin` spot holds the whole account),
+   * whereas Lighter has a single flat collateral model. Pure — does no I/O.
    */
   getAccountSummary(
     account: AccountResponse,
