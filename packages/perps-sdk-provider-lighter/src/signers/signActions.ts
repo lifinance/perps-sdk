@@ -254,12 +254,16 @@ export async function signEvmTxActions(
 
   const signed: EvmTxSignedActionStep[] = []
   for (const step of steps) {
-    const params = step.txParams as {
-      chainId: number
-      to: Address
-      functionName: string
-      args: readonly unknown[]
-      abi: readonly string[]
+    const params = step.txParams
+
+    if (walletSigner.chain?.id !== params.chainId) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
+          `connected wallet is on chain ${walletSigner.chain?.id ?? 'unknown'}. ` +
+          `Switch the wallet to chain ${params.chainId} before signing — the ` +
+          "SDK broadcasts on the wallet's active chain and does not switch it."
+      )
     }
 
     if (walletSigner.chain?.id !== params.chainId) {

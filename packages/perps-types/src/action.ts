@@ -25,10 +25,26 @@ export interface WasmBlobActionStep {
   wasmSignParams: Record<string, unknown>
 }
 
+/**
+ * An unencoded viem-style contract call crossing the backend→SDK boundary as an
+ * `EVM_TX` step's `txParams`. The call is encoded SDK-side (viem `parseAbi` +
+ * `writeContract`), so `abi` holds human-readable signatures rather than a viem
+ * `Abi` — keeping `perps-types` viem-free.
+ * @public
+ */
+export interface EvmCall {
+  chainId: number
+  to: Address
+  functionName: string
+  args: readonly unknown[]
+  /** Human-readable ABI signatures, e.g. `'function approve(address,uint256) returns (bool)'`, fed to viem `parseAbi`. */
+  abi: readonly string[]
+}
+
 /** @public */
 export interface EvmTxActionStep {
   action: ActionType
-  txParams: Record<string, unknown>
+  txParams: EvmCall
 }
 
 /** @public */
@@ -55,7 +71,7 @@ export interface WasmBlobSignedActionStep {
 /** @public */
 export interface EvmTxSignedActionStep {
   action: ActionType
-  txParams: Record<string, unknown>
+  txParams: EvmCall
   txHash: string
 }
 
