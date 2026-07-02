@@ -1515,6 +1515,129 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('keeps untouched markets referentially stable across incremental frames', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      seedMids({ BTC: '95001', ETH: '3401' })
+      const first = listener.mock.calls.at(-1)?.[0]
+
+      // fastAssetCtxs frame touches only BTC.
+      await seedFast({ BTC: { midPx: '95500' } })
+
+      await vi.waitFor(() => {
+        const second = listener.mock.calls.at(-1)?.[0]
+        expect(second.data).not.toBe(first.data)
+        expect(second.data.ETH).toBe(first.data.ETH)
+        expect(second.data.BTC).not.toBe(first.data.BTC)
+        expect(second.data.BTC.midPrice).toBe('95500')
+        // The earlier snapshot must not have been mutated by the later frame.
+        expect(first.data.BTC.midPrice).toBe('95001')
+      })
+
+      const second = listener.mock.calls.at(-1)?.[0]
+
+      // pac frame touches only ETH.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [{ coin: 'ETH', midPx: '3410' }]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const third = listener.mock.calls.at(-1)?.[0]
+        expect(third.data).not.toBe(second.data)
+        expect(third.data.BTC).toBe(second.data.BTC)
+        expect(third.data.ETH).not.toBe(second.data.ETH)
+        expect(third.data.ETH.midPrice).toBe('3410')
+      })
+    })
+
+    it('drops a fast-only market whose mid is nulled and no other feed covers it', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      await seedFast({ ETH: { midPx: '3400' } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.ETH).toEqual({
+          marketId: 'ETH',
+          midPrice: '3400',
+          markPrice: '3400',
+        })
+      })
+
+      // HL sends midPx null when the book empties; with no mark and no
+      // asset-context frame the market no longer maps to a context.
+      await seedFast({ ETH: { midPx: null } })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.ETH).toBeUndefined()
+      })
+    })
+
+    it('keeps perp entries referentially stable across sac frames touching only spot', async () => {
+      const spotMarket: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      seedMids({ BTC: '95001' })
+      const first = listener.mock.calls.at(-1)?.[0]
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          }),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const second = listener.mock.calls.at(-1)?.[0]
+        expect(second.data).not.toBe(first.data)
+        expect(second.data.BTC).toBe(first.data.BTC)
+        expect(second.data['PURR/USDC']).toMatchObject({
+          marketId: 'PURR/USDC',
+          midPrice: '0.11',
+          markPrice: '0.1',
+        })
+      })
+    })
+
     it('emits orderbook event for compact l2 snapshot frames', async () => {
       const provider = createProvider()
       const listener = vi.fn()
