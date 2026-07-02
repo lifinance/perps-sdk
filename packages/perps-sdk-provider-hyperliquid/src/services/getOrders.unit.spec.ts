@@ -69,6 +69,24 @@ describe('getOrders', () => {
     expect(result.triggerOrders.map((o) => o.orderId)).toEqual(['99'])
   })
 
+  it('maps an order that omits the `children` field entirely', async () => {
+    const { children, ...orderWithoutChildren } = HL_FRONTEND_OPEN_ORDERS[0]
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        frontendOpenOrders: [orderWithoutChildren],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getOrders(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.openOrders).toHaveLength(1)
+    expect(result.openOrders[0].orderId).toBe('1')
+  })
+
   it('filters by marketId-matching `symbol`', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
