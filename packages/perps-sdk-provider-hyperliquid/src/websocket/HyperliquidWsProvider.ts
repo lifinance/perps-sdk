@@ -725,6 +725,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       return
     }
 
+    // Compact deltas decode asynchronously via `orderbookDecodeChain`, so one
+    // can resolve after a newer frame (sync snapshot/update, or a later delta)
+    // has already been applied. A delta no newer than the maintained book is
+    // stale; applying it would overwrite fresher state with older levels.
+    if (delta.t <= previous.timestamp) {
+      return
+    }
+
     const book: OrderbookResponse = {
       provider: this.providerKey,
       marketId: delta.c,
