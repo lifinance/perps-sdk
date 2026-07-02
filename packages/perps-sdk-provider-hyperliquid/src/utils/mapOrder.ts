@@ -188,6 +188,32 @@ export const mapStatusReason = (status: string): string | undefined => {
       return 'Order rejected: notional value below the minimum trade size.'
     case 'delistedCanceled':
       return 'Order cancelled: market has been delisted.'
+    case 'perpMarginRejected':
+      return 'Order rejected: insufficient margin.'
+    case 'reduceOnlyRejected':
+      return 'Order rejected: would not reduce your position.'
+    case 'badAloPxRejected':
+      return 'Order rejected: post-only order would have matched immediately.'
+    case 'badTriggerPxRejected':
+      return 'Order rejected: invalid take-profit/stop-loss trigger price.'
+    case 'marketOrderNoLiquidityRejected':
+      return 'Order rejected: not enough liquidity for the market order.'
+    case 'oracleRejected':
+      return 'Order rejected: price too far from the oracle price.'
+    case 'vaultWithdrawalCanceled':
+      return 'Order cancelled: a vault withdrawal occurred.'
+    case 'openInterestCapCanceled':
+      return 'Order cancelled: too aggressive while open interest was at its cap.'
+    case 'positionIncreaseAtOpenInterestCapRejected':
+    case 'positionFlipAtOpenInterestCapRejected':
+    case 'openInterestIncreaseRejected':
+      return 'Order rejected: open interest is at its cap.'
+    case 'tooAggressiveAtOpenInterestCapRejected':
+      return 'Order rejected: price too aggressive while open interest was at its cap.'
+    case 'insufficientSpotBalanceRejected':
+      return 'Order rejected: insufficient spot balance.'
+    case 'perpMaxPositionRejected':
+      return 'Order rejected: exceeds the maximum position size for the current leverage tier.'
     default:
       return undefined
   }
