@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 1.5.4
+
+### Patch Changes
+
+- [#161](https://github.com/lifinance/perps-sdk/pull/161) [`bfdfd6c`](https://github.com/lifinance/perps-sdk/commit/bfdfd6cf53b7e79ed035378ad2430a9ffdf03ab5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Streamed quotes from `subscribeQuote` now track the live market context (mark price and funding) instead of the snapshot taken at subscribe time, so price impact no longer drifts as the market moves.
+
 ## 1.5.3
 
 ### Patch Changes
