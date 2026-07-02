@@ -1,4 +1,4 @@
-import { summarizeAccount } from '@lifi/perps-sdk'
+import { type CollateralSemantics, summarizeAccount } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
@@ -7,20 +7,23 @@ import type {
 import { HlAbstractionMode } from './types/index.js'
 
 /**
- * In `unifiedAccount`/`portfolioMargin` the whole account lives in spot, so the
- * collateral rows are already gross holdings (locked margin included). In
- * `disabled`/`dexAbstraction` (and the unset/standard mode) the venue rows hold
- * `accountValue`, which Hyperliquid reports net of locked margin — i.e. free.
+ * In `unifiedAccount`/`portfolioMargin` the whole account lives in spot, so
+ * the collateral rows are gross holdings: locked margin included, unrealized
+ * PnL carried by the positions. In `disabled`/`dexAbstraction` (and the
+ * unset/standard mode) the venue rows hold `accountValue`, Hyperliquid's
+ * total equity — locked margin AND unrealized PnL already included.
  */
-const isUnifiedMode = (account: AccountResponse): boolean =>
+const collateralSemantics = (account: AccountResponse): CollateralSemantics =>
   account.config.provider === 'hyperliquid' &&
   (account.config.abstractionMode === HlAbstractionMode.UNIFIED_ACCOUNT ||
     account.config.abstractionMode === HlAbstractionMode.PORTFOLIO_MARGIN)
+    ? 'gross'
+    : 'equity'
 
 /**
  * Roll a Hyperliquid {@link AccountResponse} up into an {@link AccountSummary},
- * branching on the abstraction mode so the gross/free meaning of the collateral
- * rows is interpreted correctly.
+ * branching on the abstraction mode so the margin/PnL content of the
+ * collateral rows is interpreted correctly.
  *
  * @public
  */
@@ -28,5 +31,5 @@ export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {
-  return summarizeAccount(account, positions, isUnifiedMode(account))
+  return summarizeAccount(account, positions, collateralSemantics(account))
 }

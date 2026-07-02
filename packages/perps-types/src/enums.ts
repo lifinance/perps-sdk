@@ -101,6 +101,7 @@ export enum LiquidityRole {
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
+  SET_REFERRAL = 'setReferrer',
   ACCOUNT_MODE = 'accountMode',
   ACCOUNT_TYPE = 'accountType',
   SEND_ASSET = 'sendAsset',

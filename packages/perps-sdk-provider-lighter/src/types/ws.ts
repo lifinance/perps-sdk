@@ -5,7 +5,9 @@
 //
 // Channels we subscribe to:
 //   - market_stats/all        → context across all perp markets
+//   - market_stats/{id}       → context for one perp market
 //   - spot_market_stats/all   → context across all spot markets
+//   - spot_market_stats/{id}  → context for one spot market
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
 
 /** @public */
@@ -40,7 +42,7 @@ export type LtWsMarketStats = {
  */
 export type LtWsMarketStatsAllMessage = LtWsMessage & {
   type: 'subscribed/market_stats' | 'update/market_stats'
-  market_stats?: Record<string, LtWsMarketStats>
+  market_stats?: LtWsMarketStats | Record<string, LtWsMarketStats>
 }
 
 /**
@@ -70,7 +72,7 @@ export type LtWsSpotMarketStats = {
  */
 export type LtWsSpotMarketStatsAllMessage = LtWsMessage & {
   type: 'subscribed/spot_market_stats' | 'update/spot_market_stats'
-  spot_market_stats?: Record<string, LtWsSpotMarketStats>
+  spot_market_stats?: LtWsSpotMarketStats | Record<string, LtWsSpotMarketStats>
 }
 
 /** @public */
@@ -90,6 +92,27 @@ export type LtWsOrderBook = {
 export type LtWsOrderBookMessage = LtWsMessage & {
   type: 'subscribed/order_book' | 'update/order_book'
   order_book: LtWsOrderBook
+}
+
+/**
+ * Public market trade. `is_maker_ask` is the side of the *resting* maker order,
+ * so the taker (aggressor) bought when it is `true` and sold when `false`.
+ * @public
+ */
+export type LtWsTrade = {
+  trade_id: number
+  trade_id_str?: string
+  market_id?: number
+  size: string
+  price: string
+  is_maker_ask: boolean
+  timestamp: number
+}
+
+/** @public */
+export type LtWsTradeMessage = LtWsMessage & {
+  type: 'subscribed/trade' | 'update/trade'
+  trades?: LtWsTrade[]
 }
 
 /**

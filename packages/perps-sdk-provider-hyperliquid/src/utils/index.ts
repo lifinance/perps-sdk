@@ -3,7 +3,10 @@
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
-export { decodeFastAssetCtxs } from './decodeFastAssetCtxs.js'
+export {
+  decodeCompressedJson,
+  decodeFastAssetCtxs,
+} from './decodeFastAssetCtxs.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {

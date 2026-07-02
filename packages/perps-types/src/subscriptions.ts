@@ -10,6 +10,7 @@ import type {
   MarketContext,
   OhlcvInterval,
   OrderbookResponse,
+  Trade,
 } from './market.js'
 import type { Address } from './primitives.js'
 
@@ -17,6 +18,12 @@ import type { Address } from './primitives.js'
 export type MarketsContextSubscription = {
   channel: 'marketsContext'
   dex: string
+}
+/** @public */
+export type MarketContextSubscription = {
+  channel: 'marketContext'
+  dex: string
+  marketId: string
 }
 /** @public */
 export type OrderbookSubscription = {
@@ -38,6 +45,12 @@ export type CandleSubscription = {
   dex: string
   marketId: string
   interval: OhlcvInterval
+}
+/** @public */
+export type TradesSubscription = {
+  channel: 'trades'
+  dex: string
+  marketId: string
 }
 /** @public */
 export type OrderUpdatesSubscription = {
@@ -67,8 +80,10 @@ export type SpotBalancesSubscription = {
 /** @public */
 export type Subscription =
   | MarketsContextSubscription
+  | MarketContextSubscription
   | OrderbookSubscription
   | CandleSubscription
+  | TradesSubscription
   | OrderUpdatesSubscription
   | FillsSubscription
   | PositionsSubscription
@@ -80,9 +95,16 @@ export type MarketsContextEvent = {
   data: Record<string, MarketContext>
 }
 /** @public */
+export type MarketContextEvent = {
+  channel: 'marketContext'
+  data: MarketContext
+}
+/** @public */
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
 /** @public */
 export type CandleEvent = { channel: 'candle'; data: Candle }
+/** @public */
+export type TradesEvent = { channel: 'trades'; data: Trade[] }
 /** @public */
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
@@ -121,8 +143,10 @@ export type SpotBalancesEvent = {
 /** @public */
 export type SubscriptionEvent =
   | MarketsContextEvent
+  | MarketContextEvent
   | OrderbookEvent
   | CandleEvent
+  | TradesEvent
   | OrderUpdatesEvent
   | FillsEvent
   | PositionsEvent

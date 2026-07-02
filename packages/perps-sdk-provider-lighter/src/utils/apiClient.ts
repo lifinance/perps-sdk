@@ -137,12 +137,7 @@ export class LighterApiClient {
         `Lighter rejected the auth token for ${path}`
       )
     }
-    if (status < 200 || status >= 300) {
-      throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
-        `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
-      )
-    }
+    this.assertOk(path, status, data)
     return data as T
   }
 
@@ -167,6 +162,16 @@ export class LighterApiClient {
 
   private async getChecked<T>(path: string, params?: ApiParams): Promise<T> {
     const { status, data } = await this.getWithStatus<unknown>(path, params)
+    this.assertOk(path, status, data)
+    return data as T
+  }
+
+  /**
+   * Post-parse validation shared by every checked read: rejects a non-2xx HTTP
+   * status and a 200 body carrying a non-success `code`. Callers that surface a
+   * distinct auth-rejection error must run that check before this one.
+   */
+  private assertOk(path: string, status: number, data: unknown): void {
     if (status < 200 || status >= 300) {
       throw new PerpsError(
         PerpsErrorCode.ThirdPartyError,
@@ -180,6 +185,5 @@ export class LighterApiClient {
         `Lighter API error for ${path}: code ${errorCode} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }
-    return data as T
   }
 }

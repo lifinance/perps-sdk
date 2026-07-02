@@ -1,5 +1,14 @@
 import type { HlWsFastAssetCtx } from '../types/index.js'
 
+export async function decodeCompressedJson<T>(base64: string): Promise<T> {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new DecompressionStream('deflate-raw'))
+  const text = await new Response(stream).text()
+  return JSON.parse(text) as T
+}
+
 /**
  * Decode a Hyperliquid `fastAssetCtxs` frame. HL sends the payload as a
  * base64-encoded, raw-DEFLATE-compressed (RFC 1951 — no zlib/gzip wrapper) JSON
@@ -11,10 +20,5 @@ import type { HlWsFastAssetCtx } from '../types/index.js'
 export async function decodeFastAssetCtxs(
   base64: string
 ): Promise<Record<string, HlWsFastAssetCtx>> {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-  const stream = new Blob([bytes])
-    .stream()
-    .pipeThrough(new DecompressionStream('deflate-raw'))
-  const text = await new Response(stream).text()
-  return JSON.parse(text)
+  return decodeCompressedJson<Record<string, HlWsFastAssetCtx>>(base64)
 }

@@ -28,7 +28,7 @@ import {
   spotPriceById,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
-import { mapPosition } from '../utils/mapPosition.js'
+import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
 
 /**
  * Parameters for {@link getAccount}.
@@ -37,16 +37,14 @@ import { mapPosition } from '../utils/mapPosition.js'
  */
 export type GetAccountParams = ProviderGetAccountParams
 
+// `marginSummary` covers the whole account (cross AND isolated positions);
+// `crossMarginSummary` is the cross-only subset and would drop isolated
+// equity/margin.
 const getAccountValue = (state: HlClearinghouseState): number =>
-  Number.parseFloat(
-    state.crossMarginSummary.accountValue || state.marginSummary.accountValue
-  )
+  Number.parseFloat(state.marginSummary.accountValue)
 
 const getTotalMarginUsed = (state: HlClearinghouseState): number =>
-  Number.parseFloat(
-    state.crossMarginSummary.totalMarginUsed ||
-      state.marginSummary.totalMarginUsed
-  )
+  Number.parseFloat(state.marginSummary.totalMarginUsed)
 
 const getMarginUsed = (
   abstraction: HlAbstractionMode | null,
@@ -113,8 +111,8 @@ const buildBalances = (
 
   // Unified/portfolio modes hold everything in spot — per-dex equity would
   // double-count. Only disabled/dexAbstraction carry separate venue collateral.
-  // `accountValue` is reported net of locked margin, i.e. the free collateral;
-  // the locked portion is carried by the positions' `marginUsed`.
+  // `accountValue` is the dex's TOTAL equity: locked margin and unrealized
+  // PnL are already included, so summaries must not add them on top.
   if (!isUnifiedMode(abstraction)) {
     for (const [dex, state] of stateByDex) {
       const categoryId = dex || PROVIDER_KEY
@@ -218,7 +216,7 @@ export const getAccount = async (
 
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions
-      .filter((ap) => Number.parseFloat(ap.position.szi) !== 0)
+      .filter(isOpenAssetPosition)
       .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
   )
 
@@ -252,6 +250,7 @@ export const getAccount = async (
     address: params.address,
     balances,
     collateralBalances,
+    positions,
     marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
     unrealizedPnl: totalUnrealizedPnl.toString(),
     feeTier: {

@@ -122,7 +122,17 @@ export const mapTriggerOrder = (
   }
 }
 
-/** @public */
+/**
+ * Map a raw Hyperliquid order status string to the SDK's OrderStatus enum.
+ *
+ * HL's terminal statuses are mostly compound strings ending in `Canceled`
+ * or `Rejected` (e.g. `siblingFilledCanceled`, `tickRejected`); classify
+ * those by suffix so a status HL adds later still lands in the correct
+ * terminal bucket instead of silently falling through to PENDING, which
+ * {@link isActiveOrderStatus} treats as active. `scheduledCancel` is the
+ * one documented cancel status without the `Canceled` suffix.
+ * @public
+ */
 export const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
     case 'open':
@@ -132,14 +142,19 @@ export const mapOrderStatus = (status: string): OrderStatus => {
       return OrderStatus.FILLED
     case 'canceled':
     case 'cancelled':
+    case 'scheduledCancel':
       return OrderStatus.CANCELLED
     case 'rejected':
       return OrderStatus.REJECTED
     case 'triggered':
       return OrderStatus.TRIGGERED
-    case 'marginCanceled':
-      return OrderStatus.CANCELLED
     default:
+      if (status.endsWith('Canceled') || status.endsWith('Cancelled')) {
+        return OrderStatus.CANCELLED
+      }
+      if (status.endsWith('Rejected')) {
+        return OrderStatus.REJECTED
+      }
       return OrderStatus.PENDING
   }
 }
@@ -153,7 +168,7 @@ export const mapOrderStatus = (status: string): OrderStatus => {
  */
 export const mapStatusReason = (status: string): string | undefined => {
   switch (status) {
-    case 'iocCanceled':
+    case 'iocCancelRejected':
       return 'Order cancelled: not enough liquidity to fill immediately.'
     case 'reduceOnlyCanceled':
       return 'Order cancelled: would not reduce your position.'
@@ -165,12 +180,14 @@ export const mapStatusReason = (status: string): string | undefined => {
       return 'Order cancelled: sibling OCO order filled first.'
     case 'selfTradeCanceled':
       return 'Order cancelled: would self-trade against your own resting order.'
+    case 'scheduledCancel':
+      return "Order cancelled: dead man's switch triggered."
     case 'tickRejected':
       return 'Order rejected: price did not match the tick size.'
     case 'minTradeNtlRejected':
       return 'Order rejected: notional value below the minimum trade size.'
-    case 'delistedRejected':
-      return 'Order rejected: market has been delisted.'
+    case 'delistedCanceled':
+      return 'Order cancelled: market has been delisted.'
     default:
       return undefined
   }
