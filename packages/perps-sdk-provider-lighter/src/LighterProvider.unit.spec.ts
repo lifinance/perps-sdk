@@ -1002,6 +1002,106 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
   })
 })
 
+describe('LighterProvider — getOrders pagination contract', () => {
+  const accountWithManyOrders = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '5.00',
+            open_order_count: 200,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '1.0',
+            avg_entry_price: '50000',
+            position_value: '50000',
+            unrealized_pnl: '10',
+            realized_pnl: '0',
+            liquidation_price: '40000',
+            total_funding_paid_out: '0',
+            margin_mode: 0,
+            allocated_margin: '2500',
+            total_discount: '0',
+          },
+        ],
+      },
+    ],
+  }
+
+  const makeActiveOrder = (orderIndex: number) => ({
+    order_index: orderIndex,
+    client_order_index: orderIndex,
+    order_id: String(orderIndex),
+    client_order_id: String(orderIndex),
+    market_index: 0,
+    owner_account_index: 42,
+    initial_base_amount: '0.1',
+    price: '50000',
+    nonce: orderIndex,
+    remaining_base_amount: '0.1',
+    is_ask: false,
+    filled_base_amount: '0',
+    filled_quote_amount: '0',
+    side: 'buy',
+    type: 'limit',
+    time_in_force: 'good_till_time',
+    reduce_only: false,
+    trigger_price: '',
+    order_expiry: 0,
+    status: 'open',
+    trigger_status: 'na',
+    trigger_time: 0,
+    parent_order_index: 0,
+    parent_order_id: '',
+    to_trigger_order_id_0: '',
+    to_trigger_order_id_1: '',
+    to_cancel_order_id_0: '',
+    block_height: 1,
+    timestamp: 1700000000000,
+    created_at: 1700000000,
+    updated_at: 1700000000,
+    transaction_time: 1700000000000,
+  })
+
+  it('returns a payload whose size, hasMore and cursor agree when the active-orders response exceeds the requested limit', async () => {
+    const activeOrders = Array.from({ length: 200 }, (_, i) =>
+      makeActiveOrder(i + 1)
+    )
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(accountWithManyOrders)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({ code: 0, next_cursor: '', orders: activeOrders })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+    const provider = lighterProvider({ authToken: 'caller-token' })
+    provider.bind(STUB_CLIENT)
+
+    const orders = await provider.getOrders({ address: ADDRESS, limit: 50 })
+
+    const returned = orders.openOrders.length + orders.triggerOrders.length
+    expect(returned).toBe(200)
+    expect(orders.pagination.hasMore).toBe(false)
+    expect(orders.pagination.cursor).toBeUndefined()
+    expect(orders.pagination.limit).toBe(returned)
+  })
+})
+
 describe('LighterProvider — unauthenticated degrade paths', () => {
   it('getAccount returns zero fee tier when no token is configured', async () => {
     const provider = lighterProvider()
