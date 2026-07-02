@@ -770,6 +770,12 @@ export const lighterProvider = (
       }
     },
 
+    /**
+     * Lighter's `accountActiveOrders` endpoint takes no limit/cursor and
+     * returns every active order for the account, so the response is always
+     * the complete set: `params.limit` is not honoured and `pagination` is
+     * reported as `{ limit: <count returned>, hasMore: false }` with no cursor.
+     */
     async getOrders(
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
@@ -810,12 +816,11 @@ export const lighterProvider = (
       )
 
       const total = openOrders.length + triggerOrders.length
-      const limit = params.limit ?? total
       return {
         provider: LIGHTER_PROVIDER_KEY,
         openOrders,
         triggerOrders,
-        pagination: { limit, hasMore: total > limit },
+        pagination: { limit: total, hasMore: false },
       }
     },
 
