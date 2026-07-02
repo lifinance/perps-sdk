@@ -127,7 +127,10 @@ export type {
   QuoteListener,
   SignActionsContext,
 } from './types/provider.js'
-export { summarizeAccount } from './utils/accountSummary.js'
+export {
+  type CollateralSemantics,
+  summarizeAccount,
+} from './utils/accountSummary.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,

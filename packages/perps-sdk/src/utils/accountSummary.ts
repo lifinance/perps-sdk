@@ -9,19 +9,32 @@ const sumValueUsd = (balances: AccountResponse['balances']): number =>
   balances.reduce((sum, b) => sum + stringToFloat(b.valueUsd), 0)
 
 /**
+ * What the summed `collateralBalances` rows already contain, relative to the
+ * positions' locked margin and unrealized PnL:
+ *
+ * - `'free'` — free collateral only; locked margin and unrealized PnL are
+ *   both carried by the positions.
+ * - `'gross'` — locked margin included, unrealized PnL carried by the
+ *   positions (e.g. spot holdings backing a unified account).
+ * - `'equity'` — total equity: locked margin AND unrealized PnL included
+ *   (e.g. a venue-reported account value).
+ *
+ * @public
+ */
+export type CollateralSemantics = 'free' | 'gross' | 'equity'
+
+/**
  * Roll an {@link AccountResponse} and its open positions up into an
  * {@link AccountSummary}.
  *
- * @param collateralIsGross - `true` when the collateral rows already include
- * margin locked in positions, so free margin is collateral minus
- * `marginUsed`. `false` when the collateral rows hold free margin only and
- * the locked portion is carried by the positions' `marginUsed`.
+ * @param semantics - How the collateral rows relate to the positions'
+ * locked margin and unrealized PnL; see {@link CollateralSemantics}.
  * @public
  */
 export function summarizeAccount(
   account: AccountResponse,
   positions: Position[],
-  collateralIsGross: boolean
+  semantics: CollateralSemantics
 ): AccountSummary {
   let marginUsed = 0
   let unrealizedPnl = 0
@@ -33,12 +46,13 @@ export function summarizeAccount(
   const collateral = sumValueUsd(account.collateralBalances)
   const balances = sumValueUsd(account.balances)
 
-  const grossCollateral = collateralIsGross
-    ? collateral
-    : collateral + marginUsed
+  const grossCollateral =
+    semantics === 'free' ? collateral + marginUsed : collateral
+  const equity =
+    semantics === 'equity' ? grossCollateral : grossCollateral + unrealizedPnl
 
   return {
-    portfolioValue: (balances + grossCollateral + unrealizedPnl).toString(),
+    portfolioValue: (balances + equity).toString(),
     availableMargin: (grossCollateral - marginUsed).toString(),
     marginUsed: marginUsed.toString(),
     unrealizedPnl: unrealizedPnl.toString(),
