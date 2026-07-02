@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 1.5.5
+
+### Patch Changes
+
+- [#167](https://github.com/lifinance/perps-sdk/pull/167) [`f7c77aa`](https://github.com/lifinance/perps-sdk/commit/f7c77aad84d81fbb2b9e9ac540298704f373af4b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Stop misclassifying aborted requests as retryable server errors: `fetchWithRetry` now rethrows `AbortError` immediately (no retry, no backoff sleep), backoff sleeps are signal-aware, and `request` no longer wraps a cancellation as a `ServerError`.
+
 ## 1.5.4
 
 ### Patch Changes
