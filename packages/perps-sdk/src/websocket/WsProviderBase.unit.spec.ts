@@ -35,6 +35,7 @@ class MockRws {
   }
   close() {
     this.closed = true
+    this.simulateStatus('disconnected')
   }
   reconnect() {
     this.reconnectCalls += 1
@@ -488,6 +489,16 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
       expect.any(Error)
     )
     errSpy.mockRestore()
+  })
+
+  it('does not send a registered sub after close() drives status to disconnected', async () => {
+    const rws = new MockRws() // starts 'connected'
+    const p = new TestProvider(rws)
+
+    p.close()
+    await p.register('prices', { id: 'prices' })
+
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
   })
 
   it('drops the registry entry when the connected inline send fails, so the failed sub is not replayed', async () => {
