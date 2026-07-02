@@ -1,10 +1,12 @@
-import type {
-  MarketContext,
-  OrderbookLevel,
-  PerpsMarket,
-  SpotMarket,
+import {
+  type MarketContext,
+  type OrderbookLevel,
+  PerpsErrorCode,
+  type PerpsMarket,
+  type SpotMarket,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { PerpsError } from '../errors/PerpsError.js'
 import {
   applySlippage,
   buildQuote,
@@ -422,6 +424,32 @@ describe('walkOrderbook', () => {
     expect(walk.vwap).toBe(0)
     expect(walk.insufficientLiquidity).toBe(true)
   })
+
+  it('rejects a level with a non-numeric price instead of returning a NaN fill', () => {
+    const malformed: OrderbookLevel[] = [{ price: '', size: '1' }]
+    expect(() => walkOrderbook(malformed, 50)).toThrow(PerpsError)
+    try {
+      walkOrderbook(malformed, 50)
+      throw new Error('expected walkOrderbook to throw')
+    } catch (error) {
+      expect((error as PerpsError).code).toBe(PerpsErrorCode.ValidationError)
+    }
+  })
+
+  it('rejects a level with a non-numeric size', () => {
+    const malformed: OrderbookLevel[] = [{ price: '100', size: 'not-a-number' }]
+    expect(() => walkOrderbook(malformed, 50)).toThrow(PerpsError)
+  })
+
+  it('does not evaluate a malformed level once remaining notional is filled', () => {
+    const partiallyMalformed: OrderbookLevel[] = [
+      { price: '100', size: '1' },
+      { price: '', size: '1' },
+    ]
+    const walk = walkOrderbook(partiallyMalformed, 50)
+    expect(walk.filledNotional).toBe(50)
+    expect(walk.insufficientLiquidity).toBe(false)
+  })
 })
 
 const perpsMarket: PerpsMarket = {
@@ -555,5 +583,24 @@ describe('buildQuote', () => {
       timestamp: 1700000000000,
     })
     expect(quote.insufficientLiquidity).toBe(true)
+  })
+
+  it('rejects a malformed book instead of returning a NaN quote', () => {
+    const malformedAsks: OrderbookLevel[] = [{ price: '', size: '1' }]
+    expect(() =>
+      buildQuote({
+        provider: 'hyperliquid',
+        symbol: 'BTC',
+        type: 'perps',
+        side: 'buy',
+        sizeUsd: 50,
+        market: perpsMarket,
+        price: perpsPrice,
+        bids,
+        asks: malformedAsks,
+        feeTier: { maker: '0', taker: '0' },
+        timestamp: 1700000000000,
+      })
+    ).toThrow(PerpsError)
   })
 })
