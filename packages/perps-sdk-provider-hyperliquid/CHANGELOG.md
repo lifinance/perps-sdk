@@ -1,5 +1,21 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.5.5
+
+### Patch Changes
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Drop stale Hyperliquid compact l2 deltas: a delta whose timestamp is not newer than the maintained orderbook is discarded, so an async-decoded delta that resolves after a newer frame no longer corrupts the book.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix Hyperliquid `getFills` pagination to sort fills (time desc, `tid` tiebreaker) and use a composite `(time, tid)` cursor, so paging no longer skips or repeats fills when the upstream response is not newest-first or has non-monotonic `tid`s.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix getOrders throwing a TypeError and returning no orders when a Hyperliquid frontendOpenOrders response omits the children field on an order.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Maintain the Hyperliquid markets-context map incrementally per WebSocket frame instead of rebuilding it, keeping unchanged market entries referentially stable across emissions.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Count unrealized PnL toward available margin for `'gross'` collateral (Hyperliquid unified/portfolioMargin), matching the venue's buying-power accounting.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - mapStatusReason now returns a specific human-readable reason for every documented Hyperliquid terminal cancel/reject status (e.g. perpMarginRejected, oracleRejected, insufficientSpotBalanceRejected), instead of undefined for those that lacked an explicit case.
+
 ## 1.5.4
 
 ### Patch Changes

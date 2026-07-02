@@ -1,5 +1,15 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.5.4
+
+### Patch Changes
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - EVM_TX signing now asserts the wallet is on the backend-specified `txParams.chainId` and throws before broadcasting on a mismatched chain, instead of signing on whatever chain the wallet client is bound to.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix `LighterProvider.getOrders` returning self-contradictory pagination: it now reports `hasMore: false` with `limit` equal to the number of orders returned, reflecting that Lighter's `accountActiveOrders` endpoint returns the complete active-order set with no server-side paging.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Maintain the Lighter WS orderbook with a cached numeric price on each level so per-delta emits sort by that cached number instead of re-parsing every price on every comparison; size-only updates no longer re-parse the price.
+
 ## 1.5.3
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # @lifi/perps-sdk
 
+## 1.5.6
+
+### Patch Changes
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix WS resubscribe replay racing a concurrent subscribe: a channel subscribed while the reconnect replay loop is suspended is no longer sent twice. Replay now iterates a snapshot taken at replay start and re-checks the live registry before each send.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarket` now throws a `MarketNotFound` `PerpsError` when the backend returns an empty markets list, instead of silently resolving `undefined` under a `Promise<Market>` type.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix `ReconnectingWebSocket.close()` never transitioning connection status to `disconnected`, which left `reconnect()` a no-op, `registerSub` sending into a dead socket, and new status listeners told `connected` after an explicit close.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix WS unsubscribe closures so double-invoking one (e.g. React StrictMode effect cleanup) no longer tears down a sibling subscription sharing the same channel.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the reference-data registry's lookup-miss refetch. A registry miss now warns once and returns `undefined`; the index is reconciled solely by `sync()` through the HTTP layer, which every REST call and each WS (re)connect already performs. The backend owns reference-data freshness (Valkey-cached, kept warm), so the client-side cache-bypassing refetch — and the cooldown and load-generation guards it required — added no freshness and are gone.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `walkOrderbook` (and `buildQuote`) now throw a `ValidationError` `PerpsError` when an orderbook level's price or size does not parse to a finite number, instead of silently propagating NaN into the quote and reporting `insufficientLiquidity: false`.
+
+- [#190](https://github.com/lifinance/perps-sdk/pull/190) [`d6c15bb`](https://github.com/lifinance/perps-sdk/commit/d6c15bbbf9239a20586ecf3bb6470261750e5395) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Count unrealized PnL toward available margin for `'gross'` collateral (Hyperliquid unified/portfolioMargin), matching the venue's buying-power accounting.
+
 ## 1.5.5
 
 ### Patch Changes
