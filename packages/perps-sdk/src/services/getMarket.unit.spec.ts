@@ -1,3 +1,4 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { mockMarkets, server } from '../../test/handlers.js'
@@ -5,6 +6,7 @@ import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
+import { PerpsError } from '../errors/PerpsError.js'
 import { getMarket } from './getMarket.js'
 
 const client = createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
@@ -34,19 +36,21 @@ describe('getMarket', () => {
     expect(market).toEqual(mockMarkets.markets[0])
   })
 
-  it('returns undefined when the backend yields an empty market list', async () => {
+  it('throws a MarketNotFound PerpsError when the backend yields an empty market list', async () => {
     server.use(
       http.get(`${DEFAULT_API_URL}/markets`, () =>
         HttpResponse.json({ markets: [] })
       )
     )
 
-    const market = await getMarket(client, {
+    const error = await getMarket(client, {
       provider: 'hyperliquid',
       marketId: 'NOPE',
-    })
+    }).catch((e) => e)
 
-    expect(market).toBeUndefined()
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error.code).toBe(PerpsErrorCode.MarketNotFound)
+    expect(error.tool).toBe('hyperliquid')
   })
 
   it('propagates a 404 as a PerpsError', async () => {
