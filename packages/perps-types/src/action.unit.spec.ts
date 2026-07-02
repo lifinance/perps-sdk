@@ -3,6 +3,9 @@ import type {
   ActionParamsMap,
   ActionResult,
   ApproveReadOnlyTokenParams,
+  EvmCall,
+  EvmTxActionStep,
+  EvmTxSignedActionStep,
   PlaceOrderParams,
   UpdateLeverageParams,
 } from './action.js'
@@ -162,5 +165,47 @@ describe('ActionResult', () => {
     const errors = results.flatMap((r) => (r.success ? [] : [r.error]))
 
     expect(errors).toEqual(['rejected'])
+  })
+})
+
+describe('EvmCall / EVM_TX steps', () => {
+  const call: EvmCall = {
+    chainId: 42161,
+    to: '0x2222222222222222222222222222222222222222',
+    functionName: 'approve',
+    args: ['0x3333333333333333333333333333333333333333', 100n],
+    abi: ['function approve(address spender, uint256 amount) returns (bool)'],
+  }
+
+  it('types txParams as EvmCall so chainId/to/functionName/args/abi read without a cast', () => {
+    const step: EvmTxActionStep = { action: ActionType.DEPOSIT, txParams: call }
+
+    expect(step.txParams.chainId).toBe(42161)
+    expect(step.txParams.to).toBe('0x2222222222222222222222222222222222222222')
+    expect(step.txParams.functionName).toBe('approve')
+    expect(step.txParams.args).toHaveLength(2)
+    expect(step.txParams.abi[0]).toContain('approve')
+  })
+
+  it('does not carry a `step` field — the backend-emitted key is not part of the contract', () => {
+    const withStep: EvmCall = {
+      ...call,
+      // @ts-expect-error — `step` is not part of EvmCall
+      step: 1,
+    }
+
+    // @ts-expect-error — `step` is not a readable property of EvmCall
+    withStep.step
+  })
+
+  it('EvmTxSignedActionStep carries the same EvmCall txParams plus a txHash', () => {
+    const signed: EvmTxSignedActionStep = {
+      action: ActionType.DEPOSIT,
+      txParams: call,
+      txHash: '0xdeadbeef',
+    }
+
+    expect(signed.txParams.chainId).toBe(42161)
+    expect(signed.txHash).toBe('0xdeadbeef')
   })
 })

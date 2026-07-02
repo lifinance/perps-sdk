@@ -254,13 +254,7 @@ export async function signEvmTxActions(
 
   const signed: EvmTxSignedActionStep[] = []
   for (const step of steps) {
-    const params = step.txParams as {
-      chainId: number
-      to: Address
-      functionName: string
-      args: readonly unknown[]
-      abi: readonly string[]
-    }
+    const params = step.txParams
 
     if (walletSigner.chain?.id !== params.chainId) {
       throw new PerpsError(
