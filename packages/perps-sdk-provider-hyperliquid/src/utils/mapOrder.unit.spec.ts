@@ -121,6 +121,90 @@ describe('mapStatusReason (Hyperliquid)', () => {
       "Order cancelled: dead man's switch triggered."
     )
   })
+
+  it('maps perpMarginRejected', () => {
+    expect(mapStatusReason('perpMarginRejected')).toBe(
+      'Order rejected: insufficient margin.'
+    )
+  })
+
+  it('maps reduceOnlyRejected', () => {
+    expect(mapStatusReason('reduceOnlyRejected')).toBe(
+      'Order rejected: would not reduce your position.'
+    )
+  })
+
+  it('maps badAloPxRejected', () => {
+    expect(mapStatusReason('badAloPxRejected')).toBe(
+      'Order rejected: post-only order would have matched immediately.'
+    )
+  })
+
+  it('maps badTriggerPxRejected', () => {
+    expect(mapStatusReason('badTriggerPxRejected')).toBe(
+      'Order rejected: invalid take-profit/stop-loss trigger price.'
+    )
+  })
+
+  it('maps marketOrderNoLiquidityRejected', () => {
+    expect(mapStatusReason('marketOrderNoLiquidityRejected')).toBe(
+      'Order rejected: not enough liquidity for the market order.'
+    )
+  })
+
+  it('maps oracleRejected', () => {
+    expect(mapStatusReason('oracleRejected')).toBe(
+      'Order rejected: price too far from the oracle price.'
+    )
+  })
+
+  it('maps vaultWithdrawalCanceled', () => {
+    expect(mapStatusReason('vaultWithdrawalCanceled')).toBe(
+      'Order cancelled: a vault withdrawal occurred.'
+    )
+  })
+
+  it('maps openInterestCapCanceled', () => {
+    expect(mapStatusReason('openInterestCapCanceled')).toBe(
+      'Order cancelled: too aggressive while open interest was at its cap.'
+    )
+  })
+
+  it('maps positionIncreaseAtOpenInterestCapRejected', () => {
+    expect(mapStatusReason('positionIncreaseAtOpenInterestCapRejected')).toBe(
+      'Order rejected: open interest is at its cap.'
+    )
+  })
+
+  it('maps positionFlipAtOpenInterestCapRejected', () => {
+    expect(mapStatusReason('positionFlipAtOpenInterestCapRejected')).toBe(
+      'Order rejected: open interest is at its cap.'
+    )
+  })
+
+  it('maps tooAggressiveAtOpenInterestCapRejected', () => {
+    expect(mapStatusReason('tooAggressiveAtOpenInterestCapRejected')).toBe(
+      'Order rejected: price too aggressive while open interest was at its cap.'
+    )
+  })
+
+  it('maps openInterestIncreaseRejected', () => {
+    expect(mapStatusReason('openInterestIncreaseRejected')).toBe(
+      'Order rejected: open interest is at its cap.'
+    )
+  })
+
+  it('maps insufficientSpotBalanceRejected', () => {
+    expect(mapStatusReason('insufficientSpotBalanceRejected')).toBe(
+      'Order rejected: insufficient spot balance.'
+    )
+  })
+
+  it('maps perpMaxPositionRejected', () => {
+    expect(mapStatusReason('perpMaxPositionRejected')).toBe(
+      'Order rejected: exceeds the maximum position size for the current leverage tier.'
+    )
+  })
 })
 
 describe('mapOrderStatus (Hyperliquid)', () => {
@@ -165,6 +249,20 @@ describe('mapOrderStatus (Hyperliquid)', () => {
       'tickRejected',
       'minTradeNtlRejected',
       'delistedCanceled',
+      'perpMarginRejected',
+      'reduceOnlyRejected',
+      'badAloPxRejected',
+      'badTriggerPxRejected',
+      'marketOrderNoLiquidityRejected',
+      'oracleRejected',
+      'vaultWithdrawalCanceled',
+      'openInterestCapCanceled',
+      'positionIncreaseAtOpenInterestCapRejected',
+      'positionFlipAtOpenInterestCapRejected',
+      'tooAggressiveAtOpenInterestCapRejected',
+      'openInterestIncreaseRejected',
+      'insufficientSpotBalanceRejected',
+      'perpMaxPositionRejected',
     ]
     for (const status of reasonedStatuses) {
       expect(mapStatusReason(status)).toBeDefined()
