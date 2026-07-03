@@ -1,0 +1,211 @@
+/**
+ * Ondo REST wire types (`On*`), mirroring the Ondo Perps OpenAPI schemas.
+ * All numeric quantities arrive as strings; timestamps are ISO 8601 strings
+ * unless a field says otherwise.
+ */
+
+/** Cursor pair Ondo returns as a sibling of `result` on paginated endpoints. */
+export interface OnPageInfo {
+  prevCursor?: string
+  nextCursor?: string
+}
+
+/** @public */
+export type OnPositionDirection = 'long' | 'short' | 'neutral'
+
+/** Mirrors Ondo's `ApiPosition`. @public */
+export interface OnPosition {
+  market: string
+  direction: OnPositionDirection
+  /** Position size in base currency (unsigned magnitude). */
+  netQuantity: string
+  averageEntryPrice: string
+  usedMargin: string
+  unrealizedPnl: string
+  markPrice: string
+  liquidationPrice: string
+  bankruptcyPrice: string
+  maintenanceMargin: string
+  notionalValue: string
+  leverage: string
+  netFundingSinceNeutral: string
+  returnOnEquity: string
+  stopLossTriggerPrice?: string
+  takeProfitTriggerPrice?: string
+}
+
+/** @public */
+export type OnOrderSide = 'buy' | 'sell'
+
+/** @public */
+export type OnOrderStatus =
+  | 'open'
+  | 'fullyfilled'
+  | 'canceled'
+  | 'pending'
+  | 'untriggered'
+
+/** @public */
+export type OnOrderType = 'limit' | 'market' | 'stopMarket' | 'takeProfitMarket'
+
+/** @public */
+export type OnTimeInForce = 'GTC' | 'IOC'
+
+/** @public */
+export type OnStopOrderType = 'stopLoss' | 'takeProfit'
+
+/** Mirrors Ondo's `ApiOrder`. @public */
+export interface OnOrder {
+  orderId: string
+  side: OnOrderSide
+  price: string
+  size: string
+  market: string
+  filledSize: string
+  lastFillSize: string
+  filledCost: string
+  fee: string
+  status: OnOrderStatus
+  createdAt: string
+  type: OnOrderType
+  clientOrderId?: string
+  parentOrderId?: string
+  realizedPnl?: string
+  feeRebate?: string
+  filledAt?: string
+  canceledAt?: string
+  cancelReason?: string
+  /** Not returned for market orders. */
+  timeInForce?: OnTimeInForce
+  reduceOnly?: boolean
+  liquidationId?: string
+  /** Position-level TP/SL flag. */
+  closePosition?: boolean
+  stopOrderType?: OnStopOrderType
+  triggerPrice?: string
+}
+
+/** @public */
+export type OnFillDirection =
+  | 'openLong'
+  | 'openShort'
+  | 'closeLong'
+  | 'closeShort'
+  | 'flipLongToShort'
+  | 'flipShortToLong'
+
+/** Mirrors Ondo's `ApiFill`. @public */
+export interface OnFill {
+  id: string
+  orderId: string
+  market: string
+  price: string
+  size: string
+  side: OnOrderSide
+  filledCost: string
+  fee: string
+  time: string
+  isMaker: boolean
+  clientOrderId?: string
+  parentOrderID?: string
+  direction?: OnFillDirection
+  feeRebate?: string
+  pnl?: string
+  isADL?: boolean
+}
+
+/**
+ * Mirrors Ondo's `MarginAccountBalanceSummary`. Invariants per the docs:
+ * `marginBalance = walletBalance + unrealizedPnl`,
+ * `availableMargin = marginBalance − usedMargin`.
+ * @public
+ */
+export interface OnBalanceSummary {
+  walletBalance: string
+  realizedPnl: string
+  unrealizedPnl: string
+  marginBalance: string
+  usedMargin: string
+  availableMargin: string
+  withdrawableMargin: string
+  maintenanceMarginRequirement: string
+  totalMaintenanceMargin: string
+  marginRatio: string
+  leverage: string
+  underLiquidation: boolean
+  totalFundingPayments: string
+  totalTradingFees: string
+  totalPnL: string
+}
+
+/** Mirrors Ondo's `Contract` (perps contract ticker row). @public */
+export interface OnContract {
+  market: string
+  productType: string
+  contractType: string
+  baseCurrency: string
+  quoteCurrency: string
+  disabled: boolean
+  displayName?: string
+  lastPrice?: string
+  indexPrice?: string
+  fundingRate?: string
+  nextFundingRate?: string
+  nextFundingRateTimestamp?: string
+  makerFee?: string
+  takerFee?: string
+  openInterest?: string
+  openInterestUsd?: string
+  priceChangePercent?: string
+  isClosed?: boolean
+}
+
+/** Mirrors Ondo's `FundingFeeTransfer`. Carries no id — callers synthesize one. @public */
+export interface OnFundingFeeTransfer {
+  market: string
+  time: string
+  markPrice: string
+  positionSize: string
+  positionDirection: OnPositionDirection
+  rate: string
+  /** Which side paid this interval. */
+  payer: OnPositionDirection
+  /** Signed: positive = earned, negative = paid. */
+  amount: string
+}
+
+/** @public */
+export type OnLiquidationStatus = 'queued' | 'start' | 'retry' | 'stop'
+
+/** Mirrors Ondo's `LiquidationEvent`. @public */
+export interface OnLiquidationEvent {
+  id: string
+  time: string
+  initiatedAt: string
+  accountId: string
+  status: OnLiquidationStatus
+  insuranceFundUsed: string
+  adl: boolean
+  retryCount: number
+  triggeringPositions?: OnPosition[]
+  filledQuoteSize?: string
+  filledQuantity?: string
+  reclaimOrderMargin?: boolean
+}
+
+/** @public */
+export type OnAccountState = 'open' | 'disabled' | 'offboarding' | 'closed'
+
+/** Mirrors Ondo's `AccountInfo` (the `/v1/account` result). @public */
+export interface OnAccountInfo {
+  accountID: string
+  identifier: string
+  authType: string
+  accountState: OnAccountState
+  withdrawalFeeUSD: string
+  termsVersion: number
+  termsUnixSecs: number
+  privacyVersion: number
+  privacyUnixSecs: number
+  marketingConsent: string
+}
