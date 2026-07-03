@@ -30,5 +30,6 @@ export {
   mapTriggerOrder,
 } from './mapOrder.js'
 export { mapOpenPositions, mapPosition } from './mapPosition.js'
+export { intervalFromBarSpan, mapInterval } from './ohlcvInterval.js'
 export { ondoAsset } from './ondoAsset.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'

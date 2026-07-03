@@ -20,6 +20,13 @@ export const DEFAULT_ONDO_API_URL = 'https://api.ondoperps.xyz'
 export const ONDO_SANDBOX_API_URL = 'https://api.ondoperps-sandbox.xyz'
 
 /**
+ * Default (production) WebSocket URL for Ondo Perps.
+ *
+ * @public
+ */
+export const DEFAULT_ONDO_WS_URL = 'wss://api.ondoperps.xyz/ws'
+
+/**
  * Ondo's public base fee schedule (2 bps maker / 5 bps taker). Ondo exposes no
  * per-account fee endpoint, so quotes and account snapshots use this schedule.
  *

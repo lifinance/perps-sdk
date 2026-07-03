@@ -17,6 +17,7 @@ export { getAccountSummary } from './accountSummary.js'
 export * from './auth/index.js'
 export {
   DEFAULT_ONDO_API_URL,
+  DEFAULT_ONDO_WS_URL,
   ONDO_BASE_FEE_TIER,
   ONDO_PROVIDER_KEY,
   ONDO_SANDBOX_API_URL,
@@ -28,3 +29,8 @@ export {
 } from './OndoProvider.js'
 export * from './types/index.js'
 export * from './utils/index.js'
+export {
+  OndoWsProvider,
+  type OndoWsProviderOptions,
+  ondoWsProvider,
+} from './websocket/OndoWsProvider.js'

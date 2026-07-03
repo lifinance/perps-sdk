@@ -2,3 +2,4 @@
 
 export type { OnAuthToken, OnGenericResponse } from './auth.js'
 export type * from './wire.js'
+export type * from './ws.js'
