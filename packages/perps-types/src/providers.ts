@@ -82,6 +82,11 @@ export interface Provider {
   actions: ProviderAction[]
   categories: ProviderCategory[]
   wsUrl?: string
+  /**
+   * Settlement chain id for this venue, aligned to `@lifi/types` `ChainId`
+   * values. Absent when the provider has no settlement chain.
+   */
+  chainId?: number
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
   /**
