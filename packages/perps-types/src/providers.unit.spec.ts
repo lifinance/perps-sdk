@@ -140,6 +140,7 @@ const hyperliquidProvider: Provider = {
     },
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
+  chainId: 1337,
   minOrderValueUsd: 10,
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
@@ -163,6 +164,7 @@ const lighterProvider: Provider = {
   categories: [
     { id: 'lighter', quoteAsset: { ...usdcAsset, providerId: 'lighter' } },
   ],
+  chainId: 3586256,
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
   minWithdrawalUsd: 5,
@@ -369,6 +371,13 @@ type _SupportedIntervalsIsRequired = Expect<
   >
 >
 
+// `chainId` is an optional bare `number` — the numeric alignment to
+// `@lifi/types` `ChainId` is documentation-level, not a type dependency.
+type _ChainIdShape = Expect<Equals<Provider['chainId'], number | undefined>>
+type _ChainIdIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
+>
+
 // `ProviderAction` keys: the three core fields plus the optional
 // presentation / ordering hints. Catches an accidental rename / addition.
 type _ProviderActionKeys = Expect<
@@ -459,6 +468,8 @@ export type _TypeAssertions = [
   _OptionsIsRequired,
   _SupportedIntervalsShape,
   _SupportedIntervalsIsRequired,
+  _ChainIdShape,
+  _ChainIdIsOptional,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -584,6 +595,18 @@ describe('Provider.supportedIntervals', () => {
   it('declares an empty set for inactive / no-candle providers', () => {
     expect(announcedProvider.supportedIntervals).toEqual([])
     expect(providerWithNoDescriptors.supportedIntervals).toEqual([])
+  })
+})
+
+describe('Provider.chainId', () => {
+  it('carries the venue settlement chain id', () => {
+    expect(hyperliquidProvider.chainId).toBe(1337)
+    expect(lighterProvider.chainId).toBe(3586256)
+  })
+
+  it('admits a provider with no settlement chain', () => {
+    expect(providerWithNoDescriptors.chainId).toBeUndefined()
+    expect(announcedProvider.chainId).toBeUndefined()
   })
 })
 
