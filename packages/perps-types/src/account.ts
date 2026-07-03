@@ -266,7 +266,18 @@ export interface LighterAccountConfig {
 }
 
 /** @public */
-export type AccountConfig = HyperliquidAccountConfig | LighterAccountConfig
+export interface OndoAccountConfig {
+  provider: 'ondo'
+  loggedIn: boolean
+  /** Unix seconds. Present iff `loggedIn === true`. The token itself never appears here. */
+  authTokenExpiry?: number
+}
+
+/** @public */
+export type AccountConfig =
+  | HyperliquidAccountConfig
+  | LighterAccountConfig
+  | OndoAccountConfig
 
 /** @public */
 export interface AccountConfigValue {

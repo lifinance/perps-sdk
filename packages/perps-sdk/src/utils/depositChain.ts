@@ -2,7 +2,9 @@ import type { AccountConfig } from '@lifi/perps-types'
 import { ChainId } from '@lifi/types'
 
 /**
- * Perps provider keys that have a declared LI.FI deposit-target chain.
+ * Perps provider keys that may declare a LI.FI deposit-target chain. Absent
+ * from the map means the provider is not funded via a LI.FI swap (e.g. ondo's
+ * custodial provisioned-address deposits).
  *
  * @public
  */
@@ -15,9 +17,8 @@ export type DepositProviderKey = AccountConfig['provider']
  *
  * @public
  */
-export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Record<
-  DepositProviderKey,
-  ChainId
+export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Partial<
+  Record<DepositProviderKey, ChainId>
 > = {
   hyperliquid: ChainId.HPL,
   lighter: ChainId.LTR,
