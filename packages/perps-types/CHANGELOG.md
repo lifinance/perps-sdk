@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.9.0
+
+### Minor Changes
+
+- [#195](https://github.com/lifinance/perps-sdk/pull/195) [`6635800`](https://github.com/lifinance/perps-sdk/commit/66358003ca10fa9afb12dd4ca0608208745f818c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add PerpsErrorCode.Unauthorized (2013) for rejected/invalid caller credentials (e.g. API key); maps to HTTP 401.
+
 ## 1.8.0
 
 ### Minor Changes
