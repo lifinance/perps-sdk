@@ -1483,6 +1483,47 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('coalesces a fastAssetCtxs backlog to its newest frame', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      // Encode up front, then dispatch the three frames synchronously: the
+      // decode is async by construction, so all three queue behind the chain
+      // before any decode can complete — the stalled-backlog case.
+      const frames = await Promise.all([
+        encodeCompressed({ BTC: { midPx: '95000', markPx: '95001' } }),
+        encodeCompressed({ ETH: { midPx: '3400', markPx: '3401' } }),
+        encodeCompressed({ SOL: { midPx: '150', markPx: '151' } }),
+      ])
+      for (const data of frames) {
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'fastAssetCtxs', data })
+        )
+      }
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.SOL).toEqual({
+          marketId: 'SOL',
+          midPrice: '150',
+          markPrice: '151',
+        })
+      })
+      await flushMicrotasks()
+
+      // Only the newest queued frame decoded and applied; the stale backlog
+      // frames never surfaced in any emission.
+      for (const [event] of listener.mock.calls) {
+        expect(event.data.BTC).toBeUndefined()
+        expect(event.data.ETH).toBeUndefined()
+      }
+    })
+
     it('updates a builder/sub-dex coin and merges incremental frames', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -1744,6 +1785,61 @@ describe('HyperliquidWsProvider', () => {
           },
         })
       })
+    })
+
+    it('applies every backlogged compact l2 delta in arrival order', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [{ px: '95000', sz: '1.0', n: 1 }],
+                [{ px: '95010', sz: '1.5', n: 1 }],
+              ],
+              time: 1000,
+            },
+          },
+        })
+      )
+
+      // Encode up front, then dispatch synchronously so all three deltas
+      // queue behind the first decode — the stalled-backlog case. Unlike
+      // snapshot channels, deltas must NOT coalesce: each one's level change
+      // is carried by no later frame.
+      const deltas = await Promise.all(
+        [
+          { t: 1001, l: [[{ p: '94990', s: '2.0' }], []] },
+          { t: 1002, l: [[{ p: '94980', s: '3.0' }], []] },
+          { t: 1003, l: [[{ p: '95000', s: '0.5' }], []] },
+        ].map((d) => encodeCompressed({ c: 'BTC', r: [[], []], ...d }))
+      )
+      for (const c of deltas) {
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({ channel: 'l2', data: { c } })
+        )
+      }
+
+      await vi.waitFor(() => {
+        expect(listener).toHaveBeenCalledTimes(4)
+      })
+
+      const timestamps = listener.mock.calls.map(([e]) => e.data.timestamp)
+      expect(timestamps).toEqual([1000, 1001, 1002, 1003])
+      expect(listener.mock.calls.at(-1)?.[0].data.bids).toEqual([
+        { price: '95000', size: '0.5' },
+        { price: '94990', size: '2.0' },
+        { price: '94980', size: '3.0' },
+      ])
     })
 
     it('discards a compact delta that decodes after a newer frame applied', async () => {
