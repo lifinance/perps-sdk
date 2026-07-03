@@ -1,11 +1,34 @@
 // biome-ignore-all lint/performance/noBarrelFile: module public entry point.
 
 export {
+  decodeActivityCursor,
+  encodeActivityCursor,
+  type OndoActivityCursor,
+} from './activityCursor.js'
+export {
   type ApiParams,
   ONDO_RETRY_DEFAULTS,
   OndoApiClient,
   type OndoApiClientOptions,
   OndoApiError,
+  type OndoHttpMethod,
+  type OndoPage,
   type OndoRequestOptions,
   OndoSessionExpiredError,
 } from './apiClient.js'
+export { estimateLiquidationPrice } from './liquidation.js'
+export { mapFundingActivity, mapLiquidationActivity } from './mapActivity.js'
+export { mapFill } from './mapFill.js'
+export {
+  classifyAndMapOrders,
+  isTriggerOrder,
+  mapOrder,
+  mapOrderDetail,
+  mapOrderStatus,
+  mapOrderType,
+  mapStatusReason,
+  mapTriggerOrder,
+} from './mapOrder.js'
+export { mapOpenPositions, mapPosition } from './mapPosition.js'
+export { ondoAsset } from './ondoAsset.js'
+export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'

@@ -213,6 +213,86 @@ describe('OndoApiClient', () => {
     )
   })
 
+  it('returns the page result alongside pageInfo on getPage', async () => {
+    const { client } = createClient([
+      jsonResponse({
+        success: true,
+        result: [{ orderId: 'ord-1' }],
+        pageInfo: { nextCursor: 'cur-2', prevCursor: 'cur-0' },
+      }),
+    ])
+
+    const page = await client.getPage<{ orderId: string }>('/v1/perps/orders', {
+      authToken: 'session-jwt',
+    })
+
+    expect(page.result).toEqual([{ orderId: 'ord-1' }])
+    expect(page.pageInfo).toEqual({ nextCursor: 'cur-2', prevCursor: 'cur-0' })
+  })
+
+  it('normalizes a pageInfo-less page to an empty-cursor page', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: true, result: [] }),
+    ])
+
+    const page = await client.getPage('/v1/perps/fills')
+
+    expect(page.result).toEqual([])
+    expect(page.pageInfo).toBeUndefined()
+  })
+
+  it('throws OndoApiError when getPage sees success: false', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: false, error: 'nope', error_code: 'BAD' }),
+    ])
+
+    await expect(client.getPage('/v1/perps/orders')).rejects.toBeInstanceOf(
+      OndoApiError
+    )
+  })
+
+  it('sends arbitrary-method requests with prebuilt headers via send', async () => {
+    const { client, fetchImpl } = createClient([
+      jsonResponse(envelope({ orderId: 'ord-1' })),
+    ])
+
+    const result = await client.send<{ orderId: string }>(
+      'POST',
+      '/v1/perps/orders',
+      {
+        body: { market: 'AAPL-USD.P', size: '1' },
+        headers: { Authorization: 'Bearer prebuilt-jwt' },
+      }
+    )
+
+    expect(result).toEqual({ orderId: 'ord-1' })
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/v1/perps/orders`)
+    expect(init.method).toBe('POST')
+    expect(new Headers(init.headers).get('authorization')).toBe(
+      'Bearer prebuilt-jwt'
+    )
+    expect(JSON.parse(init.body as string)).toEqual({
+      market: 'AAPL-USD.P',
+      size: '1',
+    })
+  })
+
+  it('supports DELETE via send and never retries non-GET methods', async () => {
+    const { client, fetchImpl } = createClient([
+      jsonResponse({ success: false, error: 'unavailable' }, 503),
+      jsonResponse(envelope(null)),
+    ])
+
+    await expect(
+      client.send('DELETE', '/v1/perps/orders/ord-1', {
+        headers: { Authorization: 'Bearer prebuilt-jwt' },
+      })
+    ).rejects.toBeInstanceOf(OndoApiError)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe('DELETE')
+  })
+
   it('retries GET on 503 per the injected policy', async () => {
     const { client, fetchImpl } = createClient([
       jsonResponse({ success: false, error: 'unavailable' }, 503),

@@ -6,9 +6,19 @@ import {
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OnGenericResponse } from '../types/auth.js'
+import type { OnPageInfo } from '../types/wire.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
+
+/** One page of a paginated Ondo response: `pageInfo` is a SIBLING of `result`. @public */
+export interface OndoPage<T> {
+  result: T[]
+  pageInfo: OnPageInfo | undefined
+}
+
+/** @internal */
+export type OndoHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 /**
  * Ondo request failure — a non-2xx HTTP status, a `success: false` envelope,
@@ -105,12 +115,52 @@ export class OndoApiClient {
   }
 
   async get<T>(path: string, options?: OndoRequestOptions): Promise<T> {
-    return this.request<T>(path, {
+    const { status, data } = await this.perform(path, {
       method: 'GET',
       params: options?.params,
       authToken: options?.authToken,
       policy: this.policy,
     })
+    return this.unwrap<T>(path, status, data)
+  }
+
+  /**
+   * GET a paginated endpoint, preserving the `pageInfo` sibling that
+   * {@link get}'s envelope unwrap would otherwise drop.
+   */
+  async getPage<T>(
+    path: string,
+    options?: OndoRequestOptions
+  ): Promise<OndoPage<T>> {
+    const { status, data } = await this.perform(path, {
+      method: 'GET',
+      params: options?.params,
+      authToken: options?.authToken,
+      policy: this.policy,
+    })
+    const result = this.unwrap<T[] | null>(path, status, data)
+    const pageInfo = (data as { pageInfo?: OnPageInfo }).pageInfo
+    return { result: result ?? [], pageInfo }
+  }
+
+  /**
+   * Arbitrary-method request with caller-prebuilt headers — the execution
+   * surface for credential-bearing `RestCallSignedActionStep`s, whose
+   * `Authorization` header is attached by `signActions` from the token store.
+   * Only GET is ever retried; writes are not idempotent.
+   */
+  async send<T>(
+    method: OndoHttpMethod,
+    path: string,
+    options?: { body?: unknown; headers?: Record<string, string> }
+  ): Promise<T> {
+    const { status, data } = await this.perform(path, {
+      method,
+      body: options?.body,
+      headers: options?.headers,
+      policy: method === 'GET' ? this.policy : DISABLED_RETRY,
+    })
+    return this.unwrap<T>(path, status, data)
   }
 
   /**
@@ -123,12 +173,13 @@ export class OndoApiClient {
     body?: unknown,
     options?: Pick<OndoRequestOptions, 'authToken'>
   ): Promise<T> {
-    return this.request<T>(path, {
+    const { status, data } = await this.perform(path, {
       method: 'POST',
       body,
       authToken: options?.authToken,
       policy: DISABLED_RETRY,
     })
+    return this.unwrap<T>(path, status, data)
   }
 
   private buildUrl(path: string, params?: ApiParams): string {
@@ -144,22 +195,26 @@ export class OndoApiClient {
     return `${url}?${qs}`
   }
 
-  private async request<T>(
+  private async perform(
     path: string,
     options: {
-      method: 'GET' | 'POST'
+      method: OndoHttpMethod
       params?: ApiParams
       body?: unknown
       authToken?: string
+      headers?: Record<string, string>
       policy: ResolvedRetryPolicy
     }
-  ): Promise<T> {
-    const headers: Record<string, string> = { Accept: 'application/json' }
+  ): Promise<{ status: number; data: unknown }> {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...options.headers,
+    }
     if (options.authToken) {
       headers.Authorization = `Bearer ${options.authToken}`
     }
     const init: RequestInit = { method: options.method, headers }
-    if (options.method === 'POST') {
+    if (options.method !== 'GET' && options.method !== 'DELETE') {
       headers['Content-Type'] = 'application/json'
       init.body = JSON.stringify(options.body ?? {})
     }
@@ -169,7 +224,7 @@ export class OndoApiClient {
       { policy: options.policy, fetchImpl: this.fetchImpl, signal: this.signal }
     )
     const data: unknown = await response.json().catch(() => undefined)
-    return this.unwrap<T>(path, response.status, data)
+    return { status: response.status, data }
   }
 
   private unwrap<T>(path: string, status: number, data: unknown): T {

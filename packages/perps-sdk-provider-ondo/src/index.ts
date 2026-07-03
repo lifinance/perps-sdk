@@ -12,11 +12,19 @@
  * @public
  */
 
+export { projectOndoConfigSettings } from './accountConfig.js'
+export { getAccountSummary } from './accountSummary.js'
 export * from './auth/index.js'
 export {
   DEFAULT_ONDO_API_URL,
+  ONDO_BASE_FEE_TIER,
   ONDO_PROVIDER_KEY,
   ONDO_SANDBOX_API_URL,
 } from './constants.js'
+export {
+  Ondo,
+  type OndoProviderOptions,
+  ondoProvider,
+} from './OndoProvider.js'
 export * from './types/index.js'
 export * from './utils/index.js'

@@ -48,7 +48,6 @@ const isExpired = (token: OnAuthToken): boolean =>
 export class OndoTokenStore {
   private readonly storage: StorageAdapter
   private readonly host: string
-  private readonly cache = new Map<string, OnAuthToken>()
 
   constructor(storage: StorageAdapter, baseUrl: string) {
     this.storage = storage
@@ -59,16 +58,10 @@ export class OndoTokenStore {
     return `${STORAGE_PREFIX}:${this.host}:${address.toLowerCase()}`
   }
 
+  // Reads go straight to storage — no in-memory cache — so every store
+  // instance sharing a storage backend observes evictions immediately.
   async get(address: Address): Promise<OnAuthToken | null> {
     const key = this.storageKey(address)
-    const cached = this.cache.get(key)
-    if (cached) {
-      if (isExpired(cached)) {
-        await this.remove(address)
-        return null
-      }
-      return cached
-    }
     const parsed = await readValidatedRecord(this.storage, key, isOnAuthToken)
     if (!parsed) {
       return null
@@ -77,19 +70,14 @@ export class OndoTokenStore {
       await this.remove(address)
       return null
     }
-    this.cache.set(key, parsed)
     return parsed
   }
 
   async set(address: Address, token: OnAuthToken): Promise<void> {
-    const key = this.storageKey(address)
-    this.cache.set(key, token)
-    await this.storage.set(key, JSON.stringify(token))
+    await this.storage.set(this.storageKey(address), JSON.stringify(token))
   }
 
   async remove(address: Address): Promise<void> {
-    const key = this.storageKey(address)
-    this.cache.delete(key)
-    await this.storage.remove(key)
+    await this.storage.remove(this.storageKey(address))
   }
 }
