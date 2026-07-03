@@ -12,6 +12,8 @@ export enum PerpsErrorCode {
   SignatureInvalid = 2010,
   AgentUnauthorized = 2011,
   TermsNotAccepted = 2012,
+  /** Rejected or invalid caller credential (e.g. API key); maps to HTTP 401. */
+  Unauthorized = 2013,
 
   // Trading errors (2020-2039)
   ExchangeRejected = 2020,
