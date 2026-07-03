@@ -3,6 +3,7 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
+  ActionResult,
   ActionStep,
   ActionType,
   ActivitiesResponse,
@@ -18,6 +19,7 @@ import type {
   ProviderAction,
   Quote,
   QuoteSide,
+  RestCallSignedActionStep,
   SignedActionStep,
   SigningMethod,
   TradeType,
@@ -435,6 +437,22 @@ export interface PerpsProviderPlugin {
     address: Address,
     ctx?: SignActionsContext
   ): Promise<SignedActionStep[]>
+
+  /**
+   * Execute credential-bearing rest-call steps directly against the venue.
+   * Required for providers whose descriptors declare
+   * `SigningMethod.AUTH_TOKEN`: the client-held credential (attached by
+   * `signActions` as `headers`) must never transit the LI.FI backend, so the
+   * venue call happens SDK-side. The provider owns base-URL resolution and
+   * mapping the venue response onto {@link ActionResult}s — these results are
+   * authoritative for the caller; `PerpsClient.execute` submits the steps to
+   * the backend afterwards for bookkeeping only, with `headers` stripped.
+   */
+  executeRestCallActions?(
+    steps: RestCallSignedActionStep[],
+    address: Address,
+    options?: SDKRequestOptions
+  ): Promise<ActionResult[]>
 }
 
 /**
