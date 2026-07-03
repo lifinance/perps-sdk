@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.5.6
+
+### Patch Changes
+
+- [#194](https://github.com/lifinance/perps-sdk/pull/194) [`a67df34`](https://github.com/lifinance/perps-sdk/commit/a67df34c445629a3c1822156df521a159ee21216) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Speed up Hyperliquid WS compressed-frame decoding (no per-character base64 callback, leaner DecompressionStream plumbing) and coalesce a stalled fastAssetCtxs backlog to its newest frame; orderbook deltas still all apply in order.
+
+- Updated dependencies [[`64a0f6f`](https://github.com/lifinance/perps-sdk/commit/64a0f6f8e81db2ccf34e68cc6775705dd9398542)]:
+  - @lifi/perps-types@1.7.0
+
 ## 1.5.5
 
 ### Patch Changes
