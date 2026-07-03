@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.8.0
+
+### Minor Changes
+
+- [#196](https://github.com/lifinance/perps-sdk/pull/196) [`37ddd5b`](https://github.com/lifinance/perps-sdk/commit/37ddd5bc1320388ffebff03d8a47051376ea076b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional `chainId?: number` to the public `Provider` type (settlement chain id, aligned to `@lifi/types` `ChainId` values).
+
 ## 1.7.0
 
 ### Minor Changes
