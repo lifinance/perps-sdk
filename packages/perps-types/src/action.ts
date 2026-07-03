@@ -47,8 +47,39 @@ export interface EvmTxActionStep {
   txParams: EvmCall
 }
 
+/**
+ * A venue REST call crossing the backend→SDK boundary unauthenticated. The SDK
+ * attaches the client-held credential and executes the call directly against
+ * the venue.
+ * @public
+ */
+export interface RestCallActionStep {
+  action: ActionType
+  request: {
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+    /** Venue-relative, e.g. `/v1/perps/orders`; base URL resolution is provider-side. */
+    path: string
+    body?: Record<string, unknown>
+  }
+}
+
 /** @public */
-export type ActionStep = Eip712ActionStep | WasmBlobActionStep | EvmTxActionStep
+export interface SiweActionStep {
+  action: ActionType
+  siwe: {
+    challengeId: string
+    /** The backend-built ERC-4361 challenge the wallet must `personal_sign`. */
+    message: string
+  }
+}
+
+/** @public */
+export type ActionStep =
+  | Eip712ActionStep
+  | WasmBlobActionStep
+  | EvmTxActionStep
+  | RestCallActionStep
+  | SiweActionStep
 
 /** @public */
 export interface Eip712SignedActionStep {
@@ -76,10 +107,27 @@ export interface EvmTxSignedActionStep {
 }
 
 /** @public */
+export interface RestCallSignedActionStep {
+  action: ActionType
+  request: RestCallActionStep['request']
+  /** Attached client-side from the credential store; MUST NOT be sent to the LI.FI backend. */
+  headers: Record<string, string>
+}
+
+/** @public */
+export interface SiweSignedActionStep {
+  action: ActionType
+  siwe: SiweActionStep['siwe']
+  signature: Hex
+}
+
+/** @public */
 export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
+  | RestCallSignedActionStep
+  | SiweSignedActionStep
 
 /** @public */
 export type ActionResult =
@@ -271,6 +319,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
+  [ActionType.SIWE_LOGIN]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_VOTE]: VoteParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams

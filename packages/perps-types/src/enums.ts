@@ -118,6 +118,7 @@ export enum ActionType {
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
+  SIWE_LOGIN = 'siweLogin',
   DEPOSIT = 'deposit',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_VOTE = 'metaVote',
@@ -205,4 +206,8 @@ export enum SigningMethod {
   EIP712 = 'eip712',
   WASM_BLOB = 'wasmBlob',
   EVM_TX = 'evmTx',
+  /** Per-action auth is a client-held credential attached to a venue REST call, executed SDK-side. */
+  AUTH_TOKEN = 'authToken',
+  /** ERC-4361 `personal_sign` over a backend-built login challenge. */
+  SIWE = 'siwe',
 }

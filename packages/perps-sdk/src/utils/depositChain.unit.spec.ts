@@ -32,4 +32,8 @@ describe('lifiDepositChainForProvider', () => {
     expect(lifiDepositChainForProvider('binance')).toBeUndefined()
     expect(lifiDepositChainForProvider('')).toBeUndefined()
   })
+
+  it('returns undefined for ondo (custodial deposits, no LI.FI deposit chain)', () => {
+    expect(lifiDepositChainForProvider('ondo')).toBeUndefined()
+  })
 })
