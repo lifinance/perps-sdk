@@ -71,6 +71,26 @@ describe('LighterSigner', () => {
     expect(parsed.AccountIndex).toBe(42)
   })
 
+  it('signs CANCEL_ALL_ORDERS', async () => {
+    const signed = await signer.sign(
+      ActionType.CANCEL_ALL_ORDERS,
+      // time_in_force 0 = immediate; the WASM signer rejects a non-zero
+      // timestamp_ms ("CancelAllTime should be nil") for an immediate cancel.
+      { time_in_force: 0, timestamp_ms: 0, nonce: 5 },
+      ctx()
+    )
+    expect(signed.txType).toBe(16)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    // Threaded context plus the backend-supplied schedule params must land in
+    // the signed blob (field names from Lighter's cancel-all tx struct).
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.AccountIndex).toBe(42)
+    expect(parsed.TimeInForce).toBe(0)
+    expect(parsed.Time).toBe(0)
+    expect(parsed.Nonce).toBe(5)
+  })
+
   it('signs WITHDRAWAL', async () => {
     const signed = await signer.sign(
       ActionType.WITHDRAWAL,
@@ -78,7 +98,15 @@ describe('LighterSigner', () => {
       ctx()
     )
     expect(signed.txType).toBe(13)
-    expect(signed.txInfo).toBeTruthy()
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    // The signer threads our context (api key + account) AND the backend
+    // amount/nonce into the signed blob; asset index is pinned to USDC (3).
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.FromAccountIndex).toBe(42)
+    expect(parsed.AssetIndex).toBe(3)
+    expect(parsed.Amount).toBe(100_000)
+    expect(parsed.Nonce).toBe(8)
   })
 
   // The Go signer reads `memo` via `Value.String()` and copies its UTF-8
