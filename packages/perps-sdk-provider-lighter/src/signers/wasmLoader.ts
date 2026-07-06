@@ -70,7 +70,7 @@ export interface LoadLighterWasmOptions {
 
 /** @public */
 export interface LighterWasmExports {
-  GenerateAPIKey: (seed?: string) => {
+  GenerateAPIKey: () => {
     publicKey?: string
     privateKey?: string
     error?: string
@@ -119,31 +119,45 @@ export interface LighterWasmExports {
    * sync with the call site in `LighterSigner.dispatch`. All sign exports end
    * with `(nonce, apiKeyIndex, accountIndex)`.
    *
-   * 13 args: marketIndex, clientOrderIndex, baseAmount, price, isAsk,
-   * orderType, timeInForce, reduceOnly, triggerPrice, orderExpiry, then the
-   * trailing three.
+   * 19 args: marketIndex, clientOrderIndex, baseAmount, price, isAsk,
+   * orderType, timeInForce, reduceOnly, triggerPrice, orderExpiry,
+   * integratorAccountIndex, integratorTakerFee, integratorMakerFee,
+   * selfTradeBehaviorMode, selfTradeEqualityMode, skipNonce, then the trailing
+   * three.
    */
   SignCreateOrder: (...args: unknown[]) => SignResult
-  /** 5 args: marketIndex, orderIndex, then the trailing three. */
+  /** 6 args: marketIndex, orderIndex, skipNonce, then the trailing three. */
   SignCancelOrder: (...args: unknown[]) => SignResult
-  /** 5 args: timeInForce, timestampMs, then the trailing three. */
-  SignCancelAllOrders: (...args: unknown[]) => SignResult
   /**
-   * 7 args: toAccount, usdcAmount, fee, memo, then the trailing three. `memo`
-   * is copied into a Go `[32]byte`, so its UTF-8 byte length must be exactly
-   * 32 or Go rejects it before signing.
-   */
-  SignTransfer: (...args: unknown[]) => SignResult
-  /** 4 args: amount, then the trailing three. */
-  SignWithdraw: (...args: unknown[]) => SignResult
-  /** 6 args: marketIndex, fraction, marginMode, then the trailing three. */
-  SignUpdateLeverage: (...args: unknown[]) => SignResult
-  /**
-   * 8 args: marketIndex, orderIndex, baseAmount, price, triggerPrice, then the
+   * 7 args: timeInForce, time, cancelAllMarketIndex, skipNonce, then the
    * trailing three.
    */
+  SignCancelAllOrders: (...args: unknown[]) => SignResult
+  /**
+   * 11 args: toAccountIndex, assetIndex, fromRouteType, toRouteType, amount,
+   * usdcFee, memo, skipNonce, then the trailing three. `memo` is copied into a
+   * Go `[32]byte`, so its UTF-8 byte length must be exactly 32 or Go rejects it
+   * before signing.
+   */
+  SignTransfer: (...args: unknown[]) => SignResult
+  /** 7 args: assetIndex, routeType, amount, skipNonce, then the trailing three. */
+  SignWithdraw: (...args: unknown[]) => SignResult
+  /**
+   * 7 args: marketIndex, fraction, marginMode, skipNonce, then the trailing
+   * three.
+   */
+  SignUpdateLeverage: (...args: unknown[]) => SignResult
+  /**
+   * 14 args: marketIndex, orderIndex, baseAmount, price, triggerPrice,
+   * integratorAccountIndex, integratorTakerFee, integratorMakerFee,
+   * selfTradeBehaviorMode, selfTradeEqualityMode, skipNonce, then the trailing
+   * three.
+   */
   SignModifyOrder: (...args: unknown[]) => SignResult
-  /** 6 args: marketIndex, usdcAmount, direction, then the trailing three. */
+  /**
+   * 7 args: marketIndex, usdcAmount, direction, skipNonce, then the trailing
+   * three.
+   */
   SignUpdateMargin: (...args: unknown[]) => SignResult
 }
 

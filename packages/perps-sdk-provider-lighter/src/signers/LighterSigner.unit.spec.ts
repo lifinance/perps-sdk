@@ -2,15 +2,13 @@ import { ActionType } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { LighterSigner } from './LighterSigner.js'
 
-const DETERMINISTIC_SEED = `0x${'11'.repeat(32)}`
-
 describe('LighterSigner', () => {
   let signer: LighterSigner
   let keypair: { publicKey: string; privateKey: string }
 
   beforeAll(async () => {
     signer = new LighterSigner()
-    keypair = await signer.generateAPIKey(DETERMINISTIC_SEED)
+    keypair = await signer.generateAPIKey()
   })
 
   const ctx = () => ({
@@ -25,12 +23,14 @@ describe('LighterSigner', () => {
     expect(keypair.publicKey).not.toBe(keypair.privateKey)
   })
 
-  it('generateAPIKey is deterministic when a seed is provided', async () => {
-    const again = await signer.generateAPIKey(DETERMINISTIC_SEED)
-    expect(again).toEqual(keypair)
+  it('generates a fresh random keypair each call', async () => {
+    const again = await signer.generateAPIKey()
+    expect(again.publicKey).toMatch(/^0x[0-9a-f]+$/i)
+    expect(again.privateKey).toMatch(/^0x[0-9a-f]+$/i)
+    expect(again.privateKey).not.toBe(keypair.privateKey)
   })
 
-  it('signs PLACE_ORDER into a {txType, txInfo, txHash} blob', async () => {
+  it('signs PLACE_ORDER into a {txType, txInfo, txHash} blob with no integrator fees', async () => {
     const signed = await signer.sign(
       ActionType.PLACE_ORDER,
       {
@@ -54,6 +54,8 @@ describe('LighterSigner', () => {
     expect(parsed.AccountIndex).toBe(42)
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.Nonce).toBe(42)
+    // Unset integrator/self-trade sentinels must yield empty tx attributes.
+    expect(parsed.L2TxAttributes).toBeNull()
   })
 
   it('signs CANCEL_ORDER', async () => {
@@ -101,14 +103,14 @@ describe('LighterSigner', () => {
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
     // The signer must thread our context (api key + account) AND the
-    // backend-supplied transfer params into the signed blob without renaming
-    // anything. The asserted field names come from Lighter's
-    // L2TransferTxInfo struct.
+    // backend-supplied transfer params into the signed blob. The asserted field
+    // names come from Lighter's transfer tx struct.
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.FromAccountIndex).toBe(42)
     expect(parsed.ToAccountIndex).toBe(7)
-    expect(parsed.USDCAmount).toBe(250_000)
-    expect(parsed.Fee).toBe(100)
+    expect(parsed.AssetIndex).toBe(3)
+    expect(parsed.Amount).toBe(250_000)
+    expect(parsed.USDCFee).toBe(100)
     expect(parsed.Nonce).toBe(12)
     // Memo is serialized as a byte array — every entry should be 0x61 ('a').
     expect(parsed.Memo).toHaveLength(32)
@@ -181,6 +183,8 @@ describe('LighterSigner', () => {
       ctx()
     )
     expect(signed.txType).toBe(17)
+    // Unset integrator/self-trade sentinels must yield empty tx attributes.
+    expect(JSON.parse(signed.txInfo).L2TxAttributes).toBeNull()
   })
 
   it('REGISTER_API_KEY through sign() throws (must use signChangePubKey)', async () => {
