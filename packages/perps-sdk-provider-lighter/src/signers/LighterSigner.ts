@@ -51,6 +51,23 @@ export interface ApiKeyPair {
 
 const DEFAULT_CHAIN_ID = 304
 
+// Signing "unset" sentinels mirror lighter-go `types/txtypes/constants.go`.
+// Passing them yields an empty `L2TxAttributes` — no integrator fees, default
+// self-trade rules.
+const NIL_INTEGRATOR_INDEX = 0
+const NIL_INTEGRATOR_TAKER_FEE = 0
+const NIL_INTEGRATOR_MAKER_FEE = 0
+const SELF_TRADE_BEHAVIOR_EXPIRE_MAKER = 0
+const SELF_TRADE_EQUALITY_ACCOUNT_INDEX = 0
+const SKIP_NONCE_DISABLED = 0
+// CancelAll across every market (lighter-go `NilMarketIndex`); a real index
+// scopes the cancel to a single market.
+const NIL_MARKET_INDEX = 255
+// Withdrawals/transfers are USDC on the perps route (lighter-go `USDCAssetIndex`
+// / `AssetRouteType_Perps`). The signer rejects an asset index < 1.
+const USDC_ASSET_INDEX = 3
+const ASSET_ROUTE_TYPE_PERPS = 0
+
 /** @public */
 export class LighterSigner {
   private readonly apiUrl: string
@@ -76,12 +93,12 @@ export class LighterSigner {
   }
 
   /**
-   * Generate a fresh Lighter API keypair. Pass an optional 32-byte hex seed
-   * for deterministic generation (used in tests); omit for a random key.
+   * Generate a fresh random Lighter API keypair. The signer binary samples a
+   * random scalar; seeded/deterministic generation is not available.
    */
-  async generateAPIKey(seed?: string): Promise<ApiKeyPair> {
+  async generateAPIKey(): Promise<ApiKeyPair> {
     const wasm = await this.ensureLoaded()
-    const result = wasm.GenerateAPIKey(seed ?? '')
+    const result = wasm.GenerateAPIKey()
     if (result.error) {
       throw new Error(`Lighter GenerateAPIKey failed: ${result.error}`)
     }
@@ -273,6 +290,12 @@ export class LighterSigner {
           numberField(p, 'reduce_only'),
           numberField(p, 'trigger_price'),
           numberField(p, 'order_expiry'),
+          NIL_INTEGRATOR_INDEX,
+          NIL_INTEGRATOR_TAKER_FEE,
+          NIL_INTEGRATOR_MAKER_FEE,
+          SELF_TRADE_BEHAVIOR_EXPIRE_MAKER,
+          SELF_TRADE_EQUALITY_ACCOUNT_INDEX,
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
@@ -281,6 +304,7 @@ export class LighterSigner {
         return wasm.SignCancelOrder(
           numberField(p, 'market_index'),
           numberField(p, 'order_index'),
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
@@ -289,6 +313,8 @@ export class LighterSigner {
         return wasm.SignCancelAllOrders(
           numberField(p, 'time_in_force'),
           numberField(p, 'timestamp_ms'),
+          NIL_MARKET_INDEX,
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
@@ -300,6 +326,12 @@ export class LighterSigner {
           numberField(p, 'base_amount'),
           numberField(p, 'price'),
           numberField(p, 'trigger_price'),
+          NIL_INTEGRATOR_INDEX,
+          NIL_INTEGRATOR_TAKER_FEE,
+          NIL_INTEGRATOR_MAKER_FEE,
+          SELF_TRADE_BEHAVIOR_EXPIRE_MAKER,
+          SELF_TRADE_EQUALITY_ACCOUNT_INDEX,
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
@@ -309,6 +341,7 @@ export class LighterSigner {
           numberField(p, 'market_index'),
           numberField(p, 'fraction'),
           numberField(p, 'margin_mode'),
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
@@ -318,29 +351,38 @@ export class LighterSigner {
           numberField(p, 'market_index'),
           numberField(p, 'usdc_amount'),
           numberField(p, 'direction'),
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
       case ActionType.WITHDRAWAL:
         return wasm.SignWithdraw(
+          USDC_ASSET_INDEX,
+          ASSET_ROUTE_TYPE_PERPS,
           numberField(p, 'amount'),
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
       case ActionType.TRANSFER:
-        // SignTransfer's 7 positional args follow the Go binding order:
-        // `toAccount, usdcAmount, fee, memo, nonce, apiKeyIndex,
-        // accountIndex`. `memo` is copied directly into a `[32]byte`, so the
-        // backend MUST send a JS string whose UTF-8 byte length is exactly
-        // 32 (in practice: 32 ASCII characters) — anything else fails with
-        // "memo expected to be 32 bytes long".
+        // SignTransfer's positional args follow the Go binding order:
+        // `toAccountIndex, assetIndex, fromRouteType, toRouteType, amount,
+        // usdcFee, memo, skipNonce, nonce, apiKeyIndex, accountIndex`. `memo`
+        // is copied directly into a `[32]byte`, so the backend MUST send a JS
+        // string whose UTF-8 byte length is exactly 32 (in practice: 32 ASCII
+        // characters) — anything else fails with "memo expected to be 32 bytes
+        // long".
         return wasm.SignTransfer(
           numberField(p, 'to_account'),
+          USDC_ASSET_INDEX,
+          ASSET_ROUTE_TYPE_PERPS,
+          ASSET_ROUTE_TYPE_PERPS,
           numberField(p, 'usdc_amount'),
           numberField(p, 'fee'),
           stringField(p, 'memo'),
+          SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
