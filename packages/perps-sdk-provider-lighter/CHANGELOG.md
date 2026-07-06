@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.5.6
+
+### Patch Changes
+
+- [#204](https://github.com/lifinance/perps-sdk/pull/204) [`c0d0af1`](https://github.com/lifinance/perps-sdk/commit/c0d0af13c4c3a9d4bed998bb6d097363b9107825) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Update the vendored Lighter signer wasm to lighter-go main (`c26ac340`) and adapt `LighterSigner` to the new signing ABI. Signing behavior is preserved — integrator fees, self-trade modes, and skip-nonce are all passed as their unset sentinels. Seeded/deterministic `generateAPIKey` is no longer available (the upstream binary dropped seed support); the parameter has been removed.
+
 ## 1.5.5
 
 ### Patch Changes
