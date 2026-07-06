@@ -43,6 +43,7 @@ function projectHyperliquidDescriptor(
         values: [{ name: 'mode', value: config.abstractionMode }],
       }
 
+    case ActionType.APPROVE_INTEGRATOR:
     case ActionType.SET_REFERRAL:
     case ActionType.ACCOUNT_TYPE:
     case ActionType.SEND_ASSET:

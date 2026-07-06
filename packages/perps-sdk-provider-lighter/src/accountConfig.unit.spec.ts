@@ -154,6 +154,20 @@ describe('projectLighterConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
+  it('throws for APPROVE_INTEGRATOR — signing action, not a projected setup/options setting', () => {
+    const approveIntegratorSetup: ProviderAction = {
+      type: ActionType.APPROVE_INTEGRATOR,
+      title: 'Approve integrator',
+      description: 'Signing action — not a projected config setting.',
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.WASM_BLOB,
+      params: [],
+    }
+    expect(() =>
+      projectLighterConfigSettings(baseConfig, [approveIntegratorSetup], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
   it('throws for SET_REFERRAL — Hyperliquid-only, no Lighter projection', () => {
     const setReferralSetup: ProviderAction = {
       type: ActionType.SET_REFERRAL,
