@@ -8,6 +8,7 @@ export {
   encodeActivityCursor,
 } from './activityCursor.js'
 export { LighterApiClient } from './apiClient.js'
+export { assetMarginModeInt, isAssetMarginEnabled } from './assetCollateral.js'
 export { fetchDetailedAccount } from './fetchDetailedAccount.js'
 export { lighterAsset } from './lighterAsset.js'
 export { estimateLiquidationPrice } from './liquidation.js'

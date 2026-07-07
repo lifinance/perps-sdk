@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { assetMarginModeInt, isAssetMarginEnabled } from './assetCollateral.js'
+import * as barrel from './index.js'
 
 describe('assetMarginModeInt', () => {
   it('maps enabled → MarginEnabled (1)', () => {
@@ -27,5 +28,12 @@ describe('isAssetMarginEnabled', () => {
   it('round-trips with assetMarginModeInt', () => {
     expect(isAssetMarginEnabled(assetMarginModeInt(true))).toBe(true)
     expect(isAssetMarginEnabled(assetMarginModeInt(false))).toBe(false)
+  })
+})
+
+describe('utils public barrel', () => {
+  it('re-exports assetMarginModeInt and isAssetMarginEnabled', () => {
+    expect(barrel.assetMarginModeInt).toBe(assetMarginModeInt)
+    expect(barrel.isAssetMarginEnabled).toBe(isAssetMarginEnabled)
   })
 })
