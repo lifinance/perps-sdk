@@ -301,6 +301,24 @@ describe('lighterSignActions', () => {
         lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
       ).rejects.toThrow(/No Lighter API key registered/)
     })
+
+    it('rejects a null field instead of sending the string "null" to the venue', async () => {
+      const { deps, keyStore, postForm } = makeDeps()
+      await setStoredKey(keyStore)
+      const step: WasmBlobActionStep = {
+        action: ActionType.ACCOUNT_TYPE,
+        wasmSignParams: {
+          kind: 'changeAccountTier',
+          account_index: null,
+          new_tier: 'premium',
+          nonce: -1,
+        },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).rejects.toThrow(/missing account_index or new_tier/)
+      expect(postForm).not.toHaveBeenCalled()
+    })
   })
 
   describe('WASM_BLOB — SET_REFERRAL (referral/use)', () => {

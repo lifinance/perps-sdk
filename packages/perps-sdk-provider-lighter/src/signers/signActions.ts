@@ -253,7 +253,7 @@ function buildTokenAuthMutationRequest(
       account_index?: number
       new_tier?: string
     }
-    if (account_index === undefined || new_tier === undefined) {
+    if (account_index == null || new_tier == null) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         'Lighter ACCOUNT_TYPE wasmSignParams missing account_index or new_tier'
@@ -270,11 +270,7 @@ function buildTokenAuthMutationRequest(
       referral_code?: string
       x?: string
     }
-    if (
-      l1_address === undefined ||
-      referral_code === undefined ||
-      x === undefined
-    ) {
+    if (l1_address == null || referral_code == null || x == null) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         'Lighter SET_REFERRAL wasmSignParams missing l1_address, referral_code, or x'
@@ -337,16 +333,6 @@ export async function signEvmTxActions(
   const signed: EvmTxSignedActionStep[] = []
   for (const step of steps) {
     const params = step.txParams
-
-    if (walletSigner.chain?.id !== params.chainId) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
-          `connected wallet is on chain ${walletSigner.chain?.id ?? 'unknown'}. ` +
-          `Switch the wallet to chain ${params.chainId} before signing — the ` +
-          "SDK broadcasts on the wallet's active chain and does not switch it."
-      )
-    }
 
     if (walletSigner.chain?.id !== params.chainId) {
       throw new PerpsError(
