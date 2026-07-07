@@ -98,6 +98,8 @@ export type {
   PlaceOrderParams as ClientPlaceOrderParams,
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
   ProviderSetup,
+  SendAssetActionParams,
+  WithdrawParams,
 } from './types/api.js'
 export type {
   HyperliquidConfig,

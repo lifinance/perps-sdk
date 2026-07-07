@@ -89,6 +89,23 @@ describe('userEip712TargetChainId', () => {
   it('returns undefined when no step carries a numeric chainId', () => {
     expect(userEip712TargetChainId(userEip712, [eip712Step()])).toBeUndefined()
   })
+
+  it('returns undefined when domain.chainId is a non-numeric wire value', () => {
+    // domain.chainId is typed `number`, but a provider could serialize it as a
+    // string over the wire; the `typeof === 'number'` guard must reject it.
+    const stringChainStep = {
+      action: ActionType.WITHDRAWAL,
+      typedData: {
+        domain: { chainId: '42161' },
+        types: { X: [{ name: 'x', type: 'uint256' }] },
+        primaryType: 'X',
+        message: { x: 0 },
+      },
+    } as unknown as ActionStep
+    expect(
+      userEip712TargetChainId(userEip712, [stringChainStep])
+    ).toBeUndefined()
+  })
 })
 
 describe('switchSigningChain', () => {
