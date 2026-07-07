@@ -169,6 +169,16 @@ type _CreateApproveBuilderFeeParams = Expect<
   >
 >
 
+type _CreateApproveIntegratorParams = Expect<
+  Equals<
+    Extract<
+      CreateActionRequest,
+      { action: ActionType.APPROVE_INTEGRATOR }
+    >['params'],
+    Record<string, never>
+  >
+>
+
 type _CreateSetReferralParams = Expect<
   Equals<
     Extract<CreateActionRequest, { action: ActionType.SET_REFERRAL }>['params'],

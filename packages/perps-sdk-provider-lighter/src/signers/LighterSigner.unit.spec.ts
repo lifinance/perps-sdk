@@ -187,6 +187,135 @@ describe('LighterSigner', () => {
     expect(JSON.parse(signed.txInfo).L2TxAttributes).toBeNull()
   })
 
+  it('PLACE_ORDER threads backend integrator fees into L2TxAttributes', async () => {
+    const signed = await signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        market_index: 0,
+        client_order_index: 0,
+        base_amount: 1000,
+        price: 50_000_000_000,
+        is_ask: 0,
+        order_type: 0,
+        time_in_force: 1,
+        reduce_only: false,
+        trigger_price: 0,
+        order_expiry: -1,
+        integrator_account_index: 5,
+        integrator_taker_fee: 250,
+        integrator_maker_fee: 100,
+        nonce: 42,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(14)
+    // L2TxAttributes is a Go `map[uint8]int`: key 1 = integrator account
+    // index, 2 = taker fee, 3 = maker fee (uint32 ppm of FeeTick=1_000_000).
+    expect(JSON.parse(signed.txInfo).L2TxAttributes).toEqual({
+      '1': 5,
+      '2': 250,
+      '3': 100,
+    })
+  })
+
+  it('PLACE_ORDER with explicit all-zero integrator fields emits no attributes (same as omitting them)', async () => {
+    // All-zero integrator input must collapse to the nil sentinels, leaving
+    // L2TxAttributes null — identical wire attributes to omitting the fields.
+    const signed = await signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        market_index: 0,
+        client_order_index: 0,
+        base_amount: 1000,
+        price: 50_000_000_000,
+        is_ask: 0,
+        order_type: 0,
+        time_in_force: 1,
+        reduce_only: false,
+        trigger_price: 0,
+        order_expiry: -1,
+        integrator_account_index: 0,
+        integrator_taker_fee: 0,
+        integrator_maker_fee: 0,
+        nonce: 42,
+      },
+      ctx()
+    )
+    expect(JSON.parse(signed.txInfo).L2TxAttributes).toBeNull()
+  })
+
+  it('MODIFY_ORDER threads backend integrator fees into L2TxAttributes', async () => {
+    const signed = await signer.sign(
+      ActionType.MODIFY_ORDER,
+      {
+        market_index: 0,
+        order_index: 1,
+        base_amount: 100,
+        price: 50_000_000_000,
+        trigger_price: 0,
+        integrator_account_index: 5,
+        integrator_taker_fee: 250,
+        integrator_maker_fee: 100,
+        nonce: 11,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(17)
+    expect(JSON.parse(signed.txInfo).L2TxAttributes).toEqual({
+      '1': 5,
+      '2': 250,
+      '3': 100,
+    })
+  })
+
+  it('signs APPROVE_INTEGRATOR into a type-45 blob with positional args in struct order', async () => {
+    const signed = await signer.sign(
+      ActionType.APPROVE_INTEGRATOR,
+      {
+        integrator_account_index: 5,
+        max_perps_taker_fee: 250,
+        max_perps_maker_fee: 100,
+        max_spot_taker_fee: 300,
+        max_spot_maker_fee: 150,
+        approval_expiry: 1_893_456_000,
+        nonce: 3,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(45)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    // Field-level positional-arg verification against lighter-go
+    // `types/txtypes/approve_integrator.go` (rev c26ac340). Wrong arg order
+    // would land these values in the wrong struct fields.
+    expect(parsed.AccountIndex).toBe(42)
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.IntegratorAccountIndex).toBe(5)
+    expect(parsed.MaxPerpsTakerFee).toBe(250)
+    expect(parsed.MaxPerpsMakerFee).toBe(100)
+    expect(parsed.MaxSpotTakerFee).toBe(300)
+    expect(parsed.MaxSpotMakerFee).toBe(150)
+    expect(parsed.ApprovalExpiry).toBe(1_893_456_000)
+    expect(parsed.Nonce).toBe(3)
+  })
+
+  it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {
+    await expect(
+      signer.sign(
+        ActionType.APPROVE_INTEGRATOR,
+        {
+          integrator_account_index: 5,
+          max_perps_taker_fee: 250,
+          max_perps_maker_fee: 100,
+          // missing max_spot_taker_fee / max_spot_maker_fee
+          approval_expiry: 1_893_456_000,
+          nonce: 3,
+        },
+        ctx()
+      )
+    ).rejects.toThrow(/max_spot_taker_fee/)
+  })
+
   it('REGISTER_API_KEY through sign() throws (must use signChangePubKey)', async () => {
     await expect(
       signer.sign(

@@ -131,6 +131,20 @@ describe('projectHyperliquidConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
+  it('throws for APPROVE_INTEGRATOR — Lighter-only signing action, no Hyperliquid projection', () => {
+    const approveIntegratorSetup: ProviderAction = {
+      type: ActionType.APPROVE_INTEGRATOR,
+      title: 'Approve integrator',
+      description: 'Lighter-only — should not appear here.',
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.EIP712,
+      params: [],
+    }
+    expect(() =>
+      projectHyperliquidConfigSettings(baseConfig, [approveIntegratorSetup], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
   it('throws for SET_REFERRAL — referral code is injected backend-side, no SDK projection', () => {
     const setReferralSetup: ProviderAction = {
       type: ActionType.SET_REFERRAL,
