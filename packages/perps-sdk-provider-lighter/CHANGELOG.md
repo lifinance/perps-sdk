@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.9.0
+
+### Minor Changes
+
+- [#217](https://github.com/lifinance/perps-sdk/pull/217) [`cbb85a6`](https://github.com/lifinance/perps-sdk/commit/cbb85a602d595a72efbe2c9542ff80dea20b8eea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Export the per-asset margin-mode helpers `isAssetMarginEnabled` and `assetMarginModeInt` from the provider-lighter public barrel.
+
 ## 1.8.0
 
 ### Minor Changes
