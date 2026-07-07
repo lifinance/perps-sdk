@@ -146,7 +146,10 @@ export type HlWsUserFillsData = {
 /** @public */
 export type HlWsAllDexsClearinghouseStateData = {
   user: string
-  clearinghouseStates: [string, Pick<HlClearinghouseState, 'assetPositions'>][]
+  clearinghouseStates: [
+    string,
+    Pick<HlClearinghouseState, 'assetPositions' | 'marginSummary'>,
+  ][]
 }
 
 /** @public */

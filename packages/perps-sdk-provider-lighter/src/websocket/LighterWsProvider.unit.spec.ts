@@ -1427,4 +1427,75 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
   })
+
+  describe('accountSummary via user_stats', () => {
+    it('maps a user_stats frame through the net-semantics identities', () => {
+      const p = makeProvider()
+      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {
+            collateral: '25.777769',
+            portfolio_value: '35.072119',
+            available_balance: '11.056250',
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('accountSummary')
+      expect(event.data.portfolioValue).toBe('35.072119')
+      expect(event.data.availableMargin).toBe('11.05625')
+      // marginUsed = portfolio - available; unrealizedPnl = portfolio - collateral
+      expect(Number.parseFloat(event.data.marginUsed)).toBeCloseTo(24.015869)
+      expect(Number.parseFloat(event.data.unrealizedPnl)).toBeCloseTo(9.29435)
+      p.close()
+    })
+
+    it('drops frames without parseable figures', () => {
+      const p = makeProvider()
+      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {},
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('subscribes user_stats without an auth token', async () => {
+      const provider = makeProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+      ;(provider as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: `user_stats/${ACCOUNT_IDX}`,
+        })
+      )
+      provider.close()
+    })
+  })
 })

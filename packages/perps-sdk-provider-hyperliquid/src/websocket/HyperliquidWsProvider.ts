@@ -96,6 +96,7 @@ export const hyperliquidWsProvider =
  */
 export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
+  private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
@@ -193,6 +194,32 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         this.spotCtxByMarketId = {}
         this.fastCtxByMarketId = {}
         this.marketsContextByMarketId = {}
+      }
+    }
+
+    // `positions` and `accountSummary` are two views over the same wire
+    // subscription; refcount it so neither's teardown starves the other.
+    if (sub.channel === 'positions' || sub.channel === 'accountSummary') {
+      const user = sub.address.toLowerCase()
+      const wireKey = `clearinghouse:${user}`
+      const payload = this.toHlPayload(sub)
+      const count = this.clearinghouseRefs.get(user) ?? 0
+      this.clearinghouseRefs.set(user, count + 1)
+      if (count === 0) {
+        await this.registerSub(wireKey, payload)
+      }
+      await this.rws.ready()
+      return () => {
+        const remaining = (this.clearinghouseRefs.get(user) ?? 1) - 1
+        if (remaining <= 0) {
+          this.clearinghouseRefs.delete(user)
+          this.unregisterSub(wireKey)
+          this.rws.send(
+            JSON.stringify({ method: 'unsubscribe', subscription: payload })
+          )
+        } else {
+          this.clearinghouseRefs.set(user, remaining)
+        }
       }
     }
 
@@ -349,6 +376,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return `userFills:${sub.address.toLowerCase()}`
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
+      case 'accountSummary':
+        return `accountSummary:${sub.address.toLowerCase()}`
       case 'spotBalances':
         return `spotState:${sub.address.toLowerCase()}`
     }
@@ -419,6 +448,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       case 'fills':
         return { type: 'userFills', user: sub.address }
       case 'positions':
+      case 'accountSummary':
         return { type: 'allDexsClearinghouseState', user: sub.address }
       case 'spotBalances':
         return { type: 'spotState', user: sub.address }
@@ -923,6 +953,31 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.emit(`positions:${data.user.toLowerCase()}`, {
       channel: 'positions',
       data: positions,
+    })
+
+    let accountValue = 0
+    let marginUsed = 0
+    for (const [, state] of data.clearinghouseStates) {
+      accountValue +=
+        Number.parseFloat(state.marginSummary?.accountValue ?? '') || 0
+      marginUsed +=
+        Number.parseFloat(state.marginSummary?.totalMarginUsed ?? '') || 0
+    }
+    const unrealizedPnl = positions.reduce(
+      (sum, p) => sum + (Number.parseFloat(p.unrealizedPnl) || 0),
+      0
+    )
+    // Equity semantics, matching the REST summary: `accountValue` already
+    // carries locked margin and unrealized PnL. Spot balances stream apart,
+    // so this portfolio value covers perps equity only.
+    this.emit(`accountSummary:${data.user.toLowerCase()}`, {
+      channel: 'accountSummary',
+      data: {
+        portfolioValue: accountValue.toString(),
+        availableMargin: (accountValue - marginUsed).toString(),
+        marginUsed: marginUsed.toString(),
+        unrealizedPnl: unrealizedPnl.toString(),
+      },
     })
   }
 
