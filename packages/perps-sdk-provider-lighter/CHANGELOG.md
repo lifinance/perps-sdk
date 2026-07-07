@@ -1,5 +1,20 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 1.7.0
+
+### Minor Changes
+
+- [#212](https://github.com/lifinance/perps-sdk/pull/212) [`fecfa9b`](https://github.com/lifinance/perps-sdk/commit/fecfa9b3255b5f77a1b58b49d790500a61d56561) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Implement Lighter ACCOUNT_MODE switching (Unified vs Simple trading account) via `SignUpdateAccountConfig`: WASM signing arm, typed `accountTradingMode` account state, and descriptor projection.
+
+### Patch Changes
+
+- [#210](https://github.com/lifinance/perps-sdk/pull/210) [`e6b0be6`](https://github.com/lifinance/perps-sdk/commit/e6b0be60e96839e28b91cf4bb592a5306dd38d91) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Project the SET_REFERRAL and APPROVE_INTEGRATOR setup gates in the Lighter account-config mapper instead of throwing, fixing getAccount rejecting once the backend serves those setup descriptors
+
+- [#213](https://github.com/lifinance/perps-sdk/pull/213) [`f669156`](https://github.com/lifinance/perps-sdk/commit/f669156731d7da41fe9b467adfaea95d35cb0464) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Execute Lighter's token-authenticated venue mutations (ACCOUNT_TYPE → /changeAccountTier, SET_REFERRAL → /referral/use) client-side via a direct Lighter POST, so the per-call auth token never transits the LI.FI backend. Tokens are minted per-call with a short (minutes) deadline and never persisted, and venue rule violations surface verbatim as PerpsError(ExchangeRejected). Core now tolerates actions that produce no backend-bound step: `signProviderSetupAction` returns `Promise<SignedActionStep | undefined>` (`undefined` when the plugin executed the action client-side), so callers collecting results into `SignedActionStep[]` must skip `undefined`.
+
+- Updated dependencies [[`fecfa9b`](https://github.com/lifinance/perps-sdk/commit/fecfa9b3255b5f77a1b58b49d790500a61d56561)]:
+  - @lifi/perps-types@1.11.0
+
 ## 1.6.0
 
 ### Minor Changes
