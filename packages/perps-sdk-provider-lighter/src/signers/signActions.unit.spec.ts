@@ -10,12 +10,17 @@ import { type Address, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
+import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
 import {
   type LighterSignActionsDeps,
   lighterSignActions,
 } from './signActions.js'
+
+type PostFormResult = { status: number; data: unknown }
+type PostFormImpl = (path: string, params: ApiParams) => Promise<PostFormResult>
+const OK_MUTATION: PostFormResult = { status: 200, data: { code: 200 } }
 
 const ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
@@ -32,10 +37,14 @@ const REGISTER_SIGNED = {
   messageToSign: 'lighter-register-msg',
 }
 
-function makeDeps(overrides: Partial<LighterSigner> = {}): {
+function makeDeps(
+  overrides: Partial<LighterSigner> = {},
+  postFormImpl?: PostFormImpl
+): {
   deps: LighterSignActionsDeps
   signer: { [K in keyof LighterSigner]?: unknown }
   keyStore: LighterKeyStore
+  postForm: ReturnType<typeof vi.fn>
 } {
   const baseSigner = {
     sign: vi.fn(async () => STD_SIGNED),
@@ -53,14 +62,18 @@ function makeDeps(overrides: Partial<LighterSigner> = {}): {
   }
   const signer = { ...baseSigner, ...overrides } as unknown as LighterSigner
   const keyStore = new LighterKeyStore(createMemoryStorage())
+  const postForm = vi.fn(postFormImpl ?? (async () => OK_MUTATION))
+  const apiClient = { postForm } as unknown as LighterApiClient
   return {
     deps: {
       signer,
       keyStore,
+      apiClient,
       resolveAccountIndex: vi.fn(async () => 99),
     },
     signer: signer as unknown as { [K in keyof LighterSigner]?: unknown },
     keyStore,
+    postForm,
   }
 }
 
@@ -189,53 +202,93 @@ describe('lighterSignActions', () => {
   })
 
   describe('WASM_BLOB — ACCOUNT_TYPE (changeAccountTier)', () => {
-    it('creates a Lighter auth token via the WASM signer and parks it in txInfo', async () => {
-      const { deps, signer, keyStore } = makeDeps()
+    const accountTypeStep: WasmBlobActionStep = {
+      action: ActionType.ACCOUNT_TYPE,
+      wasmSignParams: {
+        kind: 'changeAccountTier',
+        account_index: 99,
+        new_tier: 'premium',
+        nonce: -1,
+      },
+    }
+
+    async function setStoredKey(keyStore: LighterKeyStore): Promise<void> {
       await keyStore.set(ADDRESS, {
         accountIndex: 99,
         apiKeyIndex: 42,
         apiKeyPrivateKey: '0xabc',
         apiKeyPublicKey: '0xdef',
       })
+    }
 
-      const step: WasmBlobActionStep = {
-        action: ActionType.ACCOUNT_TYPE,
-        wasmSignParams: {
-          kind: 'changeAccountTier',
-          account_index: 99,
-          new_tier: 'premium',
-          nonce: -1,
-        },
-      }
+    it('executes client-side via a direct venue POST and returns no backend step', async () => {
+      const { deps, signer, keyStore, postForm } = makeDeps()
+      await setStoredKey(keyStore)
+
       const result = (await lighterSignActions(
         deps,
         SigningMethod.WASM_BLOB,
-        [step],
+        [accountTypeStep],
         ADDRESS
       )) as WasmBlobSignedActionStep[]
 
-      expect(result[0].signedTx.txInfo).toBe('auth-token-xyz')
-      // `/changeAccountTier` reads only `txInfo`; txType / txHash carry placeholders.
-      expect(result[0].signedTx.txType).toBe(0)
-      expect(result[0].signedTx.txHash).toBe('')
-      expect(result[0].action).toBe(ActionType.ACCOUNT_TYPE)
-      expect(result[0].wasmSignParams).toMatchObject({
-        kind: 'changeAccountTier',
+      // No backend-bound step: the action already ran against the venue.
+      expect(result).toHaveLength(0)
+
+      expect(postForm).toHaveBeenCalledTimes(1)
+      expect(postForm).toHaveBeenCalledWith('/api/v1/changeAccountTier', {
+        auth: 'auth-token-xyz',
         account_index: 99,
         new_tier: 'premium',
       })
+
       const createAuthCalls = (
         signer.createAuthToken as ReturnType<typeof vi.fn>
       ).mock.calls
       expect(createAuthCalls).toHaveLength(1)
-      // Deadline is unix-seconds + 1h; check it's in the future.
       const [deadline, ctx] = createAuthCalls[0]
-      expect(deadline).toBeGreaterThan(Math.floor(Date.now() / 1000))
+      const now = Math.floor(Date.now() / 1000)
+      // Minted per-call with a short (minutes) deadline, not the 1h default.
+      expect(deadline).toBeGreaterThan(now)
+      expect(deadline).toBeLessThanOrEqual(now + 5 * 60 + 2)
       expect(ctx).toEqual({
         apiKeyPrivateKey: '0xabc',
         apiKeyIndex: 42,
         accountIndex: 99,
       })
+    })
+
+    it('never routes the minted auth token through a backend-bound step', async () => {
+      const { deps, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep],
+        ADDRESS
+      )
+
+      // The array `execute` would forward to /executeAction is empty, so the
+      // token can never reach the LI.FI backend.
+      expect(JSON.stringify(result)).not.toContain('auth-token-xyz')
+    })
+
+    it('surfaces a venue rule violation verbatim as an ExchangeRejected error', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 21000, message: 'account has open positions' },
+      }))
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [accountTypeStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/account has open positions/)
     })
 
     it('throws when no API key is registered for the address', async () => {
@@ -247,6 +300,67 @@ describe('lighterSignActions', () => {
       await expect(
         lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
       ).rejects.toThrow(/No Lighter API key registered/)
+    })
+  })
+
+  describe('WASM_BLOB — SET_REFERRAL (referral/use)', () => {
+    const referralStep: WasmBlobActionStep = {
+      action: ActionType.SET_REFERRAL,
+      wasmSignParams: {
+        kind: 'referralUse',
+        l1_address: ADDRESS.toLowerCase(),
+        referral_code: 'LIFI',
+        x: 'lifi_x',
+        nonce: -2,
+      },
+    }
+
+    it('executes client-side via a direct venue POST and returns no backend step', async () => {
+      const { deps, keyStore, postForm } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(0)
+      expect(postForm).toHaveBeenCalledTimes(1)
+      expect(postForm).toHaveBeenCalledWith('/api/v1/referral/use', {
+        auth: 'auth-token-xyz',
+        l1_address: ADDRESS.toLowerCase(),
+        referral_code: 'LIFI',
+        x: 'lifi_x',
+      })
+    })
+
+    it('surfaces a venue rejection verbatim as an ExchangeRejected error', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 21001, message: 'referral code already applied' },
+      }))
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [referralStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/referral code already applied/)
     })
   })
 

@@ -1088,11 +1088,12 @@ describe('PerpsClient', () => {
         lighterAddress,
         setup[0]
       )
+      expect(signed).toBeDefined()
       const result = await lighterClient.executeProviderSetup({
         provider: 'lighter',
         address: lighterAddress,
         setup,
-        signedActions: [signed],
+        signedActions: signed ? [signed] : [],
       })
 
       expect(result.results.results).toEqual([
@@ -1103,6 +1104,52 @@ describe('PerpsClient', () => {
       // The plugin's WASM signer was driven (WASM_BLOB scheme), not an agent.
       expect(lighter.signActions).toHaveBeenCalledOnce()
       expect(lighter.signActions.mock.calls[0][0]).toBe(SigningMethod.WASM_BLOB)
+    })
+
+    it('skips the /executeAction hop for a client-executed venue mutation (no token reaches LI.FI)', async () => {
+      const lighter = createWasmOnlyProvider()
+      // Token-authenticated venue mutations (ACCOUNT_TYPE / SET_REFERRAL) run
+      // entirely during signing and yield no backend-bound step.
+      lighter.signActions.mockResolvedValue([])
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+
+      const executeBodies: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                wasmSignParams: { kind: 'changeAccountTier' },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          executeBodies.push((await request.json()) as ExecuteActionRequest)
+          return HttpResponse.json({
+            results: [],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      await expect(
+        lighterClient.executeProviderOption({
+          provider: 'lighter',
+          address: lighterAddress,
+          action: ActionType.ACCOUNT_TYPE,
+          params: { tier: 'premium' },
+        })
+      ).resolves.toBeUndefined()
+
+      // Nothing was forwarded to the backend, so no Lighter auth token could
+      // transit LI.FI for this flow.
+      expect(executeBodies).toEqual([])
     })
 
     it('orchestrates both plugins: Hyperliquid agent-signs while Lighter WASM-signs', async () => {

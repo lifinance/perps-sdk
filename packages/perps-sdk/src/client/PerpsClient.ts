@@ -217,6 +217,10 @@ export class PerpsClient {
    * consumers collect signed setup actions without embedding per-method
    * signing logic.
    *
+   * Returns `undefined` when the plugin executed the action entirely
+   * client-side (e.g. Lighter's token-authenticated venue mutations), leaving
+   * no backend-bound step to submit.
+   *
    * @throws {PerpsError} When the step's action is not declared by the provider.
    * @public
    */
@@ -224,7 +228,7 @@ export class PerpsClient {
     provider: string,
     address: Address,
     step: ActionStep
-  ): Promise<SignedActionStep> {
+  ): Promise<SignedActionStep | undefined> {
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = findActionDescriptor(metadata, step.action)
     const [signed] = await this.delegateSignActions(
@@ -476,6 +480,14 @@ export class PerpsClient {
     }
 
     const signed = await this.signProviderSetupAction(provider, address, step)
+
+    // A client-executed setup action (Lighter SET_REFERRAL) produces no
+    // backend-bound step — it already ran during signing, so there is nothing
+    // to submit.
+    if (signed === undefined) {
+      return
+    }
+
     await this.executeProviderSetup({
       provider,
       address,
@@ -668,6 +680,13 @@ export class PerpsClient {
       descriptor,
       actions
     )
+
+    // A plugin may execute an action entirely client-side (e.g. Lighter's
+    // token-authenticated venue mutations), leaving no backend-bound step. With
+    // nothing to submit, skip the `/executeAction` hop.
+    if (signedActions.length === 0) {
+      return { results: [] }
+    }
 
     return executeAction(this.sdkClient, {
       provider,
