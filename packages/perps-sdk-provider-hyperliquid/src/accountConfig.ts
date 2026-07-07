@@ -22,6 +22,7 @@ function assertNever(value: never): never {
  * |-----------------------|----------------------------------------------
  * | APPROVE_AGENT         | []                  (no parameters)
  * | APPROVE_BUILDER_FEE   | []                  (no parameters)
+ * | SET_REFERRAL          | []                  (no parameters)
  * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }]
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
@@ -35,6 +36,7 @@ function projectHyperliquidDescriptor(
   switch (descriptor.type) {
     case ActionType.APPROVE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
+    case ActionType.SET_REFERRAL:
       return { type: descriptor.type, values: [] }
 
     case ActionType.ACCOUNT_MODE:
@@ -44,7 +46,6 @@ function projectHyperliquidDescriptor(
       }
 
     case ActionType.APPROVE_INTEGRATOR:
-    case ActionType.SET_REFERRAL:
     case ActionType.ACCOUNT_TYPE:
     case ActionType.SEND_ASSET:
     case ActionType.WITHDRAWAL:

@@ -28,6 +28,15 @@ const approveBuilderFeeSetup: ProviderAction = {
   params: [],
 }
 
+const setReferralSetup: ProviderAction = {
+  type: ActionType.SET_REFERRAL,
+  title: 'Initialize account via LI.FI',
+  description: 'Enable the LI.FI referral code.',
+  signers: [PerpsSigner.USER],
+  signingMethod: SigningMethod.EIP712,
+  params: [],
+}
+
 const accountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
@@ -55,13 +64,14 @@ const baseConfig: HyperliquidAccountConfig = {
 }
 
 describe('projectHyperliquidConfigSettings', () => {
-  it('projects APPROVE_AGENT and APPROVE_BUILDER_FEE setup descriptors with empty values', () => {
+  it('projects APPROVE_AGENT, APPROVE_BUILDER_FEE and SET_REFERRAL setup descriptors with empty values', () => {
     const result = projectHyperliquidConfigSettings(
       baseConfig,
-      [approveAgentSetup, approveBuilderFeeSetup],
+      [setReferralSetup, approveAgentSetup, approveBuilderFeeSetup],
       []
     )
     expect(result).toEqual([
+      { type: ActionType.SET_REFERRAL, values: [] },
       { type: ActionType.APPROVE_AGENT, values: [] },
       { type: ActionType.APPROVE_BUILDER_FEE, values: [] },
     ])
@@ -142,20 +152,6 @@ describe('projectHyperliquidConfigSettings', () => {
     }
     expect(() =>
       projectHyperliquidConfigSettings(baseConfig, [approveIntegratorSetup], [])
-    ).toThrow(/no projection for descriptor type/)
-  })
-
-  it('throws for SET_REFERRAL — referral code is injected backend-side, no SDK projection', () => {
-    const setReferralSetup: ProviderAction = {
-      type: ActionType.SET_REFERRAL,
-      title: 'Set referrer',
-      description: 'Attach the LI.FI referral code.',
-      signers: [PerpsSigner.USER],
-      signingMethod: SigningMethod.EIP712,
-      params: [],
-    }
-    expect(() =>
-      projectHyperliquidConfigSettings(baseConfig, [setReferralSetup], [])
     ).toThrow(/no projection for descriptor type/)
   })
 })

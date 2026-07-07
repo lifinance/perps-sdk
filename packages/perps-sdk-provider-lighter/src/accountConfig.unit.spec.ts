@@ -154,31 +154,32 @@ describe('projectLighterConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
-  it('throws for APPROVE_INTEGRATOR — signing action, not a projected setup/options setting', () => {
-    const approveIntegratorSetup: ProviderAction = {
-      type: ActionType.APPROVE_INTEGRATOR,
-      title: 'Approve integrator',
-      description: 'Signing action — not a projected config setting.',
-      signers: [PerpsSigner.USER],
+  it('projects SET_REFERRAL and APPROVE_INTEGRATOR setup gates with empty values and no local satisfaction', () => {
+    const setReferralSetup: ProviderAction = {
+      type: ActionType.SET_REFERRAL,
+      title: 'Apply LI.FI Referral',
+      description: "Applies LI.FI's referral code to your Lighter account.",
+      signers: [PerpsSigner.API_KEY],
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
-    expect(() =>
-      projectLighterConfigSettings(baseConfig, [approveIntegratorSetup], [])
-    ).toThrow(/no projection for descriptor type/)
-  })
-
-  it('throws for SET_REFERRAL — Hyperliquid-only, no Lighter projection', () => {
-    const setReferralSetup: ProviderAction = {
-      type: ActionType.SET_REFERRAL,
-      title: 'Set referrer',
-      description: 'HL-only — should not appear here.',
-      signers: [PerpsSigner.USER],
-      signingMethod: SigningMethod.EIP712,
+    const approveIntegratorSetup: ProviderAction = {
+      type: ActionType.APPROVE_INTEGRATOR,
+      title: 'Authorise LI.FI Fees',
+      description: "Authorises LI.FI's integrator account to collect fees.",
+      signers: [PerpsSigner.API_KEY],
+      signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
-    expect(() =>
-      projectLighterConfigSettings(baseConfig, [setReferralSetup], [])
-    ).toThrow(/no projection for descriptor type/)
+    expect(
+      projectLighterConfigSettings(
+        baseConfig,
+        [setReferralSetup, approveIntegratorSetup],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.SET_REFERRAL, values: [] },
+      { type: ActionType.APPROVE_INTEGRATOR, values: [] },
+    ])
   })
 })
