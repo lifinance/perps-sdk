@@ -14,7 +14,11 @@ import type {
 } from '@lifi/perps-types'
 import type { Account, Address, WalletClient } from 'viem'
 import type { RetryConfig } from '../transport/retryPolicy.js'
-import type { ProviderConfigs, RequestInterceptor } from './config.js'
+import type {
+  ProviderConfigs,
+  RequestInterceptor,
+  SwitchChainHook,
+} from './config.js'
 import type { PerpsProviderPlugin } from './provider.js'
 
 /**
@@ -85,6 +89,12 @@ export interface PerpsClientOptions {
    * a keyed `ProviderConfigs` map.
    */
   providers?: PerpsProviderPlugin[] | ProviderConfigs
+  /**
+   * Hook invoked before a USER-signed EIP-712 action is signed, to switch the
+   * user's wallet to the action's target chain. Also settable at runtime via
+   * `setSwitchChain`.
+   */
+  switchChain?: SwitchChainHook
 }
 
 /**
@@ -143,6 +153,22 @@ export interface WithdrawParams {
   provider: string
   address: Address
   withdrawal: WithdrawalParams
+}
+
+/**
+ * Parameters for {@link PerpsClient.sendAsset}. The send-asset fields are held
+ * flat (not nested) to avoid colliding with `@lifi/perps-types`'
+ * `SendAssetParams`, which types the underlying action payload.
+ *
+ * @public
+ */
+export interface SendAssetActionParams {
+  provider: string
+  address: Address
+  collateral: string
+  sourceDex: string
+  destinationDex: string
+  amount: string
 }
 
 /**
@@ -205,9 +231,7 @@ export interface ProviderSetup {
 }
 
 /**
- * Parameters for {@link PerpsClient.executeProviderSetup}.
- *
- * @public
+ * Parameters for the internal `PerpsClient.executeProviderSetup` batch submit.
  */
 export interface ExecuteProviderSetupParams {
   /** Provider to satisfy setup for */
@@ -221,9 +245,7 @@ export interface ExecuteProviderSetupParams {
 }
 
 /**
- * Result from {@link PerpsClient.executeProviderSetup}.
- *
- * @public
+ * Result from the internal `PerpsClient.executeProviderSetup` batch submit.
  */
 export interface ExecuteProviderSetupResult {
   results: ExecuteActionResponse
