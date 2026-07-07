@@ -258,6 +258,8 @@ export interface LighterAccountConfig {
   apiKeyIndex: number
   apiKeyRegistered: boolean
   accountType: number
+  /** Lighter `account_trading_mode`: 0 = Classic/Simple, 1 = Unified. */
+  accountTradingMode: number
   readOnlyTokenApproved: boolean
   /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
   readOnlyTokenExpiry?: number

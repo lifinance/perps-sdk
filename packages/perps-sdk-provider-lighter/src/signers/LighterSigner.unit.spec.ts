@@ -344,6 +344,37 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/max_spot_taker_fee/)
   })
 
+  it('signs ACCOUNT_MODE into a type-41 blob carrying the trading mode', async () => {
+    const signed = await signer.sign(
+      ActionType.ACCOUNT_MODE,
+      { account_trading_mode: 1, nonce: 4 },
+      ctx()
+    )
+    expect(signed.txType).toBe(41)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.AccountIndex).toBe(42)
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.AccountTradingMode).toBe(1)
+    expect(parsed.Nonce).toBe(4)
+  })
+
+  it('signs ACCOUNT_MODE = 0 (Simple) into a type-41 blob', async () => {
+    const signed = await signer.sign(
+      ActionType.ACCOUNT_MODE,
+      { account_trading_mode: 0, nonce: 5 },
+      ctx()
+    )
+    expect(signed.txType).toBe(41)
+    expect(JSON.parse(signed.txInfo).AccountTradingMode).toBe(0)
+  })
+
+  it('ACCOUNT_MODE rejects a missing account_trading_mode param with a clear error', async () => {
+    await expect(
+      signer.sign(ActionType.ACCOUNT_MODE, { nonce: 4 }, ctx())
+    ).rejects.toThrow(/account_trading_mode/)
+  })
+
   it('REGISTER_API_KEY through sign() throws (must use signChangePubKey)', async () => {
     await expect(
       signer.sign(

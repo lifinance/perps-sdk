@@ -518,6 +518,8 @@ describe('LighterProvider — auth token plumbing', () => {
     const account = await provider.getAccount({ address: ADDRESS })
     // No API key → falls back to the unauthenticated degrade path (zero fee tier).
     expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
+    // `account_trading_mode` from DetailedAccount is threaded into the config.
+    expect(account.config).toMatchObject({ accountTradingMode: 1 })
     expect(
       (
         signerStub as unknown as {

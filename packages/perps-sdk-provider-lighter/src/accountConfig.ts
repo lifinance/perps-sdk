@@ -27,6 +27,17 @@ const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
 }
 
+// `account_trading_mode` on `DetailedAccount`: 0 = Classic/Simple (segregated
+// margin), 1 = Unified Trading Account (cross-asset margin). Wire strings match
+// the backend descriptor's ParamOption values. An unmapped int projects to null.
+const LIGHTER_ACCOUNT_MODE_SIMPLE = 0
+const LIGHTER_ACCOUNT_MODE_UNIFIED = 1
+
+const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
+  [LIGHTER_ACCOUNT_MODE_SIMPLE]: 'simpleTradingAccount',
+  [LIGHTER_ACCOUNT_MODE_UNIFIED]: 'unifiedTradingAccount',
+}
+
 /**
  * Project a single Lighter descriptor against the typed
  * `LighterAccountConfig` into an `AccountConfigSetting`.
@@ -39,8 +50,7 @@ const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
  * | APPROVE_READ_ONLY_TOKEN   | []                  (no parameters)
  * | SET_REFERRAL              | []                  (no parameters)
  * | APPROVE_INTEGRATOR        | []                  (no parameters)
- * | ACCOUNT_MODE              | [{ name: 'mode', value: null }]  (Lighter has no
- * |                           |  abstraction-mode equivalent; read-only here)
+ * | ACCOUNT_MODE              | [{ name: 'mode', value: config.accountTradingMode }]
  * | ACCOUNT_TYPE              | [{ name: 'tier', value: config.accountType }]
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
@@ -79,13 +89,18 @@ function projectLighterDescriptor(
     case ActionType.APPROVE_INTEGRATOR:
       return { type: descriptor.type, values: [] }
 
-    // Lighter exposes no abstraction-mode equivalent; if a backend descriptor
-    // surfaces ACCOUNT_MODE on Lighter it always projects `null` and callers
-    // fall back to the descriptor's `default` ParamOption.
+    // `mode` decodes the raw `account_trading_mode` integer to the descriptor's
+    // wire strings (`unifiedTradingAccount` / `simpleTradingAccount`).
+    // Unrecognised integers project to `null`.
     case ActionType.ACCOUNT_MODE:
       return {
         type: descriptor.type,
-        values: [{ name: 'mode', value: null }],
+        values: [
+          {
+            name: 'mode',
+            value: ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null,
+          },
+        ],
       }
 
     // `tier` is the wire string `/changeAccountTier` accepts; we decode the
