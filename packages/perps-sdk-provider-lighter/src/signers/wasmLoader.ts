@@ -159,6 +159,13 @@ export interface LighterWasmExports {
    * three.
    */
   SignUpdateMargin: (...args: unknown[]) => SignResult
+  /**
+   * 10 args: integratorAccountIndex, maxPerpsTakerFee, maxPerpsMakerFee,
+   * maxSpotTakerFee, maxSpotMakerFee, approvalExpiry, skipNonce, then the
+   * trailing three. Fees are uint32 ppm of `FeeTick` (1_000_000); a non-nil
+   * fee requires a non-nil integrator index.
+   */
+  SignApproveIntegrator: (...args: unknown[]) => SignResult
 }
 
 /** @internal */
@@ -183,6 +190,7 @@ const WASM_FUNCTION_NAMES = [
   'SignUpdateLeverage',
   'SignModifyOrder',
   'SignUpdateMargin',
+  'SignApproveIntegrator',
 ] as const
 
 type GoClass = new () => {

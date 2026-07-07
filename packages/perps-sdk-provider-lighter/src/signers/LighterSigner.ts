@@ -263,8 +263,9 @@ export class LighterSigner {
   /**
    * Map an ActionType + backend-provided params object to the positional-arg
    * WASM call. The Go signer exports take primitives in order, not an object
-   * — so we pick fields in the exact order the Go side expects. Unknown
-   * fields (e.g. backend's integrator_* hints) are ignored.
+   * — so we pick fields in the exact order the Go side expects. Integrator
+   * fee fields pass through when present, falling back to the nil sentinels
+   * when absent; unrecognised fields are ignored.
    */
   private dispatch(
     wasm: LighterWasmExports,
@@ -290,9 +291,21 @@ export class LighterSigner {
           numberField(p, 'reduce_only'),
           numberField(p, 'trigger_price'),
           numberField(p, 'order_expiry'),
-          NIL_INTEGRATOR_INDEX,
-          NIL_INTEGRATOR_TAKER_FEE,
-          NIL_INTEGRATOR_MAKER_FEE,
+          optionalNumberField(
+            p,
+            'integrator_account_index',
+            NIL_INTEGRATOR_INDEX
+          ),
+          optionalNumberField(
+            p,
+            'integrator_taker_fee',
+            NIL_INTEGRATOR_TAKER_FEE
+          ),
+          optionalNumberField(
+            p,
+            'integrator_maker_fee',
+            NIL_INTEGRATOR_MAKER_FEE
+          ),
           SELF_TRADE_BEHAVIOR_EXPIRE_MAKER,
           SELF_TRADE_EQUALITY_ACCOUNT_INDEX,
           SKIP_NONCE_DISABLED,
@@ -326,9 +339,21 @@ export class LighterSigner {
           numberField(p, 'base_amount'),
           numberField(p, 'price'),
           numberField(p, 'trigger_price'),
-          NIL_INTEGRATOR_INDEX,
-          NIL_INTEGRATOR_TAKER_FEE,
-          NIL_INTEGRATOR_MAKER_FEE,
+          optionalNumberField(
+            p,
+            'integrator_account_index',
+            NIL_INTEGRATOR_INDEX
+          ),
+          optionalNumberField(
+            p,
+            'integrator_taker_fee',
+            NIL_INTEGRATOR_TAKER_FEE
+          ),
+          optionalNumberField(
+            p,
+            'integrator_maker_fee',
+            NIL_INTEGRATOR_MAKER_FEE
+          ),
           SELF_TRADE_BEHAVIOR_EXPIRE_MAKER,
           SELF_TRADE_EQUALITY_ACCOUNT_INDEX,
           SKIP_NONCE_DISABLED,
@@ -387,6 +412,19 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      case ActionType.APPROVE_INTEGRATOR:
+        return wasm.SignApproveIntegrator(
+          numberField(p, 'integrator_account_index'),
+          numberField(p, 'max_perps_taker_fee'),
+          numberField(p, 'max_perps_maker_fee'),
+          numberField(p, 'max_spot_taker_fee'),
+          numberField(p, 'max_spot_maker_fee'),
+          numberField(p, 'approval_expiry'),
+          SKIP_NONCE_DISABLED,
+          nonce,
+          ctx.apiKeyIndex,
+          ctx.accountIndex
+        )
       default:
         throw new Error(
           `Lighter WASM signer does not support action: ${action}`
@@ -429,6 +467,18 @@ function numberField(p: Record<string, unknown>, key: string): number {
   throw new Error(
     `Lighter sign params missing numeric field '${key}' (got ${typeof v})`
   )
+}
+
+function optionalNumberField(
+  p: Record<string, unknown>,
+  key: string,
+  fallback: number
+): number {
+  const v = p[key]
+  if (v === undefined || v === null) {
+    return fallback
+  }
+  return numberField(p, key)
 }
 
 function stringField(p: Record<string, unknown>, key: string): string {
