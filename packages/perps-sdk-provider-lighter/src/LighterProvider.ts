@@ -1216,6 +1216,7 @@ export const lighterProvider = (
         {
           signer: signerRef,
           keyStore: keyStoreRef,
+          apiClient: apiClient(),
           resolveAccountIndex: async (addr) => {
             const apiKey = await keyStoreRef.get(addr)
             if (apiKey !== null) {

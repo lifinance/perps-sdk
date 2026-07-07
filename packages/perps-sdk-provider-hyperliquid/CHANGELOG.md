@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 1.6.1
+
+### Patch Changes
+
+- [#210](https://github.com/lifinance/perps-sdk/pull/210) [`e6b0be6`](https://github.com/lifinance/perps-sdk/commit/e6b0be60e96839e28b91cf4bb592a5306dd38d91) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Project the SET_REFERRAL setup descriptor in the Hyperliquid account-config mapper instead of throwing, fixing getAccount rejecting for every account once the backend serves the setReferrer setup gate
+
+- Updated dependencies [[`fecfa9b`](https://github.com/lifinance/perps-sdk/commit/fecfa9b3255b5f77a1b58b49d790500a61d56561)]:
+  - @lifi/perps-types@1.11.0
+
 ## 1.6.0
 
 ### Minor Changes

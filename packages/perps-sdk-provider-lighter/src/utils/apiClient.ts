@@ -160,6 +160,31 @@ export class LighterApiClient {
     return { status: response.status, data }
   }
 
+  /**
+   * Form-encoded POST to a Lighter mutation endpoint. Single-shot — never
+   * retried, since these are money/state writes whose outcome is unknown on a
+   * transport failure. Surfaces the raw `{status, body}` pair so the caller can
+   * map Lighter's per-endpoint business-rule `code` to a domain error verbatim.
+   */
+  async postForm<T>(
+    path: string,
+    params: ApiParams
+  ): Promise<{ status: number; data: T }> {
+    const body = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      body.set(k, String(v))
+    }
+    const fetchImpl = this.fetchImpl ?? fetch
+    const response = await fetchImpl(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: this.signal,
+    })
+    const data = (await response.json().catch(() => undefined)) as T
+    return { status: response.status, data }
+  }
+
   private async getChecked<T>(path: string, params?: ApiParams): Promise<T> {
     const { status, data } = await this.getWithStatus<unknown>(path, params)
     this.assertOk(path, status, data)

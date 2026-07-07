@@ -11,20 +11,29 @@ import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { parseAbi } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
-import { DEFAULT_API_KEY_INDEX } from '../constants.js'
+import {
+  DEFAULT_API_KEY_INDEX,
+  LIGHTER_MUTATION_SUCCESS_CODE,
+} from '../constants.js'
+import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
 
 /**
  * Per-batch dependencies the Lighter `signActions` implementation needs:
  * a WASM signer (`LighterSigner`), the API-key store keyed on L1 address,
- * and a reference to the host SDK client for descriptor/account fetches
- * within the REGISTER_API_KEY hybrid flow.
+ * a REST client for the token-authenticated venue mutations that execute
+ * client-side, and a reference to the host SDK client for descriptor/account
+ * fetches within the REGISTER_API_KEY hybrid flow.
  * @internal
  */
 export interface LighterSignActionsDeps {
   signer: LighterSigner
   keyStore: LighterKeyStore
+  /** REST client bound to the user's Lighter base URL, used for the direct
+   * `changeAccountTier` / `referral/use` POSTs so their auth token never
+   * transits the LI.FI backend. */
+  apiClient: LighterApiClient
   /**
    * Resolve the user's Lighter `accountIndex` for an L1 address. Required
    * by REGISTER_API_KEY so the ChangePubKey blob carries the right
@@ -35,14 +44,31 @@ export interface LighterSignActionsDeps {
 }
 
 /**
+ * `wasmSignParams.kind` values for the Lighter mutations that authenticate with
+ * a short-lived auth token instead of a wasm-signed transaction. Both execute
+ * client-side (SDK → Lighter REST) so the token never reaches the backend.
+ * @internal
+ */
+const TOKEN_AUTH_MUTATION_KINDS = new Set(['changeAccountTier', 'referralUse'])
+
+/**
+ * Lifetime of the per-call auth token minted for a token-authenticated venue
+ * mutation. Minutes, not the read endpoints' hours: it authenticates one POST
+ * that completes immediately, so it never lingers usable.
+ */
+const TOKEN_AUTH_MUTATION_DEADLINE_SECONDS = 5 * 60
+
+/**
  * Sign a `WASM_BLOB` batch (Lighter). Ensures the user's API keypair is
  * registered first — generating one and running the REGISTER_API_KEY
  * hybrid flow via the L1 signer if not — then feeds each subsequent step
  * through the WASM signer.
  *
- * `ACCOUNT_TYPE` (Lighter `/changeAccountTier`) is a WASM_BLOB envelope
- * authenticated with an auth token rather than a wasm tx signature —
- * created via `LighterSigner.createAuthToken` and parked in `signedTx.txInfo`.
+ * The token-authenticated mutations (`ACCOUNT_TYPE` → `/changeAccountTier`,
+ * `SET_REFERRAL` → `/referral/use`) are NOT wasm-signed: they execute
+ * client-side here via a direct Lighter POST authenticated with a short-lived
+ * auth token, so the token never transits the LI.FI backend. They produce no
+ * backend-bound step and are omitted from the returned array.
  * @internal
  */
 export async function signWasmBlobActions(
@@ -55,8 +81,10 @@ export async function signWasmBlobActions(
   for (const step of steps) {
     if (step.action === ActionType.REGISTER_API_KEY) {
       signed.push(await signRegisterApiKey(deps, address, step, ctx))
-    } else if (step.action === ActionType.ACCOUNT_TYPE) {
-      signed.push(await signAccountTierChange(deps, address, step))
+    } else if (
+      TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
+    ) {
+      await executeTokenAuthMutation(deps, address, step)
     } else {
       signed.push(await signStandardWasmAction(deps, address, step))
     }
@@ -169,44 +197,94 @@ async function signRegisterApiKey(
 }
 
 /**
- * Sign an `ACCOUNT_TYPE` step (Lighter `changeAccountTier`).
+ * Execute a token-authenticated Lighter mutation (`ACCOUNT_TYPE` →
+ * `/changeAccountTier`, `SET_REFERRAL` → `/referral/use`) client-side.
  *
- * Lighter's `/api/v1/changeAccountTier` is an HTTP-only mutation —
- * Lighter does NOT consume a wasm-signed transaction here; it
- * authenticates the request with the same auth token its read endpoints
- * use, and enforces anti-replay business rules server-side. The backend
- * declares the step as a `WasmBlobActionStep` with
- * `wasmSignParams.kind = 'changeAccountTier'` and expects the SDK to create
- * an auth token in lieu of a transaction signature; the executor reads
- * `signedTx.txInfo` as the `auth` form parameter.
- *
- * The 1h deadline mirrors the previous behaviour — Lighter caps tokens at
- * 8h hard, and the backend's executor runs `verifyPendingAction` then a
- * single POST, which completes well inside an hour.
+ * Neither endpoint consumes a wasm-signed transaction — both authenticate with
+ * a Lighter auth token and enforce their business rules (open positions,
+ * pending orders, 24h tier cooldown) server-side. We mint a fresh short-lived
+ * token per call (never the stored read-only token, never persisted) and POST
+ * the mirror of the backend's form body directly to Lighter, so no auth token
+ * ever transits the LI.FI backend. A non-success verdict surfaces Lighter's
+ * `code`/`message` verbatim as an {@link PerpsErrorCode.ExchangeRejected}.
  */
-async function signAccountTierChange(
+async function executeTokenAuthMutation(
   deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep
-): Promise<WasmBlobSignedActionStep> {
+): Promise<void> {
   const apiKey = await requireApiKey(deps, address)
-  const deadline = Math.floor(Date.now() / 1000) + 60 * 60
+  const deadline =
+    Math.floor(Date.now() / 1000) + TOKEN_AUTH_MUTATION_DEADLINE_SECONDS
   const authToken = await deps.signer.createAuthToken(deadline, {
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
   })
-  return {
-    action: step.action,
-    wasmSignParams: step.wasmSignParams,
-    signedTx: {
-      // `/changeAccountTier` reads only `txInfo` (the auth token); `txType`
-      // and `txHash` are placeholders to satisfy the envelope shape.
-      txType: 0,
-      txInfo: authToken,
-      txHash: '',
-    },
+
+  const { path, params } = buildTokenAuthMutationRequest(step, authToken)
+  const { status, data } = await deps.apiClient.postForm<{
+    code?: number
+    message?: string
+  }>(path, params)
+
+  const code = data?.code
+  if (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE) {
+    const suffix = data?.message ? `: ${data.message}` : ''
+    throw new PerpsError(
+      PerpsErrorCode.ExchangeRejected,
+      `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`
+    )
   }
+}
+
+/**
+ * Map a token-authenticated mutation step to its Lighter endpoint and
+ * form body, mirroring the backend's request contract. The auth token is the
+ * `auth` field; the remaining fields come from `wasmSignParams`.
+ */
+function buildTokenAuthMutationRequest(
+  step: WasmBlobActionStep,
+  authToken: string
+): { path: string; params: ApiParams } {
+  const kind = step.wasmSignParams.kind
+  if (kind === 'changeAccountTier') {
+    const { account_index, new_tier } = step.wasmSignParams as {
+      account_index?: number
+      new_tier?: string
+    }
+    if (account_index == null || new_tier == null) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter ACCOUNT_TYPE wasmSignParams missing account_index or new_tier'
+      )
+    }
+    return {
+      path: '/api/v1/changeAccountTier',
+      params: { auth: authToken, account_index, new_tier },
+    }
+  }
+  if (kind === 'referralUse') {
+    const { l1_address, referral_code, x } = step.wasmSignParams as {
+      l1_address?: string
+      referral_code?: string
+      x?: string
+    }
+    if (l1_address == null || referral_code == null || x == null) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter SET_REFERRAL wasmSignParams missing l1_address, referral_code, or x'
+      )
+    }
+    return {
+      path: '/api/v1/referral/use',
+      params: { auth: authToken, l1_address, referral_code, x },
+    }
+  }
+  throw new PerpsError(
+    PerpsErrorCode.SDKError,
+    `Lighter token-auth mutation: unknown wasmSignParams.kind '${String(kind)}'`
+  )
 }
 
 async function requireApiKey(
@@ -255,16 +333,6 @@ export async function signEvmTxActions(
   const signed: EvmTxSignedActionStep[] = []
   for (const step of steps) {
     const params = step.txParams
-
-    if (walletSigner.chain?.id !== params.chainId) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
-          `connected wallet is on chain ${walletSigner.chain?.id ?? 'unknown'}. ` +
-          `Switch the wallet to chain ${params.chainId} before signing — the ` +
-          "SDK broadcasts on the wallet's active chain and does not switch it."
-      )
-    }
 
     if (walletSigner.chain?.id !== params.chainId) {
       throw new PerpsError(
