@@ -37,6 +37,8 @@ const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
  * |---------------------------|--------------------------------------------------
  * | REGISTER_API_KEY          | []                  (no parameters)
  * | APPROVE_READ_ONLY_TOKEN   | []                  (no parameters)
+ * | SET_REFERRAL              | []                  (no parameters)
+ * | APPROVE_INTEGRATOR        | []                  (no parameters)
  * | ACCOUNT_MODE              | [{ name: 'mode', value: null }]  (Lighter has no
  * |                           |  abstraction-mode equivalent; read-only here)
  * | ACCOUNT_TYPE              | [{ name: 'tier', value: config.accountType }]
@@ -70,6 +72,13 @@ function projectLighterDescriptor(
         satisfied: config.readOnlyTokenApproved,
       }
 
+    // Backend-gated setup steps: `checkSetup` → `createAction` decides
+    // satisfaction (the backend emits no actions once satisfied), so the
+    // projection carries no local state.
+    case ActionType.SET_REFERRAL:
+    case ActionType.APPROVE_INTEGRATOR:
+      return { type: descriptor.type, values: [] }
+
     // Lighter exposes no abstraction-mode equivalent; if a backend descriptor
     // surfaces ACCOUNT_MODE on Lighter it always projects `null` and callers
     // fall back to the descriptor's `default` ParamOption.
@@ -97,8 +106,6 @@ function projectLighterDescriptor(
 
     case ActionType.APPROVE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
-    case ActionType.APPROVE_INTEGRATOR:
-    case ActionType.SET_REFERRAL:
     case ActionType.SEND_ASSET:
     case ActionType.WITHDRAWAL:
     case ActionType.TRANSFER:
