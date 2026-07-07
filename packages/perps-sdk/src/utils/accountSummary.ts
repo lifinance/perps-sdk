@@ -13,15 +13,11 @@ const sumValueUsd = (balances: AccountResponse['balances']): number =>
  * positions' locked margin and unrealized PnL:
  *
  * - `'free'` — free collateral only; locked margin and unrealized PnL are
-<<<<<<< Updated upstream
  *   both carried by the positions. Available margin is the free collateral
  *   as-is; unrealized PnL is not counted toward it.
-=======
- *   both carried by the positions.
  * - `'net'` — free collateral with unrealized PnL already marked in; only
  *   the locked margin is carried by the positions (e.g. a venue-reported
  *   available balance).
->>>>>>> Stashed changes
  * - `'gross'` — locked margin included, unrealized PnL carried by the
  *   positions (e.g. spot holdings backing a unified account). The venue
  *   counts unrealized PnL toward buying power, so it is added to available

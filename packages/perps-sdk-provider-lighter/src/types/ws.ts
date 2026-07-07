@@ -149,8 +149,10 @@ export type LtWsAccountAllTradesMessage = LtWsMessage & {
   data?: { trades?: Record<string, unknown[]> | unknown[] }
 }
 
-/** @public */
-/** `user_stats/{account_index}` frame; decimal strings in USD. */
+/**
+ * `user_stats/{account_index}` frame; decimal strings in USD.
+ * @public
+ */
 export type LtWsUserStatsMessage = LtWsMessage & {
   stats?: {
     collateral?: string
