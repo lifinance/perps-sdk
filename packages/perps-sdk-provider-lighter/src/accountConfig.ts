@@ -131,6 +131,7 @@ function projectLighterDescriptor(
     case ActionType.MODIFY_ORDER:
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:
+    case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.DEPOSIT:
     case ActionType.META_VOTE:
     case ActionType.META_ACCEPT_TERMS:

@@ -1,5 +1,6 @@
 import { ActionType } from '@lifi/perps-types'
 import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
+import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
   type LighterWasmExports,
   type LoadLighterWasmOptions,
@@ -433,6 +434,15 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      case ActionType.UPDATE_ASSET_COLLATERAL:
+        return wasm.SignUpdateAccountAssetConfig(
+          numberField(p, 'asset_index'),
+          assetMarginModeInt(booleanField(p, 'enabled')),
+          SKIP_NONCE_DISABLED,
+          nonce,
+          ctx.apiKeyIndex,
+          ctx.accountIndex
+        )
       default:
         throw new Error(
           `Lighter WASM signer does not support action: ${action}`
@@ -487,6 +497,16 @@ function optionalNumberField(
     return fallback
   }
   return numberField(p, key)
+}
+
+function booleanField(p: Record<string, unknown>, key: string): boolean {
+  const v = p[key]
+  if (typeof v === 'boolean') {
+    return v
+  }
+  throw new Error(
+    `Lighter sign params missing boolean field '${key}' (got ${typeof v})`
+  )
 }
 
 function stringField(p: Record<string, unknown>, key: string): string {

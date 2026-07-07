@@ -375,6 +375,54 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/account_trading_mode/)
   })
 
+  it('signs UPDATE_ASSET_COLLATERAL (enabled) into a type-42 blob with AssetMarginMode 1', async () => {
+    const signed = await signer.sign(
+      ActionType.UPDATE_ASSET_COLLATERAL,
+      { asset_index: 5, enabled: true, nonce: 4 },
+      ctx()
+    )
+    expect(signed.txType).toBe(42)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.AccountIndex).toBe(42)
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.AssetIndex).toBe(5)
+    // enabled → MarginEnabled (1)
+    expect(parsed.AssetMarginMode).toBe(1)
+    expect(parsed.Nonce).toBe(4)
+  })
+
+  it('signs UPDATE_ASSET_COLLATERAL (disabled) into a type-42 blob with AssetMarginMode 0', async () => {
+    const signed = await signer.sign(
+      ActionType.UPDATE_ASSET_COLLATERAL,
+      { asset_index: 5, enabled: false, nonce: 6 },
+      ctx()
+    )
+    expect(signed.txType).toBe(42)
+    // disabled → MarginDisabled (0)
+    expect(JSON.parse(signed.txInfo).AssetMarginMode).toBe(0)
+  })
+
+  it('UPDATE_ASSET_COLLATERAL rejects a missing asset_index with a clear error', async () => {
+    await expect(
+      signer.sign(
+        ActionType.UPDATE_ASSET_COLLATERAL,
+        { enabled: true, nonce: 4 },
+        ctx()
+      )
+    ).rejects.toThrow(/asset_index/)
+  })
+
+  it('UPDATE_ASSET_COLLATERAL rejects a missing enabled flag with a clear error', async () => {
+    await expect(
+      signer.sign(
+        ActionType.UPDATE_ASSET_COLLATERAL,
+        { asset_index: 5, nonce: 4 },
+        ctx()
+      )
+    ).rejects.toThrow(/missing boolean field 'enabled'/)
+  })
+
   it('REGISTER_API_KEY through sign() throws (must use signChangePubKey)', async () => {
     await expect(
       signer.sign(

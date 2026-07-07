@@ -172,6 +172,12 @@ export interface LighterWasmExports {
    * lighter-go before signing.
    */
   SignUpdateAccountConfig: (...args: unknown[]) => SignResult
+  /**
+   * 6 args: assetIndex, assetMarginMode (0 = MarginDisabled, 1 = MarginEnabled),
+   * skipNonce, then the trailing three. Keyed per spot asset, not per market —
+   * signs `L2UpdateAccountAssetConfigTx` (tx type 42).
+   */
+  SignUpdateAccountAssetConfig: (...args: unknown[]) => SignResult
 }
 
 /** @internal */
@@ -198,6 +204,7 @@ const WASM_FUNCTION_NAMES = [
   'SignUpdateMargin',
   'SignApproveIntegrator',
   'SignUpdateAccountConfig',
+  'SignUpdateAccountAssetConfig',
 ] as const
 
 type GoClass = new () => {

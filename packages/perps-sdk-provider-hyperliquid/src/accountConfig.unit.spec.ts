@@ -141,6 +141,20 @@ describe('projectHyperliquidConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
+  it('throws for UPDATE_ASSET_COLLATERAL — Lighter-only per-asset action, no Hyperliquid projection', () => {
+    const badDescriptor: ProviderAction = {
+      type: ActionType.UPDATE_ASSET_COLLATERAL,
+      title: 'Update asset collateral',
+      description: 'Lighter-only — should not appear here.',
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.WASM_BLOB,
+      params: [],
+    }
+    expect(() =>
+      projectHyperliquidConfigSettings(baseConfig, [badDescriptor], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
   it('throws for APPROVE_INTEGRATOR — Lighter-only signing action, no Hyperliquid projection', () => {
     const approveIntegratorSetup: ProviderAction = {
       type: ActionType.APPROVE_INTEGRATOR,
