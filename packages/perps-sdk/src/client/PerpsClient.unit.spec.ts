@@ -14,7 +14,7 @@ import {
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import type { Hex } from 'viem'
-import { createWalletClient, http as viemHttp } from 'viem'
+import { createWalletClient, custom, http as viemHttp } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -481,7 +481,7 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await client.executeProviderSetup({
+      const result = await (client as any).executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -501,7 +501,7 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await client.executeProviderSetup({
+      const result = await (client as any).executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -516,7 +516,7 @@ describe('PerpsClient', () => {
       await agentProvider.createAgent(userAddress)
       setupActionHandlers()
 
-      await client.executeProviderSetup({
+      await (client as any).executeProviderSetup({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -532,7 +532,7 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await client.executeProviderSetup({
+      const result = await (client as any).executeProviderSetup({
         provider,
         address: userAddress,
         setup: [
@@ -626,7 +626,7 @@ describe('PerpsClient', () => {
       failExecuteAction(venueError)
 
       await expect(
-        client.executeProviderSetup({
+        (client as any).executeProviderSetup({
           provider: 'hyperliquid',
           address: userAddress,
           ...userSetup(ActionType.APPROVE_AGENT),
@@ -649,7 +649,7 @@ describe('PerpsClient', () => {
       failExecuteAction(venueError)
 
       await expect(
-        lighterClient.executeProviderSetup({
+        (lighterClient as any).executeProviderSetup({
           provider: 'lighter',
           address: userAddress,
           ...userSetup(ActionType.REGISTER_API_KEY),
@@ -701,7 +701,7 @@ describe('PerpsClient', () => {
         })
       )
 
-      const result = await client.executeProviderSetup({
+      const result = await (client as any).executeProviderSetup({
         provider: 'hyperliquid',
         address: userAddress,
         ...userSetup(ActionType.APPROVE_BUILDER_FEE),
@@ -1083,13 +1083,13 @@ describe('PerpsClient', () => {
       // No signerAddress is constructed by core for an API_KEY signer.
       expect(createCalls[0].signerAddress).toBeUndefined()
 
-      const signed = await lighterClient.signProviderSetupAction(
+      const signed = await (lighterClient as any).signProviderSetupAction(
         'lighter',
         lighterAddress,
         setup[0]
       )
       expect(signed).toBeDefined()
-      const result = await lighterClient.executeProviderSetup({
+      const result = await (lighterClient as any).executeProviderSetup({
         provider: 'lighter',
         address: lighterAddress,
         setup,
@@ -1228,6 +1228,299 @@ describe('PerpsClient', () => {
       expect(hlExec.signerAddress).toBe(hlAgent.signerAddress)
       expect(lighterExec.signerAddress).toBe(lighterAddress)
       expect(lighter.signActions.mock.calls[0][0]).toBe(SigningMethod.WASM_BLOB)
+    })
+  })
+
+  describe('switchChain — SDK-owned wallet chain switching', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const account = privateKeyToAccount(`0x${'33'.repeat(32)}` as Hex)
+    const ARBITRUM = 42161
+
+    // Wallet backed by a viem `custom` transport answering eth_chainId +
+    // eth_signTypedData_v4, so viem's real `getChainId` runs against the mock.
+    // The returned `request` spy lets a test assert which RPCs were issued.
+    function walletOnChain(chainId: number) {
+      const request = vi.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_chainId') {
+          return `0x${chainId.toString(16)}`
+        }
+        if (method === 'eth_signTypedData_v4') {
+          return `0x${'ab'.repeat(65)}`
+        }
+        throw new Error(`unexpected RPC: ${method}`)
+      })
+      const wallet = createWalletClient({
+        account,
+        transport: custom({ request: request as any }),
+      })
+      return { wallet, request }
+    }
+
+    // /createAction returns a USER-signed EIP-712 step for `chainId` (omit to
+    // stage a step with no domain.chainId); /executeAction echoes success and
+    // is captured.
+    function stageUserEip712Action(chainId?: number) {
+      const executeCalls: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                typedData: {
+                  domain: chainId === undefined ? { name: 'HL' } : { chainId },
+                  types: { X: [{ name: 'x', type: 'uint256' }] },
+                  primaryType: 'X',
+                  message: { x: 0 },
+                },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCalls.push(body)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      return executeCalls
+    }
+
+    function newClient() {
+      return new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [createTestAgentProvider({ type: 'hyperliquid' })],
+      })
+    }
+
+    const withdrawal = { destination: account.address, amount: '10' }
+
+    it('switches a json-rpc wallet once and leaves sdkClient.userWallet unmutated', async () => {
+      const { wallet } = walletOnChain(1)
+      const switched = walletOnChain(ARBITRUM)
+      const hook = vi.fn(async () => switched.wallet)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action(ARBITRUM)
+
+      await client.withdraw({
+        provider: 'hyperliquid',
+        address: account.address,
+        withdrawal,
+      })
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
+      // The switch is transient — the configured wallet is untouched.
+      expect(client.client.userWallet).toBe(wallet)
+    })
+
+    it('takes the fast path without calling the hook when already on target', async () => {
+      const { wallet } = walletOnChain(ARBITRUM)
+      const hook = vi.fn()
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action(ARBITRUM)
+
+      await client.withdraw({
+        provider: 'hyperliquid',
+        address: account.address,
+        withdrawal,
+      })
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('does not probe the chain or throw for a wrong-chain wallet with no hook', async () => {
+      const { wallet, request } = walletOnChain(1)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      stageUserEip712Action(ARBITRUM)
+
+      await expect(
+        client.withdraw({
+          provider: 'hyperliquid',
+          address: account.address,
+          withdrawal,
+        })
+      ).resolves.toBeDefined()
+
+      const probed = request.mock.calls.some(
+        ([{ method }]) => method === 'eth_chainId'
+      )
+      expect(probed).toBe(false)
+    })
+
+    it('throws SDKError when the hook resolves to undefined', async () => {
+      const { wallet } = walletOnChain(1)
+      const hook = vi.fn(async () => undefined)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action(ARBITRUM)
+
+      await expect(
+        client.withdraw({
+          provider: 'hyperliquid',
+          address: account.address,
+          withdrawal,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    })
+
+    it('throws SDKError when the hook returns a client on the wrong chain', async () => {
+      const { wallet } = walletOnChain(1)
+      const stillWrong = walletOnChain(10)
+      const hook = vi.fn(async () => stillWrong.wallet)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action(ARBITRUM)
+
+      await expect(
+        client.withdraw({
+          provider: 'hyperliquid',
+          address: account.address,
+          withdrawal,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    })
+
+    it('does not call the hook for an AGENT-signed batch', async () => {
+      const { wallet } = walletOnChain(1)
+      const hook = vi.fn(async () => wallet)
+      const agentProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [agentProvider],
+      })
+      await agentProvider.createAgent(account.address)
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+
+      await client.placeOrder({
+        address: account.address,
+        provider: 'hyperliquid',
+        symbol: 'BTC',
+        side: 'BUY' as any,
+        type: 'MARKET' as any,
+        size: '0.1',
+        price: '95000.00',
+      })
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('does not call the hook when the batch carries no domain.chainId', async () => {
+      const { wallet } = walletOnChain(1)
+      const hook = vi.fn(async () => wallet)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action()
+
+      await client.withdraw({
+        provider: 'hyperliquid',
+        address: account.address,
+        withdrawal,
+      })
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('wires the hook via the constructor option too', async () => {
+      const { wallet } = walletOnChain(1)
+      const switched = walletOnChain(ARBITRUM)
+      const hook = vi.fn(async () => switched.wallet)
+
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [createTestAgentProvider({ type: 'hyperliquid' })],
+        switchChain: hook,
+      })
+      client.setUserWallet(wallet)
+      stageUserEip712Action(ARBITRUM)
+
+      await client.withdraw({
+        provider: 'hyperliquid',
+        address: account.address,
+        withdrawal,
+      })
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
+    })
+
+    it('triggers the switch through sendAsset', async () => {
+      const { wallet } = walletOnChain(1)
+      const switched = walletOnChain(ARBITRUM)
+      const hook = vi.fn(async () => switched.wallet)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      stageUserEip712Action(ARBITRUM)
+
+      await client.sendAsset({
+        provider: 'hyperliquid',
+        address: account.address,
+        collateral: 'USDC',
+        sourceDex: 'a',
+        destinationDex: 'b',
+        amount: '5',
+      })
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
+    })
+
+    it('triggers the switch through executeProviderSetupAction', async () => {
+      const { wallet } = walletOnChain(1)
+      const switched = walletOnChain(ARBITRUM)
+      const hook = vi.fn(async () => switched.wallet)
+
+      const client = newClient()
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      await client.executeProviderSetupAction({
+        provider: 'hyperliquid',
+        address: account.address,
+        step: {
+          action: ActionType.APPROVE_AGENT,
+          typedData: {
+            domain: { name: 'HL', chainId: ARBITRUM },
+            types: { X: [{ name: 'x', type: 'uint256' }] },
+            primaryType: 'X',
+            message: { x: 0 },
+          },
+        },
+      })
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
     })
   })
 })

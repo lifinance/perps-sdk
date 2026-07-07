@@ -10,6 +10,20 @@ import type { RetryConfig } from '../transport/retryPolicy.js'
 export type PerpsClientSigner = WalletClient<any, any, Account>
 
 /**
+ * Consumer-supplied hook invoked at the SDK's signing choke point to switch the
+ * user's wallet to a USER-signed EIP-712 action's target chain. Modelled on
+ * `@lifi/sdk`'s switch-chain contract: a json-rpc wallet switches in place and
+ * resolves to the re-fetched client; a local/private-key signer resolves to a
+ * chain-bound client (or signs offline). Resolve to `undefined` to signal the
+ * switch could not be performed.
+ *
+ * @public
+ */
+export type SwitchChainHook = (
+  chainId: number
+) => Promise<PerpsClientSigner | undefined>
+
+/**
  * Per-provider config — restricts which `markets` the WS client subscribes
  * to. Indexed by provider key.
  *

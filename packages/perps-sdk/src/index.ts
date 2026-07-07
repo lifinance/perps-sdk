@@ -90,8 +90,6 @@ export {
 export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
-  ExecuteProviderSetupParams,
-  ExecuteProviderSetupResult,
   GetAccountResult,
   GetSetupParams,
   ModifyOrdersParams,
@@ -109,6 +107,7 @@ export type {
   ProviderConfigs,
   RequestInterceptor,
   SDKRequestOptions,
+  SwitchChainHook,
 } from './types/config.js'
 export type {
   ActionSignerContribution,
