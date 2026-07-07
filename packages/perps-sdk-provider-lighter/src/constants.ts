@@ -83,8 +83,18 @@ const LIGHTER_INVALID_AUTH_CODE = 20013
  */
 const LIGHTER_SUCCESS_CODES = new Set([0, 200])
 
+/**
+ * Lighter body `code` meaning "operation succeeded" on the non-`/sendTx`
+ * mutation endpoints (`/changeAccountTier`, `/referral/use`). Any other code is
+ * a business-rule rejection surfaced verbatim to the caller.
+ *
+ * @internal
+ */
+const LIGHTER_MUTATION_SUCCESS_CODE = 200
+
 export {
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_INVALID_AUTH_CODE,
+  LIGHTER_MUTATION_SUCCESS_CODE,
   LIGHTER_SUCCESS_CODES,
 }
