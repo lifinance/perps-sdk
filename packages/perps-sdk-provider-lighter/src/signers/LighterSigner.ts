@@ -425,6 +425,14 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      case ActionType.ACCOUNT_MODE:
+        return wasm.SignUpdateAccountConfig(
+          numberField(p, 'account_trading_mode'),
+          SKIP_NONCE_DISABLED,
+          nonce,
+          ctx.apiKeyIndex,
+          ctx.accountIndex
+        )
       default:
         throw new Error(
           `Lighter WASM signer does not support action: ${action}`

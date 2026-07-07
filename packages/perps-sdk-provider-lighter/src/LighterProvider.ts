@@ -703,6 +703,7 @@ export const lighterProvider = (
         apiKeyIndex: DEFAULT_API_KEY_INDEX,
         apiKeyRegistered,
         accountType: account.account_type,
+        accountTradingMode: account.account_trading_mode,
         // Satisfied when a non-expired read-only token is stored locally
         // (`readOnlyTokenManager.get` filters out expired ones).
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
