@@ -29,6 +29,12 @@ export type LtAccountAsset = {
   asset_id: number
   balance: string
   locked_balance: string
+  /**
+   * Cross-margin collateral flag: 0 = MarginDisabled, 1 = MarginEnabled.
+   * Lighter surfaces it via `additional_properties`, so it may be absent —
+   * chiefly outside Unified Trading Account mode.
+   */
+  margin_mode?: number
 }
 
 /**

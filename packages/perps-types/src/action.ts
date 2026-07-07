@@ -188,6 +188,14 @@ export interface UpdatePositionMarginParams {
 }
 
 /** @public */
+export interface UpdateAssetCollateralParams {
+  /** Provider-native spot asset id (matches `Asset.id`), keyed per asset — not per market. */
+  assetId: string
+  /** Whether this asset's balance counts toward the cross-margin collateral pool. */
+  enabled: boolean
+}
+
+/** @public */
 export interface WithdrawalParams {
   destination: Address
   amount: string
@@ -274,6 +282,7 @@ export interface ActionParamsMap {
   [ActionType.MODIFY_ORDER]: ModifyOrderParams
   [ActionType.UPDATE_LEVERAGE]: UpdateLeverageParams
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
+  [ActionType.UPDATE_ASSET_COLLATERAL]: UpdateAssetCollateralParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.DEPOSIT]: DepositParams

@@ -252,6 +252,14 @@ export interface HyperliquidAccountConfig {
 }
 
 /** @public */
+export interface LighterAssetCollateral {
+  /** Provider-native spot asset id (matches `Asset.id`). */
+  assetId: string
+  /** Whether this asset's balance counts toward the cross-margin collateral pool. */
+  enabled: boolean
+}
+
+/** @public */
 export interface LighterAccountConfig {
   provider: 'lighter'
   accountIndex: number
@@ -260,6 +268,12 @@ export interface LighterAccountConfig {
   accountType: number
   /** Lighter `account_trading_mode`: 0 = Classic/Simple, 1 = Unified. */
   accountTradingMode: number
+  /**
+   * Per-asset cross-margin collateral flags for held spot assets, decoded from
+   * each asset's `margin_mode`. Meaningful only when `accountTradingMode === 1`;
+   * assets whose `margin_mode` Lighter omits are not listed.
+   */
+  assetCollateral: LighterAssetCollateral[]
   readOnlyTokenApproved: boolean
   /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
   readOnlyTokenExpiry?: number

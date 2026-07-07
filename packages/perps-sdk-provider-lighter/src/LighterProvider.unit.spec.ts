@@ -530,6 +530,87 @@ describe('LighterProvider — auth token plumbing', () => {
   })
 })
 
+describe('LighterProvider — assetCollateral projection', () => {
+  const accountWithAssets = (assets: unknown[]) => ({
+    ...ACCOUNT_PAYLOAD,
+    accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
+  })
+
+  const stubAccount = (assets: unknown[]) => {
+    const payload = accountWithAssets(assets)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(payload)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  }
+
+  it("decodes each held asset's margin_mode into an enabled flag", async () => {
+    stubAccount([
+      {
+        symbol: 'BTC',
+        asset_id: 0,
+        balance: '1',
+        locked_balance: '0',
+        margin_mode: 1,
+      },
+      {
+        symbol: 'USDC',
+        asset_id: 3,
+        balance: '5',
+        locked_balance: '0',
+        margin_mode: 0,
+      },
+    ])
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      provider: 'lighter',
+      assetCollateral: [
+        { assetId: '0', enabled: true },
+        { assetId: '3', enabled: false },
+      ],
+    })
+  })
+
+  it('omits assets whose margin_mode Lighter does not surface', async () => {
+    stubAccount([
+      {
+        symbol: 'BTC',
+        asset_id: 0,
+        balance: '1',
+        locked_balance: '0',
+        margin_mode: 1,
+      },
+      { symbol: 'ETH', asset_id: 5, balance: '2', locked_balance: '0' },
+    ])
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      (account.config as { assetCollateral: unknown[] }).assetCollateral
+    ).toEqual([{ assetId: '0', enabled: true }])
+  })
+})
+
 describe('LighterProvider — read-only token revocation self-heal', () => {
   const LIMITS_OK = {
     code: 0,
