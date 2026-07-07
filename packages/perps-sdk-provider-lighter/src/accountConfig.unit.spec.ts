@@ -61,6 +61,7 @@ const baseConfig: LighterAccountConfig = {
   apiKeyRegistered: true,
   accountType: 0,
   accountTradingMode: 0,
+  assetCollateral: [],
 }
 
 describe('projectLighterConfigSettings', () => {
@@ -170,6 +171,20 @@ describe('projectLighterConfigSettings', () => {
       description: 'HL-only — should not appear here.',
       signers: [PerpsSigner.USER],
       signingMethod: SigningMethod.EIP712,
+      params: [],
+    }
+    expect(() =>
+      projectLighterConfigSettings(baseConfig, [badDescriptor], [])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
+  it('throws for UPDATE_ASSET_COLLATERAL — a runtime per-asset action, never a setup/options descriptor', () => {
+    const badDescriptor: ProviderAction = {
+      type: ActionType.UPDATE_ASSET_COLLATERAL,
+      title: 'Update asset collateral',
+      description: 'Runtime toggle — should not appear here.',
+      signers: [PerpsSigner.API_KEY],
+      signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
     expect(() =>

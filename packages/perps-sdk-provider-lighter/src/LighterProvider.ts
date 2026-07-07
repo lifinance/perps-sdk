@@ -81,6 +81,7 @@ import {
   LighterApiClient,
   LighterAuthRejectedError,
 } from './utils/apiClient.js'
+import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
   classifyAndMapOrders,
   estimateLiquidationPrice,
@@ -697,6 +698,17 @@ export const lighterProvider = (
         valueUsd: a.symbol === 'USDC' ? a.balance : '0',
       }))
 
+      const assetCollateral = account.assets.flatMap((a) =>
+        a.margin_mode === undefined
+          ? []
+          : [
+              {
+                assetId: String(a.asset_id),
+                enabled: isAssetMarginEnabled(a.margin_mode),
+              },
+            ]
+      )
+
       const config: LighterAccountConfig = {
         provider: LIGHTER_PROVIDER_KEY,
         accountIndex: account.index,
@@ -704,6 +716,7 @@ export const lighterProvider = (
         apiKeyRegistered,
         accountType: account.account_type,
         accountTradingMode: account.account_trading_mode,
+        assetCollateral,
         // Satisfied when a non-expired read-only token is stored locally
         // (`readOnlyTokenManager.get` filters out expired ones).
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,

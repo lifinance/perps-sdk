@@ -57,6 +57,7 @@ function projectHyperliquidDescriptor(
     case ActionType.MODIFY_ORDER:
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:
+    case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.REGISTER_API_KEY:
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.DEPOSIT:
