@@ -166,6 +166,12 @@ export interface LighterWasmExports {
    * fee requires a non-nil integrator index.
    */
   SignApproveIntegrator: (...args: unknown[]) => SignResult
+  /**
+   * 5 args: accountTradingMode (0 = Classic/Simple, 1 = Unified), skipNonce,
+   * then the trailing three. `accountTradingMode` is validated to {0, 1} by
+   * lighter-go before signing.
+   */
+  SignUpdateAccountConfig: (...args: unknown[]) => SignResult
 }
 
 /** @internal */
@@ -191,6 +197,7 @@ const WASM_FUNCTION_NAMES = [
   'SignModifyOrder',
   'SignUpdateMargin',
   'SignApproveIntegrator',
+  'SignUpdateAccountConfig',
 ] as const
 
 type GoClass = new () => {

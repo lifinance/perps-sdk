@@ -20,6 +20,7 @@ const WASM_FUNCTION_NAMES = [
   'SignModifyOrder',
   'SignUpdateMargin',
   'SignApproveIntegrator',
+  'SignUpdateAccountConfig',
 ] as const
 
 // A wasm_exec.js stand-in: installs a fake `globalThis.Go` whose `run()` mounts

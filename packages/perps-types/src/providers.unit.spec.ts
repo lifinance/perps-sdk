@@ -262,6 +262,7 @@ const lighterConfig: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  accountTradingMode: 0,
   readOnlyTokenApproved: false,
 }
 
@@ -272,6 +273,7 @@ const lighterConfigRoApproved: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  accountTradingMode: 0,
   readOnlyTokenApproved: true,
   readOnlyTokenExpiry: 1_999_999_999,
   readOnlyTokenScope: 'all',

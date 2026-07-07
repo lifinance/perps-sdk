@@ -35,20 +35,21 @@ const accountTypeOption: ProviderAction = {
   ],
 }
 
-// Lighter exposes no abstraction-mode equivalent; if a future backend ever
-// emits this descriptor on Lighter the projection is always null.
 const accountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
-  description: 'Read-only on Lighter.',
+  description: 'Unified vs Simple trading account.',
   signers: [PerpsSigner.USER],
   signingMethod: SigningMethod.WASM_BLOB,
   params: [
     {
       name: 'mode',
       type: 'string',
-      values: [{ value: 'default', label: 'Default' }],
-      readOnly: true,
+      values: [
+        { value: 'simpleTradingAccount', label: 'Simple' },
+        { value: 'unifiedTradingAccount', label: 'Unified' },
+      ],
+      default: { value: 'simpleTradingAccount', label: 'Simple' },
     },
   ],
 }
@@ -59,6 +60,7 @@ const baseConfig: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  accountTradingMode: 0,
 }
 
 describe('projectLighterConfigSettings', () => {
@@ -102,7 +104,19 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
-  it('projects ACCOUNT_MODE with value: null on Lighter (no abstraction-mode equivalent)', () => {
+  it('projects ACCOUNT_MODE = 1 as the wire string "unifiedTradingAccount"', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, accountTradingMode: 1 },
+      [],
+      [accountModeOption]
+    )
+    expect(result[0]).toEqual({
+      type: ActionType.ACCOUNT_MODE,
+      values: [{ name: 'mode', value: 'unifiedTradingAccount' }],
+    })
+  })
+
+  it('projects ACCOUNT_MODE = 0 as the wire string "simpleTradingAccount"', () => {
     const result = projectLighterConfigSettings(
       baseConfig,
       [],
@@ -110,8 +124,17 @@ describe('projectLighterConfigSettings', () => {
     )
     expect(result[0]).toEqual({
       type: ActionType.ACCOUNT_MODE,
-      values: [{ name: 'mode', value: null }],
+      values: [{ name: 'mode', value: 'simpleTradingAccount' }],
     })
+  })
+
+  it('projects an unmapped account_trading_mode integer to null', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, accountTradingMode: 99 },
+      [],
+      [accountModeOption]
+    )
+    expect(result[0].values[0].value).toBeNull()
   })
 
   it('projects accountType = 0 (Lighter\'s default tier integer) as the wire string "standard"', () => {
