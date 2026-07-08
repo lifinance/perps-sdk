@@ -1,5 +1,10 @@
 import { ActionType } from '@lifi/perps-types'
 import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
+import {
+  LT_ASSET_ID_USDC,
+  LT_ROUTE_PERP,
+  LT_ROUTE_SPOT,
+} from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
   type LighterWasmExports,
@@ -68,6 +73,19 @@ const NIL_MARKET_INDEX = 255
 // / `AssetRouteType_Perps`). The signer rejects an asset index < 1.
 const USDC_ASSET_INDEX = 3
 const ASSET_ROUTE_TYPE_PERPS = 0
+
+// SEND_ASSET is a same-account route→route USDC move (spot↔perp): no counterparty
+// fee, and no memo. `SignTransfer` requires a 32-byte memo, so we pass 32 zero
+// bytes in the `0x`-prefixed 64-hex form the WASM signer decodes.
+const SEND_ASSET_NO_FEE = 0
+const SEND_ASSET_ZERO_MEMO = `0x${'0'.repeat(64)}`
+// Wire encoding the widget/backend emit for `SendAssetParams.sourceDex` /
+// `destinationDex`, mapped onto Lighter's asset route types. Matches the
+// `'perp'`/`'spot'` strings Hyperliquid uses for the same spot↔perp send.
+const LIGHTER_ROUTE_BY_DEX: Record<string, number> = {
+  perp: LT_ROUTE_PERP,
+  spot: LT_ROUTE_SPOT,
+}
 
 /** @public */
 export class LighterSigner {
@@ -413,6 +431,32 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      case ActionType.SEND_ASSET: {
+        // Same-account USDC self-transfer between the perp and spot routes.
+        // `toAccountIndex` is the signer's own account; the routes come from
+        // the backend-passed `sourceDex`/`destinationDex` wire strings.
+        const fromRouteType = routeFromDex(stringField(p, 'sourceDex'))
+        const toRouteType = routeFromDex(stringField(p, 'destinationDex'))
+        if (fromRouteType === toRouteType) {
+          throw new Error(
+            'Lighter SEND_ASSET requires distinct source/destination routes ' +
+              '(perp↔spot); a same-route transfer is a no-op'
+          )
+        }
+        return wasm.SignTransfer(
+          ctx.accountIndex,
+          LT_ASSET_ID_USDC,
+          fromRouteType,
+          toRouteType,
+          numberField(p, 'amount'),
+          SEND_ASSET_NO_FEE,
+          SEND_ASSET_ZERO_MEMO,
+          SKIP_NONCE_DISABLED,
+          nonce,
+          ctx.apiKeyIndex,
+          ctx.accountIndex
+        )
+      }
       case ActionType.APPROVE_INTEGRATOR:
         return wasm.SignApproveIntegrator(
           numberField(p, 'integrator_account_index'),
@@ -507,6 +551,16 @@ function booleanField(p: Record<string, unknown>, key: string): boolean {
   throw new Error(
     `Lighter sign params missing boolean field '${key}' (got ${typeof v})`
   )
+}
+
+function routeFromDex(dex: string): number {
+  const route = LIGHTER_ROUTE_BY_DEX[dex]
+  if (route === undefined) {
+    throw new Error(
+      `Lighter SEND_ASSET: unsupported dex '${dex}' (expected 'perp' or 'spot')`
+    )
+  }
+  return route
 }
 
 function stringField(p: Record<string, unknown>, key: string): string {

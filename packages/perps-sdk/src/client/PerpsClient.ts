@@ -30,14 +30,20 @@ import type {
   PlaceOrderParams,
   PlaceTriggerOrderParams,
   ProviderSetup,
+  SendAssetActionParams,
   WithdrawParams,
 } from '../types/api.js'
+import type { PerpsClientSigner, SwitchChainHook } from '../types/config.js'
 import type {
   ActionSignerContribution,
   PerpsProvider,
   PerpsSDKClient,
   SignActionsContext,
 } from '../types/provider.js'
+import {
+  switchSigningChain,
+  userEip712TargetChainId,
+} from '../utils/switchChain.js'
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
@@ -75,6 +81,7 @@ export class PerpsClient {
   private sdkClient: PerpsSDKClient
   private providerMetadataCache: Map<string, Provider> = new Map()
   private _userWallet: PerpsSDKClient['userWallet'] | undefined
+  private _switchChain: SwitchChainHook | undefined
 
   constructor(options: PerpsClientOptions) {
     this.sdkClient = createPerpsClient({
@@ -83,6 +90,7 @@ export class PerpsClient {
       apiUrl: options.apiUrl,
       providers: options.providers,
     })
+    this._switchChain = options.switchChain
   }
 
   /**
@@ -97,6 +105,17 @@ export class PerpsClient {
       get: () => this._userWallet,
       configurable: true,
     })
+  }
+
+  /**
+   * Set or replace the wallet chain-switch hook invoked before a USER-signed
+   * EIP-712 action is signed. Mirrors {@link setUserWallet}. Pass undefined to
+   * clear — cleared, a wallet on the wrong chain signs offline without a switch.
+   *
+   * @public
+   */
+  setSwitchChain(switchChain: SwitchChainHook | undefined): void {
+    this._switchChain = switchChain
   }
 
   /**
@@ -185,12 +204,35 @@ export class PerpsClient {
           `signingMethod '${descriptor.signingMethod}'.`
       )
     }
+    const userWallet = await this.resolveSigningWallet(descriptor, actions)
     return plugin.signActions(
       descriptor.signingMethod,
       actions,
       address,
-      this.buildSignActionsContext(descriptor)
+      this.buildSignActionsContext(descriptor, userWallet)
     )
+  }
+
+  /**
+   * Resolve the wallet that signs `actions`. For a USER-signed EIP-712 batch,
+   * switch the configured wallet to the action's target chain via the
+   * `switchChain` hook and return the switched client; the switch is transient
+   * — `sdkClient.userWallet` is never mutated. All other batches (agent-signed,
+   * non-EIP-712, or no configured wallet) return the configured wallet as-is.
+   */
+  private async resolveSigningWallet(
+    descriptor: ProviderAction,
+    actions: ActionStep[]
+  ): Promise<PerpsClientSigner | undefined> {
+    const wallet = this.sdkClient.userWallet
+    if (!wallet) {
+      return undefined
+    }
+    const targetChainId = userEip712TargetChainId(descriptor, actions)
+    if (targetChainId === undefined) {
+      return wallet
+    }
+    return switchSigningChain(wallet, targetChainId, this._switchChain)
   }
 
   /**
@@ -200,13 +242,29 @@ export class PerpsClient {
    * branch on them. Provider-owned session credentials (the Hyperliquid agent
    * keypair, Lighter's API key) are resolved inside the provider's
    * `signActions`, not threaded through here.
+   *
+   * `userWallet` overrides the configured wallet for this signing pass only —
+   * `resolveSigningWallet` supplies the chain-switched client without mutating
+   * `sdkClient.userWallet`.
+   *
+   * When a `switchChain` hook is configured, `switchToChain` is bound to the
+   * resolved wallet so a plugin can switch per leg mid-batch (Lighter's
+   * `EVM_TX` broadcasts); the switch stays transient — it never mutates
+   * `sdkClient.userWallet`.
    */
   private buildSignActionsContext(
-    descriptor: ProviderAction
+    descriptor: ProviderAction,
+    userWallet?: PerpsClientSigner
   ): SignActionsContext {
     const ctx: SignActionsContext = { signers: descriptor.signers }
-    if (this.sdkClient.userWallet !== undefined) {
-      ctx.userWallet = this.sdkClient.userWallet
+    const wallet = userWallet ?? this.sdkClient.userWallet
+    if (wallet !== undefined) {
+      ctx.userWallet = wallet
+      const switchChain = this._switchChain
+      if (switchChain !== undefined) {
+        ctx.switchToChain = (chainId) =>
+          switchSigningChain(wallet, chainId, switchChain)
+      }
     }
     return ctx
   }
@@ -222,9 +280,8 @@ export class PerpsClient {
    * no backend-bound step to submit.
    *
    * @throws {PerpsError} When the step's action is not declared by the provider.
-   * @public
    */
-  async signProviderSetupAction(
+  private async signProviderSetupAction(
     provider: string,
     address: Address,
     step: ActionStep
@@ -408,10 +465,8 @@ export class PerpsClient {
    * caller / `signProviderSetupAction`). Routes the batch on the first step's
    * action and lets the plugin contribute that action's `signerAddress`.
    * Throws on any per-step venue rejection.
-   *
-   * @public
    */
-  async executeProviderSetup(
+  private async executeProviderSetup(
     params: ExecuteProviderSetupParams
   ): Promise<ExecuteProviderSetupResult> {
     const { provider, address, setup, signedActions } = params
@@ -637,6 +692,28 @@ export class PerpsClient {
       address: params.address,
       action: ActionType.WITHDRAWAL,
       params: params.withdrawal,
+    })
+  }
+
+  /**
+   * Move collateral between DEXes within the provider account. Convenience
+   * wrapper over {@link execute} with `ActionType.SEND_ASSET`; like
+   * {@link withdraw} it returns the raw {@link ExecuteActionResponse} and does
+   * not throw on a venue rejection.
+   *
+   * @throws {PerpsError} When the provider is unregistered or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
+  async sendAsset(
+    params: SendAssetActionParams
+  ): Promise<ExecuteActionResponse> {
+    const { provider, address, ...sendAsset } = params
+    return this.execute({
+      provider,
+      address,
+      action: ActionType.SEND_ASSET,
+      params: sendAsset,
     })
   }
 

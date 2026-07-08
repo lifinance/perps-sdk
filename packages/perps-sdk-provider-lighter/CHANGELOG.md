@@ -1,5 +1,24 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 2.0.0
+
+### Minor Changes
+
+- [#222](https://github.com/lifinance/perps-sdk/pull/222) [`13654ca`](https://github.com/lifinance/perps-sdk/commit/13654ca609282b8e5f97265ae5d4f8df98b70ff0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - SDK-owned per-leg wallet chain-switching now extends to `SigningMethod.EVM_TX` actions. `SignActionsContext` gains an optional bound `switchToChain(chainId)` that core populates from the consumer's `switchChain` hook, and Lighter's `EVM_TX` signer (deposit/approve/withdraw) switches the wallet to each leg's `txParams.chainId` before broadcasting. When no `switchChain` hook is configured (local/private-key signer) it retains the fail-loud wrong-chain guard rather than broadcasting on the wrong chain.
+
+- [#221](https://github.com/lifinance/perps-sdk/pull/221) [`3499852`](https://github.com/lifinance/perps-sdk/commit/3499852a21fe072dbc64cc096fddb52e5507395d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Support the `SEND_ASSET` action in the Lighter signer as a same-account spot↔perp USDC self-transfer, mapping `sourceDex`/`destinationDex` onto Lighter's asset route types.
+
+### Patch Changes
+
+- Updated dependencies [[`a5e7e17`](https://github.com/lifinance/perps-sdk/commit/a5e7e170cdfbb494ea284c949d685738d29348d4), [`13654ca`](https://github.com/lifinance/perps-sdk/commit/13654ca609282b8e5f97265ae5d4f8df98b70ff0)]:
+  - @lifi/perps-sdk@2.0.0
+
+## 1.9.0
+
+### Minor Changes
+
+- [#217](https://github.com/lifinance/perps-sdk/pull/217) [`cbb85a6`](https://github.com/lifinance/perps-sdk/commit/cbb85a602d595a72efbe2c9542ff80dea20b8eea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Export the per-asset margin-mode helpers `isAssetMarginEnabled` and `assetMarginModeInt` from the provider-lighter public barrel.
+
 ## 1.8.0
 
 ### Minor Changes

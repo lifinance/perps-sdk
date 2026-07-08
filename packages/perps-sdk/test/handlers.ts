@@ -113,6 +113,11 @@ export const mockProviders: ProvidersResponse = {
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
         },
+        {
+          type: ActionType.SEND_ASSET,
+          signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.EIP712,
+        },
       ],
       categories: [],
     },

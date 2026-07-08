@@ -8,7 +8,7 @@ import type {
 import { ActionType, SigningMethod } from '@lifi/perps-types'
 import { type Address, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrum, mainnet } from 'viem/chains'
+import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
@@ -544,6 +544,117 @@ describe('lighterSignActions', () => {
       ).rejects.toThrow(/chain/i)
 
       expect(order).toEqual([])
+    })
+
+    function makeStepOn(
+      chainId: number,
+      functionName: string
+    ): EvmTxActionStep {
+      const step = makeStep(functionName)
+      return { ...step, txParams: { ...step.txParams, chainId } }
+    }
+
+    const chainById = { [arbitrum.id]: arbitrum, [base.id]: base } as const
+
+    it('switches to each leg target chain, once per leg, when legs target different chains', async () => {
+      const switched: number[] = []
+      const switchToChain = vi.fn(async (chainId: number) => {
+        switched.push(chainId)
+        return makeRecordingWallet(['0x1'], chainById[chainId]).wallet
+      })
+      // Wallet starts on mainnet; both legs target other chains.
+      const { wallet } = makeRecordingWallet([], mainnet)
+      const steps = [
+        makeStepOn(arbitrum.id, 'approve'),
+        makeStepOn(base.id, 'deposit'),
+      ]
+
+      const result = (await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet, switchToChain }
+      )) as EvmTxSignedActionStep[]
+
+      expect(switchToChain).toHaveBeenCalledTimes(2)
+      expect(switched).toEqual([arbitrum.id, base.id])
+      expect(result).toHaveLength(2)
+    })
+
+    it('does not call the switcher for a leg already on the wallet chain', async () => {
+      const switchToChain = vi.fn(
+        async (chainId: number) =>
+          makeRecordingWallet(['0x1'], chainById[chainId]).wallet
+      )
+      const { wallet } = makeRecordingWallet(['0x1'], arbitrum)
+
+      await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        [makeStepOn(arbitrum.id, 'approve')],
+        ADDRESS,
+        { userWallet: wallet, switchToChain }
+      )
+
+      expect(switchToChain).not.toHaveBeenCalled()
+    })
+
+    it('throws on a wrong-chain leg when no switch capability is supplied (local signer)', async () => {
+      const { wallet, order } = makeRecordingWallet([], mainnet)
+
+      await expect(
+        lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStepOn(arbitrum.id, 'approve')],
+          ADDRESS,
+          { userWallet: wallet }
+        )
+      ).rejects.toThrow(/chain/i)
+
+      expect(order).toEqual([])
+    })
+
+    it('throws SDKError when the switcher returns a client still on the wrong chain', async () => {
+      const switchToChain = vi.fn(
+        async () => makeRecordingWallet([], mainnet).wallet
+      )
+      const { wallet, order } = makeRecordingWallet([], mainnet)
+
+      await expect(
+        lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStepOn(arbitrum.id, 'approve')],
+          ADDRESS,
+          { userWallet: wallet, switchToChain }
+        )
+      ).rejects.toThrow(/chain/i)
+
+      expect(switchToChain).toHaveBeenCalledTimes(1)
+      expect(order).toEqual([])
+    })
+
+    it('does not mutate ctx.userWallet across the switch (transient injection)', async () => {
+      const { wallet } = makeRecordingWallet([], mainnet)
+      const ctx = {
+        userWallet: wallet,
+        switchToChain: vi.fn(
+          async (chainId: number) =>
+            makeRecordingWallet(['0x1'], chainById[chainId]).wallet
+        ),
+      }
+
+      await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        [makeStepOn(arbitrum.id, 'approve')],
+        ADDRESS,
+        ctx
+      )
+
+      expect(ctx.userWallet).toBe(wallet)
     })
   })
 
