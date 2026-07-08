@@ -63,6 +63,17 @@ export interface SignActionsContext {
    * forwards the descriptor's `signers` as data; it does not branch on them.
    */
   signers?: PerpsSigner[]
+  /**
+   * Switch `userWallet` to `chainId` and resolve the client to broadcast with.
+   * Bound by core to the consumer's `switchChain` hook and the resolved
+   * `userWallet`: a no-op returning the same client when already on `chainId`,
+   * else it switches and re-verifies, rejecting with `PerpsErrorCode.SDKError`
+   * when the switch cannot be completed. Present only when a `switchChain` hook
+   * is configured; a plugin whose legs broadcast on-chain (Lighter's `EVM_TX`)
+   * calls it per leg, and falls back to a fail-loud wrong-chain guard when it is
+   * absent (local/private-key signer, or no hook).
+   */
+  switchToChain?: (chainId: number) => Promise<PerpsClientSigner>
 }
 
 /**
