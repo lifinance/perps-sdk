@@ -70,7 +70,7 @@ describe('mapFill (Lighter)', () => {
     expect(fill.createdAt).toBe(new Date(1_700_000_000_000).toISOString())
   })
 
-  // is_maker_ask × isBuyer: viewer is maker iff they are on the resting side
+  // is_maker_ask × isBuyer: viewer is maker if and only if they are on the resting side
   // of the trade (bid_account_id === accountIndex XOR is_maker_ask).
   describe('side + maker/taker truth table', () => {
     it('viewer on bid + is_maker_ask=true → BUY taker → taker fee', () => {

@@ -192,6 +192,10 @@ interface Recorded {
 
 let recorded: Recorded[] = []
 let fetchMock: ReturnType<typeof vi.fn>
+// `used_code` the default `/referral/userReferrals` handler returns — the
+// referral code currently applied to the account ('' = none). Mutable so a
+// test can drive the applied/not-applied branches of `referralPresent`.
+let userReferralsUsedCode = ''
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -201,6 +205,7 @@ const respond = (body: unknown, status = 200): Response =>
 
 beforeEach(() => {
   recorded = []
+  userReferralsUsedCode = ''
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const urlStr = String(url)
     if (urlStr.includes('backend.test/v1/perps/markets')) {
@@ -232,6 +237,9 @@ beforeEach(() => {
         leased_lit: '0',
         effective_lit_stakes: '0',
       })
+    }
+    if (u.includes('/api/v1/referral/userReferrals')) {
+      return respond({ code: 0, used_code: userReferralsUsedCode })
     }
     if (u.includes('/api/v1/accountActiveOrders')) {
       return respond({ code: 0, next_cursor: '', orders: [] })
@@ -530,6 +538,63 @@ describe('LighterProvider — auth token plumbing', () => {
   })
 })
 
+describe('LighterProvider — referralPresent', () => {
+  const LIFI_CODE = 'LIFI-REF-CODE'
+
+  it('is true and reads the applied referral authenticated by L1 address when LI.FI code is applied', async () => {
+    userReferralsUsedCode = LIFI_CODE
+    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: true })
+    const call = recorded.find((r) =>
+      r.url.includes('/api/v1/referral/userReferrals')
+    )
+    expect(call).toBeDefined()
+    expect(call?.url).toContain('auth=ref-token')
+    expect(call?.url).toContain(`l1_address=${ADDRESS.toLowerCase()}`)
+  })
+
+  it('is false when a different referral code is applied', async () => {
+    userReferralsUsedCode = 'SOMEONE-ELSE'
+    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: false })
+  })
+
+  it('is false when no referral is applied', async () => {
+    userReferralsUsedCode = ''
+    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: false })
+  })
+
+  it('skips the read and reports false when no referral code is configured', async () => {
+    userReferralsUsedCode = LIFI_CODE
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: false })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
+    ).toBeUndefined()
+  })
+})
+
 describe('LighterProvider — assetCollateral projection', () => {
   const accountWithAssets = (assets: unknown[]) => ({
     ...ACCOUNT_PAYLOAD,
@@ -611,6 +676,124 @@ describe('LighterProvider — assetCollateral projection', () => {
   })
 })
 
+describe('LighterProvider — getAccount balance asset identity', () => {
+  const USDC_LOGO = 'https://cdn.test/usdc.png'
+  const BTC_LOGO = 'https://cdn.test/btc.png'
+
+  const MARKETS_WITH_LOGO = {
+    markets: [
+      {
+        ...MARKETS_RESPONSE.markets[0],
+        quoteAsset: {
+          providerId: 'lighter',
+          id: 'USDC',
+          displaySymbol: 'USDC',
+          logoURI: USDC_LOGO,
+        },
+      },
+    ],
+  }
+
+  const ASSETS_WITH_LOGO = {
+    assets: [
+      {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: USDC_LOGO,
+      },
+      {
+        providerId: 'lighter',
+        id: '0',
+        displaySymbol: 'BTC',
+        logoURI: BTC_LOGO,
+      },
+    ],
+  }
+
+  const ACCOUNT_WITH_SPOT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        assets: [
+          {
+            symbol: 'USDC',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_mode: 0,
+          },
+          {
+            symbol: 'BTC',
+            asset_id: 0,
+            balance: '2',
+            locked_balance: '0',
+            margin_mode: 1,
+          },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_WITH_LOGO)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_WITH_LOGO)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_SPOT)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  it('resolves the collateral (USDC) asset from the backend market registry, carrying its logoURI', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.collateralBalances[0].asset).toMatchObject({
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: USDC_LOGO,
+    })
+    // AC5: only asset identity changes — free collateral stays `available_balance`.
+    expect(account.collateralBalances[0].units).toBe('100')
+    expect(account.collateralBalances[0].valueUsd).toBe('100')
+  })
+
+  it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    const usdc = account.balances.find((b) => b.asset.displaySymbol === 'USDC')
+    const btc = account.balances.find((b) => b.asset.displaySymbol === 'BTC')
+    expect(usdc?.asset.logoURI).toBe(USDC_LOGO)
+    expect(btc?.asset.logoURI).toBe(BTC_LOGO)
+    // AC5: USDC spot is valued 1:1; other tokens have no price source here.
+    expect(usdc?.units).toBe('10')
+    expect(usdc?.valueUsd).toBe('10')
+    expect(btc?.units).toBe('2')
+    expect(btc?.valueUsd).toBe('0')
+  })
+})
+
 describe('LighterProvider — read-only token revocation self-heal', () => {
   const LIMITS_OK = {
     code: 0,
@@ -669,6 +852,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
         }
@@ -725,6 +911,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         const u = String(url)
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -926,6 +1115,9 @@ describe('LighterProvider — standard token revocation self-heal', () => {
         const u = String(url)
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
