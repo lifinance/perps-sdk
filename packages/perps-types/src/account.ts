@@ -279,6 +279,13 @@ export interface LighterAccountConfig {
   readOnlyTokenExpiry?: number
   /** Present iff `readOnlyTokenApproved === true`. */
   readOnlyTokenScope?: 'single' | 'all'
+  /**
+   * `true` iff LI.FI's referral code is the code currently applied to the
+   * account, resolved by an SDK-direct read of the applied referral. `false`
+   * when a different code (or none) is applied, or when the SDK holds no
+   * referral code to compare against.
+   */
+  referralApplied: boolean
 }
 
 /** @public */

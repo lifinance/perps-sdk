@@ -62,6 +62,8 @@ const baseConfig: LighterAccountConfig = {
   accountType: 0,
   accountTradingMode: 0,
   assetCollateral: [],
+  readOnlyTokenApproved: false,
+  referralApplied: false,
 }
 
 describe('projectLighterConfigSettings', () => {
@@ -192,7 +194,7 @@ describe('projectLighterConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
-  it('projects SET_REFERRAL and APPROVE_INTEGRATOR setup gates with empty values and no local satisfaction', () => {
+  it('projects SET_REFERRAL satisfaction from config.referralApplied', () => {
     const setReferralSetup: ProviderAction = {
       type: ActionType.SET_REFERRAL,
       title: 'Apply LI.FI Referral',
@@ -201,6 +203,23 @@ describe('projectLighterConfigSettings', () => {
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
+    expect(
+      projectLighterConfigSettings(
+        { ...baseConfig, referralApplied: true },
+        [setReferralSetup],
+        []
+      )
+    ).toEqual([{ type: ActionType.SET_REFERRAL, values: [], satisfied: true }])
+    expect(
+      projectLighterConfigSettings(
+        { ...baseConfig, referralApplied: false },
+        [setReferralSetup],
+        []
+      )
+    ).toEqual([{ type: ActionType.SET_REFERRAL, values: [], satisfied: false }])
+  })
+
+  it('projects APPROVE_INTEGRATOR setup gate with empty values and no local satisfaction', () => {
     const approveIntegratorSetup: ProviderAction = {
       type: ActionType.APPROVE_INTEGRATOR,
       title: 'Authorise LI.FI Fees',
@@ -210,14 +229,7 @@ describe('projectLighterConfigSettings', () => {
       params: [],
     }
     expect(
-      projectLighterConfigSettings(
-        baseConfig,
-        [setReferralSetup, approveIntegratorSetup],
-        []
-      )
-    ).toEqual([
-      { type: ActionType.SET_REFERRAL, values: [] },
-      { type: ActionType.APPROVE_INTEGRATOR, values: [] },
-    ])
+      projectLighterConfigSettings(baseConfig, [approveIntegratorSetup], [])
+    ).toEqual([{ type: ActionType.APPROVE_INTEGRATOR, values: [] }])
   })
 })
