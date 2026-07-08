@@ -722,6 +722,98 @@ describe('OndoProvider — getActivity', () => {
   })
 })
 
+describe('OndoProvider — server-revoked session', () => {
+  // A JWT the server revoked before it locally expired: `tokenStore.get`
+  // returns it, but the venue answers 401 → `OndoSessionExpiredError`. Every
+  // authenticated read must evict the stale token and degrade gracefully so
+  // the UI cannot soft-lock behind a token that still looks valid locally.
+  const revokeSession = () =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      return respond({ success: false, error: 'token expired' }, 401)
+    })
+
+  it('getPositions evicts the token and returns an empty page', async () => {
+    const { provider, store } = await loggedInProvider()
+    revokeSession()
+
+    await expect(provider.getPositions({ address: ADDRESS })).resolves.toEqual({
+      provider: 'ondo',
+      positions: [],
+      pagination: { limit: 0, hasMore: false },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('getOrders evicts the token and returns an empty page', async () => {
+    const { provider, store } = await loggedInProvider()
+    revokeSession()
+
+    await expect(provider.getOrders({ address: ADDRESS })).resolves.toEqual({
+      provider: 'ondo',
+      openOrders: [],
+      triggerOrders: [],
+      pagination: { limit: 0, hasMore: false },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('getOrder evicts the token and throws the session-required error', async () => {
+    const { provider, store } = await loggedInProvider()
+    revokeSession()
+
+    await expect(
+      provider.getOrder({ address: ADDRESS, id: 'ord-1' })
+    ).rejects.toThrowError(/requires a session token/)
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('getFills evicts the token and returns an empty page', async () => {
+    const { provider, store } = await loggedInProvider()
+    revokeSession()
+
+    await expect(
+      provider.getFills({ address: ADDRESS, limit: 5 })
+    ).resolves.toEqual({
+      provider: 'ondo',
+      items: [],
+      pagination: { limit: 5, hasMore: false },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('getActivity evicts the token and returns an empty page', async () => {
+    const { provider, store } = await loggedInProvider()
+    revokeSession()
+
+    await expect(provider.getActivity({ address: ADDRESS })).resolves.toEqual({
+      provider: 'ondo',
+      items: [],
+      pagination: { limit: 0, hasMore: false },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('propagates non-session venue errors and keeps the token', async () => {
+    const { provider, store } = await loggedInProvider()
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      return respond({ success: false, error: 'venue exploded' }, 500)
+    })
+
+    await expect(
+      provider.getPositions({ address: ADDRESS })
+    ).rejects.toThrowError(/Ondo API request failed/)
+    await expect(store.get(ADDRESS)).resolves.toEqual(AUTH_TOKEN)
+  })
+})
+
 describe('OndoProvider — getAccountSummary', () => {
   it('treats collateral rows as gross (locked margin included, uPnL from positions)', () => {
     const provider = ondoProvider()

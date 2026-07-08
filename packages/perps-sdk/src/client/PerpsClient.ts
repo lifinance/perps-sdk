@@ -45,6 +45,7 @@ import {
   switchSigningChain,
   userEip712TargetChainId,
 } from '../utils/switchChain.js'
+import { clientLog } from './clientLog.js'
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
@@ -840,10 +841,7 @@ export class PerpsClient {
     } catch (error) {
       // The venue call already succeeded above — a failed bookkeeping
       // submission must not mask a landed order, so it is logged, not thrown.
-      console.error(
-        `[${provider}] backend bookkeeping submission failed after venue execution`,
-        error
-      )
+      clientLog.bookkeepingFailure(provider, error)
     }
 
     return { results }
