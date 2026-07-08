@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.13.0
+
+### Minor Changes
+
+- [#215](https://github.com/lifinance/perps-sdk/pull/215) [`2c5445d`](https://github.com/lifinance/perps-sdk/commit/2c5445ddb857713ae6cad3e91be671f9dd1f67f4) Thanks [@TristanNcl](https://github.com/TristanNcl)! - feat: add accountSummary WS channel and fix Lighter PnL double-counting (ORD-817)
+
 ## 1.12.0
 
 ### Minor Changes
