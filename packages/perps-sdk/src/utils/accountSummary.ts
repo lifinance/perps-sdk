@@ -15,6 +15,9 @@ const sumValueUsd = (balances: AccountResponse['balances']): number =>
  * - `'free'` — free collateral only; locked margin and unrealized PnL are
  *   both carried by the positions. Available margin is the free collateral
  *   as-is; unrealized PnL is not counted toward it.
+ * - `'net'` — free collateral with unrealized PnL already marked in; only
+ *   the locked margin is carried by the positions (e.g. a venue-reported
+ *   available balance).
  * - `'gross'` — locked margin included, unrealized PnL carried by the
  *   positions (e.g. spot holdings backing a unified account). The venue
  *   counts unrealized PnL toward buying power, so it is added to available
@@ -25,7 +28,7 @@ const sumValueUsd = (balances: AccountResponse['balances']): number =>
  *
  * @public
  */
-export type CollateralSemantics = 'free' | 'gross' | 'equity'
+export type CollateralSemantics = 'free' | 'net' | 'gross' | 'equity'
 
 /**
  * Roll an {@link AccountResponse} and its open positions up into an
@@ -51,9 +54,13 @@ export function summarizeAccount(
   const balances = sumValueUsd(account.balances)
 
   const grossCollateral =
-    semantics === 'free' ? collateral + marginUsed : collateral
+    semantics === 'free' || semantics === 'net'
+      ? collateral + marginUsed
+      : collateral
   const equity =
-    semantics === 'equity' ? grossCollateral : grossCollateral + unrealizedPnl
+    semantics === 'equity' || semantics === 'net'
+      ? grossCollateral
+      : grossCollateral + unrealizedPnl
 
   // Buying power is equity net of locked margin, so unrealized PnL counts
   // toward it. The `'free'` rows exclude uPnL from available margin, holding

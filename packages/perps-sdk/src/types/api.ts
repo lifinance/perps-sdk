@@ -179,7 +179,11 @@ export interface SendAssetActionParams {
 export interface CancelOrdersParams {
   provider: string
   address: Address
+  /** Venue order ids. Venues whose ids are scoped per market (e.g. Lighter's
+   * `order_index`) also accept the composite `"<market_id>:<order_id>"`. */
   ids: string[]
+  /** Market context for per-market order ids; the order's `market.id`. */
+  assetId?: string
 }
 
 /**

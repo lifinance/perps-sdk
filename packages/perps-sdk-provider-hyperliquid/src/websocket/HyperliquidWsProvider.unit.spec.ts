@@ -3310,3 +3310,106 @@ describe('HyperliquidWsProvider', () => {
     })
   })
 })
+
+describe('accountSummary channel', () => {
+  it('emits the equity summary from a clearinghouse frame', async () => {
+    const provider = createEnrichingProvider()
+    const listener = vi.fn()
+    await provider.subscribe(
+      { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+      listener
+    )
+
+    getMockRwsInstance().simulateMessage(
+      JSON.stringify({
+        channel: 'allDexsClearinghouseState',
+        data: {
+          user: '0xabc',
+          clearinghouseStates: [
+            [
+              '',
+              {
+                assetPositions: [assetPositionOf('BTC')],
+                marginSummary: {
+                  accountValue: '1000',
+                  totalMarginUsed: '940',
+                },
+              },
+            ],
+          ],
+        },
+      })
+    )
+    await flushMicrotasks()
+
+    expect(listener).toHaveBeenCalledWith({
+      channel: 'accountSummary',
+      data: {
+        portfolioValue: '1000',
+        availableMargin: '60',
+        marginUsed: '940',
+        unrealizedPnl: '100',
+      },
+    })
+  })
+
+  it('shares one clearinghouse wire subscription with positions', async () => {
+    vi.useFakeTimers()
+    try {
+      const provider = createProvider()
+      const unsubPositions = await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+
+      const subscribes = getMockRwsInstance().sent.filter((raw: string) =>
+        raw.includes('allDexsClearinghouseState')
+      )
+      expect(subscribes).toHaveLength(1)
+
+      getMockRwsInstance().sent = []
+      unsubPositions()
+      vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+      // The summary listener still holds the wire sub open.
+      expect(getMockRwsInstance().sent).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('unsubscribes the clearinghouse wire once the last holder unsubscribes', async () => {
+    vi.useFakeTimers()
+    try {
+      const provider = createProvider()
+      const unsubPositions = await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      const unsubSummary = await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+
+      getMockRwsInstance().sent = []
+      unsubPositions()
+      vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+      unsubSummary()
+      vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+      const unsubscribes = getMockRwsInstance().sent.filter((raw: string) =>
+        raw.includes('allDexsClearinghouseState')
+      )
+      expect(unsubscribes).toHaveLength(1)
+      expect(JSON.parse(unsubscribes[0])).toEqual({
+        method: 'unsubscribe',
+        subscription: { type: 'allDexsClearinghouseState', user: '0xabc' },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

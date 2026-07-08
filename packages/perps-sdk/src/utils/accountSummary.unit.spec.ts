@@ -82,6 +82,21 @@ describe('summarizeAccount', () => {
     })
   })
 
+  describe("'net' collateral", () => {
+    it('adds locked margin back without re-adding unrealized PnL', () => {
+      const summary = summarizeAccount(
+        account([balance('800')]),
+        [position('200', '50')],
+        'net'
+      )
+      expect(summary.availableMargin).toBe('800')
+      expect(summary.marginUsed).toBe('200')
+      expect(summary.unrealizedPnl).toBe('50')
+      // portfolio = net collateral 800 (pnl already in) + locked margin 200
+      expect(summary.portfolioValue).toBe('1000')
+    })
+  })
+
   describe("'gross' collateral", () => {
     it('adds profit uPnL to available margin: buying power = gross − margin + pnl', () => {
       const summary = summarizeAccount(

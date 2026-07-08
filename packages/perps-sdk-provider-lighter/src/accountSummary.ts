@@ -8,9 +8,9 @@ import type {
 /**
  * Roll a Lighter {@link AccountResponse} up into an {@link AccountSummary}.
  * Lighter has a single flat collateral model with no abstraction modes: the
- * collateral rows hold `available_balance` (free margin), so available margin
- * is the collateral as-is and the locked margin (carried by the positions'
- * `marginUsed`) is added back for the gross portfolio value.
+ * collateral rows hold `available_balance`, which nets locked margin out but
+ * marks unrealized PnL in — so only the positions' `marginUsed` is added
+ * back for the portfolio value, never their PnL.
  *
  * @public
  */
@@ -18,5 +18,5 @@ export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {
-  return summarizeAccount(account, positions, 'free')
+  return summarizeAccount(account, positions, 'net')
 }

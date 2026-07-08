@@ -40,6 +40,7 @@ import type {
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
   LtWsTradeMessage,
+  LtWsUserStatsMessage,
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
@@ -310,6 +311,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         return `fills:${sub.address.toLowerCase()}`
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
+      case 'accountSummary':
+        return `accountSummary:${sub.address.toLowerCase()}`
       // No live wire sub (openChannel returns a no-op), but a stable key is
       // still needed so the base's fan-out registry can track/release it.
       case 'candle':
@@ -368,6 +371,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       return [{ channel: `trade/${id}`, needsAuth: false }]
+    }
+    if (sub.channel === 'accountSummary') {
+      const accountIndex = await this.resolveAccountIndex(sub.address)
+      // `user_stats` is publicly readable; no token needed.
+      return [
+        {
+          channel: `user_stats/${accountIndex}`,
+          needsAuth: false,
+          address: sub.address,
+        },
+      ]
     }
     if (
       sub.channel === 'orderUpdates' ||
@@ -504,6 +518,14 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
 
     if (
+      msg.type === 'subscribed/user_stats' ||
+      msg.type === 'update/user_stats'
+    ) {
+      this.handleUserStats(msg as LtWsUserStatsMessage)
+      return
+    }
+
+    if (
       msg.type === 'subscribed/account_all_positions' ||
       msg.type === 'update/account_all_positions'
     ) {
@@ -528,6 +550,33 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
       data,
+    })
+  }
+
+  private handleUserStats(msg: LtWsUserStatsMessage): void {
+    const address = this.addressFromChannel(msg.channel, 'user_stats')
+    if (!address) {
+      return
+    }
+    const stats = msg.stats
+    const portfolio = Number.parseFloat(stats?.portfolio_value ?? '')
+    const available = Number.parseFloat(stats?.available_balance ?? '')
+    if (!Number.isFinite(portfolio) || !Number.isFinite(available)) {
+      return
+    }
+    // Identities of the REST 'net' semantics: `available_balance` nets locked
+    // margin out with PnL marked in, and `collateral` is gross, PnL-exclusive.
+    const collateral = Number.parseFloat(stats?.collateral ?? '')
+    this.emit(`accountSummary:${address}`, {
+      channel: 'accountSummary',
+      data: {
+        portfolioValue: portfolio.toString(),
+        availableMargin: available.toString(),
+        marginUsed: Math.max(portfolio - available, 0).toString(),
+        unrealizedPnl: Number.isFinite(collateral)
+          ? (portfolio - collateral).toString()
+          : '0',
+      },
     })
   }
 

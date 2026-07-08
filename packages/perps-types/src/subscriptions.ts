@@ -1,4 +1,5 @@
 import type {
+  AccountSummary,
   Balance,
   Fill,
   OpenOrder,
@@ -76,6 +77,12 @@ export type SpotBalancesSubscription = {
   dex: string
   address: Address
 }
+/** @public */
+export type AccountSummarySubscription = {
+  channel: 'accountSummary'
+  dex: string
+  address: Address
+}
 
 /** @public */
 export type Subscription =
@@ -88,6 +95,7 @@ export type Subscription =
   | FillsSubscription
   | PositionsSubscription
   | SpotBalancesSubscription
+  | AccountSummarySubscription
 
 /** @public */
 export type MarketsContextEvent = {
@@ -140,6 +148,17 @@ export type SpotBalancesEvent = {
   data: (Balance & { locked: string })[]
 }
 
+/**
+ * Venue-computed account roll-up frame. Field coverage matches the venue's
+ * own stream; Hyperliquid's `portfolioValue` covers perps equity only (spot
+ * balances have their own stream).
+ * @public
+ */
+export type AccountSummaryEvent = {
+  channel: 'accountSummary'
+  data: AccountSummary
+}
+
 /** @public */
 export type SubscriptionEvent =
   | MarketsContextEvent
@@ -151,3 +170,4 @@ export type SubscriptionEvent =
   | FillsEvent
   | PositionsEvent
   | SpotBalancesEvent
+  | AccountSummaryEvent

@@ -64,16 +64,16 @@ const account = (
 })
 
 describe('getAccountSummary', () => {
-  it('treats collateral as free margin; available margin is the collateral as-is', () => {
-    // available_balance 800 is free; locked margin 200 lives in the position
+  it('adds locked margin back but never re-adds the PnL already in available_balance', () => {
+    // available_balance 800 nets margin out and marks the +50 pnl in
     const summary = getAccountSummary(account([balance('800')]), [
       position('200', '50'),
     ])
     expect(summary.availableMargin).toBe('800')
     expect(summary.marginUsed).toBe('200')
     expect(summary.unrealizedPnl).toBe('50')
-    // portfolio = free collateral 800 + locked margin 200 + pnl 50
-    expect(summary.portfolioValue).toBe('1050')
+    // portfolio = available 800 (pnl included) + locked margin 200
+    expect(summary.portfolioValue).toBe('1000')
   })
 
   it('adds non-collateral balances to portfolio value only', () => {
