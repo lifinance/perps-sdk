@@ -64,11 +64,12 @@ export {
   QUOTE_THROTTLE_MS,
   resolveSubscribeQuote,
 } from './services/resolveSubscribeQuote.js'
+export { localStorageAdapter } from './storage/encryptedStorage.js'
 export {
   parseStoredRecord,
   readValidatedRecord,
 } from './storage/parseStoredRecord.js'
-export { createMemoryStorage, localStorageAdapter } from './storage/storage.js'
+export { createMemoryStorage } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'
