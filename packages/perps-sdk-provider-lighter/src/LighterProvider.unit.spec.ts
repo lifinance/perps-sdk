@@ -676,6 +676,124 @@ describe('LighterProvider — assetCollateral projection', () => {
   })
 })
 
+describe('LighterProvider — getAccount balance asset identity', () => {
+  const USDC_LOGO = 'https://cdn.test/usdc.png'
+  const BTC_LOGO = 'https://cdn.test/btc.png'
+
+  const MARKETS_WITH_LOGO = {
+    markets: [
+      {
+        ...MARKETS_RESPONSE.markets[0],
+        quoteAsset: {
+          providerId: 'lighter',
+          id: 'USDC',
+          displaySymbol: 'USDC',
+          logoURI: USDC_LOGO,
+        },
+      },
+    ],
+  }
+
+  const ASSETS_WITH_LOGO = {
+    assets: [
+      {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: USDC_LOGO,
+      },
+      {
+        providerId: 'lighter',
+        id: '0',
+        displaySymbol: 'BTC',
+        logoURI: BTC_LOGO,
+      },
+    ],
+  }
+
+  const ACCOUNT_WITH_SPOT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        assets: [
+          {
+            symbol: 'USDC',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_mode: 0,
+          },
+          {
+            symbol: 'BTC',
+            asset_id: 0,
+            balance: '2',
+            locked_balance: '0',
+            margin_mode: 1,
+          },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_WITH_LOGO)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_WITH_LOGO)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_SPOT)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  it('resolves the collateral (USDC) asset from the backend market registry, carrying its logoURI', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.collateralBalances[0].asset).toMatchObject({
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: USDC_LOGO,
+    })
+    // AC5: only asset identity changes — free collateral stays `available_balance`.
+    expect(account.collateralBalances[0].units).toBe('100')
+    expect(account.collateralBalances[0].valueUsd).toBe('100')
+  })
+
+  it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    const usdc = account.balances.find((b) => b.asset.displaySymbol === 'USDC')
+    const btc = account.balances.find((b) => b.asset.displaySymbol === 'BTC')
+    expect(usdc?.asset.logoURI).toBe(USDC_LOGO)
+    expect(btc?.asset.logoURI).toBe(BTC_LOGO)
+    // AC5: USDC spot is valued 1:1; other tokens have no price source here.
+    expect(usdc?.units).toBe('10')
+    expect(usdc?.valueUsd).toBe('10')
+    expect(btc?.units).toBe('2')
+    expect(btc?.valueUsd).toBe('0')
+  })
+})
+
 describe('LighterProvider — read-only token revocation self-heal', () => {
   const LIMITS_OK = {
     code: 0,
@@ -734,6 +852,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
         }
@@ -790,6 +911,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         const u = String(url)
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -991,6 +1115,9 @@ describe('LighterProvider — standard token revocation self-heal', () => {
         const u = String(url)
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)

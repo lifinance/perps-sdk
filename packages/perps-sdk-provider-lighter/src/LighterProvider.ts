@@ -663,7 +663,12 @@ export const lighterProvider = (
       ])
 
       const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const assetRegistry = getAssetRegistry(
+        requireClient(),
+        LIGHTER_PROVIDER_KEY
+      )
       const [
+        markets,
         ,
         registeredKey,
         limitsResult,
@@ -672,6 +677,7 @@ export const lighterProvider = (
         appliedReferralCode,
       ] = await Promise.all([
         registry.sync(),
+        assetRegistry.sync(),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         // No token is a legitimate unauthenticated read → undefined → zero fee
         // tier. A fetch error is NOT: it must propagate, never be coerced to a
@@ -714,6 +720,10 @@ export const lighterProvider = (
         0
       )
 
+      const quoteAssetByCategory = new Map(
+        markets.map((m) => [m.categoryId, m.quoteAsset])
+      )
+
       // USDC collateral is the category quote asset → collateralBalances.
       // `available_balance` is the free collateral (Lighter's `collateral` is
       // gross, i.e. includes margin locked in positions); the locked portion is
@@ -721,19 +731,24 @@ export const lighterProvider = (
       const collateralBalances: Balance[] = [
         {
           categoryId: LIGHTER_PROVIDER_KEY,
-          asset: lighterAsset('USDC', 'USDC'),
+          asset:
+            quoteAssetByCategory.get(LIGHTER_PROVIDER_KEY) ??
+            lighterAsset('USDC', 'USDC'),
           units: account.available_balance,
           valueUsd: account.available_balance,
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
       // have no price source at this boundary, so their USD value is unknown.
-      const balances: Balance[] = account.assets.map((a) => ({
-        categoryId: LIGHTER_PROVIDER_KEY,
-        asset: lighterAsset(String(a.asset_id), a.symbol),
-        units: a.balance,
-        valueUsd: a.symbol === 'USDC' ? a.balance : '0',
-      }))
+      const balances: Balance[] = account.assets.map((a) => {
+        const assetId = String(a.asset_id)
+        return {
+          categoryId: LIGHTER_PROVIDER_KEY,
+          asset: assetRegistry.get(assetId) ?? lighterAsset(assetId, a.symbol),
+          units: a.balance,
+          valueUsd: a.symbol === 'USDC' ? a.balance : '0',
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined
