@@ -202,13 +202,6 @@ export interface LighterProviderOptions {
   tokenLifetimeSeconds?: number
   /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
-  /**
-   * LI.FI's Lighter referral code — the code `getAccount` compares the account's
-   * applied referral against to populate `LighterAccountConfig.referralApplied`.
-   * Must match the backend's configured `LIGHTER_REFERRAL_CODE`; when omitted,
-   * `referralApplied` is always `false` (the SDK has nothing to compare against).
-   */
-  referralCode?: string
 }
 
 interface CachedStandardToken {
@@ -290,7 +283,6 @@ export const lighterProvider = (
   })
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-  const referralCode = options.referralCode
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
   // Single-flight + backoff for lazy read-only token creation. Without these,
   // concurrent reads on first load all race `tokens/create`, and any sustained
@@ -513,8 +505,8 @@ export const lighterProvider = (
     })
 
   // `used_code` is the referral currently applied to the account (empty string
-  // when none). Keyed by L1 address, mirroring Lighter's `/referral/use` write
-  // contract.
+  // when none — the only state in which one can still be applied). Keyed by L1
+  // address, mirroring Lighter's `/referral/use` write contract.
   const fetchAppliedReferralCode = async (
     client: LighterApiClient,
     l1Address: Address,
@@ -683,9 +675,9 @@ export const lighterProvider = (
             ),
         keyStore ? keyStore.get(params.address) : Promise.resolve(null),
         readOnlyTokenManager.get(params.address, account.index),
-        // No referral code to compare against, or no token to authenticate the
-        // read → undefined → `referralApplied: false`.
-        !referralCode || token === undefined
+        // No token to authenticate the read → undefined → `referralApplied`
+        // stays `false` (the pre-auth state; the gate stays open).
+        token === undefined
           ? Promise.resolve(undefined)
           : retryOnRevoked(opts, params.address, token, (t) =>
               fetchAppliedReferralCode(client, params.address, t)
@@ -759,9 +751,11 @@ export const lighterProvider = (
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
         readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
         readOnlyTokenScope: storedReadOnlyToken?.scope,
+        // A referral, once set, is immutable — so any non-empty applied code
+        // (LI.FI's or another integrator's) means the SET_REFERRAL step is as
+        // satisfied as it can be; we never gate on it being specifically ours.
         referralApplied:
-          appliedReferralCode !== undefined &&
-          appliedReferralCode === referralCode,
+          appliedReferralCode !== undefined && appliedReferralCode !== '',
       }
 
       return {

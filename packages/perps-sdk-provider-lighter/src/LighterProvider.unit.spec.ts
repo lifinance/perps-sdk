@@ -543,7 +543,7 @@ describe('LighterProvider — referralApplied', () => {
 
   it('is true and reads the applied referral authenticated by L1 address when LI.FI code is applied', async () => {
     userReferralsUsedCode = LIFI_CODE
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -558,36 +558,35 @@ describe('LighterProvider — referralApplied', () => {
     expect(call?.url).toContain(`l1_address=${ADDRESS.toLowerCase()}`)
   })
 
-  it('is false when a different referral code is applied', async () => {
+  // The account already carries another integrator's referral — immutable, so
+  // ours can never be applied. The step is satisfied; we must not gate the user.
+  it('is true when a different referral code is applied', async () => {
     userReferralsUsedCode = 'SOMEONE-ELSE'
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
-    provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(account.config).toMatchObject({ referralApplied: false })
-  })
-
-  it('is false when no referral is applied', async () => {
-    userReferralsUsedCode = ''
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
-    provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(account.config).toMatchObject({ referralApplied: false })
-  })
-
-  it('skips the read and reports false when no referral code is configured', async () => {
-    userReferralsUsedCode = LIFI_CODE
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
       { lighterAuthToken: 'ref-token' }
     )
+    expect(account.config).toMatchObject({ referralApplied: true })
+  })
+
+  it('is false when no referral is applied', async () => {
+    userReferralsUsedCode = ''
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralApplied: false })
+  })
+
+  it('skips the read and reports false when the request is unauthenticated', async () => {
+    userReferralsUsedCode = LIFI_CODE
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(account.config).toMatchObject({ referralApplied: false })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
@@ -745,6 +744,10 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
           return u.includes('auth=ro-stale')
             ? staleLimits()
             : respond(LIMITS_OK)
+        }
+        // Incidental to the limits self-heal under test — reports no referral.
+        if (u.includes('/api/v1/referral/userReferrals')) {
+          return respond({ code: 0, used_code: '' })
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -1004,6 +1007,10 @@ describe('LighterProvider — standard token revocation self-heal', () => {
           return u.includes('auth=std-1')
             ? new Response('unauthorized', { status: 401 })
             : respond(LIMITS_OK)
+        }
+        // Incidental to the standard-token self-heal under test — no referral.
+        if (u.includes('/api/v1/referral/userReferrals')) {
+          return respond({ code: 0, used_code: '' })
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
