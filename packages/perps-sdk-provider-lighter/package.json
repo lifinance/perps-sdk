@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-lighter",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Lighter provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
