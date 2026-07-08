@@ -82,15 +82,15 @@ function projectLighterDescriptor(
         satisfied: config.readOnlyTokenApproved,
       }
 
-    // `SET_REFERRAL` is satisfied once any referral is applied to the account
-    // (`getAccount` → `referralApplied`, an SDK-direct per-user read). A referral
-    // is immutable once set, so an account that already carries another
-    // integrator's code can no longer apply ours — the step is done, not gateable.
+    // `SET_REFERRAL` is satisfied when LI.FI's referral code is the one applied
+    // to the account — an SDK-direct read (`getAccount` → `referralPresent`),
+    // since the applied referral is a per-user, auth-gated read. Lighter referral
+    // is mutable, so an account on another integrator's code stays gateable.
     case ActionType.SET_REFERRAL:
       return {
         type: descriptor.type,
         values: [],
-        satisfied: config.referralApplied,
+        satisfied: config.referralPresent,
       }
 
     // Backend-gated setup step: `checkSetup` → `createAction` decides

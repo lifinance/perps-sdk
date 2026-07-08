@@ -63,7 +63,7 @@ const baseConfig: LighterAccountConfig = {
   accountTradingMode: 0,
   assetCollateral: [],
   readOnlyTokenApproved: false,
-  referralApplied: false,
+  referralPresent: false,
 }
 
 describe('projectLighterConfigSettings', () => {
@@ -194,7 +194,7 @@ describe('projectLighterConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
-  it('projects SET_REFERRAL satisfaction from config.referralApplied', () => {
+  it('projects SET_REFERRAL satisfaction from config.referralPresent', () => {
     const setReferralSetup: ProviderAction = {
       type: ActionType.SET_REFERRAL,
       title: 'Apply LI.FI Referral',
@@ -205,14 +205,14 @@ describe('projectLighterConfigSettings', () => {
     }
     expect(
       projectLighterConfigSettings(
-        { ...baseConfig, referralApplied: true },
+        { ...baseConfig, referralPresent: true },
         [setReferralSetup],
         []
       )
     ).toEqual([{ type: ActionType.SET_REFERRAL, values: [], satisfied: true }])
     expect(
       projectLighterConfigSettings(
-        { ...baseConfig, referralApplied: false },
+        { ...baseConfig, referralPresent: false },
         [setReferralSetup],
         []
       )
