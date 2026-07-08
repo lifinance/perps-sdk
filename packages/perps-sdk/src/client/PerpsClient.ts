@@ -246,6 +246,11 @@ export class PerpsClient {
    * `userWallet` overrides the configured wallet for this signing pass only —
    * `resolveSigningWallet` supplies the chain-switched client without mutating
    * `sdkClient.userWallet`.
+   *
+   * When a `switchChain` hook is configured, `switchToChain` is bound to the
+   * resolved wallet so a plugin can switch per leg mid-batch (Lighter's
+   * `EVM_TX` broadcasts); the switch stays transient — it never mutates
+   * `sdkClient.userWallet`.
    */
   private buildSignActionsContext(
     descriptor: ProviderAction,
@@ -255,6 +260,11 @@ export class PerpsClient {
     const wallet = userWallet ?? this.sdkClient.userWallet
     if (wallet !== undefined) {
       ctx.userWallet = wallet
+      const switchChain = this._switchChain
+      if (switchChain !== undefined) {
+        ctx.switchToChain = (chainId) =>
+          switchSigningChain(wallet, chainId, switchChain)
+      }
     }
     return ctx
   }

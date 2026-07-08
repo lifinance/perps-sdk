@@ -310,11 +310,13 @@ async function requireApiKey(
  * remaining legs. Each step's `txParams` carries chainId, target, function
  * name, args, and a human-readable abi from the backend.
  *
- * The wallet MUST already be on the leg's `txParams.chainId`: this signer
- * broadcasts on the wallet's active chain and never switches it (switching is
- * the integrator's responsibility — the widget drives it before signing). A leg
- * whose target chain differs from the wallet's chain throws before broadcasting,
- * so a token approve/deposit can never land on an unintended chain.
+ * Before broadcasting a leg the SDK switches the wallet to the leg's
+ * `txParams.chainId` via `ctx.switchToChain`, re-reading the returned client so
+ * the broadcast lands on the right chain even when legs target different chains.
+ * When no switch capability is supplied (local/private-key signer, or no
+ * `switchChain` hook configured) a leg whose target chain differs from the
+ * wallet's active chain throws before broadcasting, so a token approve/deposit
+ * can never land on an unintended chain.
  * @internal
  */
 export async function signEvmTxActions(
@@ -330,30 +332,36 @@ export async function signEvmTxActions(
     )
   }
 
+  const switchToChain = ctx?.switchToChain
   const signed: EvmTxSignedActionStep[] = []
+  let legSigner = walletSigner
   for (const step of steps) {
     const params = step.txParams
 
-    if (walletSigner.chain?.id !== params.chainId) {
+    if (legSigner.chain?.id !== params.chainId && switchToChain) {
+      legSigner = await switchToChain(params.chainId)
+    }
+    if (legSigner.chain?.id !== params.chainId) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
-          `connected wallet is on chain ${walletSigner.chain?.id ?? 'unknown'}. ` +
-          `Switch the wallet to chain ${params.chainId} before signing — the ` +
-          "SDK broadcasts on the wallet's active chain and does not switch it."
+          `connected wallet is on chain ${legSigner.chain?.id ?? 'unknown'} and ` +
+          'no chain switch was performed. Configure a switchChain hook via ' +
+          `setSwitchChain, or connect the wallet to chain ${params.chainId} ` +
+          'before signing.'
       )
     }
 
-    const txHash = await walletSigner.writeContract({
+    const txHash = await legSigner.writeContract({
       address: params.to,
       abi: parseAbi(params.abi),
       functionName: params.functionName,
       args: params.args,
-      chain: walletSigner.chain,
-      account: walletSigner.account,
+      chain: legSigner.chain,
+      account: legSigner.account,
     })
 
-    const receipt = await waitForTransactionReceipt(walletSigner, {
+    const receipt = await waitForTransactionReceipt(legSigner, {
       hash: txHash,
     })
     if (receipt.status === 'reverted') {
