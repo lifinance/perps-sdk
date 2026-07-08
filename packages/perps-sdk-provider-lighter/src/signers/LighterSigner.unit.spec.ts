@@ -167,6 +167,86 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/memo/)
   })
 
+  it('signs SEND_ASSET spot→perp as a self-transfer with the spot/perp route args', async () => {
+    const signed = await signer.sign(
+      ActionType.SEND_ASSET,
+      {
+        sourceDex: 'spot',
+        destinationDex: 'perp',
+        amount: 250_000,
+        nonce: 20,
+      },
+      ctx()
+    )
+    // SEND_ASSET reuses Lighter's L2Transfer (txType 12).
+    expect(signed.txType).toBe(12)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    // Self-transfer: both account indices are the signer's own account.
+    expect(parsed.FromAccountIndex).toBe(42)
+    expect(parsed.ToAccountIndex).toBe(42)
+    expect(parsed.ApiKeyIndex).toBe(1)
+    expect(parsed.AssetIndex).toBe(3)
+    // spot (1) → perp (0).
+    expect(parsed.FromRouteType).toBe(1)
+    expect(parsed.ToRouteType).toBe(0)
+    expect(parsed.Amount).toBe(250_000)
+    expect(parsed.USDCFee).toBe(0)
+    expect(parsed.Nonce).toBe(20)
+    // Zero memo — 32 zero bytes.
+    expect(parsed.Memo).toHaveLength(32)
+    expect(parsed.Memo.every((b: number) => b === 0)).toBe(true)
+  })
+
+  it('signs SEND_ASSET perp→spot with the reversed route args', async () => {
+    const signed = await signer.sign(
+      ActionType.SEND_ASSET,
+      {
+        sourceDex: 'perp',
+        destinationDex: 'spot',
+        amount: 100_000,
+        nonce: 21,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(12)
+    const parsed = JSON.parse(signed.txInfo)
+    // perp (0) → spot (1).
+    expect(parsed.FromRouteType).toBe(0)
+    expect(parsed.ToRouteType).toBe(1)
+    expect(parsed.Amount).toBe(100_000)
+  })
+
+  it('SEND_ASSET rejects a same-route (no-op) transfer', async () => {
+    await expect(
+      signer.sign(
+        ActionType.SEND_ASSET,
+        {
+          sourceDex: 'perp',
+          destinationDex: 'perp',
+          amount: 100_000,
+          nonce: 22,
+        },
+        ctx()
+      )
+    ).rejects.toThrow(/distinct source\/destination routes/)
+  })
+
+  it('SEND_ASSET rejects an unrecognised dex string', async () => {
+    await expect(
+      signer.sign(
+        ActionType.SEND_ASSET,
+        {
+          sourceDex: 'spot',
+          destinationDex: 'margin',
+          amount: 100_000,
+          nonce: 23,
+        },
+        ctx()
+      )
+    ).rejects.toThrow(/unsupported dex 'margin'/)
+  })
+
   it('rejects unsupported action types with a clear error', async () => {
     await expect(
       signer.sign(
