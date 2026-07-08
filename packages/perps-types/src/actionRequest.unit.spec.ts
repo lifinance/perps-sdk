@@ -60,6 +60,13 @@ const setReferralCreate: CreateActionRequest = {
   params: {},
 }
 
+const siweLoginCreate: CreateActionRequest = {
+  provider: 'ondo',
+  address: SOME_ADDRESS,
+  action: ActionType.SIWE_LOGIN,
+  params: {},
+}
+
 const placeOrderExecute: ExecuteActionRequest = {
   provider: 'hyperliquid',
   address: SOME_ADDRESS,
@@ -186,6 +193,13 @@ type _CreateSetReferralParams = Expect<
   >
 >
 
+type _CreateSiweLoginParams = Expect<
+  Equals<
+    Extract<CreateActionRequest, { action: ActionType.SIWE_LOGIN }>['params'],
+    Record<string, never>
+  >
+>
+
 // `signerAddress?` must remain optional on every branch.
 type _SignerAddressOptional = Expect<
   Equals<
@@ -222,6 +236,7 @@ export const _fixtures = {
   transferCreate,
   approveBuilderFeeCreate,
   setReferralCreate,
+  siweLoginCreate,
   placeOrderExecute,
   withdrawalExecute,
   badPlaceOrderWithWithdrawalParams,
@@ -236,6 +251,7 @@ export type _TypeAssertions = [
   _CreateTransferParams,
   _CreateApproveBuilderFeeParams,
   _CreateSetReferralParams,
+  _CreateSiweLoginParams,
   _SignerAddressOptional,
   _CreateActionFieldNarrows,
   _ExecuteActionFieldNarrows,
@@ -262,10 +278,12 @@ describe('CreateActionRequest discriminated union', () => {
     }
   })
 
-  it('admits the empty-object params for TRANSFER, APPROVE_BUILDER_FEE and SET_REFERRAL', () => {
+  it('admits the empty-object params for TRANSFER, APPROVE_BUILDER_FEE, SET_REFERRAL and SIWE_LOGIN', () => {
     expect(transferCreate.params).toEqual({})
     expect(approveBuilderFeeCreate.params).toEqual({})
     expect(setReferralCreate.params).toEqual({})
+    expect(siweLoginCreate.params).toEqual({})
+    expect(siweLoginCreate.action).toBe('siweLogin')
   })
 
   it('keeps signerAddress optional across branches', () => {

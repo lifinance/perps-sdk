@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type {
   ActionParamsMap,
   ActionResult,
+  ActionStep,
   ApproveReadOnlyTokenParams,
   EvmCall,
   EvmTxActionStep,
   EvmTxSignedActionStep,
   PlaceOrderParams,
+  RestCallActionStep,
+  RestCallSignedActionStep,
+  SignedActionStep,
+  SiweActionStep,
+  SiweSignedActionStep,
   UpdateLeverageParams,
 } from './action.js'
 import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
@@ -207,5 +213,119 @@ describe('EvmCall / EVM_TX steps', () => {
 
     expect(signed.txParams.chainId).toBe(42161)
     expect(signed.txHash).toBe('0xdeadbeef')
+  })
+})
+
+describe('RestCall steps', () => {
+  const placeOrder: RestCallActionStep = {
+    action: ActionType.PLACE_ORDER,
+    request: {
+      method: 'POST',
+      path: '/v1/perps/orders',
+      body: { symbol: 'AAPL-USD.P', side: 'buy', qty: '1' },
+    },
+  }
+
+  it('carries the venue-relative request description', () => {
+    expect(placeOrder.action).toBe(ActionType.PLACE_ORDER)
+    expect(placeOrder.request.method).toBe('POST')
+    expect(placeOrder.request.path).toBe('/v1/perps/orders')
+    expect(placeOrder.request.body).toEqual({
+      symbol: 'AAPL-USD.P',
+      side: 'buy',
+      qty: '1',
+    })
+  })
+
+  it('body is optional (a DELETE cancel carries none)', () => {
+    const cancelAll: RestCallActionStep = {
+      action: ActionType.CANCEL_ALL_ORDERS,
+      request: { method: 'DELETE', path: '/v1/perps/orders' },
+    }
+
+    expect(cancelAll.request.body).toBeUndefined()
+  })
+
+  it('restricts method to the four HTTP verbs', () => {
+    const bad: RestCallActionStep = {
+      action: ActionType.PLACE_ORDER,
+      // @ts-expect-error method must be 'GET' | 'POST' | 'PUT' | 'DELETE'
+      request: { method: 'PATCH', path: '/v1/perps/orders' },
+    }
+
+    expect(bad.request.path).toBe('/v1/perps/orders')
+  })
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = placeOrder
+
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+  })
+
+  it('RestCallSignedActionStep adds the client-attached headers', () => {
+    const signed: RestCallSignedActionStep = {
+      action: ActionType.PLACE_ORDER,
+      request: placeOrder.request,
+      headers: { Authorization: 'Bearer test-jwt' },
+    }
+    const step: SignedActionStep = signed
+
+    expect(signed.headers.Authorization).toBe('Bearer test-jwt')
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+  })
+
+  it('requires headers on the signed variant', () => {
+    // @ts-expect-error headers is required on RestCallSignedActionStep
+    const missingHeaders: RestCallSignedActionStep = {
+      action: ActionType.PLACE_ORDER,
+      request: placeOrder.request,
+    }
+
+    expect(missingHeaders.action).toBe(ActionType.PLACE_ORDER)
+  })
+})
+
+describe('Siwe steps', () => {
+  const challenge: SiweActionStep = {
+    action: ActionType.SIWE_LOGIN,
+    siwe: {
+      challengeId: 'chal-1',
+      message:
+        'api.ondoperps.xyz wants you to sign in with your Ethereum account:',
+    },
+  }
+
+  it('carries the backend-built ERC-4361 challenge', () => {
+    expect(challenge.action).toBe('siweLogin')
+    expect(challenge.siwe.challengeId).toBe('chal-1')
+    expect(challenge.siwe.message).toContain('sign in')
+  })
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = challenge
+
+    expect(step.action).toBe(ActionType.SIWE_LOGIN)
+  })
+
+  it('SiweSignedActionStep adds the wallet signature', () => {
+    const signed: SiweSignedActionStep = {
+      action: ActionType.SIWE_LOGIN,
+      siwe: challenge.siwe,
+      signature: '0xsig',
+    }
+    const step: SignedActionStep = signed
+
+    expect(signed.signature).toBe('0xsig')
+    expect(step.action).toBe(ActionType.SIWE_LOGIN)
+  })
+
+  it('requires the signature on the signed variant', () => {
+    // @ts-expect-error signature is required on SiweSignedActionStep
+    const missingSignature: SiweSignedActionStep = {
+      action: ActionType.SIWE_LOGIN,
+      siwe: challenge.siwe,
+    }
+
+    expect(missingSignature.siwe.challengeId).toBe('chal-1')
   })
 })
