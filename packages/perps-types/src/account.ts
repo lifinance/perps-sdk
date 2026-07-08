@@ -275,10 +275,19 @@ export interface LighterAccountConfig {
    */
   assetCollateral: LighterAssetCollateral[]
   readOnlyTokenApproved: boolean
-  /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
+  /** Unix seconds. Present if and only if `readOnlyTokenApproved === true`. */
   readOnlyTokenExpiry?: number
-  /** Present iff `readOnlyTokenApproved === true`. */
+  /** Present if and only if `readOnlyTokenApproved === true`. */
   readOnlyTokenScope?: 'single' | 'all'
+  /**
+   * `true` if and only if LI.FI's referral code is the code currently applied
+   * to the account, resolved by an SDK-direct read of the applied referral.
+   * `false` when a different integrator's code (or none) is applied, or when the
+   * SDK holds no referral code to compare against. Lighter referral is mutable,
+   * so a `false` keeps `SET_REFERRAL` gateable — a user already on another code
+   * can still switch to ours.
+   */
+  referralPresent: boolean
 }
 
 /** @public */

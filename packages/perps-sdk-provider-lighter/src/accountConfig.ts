@@ -82,10 +82,20 @@ function projectLighterDescriptor(
         satisfied: config.readOnlyTokenApproved,
       }
 
-    // Backend-gated setup steps: `checkSetup` → `createAction` decides
+    // `SET_REFERRAL` is satisfied when LI.FI's referral code is the one applied
+    // to the account — an SDK-direct read (`getAccount` → `referralPresent`),
+    // since the applied referral is a per-user, auth-gated read. Lighter referral
+    // is mutable, so an account on another integrator's code stays gateable.
+    case ActionType.SET_REFERRAL:
+      return {
+        type: descriptor.type,
+        values: [],
+        satisfied: config.referralPresent,
+      }
+
+    // Backend-gated setup step: `checkSetup` → `createAction` decides
     // satisfaction (the backend emits no actions once satisfied), so the
     // projection carries no local state.
-    case ActionType.SET_REFERRAL:
     case ActionType.APPROVE_INTEGRATOR:
       return { type: descriptor.type, values: [] }
 

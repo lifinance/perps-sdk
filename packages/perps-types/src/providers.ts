@@ -13,7 +13,7 @@ export interface Param {
   /** Wire key for the action params object: `{ [param.name]: value }`. */
   name: string
   type: 'string'
-  /** Present iff the parameter has a fixed enumeration of admissible values. */
+  /** Present if and only if the parameter has a fixed enumeration of admissible values. */
   values?: ParamOption[]
   default?: ParamOption
   readOnly?: boolean
