@@ -99,7 +99,7 @@ const buildBalances = (
   const balances: Balance[] = []
   const collateralBalances: Balance[] = []
 
-  // Spot balances: collateral iff the token is a category quote asset.
+  // Spot balances: collateral if and only if the token is a category quote asset.
   for (const b of spotState.balances) {
     const balance = spotBalance(spotAssetFromToken(b), b.total, priceById)
     if (quoteAssetIds.has(balance.asset.id)) {

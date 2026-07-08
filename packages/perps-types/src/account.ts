@@ -275,9 +275,9 @@ export interface LighterAccountConfig {
    */
   assetCollateral: LighterAssetCollateral[]
   readOnlyTokenApproved: boolean
-  /** Unix seconds. Present iff `readOnlyTokenApproved === true`. */
+  /** Unix seconds. Present if and only if `readOnlyTokenApproved === true`. */
   readOnlyTokenExpiry?: number
-  /** Present iff `readOnlyTokenApproved === true`. */
+  /** Present if and only if `readOnlyTokenApproved === true`. */
   readOnlyTokenScope?: 'single' | 'all'
   /**
    * `true` if and only if LI.FI's referral code is the code currently applied
