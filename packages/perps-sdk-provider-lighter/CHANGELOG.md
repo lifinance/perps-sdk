@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 2.2.0
+
+### Minor Changes
+
+- [#224](https://github.com/lifinance/perps-sdk/pull/224) [`4d5424c`](https://github.com/lifinance/perps-sdk/commit/4d5424cf7ea7db1be7fdb4ca958ab649118e3234) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Surface `referralPresent` on `LighterAccountConfig`: `getAccount` reads the applied Lighter referral (SDK-direct, per-user) and `SET_REFERRAL` now projects `satisfied` from it — `true` only when LI.FI's code is the applied one. Lighter referral is mutable, so an account already on another integrator's code stays gateable. Configure LI.FI's code via the new `lighterProvider({ referralCode })` option.
+
+### Patch Changes
+
+- [#225](https://github.com/lifinance/perps-sdk/pull/225) [`ebf7bd4`](https://github.com/lifinance/perps-sdk/commit/ebf7bd428e18aef2f2b6352e8156234ace4dba85) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve Lighter getAccount balance asset identity (logoURI) through the backend market/asset registry instead of local synthesis (ORD-838)
+
+- Updated dependencies [[`4d5424c`](https://github.com/lifinance/perps-sdk/commit/4d5424cf7ea7db1be7fdb4ca958ab649118e3234)]:
+  - @lifi/perps-types@1.14.0
+
 ## 2.1.0
 
 ### Minor Changes
