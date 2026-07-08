@@ -1,5 +1,15 @@
 # @lifi/perps-sdk
 
+## 2.0.0
+
+### Major Changes
+
+- [#219](https://github.com/lifinance/perps-sdk/pull/219) [`a5e7e17`](https://github.com/lifinance/perps-sdk/commit/a5e7e170cdfbb494ea284c949d685738d29348d4) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - SDK now owns wallet chain-switching for USER-signed EIP-712 actions via a consumer-supplied `switchChain` hook (`PerpsClientOptions.switchChain` / `setSwitchChain`), invoked at the single signing choke point. Adds a `sendAsset()` convenience wrapper. BREAKING: `signProviderSetupAction` and `executeProviderSetup` are now private (`executeProviderSetupAction` is the sole public setup entry), and `ExecuteProviderSetupParams` / `ExecuteProviderSetupResult` are no longer exported.
+
+### Minor Changes
+
+- [#222](https://github.com/lifinance/perps-sdk/pull/222) [`13654ca`](https://github.com/lifinance/perps-sdk/commit/13654ca609282b8e5f97265ae5d4f8df98b70ff0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - SDK-owned per-leg wallet chain-switching now extends to `SigningMethod.EVM_TX` actions. `SignActionsContext` gains an optional bound `switchToChain(chainId)` that core populates from the consumer's `switchChain` hook, and Lighter's `EVM_TX` signer (deposit/approve/withdraw) switches the wallet to each leg's `txParams.chainId` before broadcasting. When no `switchChain` hook is configured (local/private-key signer) it retains the fail-loud wrong-chain guard rather than broadcasting on the wrong chain.
+
 ## 1.6.0
 
 ### Minor Changes
