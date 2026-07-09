@@ -4,6 +4,7 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
+  RestCallSignedActionStep,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -13,7 +14,7 @@ import {
   SigningMethod,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import { createWalletClient, custom, http as viemHttp } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
@@ -1228,6 +1229,293 @@ describe('PerpsClient', () => {
       expect(hlExec.signerAddress).toBe(hlAgent.signerAddress)
       expect(lighterExec.signerAddress).toBe(lighterAddress)
       expect(lighter.signActions.mock.calls[0][0]).toBe(SigningMethod.WASM_BLOB)
+    })
+  })
+
+  describe('execute — authToken rest-call actions run client-side', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const ondoAddress = '0x9999999999999999999999999999999999999999' as Address
+
+    const ondoProviderMetadata = {
+      key: 'ondo',
+      name: 'Ondo',
+      logoURI: 'https://example.com/ondo.png',
+      signingMethod: SigningMethod.AUTH_TOKEN,
+      active: true,
+      setup: [],
+      options: [],
+      actions: [
+        {
+          type: ActionType.PLACE_ORDER,
+          signers: [PerpsSigner.API_KEY],
+          signingMethod: SigningMethod.AUTH_TOKEN,
+        },
+      ],
+      categories: [],
+    }
+
+    const restCallStep = {
+      action: ActionType.PLACE_ORDER,
+      request: {
+        method: 'POST' as const,
+        path: '/v1/perps/orders',
+        body: { market_id: 1, side: 'BUY' },
+      },
+    }
+
+    const CREDENTIAL_HEADERS = {
+      Authorization: 'Bearer test-jwt',
+      'ONDO-BUILDER': 'lifi',
+    }
+
+    const orderParams = {
+      symbol: 'BTC',
+      side: 'BUY' as any,
+      type: 'MARKET' as any,
+      size: '0.1',
+      price: '95000.00',
+    }
+
+    /**
+     * Minimal authToken plugin: `signActions` attaches the client-held
+     * credential headers, `executeRestCallActions` plays the venue and
+     * returns the authoritative results.
+     */
+    function createAuthTokenProvider() {
+      const signActions = vi.fn(
+        async (
+          _method,
+          steps: (typeof restCallStep)[]
+        ): Promise<SignedActionStep[]> =>
+          steps.map((s) => ({
+            action: s.action,
+            request: s.request,
+            headers: { ...CREDENTIAL_HEADERS },
+          }))
+      )
+      const executeRestCallActions = vi.fn(
+        async (steps: { action: ActionType }[]) =>
+          steps.map((s) => ({
+            action: s.action,
+            success: true as const,
+            orderId: 'ondo-order-1',
+          }))
+      )
+      return {
+        type: 'ondo',
+        bind: vi.fn(),
+        projectConfig: vi.fn(() => []),
+        signActions,
+        executeRestCallActions,
+      } as unknown as PerpsProviderPlugin & {
+        signActions: ReturnType<typeof vi.fn>
+        executeRestCallActions: ReturnType<typeof vi.fn>
+      }
+    }
+
+    /**
+     * Register the ondo provider metadata plus createAction/executeAction
+     * handlers, capturing every backend-bound raw body so tests can assert
+     * the credential never crosses to the LI.FI backend.
+     */
+    function useOndoHandlers(opts: { executeStatus?: number } = {}) {
+      const backendBodies: string[] = []
+      const executeRequests: ExecuteActionRequest[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [...mockProviders.providers, ondoProviderMetadata],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          backendBodies.push(await request.text())
+          return HttpResponse.json({
+            actions: [restCallStep],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const raw = await request.text()
+          backendBodies.push(raw)
+          executeRequests.push(JSON.parse(raw) as ExecuteActionRequest)
+          if (opts.executeStatus) {
+            return HttpResponse.json(
+              { code: PerpsErrorCode.ServerError, message: 'boom' },
+              { status: opts.executeStatus }
+            )
+          }
+          return HttpResponse.json({
+            results: [
+              {
+                action: ActionType.PLACE_ORDER,
+                success: true,
+                orderId: 'backend-echo',
+              },
+            ],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      return { backendBodies, executeRequests }
+    }
+
+    function createOndoClient(plugin: PerpsProviderPlugin) {
+      return new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [plugin],
+      })
+    }
+
+    it('routes the signed rest-call steps to executeRestCallActions and returns the venue results', async () => {
+      const ondo = createAuthTokenProvider()
+      const { executeRequests } = useOndoHandlers()
+
+      const result = await createOndoClient(ondo).execute({
+        provider: 'ondo',
+        address: ondoAddress,
+        action: ActionType.PLACE_ORDER,
+        params: orderParams,
+      })
+
+      // The plugin received the credential-bearing signed steps…
+      expect(ondo.executeRestCallActions).toHaveBeenCalledOnce()
+      const [steps, calledAddress] = ondo.executeRestCallActions.mock.calls[0]
+      expect(calledAddress).toBe(ondoAddress)
+      expect(steps[0].request).toEqual(restCallStep.request)
+      expect(steps[0].headers).toEqual(CREDENTIAL_HEADERS)
+      // …and its results are authoritative — not the backend's echo.
+      expect(result.results).toEqual([
+        {
+          action: ActionType.PLACE_ORDER,
+          success: true,
+          orderId: 'ondo-order-1',
+        },
+      ])
+      // The backend bookkeeping submission still happened, exactly once.
+      expect(executeRequests).toHaveLength(1)
+    })
+
+    it('never sends credential headers to the LI.FI backend', async () => {
+      const ondo = createAuthTokenProvider()
+      const { backendBodies, executeRequests } = useOndoHandlers()
+
+      await createOndoClient(ondo).execute({
+        provider: 'ondo',
+        address: ondoAddress,
+        action: ActionType.PLACE_ORDER,
+        params: orderParams,
+      })
+
+      expect(backendBodies.length).toBeGreaterThan(0)
+      for (const body of backendBodies) {
+        expect(body).not.toContain('Authorization')
+        expect(body).not.toContain('ONDO-')
+        expect(body).not.toContain('test-jwt')
+      }
+      const [step] = executeRequests[0].actions as RestCallSignedActionStep[]
+      expect(step.headers).toEqual({})
+    })
+
+    it('a backend bookkeeping failure does not mask the venue success but is logged', async () => {
+      const ondo = createAuthTokenProvider()
+      const { executeRequests } = useOndoHandlers({ executeStatus: 503 })
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const result = await createOndoClient(ondo).execute({
+        provider: 'ondo',
+        address: ondoAddress,
+        action: ActionType.PLACE_ORDER,
+        params: orderParams,
+      })
+
+      // The order already landed on the venue — the failed bookkeeping
+      // submission must not surface as a caller-visible failure.
+      expect(result.results).toEqual([
+        {
+          action: ActionType.PLACE_ORDER,
+          success: true,
+          orderId: 'ondo-order-1',
+        },
+      ])
+      // Bookkeeping was attempted exactly once — money-adjacent, never retried.
+      expect(executeRequests).toHaveLength(1)
+      // …but the failure must still be observable, not swallowed silently.
+      expect(errorLog).toHaveBeenCalledOnce()
+      const [message, error] = errorLog.mock.calls[0]
+      expect(message).toContain('[ondo]')
+      expect(message).toMatch(/bookkeeping/)
+      expect(error).toBeInstanceOf(Error)
+      errorLog.mockRestore()
+    })
+
+    it('throws SDKError when the provider does not implement executeRestCallActions', async () => {
+      const ondo = createAuthTokenProvider()
+      ;(ondo as { executeRestCallActions?: unknown }).executeRestCallActions =
+        undefined
+      const { executeRequests } = useOndoHandlers()
+
+      await expect(
+        createOndoClient(ondo).execute({
+          provider: 'ondo',
+          address: ondoAddress,
+          action: ActionType.PLACE_ORDER,
+          params: orderParams,
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(/executeRestCallActions/),
+      })
+      expect(executeRequests).toHaveLength(0)
+    })
+
+    it('throws SDKError when the plugin signs an authToken action with non-rest-call steps', async () => {
+      const ondo = createAuthTokenProvider()
+      ondo.signActions.mockResolvedValueOnce([
+        {
+          action: ActionType.PLACE_ORDER,
+          typedData: {
+            domain: { name: 'Test', chainId: 1 },
+            types: { Order: [{ name: 'x', type: 'uint256' }] },
+            primaryType: 'Order',
+            message: { x: 0 },
+          },
+          signature: '0xsig',
+        },
+      ])
+      const { executeRequests } = useOndoHandlers()
+
+      await expect(
+        createOndoClient(ondo).execute({
+          provider: 'ondo',
+          address: ondoAddress,
+          action: ActionType.PLACE_ORDER,
+          params: orderParams,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+      expect(ondo.executeRestCallActions).not.toHaveBeenCalled()
+      expect(executeRequests).toHaveLength(0)
+    })
+
+    it('never invokes executeRestCallActions on the eip712 path', async () => {
+      const hl = createTestAgentProvider({ type: 'hyperliquid' })
+      const spy = vi.fn()
+      ;(
+        hl as unknown as { executeRestCallActions: unknown }
+      ).executeRestCallActions = spy
+      const hlClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [hl],
+      })
+      await hl.createAgent(userAddress)
+
+      const result = await hlClient.placeOrder({
+        address: userAddress,
+        provider: 'hyperliquid',
+        ...orderParams,
+      })
+
+      expect(result.results[0].success).toBe(true)
+      expect(spy).not.toHaveBeenCalled()
     })
   })
 

@@ -23,6 +23,20 @@ export interface BaseMarket {
    * `formatOrderPrice` rather than applying this field directly.
    */
   priceDecimals?: number
+  /**
+   * Exact price tick as a plain decimal string (e.g. `'0.25'`). Present when
+   * the venue's grid is not a power of ten, where `priceDecimals` alone cannot
+   * describe the tick. Format prices through the provider's `formatOrderPrice`
+   * rather than applying this field directly.
+   */
+  priceIncrement?: string
+  /**
+   * Exact size lot as a plain decimal string (e.g. `'0.05'`). Present when the
+   * venue's grid is not a power of ten, where `szDecimals` alone cannot
+   * describe the lot. Format sizes through the provider's `formatOrderSize`
+   * rather than applying this field directly.
+   */
+  sizeIncrement?: string
 }
 
 /** @public */
