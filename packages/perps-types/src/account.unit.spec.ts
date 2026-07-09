@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type {
+  AccountConfig,
   ActivityItem,
   DepositActivity,
+  OndoAccountConfig,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
@@ -261,6 +263,60 @@ describe('ActivityType.TRANSFER enum member', () => {
       ActivityType.TRANSFER,
     ])
     expect(all.size).toBe(5)
+  })
+})
+
+describe('OndoAccountConfig', () => {
+  it('accepts a logged-in fixture with authTokenExpiry', () => {
+    const config: OndoAccountConfig = {
+      provider: 'ondo',
+      loggedIn: true,
+      authTokenExpiry: 1_780_000_000,
+      referralSet: true,
+    }
+
+    expect(config.loggedIn).toBe(true)
+    expect(config.authTokenExpiry).toBe(1_780_000_000)
+    expect(config.referralSet).toBe(true)
+  })
+
+  it('accepts a logged-out fixture without authTokenExpiry', () => {
+    const config: OndoAccountConfig = {
+      provider: 'ondo',
+      loggedIn: false,
+      referralSet: false,
+    }
+
+    expect(config.loggedIn).toBe(false)
+    expect(config.authTokenExpiry).toBeUndefined()
+  })
+
+  it('participates in the AccountConfig union and narrows on provider', () => {
+    const config: AccountConfig = {
+      provider: 'ondo',
+      loggedIn: true,
+      authTokenExpiry: 1_780_000_000,
+      referralSet: false,
+    }
+
+    if (config.provider === 'ondo') {
+      const loggedIn: boolean = config.loggedIn
+      expect(loggedIn).toBe(true)
+    } else {
+      throw new Error('expected ondo variant')
+    }
+  })
+
+  it('rejects credential material on the config object', () => {
+    const withToken: OndoAccountConfig = {
+      provider: 'ondo',
+      loggedIn: true,
+      referralSet: false,
+      // @ts-expect-error the JWT itself never appears in AccountConfig
+      authToken: 'eyJhbGciOiJIUzI1NiJ9',
+    }
+
+    expect(withToken.provider).toBe('ondo')
   })
 })
 

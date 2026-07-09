@@ -19,8 +19,9 @@
 #      release.
 #   4. Revoke the npm token and delete the NPM_ONCE_OFF_TOKEN secret.
 #
-# This copy lives on the default branch (main) so GitHub registers the
-# workflow_dispatch trigger; main's checkout is what builds and publishes.
+# The copy on the default branch (main) registers the workflow_dispatch
+# trigger; the ref selected at dispatch time is what builds and publishes, so
+# dispatch on the branch that actually contains the new package.
 name: Create new published package (one-off token)
 
 on:
@@ -59,7 +60,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ONCE_OFF_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
           PACKAGE: ${{ inputs.package }}
+        # verify-deps-before-run is disabled after prepublish because
+        # build:prerelease rewrites package.jsons, which the deps check would
+        # flag as an outdated lockfile (same reason changeset:publish disables it).
         run: |
           pnpm changeset:prepublish
-          pnpm --filter "$PACKAGE" publish --access public --provenance --no-git-checks
-          pnpm changeset:postpublish
+          pnpm --config.verify-deps-before-run=false --filter "$PACKAGE" --fail-if-no-match publish --access public --provenance --no-git-checks
+          pnpm --config.verify-deps-before-run=false changeset:postpublish
