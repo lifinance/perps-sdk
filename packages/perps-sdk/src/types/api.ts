@@ -165,6 +165,8 @@ export interface WithdrawParams {
 export interface SendAssetActionParams {
   provider: string
   address: Address
+  /** Canonical `Asset.id` of the asset being moved (for Hyperliquid spot
+   * assets, the token index as a string) — never a display symbol. */
   collateral: string
   sourceDex: string
   destinationDex: string
