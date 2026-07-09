@@ -168,6 +168,22 @@ describe('encrypted localStorageAdapter', () => {
     expect(ivPrefix(stored1 ?? '')).not.toBe(ivPrefix(stored2 ?? ''))
   })
 
+  it('uses a distinct IV on repeated writes to the same key', async () => {
+    const ls = createFakeLocalStorage()
+    vi.stubGlobal('localStorage', ls)
+    vi.stubGlobal('indexedDB', createFakeIndexedDB())
+    const adapter = await loadAdapter()
+
+    await adapter.set('k', 'same-value')
+    const first = ls.getItem('k')
+    await adapter.set('k', 'same-value')
+    const second = ls.getItem('k')
+
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect(ivPrefix(first ?? '')).not.toBe(ivPrefix(second ?? ''))
+  })
+
   it('resolves null for tampered ciphertext', async () => {
     const ls = createFakeLocalStorage()
     vi.stubGlobal('localStorage', ls)
