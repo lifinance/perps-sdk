@@ -7,6 +7,18 @@ const IV_BYTE_LENGTH = 12
 const AES_KEY_PARAMS = { name: 'AES-GCM', length: 256 } as const
 
 let masterKeyPromise: Promise<CryptoKey | null> | undefined
+let warnedDegraded = false
+
+// Silent in SSR (no `window`), where missing browser storage is expected.
+function warnDegraded(reason: string): void {
+  if (warnedDegraded || typeof window === 'undefined') {
+    return
+  }
+  warnedDegraded = true
+  console.warn(
+    `[perps-sdk] Persistent session storage disabled: ${reason}. Session keys will not survive a page reload.`
+  )
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -34,11 +46,12 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
  * no-op writes / null reads rather than persisting plaintext.
  */
 async function loadMasterKey(): Promise<CryptoKey | null> {
-  if (
-    typeof indexedDB === 'undefined' ||
-    typeof crypto === 'undefined' ||
-    !crypto.subtle
-  ) {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    warnDegraded('crypto.subtle is unavailable (non-HTTPS context?)')
+    return null
+  }
+  if (typeof indexedDB === 'undefined') {
+    warnDegraded('indexedDB is unavailable')
     return null
   }
   try {
@@ -66,6 +79,7 @@ async function loadMasterKey(): Promise<CryptoKey | null> {
       db.close()
     }
   } catch {
+    warnDegraded('indexedDB failed to open or store the master key')
     return null
   }
 }
@@ -98,7 +112,8 @@ function base64ToBytes(value: string): Uint8Array {
  * IndexedDB. Each `set` uses a fresh 12-byte IV and
  * stores `base64(iv ‖ ciphertext)`. Falls back to a no-op / `null` when
  * `localStorage`, `indexedDB`, or `crypto.subtle` is unavailable (e.g. SSR) —
- * never writing plaintext.
+ * never writing plaintext. In browser contexts the degradation logs a one-time
+ * `console.warn` naming the missing capability.
  *
  * `get` resolves `null` on any failure (missing master key, tampered or
  * truncated ciphertext, malformed value), matching the poisoned-record
@@ -132,6 +147,9 @@ export const localStorageAdapter: StorageAdapter = {
       )
       return new TextDecoder().decode(plaintext)
     } catch {
+      if (typeof localStorage === 'undefined') {
+        warnDegraded('localStorage is unavailable')
+      }
       return null
     }
   },
@@ -155,7 +173,10 @@ export const localStorageAdapter: StorageAdapter = {
       combined.set(ciphertext, iv.length)
       localStorage.setItem(key, bytesToBase64(combined))
     } catch {
-      // localStorage/crypto unavailable or encryption failed — never persist plaintext
+      // Encryption failed or localStorage unavailable — never persist plaintext
+      if (typeof localStorage === 'undefined') {
+        warnDegraded('localStorage is unavailable')
+      }
     }
   },
 

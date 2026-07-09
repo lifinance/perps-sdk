@@ -307,4 +307,50 @@ describe('encrypted localStorageAdapter', () => {
     expect(ls.store.size).toBe(0)
     await expect(adapter.get('k')).resolves.toBeNull()
   })
+
+  it('warns once in browser contexts when persistence is unavailable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('localStorage', createFakeLocalStorage())
+    vi.stubGlobal('indexedDB', undefined)
+    const adapter = await loadAdapter()
+
+    await adapter.set('a', '1')
+    await adapter.set('b', '2')
+    await adapter.get('a')
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('indexedDB is unavailable')
+    )
+    warn.mockRestore()
+  })
+
+  it('does not warn in SSR contexts (no window)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('localStorage', createFakeLocalStorage())
+    vi.stubGlobal('indexedDB', undefined)
+    const adapter = await loadAdapter()
+
+    await adapter.set('k', 'secret-value')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('does not warn for tampered ciphertext', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('window', {})
+    const ls = createFakeLocalStorage()
+    vi.stubGlobal('localStorage', ls)
+    vi.stubGlobal('indexedDB', createFakeIndexedDB())
+    const adapter = await loadAdapter()
+
+    await adapter.set('k', 'secret-value')
+    const stored = ls.getItem('k') ?? ''
+    ls.setItem('k', `${stored.slice(0, -4)}AAAA`)
+
+    await expect(adapter.get('k')).resolves.toBeNull()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
 })
