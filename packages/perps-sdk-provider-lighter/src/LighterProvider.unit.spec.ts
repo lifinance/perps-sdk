@@ -58,6 +58,26 @@ const MARKETS_RESPONSE = {
   ],
 }
 
+const PROVIDERS_RESPONSE = {
+  providers: [
+    {
+      key: 'lighter',
+      categories: [
+        {
+          id: 'lighter',
+          quoteAsset: {
+            providerId: 'lighter',
+            id: 'USDC',
+            displaySymbol: 'USDC',
+            logoURI: '',
+          },
+        },
+        { id: 'spot', quoteAsset: null },
+      ],
+    },
+  ],
+}
+
 const ASSETS_RESPONSE = {
   assets: [
     {
@@ -213,6 +233,9 @@ beforeEach(() => {
     }
     if (urlStr.includes('backend.test/v1/perps/assets')) {
       return respond(ASSETS_RESPONSE)
+    }
+    if (urlStr.includes('backend.test/v1/perps/providers')) {
+      return respond(PROVIDERS_RESPONSE)
     }
     const u = String(url)
     recorded.push({ url: u, init })
@@ -371,6 +394,9 @@ describe('LighterProvider — auth token plumbing', () => {
         }
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -613,6 +639,9 @@ describe('LighterProvider — assetCollateral projection', () => {
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_RESPONSE)
         }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond(payload)
         }
@@ -680,16 +709,22 @@ describe('LighterProvider — getAccount balance asset identity', () => {
   const USDC_LOGO = 'https://cdn.test/usdc.png'
   const BTC_LOGO = 'https://cdn.test/btc.png'
 
-  const MARKETS_WITH_LOGO = {
-    markets: [
+  const PROVIDERS_WITH_LOGO = {
+    providers: [
       {
-        ...MARKETS_RESPONSE.markets[0],
-        quoteAsset: {
-          providerId: 'lighter',
-          id: 'USDC',
-          displaySymbol: 'USDC',
-          logoURI: USDC_LOGO,
-        },
+        key: 'lighter',
+        categories: [
+          {
+            id: 'lighter',
+            quoteAsset: {
+              providerId: 'lighter',
+              id: 'USDC',
+              displaySymbol: 'USDC',
+              logoURI: USDC_LOGO,
+            },
+          },
+          { id: 'spot', quoteAsset: null },
+        ],
       },
     ],
   }
@@ -742,10 +777,13 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       vi.fn(async (url: string | URL) => {
         const u = String(url)
         if (u.includes('backend.test/v1/perps/markets')) {
-          return respond(MARKETS_WITH_LOGO)
+          return respond(MARKETS_RESPONSE)
         }
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_WITH_LOGO)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_WITH_LOGO)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_WITH_SPOT)
@@ -761,7 +799,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     )
   })
 
-  it('resolves the collateral (USDC) asset from the backend market registry, carrying its logoURI', async () => {
+  it('resolves the collateral (USDC) asset from the provider category metadata, carrying its logoURI', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
@@ -791,6 +829,95 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(usdc?.valueUsd).toBe('10')
     expect(btc?.units).toBe('2')
     expect(btc?.valueUsd).toBe('0')
+  })
+})
+
+describe('LighterProvider — getAccount balance categoryId', () => {
+  // Fixture category ids match nothing else (provider key, markets fixture,
+  // 'spot' constant), so these assertions can only pass via /providers.
+  const PERPS_CATEGORY_ID = 'perps'
+  const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
+  const PROVIDERS_PERPS_CATEGORY = {
+    providers: [
+      {
+        key: 'lighter',
+        categories: [
+          {
+            id: PERPS_CATEGORY_ID,
+            quoteAsset: {
+              providerId: 'lighter',
+              id: 'USDC',
+              displaySymbol: 'USDC',
+              logoURI: 'https://cdn.test/usdc-category.png',
+            },
+          },
+          { id: SPOT_CATEGORY_ID_FROM_METADATA, quoteAsset: null },
+        ],
+      },
+    ],
+  }
+  const ACCOUNT_WITH_SPOT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        assets: [
+          { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
+          { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_PERPS_CATEGORY)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_SPOT)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  it('labels collateral with the fixed-quote category from /providers, not the provider key or markets', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.collateralBalances[0].categoryId).toBe(PERPS_CATEGORY_ID)
+    expect(account.collateralBalances[0].asset.logoURI).toBe(
+      'https://cdn.test/usdc-category.png'
+    )
+  })
+
+  it('labels spot token holdings with the null-quote category id from /providers', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.balances.length).toBeGreaterThan(0)
+    for (const balance of account.balances) {
+      expect(balance.categoryId).toBe(SPOT_CATEGORY_ID_FROM_METADATA)
+    }
   })
 })
 
@@ -855,6 +982,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_RESPONSE)
         }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
         }
@@ -914,6 +1044,9 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
         }
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
@@ -1119,6 +1252,9 @@ describe('LighterProvider — standard token revocation self-heal', () => {
         if (u.includes('backend.test/v1/perps/assets')) {
           return respond(ASSETS_RESPONSE)
         }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
         }
@@ -1194,6 +1330,9 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
       if (u.includes('/api/v1/account?')) {
         return respond(accountWithOpenOrder)
       }
@@ -1243,6 +1382,9 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
       }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
       }
       if (u.includes('/api/v1/account?')) {
         return respond(accountWithOpenOrder)
@@ -1354,6 +1496,9 @@ describe('LighterProvider — getOrders pagination contract', () => {
       }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
       }
       if (u.includes('/api/v1/account?')) {
         return respond(accountWithManyOrders)
@@ -1467,6 +1612,9 @@ describe('LighterProvider — getAccount carries positions', () => {
       }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
       }
       recorded.push({ url: u })
       if (u.includes('/api/v1/account?')) {
@@ -1587,6 +1735,9 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
@@ -1635,6 +1786,9 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
       }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
       }
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
@@ -1753,6 +1907,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       }
       if (u.includes('backend.test/v1/perps/assets')) {
         return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
       }
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)

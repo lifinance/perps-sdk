@@ -19,6 +19,7 @@ export {
   DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_PROVIDER_KEY,
+  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 export type {
   LighterPerpsProvider,
