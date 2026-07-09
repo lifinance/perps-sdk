@@ -454,7 +454,9 @@ export class PerpsClient {
       metadata.setup,
       metadata.options
     )
-    const setupTypes = new Set(metadata.setup.map((descriptor) => descriptor.type))
+    const setupTypes = new Set(
+      metadata.setup.map((descriptor) => descriptor.type)
+    )
     return new Set(
       settings
         .filter((setting) => setting.satisfied && setupTypes.has(setting.type))
