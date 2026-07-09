@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 1.15.1
+
+### Patch Changes
+
+- [#232](https://github.com/lifinance/perps-sdk/pull/232) [`0a2472d`](https://github.com/lifinance/perps-sdk/commit/0a2472df592899019d7a0597a15c1d4986e0633e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Document that `SendAssetParams.collateral` and `SendAssetActionParams.collateral` carry the canonical `Asset.id` of the asset being moved (for Hyperliquid spot assets, the token index as a string), never a display symbol.
+
 ## 1.15.0
 
 ### Minor Changes

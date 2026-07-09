@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 2.3.0
+
+### Minor Changes
+
+- [#231](https://github.com/lifinance/perps-sdk/pull/231) [`2d0d493`](https://github.com/lifinance/perps-sdk/commit/2d0d493e2dace775b4fcdc52564ebcf588894236) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Adopt the `'perps'`/`'spot'` category vocabulary for `SEND_ASSET` (the legacy `'perp'` string is no longer accepted) and label account balances with category ids derived from the backend's `/providers` category metadata: collateral carries the fixed-quote category's id and asset, spot token holdings carry the null-quote category's id.
+
+### Patch Changes
+
+- Updated dependencies [[`0a2472d`](https://github.com/lifinance/perps-sdk/commit/0a2472df592899019d7a0597a15c1d4986e0633e)]:
+  - @lifi/perps-types@1.15.1
+
 ## 2.2.1
 
 ### Patch Changes
