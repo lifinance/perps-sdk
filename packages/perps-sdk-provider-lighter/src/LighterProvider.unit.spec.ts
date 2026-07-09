@@ -794,6 +794,74 @@ describe('LighterProvider — getAccount balance asset identity', () => {
   })
 })
 
+describe('LighterProvider — getAccount balance categoryId', () => {
+  // categoryId deliberately differs from the provider key ('lighter') to prove
+  // collateral tracks the market-sourced category, not a hardcoded constant.
+  const PERPS_CATEGORY_ID = 'perps'
+  const MARKETS_PERPS_CATEGORY = {
+    markets: [
+      { ...MARKETS_RESPONSE.markets[0], categoryId: PERPS_CATEGORY_ID },
+    ],
+  }
+  const ACCOUNT_WITH_SPOT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        assets: [
+          { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
+          { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_PERPS_CATEGORY)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_SPOT)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  it('carries the market-derived perps category id on collateral, not the provider key', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.collateralBalances[0].categoryId).toBe(PERPS_CATEGORY_ID)
+  })
+
+  it("carries 'spot' on non-collateral token holdings", async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.balances.length).toBeGreaterThan(0)
+    for (const balance of account.balances) {
+      expect(balance.categoryId).toBe('spot')
+    }
+  })
+})
+
 describe('LighterProvider — read-only token revocation self-heal', () => {
   const LIMITS_OK = {
     code: 0,

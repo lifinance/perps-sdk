@@ -52,6 +52,7 @@ import {
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_PROVIDER_KEY,
+  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 import { createAuthToken } from './signers/createAuthToken.js'
 import type { LighterKeyStore } from './signers/LighterKeyStore.js'
@@ -723,6 +724,9 @@ export const lighterProvider = (
       const quoteAssetByCategory = new Map(
         markets.map((m) => [m.categoryId, m.quoteAsset])
       )
+      // All Lighter perps markets share one categoryId; read it from the fetched
+      // markets so collateral stays aligned with the backend's category taxonomy.
+      const perpsCategoryId = markets[0]?.categoryId ?? LIGHTER_PROVIDER_KEY
 
       // USDC collateral is the category quote asset → collateralBalances.
       // `available_balance` is the free collateral (Lighter's `collateral` is
@@ -730,9 +734,9 @@ export const lighterProvider = (
       // carried by the positions' `marginUsed`.
       const collateralBalances: Balance[] = [
         {
-          categoryId: LIGHTER_PROVIDER_KEY,
+          categoryId: perpsCategoryId,
           asset:
-            quoteAssetByCategory.get(LIGHTER_PROVIDER_KEY) ??
+            quoteAssetByCategory.get(perpsCategoryId) ??
             lighterAsset('USDC', 'USDC'),
           units: account.available_balance,
           valueUsd: account.available_balance,
@@ -743,7 +747,7 @@ export const lighterProvider = (
       const balances: Balance[] = account.assets.map((a) => {
         const assetId = String(a.asset_id)
         return {
-          categoryId: LIGHTER_PROVIDER_KEY,
+          categoryId: LIGHTER_SPOT_CATEGORY_ID,
           asset: assetRegistry.get(assetId) ?? lighterAsset(assetId, a.symbol),
           units: a.balance,
           valueUsd: a.symbol === 'USDC' ? a.balance : '0',

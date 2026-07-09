@@ -167,12 +167,12 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/memo/)
   })
 
-  it('signs SEND_ASSET spot→perp as a self-transfer with the spot/perp route args', async () => {
+  it('signs SEND_ASSET spot→perps as a self-transfer with the spot/perps route args', async () => {
     const signed = await signer.sign(
       ActionType.SEND_ASSET,
       {
         sourceDex: 'spot',
-        destinationDex: 'perp',
+        destinationDex: 'perps',
         amount: 250_000,
         nonce: 20,
       },
@@ -187,7 +187,7 @@ describe('LighterSigner', () => {
     expect(parsed.ToAccountIndex).toBe(42)
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.AssetIndex).toBe(3)
-    // spot (1) → perp (0).
+    // spot (1) → perps (0).
     expect(parsed.FromRouteType).toBe(1)
     expect(parsed.ToRouteType).toBe(0)
     expect(parsed.Amount).toBe(250_000)
@@ -198,11 +198,11 @@ describe('LighterSigner', () => {
     expect(parsed.Memo.every((b: number) => b === 0)).toBe(true)
   })
 
-  it('signs SEND_ASSET perp→spot with the reversed route args', async () => {
+  it('signs SEND_ASSET perps→spot with the reversed route args', async () => {
     const signed = await signer.sign(
       ActionType.SEND_ASSET,
       {
-        sourceDex: 'perp',
+        sourceDex: 'perps',
         destinationDex: 'spot',
         amount: 100_000,
         nonce: 21,
@@ -211,7 +211,7 @@ describe('LighterSigner', () => {
     )
     expect(signed.txType).toBe(12)
     const parsed = JSON.parse(signed.txInfo)
-    // perp (0) → spot (1).
+    // perps (0) → spot (1).
     expect(parsed.FromRouteType).toBe(0)
     expect(parsed.ToRouteType).toBe(1)
     expect(parsed.Amount).toBe(100_000)
@@ -222,14 +222,29 @@ describe('LighterSigner', () => {
       signer.sign(
         ActionType.SEND_ASSET,
         {
-          sourceDex: 'perp',
-          destinationDex: 'perp',
+          sourceDex: 'perps',
+          destinationDex: 'perps',
           amount: 100_000,
           nonce: 22,
         },
         ctx()
       )
     ).rejects.toThrow(/distinct source\/destination routes/)
+  })
+
+  it("SEND_ASSET rejects the legacy 'perp' route string", async () => {
+    await expect(
+      signer.sign(
+        ActionType.SEND_ASSET,
+        {
+          sourceDex: 'spot',
+          destinationDex: 'perp',
+          amount: 100_000,
+          nonce: 23,
+        },
+        ctx()
+      )
+    ).rejects.toThrow(/unsupported dex 'perp' \(expected 'perps' or 'spot'\)/)
   })
 
   it('SEND_ASSET rejects an unrecognised dex string', async () => {
@@ -240,7 +255,7 @@ describe('LighterSigner', () => {
           sourceDex: 'spot',
           destinationDex: 'margin',
           amount: 100_000,
-          nonce: 23,
+          nonce: 24,
         },
         ctx()
       )

@@ -80,10 +80,10 @@ const ASSET_ROUTE_TYPE_PERPS = 0
 const SEND_ASSET_NO_FEE = 0
 const SEND_ASSET_ZERO_MEMO = `0x${'0'.repeat(64)}`
 // Wire encoding the widget/backend emit for `SendAssetParams.sourceDex` /
-// `destinationDex`, mapped onto Lighter's asset route types. Matches the
-// `'perp'`/`'spot'` strings Hyperliquid uses for the same spot↔perp send.
+// `destinationDex`, mapped onto Lighter's asset route types. `'perps'`/`'spot'`
+// are Lighter's own route vocabulary (transfer-history `from_route`/`to_route`).
 const LIGHTER_ROUTE_BY_DEX: Record<string, number> = {
-  perp: LT_ROUTE_PERP,
+  perps: LT_ROUTE_PERP,
   spot: LT_ROUTE_SPOT,
 }
 
@@ -557,7 +557,7 @@ function routeFromDex(dex: string): number {
   const route = LIGHTER_ROUTE_BY_DEX[dex]
   if (route === undefined) {
     throw new Error(
-      `Lighter SEND_ASSET: unsupported dex '${dex}' (expected 'perp' or 'spot')`
+      `Lighter SEND_ASSET: unsupported dex '${dex}' (expected 'perps' or 'spot')`
     )
   }
   return route

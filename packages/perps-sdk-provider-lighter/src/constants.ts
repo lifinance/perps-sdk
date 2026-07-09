@@ -8,6 +8,15 @@ import type { FeeTier } from '@lifi/perps-types'
 export const LIGHTER_PROVIDER_KEY = 'lighter'
 
 /**
+ * Category id for Lighter spot token holdings, matching the backend's Lighter
+ * spot asset category. The perps category id is not a constant — it is read
+ * from the fetched markets so it tracks the backend taxonomy.
+ *
+ * @public
+ */
+export const LIGHTER_SPOT_CATEGORY_ID = 'spot'
+
+/**
  * Default mainnet REST and WS base URL for Lighter.
  *
  * @public
