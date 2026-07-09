@@ -58,7 +58,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ONCE_OFF_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+          PACKAGE: ${{ inputs.package }}
         run: |
           pnpm changeset:prepublish
-          pnpm --filter "${{ inputs.package }}" publish --access public --provenance --no-git-checks
+          pnpm --filter "$PACKAGE" publish --access public --provenance --no-git-checks
           pnpm changeset:postpublish
