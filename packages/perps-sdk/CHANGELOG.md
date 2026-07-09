@@ -1,5 +1,18 @@
 # @lifi/perps-sdk
 
+## 2.3.0
+
+### Minor Changes
+
+- [#227](https://github.com/lifinance/perps-sdk/pull/227) [`9b930d4`](https://github.com/lifinance/perps-sdk/commit/9b930d4af3b5671fe97589c73e0bc88db850f521) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Execute rest-call action steps client-side for `authToken` providers: new optional `PerpsProviderPlugin.executeRestCallActions` hook owns the venue call and result mapping, and `PerpsClient.execute` routes `SigningMethod.AUTH_TOKEN` descriptors through it. Credential headers never transit the LI.FI backend — the follow-up `executeAction` submission is bookkeeping-only with `headers` stripped, and a bookkeeping failure does not mask a venue success.
+
+### Patch Changes
+
+- [#227](https://github.com/lifinance/perps-sdk/pull/227) [`9b930d4`](https://github.com/lifinance/perps-sdk/commit/9b930d4af3b5671fe97589c73e0bc88db850f521) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the auth-token signing taxonomy for venues authenticated by a client-held credential (Ondo first): `SigningMethod.AUTH_TOKEN` / `SigningMethod.SIWE`, `ActionType.SIWE_LOGIN`, the `RestCallActionStep`/`RestCallSignedActionStep` and `SiweActionStep`/`SiweSignedActionStep` pairs, and `OndoAccountConfig` in the `AccountConfig` union. `LIFI_DEPOSIT_CHAIN_BY_PROVIDER` is now `Partial` — providers without a LI.FI deposit chain (ondo) have no entry.
+
+- Updated dependencies [[`9b930d4`](https://github.com/lifinance/perps-sdk/commit/9b930d4af3b5671fe97589c73e0bc88db850f521), [`9b930d4`](https://github.com/lifinance/perps-sdk/commit/9b930d4af3b5671fe97589c73e0bc88db850f521)]:
+  - @lifi/perps-types@1.15.0
+
 ## 2.2.0
 
 ### Minor Changes
