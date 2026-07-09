@@ -399,16 +399,33 @@ export class PerpsClient {
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
 
+    const metadata = await this.getProviderMetadata(provider)
+    const hasSiweSetup = metadata.setup.some(
+      (descriptor) => descriptor.signingMethod === SigningMethod.SIWE
+    )
+
     // Gate on existence first: an unfunded account has no setup, so short-circuit
     // before any createAction round-trip and let the consumer prompt a deposit.
-    if (!(await this.accountExists(provider, address))) {
+    //
+    // SIWE-first providers (Ondo) are the exception: they cannot reliably probe
+    // account existence before the user signs in, so setup must still stage.
+    if (!hasSiweSetup && !(await this.accountExists(provider, address))) {
       return { accountExists: false, setup: [], isReady: false }
     }
+
+    const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
+    const pendingSetup = metadata.setup.filter(
+      (descriptor) => !satisfiedSetup.has(descriptor.type)
+    )
 
     // The backend filters already-satisfied setup actions and returns typed
     // data for those still outstanding; each plugin contributes its own
     // signer-bearing request fields.
-    const { actions } = await this.buildProviderSetup({ provider, address })
+    const actions = await this.buildProviderSetupActions(
+      provider,
+      address,
+      pendingSetup
+    )
 
     return {
       accountExists: true,
@@ -418,23 +435,51 @@ export class PerpsClient {
   }
 
   /**
-   * Build the unsigned setup `ActionStep`s still outstanding for an account,
-   * ordered by descriptor `sequence`. The backend filters already-satisfied
-   * setup; each plugin contributes its own signer-bearing request fields and
-   * any local-state params (e.g. Lighter's known pubkey).
-   *
-   * @public
+   * Resolve setup descriptors already satisfied from the provider's own typed
+   * account config projection. This catches client-held auth state (e.g. Ondo
+   * SIWE/JWT) that the backend cannot observe.
    */
-  async buildProviderSetup(
-    params: BuildProviderSetupParams
-  ): Promise<CreateActionResponse> {
-    const { provider, address } = params
-
+  private async resolveSatisfiedSetup(
+    provider: string,
+    address: Address
+  ): Promise<Set<ActionType>> {
     const metadata = await this.getProviderMetadata(provider)
-    const orderedSetup = [...metadata.setup].sort(
+    const plugin = this.sdkClient.getProvider(provider)
+    if (!plugin || typeof plugin.getAccount !== 'function') {
+      return new Set()
+    }
+    const account = await plugin.getAccount({ address })
+    const settings = plugin.projectConfig(
+      account.config,
+      metadata.setup,
+      metadata.options
+    )
+    const setupTypes = new Set(
+      metadata.setup.map((descriptor) => descriptor.type)
+    )
+    return new Set(
+      settings
+        .filter((setting) => setting.satisfied && setupTypes.has(setting.type))
+        .map((setting) => setting.type)
+    )
+  }
+
+  /**
+   * Build unsigned setup steps for the supplied descriptor subset, preserving
+   * provider sequence order with SIWE descriptors prioritized.
+   */
+  private async buildProviderSetupActions(
+    provider: string,
+    address: Address,
+    descriptors: ProviderAction[]
+  ): Promise<ActionStep[]> {
+    const setupPriority = (descriptor: ProviderAction): number =>
+      descriptor.signingMethod === SigningMethod.SIWE ? 0 : 1
+    const orderedSetup = [...descriptors].sort(
       (a, b) =>
+        setupPriority(a) - setupPriority(b) ||
         (a.sequence ?? Number.MAX_SAFE_INTEGER) -
-        (b.sequence ?? Number.MAX_SAFE_INTEGER)
+          (b.sequence ?? Number.MAX_SAFE_INTEGER)
     )
 
     const plugin = this.sdkClient.getProvider(provider)
@@ -459,7 +504,29 @@ export class PerpsClient {
       allActions.push(...actions)
     }
 
-    return { actions: allActions }
+    return allActions
+  }
+
+  /**
+   * Build the unsigned setup `ActionStep`s still outstanding for an account,
+   * ordered by descriptor `sequence`. The backend filters already-satisfied
+   * setup; each plugin contributes its own signer-bearing request fields and
+   * any local-state params (e.g. Lighter's known pubkey).
+   *
+   * @public
+   */
+  async buildProviderSetup(
+    params: BuildProviderSetupParams
+  ): Promise<CreateActionResponse> {
+    const { provider, address } = params
+
+    const metadata = await this.getProviderMetadata(provider)
+    const actions = await this.buildProviderSetupActions(
+      provider,
+      address,
+      metadata.setup
+    )
+    return { actions }
   }
 
   /**

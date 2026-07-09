@@ -1005,6 +1005,258 @@ describe('PerpsClient', () => {
       expect(result.setup.length).toBeGreaterThan(0)
       expect(result.isReady).toBe(false)
     })
+
+    it('stages SIWE first for setup even when accountExists reports false', async () => {
+      const ondoProviderKey = 'ondo'
+      const accountExists = vi.fn(async () => false)
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.AUTH_TOKEN,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.AUTH_TOKEN,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          if (body.action === ActionType.SIWE_LOGIN) {
+            return HttpResponse.json({
+              actions: [
+                {
+                  action: ActionType.SIWE_LOGIN,
+                  siwe: {
+                    challengeId: 'challenge-1',
+                    message: 'Sign in to Ondo',
+                  },
+                },
+              ],
+            } satisfies CreateActionResponse)
+          }
+          return HttpResponse.json({
+            actions: [
+              {
+                action: ActionType.SET_REFERRAL,
+                request: {
+                  method: 'POST',
+                  path: '/v1/account/referral',
+                  body: { code: 'LIFI' },
+                },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(accountExists).not.toHaveBeenCalled()
+      expect(createCalls).toEqual([
+        ActionType.SIWE_LOGIN,
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result).toMatchObject({
+        accountExists: true,
+        isReady: false,
+      })
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SIWE_LOGIN,
+        ActionType.SET_REFERRAL,
+      ])
+    })
+
+    it('skips SIWE setup when provider config reports it already satisfied', async () => {
+      const ondoProviderKey = 'ondo'
+      const getAccount = vi.fn(async () => mockAccount)
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount,
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SIWE_LOGIN, values: [], satisfied: true },
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: false },
+            ]),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.AUTH_TOKEN,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.AUTH_TOKEN,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          return HttpResponse.json({
+            actions: [{ action: body.action }],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(getAccount).toHaveBeenCalledOnce()
+      expect(createCalls).toEqual([ActionType.SET_REFERRAL])
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result.isReady).toBe(false)
+    })
+
+    it('returns ready when provider config reports all setup satisfied', async () => {
+      const ondoProviderKey = 'ondo'
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SIWE_LOGIN, values: [], satisfied: true },
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
+            ]),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCallCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.AUTH_TOKEN,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.AUTH_TOKEN,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCallCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(createCallCount).toBe(0)
+      expect(result).toEqual({
+        accountExists: true,
+        setup: [],
+        isReady: true,
+      })
+    })
   })
 
   // ---------------------------------------------------------------------------
