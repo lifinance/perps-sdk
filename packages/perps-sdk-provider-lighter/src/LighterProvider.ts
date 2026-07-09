@@ -3,6 +3,7 @@ import {
   explorerTxUrl,
   getAssetRegistry,
   getMarketRegistry,
+  getProviders,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -669,7 +670,8 @@ export const lighterProvider = (
         LIGHTER_PROVIDER_KEY
       )
       const [
-        markets,
+        { providers },
+        ,
         ,
         registeredKey,
         limitsResult,
@@ -677,6 +679,7 @@ export const lighterProvider = (
         storedReadOnlyToken,
         appliedReferralCode,
       ] = await Promise.all([
+        getProviders(requireClient()),
         registry.sync(),
         assetRegistry.sync(),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
@@ -721,12 +724,15 @@ export const lighterProvider = (
         0
       )
 
-      const quoteAssetByCategory = new Map(
-        markets.map((m) => [m.categoryId, m.quoteAsset])
-      )
-      // All Lighter perps markets share one categoryId; read it from the fetched
-      // markets so collateral stays aligned with the backend's category taxonomy.
-      const perpsCategoryId = markets[0]?.categoryId ?? LIGHTER_PROVIDER_KEY
+      const categories =
+        providers.find((p) => p.key === LIGHTER_PROVIDER_KEY)?.categories ?? []
+      // The category taxonomy is defined by `/providers`: the perps category
+      // is the one advertising a fixed collateral/quote asset; `quoteAsset`
+      // is null only for the spot category.
+      const perpsCategory = categories.find((c) => c.quoteAsset !== null)
+      const spotCategoryId =
+        categories.find((c) => c.quoteAsset === null)?.id ??
+        LIGHTER_SPOT_CATEGORY_ID
 
       // USDC collateral is the category quote asset → collateralBalances.
       // `available_balance` is the free collateral (Lighter's `collateral` is
@@ -734,10 +740,8 @@ export const lighterProvider = (
       // carried by the positions' `marginUsed`.
       const collateralBalances: Balance[] = [
         {
-          categoryId: perpsCategoryId,
-          asset:
-            quoteAssetByCategory.get(perpsCategoryId) ??
-            lighterAsset('USDC', 'USDC'),
+          categoryId: perpsCategory?.id ?? LIGHTER_PROVIDER_KEY,
+          asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
           units: account.available_balance,
           valueUsd: account.available_balance,
         },
@@ -747,7 +751,7 @@ export const lighterProvider = (
       const balances: Balance[] = account.assets.map((a) => {
         const assetId = String(a.asset_id)
         return {
-          categoryId: LIGHTER_SPOT_CATEGORY_ID,
+          categoryId: spotCategoryId,
           asset: assetRegistry.get(assetId) ?? lighterAsset(assetId, a.symbol),
           units: a.balance,
           valueUsd: a.symbol === 'USDC' ? a.balance : '0',
