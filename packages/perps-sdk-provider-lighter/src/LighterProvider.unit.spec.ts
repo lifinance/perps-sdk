@@ -833,10 +833,8 @@ describe('LighterProvider — getAccount balance asset identity', () => {
 })
 
 describe('LighterProvider — getAccount balance categoryId', () => {
-  // Category ids deliberately differ from the provider key, the markets
-  // fixture's categoryId ('lighter'), and the 'spot' constant, to prove both
-  // balance labels come from `/providers` category metadata: the perps
-  // category is the one with a fixed quoteAsset, spot the one with null.
+  // Fixture category ids match nothing else (provider key, markets fixture,
+  // 'spot' constant), so these assertions can only pass via /providers.
   const PERPS_CATEGORY_ID = 'perps'
   const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
   const PROVIDERS_PERPS_CATEGORY = {

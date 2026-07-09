@@ -726,9 +726,6 @@ export const lighterProvider = (
 
       const categories =
         providers.find((p) => p.key === LIGHTER_PROVIDER_KEY)?.categories ?? []
-      // The category taxonomy is defined by `/providers`: the perps category
-      // is the one advertising a fixed collateral/quote asset; `quoteAsset`
-      // is null only for the spot category.
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
       const spotCategoryId =
         categories.find((c) => c.quoteAsset === null)?.id ??
