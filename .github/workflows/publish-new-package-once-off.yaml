@@ -1,0 +1,65 @@
+# Create a new published package (first publish only).
+#
+# npm OIDC trusted publishing can't do the *first* publish of a package: there's
+# no package on the registry yet to attach a trusted-publisher config to. The
+# normal publish.yaml (changesets + OIDC) path only works from the second
+# release onward. This workflow bootstraps that first publish for any single
+# package using a short-lived token (secret NPM_ONCE_OFF_TOKEN). Because the
+# token is created and revoked around each run, no standing publish credential
+# lives in GitHub and this workflow can stay in the repo for the next new
+# package. Immediate first consumer: @lifi/perps-sdk-provider-ondo.
+#
+# Runbook (per new package):
+#   1. Create a short-lived, publish-scoped npm token and store it as the
+#      NPM_ONCE_OFF_TOKEN repository secret.
+#   2. Trigger this workflow from the Actions tab, passing the package's npm
+#      name / pnpm --filter value as the `package` input.
+#   3. Once the package exists on npm, configure trusted publishing on it
+#      (pinned to publish.yaml) so the OIDC path takes over from the next
+#      release.
+#   4. Revoke the npm token and delete the NPM_ONCE_OFF_TOKEN secret.
+#
+# This copy lives on the default branch (main) so GitHub registers the
+# workflow_dispatch trigger; main's checkout is what builds and publishes.
+name: Create new published package (one-off token)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'npm package name / pnpm --filter value to first-publish (e.g. @lifi/perps-sdk-provider-ondo)'
+        required: true
+        type: string
+
+concurrency:
+  group: publish-new-package-once-off
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: First-publish ${{ inputs.package }}
+    if: github.repository == 'lifinance/perps-sdk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+      # pnpm rewrites the package's workspace:* deps to real versions on publish;
+      # postpublish restores the source package.json.
+      - name: Publish package to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ONCE_OFF_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          pnpm changeset:prepublish
+          pnpm --filter "$PACKAGE" publish --access public --provenance --no-git-checks
+          pnpm changeset:postpublish

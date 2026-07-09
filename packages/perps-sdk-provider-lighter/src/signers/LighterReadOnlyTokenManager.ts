@@ -133,6 +133,14 @@ const isLighterReadOnlyToken = (
  *
  * The L1 wallet signer and the HTTP fetcher are both injectable so unit
  * tests don't need a real wallet or network.
+ *
+ * @security The default adapter encrypts records at rest (AES-GCM-256 via
+ * WebCrypto, keyed by a non-extractable key held in IndexedDB) before writing
+ * ciphertext to `localStorage`, defeating generic storage/disk scanning and raw
+ * token exfiltration. It does not defend against malware targeting this SDK or
+ * a fully compromised page — a same-origin script can still drive this manager
+ * to decrypt. Blast radius is limited to reads: the token cannot sign orders
+ * or move funds.
  * @public
  */
 export class LighterReadOnlyTokenManager {
