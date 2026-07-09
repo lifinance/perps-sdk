@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 2.2.0
+
+### Minor Changes
+
+- [#229](https://github.com/lifinance/perps-sdk/pull/229) [`59d359f`](https://github.com/lifinance/perps-sdk/commit/59d359f7e633ad7fbaa76194eb15017de3122954) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Encrypt the default `localStorageAdapter` at rest: session secrets are now stored as AES-GCM-256 ciphertext in `localStorage`, keyed by a non-extractable WebCrypto key held in IndexedDB, degrading to no-op writes / null reads when browser crypto storage is unavailable.
+
 ## 2.1.0
 
 ### Minor Changes
