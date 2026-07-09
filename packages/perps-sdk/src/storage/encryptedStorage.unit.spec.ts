@@ -249,6 +249,20 @@ describe('encrypted localStorageAdapter', () => {
     expect(idb.getOpenCount()).toBe(1)
   })
 
+  it('adopts an already-persisted master key instead of replacing it', async () => {
+    vi.stubGlobal('localStorage', createFakeLocalStorage())
+    vi.stubGlobal('indexedDB', createFakeIndexedDB())
+    const first = await loadAdapter()
+    await first.set('a', 'written-by-first')
+
+    // Fresh module realm (second tab) sharing the same IndexedDB.
+    const second = await loadAdapter()
+    await expect(second.get('a')).resolves.toBe('written-by-first')
+
+    await second.set('b', 'written-by-second')
+    await expect(first.get('b')).resolves.toBe('written-by-second')
+  })
+
   it('removes a stored value', async () => {
     const ls = createFakeLocalStorage()
     vi.stubGlobal('localStorage', ls)

@@ -42,28 +42,26 @@ async function loadMasterKey(): Promise<CryptoKey | null> {
     return null
   }
   try {
+    // Generated before the transaction: awaiting a non-IDB promise inside an
+    // IDB transaction auto-commits it, breaking the atomic get-or-adopt below.
+    const candidate = await crypto.subtle.generateKey(AES_KEY_PARAMS, false, [
+      'encrypt',
+      'decrypt',
+    ])
     const db = await openDb()
     try {
-      const existing = await requestToPromise(
-        db
-          .transaction(OBJECT_STORE, 'readonly')
-          .objectStore(OBJECT_STORE)
-          .get(MASTER_KEY_ID)
-      )
+      // Single readwrite transaction so concurrent tabs can't interleave the
+      // check and the write: the loser's get sees the winner's key and adopts
+      // it instead of clobbering, discarding its own candidate.
+      const store = db
+        .transaction(OBJECT_STORE, 'readwrite')
+        .objectStore(OBJECT_STORE)
+      const existing = await requestToPromise(store.get(MASTER_KEY_ID))
       if (existing instanceof CryptoKey) {
         return existing
       }
-      const key = await crypto.subtle.generateKey(AES_KEY_PARAMS, false, [
-        'encrypt',
-        'decrypt',
-      ])
-      await requestToPromise(
-        db
-          .transaction(OBJECT_STORE, 'readwrite')
-          .objectStore(OBJECT_STORE)
-          .put(key, MASTER_KEY_ID)
-      )
-      return key
+      await requestToPromise(store.put(candidate, MASTER_KEY_ID))
+      return candidate
     } finally {
       db.close()
     }
