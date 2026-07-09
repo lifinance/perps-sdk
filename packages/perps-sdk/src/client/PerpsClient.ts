@@ -399,9 +399,17 @@ export class PerpsClient {
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
 
+    const metadata = await this.getProviderMetadata(provider)
+    const hasSiweSetup = metadata.setup.some(
+      (descriptor) => descriptor.signingMethod === SigningMethod.SIWE
+    )
+
     // Gate on existence first: an unfunded account has no setup, so short-circuit
     // before any createAction round-trip and let the consumer prompt a deposit.
-    if (!(await this.accountExists(provider, address))) {
+    //
+    // SIWE-first providers (Ondo) are the exception: they cannot reliably probe
+    // account existence before the user signs in, so setup must still stage.
+    if (!hasSiweSetup && !(await this.accountExists(provider, address))) {
       return { accountExists: false, setup: [], isReady: false }
     }
 
@@ -431,10 +439,13 @@ export class PerpsClient {
     const { provider, address } = params
 
     const metadata = await this.getProviderMetadata(provider)
+    const setupPriority = (descriptor: ProviderAction): number =>
+      descriptor.signingMethod === SigningMethod.SIWE ? 0 : 1
     const orderedSetup = [...metadata.setup].sort(
       (a, b) =>
+        setupPriority(a) - setupPriority(b) ||
         (a.sequence ?? Number.MAX_SAFE_INTEGER) -
-        (b.sequence ?? Number.MAX_SAFE_INTEGER)
+          (b.sequence ?? Number.MAX_SAFE_INTEGER)
     )
 
     const plugin = this.sdkClient.getProvider(provider)
