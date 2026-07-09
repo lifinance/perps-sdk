@@ -53,11 +53,13 @@ const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
  * and revoke. Keyed per user L1 address. Persisted via the injected
  * {@link StorageAdapter} (browser `localStorage` by default).
  *
- * @security The default adapter is browser `localStorage`, so the stored agent
- * private key is readable by any same-origin script (e.g. via XSS). Pass a more
- * secure {@link StorageAdapter} to the constructor to harden this. Blast radius
- * is limited to agent trading: fund withdrawal still requires L1 `APPROVE_AGENT`
- * consent that the agent key alone cannot grant.
+ * @security The default adapter encrypts records at rest (AES-GCM-256 via
+ * WebCrypto, keyed by a non-extractable key held in IndexedDB) before writing
+ * ciphertext to `localStorage`, defeating generic storage/disk scanning and raw
+ * key exfiltration. It does not defend against malware targeting this SDK or a
+ * fully compromised page — a same-origin script can still drive this store to
+ * decrypt. Blast radius is limited to agent trading: fund withdrawal still
+ * requires L1 `APPROVE_AGENT` consent that the agent key alone cannot grant.
  */
 export class HyperliquidAgentStore {
   private storage: StorageAdapter
