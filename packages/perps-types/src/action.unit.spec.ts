@@ -3,12 +3,12 @@ import type {
   ActionParamsMap,
   ActionResult,
   ActionStep,
-  ApiKeyRestActionStep,
-  ApiKeyRestSignedActionStep,
   ApproveReadOnlyTokenParams,
   EvmCall,
   EvmTxActionStep,
   EvmTxSignedActionStep,
+  HmacActionStep,
+  HmacSignedActionStep,
   PlaceOrderParams,
   SignedActionStep,
   SiweActionStep,
@@ -216,8 +216,8 @@ describe('EvmCall / EVM_TX steps', () => {
   })
 })
 
-describe('ApiKeyRest steps', () => {
-  const placeOrder: ApiKeyRestActionStep = {
+describe('Hmac steps', () => {
+  const placeOrder: HmacActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
@@ -236,7 +236,7 @@ describe('ApiKeyRest steps', () => {
   })
 
   it('body is a pre-serialized string, optional (a DELETE cancel carries none)', () => {
-    const cancelAll: ApiKeyRestActionStep = {
+    const cancelAll: HmacActionStep = {
       action: ActionType.CANCEL_ALL_ORDERS,
       request: { method: 'DELETE', path: '/v1/perps/orders' },
     }
@@ -245,7 +245,7 @@ describe('ApiKeyRest steps', () => {
   })
 
   it('restricts method to the four HTTP verbs', () => {
-    const bad: ApiKeyRestActionStep = {
+    const bad: HmacActionStep = {
       action: ActionType.PLACE_ORDER,
       // @ts-expect-error method must be 'GET' | 'POST' | 'PUT' | 'DELETE'
       request: { method: 'PATCH', path: '/v1/perps/orders' },
@@ -260,30 +260,30 @@ describe('ApiKeyRest steps', () => {
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
-  it('ApiKeyRestSignedActionStep adds the HMAC signature headers', () => {
-    const signed: ApiKeyRestSignedActionStep = {
+  it('HmacSignedActionStep adds the structured HMAC material', () => {
+    const signed: HmacSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
-      headers: {
-        'ONDO-KEY-ID': 'key-1',
-        'ONDO-TIMESTAMP': '1700000000000',
-        'ONDO-SIGN': 'deadbeef',
+      hmac: {
+        keyId: 'key-1',
+        timestampMs: 1700000000000,
+        signature: 'deadbeef',
       },
     }
     const step: SignedActionStep = signed
 
-    expect(signed.headers['ONDO-SIGN']).toBe('deadbeef')
+    expect(signed.hmac.signature).toBe('deadbeef')
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
-  it('requires headers on the signed variant', () => {
-    // @ts-expect-error headers is required on ApiKeyRestSignedActionStep
-    const missingHeaders: ApiKeyRestSignedActionStep = {
+  it('requires the hmac field on the signed variant', () => {
+    // @ts-expect-error hmac is required on HmacSignedActionStep
+    const missingHmac: HmacSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
     }
 
-    expect(missingHeaders.action).toBe(ActionType.PLACE_ORDER)
+    expect(missingHmac.action).toBe(ActionType.PLACE_ORDER)
   })
 })
 

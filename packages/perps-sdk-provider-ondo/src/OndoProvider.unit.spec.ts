@@ -5,8 +5,8 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
-  ApiKeyRestActionStep,
-  ApiKeyRestSignedActionStep,
+  HmacActionStep,
+  HmacSignedActionStep,
   Position,
   ProviderAction,
 } from '@lifi/perps-types'
@@ -879,7 +879,7 @@ describe('OndoProvider — projectConfig', () => {
   const REFERRAL_DESCRIPTOR: ProviderAction = {
     type: ActionType.SET_REFERRAL,
     signers: [PerpsSigner.USER],
-    signingMethod: SigningMethod.API_KEY,
+    signingMethod: SigningMethod.HMAC,
   }
 
   it('projects SIWE_LOGIN with the session expiry when logged in', () => {
@@ -981,7 +981,7 @@ describe('OndoProvider — projectConfig', () => {
 })
 
 describe('OndoProvider — write-action surface', () => {
-  const PLACE_ORDER_STEP: ApiKeyRestActionStep = {
+  const PLACE_ORDER_STEP: HmacActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
@@ -990,34 +990,34 @@ describe('OndoProvider — write-action surface', () => {
     },
   }
 
-  it('signActions(API_KEY) HMAC-signs each step with the stored API key', async () => {
+  it('signActions(HMAC) HMAC-signs each step with the stored API key', async () => {
     const { provider, storage } = await loggedInProvider()
     await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
 
     const signed = (await provider.signActions?.(
-      SigningMethod.API_KEY,
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )) as ApiKeyRestSignedActionStep[]
+    )) as HmacSignedActionStep[]
 
     const [step] = signed
     expect(step.action).toBe(ActionType.PLACE_ORDER)
     expect(step.request).toEqual(PLACE_ORDER_STEP.request)
-    expect(step.headers['ONDO-KEY-ID']).toBe(API_KEY.keyId)
+    expect(step.hmac.keyId).toBe(API_KEY.keyId)
 
-    const timestampMs = Number(step.headers['ONDO-TIMESTAMP'])
+    const { timestampMs } = step.hmac
     const expected = await hmacSignRequest(API_KEY.apiSecret, {
       timestampMs,
       method: PLACE_ORDER_STEP.request.method,
       pathWithQuery: PLACE_ORDER_STEP.request.path,
       body: PLACE_ORDER_STEP.request.body,
     })
-    expect(step.headers['ONDO-SIGN']).toBe(expected)
-    // The API secret never appears in the outgoing headers — only the signature.
-    expect(JSON.stringify(step.headers)).not.toContain(API_KEY.apiSecret)
+    expect(step.hmac.signature).toBe(expected)
+    // The API secret never appears in the signed step — only the signature.
+    expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('signActions(API_KEY) mints a key on first use, JWT-authorized', async () => {
+  it('signActions(HMAC) mints a key on first use, JWT-authorized', async () => {
     const { provider } = await loggedInProvider()
     fetchMock.mockImplementationOnce(async (url: string | URL) => {
       expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
@@ -1025,12 +1025,12 @@ describe('OndoProvider — write-action surface', () => {
     })
 
     const signed = (await provider.signActions?.(
-      SigningMethod.API_KEY,
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )) as ApiKeyRestSignedActionStep[]
+    )) as HmacSignedActionStep[]
 
-    expect(signed[0].headers['ONDO-KEY-ID']).toBe(API_KEY.keyId)
+    expect(signed[0].hmac.keyId).toBe(API_KEY.keyId)
   })
 })
 

@@ -1,10 +1,10 @@
 import type {
   AccountResponse,
-  ApiKeyRestSignedActionStep,
   CreateActionRequest,
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
+  HmacSignedActionStep,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -1032,13 +1032,13 @@ describe('PerpsClient', () => {
                 key: ondoProviderKey,
                 name: 'Ondo',
                 logoURI: 'https://example.com/ondo.png',
-                signingMethod: SigningMethod.API_KEY,
+                signingMethod: SigningMethod.HMAC,
                 active: true,
                 setup: [
                   {
                     type: ActionType.SET_REFERRAL,
                     signers: [PerpsSigner.USER],
-                    signingMethod: SigningMethod.API_KEY,
+                    signingMethod: SigningMethod.HMAC,
                     sequence: 10,
                     params: [],
                   },
@@ -1138,7 +1138,7 @@ describe('PerpsClient', () => {
                 key: ondoProviderKey,
                 name: 'Ondo',
                 logoURI: 'https://example.com/ondo.png',
-                signingMethod: SigningMethod.API_KEY,
+                signingMethod: SigningMethod.HMAC,
                 active: true,
                 setup: [
                   {
@@ -1151,7 +1151,7 @@ describe('PerpsClient', () => {
                   {
                     type: ActionType.SET_REFERRAL,
                     signers: [PerpsSigner.USER],
-                    signingMethod: SigningMethod.API_KEY,
+                    signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
@@ -1214,7 +1214,7 @@ describe('PerpsClient', () => {
                 key: ondoProviderKey,
                 name: 'Ondo',
                 logoURI: 'https://example.com/ondo.png',
-                signingMethod: SigningMethod.API_KEY,
+                signingMethod: SigningMethod.HMAC,
                 active: true,
                 setup: [
                   {
@@ -1227,7 +1227,7 @@ describe('PerpsClient', () => {
                   {
                     type: ActionType.SET_REFERRAL,
                     signers: [PerpsSigner.USER],
-                    signingMethod: SigningMethod.API_KEY,
+                    signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
@@ -1484,7 +1484,7 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('execute — apiKey rest-call actions ride executeAction', () => {
+  describe('execute — hmac actions ride executeAction', () => {
     const BASE_URL = DEFAULT_API_URL
     const ondoAddress = '0x9999999999999999999999999999999999999999' as Address
 
@@ -1492,7 +1492,7 @@ describe('PerpsClient', () => {
       key: 'ondo',
       name: 'Ondo',
       logoURI: 'https://example.com/ondo.png',
-      signingMethod: SigningMethod.API_KEY,
+      signingMethod: SigningMethod.HMAC,
       active: true,
       setup: [],
       options: [],
@@ -1500,13 +1500,13 @@ describe('PerpsClient', () => {
         {
           type: ActionType.PLACE_ORDER,
           signers: [PerpsSigner.API_KEY],
-          signingMethod: SigningMethod.API_KEY,
+          signingMethod: SigningMethod.HMAC,
         },
       ],
       categories: [],
     }
 
-    const apiKeyRestStep = {
+    const hmacStep = {
       action: ActionType.PLACE_ORDER,
       request: {
         method: 'POST' as const,
@@ -1515,10 +1515,10 @@ describe('PerpsClient', () => {
       },
     }
 
-    const SIGNATURE_HEADERS = {
-      'ONDO-KEY-ID': 'key-1',
-      'ONDO-TIMESTAMP': '1700000000000',
-      'ONDO-SIGN': 'abc123def456',
+    const HMAC_MATERIAL = {
+      keyId: 'key-1',
+      timestampMs: 1700000000000,
+      signature: 'abc123def456',
     }
 
     const orderParams = {
@@ -1529,19 +1529,19 @@ describe('PerpsClient', () => {
       price: '95000.00',
     }
 
-    // Minimal apiKey plugin: `signActions` attaches the per-request HMAC
-    // signature headers; the signed step then rides the normal executeAction
-    // path like any other signing method.
-    function createApiKeyProvider() {
+    // Minimal hmac plugin: `signActions` attaches the per-request HMAC
+    // material; the signed step then rides the normal executeAction path like
+    // any other signing method.
+    function createHmacProvider() {
       const signActions = vi.fn(
         async (
           _method,
-          steps: (typeof apiKeyRestStep)[]
+          steps: (typeof hmacStep)[]
         ): Promise<SignedActionStep[]> =>
           steps.map((s) => ({
             action: s.action,
             request: s.request,
-            headers: { ...SIGNATURE_HEADERS },
+            hmac: { ...HMAC_MATERIAL },
           }))
       )
       return {
@@ -1566,7 +1566,7 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           backendBodies.push(await request.text())
           return HttpResponse.json({
-            actions: [apiKeyRestStep],
+            actions: [hmacStep],
           } satisfies CreateActionResponse)
         }),
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
@@ -1596,7 +1596,7 @@ describe('PerpsClient', () => {
     }
 
     it('submits the signed steps to executeAction and returns the backend results', async () => {
-      const ondo = createApiKeyProvider()
+      const ondo = createHmacProvider()
       const { executeRequests } = useOndoHandlers()
 
       const result = await createOndoClient(ondo).execute({
@@ -1606,11 +1606,11 @@ describe('PerpsClient', () => {
         params: orderParams,
       })
 
-      expect(ondo.signActions.mock.calls[0][0]).toBe(SigningMethod.API_KEY)
+      expect(ondo.signActions.mock.calls[0][0]).toBe(SigningMethod.HMAC)
       expect(executeRequests).toHaveLength(1)
-      const [step] = executeRequests[0].actions as ApiKeyRestSignedActionStep[]
-      expect(step.request).toEqual(apiKeyRestStep.request)
-      expect(step.headers).toEqual(SIGNATURE_HEADERS)
+      const [step] = executeRequests[0].actions as HmacSignedActionStep[]
+      expect(step.request).toEqual(hmacStep.request)
+      expect(step.hmac).toEqual(HMAC_MATERIAL)
       expect(result.results).toEqual([
         {
           action: ActionType.PLACE_ORDER,
@@ -1620,8 +1620,8 @@ describe('PerpsClient', () => {
       ])
     })
 
-    it('carries the HMAC signature headers to the backend for relay', async () => {
-      const ondo = createApiKeyProvider()
+    it('carries the HMAC material to the backend for relay', async () => {
+      const ondo = createHmacProvider()
       const { executeRequests } = useOndoHandlers()
 
       await createOndoClient(ondo).execute({
@@ -1631,9 +1631,9 @@ describe('PerpsClient', () => {
         params: orderParams,
       })
 
-      const [step] = executeRequests[0].actions as ApiKeyRestSignedActionStep[]
-      expect(step.headers['ONDO-SIGN']).toBe('abc123def456')
-      expect(step.headers['ONDO-KEY-ID']).toBe('key-1')
+      const [step] = executeRequests[0].actions as HmacSignedActionStep[]
+      expect(step.hmac.signature).toBe('abc123def456')
+      expect(step.hmac.keyId).toBe('key-1')
     })
   })
 

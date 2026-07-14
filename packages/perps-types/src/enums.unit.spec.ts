@@ -27,8 +27,8 @@ describe('PerpsErrorCode.Unauthorized', () => {
 })
 
 describe('SigningMethod credential members', () => {
-  it('API_KEY carries wire value "apiKey"', () => {
-    expect(SigningMethod.API_KEY).toBe('apiKey')
+  it('HMAC carries wire value "hmac"', () => {
+    expect(SigningMethod.HMAC).toBe('hmac')
   })
 
   it('SIWE carries wire value "siwe"', () => {

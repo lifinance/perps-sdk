@@ -1,7 +1,7 @@
 import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
 import type {
   ActionStep,
-  ApiKeyRestSignedActionStep,
+  HmacSignedActionStep,
   SignedActionStep,
   SiweActionStep,
 } from '@lifi/perps-types'
@@ -74,10 +74,10 @@ async function ensureApiKey(
  * first login (`newAccount`) the venue terms and privacy policy are accepted
  * in the same flow.
  *
- * `API_KEY` computes a per-request HMAC-SHA256 signature over each REST-call
- * step from the client-held API key (minting one on first use), attaching the
- * signature headers. The signed step rides the normal `executeAction` path;
- * the API secret itself never leaves the client.
+ * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
+ * from the client-held API key (minting one on first use), attaching the
+ * `hmac` material. The signed step rides the normal `executeAction` path; the
+ * API secret itself never leaves the client.
  *
  * @public
  */
@@ -127,14 +127,14 @@ export async function ondoSignActions(
       return signed
     }
 
-    case SigningMethod.API_KEY: {
+    case SigningMethod.HMAC: {
       const apiKey = await ensureApiKey(deps, address)
       return Promise.all(
-        steps.map(async (step): Promise<ApiKeyRestSignedActionStep> => {
+        steps.map(async (step): Promise<HmacSignedActionStep> => {
           if (!hasRequest(step)) {
             throw new PerpsError(
               PerpsErrorCode.SDKError,
-              `Ondo received a non-REST step ('${step.action}') under the API_KEY signing method.`
+              `Ondo received a step without a request ('${step.action}') under the hmac signing method.`
             )
           }
           // Stamped immediately before executeAction; Ondo enforces a 30s window.
@@ -148,10 +148,10 @@ export async function ondoSignActions(
           return {
             action: step.action,
             request: step.request,
-            headers: {
-              'ONDO-KEY-ID': apiKey.keyId,
-              'ONDO-TIMESTAMP': String(timestampMs),
-              'ONDO-SIGN': signature,
+            hmac: {
+              keyId: apiKey.keyId,
+              timestampMs,
+              signature,
             },
           }
         })
@@ -161,7 +161,7 @@ export async function ondoSignActions(
     default:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Ondo does not sign via '${method}'. Supported methods: siwe, apiKey.`
+        `Ondo does not sign via '${method}'. Supported methods: siwe, hmac.`
       )
   }
 }

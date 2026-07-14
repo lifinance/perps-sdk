@@ -1,7 +1,7 @@
 import { createMemoryStorage, PerpsError } from '@lifi/perps-sdk'
 import type {
-  ApiKeyRestActionStep,
-  ApiKeyRestSignedActionStep,
+  HmacActionStep,
+  HmacSignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
 } from '@lifi/perps-types'
@@ -68,7 +68,7 @@ const SIWE_STEP: SiweActionStep = {
   siwe: { challengeId: 'challenge-1', message: SIWE_MESSAGE },
 }
 
-const PLACE_ORDER_STEP: ApiKeyRestActionStep = {
+const PLACE_ORDER_STEP: HmacActionStep = {
   action: ActionType.PLACE_ORDER,
   request: {
     method: 'POST',
@@ -204,8 +204,8 @@ describe('ondoSignActions — SIWE', () => {
   })
 })
 
-describe('ondoSignActions — API_KEY', () => {
-  it('signs each REST step with the stored API key and attaches the HMAC headers', async () => {
+describe('ondoSignActions — HMAC', () => {
+  it('signs each request step with the stored API key and attaches the hmac material', async () => {
     const deps = makeDeps(vi.fn<typeof fetch>())
     const apiKey = apiKeyFixture()
     await deps.apiKeyStore.set(account.address, apiKey)
@@ -213,18 +213,18 @@ describe('ondoSignActions — API_KEY', () => {
     const before = Date.now()
     const signed = (await ondoSignActions(
       deps,
-      SigningMethod.API_KEY,
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       account.address
-    )) as ApiKeyRestSignedActionStep[]
+    )) as HmacSignedActionStep[]
     const after = Date.now()
 
     const [step] = signed
     expect(step.action).toBe(ActionType.PLACE_ORDER)
     expect(step.request).toEqual(PLACE_ORDER_STEP.request)
-    expect(step.headers['ONDO-KEY-ID']).toBe(apiKey.keyId)
+    expect(step.hmac.keyId).toBe(apiKey.keyId)
 
-    const timestampMs = Number(step.headers['ONDO-TIMESTAMP'])
+    const { timestampMs } = step.hmac
     expect(timestampMs).toBeGreaterThanOrEqual(before)
     expect(timestampMs).toBeLessThanOrEqual(after)
 
@@ -234,7 +234,7 @@ describe('ondoSignActions — API_KEY', () => {
       pathWithQuery: PLACE_ORDER_STEP.request.path,
       body: PLACE_ORDER_STEP.request.body,
     })
-    expect(step.headers['ONDO-SIGN']).toBe(expected)
+    expect(step.hmac.signature).toBe(expected)
   })
 
   it('mints an API key on first use, JWT-authorized, and stores it immediately', async () => {
@@ -247,10 +247,10 @@ describe('ondoSignActions — API_KEY', () => {
 
     const signed = (await ondoSignActions(
       deps,
-      SigningMethod.API_KEY,
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       account.address
-    )) as ApiKeyRestSignedActionStep[]
+    )) as HmacSignedActionStep[]
 
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/v1/api_keys`)
@@ -263,7 +263,7 @@ describe('ondoSignActions — API_KEY', () => {
       'Bearer ondo-jwt-token'
     )
 
-    expect(signed[0].headers['ONDO-KEY-ID']).toBe('minted-key')
+    expect(signed[0].hmac.keyId).toBe('minted-key')
     // The secret returned only at creation is persisted immediately.
     await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual(minted)
   })
@@ -275,7 +275,7 @@ describe('ondoSignActions — API_KEY', () => {
 
     await ondoSignActions(
       deps,
-      SigningMethod.API_KEY,
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       account.address
     )
@@ -289,19 +289,19 @@ describe('ondoSignActions — API_KEY', () => {
     await expect(
       ondoSignActions(
         deps,
-        SigningMethod.API_KEY,
+        SigningMethod.HMAC,
         [PLACE_ORDER_STEP],
         account.address
       )
     ).rejects.toBeInstanceOf(OndoSessionExpiredError)
   })
 
-  it('rejects non-REST steps under the API_KEY method', async () => {
+  it('rejects steps without a request under the hmac method', async () => {
     const deps = makeDeps(vi.fn<typeof fetch>())
     await deps.apiKeyStore.set(account.address, apiKeyFixture())
 
     await expect(
-      ondoSignActions(deps, SigningMethod.API_KEY, [SIWE_STEP], account.address)
+      ondoSignActions(deps, SigningMethod.HMAC, [SIWE_STEP], account.address)
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 })

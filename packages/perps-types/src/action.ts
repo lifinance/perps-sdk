@@ -48,13 +48,13 @@ export interface EvmTxActionStep {
 }
 
 /**
- * A venue REST call crossing the backend→SDK boundary unsigned. The SDK computes
- * a per-request HMAC signature from a client-held API key, attaches it as headers
- * (yielding an {@link ApiKeyRestSignedActionStep}), and the signed step rides the
- * normal `executeAction` path.
+ * A venue request crossing the backend→SDK boundary unsigned. The SDK computes
+ * a per-request HMAC signature from a client-held API key, attaches it as a
+ * structured `hmac` field (yielding an {@link HmacSignedActionStep}), and the
+ * signed step rides the normal `executeAction` path.
  * @public
  */
-export interface ApiKeyRestActionStep {
+export interface HmacActionStep {
   action: ActionType
   request: {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE'
@@ -83,7 +83,7 @@ export type ActionStep =
   | Eip712ActionStep
   | WasmBlobActionStep
   | EvmTxActionStep
-  | ApiKeyRestActionStep
+  | HmacActionStep
   | SiweActionStep
 
 /** @public */
@@ -112,11 +112,19 @@ export interface EvmTxSignedActionStep {
 }
 
 /** @public */
-export interface ApiKeyRestSignedActionStep {
+export interface HmacSignedActionStep {
   action: ActionType
-  request: ApiKeyRestActionStep['request']
-  /** Per-request HMAC signature headers computed SDK-side (key id, timestamp, signature). */
-  headers: Record<string, string>
+  request: HmacActionStep['request']
+  /**
+   * Per-request HMAC material computed SDK-side; the backend builds the venue's
+   * transport headers from it at relay time.
+   */
+  hmac: {
+    keyId: string
+    /** Sign-time Unix timestamp in milliseconds; part of the signed message. */
+    timestampMs: number
+    signature: string
+  }
 }
 
 /** @public */
@@ -131,7 +139,7 @@ export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
-  | ApiKeyRestSignedActionStep
+  | HmacSignedActionStep
   | SiweSignedActionStep
 
 /** @public */
