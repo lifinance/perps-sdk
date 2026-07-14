@@ -24,7 +24,6 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
-  ActionResult,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
@@ -37,7 +36,6 @@ import type {
   PositionsResponse,
   ProviderAction,
   Quote,
-  RestCallSignedActionStep,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -45,11 +43,9 @@ import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
+import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
-import {
-  executeOndoRestCallActions,
-  ondoSignActions,
-} from './auth/signActions.js'
+import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
   ONDO_BASE_FEE_TIER,
@@ -140,10 +136,9 @@ export const ondoProvider = (
   }
 
   const apiUrl = options.apiUrl ?? DEFAULT_ONDO_API_URL
-  const tokenStore = new OndoTokenStore(
-    options.storage ?? localStorageAdapter,
-    apiUrl
-  )
+  const storage = options.storage ?? localStorageAdapter
+  const tokenStore = new OndoTokenStore(storage, apiUrl)
+  const apiKeyStore = new OndoApiKeyStore(storage, apiUrl)
 
   const apiClient = (opts?: SDKRequestOptions): OndoApiClient => {
     const client = requireClient()
@@ -609,20 +604,12 @@ export const ondoProvider = (
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
       return ondoSignActions(
-        { client: apiClient(), tokenStore },
+        { client: apiClient(), tokenStore, apiKeyStore },
         method,
         steps,
         address,
         ctx
       )
-    },
-
-    executeRestCallActions(
-      steps: RestCallSignedActionStep[],
-      _address: Address,
-      opts?: SDKRequestOptions
-    ): Promise<ActionResult[]> {
-      return executeOndoRestCallActions(apiClient(opts), steps)
     },
   }
 }

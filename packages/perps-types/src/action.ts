@@ -48,18 +48,23 @@ export interface EvmTxActionStep {
 }
 
 /**
- * A venue REST call crossing the backend→SDK boundary unauthenticated. The SDK
- * attaches the client-held credential and executes the call directly against
- * the venue.
+ * A venue REST call crossing the backend→SDK boundary unsigned. The SDK computes
+ * a per-request HMAC signature from a client-held API key, attaches it as headers
+ * (yielding an {@link ApiKeyRestSignedActionStep}), and the signed step rides the
+ * normal `executeAction` path.
  * @public
  */
-export interface RestCallActionStep {
+export interface ApiKeyRestActionStep {
   action: ActionType
   request: {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE'
     /** Venue-relative, e.g. `/v1/perps/orders`; base URL resolution is provider-side. */
     path: string
-    body?: Record<string, unknown>
+    /**
+     * Pre-serialized request body that transits verbatim — the exact byte
+     * string the HMAC signature covers, never re-serialized downstream.
+     */
+    body?: string
   }
 }
 
@@ -78,7 +83,7 @@ export type ActionStep =
   | Eip712ActionStep
   | WasmBlobActionStep
   | EvmTxActionStep
-  | RestCallActionStep
+  | ApiKeyRestActionStep
   | SiweActionStep
 
 /** @public */
@@ -107,10 +112,10 @@ export interface EvmTxSignedActionStep {
 }
 
 /** @public */
-export interface RestCallSignedActionStep {
+export interface ApiKeyRestSignedActionStep {
   action: ActionType
-  request: RestCallActionStep['request']
-  /** Attached client-side from the credential store; MUST NOT be sent to the LI.FI backend. */
+  request: ApiKeyRestActionStep['request']
+  /** Per-request HMAC signature headers computed SDK-side (key id, timestamp, signature). */
   headers: Record<string, string>
 }
 
@@ -126,7 +131,7 @@ export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
-  | RestCallSignedActionStep
+  | ApiKeyRestSignedActionStep
   | SiweSignedActionStep
 
 /** @public */

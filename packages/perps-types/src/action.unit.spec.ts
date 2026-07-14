@@ -3,13 +3,13 @@ import type {
   ActionParamsMap,
   ActionResult,
   ActionStep,
+  ApiKeyRestActionStep,
+  ApiKeyRestSignedActionStep,
   ApproveReadOnlyTokenParams,
   EvmCall,
   EvmTxActionStep,
   EvmTxSignedActionStep,
   PlaceOrderParams,
-  RestCallActionStep,
-  RestCallSignedActionStep,
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
@@ -216,13 +216,13 @@ describe('EvmCall / EVM_TX steps', () => {
   })
 })
 
-describe('RestCall steps', () => {
-  const placeOrder: RestCallActionStep = {
+describe('ApiKeyRest steps', () => {
+  const placeOrder: ApiKeyRestActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
       path: '/v1/perps/orders',
-      body: { symbol: 'AAPL-USD.P', side: 'buy', qty: '1' },
+      body: '{"symbol":"AAPL-USD.P","side":"buy","qty":"1"}',
     },
   }
 
@@ -230,15 +230,13 @@ describe('RestCall steps', () => {
     expect(placeOrder.action).toBe(ActionType.PLACE_ORDER)
     expect(placeOrder.request.method).toBe('POST')
     expect(placeOrder.request.path).toBe('/v1/perps/orders')
-    expect(placeOrder.request.body).toEqual({
-      symbol: 'AAPL-USD.P',
-      side: 'buy',
-      qty: '1',
-    })
+    expect(placeOrder.request.body).toBe(
+      '{"symbol":"AAPL-USD.P","side":"buy","qty":"1"}'
+    )
   })
 
-  it('body is optional (a DELETE cancel carries none)', () => {
-    const cancelAll: RestCallActionStep = {
+  it('body is a pre-serialized string, optional (a DELETE cancel carries none)', () => {
+    const cancelAll: ApiKeyRestActionStep = {
       action: ActionType.CANCEL_ALL_ORDERS,
       request: { method: 'DELETE', path: '/v1/perps/orders' },
     }
@@ -247,7 +245,7 @@ describe('RestCall steps', () => {
   })
 
   it('restricts method to the four HTTP verbs', () => {
-    const bad: RestCallActionStep = {
+    const bad: ApiKeyRestActionStep = {
       action: ActionType.PLACE_ORDER,
       // @ts-expect-error method must be 'GET' | 'POST' | 'PUT' | 'DELETE'
       request: { method: 'PATCH', path: '/v1/perps/orders' },
@@ -262,21 +260,25 @@ describe('RestCall steps', () => {
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
-  it('RestCallSignedActionStep adds the client-attached headers', () => {
-    const signed: RestCallSignedActionStep = {
+  it('ApiKeyRestSignedActionStep adds the HMAC signature headers', () => {
+    const signed: ApiKeyRestSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
-      headers: { Authorization: 'Bearer test-jwt' },
+      headers: {
+        'ONDO-KEY-ID': 'key-1',
+        'ONDO-TIMESTAMP': '1700000000000',
+        'ONDO-SIGN': 'deadbeef',
+      },
     }
     const step: SignedActionStep = signed
 
-    expect(signed.headers.Authorization).toBe('Bearer test-jwt')
+    expect(signed.headers['ONDO-SIGN']).toBe('deadbeef')
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
   it('requires headers on the signed variant', () => {
-    // @ts-expect-error headers is required on RestCallSignedActionStep
-    const missingHeaders: RestCallSignedActionStep = {
+    // @ts-expect-error headers is required on ApiKeyRestSignedActionStep
+    const missingHeaders: ApiKeyRestSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
     }

@@ -36,3 +36,31 @@ export const ONDO_BASE_FEE_TIER = {
   maker: '0.0002',
   taker: '0.0005',
 }
+
+/**
+ * Name applied to the trading API key the SDK mints on first trading use.
+ *
+ * @public
+ */
+export const ONDO_API_KEY_NAME = 'lifi-perps'
+
+/**
+ * Scopes requested when minting the trading API key.
+ *
+ * @public
+ */
+export const ONDO_API_KEY_SCOPES = ['trade']
+
+/**
+ * Terms-of-Service version accepted at first login. Venue-owned; current value.
+ *
+ * @public
+ */
+export const ONDO_TERMS_VERSION = 1
+
+/**
+ * Privacy-policy version accepted at first login. Venue-owned; current value.
+ *
+ * @public
+ */
+export const ONDO_PRIVACY_VERSION = 1

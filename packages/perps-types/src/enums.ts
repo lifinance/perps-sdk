@@ -208,8 +208,8 @@ export enum SigningMethod {
   EIP712 = 'eip712',
   WASM_BLOB = 'wasmBlob',
   EVM_TX = 'evmTx',
-  /** Per-action auth is a client-held credential attached to a venue REST call, executed SDK-side. */
-  AUTH_TOKEN = 'authToken',
+  /** Per-request HMAC signature over a venue REST call, computed SDK-side from a client-held API key; the signed step rides the normal `executeAction` path. */
+  API_KEY = 'apiKey',
   /** ERC-4361 `personal_sign` over a backend-built login challenge. */
   SIWE = 'siwe',
 }

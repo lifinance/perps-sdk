@@ -9,7 +9,6 @@ import type {
   Position,
   Provider,
   ProviderAction,
-  RestCallSignedActionStep,
   SignedActionStep,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
@@ -45,7 +44,6 @@ import {
   switchSigningChain,
   userEip712TargetChainId,
 } from '../utils/switchChain.js'
-import { clientLog } from './clientLog.js'
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
@@ -827,16 +825,6 @@ export class PerpsClient {
       actions
     )
 
-    if (descriptor.signingMethod === SigningMethod.AUTH_TOKEN) {
-      return this.executeAuthTokenActions(
-        provider,
-        address,
-        signerAddress ?? address,
-        action,
-        signedActions
-      )
-    }
-
     // A plugin may execute an action entirely client-side (e.g. Lighter's
     // token-authenticated venue mutations), leaving no backend-bound step. With
     // nothing to submit, skip the `/executeAction` hop.
@@ -853,64 +841,5 @@ export class PerpsClient {
       action,
       actions: signedActions,
     })
-  }
-
-  /**
-   * The `AUTH_TOKEN` arm of {@link execute}: the venue call runs client-side
-   * via the plugin's `executeRestCallActions` because the credential headers
-   * must never transit the LI.FI backend. The venue's results are what the
-   * caller gets; the backend `executeAction` submission that follows is
-   * bookkeeping only, sent with `headers` stripped.
-   */
-  private async executeAuthTokenActions(
-    provider: string,
-    address: Address,
-    signerAddress: Address,
-    action: ActionType,
-    signedActions: SignedActionStep[]
-  ): Promise<ExecuteActionResponse> {
-    const plugin = this.requireProvider(provider)
-    if (typeof plugin.executeRestCallActions !== 'function') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider '${provider}' does not implement executeRestCallActions ` +
-          `for signingMethod 'authToken'.`
-      )
-    }
-
-    const restCallSteps = signedActions.map(
-      (step): RestCallSignedActionStep => {
-        if (!('request' in step) || !('headers' in step)) {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            `Provider '${provider}' signed action '${step.action}' with a ` +
-              `non-rest-call step for signingMethod 'authToken'.`
-          )
-        }
-        return step
-      }
-    )
-
-    const results = await plugin.executeRestCallActions(restCallSteps, address)
-
-    try {
-      await executeAction(this.sdkClient, {
-        provider,
-        address,
-        signerAddress,
-        action,
-        actions: restCallSteps.map((step) => ({
-          action: step.action,
-          request: step.request,
-          headers: {},
-        })),
-      })
-    } catch (error) {
-      // The venue call already succeeded above — a failed bookkeeping
-      // submission must not mask a landed order, so it is logged, not thrown.
-      clientLog.bookkeepingFailure(provider, error)
-    }
-
-    return { results }
   }
 }

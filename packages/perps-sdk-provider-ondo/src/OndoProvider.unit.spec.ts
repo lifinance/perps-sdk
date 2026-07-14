@@ -5,9 +5,10 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
+  ApiKeyRestActionStep,
+  ApiKeyRestSignedActionStep,
   Position,
   ProviderAction,
-  RestCallActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -25,9 +26,11 @@ import {
   SigningMethod,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { hmacSignRequest } from './auth/hmac.js'
+import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoProvider } from './OndoProvider.js'
-import type { OndoAuthToken } from './types/auth.js'
+import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
   OndoBalanceSummary,
   OndoFill,
@@ -61,6 +64,14 @@ const AUTH_TOKEN: OndoAuthToken = {
   expirationSecs: AUTH_TOKEN_EXPIRY,
   token: 'ondo-jwt-token',
   newAccount: false,
+}
+
+const API_KEY: OndoApiKey = {
+  keyId: 'key-1',
+  apiSecret: 'super-secret',
+  name: 'lifi-perps',
+  createdAt: '2026-07-14T00:00:00.000Z',
+  scopes: ['trade'],
 }
 
 const MARKETS_RESPONSE = {
@@ -868,7 +879,7 @@ describe('OndoProvider — projectConfig', () => {
   const REFERRAL_DESCRIPTOR: ProviderAction = {
     type: ActionType.SET_REFERRAL,
     signers: [PerpsSigner.USER],
-    signingMethod: SigningMethod.AUTH_TOKEN,
+    signingMethod: SigningMethod.API_KEY,
   }
 
   it('projects SIWE_LOGIN with the session expiry when logged in', () => {
@@ -970,52 +981,56 @@ describe('OndoProvider — projectConfig', () => {
 })
 
 describe('OndoProvider — write-action surface', () => {
-  const PLACE_ORDER_STEP: RestCallActionStep = {
+  const PLACE_ORDER_STEP: ApiKeyRestActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
       path: '/v1/perps/orders',
-      body: { market: 'AAPL-USD.P', side: 'buy', size: '1', type: 'market' },
+      body: '{"market":"AAPL-USD.P","side":"buy","size":"1","type":"market"}',
     },
   }
 
-  it('signActions(AUTH_TOKEN) attaches the stored session JWT', async () => {
-    const { provider } = await loggedInProvider()
-    const signed = await provider.signActions?.(
-      SigningMethod.AUTH_TOKEN,
+  it('signActions(API_KEY) HMAC-signs each step with the stored API key', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+
+    const signed = (await provider.signActions?.(
+      SigningMethod.API_KEY,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )
-    expect(signed).toEqual([
-      {
-        action: ActionType.PLACE_ORDER,
-        request: PLACE_ORDER_STEP.request,
-        headers: { Authorization: 'Bearer ondo-jwt-token' },
-      },
-    ])
+    )) as ApiKeyRestSignedActionStep[]
+
+    const [step] = signed
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+    expect(step.request).toEqual(PLACE_ORDER_STEP.request)
+    expect(step.headers['ONDO-KEY-ID']).toBe(API_KEY.keyId)
+
+    const timestampMs = Number(step.headers['ONDO-TIMESTAMP'])
+    const expected = await hmacSignRequest(API_KEY.apiSecret, {
+      timestampMs,
+      method: PLACE_ORDER_STEP.request.method,
+      pathWithQuery: PLACE_ORDER_STEP.request.path,
+      body: PLACE_ORDER_STEP.request.body,
+    })
+    expect(step.headers['ONDO-SIGN']).toBe(expected)
+    // The API secret never appears in the outgoing headers — only the signature.
+    expect(JSON.stringify(step.headers)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('executeRestCallActions executes against the venue and reports results', async () => {
+  it('signActions(API_KEY) mints a key on first use, JWT-authorized', async () => {
     const { provider } = await loggedInProvider()
-    const results = await provider.executeRestCallActions?.(
-      [
-        {
-          action: ActionType.PLACE_ORDER,
-          request: PLACE_ORDER_STEP.request,
-          headers: { Authorization: 'Bearer ondo-jwt-token' },
-        },
-      ],
-      ADDRESS
-    )
-    expect(results?.[0]).toMatchObject({
-      action: ActionType.PLACE_ORDER,
-      success: true,
+    fetchMock.mockImplementationOnce(async (url: string | URL) => {
+      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+      return respond(envelope(API_KEY))
     })
-    const call = recorded.find(
-      (r) => r.url === `${API_URL}/v1/perps/orders` && r.init?.method === 'POST'
-    )
-    expect(call).toBeDefined()
-    expect(authHeaderOf(call as Recorded)).toBe('Bearer ondo-jwt-token')
+
+    const signed = (await provider.signActions?.(
+      SigningMethod.API_KEY,
+      [PLACE_ORDER_STEP],
+      ADDRESS
+    )) as ApiKeyRestSignedActionStep[]
+
+    expect(signed[0].headers['ONDO-KEY-ID']).toBe(API_KEY.keyId)
   })
 })
 

@@ -26,9 +26,9 @@ describe('PerpsErrorCode.Unauthorized', () => {
   })
 })
 
-describe('SigningMethod auth-token members', () => {
-  it('AUTH_TOKEN carries wire value "authToken"', () => {
-    expect(SigningMethod.AUTH_TOKEN).toBe('authToken')
+describe('SigningMethod credential members', () => {
+  it('API_KEY carries wire value "apiKey"', () => {
+    expect(SigningMethod.API_KEY).toBe('apiKey')
   })
 
   it('SIWE carries wire value "siwe"', () => {
