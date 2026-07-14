@@ -121,6 +121,8 @@ export enum ActionType {
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
+  /** Provider-level (venue) terms acceptance, executed client-side with the provider session credential. Distinct from `META_ACCEPT_TERMS`, which covers LI.FI's own app-wide terms. */
+  ACCEPT_PROVIDER_TERMS = 'acceptProviderTerms',
   DEPOSIT = 'deposit',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_VOTE = 'metaVote',
@@ -212,4 +214,6 @@ export enum SigningMethod {
   HMAC = 'hmac',
   /** ERC-4361 `personal_sign` over a backend-built login challenge. */
   SIWE = 'siwe',
+  /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
+  SESSION = 'session',
 }

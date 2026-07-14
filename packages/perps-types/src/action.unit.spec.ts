@@ -10,12 +10,19 @@ import type {
   HmacActionStep,
   HmacSignedActionStep,
   PlaceOrderParams,
+  SessionActionStep,
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
   UpdateLeverageParams,
 } from './action.js'
-import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
+import {
+  ActionType,
+  MarginMode,
+  OrderSide,
+  OrderType,
+  PerpsErrorCode,
+} from './enums.js'
 
 // Locks in that `marginMode` is optional on `PlaceOrderParams` /
 // `UpdateLeverageParams` and accepts both `MarginMode.CROSS` and
@@ -154,6 +161,27 @@ describe('ActionResult', () => {
     }
   })
 
+  it('accepts an optional structured errorCode on the failure variant only', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'API key not found',
+      errorCode: PerpsErrorCode.Unauthorized,
+    }
+
+    if (!result.success) {
+      expect(result.errorCode).toBe(PerpsErrorCode.Unauthorized)
+    }
+
+    const success: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: true,
+      // @ts-expect-error — `errorCode` is not present on the success variant
+      errorCode: PerpsErrorCode.Unauthorized,
+    }
+    expect(success.action).toBe(ActionType.PLACE_ORDER)
+  })
+
   it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
     const results: ActionResult[] = [
       {
@@ -284,6 +312,37 @@ describe('Hmac steps', () => {
     }
 
     expect(missingHmac.action).toBe(ActionType.PLACE_ORDER)
+  })
+})
+
+describe('Session steps', () => {
+  const marker: SessionActionStep = {
+    action: ActionType.ACCEPT_PROVIDER_TERMS,
+    session: {},
+  }
+
+  it('carries no request material — the SDK authors the venue call itself', () => {
+    const withRequest: SessionActionStep = {
+      action: ActionType.ACCEPT_PROVIDER_TERMS,
+      // @ts-expect-error — session is an empty marker, never a request payload
+      session: { path: '/v1/agreement' },
+    }
+
+    expect(withRequest.action).toBe(ActionType.ACCEPT_PROVIDER_TERMS)
+    expect(marker.session).toEqual({})
+  })
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = marker
+
+    expect(step.action).toBe(ActionType.ACCEPT_PROVIDER_TERMS)
+  })
+
+  it('is wired through ActionParamsMap on ACCEPT_PROVIDER_TERMS with empty params', () => {
+    type Resolved = ActionParamsMap[ActionType.ACCEPT_PROVIDER_TERMS]
+    const params: Resolved = {}
+
+    expect(params).toEqual({})
   })
 })
 

@@ -404,7 +404,13 @@ describe('OndoProvider — logged-out degrade paths', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: false, referralSet: false },
+      config: {
+        provider: 'ondo',
+        loggedIn: false,
+        termsAccepted: false,
+        apiKeyRegistered: false,
+        referralSet: false,
+      },
     })
     expect(recorded).toHaveLength(0)
   })
@@ -469,6 +475,8 @@ describe('OndoProvider — getAccount (logged in)', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: AUTH_TOKEN_EXPIRY,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: true,
     })
     expect(account.positions).toEqual([
@@ -504,7 +512,43 @@ describe('OndoProvider — getAccount (logged in)', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: AUTH_TOKEN_EXPIRY,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: false,
+    })
+  })
+
+  it('reports apiKeyRegistered from local key presence, logged in or out', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+
+    const loggedIn = await provider.getAccount({ address: ADDRESS })
+    expect(loggedIn.config).toMatchObject({ apiKeyRegistered: true })
+
+    const keyOnlyStorage = createMemoryStorage()
+    await new OndoApiKeyStore(keyOnlyStorage, API_URL).set(ADDRESS, API_KEY)
+    const loggedOut = ondoProvider({ apiUrl: API_URL, storage: keyOnlyStorage })
+    loggedOut.bind(STUB_CLIENT)
+    const account = await loggedOut.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: false,
+      apiKeyRegistered: true,
+    })
+  })
+
+  it('reports termsAccepted: false while the session token still carries newAccount', async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, {
+      ...AUTH_TOKEN,
+      newAccount: true,
+    })
+    const provider = ondoProvider({ apiUrl: API_URL, storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: true,
+      termsAccepted: false,
     })
   })
 
@@ -528,7 +572,13 @@ describe('OndoProvider — getAccount (logged in)', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: false, referralSet: false },
+      config: {
+        provider: 'ondo',
+        loggedIn: false,
+        termsAccepted: false,
+        apiKeyRegistered: false,
+        referralSet: false,
+      },
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
@@ -844,7 +894,13 @@ describe('OndoProvider — getAccountSummary', () => {
       marginUsed: '401',
       unrealizedPnl: '15.5',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: true, referralSet: true } as const,
+      config: {
+        provider: 'ondo',
+        loggedIn: true,
+        termsAccepted: true,
+        apiKeyRegistered: true,
+        referralSet: true,
+      } as const,
     } satisfies AccountResponse
     const positions: Position[] = [
       {
@@ -881,6 +937,24 @@ describe('OndoProvider — projectConfig', () => {
     signers: [PerpsSigner.USER],
     signingMethod: SigningMethod.HMAC,
   }
+  const TERMS_DESCRIPTOR: ProviderAction = {
+    type: ActionType.ACCEPT_PROVIDER_TERMS,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+  const REGISTER_KEY_DESCRIPTOR: ProviderAction = {
+    type: ActionType.REGISTER_API_KEY,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+
+  const loggedOutConfig = {
+    provider: 'ondo',
+    loggedIn: false,
+    termsAccepted: false,
+    apiKeyRegistered: false,
+    referralSet: false,
+  } as const
 
   it('projects SIWE_LOGIN with the session expiry when logged in', () => {
     const provider = ondoProvider()
@@ -890,6 +964,8 @@ describe('OndoProvider — projectConfig', () => {
           provider: 'ondo',
           loggedIn: true,
           authTokenExpiry: AUTH_TOKEN_EXPIRY,
+          termsAccepted: true,
+          apiKeyRegistered: false,
           referralSet: false,
         },
         [SIWE_DESCRIPTOR],
@@ -907,17 +983,49 @@ describe('OndoProvider — projectConfig', () => {
   it('projects SIWE_LOGIN as unsatisfied with a null expiry when logged out', () => {
     const provider = ondoProvider()
     expect(
-      provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
-        [SIWE_DESCRIPTOR],
-        []
-      )
+      provider.projectConfig(loggedOutConfig, [SIWE_DESCRIPTOR], [])
     ).toEqual([
       {
         type: ActionType.SIWE_LOGIN,
         values: [{ name: 'authTokenExpiry', value: null }],
         satisfied: false,
       },
+    ])
+  })
+
+  it('projects ACCEPT_PROVIDER_TERMS satisfaction from termsAccepted', () => {
+    const provider = ondoProvider()
+    expect(
+      provider.projectConfig(
+        { ...loggedOutConfig, loggedIn: true, termsAccepted: true },
+        [TERMS_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: true },
+    ])
+    expect(
+      provider.projectConfig(loggedOutConfig, [TERMS_DESCRIPTOR], [])
+    ).toEqual([
+      { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: false },
+    ])
+  })
+
+  it('projects REGISTER_API_KEY satisfaction from apiKeyRegistered', () => {
+    const provider = ondoProvider()
+    expect(
+      provider.projectConfig(
+        { ...loggedOutConfig, apiKeyRegistered: true },
+        [REGISTER_KEY_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
+    ])
+    expect(
+      provider.projectConfig(loggedOutConfig, [REGISTER_KEY_DESCRIPTOR], [])
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
     ])
   })
 
@@ -929,6 +1037,8 @@ describe('OndoProvider — projectConfig', () => {
           provider: 'ondo',
           loggedIn: true,
           authTokenExpiry: AUTH_TOKEN_EXPIRY,
+          termsAccepted: true,
+          apiKeyRegistered: true,
           referralSet: true,
         },
         [SIWE_DESCRIPTOR, REFERRAL_DESCRIPTOR],
@@ -947,11 +1057,7 @@ describe('OndoProvider — projectConfig', () => {
       },
     ])
     expect(
-      provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
-        [REFERRAL_DESCRIPTOR],
-        []
-      )
+      provider.projectConfig(loggedOutConfig, [REFERRAL_DESCRIPTOR], [])
     ).toEqual([
       {
         type: ActionType.SET_REFERRAL,
@@ -972,7 +1078,7 @@ describe('OndoProvider — projectConfig', () => {
     ).toThrowError(PerpsError)
     expect(() =>
       provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
+        loggedOutConfig,
         [{ ...SIWE_DESCRIPTOR, type: ActionType.PLACE_ORDER }],
         []
       )
@@ -1031,6 +1137,44 @@ describe('OndoProvider — write-action surface', () => {
     )) as HmacSignedActionStep[]
 
     expect(signed[0].hmac.keyId).toBe(API_KEY.keyId)
+  })
+})
+
+describe('OndoProvider — onExecuteResults key eviction', () => {
+  it('evicts the stored API key when a result fails with Unauthorized', async () => {
+    const { provider, storage } = await loggedInProvider()
+    const keyStore = new OndoApiKeyStore(storage, API_URL)
+    await keyStore.set(ADDRESS, API_KEY)
+
+    await provider.onExecuteResults?.(ADDRESS, [
+      {
+        action: ActionType.PLACE_ORDER,
+        success: false,
+        error: 'API key not found',
+        errorCode: PerpsErrorCode.Unauthorized,
+      },
+    ])
+
+    await expect(keyStore.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('keeps the stored API key on success and on non-Unauthorized failures', async () => {
+    const { provider, storage } = await loggedInProvider()
+    const keyStore = new OndoApiKeyStore(storage, API_URL)
+    await keyStore.set(ADDRESS, API_KEY)
+
+    await provider.onExecuteResults?.(ADDRESS, [
+      { action: ActionType.PLACE_ORDER, success: true },
+      {
+        action: ActionType.PLACE_ORDER,
+        success: false,
+        error: 'insufficient margin',
+        errorCode: PerpsErrorCode.InsufficientMargin,
+      },
+      { action: ActionType.PLACE_ORDER, success: false, error: 'opaque' },
+    ])
+
+    await expect(keyStore.get(ADDRESS)).resolves.toEqual(API_KEY)
   })
 })
 

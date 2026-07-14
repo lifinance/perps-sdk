@@ -691,6 +691,37 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('invokes the plugin onExecuteResults hook with the failing results before throwing', async () => {
+      const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const onExecuteResults = vi.fn(async () => {})
+      ;(hookedProvider as any).onExecuteResults = onExecuteResults
+      const hookedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [hookedProvider],
+      })
+      await hookedProvider.createAgent(userAddress)
+      failExecuteAction('venue says no')
+
+      await expect(
+        (hookedClient as any).executeProviderSetup({
+          provider: 'hyperliquid',
+          address: userAddress,
+          ...userSetup(ActionType.APPROVE_AGENT),
+        })
+      ).rejects.toMatchObject({ message: 'venue says no' })
+
+      expect(onExecuteResults).toHaveBeenCalledTimes(1)
+      expect(onExecuteResults.mock.calls[0][0]).toBe(userAddress)
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
+        {
+          action: ActionType.APPROVE_AGENT,
+          success: false,
+          error: 'venue says no',
+        },
+      ])
+    })
+
     it('resolves normally when the mandatory setup action succeeds', async () => {
       await agentProvider.createAgent(userAddress)
       server.use(
@@ -1634,6 +1665,30 @@ describe('PerpsClient', () => {
       const [step] = executeRequests[0].actions as HmacSignedActionStep[]
       expect(step.hmac.signature).toBe('abc123def456')
       expect(step.hmac.keyId).toBe('key-1')
+    })
+
+    it('invokes the plugin onExecuteResults hook with the backend results', async () => {
+      const ondo = createHmacProvider()
+      const onExecuteResults = vi.fn(async () => {})
+      ;(ondo as any).onExecuteResults = onExecuteResults
+      useOndoHandlers()
+
+      await createOndoClient(ondo).execute({
+        provider: 'ondo',
+        address: ondoAddress,
+        action: ActionType.PLACE_ORDER,
+        params: orderParams,
+      })
+
+      expect(onExecuteResults).toHaveBeenCalledTimes(1)
+      expect(onExecuteResults.mock.calls[0][0]).toBe(ondoAddress)
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
+        {
+          action: ActionType.PLACE_ORDER,
+          success: true,
+          orderId: 'backend-echo',
+        },
+      ])
     })
   })
 

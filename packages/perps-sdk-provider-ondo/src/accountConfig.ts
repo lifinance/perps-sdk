@@ -15,8 +15,10 @@ function assertNever(value: never): never {
 
 /**
  * Project a single Ondo descriptor against the typed `OndoAccountConfig`
- * into an `AccountConfigSetting`. Ondo has two setup descriptors:
- * `SIWE_LOGIN`, satisfied by the presence of a live session token, and
+ * into an `AccountConfigSetting`. Ondo has four setup descriptors:
+ * `SIWE_LOGIN`, satisfied by the presence of a live session token;
+ * `ACCEPT_PROVIDER_TERMS`, satisfied once the venue terms are accepted;
+ * `REGISTER_API_KEY`, satisfied by a locally stored venue API key; and
  * `SET_REFERRAL`, satisfied when a referral code is already applied to the
  * account.
  *
@@ -36,6 +38,20 @@ function projectOndoDescriptor(
           { name: 'authTokenExpiry', value: config.authTokenExpiry ?? null },
         ],
         satisfied: config.loggedIn,
+      }
+
+    case ActionType.ACCEPT_PROVIDER_TERMS:
+      return {
+        type: descriptor.type,
+        values: [],
+        satisfied: config.termsAccepted,
+      }
+
+    case ActionType.REGISTER_API_KEY:
+      return {
+        type: descriptor.type,
+        values: [],
+        satisfied: config.apiKeyRegistered,
       }
 
     case ActionType.SET_REFERRAL:
@@ -61,7 +77,6 @@ function projectOndoDescriptor(
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:
     case ActionType.UPDATE_ASSET_COLLATERAL:
-    case ActionType.REGISTER_API_KEY:
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.DEPOSIT:
     case ActionType.META_VOTE:
