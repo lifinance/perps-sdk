@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 2.3.2
+
+### Patch Changes
+
+- [#236](https://github.com/lifinance/perps-sdk/pull/236) [`f56c36e`](https://github.com/lifinance/perps-sdk/commit/f56c36e6e80edf305d05b7e09540d9a329af9b88) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a release changeset so the Ondo provider cache-sync fix branch triggers versioning and publish workflows.
+
 ## 2.3.1
 
 ### Patch Changes
