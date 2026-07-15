@@ -10,6 +10,19 @@ export interface OndoPageInfo {
   nextCursor?: string
 }
 
+/**
+ * `POST /v1/api_keys` result. The HMAC key is revealed only at creation and
+ * arrives as `secretKey`; the boundary maps it to the stored `OndoApiKey`
+ * domain record's `apiSecret`. @public
+ */
+export interface OndoCreatedApiKey {
+  keyId: string
+  name: string
+  createdAt: string
+  scopes: string[]
+  secretKey: string
+}
+
 /** @public */
 export type OndoPositionDirection = 'long' | 'short' | 'neutral'
 

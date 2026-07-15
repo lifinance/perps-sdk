@@ -12,7 +12,12 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import type { OndoApiKey, OndoAuthToken } from '../types/auth.js'
-import { OndoApiClient, OndoSessionExpiredError } from '../utils/apiClient.js'
+import type { OndoCreatedApiKey } from '../types/wire.js'
+import {
+  OndoApiClient,
+  OndoApiError,
+  OndoSessionExpiredError,
+} from '../utils/apiClient.js'
 import { hmacSignRequest } from './hmac.js'
 import { OndoApiKeyStore } from './OndoApiKeyStore.js'
 import { OndoTokenStore } from './OndoTokenStore.js'
@@ -48,6 +53,19 @@ const apiKeyFixture = (overrides?: Partial<OndoApiKey>): OndoApiKey => ({
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
   scopes: ['trade'],
+  ...overrides,
+})
+
+// The real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`,
+// not `apiSecret`. Captured live 2026-07-15.
+const createdApiKeyFixture = (
+  overrides?: Partial<OndoCreatedApiKey>
+): OndoCreatedApiKey => ({
+  keyId: 'ondoKeyId_abc',
+  name: 'lifi-perps',
+  createdAt: '2026-07-15T12:31:55.781433839Z',
+  scopes: ['trade'],
+  secretKey: 'ondoApiSecret_xyz',
   ...overrides,
 })
 
@@ -216,11 +234,11 @@ describe('ondoSignActions — HMAC', () => {
     expect(step.hmac.signature).toBe(expected)
   })
 
-  it('mints an API key on first use, JWT-authorized, and stores it immediately', async () => {
-    const minted = apiKeyFixture({ keyId: 'minted-key' })
+  it('creates an API key on first use, JWT-authorized, and stores it immediately', async () => {
+    const created = createdApiKeyFixture({ keyId: 'created-key' })
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ success: true, result: minted }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
@@ -242,12 +260,18 @@ describe('ondoSignActions — HMAC', () => {
       'Bearer ondo-jwt-token'
     )
 
-    expect(signed[0].hmac.keyId).toBe('minted-key')
-    // The secret returned only at creation is persisted immediately.
-    await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual(minted)
+    expect(signed[0].hmac.keyId).toBe('created-key')
+    // The secret returned only at creation is mapped and persisted immediately.
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual({
+      keyId: 'created-key',
+      apiSecret: created.secretKey,
+      name: created.name,
+      createdAt: created.createdAt,
+      scopes: created.scopes,
+    })
   })
 
-  it('reuses the stored API key without minting a new one', async () => {
+  it('reuses the stored API key without creating a new one', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
     const deps = makeDeps(fetchImpl)
     await deps.apiKeyStore.set(account.address, apiKeyFixture())
@@ -262,7 +286,7 @@ describe('ondoSignActions — HMAC', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('throws OndoSessionExpiredError when minting is required but no session token is stored', async () => {
+  it('throws OndoSessionExpiredError when key creation is required but no session token is stored', async () => {
     const deps = makeDeps(vi.fn<typeof fetch>())
 
     await expect(
@@ -282,6 +306,82 @@ describe('ondoSignActions — HMAC', () => {
     await expect(
       ondoSignActions(deps, SigningMethod.HMAC, [SIWE_STEP], account.address)
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+  })
+})
+
+describe('ondoSignActions — API key wire mapping', () => {
+  it('maps the venue secretKey wire field into a usable stored apiSecret that round-trips into HMAC signing', async () => {
+    const created = createdApiKeyFixture()
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    const stored = await deps.apiKeyStore.get(account.address)
+    expect(stored).not.toBeNull()
+    expect(stored?.apiSecret).toBe(created.secretKey)
+
+    const signature = await hmacSignRequest(stored!.apiSecret, {
+      timestampMs: 1,
+      method: 'POST',
+      pathWithQuery: '/v1/perps/orders',
+      body: '{}',
+    })
+    expect(signature).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('signs with the mapped secret, not undefined', async () => {
+    const created = createdApiKeyFixture()
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const signed = (await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )) as HmacSignedActionStep[]
+
+    const { timestampMs } = signed[0].hmac
+    const expected = await hmacSignRequest(created.secretKey, {
+      timestampMs,
+      method: PLACE_ORDER_STEP.request.method,
+      pathWithQuery: PLACE_ORDER_STEP.request.path,
+      body: PLACE_ORDER_STEP.request.body,
+    })
+    expect(signed[0].hmac.signature).toBe(expected)
+  })
+
+  it('throws loudly and persists nothing when the api_keys result carries no usable secret (future wire drift)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        result: { keyId: 'k', name: 'lifi-perps', createdAt: 'x', scopes: [] },
+      })
+    )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toBeInstanceOf(OndoApiError)
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toBeNull()
   })
 })
 
@@ -335,10 +435,10 @@ describe('ondoSignActions — SESSION', () => {
   })
 
   it('creates and stores an API key for the register step when none is stored', async () => {
-    const minted = apiKeyFixture({ keyId: 'minted-key' })
+    const created = createdApiKeyFixture({ keyId: 'created-key' })
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ success: true, result: minted }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
@@ -355,7 +455,13 @@ describe('ondoSignActions — SESSION', () => {
     expect(new Headers(init.headers).get('authorization')).toBe(
       'Bearer ondo-jwt-token'
     )
-    await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual(minted)
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual({
+      keyId: 'created-key',
+      apiSecret: created.secretKey,
+      name: created.name,
+      createdAt: created.createdAt,
+      scopes: created.scopes,
+    })
   })
 
   it('is a no-op for the register step when a key is already stored', async () => {

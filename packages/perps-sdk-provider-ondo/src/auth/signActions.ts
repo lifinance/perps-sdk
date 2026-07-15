@@ -15,13 +15,15 @@ import {
   ONDO_TERMS_VERSION,
 } from '../constants.js'
 import type { OndoApiKey } from '../types/auth.js'
+import type { OndoCreatedApiKey } from '../types/wire.js'
 import {
   type OndoApiClient,
+  OndoApiError,
   OndoSessionExpiredError,
 } from '../utils/apiClient.js'
 import { completeSiweLogin } from './completeSiweLogin.js'
 import { hmacSignRequest } from './hmac.js'
-import type { OndoApiKeyStore } from './OndoApiKeyStore.js'
+import { isOndoApiKey, type OndoApiKeyStore } from './OndoApiKeyStore.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 
 /** @internal */
@@ -41,10 +43,34 @@ const hasRequest = (
 ): step is Extract<ActionStep, { request: unknown }> => 'request' in step
 
 /**
- * Fetch the stored trading API key, minting one on first use. Minting is
+ * Map the `POST /v1/api_keys` wire result to the stored domain record. The
+ * venue reveals the HMAC secret as `secretKey`; the store keeps it as
+ * `apiSecret`. Throws {@link OndoApiError} if the mapped record is unusable, so
+ * a future wire drift fails loudly at creation instead of persisting a record
+ * that reads back as evicted.
+ */
+function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
+  const record: OndoApiKey = {
+    keyId: created.keyId,
+    apiSecret: created.secretKey,
+    name: created.name,
+    createdAt: created.createdAt,
+    scopes: created.scopes,
+  }
+  if (!isOndoApiKey(record)) {
+    throw new OndoApiError(
+      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify(created).slice(0, 200)}`
+    )
+  }
+  return record
+}
+
+/**
+ * Fetch the stored trading API key, creating one on first use. Creation is
  * JWT-authorized (`POST /v1/api_keys`); the returned record — including the
- * `apiSecret` the venue reveals only once — is stored immediately. An absent
- * session throws {@link OndoSessionExpiredError} so callers re-run SIWE login.
+ * secret the venue reveals only once — is mapped to the domain shape and
+ * stored immediately. An absent session throws {@link OndoSessionExpiredError}
+ * so callers re-run SIWE login.
  */
 async function ensureApiKey(
   deps: OndoSignActionsDeps,
@@ -60,11 +86,12 @@ async function ensureApiKey(
       `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
     )
   }
-  const apiKey = await deps.client.post<OndoApiKey>(
+  const created = await deps.client.post<OndoCreatedApiKey>(
     '/v1/api_keys',
     { name: ONDO_API_KEY_NAME, scopes: ONDO_API_KEY_SCOPES },
     { authToken: token.token }
   )
+  const apiKey = toStoredApiKey(created)
   await deps.apiKeyStore.set(address, apiKey)
   return apiKey
 }
@@ -82,7 +109,7 @@ async function ensureApiKey(
  * `executeAction` is skipped.
  *
  * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
- * from the client-held API key (minting one on first use), attaching the
+ * from the client-held API key (creating one on first use), attaching the
  * `hmac` material. The signed step rides the normal `executeAction` path; the
  * API secret itself never leaves the client.
  *
