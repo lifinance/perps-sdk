@@ -333,9 +333,10 @@ export async function signEvmTxActions(
   }
 
   const switchToChain = ctx?.switchToChain
+  const onProgress = ctx?.onProgress
   const signed: EvmTxSignedActionStep[] = []
   let legSigner = walletSigner
-  for (const step of steps) {
+  for (const [index, step] of steps.entries()) {
     const params = step.txParams
 
     if (legSigner.chain?.id !== params.chainId && switchToChain) {
@@ -360,6 +361,15 @@ export async function signEvmTxActions(
       chain: legSigner.chain,
       account: legSigner.account,
     })
+    onProgress?.({
+      index,
+      total: steps.length,
+      action: step.action,
+      functionName: params.functionName,
+      chainId: params.chainId,
+      status: 'submitted',
+      txHash,
+    })
 
     const receipt = await waitForTransactionReceipt(legSigner, {
       hash: txHash,
@@ -371,6 +381,15 @@ export async function signEvmTxActions(
           'remaining legs.'
       )
     }
+    onProgress?.({
+      index,
+      total: steps.length,
+      action: step.action,
+      functionName: params.functionName,
+      chainId: params.chainId,
+      status: 'confirmed',
+      txHash,
+    })
 
     signed.push({
       action: step.action,

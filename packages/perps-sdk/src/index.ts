@@ -127,6 +127,7 @@ export type {
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
   QuoteListener,
+  SignActionProgress,
   SignActionsContext,
 } from './types/provider.js'
 export {
