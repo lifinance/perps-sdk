@@ -55,6 +55,27 @@ export interface PerpsSDKClient {
  *
  * @public
  */
+/**
+ * Progress for one on-chain leg of an `EVM_TX` batch (e.g. a native deposit's
+ * `approve` then `deposit`). Emitted twice per leg: `submitted` once the wallet
+ * broadcasts and the hash is known, then `confirmed` once the receipt mines. A
+ * consumer can render a live per-transaction stepper from these.
+ *
+ * @public
+ */
+export interface SignActionProgress {
+  /** 0-based index of this leg within the batch. */
+  index: number
+  /** Total legs in the batch. */
+  total: number
+  action: ActionType
+  /** Contract function the leg invokes, e.g. `"approve"` or the deposit method. */
+  functionName: string
+  chainId: number
+  status: 'submitted' | 'confirmed'
+  txHash: string
+}
+
 export interface SignActionsContext {
   userWallet?: PerpsClientSigner
   /**
@@ -75,6 +96,13 @@ export interface SignActionsContext {
    * absent (local/private-key signer, or no hook).
    */
   switchToChain?: (chainId: number) => Promise<PerpsClientSigner>
+  /**
+   * Optional progress sink for on-chain legs. A plugin whose legs broadcast
+   * transactions (Lighter's `EVM_TX`) calls it as each leg is submitted and
+   * confirmed, so a consumer can show a live per-transaction stepper. Bound by
+   * core from the `onProgress` passed to {@link PerpsClient.execute}.
+   */
+  onProgress?: (progress: SignActionProgress) => void
 }
 
 /**

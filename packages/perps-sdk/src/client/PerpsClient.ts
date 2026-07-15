@@ -39,6 +39,7 @@ import type {
   ActionSignerContribution,
   PerpsProvider,
   PerpsSDKClient,
+  SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
 import {
@@ -195,7 +196,8 @@ export class PerpsClient {
     provider: string,
     address: Address,
     descriptor: ProviderAction,
-    actions: ActionStep[]
+    actions: ActionStep[],
+    onProgress?: (progress: SignActionProgress) => void
   ): Promise<SignedActionStep[]> {
     const plugin = this.requireProvider(provider)
     if (typeof plugin.signActions !== 'function') {
@@ -210,7 +212,7 @@ export class PerpsClient {
       descriptor.signingMethod,
       actions,
       address,
-      this.buildSignActionsContext(descriptor, userWallet)
+      this.buildSignActionsContext(descriptor, userWallet, onProgress)
     )
   }
 
@@ -271,9 +273,13 @@ export class PerpsClient {
    */
   private buildSignActionsContext(
     descriptor: ProviderAction,
-    userWallet?: PerpsClientSigner
+    userWallet?: PerpsClientSigner,
+    onProgress?: (progress: SignActionProgress) => void
   ): SignActionsContext {
     const ctx: SignActionsContext = { signers: descriptor.signers }
+    if (onProgress !== undefined) {
+      ctx.onProgress = onProgress
+    }
     const wallet = userWallet ?? this.sdkClient.userWallet
     if (wallet !== undefined) {
       ctx.userWallet = wallet
@@ -818,8 +824,11 @@ export class PerpsClient {
     address: Address
     action: T
     params: ActionParamsMap[T]
+    /** Progress sink for on-chain legs (e.g. a native deposit's approve then
+     * deposit); called as each leg is submitted and confirmed. */
+    onProgress?: (progress: SignActionProgress) => void
   }): Promise<ExecuteActionResponse> {
-    const { provider, address, action } = params
+    const { provider, address, action, onProgress } = params
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = findActionDescriptor(metadata, action)
 
@@ -841,7 +850,8 @@ export class PerpsClient {
       provider,
       address,
       descriptor,
-      actions
+      actions,
+      onProgress
     )
 
     // A plugin may execute an action entirely client-side (e.g. Lighter's
