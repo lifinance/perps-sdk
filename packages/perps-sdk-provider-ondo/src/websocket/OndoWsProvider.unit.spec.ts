@@ -24,7 +24,6 @@ const validToken = (jwt = 'jwt-abc') => ({
   issuedAtSecs: Math.floor(Date.now() / 1000) - 60,
   expirationSecs: Math.floor(Date.now() / 1000) + 3600,
   token: jwt,
-  newAccount: false,
 })
 
 /** Storage pre-seeded with a valid production session for TEST_ADDR. */

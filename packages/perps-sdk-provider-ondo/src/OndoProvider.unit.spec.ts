@@ -63,7 +63,6 @@ const AUTH_TOKEN: OndoAuthToken = {
   issuedAtSecs: nowSecs() - 60,
   expirationSecs: AUTH_TOKEN_EXPIRY,
   token: 'ondo-jwt-token',
-  newAccount: false,
 }
 
 const API_KEY: OndoApiKey = {
@@ -265,6 +264,8 @@ let recorded: Recorded[] = []
 let fetchMock: ReturnType<typeof vi.fn>
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
 let referralResult: { code: string; rebate?: number } | null
+/** `GET /v1/account` result; its versions drive `termsAccepted`. */
+let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -277,6 +278,7 @@ const envelope = <T>(result: T) => ({ success: true, result })
 beforeEach(() => {
   recorded = []
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
+  accountInfoResult = { ...ACCOUNT_INFO_RESULT }
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -318,11 +320,23 @@ beforeEach(() => {
         result: [LIQUIDATION_RESULT],
       })
     }
+    if (u.includes('/v1/agreement')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        termsVersion: number
+        privacyVersion: number
+      }
+      accountInfoResult = {
+        ...accountInfoResult,
+        termsVersion: body.termsVersion,
+        privacyVersion: body.privacyVersion,
+      }
+      return respond(envelope({}))
+    }
     if (u.includes('/v1/account/referral')) {
       return respond(envelope(referralResult))
     }
     if (u.includes('/v1/account')) {
-      return respond(envelope(ACCOUNT_INFO_RESULT))
+      return respond(envelope(accountInfoResult))
     }
     throw new Error(`Unhandled URL in test: ${u}`)
   })
@@ -502,6 +516,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(
       venueCalls.some((r) => r.url === `${API_URL}/v1/account/referral`)
     ).toBe(true)
+    expect(venueCalls.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
   })
 
   it('reports referralSet: false when no referral is applied to the account', async () => {
@@ -536,20 +551,47 @@ describe('OndoProvider — getAccount (logged in)', () => {
     })
   })
 
-  it('reports termsAccepted: false while the session token still carries newAccount', async () => {
-    const storage = createMemoryStorage()
-    await new OndoTokenStore(storage, API_URL).set(ADDRESS, {
-      ...AUTH_TOKEN,
-      newAccount: true,
-    })
-    const provider = ondoProvider({ apiUrl: API_URL, storage })
-    provider.bind(STUB_CLIENT)
+  it('reports termsAccepted: false when the account terms version is stale', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, termsVersion: 2 }
+    const { provider } = await loggedInProvider()
 
     const account = await provider.getAccount({ address: ADDRESS })
     expect(account.config).toMatchObject({
       loggedIn: true,
       termsAccepted: false,
     })
+  })
+
+  it('reports termsAccepted: false when the account privacy version is stale', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, privacyVersion: 2 }
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: true,
+      termsAccepted: false,
+    })
+  })
+
+  it('reflects acceptance after the agreement POST, without re-login', async () => {
+    accountInfoResult = {
+      ...ACCOUNT_INFO_RESULT,
+      termsVersion: 2,
+      privacyVersion: 2,
+    }
+    const { provider } = await loggedInProvider()
+
+    const before = await provider.getAccount({ address: ADDRESS })
+    expect(before.config).toMatchObject({ termsAccepted: false })
+
+    await provider.signActions?.(
+      SigningMethod.SESSION,
+      [{ action: ActionType.ACCEPT_PROVIDER_TERMS, session: {} }],
+      ADDRESS
+    )
+
+    const after = await provider.getAccount({ address: ADDRESS })
+    expect(after.config).toMatchObject({ termsAccepted: true })
   })
 
   it('evicts the stored token and returns the logged-out snapshot when the venue rejects it', async () => {

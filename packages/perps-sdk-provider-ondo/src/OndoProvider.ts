@@ -50,10 +50,13 @@ import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
   ONDO_BASE_FEE_TIER,
+  ONDO_PRIVACY_VERSION,
   ONDO_PROVIDER_KEY,
+  ONDO_TERMS_VERSION,
 } from './constants.js'
 import type { OndoAuthToken } from './types/auth.js'
 import type {
+  OndoAccountInfo,
   OndoAccountReferral,
   OndoBalanceSummary,
   OndoFill,
@@ -227,7 +230,7 @@ export const ondoProvider = (
         },
         async (token) => {
           const client = apiClient(opts)
-          const [balance, rawPositions, referral] = await Promise.all([
+          const [balance, rawPositions, referral, account] = await Promise.all([
             client.get<OndoBalanceSummary>('/v1/perps/balance', {
               authToken: token.token,
             }),
@@ -235,6 +238,9 @@ export const ondoProvider = (
               authToken: token.token,
             }),
             client.get<OndoAccountReferral | null>('/v1/account/referral', {
+              authToken: token.token,
+            }),
+            client.get<OndoAccountInfo>('/v1/account', {
               authToken: token.token,
             }),
             marketRegistry().sync(),
@@ -267,7 +273,9 @@ export const ondoProvider = (
               provider: ONDO_PROVIDER_KEY,
               loggedIn: true,
               authTokenExpiry: token.expirationSecs,
-              termsAccepted: !token.newAccount,
+              termsAccepted:
+                account.termsVersion === ONDO_TERMS_VERSION &&
+                account.privacyVersion === ONDO_PRIVACY_VERSION,
               apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
             },
