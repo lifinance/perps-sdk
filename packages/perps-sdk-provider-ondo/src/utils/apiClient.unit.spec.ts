@@ -17,7 +17,6 @@ const AUTH_TOKEN_FIXTURE: OndoAuthToken = {
   issuedAtSecs: 1_750_000_000,
   expirationSecs: 1_750_086_400,
   token: 'ondo-jwt-token',
-  newAccount: false,
 }
 
 const jsonResponse = (body: unknown, status = 200): Response =>

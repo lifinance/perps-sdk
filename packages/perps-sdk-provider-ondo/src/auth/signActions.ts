@@ -206,12 +206,6 @@ export async function ondoSignActions(
               },
               { authToken: token.token }
             )
-            if (token.newAccount) {
-              await deps.tokenStore.set(address, {
-                ...token,
-                newAccount: false,
-              })
-            }
             break
           }
           case ActionType.REGISTER_API_KEY:

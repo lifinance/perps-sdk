@@ -27,8 +27,6 @@ export interface OndoAuthToken {
   /** Absolute unix timestamp (seconds) — not a duration. */
   expirationSecs: number
   token: string
-  /** True when this login created the Ondo account. */
-  newAccount: boolean
 }
 
 /**

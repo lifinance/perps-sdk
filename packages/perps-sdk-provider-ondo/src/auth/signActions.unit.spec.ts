@@ -43,7 +43,6 @@ const tokenFixture = (overrides?: Partial<OndoAuthToken>): OndoAuthToken => ({
   issuedAtSecs: nowSecs() - 60,
   expirationSecs: nowSecs() + 3600,
   token: 'ondo-jwt-token',
-  newAccount: false,
   ...overrides,
 })
 
@@ -148,13 +147,11 @@ describe('ondoSignActions — SIWE', () => {
     await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
-  it('performs only the login call even on a first login — terms are a separate step', async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        result: tokenFixture({ newAccount: true }),
-      })
-    )
+  it('performs only the login call — terms are a separate step', async () => {
+    const token = tokenFixture()
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: token }))
     const deps = makeDeps(fetchImpl)
 
     await ondoSignActions(
@@ -166,9 +163,7 @@ describe('ondoSignActions — SIWE', () => {
     )
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    await expect(deps.tokenStore.get(account.address)).resolves.toMatchObject({
-      newAccount: true,
-    })
+    await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
   it('throws SDKError when no user wallet is available', async () => {
@@ -386,15 +381,13 @@ describe('ondoSignActions — API key wire mapping', () => {
 })
 
 describe('ondoSignActions — SESSION', () => {
-  it('accepts the venue terms with the session token, flips the stored token, and returns no signed steps', async () => {
+  it('accepts the venue terms with the session token and returns no signed steps', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
     const deps = makeDeps(fetchImpl)
-    await deps.tokenStore.set(
-      account.address,
-      tokenFixture({ newAccount: true })
-    )
+    const token = tokenFixture()
+    await deps.tokenStore.set(account.address, token)
 
     const signed = await ondoSignActions(
       deps,
@@ -414,9 +407,8 @@ describe('ondoSignActions — SESSION', () => {
     expect(new Headers(init.headers).get('authorization')).toBe(
       'Bearer ondo-jwt-token'
     )
-    await expect(deps.tokenStore.get(account.address)).resolves.toMatchObject({
-      newAccount: false,
-    })
+    // Acceptance is recorded server-side; the stored token is left untouched.
+    await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
   it('throws OndoSessionExpiredError for the terms step without a stored session token', async () => {
