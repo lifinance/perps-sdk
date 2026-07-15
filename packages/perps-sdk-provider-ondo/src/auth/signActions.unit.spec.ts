@@ -2,6 +2,7 @@ import { createMemoryStorage, PerpsError } from '@lifi/perps-sdk'
 import type {
   HmacActionStep,
   HmacSignedActionStep,
+  SessionActionStep,
   SiweActionStep,
   SiweSignedActionStep,
 } from '@lifi/perps-types'
@@ -68,6 +69,16 @@ const SIWE_STEP: SiweActionStep = {
   siwe: { challengeId: 'challenge-1', message: SIWE_MESSAGE },
 }
 
+const TERMS_STEP: SessionActionStep = {
+  action: ActionType.ACCEPT_PROVIDER_TERMS,
+  session: {},
+}
+
+const REGISTER_KEY_STEP: SessionActionStep = {
+  action: ActionType.REGISTER_API_KEY,
+  session: {},
+}
+
 const PLACE_ORDER_STEP: HmacActionStep = {
   action: ActionType.PLACE_ORDER,
   request: {
@@ -119,59 +130,27 @@ describe('ondoSignActions — SIWE', () => {
     await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
-  it('accepts the venue terms on a first login and not on a returning one', async () => {
-    const newAccountFetch = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          success: true,
-          result: tokenFixture({ newAccount: true }),
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
-    const deps = makeDeps(newAccountFetch)
+  it('performs only the login call even on a first login — terms are a separate step', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        result: tokenFixture({ newAccount: true }),
+      })
+    )
+    const deps = makeDeps(fetchImpl)
 
     await ondoSignActions(
       deps,
       SigningMethod.SIWE,
       [SIWE_STEP],
       account.address,
-      {
-        userWallet,
-      }
-    )
-
-    expect(newAccountFetch).toHaveBeenCalledTimes(2)
-    const [agreementUrl, agreementInit] = newAccountFetch.mock.calls[1] as [
-      string,
-      RequestInit,
-    ]
-    expect(agreementUrl).toBe(`${BASE_URL}/v1/agreement`)
-    expect(JSON.parse(agreementInit.body as string)).toEqual({
-      termsVersion: 1,
-      privacyVersion: 1,
-    })
-    expect(new Headers(agreementInit.headers).get('authorization')).toBe(
-      'Bearer ondo-jwt-token'
-    )
-
-    const returningFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        result: tokenFixture({ newAccount: false }),
-      })
-    )
-    const returningDeps = makeDeps(returningFetch)
-
-    await ondoSignActions(
-      returningDeps,
-      SigningMethod.SIWE,
-      [SIWE_STEP],
-      account.address,
       { userWallet }
     )
 
-    expect(returningFetch).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await expect(deps.tokenStore.get(account.address)).resolves.toMatchObject({
+      newAccount: true,
+    })
   })
 
   it('throws SDKError when no user wallet is available', async () => {
@@ -302,6 +281,122 @@ describe('ondoSignActions — HMAC', () => {
 
     await expect(
       ondoSignActions(deps, SigningMethod.HMAC, [SIWE_STEP], account.address)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+  })
+})
+
+describe('ondoSignActions — SESSION', () => {
+  it('accepts the venue terms with the session token, flips the stored token, and returns no signed steps', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(
+      account.address,
+      tokenFixture({ newAccount: true })
+    )
+
+    const signed = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [TERMS_STEP],
+      account.address
+    )
+
+    expect(signed).toEqual([])
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/v1/agreement`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({
+      termsVersion: 1,
+      privacyVersion: 1,
+    })
+    expect(new Headers(init.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    await expect(deps.tokenStore.get(account.address)).resolves.toMatchObject({
+      newAccount: false,
+    })
+  })
+
+  it('throws OndoSessionExpiredError for the terms step without a stored session token', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [TERMS_STEP],
+        account.address
+      )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('creates and stores an API key for the register step when none is stored', async () => {
+    const minted = apiKeyFixture({ keyId: 'minted-key' })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: minted }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const signed = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [REGISTER_KEY_STEP],
+      account.address
+    )
+
+    expect(signed).toEqual([])
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(new Headers(init.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual(minted)
+  })
+
+  it('is a no-op for the register step when a key is already stored', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
+    await deps.apiKeyStore.set(account.address, apiKeyFixture())
+
+    const signed = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [REGISTER_KEY_STEP],
+      account.address
+    )
+
+    expect(signed).toEqual([])
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-session steps under the session method', async () => {
+    const deps = makeDeps(vi.fn<typeof fetch>())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+  })
+
+  it('rejects session steps with an action it has no executor for', async () => {
+    const deps = makeDeps(vi.fn<typeof fetch>())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [{ action: ActionType.SET_REFERRAL, session: {} }],
+        account.address
+      )
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 })

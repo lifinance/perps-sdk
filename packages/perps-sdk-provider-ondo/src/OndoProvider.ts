@@ -24,6 +24,7 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
+  ActionResult,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
@@ -162,6 +163,8 @@ export const ondoProvider = (
   const emptyConfig: OndoAccountConfig = {
     provider: ONDO_PROVIDER_KEY,
     loggedIn: false,
+    termsAccepted: false,
+    apiKeyRegistered: false,
     referralSet: false,
   }
 
@@ -212,9 +215,16 @@ export const ondoProvider = (
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
+      const apiKeyRegistered = (await apiKeyStore.get(params.address)) !== null
       return withSession(
         params.address,
-        () => loggedOutAccount(params.address),
+        () => {
+          const account = loggedOutAccount(params.address)
+          return {
+            ...account,
+            config: { ...emptyConfig, apiKeyRegistered },
+          }
+        },
         async (token) => {
           const client = apiClient(opts)
           const [balance, rawPositions, referral] = await Promise.all([
@@ -257,6 +267,8 @@ export const ondoProvider = (
               provider: ONDO_PROVIDER_KEY,
               loggedIn: true,
               authTokenExpiry: token.expirationSecs,
+              termsAccepted: !token.newAccount,
+              apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
             },
           }
@@ -610,6 +622,22 @@ export const ondoProvider = (
         address,
         ctx
       )
+    },
+
+    // The venue rejecting an HMAC-signed request with Unauthorized means the
+    // locally stored API key is dead (deleted or descoped venue-side); evict
+    // it so REGISTER_API_KEY re-stages instead of every action failing.
+    async onExecuteResults(
+      address: Address,
+      results: ActionResult[]
+    ): Promise<void> {
+      const unauthorized = results.some(
+        (result) =>
+          !result.success && result.errorCode === PerpsErrorCode.Unauthorized
+      )
+      if (unauthorized) {
+        await apiKeyStore.remove(address)
+      }
     },
   }
 }

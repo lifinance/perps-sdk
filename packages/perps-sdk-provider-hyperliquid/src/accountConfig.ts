@@ -61,6 +61,7 @@ function projectHyperliquidDescriptor(
     case ActionType.REGISTER_API_KEY:
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.SIWE_LOGIN:
+    case ActionType.ACCEPT_PROVIDER_TERMS:
     case ActionType.DEPOSIT:
     case ActionType.META_VOTE:
     case ActionType.META_ACCEPT_TERMS:

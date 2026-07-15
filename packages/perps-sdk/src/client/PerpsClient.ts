@@ -2,6 +2,7 @@ import type {
   AccountResponse,
   AccountSummary,
   ActionParamsMap,
+  ActionResult,
   ActionStep,
   CreateActionResponse,
   ExecuteActionResponse,
@@ -211,6 +212,22 @@ export class PerpsClient {
       address,
       this.buildSignActionsContext(descriptor, userWallet)
     )
+  }
+
+  /**
+   * Let the plugin observe `/executeAction` per-step results before the core
+   * surfaces failures — e.g. to evict a locally stored credential the venue
+   * rejected.
+   */
+  private async notifyExecuteResults(
+    provider: string,
+    address: Address,
+    results: ActionResult[]
+  ): Promise<void> {
+    const plugin = this.requireProvider(provider)
+    if (typeof plugin.onExecuteResults === 'function') {
+      await plugin.onExecuteResults(address, results)
+    }
   }
 
   /**
@@ -561,6 +578,8 @@ export class PerpsClient {
       actions: signedActions,
     })
 
+    await this.notifyExecuteResults(provider, address, results.results)
+
     const failure = results.results.find((r) => !r.success)
     if (failure) {
       throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
@@ -832,7 +851,7 @@ export class PerpsClient {
       return { results: [] }
     }
 
-    return executeAction(this.sdkClient, {
+    const response = await executeAction(this.sdkClient, {
       provider,
       address,
       // The submitting account: the plugin-resolved signer (Hyperliquid's
@@ -841,5 +860,9 @@ export class PerpsClient {
       action,
       actions: signedActions,
     })
+
+    await this.notifyExecuteResults(provider, address, response.results)
+
+    return response
   }
 }

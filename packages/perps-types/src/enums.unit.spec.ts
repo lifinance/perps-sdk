@@ -35,6 +35,10 @@ describe('SigningMethod credential members', () => {
     expect(SigningMethod.SIWE).toBe('siwe')
   })
 
+  it('SESSION carries wire value "session"', () => {
+    expect(SigningMethod.SESSION).toBe('session')
+  })
+
   it('does not collide with any existing SigningMethod value', () => {
     const values = Object.values(SigningMethod)
     expect(new Set(values).size).toBe(values.length)
@@ -44,6 +48,13 @@ describe('SigningMethod credential members', () => {
 describe('ActionType.SIWE_LOGIN', () => {
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
+  })
+
+  it('ACCEPT_PROVIDER_TERMS carries wire value "acceptProviderTerms", distinct from META_ACCEPT_TERMS', () => {
+    expect(ActionType.ACCEPT_PROVIDER_TERMS).toBe('acceptProviderTerms')
+    expect(ActionType.ACCEPT_PROVIDER_TERMS).not.toBe(
+      ActionType.META_ACCEPT_TERMS
+    )
   })
 
   it('does not collide with any existing ActionType value', () => {

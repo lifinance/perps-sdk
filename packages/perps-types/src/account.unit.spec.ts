@@ -272,11 +272,15 @@ describe('OndoAccountConfig', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: 1_780_000_000,
+      termsAccepted: true,
+      apiKeyRegistered: true,
       referralSet: true,
     }
 
     expect(config.loggedIn).toBe(true)
     expect(config.authTokenExpiry).toBe(1_780_000_000)
+    expect(config.termsAccepted).toBe(true)
+    expect(config.apiKeyRegistered).toBe(true)
     expect(config.referralSet).toBe(true)
   })
 
@@ -284,11 +288,25 @@ describe('OndoAccountConfig', () => {
     const config: OndoAccountConfig = {
       provider: 'ondo',
       loggedIn: false,
+      termsAccepted: false,
+      apiKeyRegistered: true,
       referralSet: false,
     }
 
     expect(config.loggedIn).toBe(false)
     expect(config.authTokenExpiry).toBeUndefined()
+    expect(config.apiKeyRegistered).toBe(true)
+  })
+
+  it('requires termsAccepted and apiKeyRegistered on every fixture', () => {
+    // @ts-expect-error termsAccepted and apiKeyRegistered are required
+    const missing: OndoAccountConfig = {
+      provider: 'ondo',
+      loggedIn: false,
+      referralSet: false,
+    }
+
+    expect(missing.provider).toBe('ondo')
   })
 
   it('participates in the AccountConfig union and narrows on provider', () => {
@@ -296,6 +314,8 @@ describe('OndoAccountConfig', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: 1_780_000_000,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: false,
     }
 
@@ -311,6 +331,8 @@ describe('OndoAccountConfig', () => {
     const withToken: OndoAccountConfig = {
       provider: 'ondo',
       loggedIn: true,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: false,
       // @ts-expect-error the JWT itself never appears in AccountConfig
       authToken: 'eyJhbGciOiJIUzI1NiJ9',

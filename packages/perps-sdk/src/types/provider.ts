@@ -3,6 +3,7 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
+  ActionResult,
   ActionStep,
   ActionType,
   ActivitiesResponse,
@@ -446,6 +447,13 @@ export interface PerpsProviderPlugin {
     address: Address,
     ctx?: SignActionsContext
   ): Promise<SignedActionStep[]>
+
+  /**
+   * Observe the per-step results of an `/executeAction` round trip before the
+   * core surfaces failures. Lets a provider react to structured failure codes
+   * — e.g. evicting a locally stored credential the venue no longer accepts.
+   */
+  onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
 }
 
 /**

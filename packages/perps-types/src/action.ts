@@ -5,6 +5,7 @@ import type {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
@@ -68,6 +69,20 @@ export interface HmacActionStep {
   }
 }
 
+/**
+ * A marker for a client-only setup step the SDK executes directly against the
+ * venue with the provider session token. Deliberately carries no request
+ * material: a bearer token authorizes whatever request it is attached to, so
+ * the SDK authors the venue call itself, keyed on `action`, and never applies
+ * the token to a backend-authored path or body. The signing arm returns no
+ * signed step, so `executeAction` is skipped.
+ * @public
+ */
+export interface SessionActionStep {
+  action: ActionType
+  session: Record<string, never>
+}
+
 /** @public */
 export interface SiweActionStep {
   action: ActionType
@@ -84,6 +99,7 @@ export type ActionStep =
   | WasmBlobActionStep
   | EvmTxActionStep
   | HmacActionStep
+  | SessionActionStep
   | SiweActionStep
 
 /** @public */
@@ -153,6 +169,8 @@ export type ActionResult =
       action: ActionType
       success: false
       error: string
+      /** Structured classification of the failure, when the backend can provide one. */
+      errorCode?: PerpsErrorCode
     }
 
 /** @public */
@@ -349,6 +367,7 @@ export interface ActionParamsMap {
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
+  [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_VOTE]: VoteParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
