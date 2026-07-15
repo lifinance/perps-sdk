@@ -8,7 +8,8 @@ import type { OndoApiKey } from '../types/auth.js'
 
 const STORAGE_PREFIX = 'lifi-perps-ondo-apikey'
 
-const isOndoApiKey = (value: unknown): value is OndoApiKey => {
+/** @internal */
+export const isOndoApiKey = (value: unknown): value is OndoApiKey => {
   if (typeof value !== 'object' || value === null) {
     return false
   }
@@ -32,7 +33,7 @@ const isOndoApiKey = (value: unknown): value is OndoApiKey => {
  * Persists the Ondo trading API key per wallet address and environment via a
  * `StorageAdapter`, mirroring {@link OndoTokenStore}. The record holds the
  * `apiSecret` returned only at creation; a poisoned record reads back as absent
- * (and is evicted), so callers can treat `null` uniformly as "mint a key".
+ * (and is evicted), so callers can treat `null` uniformly as "register a key".
  *
  * @public
  */

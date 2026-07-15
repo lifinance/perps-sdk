@@ -33,6 +33,7 @@ import { ondoProvider } from './OndoProvider.js'
 import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
   OndoBalanceSummary,
+  OndoCreatedApiKey,
   OndoFill,
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
@@ -71,6 +72,15 @@ const API_KEY: OndoApiKey = {
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
   scopes: ['trade'],
+}
+
+// Real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`.
+const CREATED_API_KEY: OndoCreatedApiKey = {
+  keyId: 'ondoKeyId_abc',
+  name: 'lifi-perps',
+  createdAt: '2026-07-15T12:31:55.781433839Z',
+  scopes: ['trade'],
+  secretKey: 'ondoApiSecret_xyz',
 }
 
 const MARKETS_RESPONSE = {
@@ -1165,11 +1175,11 @@ describe('OndoProvider — write-action surface', () => {
     expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('signActions(HMAC) mints a key on first use, JWT-authorized', async () => {
+  it('signActions(HMAC) creates a key on first use, JWT-authorized', async () => {
     const { provider } = await loggedInProvider()
     fetchMock.mockImplementationOnce(async (url: string | URL) => {
       expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
-      return respond(envelope(API_KEY))
+      return respond(envelope(CREATED_API_KEY))
     })
 
     const signed = (await provider.signActions?.(
@@ -1178,7 +1188,27 @@ describe('OndoProvider — write-action surface', () => {
       ADDRESS
     )) as HmacSignedActionStep[]
 
-    expect(signed[0].hmac.keyId).toBe(API_KEY.keyId)
+    expect(signed[0].hmac.keyId).toBe(CREATED_API_KEY.keyId)
+  })
+
+  it('flips apiKeyRegistered to true after a successful REGISTER_API_KEY, with the real wire shape', async () => {
+    const { provider } = await loggedInProvider()
+
+    const before = await provider.getAccount({ address: ADDRESS })
+    expect(before.config).toMatchObject({ apiKeyRegistered: false })
+
+    fetchMock.mockImplementationOnce(async (url: string | URL) => {
+      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+      return respond(envelope(CREATED_API_KEY))
+    })
+    await provider.signActions?.(
+      SigningMethod.SESSION,
+      [{ action: ActionType.REGISTER_API_KEY, session: {} }],
+      ADDRESS
+    )
+
+    const after = await provider.getAccount({ address: ADDRESS })
+    expect(after.config).toMatchObject({ apiKeyRegistered: true })
   })
 })
 
