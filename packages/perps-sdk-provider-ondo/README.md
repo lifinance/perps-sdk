@@ -11,7 +11,7 @@
 
 Ondo Perps provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/). Register it on a `PerpsClient` to trade Ondo perpetuals through the SDK's unified interface.
 
-Ondo authenticates with a JWT session token obtained through a SIWE (ERC-4361) login: the backend issues the challenge, the user signs it with their wallet, and this package completes the login directly against Ondo — the JWT never transits the LI.FI backend and is persisted browser-side only.
+Ondo authenticates in two stages, both completed client-side. A SIWE (ERC-4361) login — challenge issued by the backend, signed by the user's wallet — yields a JWT session token used for authenticated reads. The package then creates a trading API key via the JWT (`POST /v1/api_keys`) and signs every mutating trade action with it per-request (HMAC-SHA256). Neither the JWT nor the API key secret transits the LI.FI backend; both are persisted browser-side through the storage adapter.
 
 ## Installation
 
@@ -34,11 +34,12 @@ const client = createPerpsClient({
 
 ## What this package provides
 
-- `ondoProvider()` — the `PerpsProviderPlugin` registered via `createPerpsClient({ providers: [ondoProvider()] })`: SIWE session login, authenticated account reads direct against Ondo, and quote/fee display from Ondo's public base fee schedule.
+- `ondoProvider()` — the `PerpsProviderPlugin` registered via `createPerpsClient({ providers: [ondoProvider()] })`: SIWE session login, JWT-authenticated account reads direct against Ondo, API-key-signed trade actions, and quote/fee display from Ondo's public base fee schedule.
 - `ondoWsProvider()` — the WebSocket provider registered via `new PerpsWsClient(client, { wsProviders: { ondo: ondoWsProvider() } })`: orderbook, trades, candles and market context, plus JWT-authenticated order/fill/position streams.
 - `OndoApiClient` — HTTP boundary against Ondo's REST API. Unwraps Ondo's `GenericResponse` envelope, attaches `Authorization: Bearer <JWT>` when a session token is supplied, and surfaces typed errors (`OndoApiError`, `OndoSessionExpiredError`).
 - `completeSiweLogin` — signs a SIWE challenge with the user's wallet and exchanges it for an Ondo session token (`OndoAuthToken`).
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
+- `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
 ## Environments
 

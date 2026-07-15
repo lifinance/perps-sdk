@@ -30,11 +30,11 @@ const client = createPerpsClient({
 })
 ```
 
-## Security: agent key storage
+## Agent key storage
 
-The agent keypair is persisted via a `StorageAdapter`, which defaults to browser `localStorage`. The agent private key is therefore readable by any same-origin script — an XSS vulnerability in the host page can exfiltrate it. To harden this, pass a more secure `StorageAdapter` (e.g. one backed by an encrypted or in-memory store) to the `HyperliquidAgentStore` constructor.
+Setup registers an agent keypair whose private key signs orders locally, so trading needs no per-order wallet popups. The agent key authorizes trading only — it cannot withdraw funds.
 
-The blast radius is bounded: the agent key authorizes trading only. Fund withdrawal still requires L1 `APPROVE_AGENT` consent, which the agent key alone cannot grant.
+The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key non-extractable in IndexedDB, so key material is never stored as plaintext. Pass your own `StorageAdapter` to the `HyperliquidAgentStore` constructor to use a different backend.
 
 ## Documentation
 

@@ -36,6 +36,10 @@ const client = createPerpsClient({
 })
 ```
 
+## API key storage
+
+Setup registers an API key user-side; the bundled WASM signer uses it to sign orders locally. Key material is persisted through a `StorageAdapter` — the default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key non-extractable in IndexedDB, so key material is never stored as plaintext. Pass a different adapter to `LighterKeyStore` to use another backend.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API
