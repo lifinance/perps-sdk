@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 1.0.1
+
+### Patch Changes
+
+- [#244](https://github.com/lifinance/perps-sdk/pull/244) [`b9777c5`](https://github.com/lifinance/perps-sdk/commit/b9777c5326699085a3eaf9227e93b123e059e6aa) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map the Ondo `POST /v1/api_keys` `secretKey` wire field to the stored `apiSecret` domain field at the boundary, and validate the record at write time. The mis-shaped record was previously evicted on read, so `REGISTER_API_KEY` never reported satisfied and HMAC signing used an empty secret.
+
+- [#243](https://github.com/lifinance/perps-sdk/pull/243) [`dd0396e`](https://github.com/lifinance/perps-sdk/commit/dd0396e2b5e714314de9a24b2d477b2777d6c32f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Derive Ondo `termsAccepted` from the `GET /v1/account` terms/privacy versions instead of the SIWE token's `newAccount` flag, so a future venue terms/privacy bump re-stages `ACCEPT_PROVIDER_TERMS`. Removes the now-unused `newAccount` token field and its post-agreement rewrite.
+
 ## 1.0.0
 
 ### Minor Changes
