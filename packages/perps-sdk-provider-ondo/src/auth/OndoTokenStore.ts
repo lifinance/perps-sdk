@@ -19,7 +19,6 @@ const isOnAuthToken = (value: unknown): value is OndoAuthToken => {
     issuedAtSecs,
     expirationSecs,
     token,
-    newAccount,
   } = value as Record<string, unknown>
   return (
     typeof identifier === 'string' &&
@@ -30,8 +29,7 @@ const isOnAuthToken = (value: unknown): value is OndoAuthToken => {
     typeof expirationSecs === 'number' &&
     Number.isFinite(expirationSecs) &&
     typeof token === 'string' &&
-    token.length > 0 &&
-    typeof newAccount === 'boolean'
+    token.length > 0
   )
 }
 
