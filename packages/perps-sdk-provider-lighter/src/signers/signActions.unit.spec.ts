@@ -1,4 +1,4 @@
-import { createMemoryStorage } from '@lifi/perps-sdk'
+import { createMemoryStorage, type SignActionProgress } from '@lifi/perps-sdk'
 import type {
   EvmTxActionStep,
   EvmTxSignedActionStep,
@@ -500,6 +500,45 @@ describe('lighterSignActions', () => {
       ])
       expect(result).toHaveLength(2)
       expect(result.map((r) => r.txHash)).toEqual(broadcastHashes)
+    })
+
+    it('emits submitted then confirmed progress for each leg', async () => {
+      const { wallet, broadcastHashes } = makeRecordingWallet(['0x1', '0x1'])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+      const progress: SignActionProgress[] = []
+
+      await lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
+        userWallet: wallet,
+        onProgress: (event) => progress.push(event),
+      })
+
+      expect(progress.map((p) => [p.index, p.functionName, p.status])).toEqual([
+        [0, 'approve', 'submitted'],
+        [0, 'approve', 'confirmed'],
+        [1, 'deposit', 'submitted'],
+        [1, 'deposit', 'confirmed'],
+      ])
+      expect(progress.every((p) => p.total === 2)).toBe(true)
+      expect(progress[0]?.txHash).toBe(broadcastHashes[0])
+      expect(progress[3]?.txHash).toBe(broadcastHashes[1])
+    })
+
+    it('does not emit a confirmed progress for a reverted leg', async () => {
+      const { wallet } = makeRecordingWallet(['0x0', '0x1'])
+      const steps = [makeStep('approve'), makeStep('deposit')]
+      const progress: SignActionProgress[] = []
+
+      await expect(
+        lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
+          userWallet: wallet,
+          onProgress: (event) => progress.push(event),
+        })
+      ).rejects.toThrow(/revert/i)
+
+      // Leg 0 broadcast, then reverted: submitted only, no confirmed, no leg 1.
+      expect(progress.map((p) => [p.index, p.status])).toEqual([
+        [0, 'submitted'],
+      ])
     })
 
     it('aborts the sequence when leg 1 reverts and never broadcasts leg 2', async () => {
