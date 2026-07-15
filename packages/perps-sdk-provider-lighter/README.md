@@ -7,13 +7,17 @@
 
 </div>
 
-# `@lifi/perps-sdk-provider-lighter`
+<h1 align="center"><code>@lifi/perps-sdk-provider-lighter</code></h1>
 
-Lighter provider plugin for [`@lifi/perps-sdk`](https://www.npmjs.com/package/@lifi/perps-sdk) — a workspace package of the [`perps-sdk`](https://www.npmjs.com/package/@lifi/perps-sdk) monorepo. Register it on a `PerpsClient` to trade Lighter perpetuals through the SDK's unified interface; signing runs through a bundled Go WASM signer.
+Lighter provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/). Register it on a `PerpsClient` to trade Lighter perpetuals through the SDK's unified interface; signing runs through a bundled Go WASM signer.
+
+## Installation
 
 ```bash
 pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-lighter
 ```
+
+## Quick start
 
 ```ts
 import { createPerpsClient, localStorageAdapter } from '@lifi/perps-sdk'
@@ -32,4 +36,9 @@ const client = createPerpsClient({
 })
 ```
 
-See the [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) and the [full documentation](https://public-perps-docs.mintlify.app/) for setup, options, the exported surface, the auth-token model, and the browser/Vite WASM configuration.
+## Documentation
+
+- [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API
+- [Full documentation](https://public-perps-docs.mintlify.app/) — the exported surface, the auth-token model, and the browser/Vite WASM configuration
+- [API reference](https://public-perps-docs.mintlify.app/api-reference)
+- [Source and issues](https://github.com/lifinance/perps-sdk)

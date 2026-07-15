@@ -11,7 +11,7 @@
 
 [**LI.FI Perps SDK**](https://public-perps-docs.mintlify.app/) is a TypeScript SDK for trading perpetuals across multiple DEXes through one unified interface. This repository is the pnpm + Changesets monorepo that builds and publishes it.
 
-**Using the SDK?** Start with the [`@lifi/perps-sdk` package README](./packages/perps-sdk) for installation, quick start, and the realtime API, or read the [full documentation](https://public-perps-docs.mintlify.app/). The rest of this page is for working *on* the repository.
+**Using the SDK?** Start with the [`@lifi/perps-sdk` package README](./packages/perps-sdk) for installation, quick start, and the WebSocket API, or read the [full documentation](https://public-perps-docs.mintlify.app/). The rest of this page is for working *on* the repository.
 
 ## Packages
 
@@ -19,9 +19,10 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 | Package | Install for | Description |
 | --- | --- | --- |
-| [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, realtime client |
+| [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, WebSocket client |
 | [`@lifi/perps-sdk-provider-hyperliquid`](./packages/perps-sdk-provider-hyperliquid/README.md) | Hyperliquid | Hyperliquid provider plugin |
 | [`@lifi/perps-sdk-provider-lighter`](./packages/perps-sdk-provider-lighter/README.md) | Lighter | Lighter provider plugin |
+| [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo Perps provider plugin |
 | [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
 ## Development
@@ -105,7 +106,7 @@ Runnable scripts in [`examples/`](./examples):
 | [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
 | [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
 | [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
-| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | Realtime prices, orderbook, multi-listener dedup, status |
+| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket prices, orderbook, multi-listener dedup, status |
 
 ## Documentation
 
