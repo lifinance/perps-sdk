@@ -296,6 +296,10 @@ export interface OndoAccountConfig {
   loggedIn: boolean
   /** Unix seconds. Present iff `loggedIn === true`. The token itself never appears here. */
   authTokenExpiry?: number
+  /** Venue terms accepted, inferred from the login token's `newAccount` flag. Always `false` when logged out. */
+  termsAccepted: boolean
+  /** A venue API key is present in local storage. Local presence only — venue-side validity is not verified. */
+  apiKeyRegistered: boolean
   /** A referral code (any referrer's) is already applied to the account. Always `false` when logged out. */
   referralSet: boolean
 }

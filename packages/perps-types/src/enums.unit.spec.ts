@@ -26,13 +26,17 @@ describe('PerpsErrorCode.Unauthorized', () => {
   })
 })
 
-describe('SigningMethod auth-token members', () => {
-  it('AUTH_TOKEN carries wire value "authToken"', () => {
-    expect(SigningMethod.AUTH_TOKEN).toBe('authToken')
+describe('SigningMethod credential members', () => {
+  it('HMAC carries wire value "hmac"', () => {
+    expect(SigningMethod.HMAC).toBe('hmac')
   })
 
   it('SIWE carries wire value "siwe"', () => {
     expect(SigningMethod.SIWE).toBe('siwe')
+  })
+
+  it('SESSION carries wire value "session"', () => {
+    expect(SigningMethod.SESSION).toBe('session')
   })
 
   it('does not collide with any existing SigningMethod value', () => {
@@ -44,6 +48,13 @@ describe('SigningMethod auth-token members', () => {
 describe('ActionType.SIWE_LOGIN', () => {
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
+  })
+
+  it('ACCEPT_PROVIDER_TERMS carries wire value "acceptProviderTerms", distinct from META_ACCEPT_TERMS', () => {
+    expect(ActionType.ACCEPT_PROVIDER_TERMS).toBe('acceptProviderTerms')
+    expect(ActionType.ACCEPT_PROVIDER_TERMS).not.toBe(
+      ActionType.META_ACCEPT_TERMS
+    )
   })
 
   it('does not collide with any existing ActionType value', () => {
