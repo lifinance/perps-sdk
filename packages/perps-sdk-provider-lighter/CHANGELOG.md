@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 4.0.0
+
+### Major Changes
+
+- [#248](https://github.com/lifinance/perps-sdk/pull/248) [`de3b1ea`](https://github.com/lifinance/perps-sdk/commit/de3b1eaff1f3a58d3e4db6c8e59d4150a4d18639) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter WS account channels now resolve their auth token from the co-registered `lighterProvider()` plugin by default, so `lighterWsProvider()` authenticates positions/orders/fills with no manual wiring. **Breaking:** the `authProvider` option is renamed to `resolveAuthToken` and the `LighterAuthProvider` type to `LighterAuthTokenResolver`, with no back-compat alias; the option is now an override for standalone WS clients only.
+
 ## 3.0.0
 
 ### Patch Changes
