@@ -232,10 +232,10 @@ export function hyperliquidProvider(
         const agentAddress = await resolveApproveAgentAddress(address)
         return { params: { agentAddress } }
       }
-      // Agent-signed actions (trades, account-mode) carry the agent as the
+      // SDK-signed actions (trades, account-mode) carry the agent as the
       // on-wire signerAddress. User-signed actions (builder-fee, withdrawal)
       // contribute nothing — core submits under the user's own address.
-      if (signers.includes(PerpsSigner.AGENT)) {
+      if (signers.includes(PerpsSigner.SDK)) {
         const agent = await agentStore.get(address)
         return { signerAddress: agent.address }
       }

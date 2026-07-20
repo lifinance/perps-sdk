@@ -185,7 +185,7 @@ describe('projectLighterConfigSettings', () => {
       type: ActionType.UPDATE_ASSET_COLLATERAL,
       title: 'Update asset collateral',
       description: 'Runtime toggle — should not appear here.',
-      signers: [PerpsSigner.API_KEY],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
@@ -199,7 +199,7 @@ describe('projectLighterConfigSettings', () => {
       type: ActionType.SET_REFERRAL,
       title: 'Apply LI.FI Referral',
       description: "Applies LI.FI's referral code to your Lighter account.",
-      signers: [PerpsSigner.API_KEY],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
@@ -224,7 +224,7 @@ describe('projectLighterConfigSettings', () => {
       type: ActionType.APPROVE_INTEGRATOR,
       title: 'Authorise LI.FI Fees',
       description: "Authorises LI.FI's integrator account to collect fees.",
-      signers: [PerpsSigner.API_KEY],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
