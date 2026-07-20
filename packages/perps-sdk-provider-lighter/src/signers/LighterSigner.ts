@@ -53,6 +53,12 @@ export interface ChangePubKeyResult extends LighterSignedBlob {
 }
 
 /** @public */
+export interface ApproveIntegratorResult extends LighterSignedBlob {
+  /** EIP-191 `L2ApproveIntegrator` L1 body the user's wallet must countersign to authorize the integrator approval. */
+  messageToSign: string
+}
+
+/** @public */
 export interface ApiKeyPair {
   publicKey: string
   privateKey: string
@@ -134,8 +140,9 @@ export class LighterSigner {
    * `WasmBlobActionStep`. Returns the signed `{ txType, txInfo, txHash }`
    * triple the backend forwards to Lighter's `sendTx` endpoint.
    *
-   * For REGISTER_API_KEY use `signChangePubKey` instead — it returns an
-   * additional `messageToSign` the L1 wallet must countersign.
+   * For REGISTER_API_KEY use `signChangePubKey` and for APPROVE_INTEGRATOR
+   * use `signApproveIntegrator` instead — both return an additional
+   * `messageToSign` the L1 wallet must countersign.
    */
   async sign(
     action: ActionType,
@@ -146,6 +153,12 @@ export class LighterSigner {
       throw new Error(
         'Use signChangePubKey() for REGISTER_API_KEY — the L1 eth_sign hop ' +
           'must be coordinated by the caller.'
+      )
+    }
+    if (action === ActionType.APPROVE_INTEGRATOR) {
+      throw new Error(
+        'Use signApproveIntegrator() for APPROVE_INTEGRATOR — sign() does ' +
+          'not collect the required L1 user wallet signature.'
       )
     }
     const wasm = await this.ensureLoaded()
@@ -212,10 +225,51 @@ export class LighterSigner {
   }
 
   /**
-   * Step 2 of REGISTER_API_KEY — inject the L1 signature produced by the
-   * user's Ethereum wallet into the ChangePubKey txInfo JSON. `L1Sig` is the
-   * only field in txInfo that depends on the L1 signature; txHash does NOT
-   * include it (so we do not recompute it).
+   * Sign an APPROVE_INTEGRATOR action with the stored API key and return the
+   * signed blob alongside the EIP-191 `L2ApproveIntegrator` L1 message the
+   * user's Ethereum wallet must countersign. Unlike {@link sign}, this exposes
+   * `messageToSign`: Lighter requires `L1Sig` (injected via
+   * {@link embedL1Signature} before submission) when the integrator account
+   * belongs to a different L1 address with non-zero fee caps.
+   */
+  async signApproveIntegrator(
+    wasmSignParams: Record<string, unknown>,
+    context: LighterSignerContext
+  ): Promise<ApproveIntegratorResult> {
+    const wasm = await this.ensureLoaded()
+    await this.ensureClient(context)
+    const result = this.dispatch(
+      wasm,
+      ActionType.APPROVE_INTEGRATOR,
+      wasmSignParams,
+      context
+    )
+    if (result.error) {
+      throw new Error(`Lighter SignApproveIntegrator failed: ${result.error}`)
+    }
+    if (
+      result.txType === undefined ||
+      result.txInfo === undefined ||
+      result.txHash === undefined ||
+      !result.messageToSign
+    ) {
+      throw new Error(
+        'Lighter SignApproveIntegrator returned an incomplete result'
+      )
+    }
+    return {
+      txType: result.txType,
+      txInfo: result.txInfo,
+      txHash: result.txHash,
+      messageToSign: result.messageToSign,
+    }
+  }
+
+  /**
+   * Inject the L1 signature produced by the user's Ethereum wallet into a
+   * signed txInfo JSON. `L1Sig` is the only field that depends on the L1
+   * signature; txHash does NOT include it (so we do not recompute it). Shared
+   * by the REGISTER_API_KEY (ChangePubKey) and APPROVE_INTEGRATOR flows.
    */
   embedL1Signature(txInfo: string, l1Signature: string): string {
     let parsed: Record<string, unknown>
@@ -223,7 +277,7 @@ export class LighterSigner {
       parsed = JSON.parse(txInfo) as Record<string, unknown>
     } catch (err) {
       throw new Error(
-        `Failed to parse ChangePubKey txInfo as JSON: ${(err as Error).message}`
+        `Failed to parse signed txInfo as JSON: ${(err as Error).message}`
       )
     }
     parsed.L1Sig = l1Signature
@@ -292,7 +346,7 @@ export class LighterSigner {
     action: ActionType,
     p: Record<string, unknown>,
     ctx: LighterSignerContext
-  ): SignResult {
+  ): SignResult & { messageToSign?: string } {
     const nonce = numberField(p, 'nonce')
     switch (action) {
       case ActionType.PLACE_ORDER:

@@ -37,6 +37,13 @@ const REGISTER_SIGNED = {
   messageToSign: 'lighter-register-msg',
 }
 
+const APPROVE_INTEGRATOR_SIGNED = {
+  txType: 45,
+  txInfo: '{"IntegratorAccountIndex":5,"L1Sig":""}',
+  txHash: 'approve-integrator-hash',
+  messageToSign: 'lighter-approve-integrator-msg',
+}
+
 function makeDeps(
   overrides: Partial<LighterSigner> = {},
   postFormImpl?: PostFormImpl
@@ -53,6 +60,7 @@ function makeDeps(
       privateKey: '0xpriv',
     })),
     signChangePubKey: vi.fn(async () => REGISTER_SIGNED),
+    signApproveIntegrator: vi.fn(async () => APPROVE_INTEGRATOR_SIGNED),
     embedL1Signature: vi.fn(
       (txInfo: string, l1: string) =>
         JSON.parse(txInfo) &&
@@ -198,6 +206,116 @@ describe('lighterSignActions', () => {
           } as never,
         })
       ).rejects.toThrow(/missing `nonce`/)
+    })
+  })
+
+  describe('WASM_BLOB — APPROVE_INTEGRATOR hybrid flow', () => {
+    const approveStep: WasmBlobActionStep = {
+      action: ActionType.APPROVE_INTEGRATOR,
+      wasmSignParams: {
+        integrator_account_index: 5,
+        max_perps_taker_fee: 250,
+        max_perps_maker_fee: 100,
+        max_spot_taker_fee: 300,
+        max_spot_maker_fee: 150,
+        approval_expiry: 1_893_456_000,
+        nonce: 3,
+      },
+    }
+
+    async function setStoredKey(keyStore: LighterKeyStore): Promise<void> {
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+    }
+
+    it('wasm-signs with the stored key, collects the L1 signature, and embeds it as L1Sig', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xapprovesig'),
+      }
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [approveStep],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(1)
+      expect(result[0].action).toBe(ActionType.APPROVE_INTEGRATOR)
+      // The wallet's L1 signature is injected into the signed txInfo JSON.
+      expect(JSON.parse(result[0].signedTx.txInfo)).toEqual({
+        IntegratorAccountIndex: 5,
+        L1Sig: '0xapprovesig',
+      })
+      expect(result[0].signedTx.txType).toBe(APPROVE_INTEGRATOR_SIGNED.txType)
+      expect(result[0].signedTx.txHash).toBe(APPROVE_INTEGRATOR_SIGNED.txHash)
+
+      // Wasm-signed with the stored API key context and the step's params.
+      expect(
+        (signer.signApproveIntegrator as ReturnType<typeof vi.fn>).mock.calls[0]
+      ).toEqual([
+        approveStep.wasmSignParams,
+        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
+      ])
+      // The wallet countersigns the wasm-provided L1 message body.
+      expect(walletStub.signMessage).toHaveBeenCalledWith({
+        account: walletStub.account,
+        message: APPROVE_INTEGRATOR_SIGNED.messageToSign,
+      })
+    })
+
+    it('throws a clear error naming APPROVE_INTEGRATOR when no end-user wallet is supplied', async () => {
+      const { deps, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [approveStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/APPROVE_INTEGRATOR requires the end-user wallet/)
+    })
+
+    it('throws when no API key is registered for the address', async () => {
+      const { deps } = makeDeps()
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [approveStep],
+          ADDRESS,
+          {
+            userWallet: {
+              account: { address: ADDRESS },
+              signMessage: vi.fn(),
+            } as never,
+          }
+        )
+      ).rejects.toThrow(/No Lighter API key registered/)
+    })
+
+    it('does not route standard wasm actions through the APPROVE_INTEGRATOR arm', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+      const step: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: { market_index: 0, nonce: 1 },
+      }
+
+      await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+
+      expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
+      expect(signer.sign).toHaveBeenCalledTimes(1)
     })
   })
 
