@@ -1,6 +1,5 @@
 import {
-  ExplorerChainId,
-  explorerTxUrl,
+  explorerTxUrlFromBase,
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
@@ -31,6 +30,7 @@ import type {
   Balance,
   FillsResponse,
   LighterAccountConfig,
+  LighterProviderKey,
   Order,
   OrdersResponse,
   Position,
@@ -46,6 +46,7 @@ import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
+  DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
@@ -177,8 +178,22 @@ const normalizeLighterPublicKey = (key: string): string =>
  * @public
  */
 export interface LighterProviderOptions {
+  /**
+   * Provider key: the plugin `type`, the `Provider.key` matched against the
+   * backend `/providers` response, and the namespace for this instance's market
+   * / asset registries and retry policy. Defaults to `'lighter'` (mainnet).
+   * Set a distinct key (e.g. `'lighter-rh'`) to register a second Lighter
+   * instance on the same client.
+   */
+  providerKey?: LighterProviderKey
   /** Lighter REST base URL. Defaults to mainnet. */
   restUrl?: string
+  /**
+   * Explorer tx base URL for transfer-activity links (`${base}${txHash}`).
+   * Defaults to the mainnet Lighter explorer for the default provider key, and
+   * to `undefined` (no transfer links) for any other key unless supplied.
+   */
+  explorerTxBaseUrl?: string
   /** Pre-created Lighter read-only bearer. */
   authToken?: string | (() => string | Promise<string>)
   /**
@@ -277,7 +292,13 @@ export const lighterProvider = (
     return boundClient
   }
 
+  const providerKey = options.providerKey ?? LIGHTER_PROVIDER_KEY
   const restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
+  const explorerTxBaseUrl =
+    options.explorerTxBaseUrl ??
+    (providerKey === LIGHTER_PROVIDER_KEY
+      ? DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL
+      : undefined)
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
       ? options.authToken
@@ -287,6 +308,7 @@ export const lighterProvider = (
   const signer = options.signer
   const keyStore = options.keyStore
   const readOnlyTokenManager = new LighterReadOnlyTokenManager({
+    providerKey,
     lighterApiUrl: restUrl,
     ...options.readOnlyTokenOptions,
   })
@@ -309,7 +331,7 @@ export const lighterProvider = (
       policy: resolveRetryPolicy(
         LIGHTER_RETRY_DEFAULTS,
         client.config.retry,
-        LIGHTER_PROVIDER_KEY
+        providerKey
       ),
       fetchImpl: client.config.fetch,
     })
@@ -644,7 +666,7 @@ export const lighterProvider = (
   }
 
   return {
-    type: LIGHTER_PROVIDER_KEY,
+    type: providerKey,
 
     bind(client: PerpsSDKClient): void {
       boundClient = client
@@ -664,11 +686,8 @@ export const lighterProvider = (
         resolveAuthToken(opts, params.address),
       ])
 
-      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
-      const assetRegistry = getAssetRegistry(
-        requireClient(),
-        LIGHTER_PROVIDER_KEY
-      )
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      const assetRegistry = getAssetRegistry(requireClient(), providerKey)
       const [
         { providers },
         ,
@@ -725,7 +744,7 @@ export const lighterProvider = (
       )
 
       const categories =
-        providers.find((p) => p.key === LIGHTER_PROVIDER_KEY)?.categories ?? []
+        providers.find((p) => p.key === providerKey)?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
       const spotCategoryId =
         categories.find((c) => c.quoteAsset === null)?.id ??
@@ -737,7 +756,7 @@ export const lighterProvider = (
       // carried by the positions' `marginUsed`.
       const collateralBalances: Balance[] = [
         {
-          categoryId: perpsCategory?.id ?? LIGHTER_PROVIDER_KEY,
+          categoryId: perpsCategory?.id ?? providerKey,
           asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
           units: account.available_balance,
           valueUsd: account.available_balance,
@@ -767,7 +786,7 @@ export const lighterProvider = (
       )
 
       const config: LighterAccountConfig = {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         accountIndex: account.index,
         apiKeyIndex: DEFAULT_API_KEY_INDEX,
         apiKeyRegistered,
@@ -785,7 +804,7 @@ export const lighterProvider = (
       }
 
       return {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         address: params.address,
         balances,
         collateralBalances,
@@ -823,7 +842,7 @@ export const lighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
       const client = apiClient(opts)
-      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.sync(),
@@ -838,7 +857,7 @@ export const lighterProvider = (
       }
 
       return {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         positions,
         pagination: { limit: params.limit ?? positions.length, hasMore: false },
       }
@@ -857,7 +876,7 @@ export const lighterProvider = (
       const token = await resolveAuthToken(opts, params.address)
       if (token === undefined) {
         return {
-          provider: LIGHTER_PROVIDER_KEY,
+          provider: providerKey,
           openOrders: [],
           triggerOrders: [],
           pagination: { limit: params.limit ?? 0, hasMore: false },
@@ -865,7 +884,7 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.sync(),
@@ -891,7 +910,7 @@ export const lighterProvider = (
 
       const total = openOrders.length + triggerOrders.length
       return {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         openOrders,
         triggerOrders,
         pagination: { limit: total, hasMore: false },
@@ -913,7 +932,7 @@ export const lighterProvider = (
       }
 
       const client = apiClient(opts)
-      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.sync(),
@@ -981,14 +1000,14 @@ export const lighterProvider = (
       const token = await resolveAuthToken(opts, params.address)
       if (token === undefined) {
         return {
-          provider: LIGHTER_PROVIDER_KEY,
+          provider: providerKey,
           items: [],
           pagination: { limit: params.limit ?? 0, hasMore: false },
         }
       }
 
       const client = apiClient(opts)
-      const registry = getMarketRegistry(requireClient(), LIGHTER_PROVIDER_KEY)
+      const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
         fetchDetailedAccount(client, params.address),
         registry.sync(),
@@ -1017,7 +1036,7 @@ export const lighterProvider = (
       )
 
       return {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         items,
         pagination: {
           limit: params.limit ?? items.length,
@@ -1034,7 +1053,7 @@ export const lighterProvider = (
       const token = await resolveAuthToken(opts, params.address)
       if (token === undefined) {
         return {
-          provider: LIGHTER_PROVIDER_KEY,
+          provider: providerKey,
           items: [],
           pagination: { limit: params.limit ?? 0, hasMore: false },
         }
@@ -1043,14 +1062,8 @@ export const lighterProvider = (
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(opts)
       const account = await fetchDetailedAccount(client, params.address)
-      const marketRegistry = getMarketRegistry(
-        requireClient(),
-        LIGHTER_PROVIDER_KEY
-      )
-      const assetRegistry = getAssetRegistry(
-        requireClient(),
-        LIGHTER_PROVIDER_KEY
-      )
+      const marketRegistry = getMarketRegistry(requireClient(), providerKey)
+      const assetRegistry = getAssetRegistry(requireClient(), providerKey)
       const [history] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
           fetchAllHistory(
@@ -1070,7 +1083,7 @@ export const lighterProvider = (
         ...history.deposits.deposits.map(
           (d): ActivityItem => ({
             id: d.id,
-            provider: LIGHTER_PROVIDER_KEY,
+            provider: providerKey,
             timestamp: toIsoFromMs(d.timestamp),
             type: ActivityType.DEPOSIT,
             amount: d.amount,
@@ -1082,7 +1095,7 @@ export const lighterProvider = (
         ...history.withdraws.withdraws.map(
           (w): ActivityItem => ({
             id: w.id,
-            provider: LIGHTER_PROVIDER_KEY,
+            provider: providerKey,
             timestamp: toIsoFromMs(w.timestamp),
             type: ActivityType.WITHDRAWAL,
             amount: w.amount,
@@ -1095,7 +1108,7 @@ export const lighterProvider = (
         ...history.fundings.position_fundings.map(
           (f): ActivityItem => ({
             id: `funding-${f.funding_id}`,
-            provider: LIGHTER_PROVIDER_KEY,
+            provider: providerKey,
             timestamp: toIsoFromSeconds(f.timestamp),
             type: ActivityType.FUNDING,
             market: marketRegistry.require(String(f.market_id)),
@@ -1107,7 +1120,7 @@ export const lighterProvider = (
         ...history.liquidations.liquidations.map(
           (l): ActivityItem => ({
             id: `liquidation-${l.id}`,
-            provider: LIGHTER_PROVIDER_KEY,
+            provider: providerKey,
             timestamp: toIsoFromMs(l.executed_at),
             type: ActivityType.LIQUIDATION,
             liquidatedNotionalPosition: '0',
@@ -1128,7 +1141,7 @@ export const lighterProvider = (
             direction === 'OUT' ? t.to_account_index : t.from_account_index
           return {
             id: t.id,
-            provider: LIGHTER_PROVIDER_KEY,
+            provider: providerKey,
             timestamp: toIsoFromMs(t.timestamp),
             type: ActivityType.TRANSFER,
             direction,
@@ -1137,7 +1150,7 @@ export const lighterProvider = (
               assetRegistry.get(String(t.asset_id))?.displaySymbol ??
               String(t.asset_id),
             amount: t.amount,
-            explorerLink: explorerTxUrl(ExplorerChainId.LIGHTER, t.tx_hash),
+            explorerLink: explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
             meta: {
               transferType: t.type,
               txHash: t.tx_hash,
@@ -1183,7 +1196,7 @@ export const lighterProvider = (
       const hasMore = responseCursor !== undefined
 
       return {
-        provider: LIGHTER_PROVIDER_KEY,
+        provider: providerKey,
         items: emitted,
         pagination: {
           limit,
@@ -1199,7 +1212,7 @@ export const lighterProvider = (
     ): Promise<Quote> {
       return resolveQuote(
         requireClient(),
-        LIGHTER_PROVIDER_KEY,
+        providerKey,
         params,
         LIGHTER_BASE_FEE_TIER,
         opts
@@ -1224,7 +1237,7 @@ export const lighterProvider = (
       setup: ProviderAction[],
       options: ProviderAction[]
     ): AccountConfigSetting[] {
-      if (config.provider !== LIGHTER_PROVIDER_KEY) {
+      if (config.provider !== providerKey) {
         throw new PerpsError(
           PerpsErrorCode.SDKError,
           `lighterProvider.projectConfig received config for provider ` +

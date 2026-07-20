@@ -185,7 +185,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   constructor(
     wsUrl: string = DEFAULT_LIGHTER_WS_URL,
-    providerKey = 'lighter',
+    providerKey: string = LIGHTER_PROVIDER_KEY,
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
   ) {
@@ -199,7 +199,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         policy: resolveRetryPolicy(
           LIGHTER_RETRY_DEFAULTS,
           client?.config.retry,
-          LIGHTER_PROVIDER_KEY
+          providerKey
         ),
         fetchImpl: client?.config.fetch,
       }
@@ -468,19 +468,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     try {
       msg = JSON.parse(raw) as LtWsMessage
     } catch {
-      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
 
     if (!isValidLighterFrame(msg)) {
-      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
 
     try {
       this.dispatch(msg)
     } catch (error) {
-      wsLog.handlerFailure(LIGHTER_PROVIDER_KEY, error)
+      wsLog.handlerFailure(this.providerKey, error)
     }
   }
 
