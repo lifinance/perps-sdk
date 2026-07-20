@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 3.1.0
+
+### Minor Changes
+
+- [#250](https://github.com/lifinance/perps-sdk/pull/250) [`195d3b4`](https://github.com/lifinance/perps-sdk/commit/195d3b492943dab672dcb2f2d692e29287208e80) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `formatNumber`, a currency-symbol-free display formatter, and a `rounding: 'halfUp' | 'floor'` option on `FormatOptions` so ceiling-validated readouts (available balance, removable margin) can truncate toward zero.
+
 ## 3.0.0
 
 ### Major Changes

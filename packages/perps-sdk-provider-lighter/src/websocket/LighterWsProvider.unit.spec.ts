@@ -1,6 +1,7 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LighterWsProvider } from './LighterWsProvider.js'
+import { lighterProvider } from '../LighterProvider.js'
+import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
 // The market registry fetches `${apiUrl}/markets` over HTTP — served by the
 // global fetch stub installed in beforeEach below.
@@ -838,7 +839,7 @@ describe('LighterWsProvider', () => {
       const failingAddr = TEST_ADDR
       const okAddr = '0x1111111111111111111111111111111111111111'
       const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
-        authProvider: async (address) => {
+        resolveAuthToken: async (address) => {
           if (address.toLowerCase() === failingAddr.toLowerCase()) {
             throw new Error('RO token revoked')
           }
@@ -1283,7 +1284,7 @@ describe('LighterWsProvider', () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
         'lighter',
-        { authProvider: async () => 'token' },
+        { resolveAuthToken: async () => 'token' },
         freshClient()
       )
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -1330,7 +1331,7 @@ describe('LighterWsProvider', () => {
       vi.stubGlobal('fetch', accountFetch)
       try {
         const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
-          authProvider: async () => 'token',
+          resolveAuthToken: async () => 'token',
         })
         ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
         ;(provider as any).rws.getStatus = () => 'connected'
@@ -1361,7 +1362,7 @@ describe('LighterWsProvider', () => {
 
     it('retries the account-index fetch on the next subscribe after a transient failure', async () => {
       const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {
-        authProvider: async () => 'token',
+        resolveAuthToken: async () => 'token',
       })
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.send = vi.fn()
@@ -1393,7 +1394,7 @@ describe('LighterWsProvider', () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
         'lighter',
-        { authProvider: async () => 'token' },
+        { resolveAuthToken: async () => 'token' },
         freshClient()
       )
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -1495,6 +1496,101 @@ describe('LighterWsProvider', () => {
           channel: `user_stats/${ACCOUNT_IDX}`,
         })
       )
+      provider.close()
+    })
+  })
+
+  describe('auth resolution via the co-registered Lighter plugin', () => {
+    // Construct exactly as PerpsWsClient does — the bare factory with no
+    // `resolveAuthToken` override — so the auth token must come from the
+    // `lighterProvider()` plugin registered on the same client.
+    const bareProviderFor = (client: ReturnType<typeof createPerpsClient>) => {
+      const provider = lighterWsProvider()({
+        provider: 'lighter',
+        wsUrl: 'ws://127.0.0.1:1',
+        markets: [],
+        client,
+      }) as LighterWsProvider
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      vi.spyOn(provider as any, 'resolveAccountIndex').mockResolvedValue(
+        ACCOUNT_IDX
+      )
+      return provider
+    }
+
+    it('authenticates a bare-constructed account subscribe and rotates the token on reconnect', async () => {
+      let issued = 0
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider({ authToken: () => `token-${++issued}` })],
+      })
+      const provider = bareProviderFor(client)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          auth: 'token-1',
+        })
+      )
+
+      // Simulated reconnect: the base replays every registered sub, and each
+      // replay must re-resolve the token so a rotated credential is used.
+      send.mockClear()
+      await (provider as any).replaySubs()
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          auth: 'token-2',
+        })
+      )
+      provider.close()
+    })
+
+    it('throws an actionable error when no Lighter plugin is registered on the client', async () => {
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      const provider = bareProviderFor(client)
+      ;(provider as any).rws.send = vi.fn()
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow(/no auth-token resolver was available/)
+      provider.close()
+    })
+
+    it('throws loudly on an auth channel when the plugin resolves no token (no silent degradation)', async () => {
+      // `lighterProvider()` with no authToken/keyStore resolves `undefined`.
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider()],
+      })
+      const provider = bareProviderFor(client)
+      ;(provider as any).rws.send = vi.fn()
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow(/no token was available for/)
       provider.close()
     })
   })

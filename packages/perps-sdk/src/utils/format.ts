@@ -10,11 +10,28 @@ export interface FormatOptions {
   placeholder?: string
   /** BCP 47 locale controlling digit grouping and separators (e.g. `'en-US'`). */
   locale?: string
+  /**
+   * Rounding applied when reducing to `decimals` places. Defaults to
+   * `'halfUp'`. `'floor'` truncates toward zero (matching big.js `roundDown`),
+   * so the rendered magnitude never exceeds the source — use it for readouts
+   * validated against a ceiling (available balance, removable margin).
+   */
+  rounding?: RoundingMode
 }
+
+/** Rounding mode for {@link FormatOptions.rounding}. */
+export type RoundingMode = 'halfUp' | 'floor'
 
 const DEFAULT_PLACEHOLDER = '—'
 
 type FormatInput = number | string | null | undefined
+
+/**
+ * Extra decimal places used to normalise IEEE-754 representation noise before
+ * truncating. `toFixed` at this higher precision cleans values like
+ * `0.28999999…` back to `0.29`; truncation then chops the guard digits.
+ */
+const FLOAT_GUARD_DIGITS = 9
 
 /**
  * Tolerantly coerce a display input to a finite number.
@@ -40,19 +57,38 @@ function toFiniteNumber(value: FormatInput): number | null {
 }
 
 /**
- * Round to `decimals` then split into a sign (`'-'` or `''`) and the
- * locale-formatted absolute body. Deriving the sign from the rounded value
- * avoids `-$0.00` for values that round to zero.
+ * Truncate a non-negative value toward zero to `decimals` places using its
+ * decimal string, never float scaling. Representation noise is first
+ * normalised by `toFixed` at {@link FLOAT_GUARD_DIGITS} extra precision, then
+ * the guard digits are chopped: `99.999` at 2dp → `99.99`, `0.29` → `0.29`.
+ */
+function truncateAbs(abs: number, decimals: number): number {
+  const s = abs.toFixed(Math.min(decimals + FLOAT_GUARD_DIGITS, 100))
+  const dot = s.indexOf('.')
+  const cut = decimals === 0 ? dot : dot + 1 + decimals
+  return Number(s.slice(0, cut))
+}
+
+/**
+ * Reduce `n` to `decimals` places then split into a sign and the
+ * locale-formatted absolute body. The sign is derived from the reduced value
+ * so magnitudes that collapse to zero render without a spurious `-`/`+`.
+ * `signed` emits `+` for positives; `rounding` selects half-up or truncation.
  */
 function signAndBody(
   n: number,
   decimals: number,
   locale: string | undefined,
-  grouping: boolean
-): { sign: '-' | ''; body: string } {
-  const rounded = Number(n.toFixed(decimals))
-  const sign = rounded < 0 ? '-' : ''
-  const body = Math.abs(rounded).toLocaleString(locale, {
+  grouping: boolean,
+  rounding: RoundingMode,
+  signed: boolean
+): { sign: '+' | '-' | ''; body: string } {
+  const reduced =
+    rounding === 'floor'
+      ? (n < 0 ? -1 : 1) * truncateAbs(Math.abs(n), decimals)
+      : Number(n.toFixed(decimals))
+  const sign = reduced < 0 ? '-' : signed && reduced > 0 ? '+' : ''
+  const body = Math.abs(reduced).toLocaleString(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     useGrouping: grouping,
@@ -78,6 +114,36 @@ function autoDecimals(abs: number): number {
 }
 
 /**
+ * Format a bare number, unsigned, with no currency symbol: `1,234.50`,
+ * `-1,500.00`, `0.00`. The core the `$`/`%` formatters wrap; use it for
+ * balance labels and symbol-suffixed amounts (`12.5 LIT`).
+ *
+ * Two decimal places with locale digit grouping by default. Negatives keep a
+ * leading `-`. `rounding: 'floor'` truncates toward zero so the rendered
+ * magnitude never exceeds the source (`99.999` at 2dp → `99.99`, `-99.999` →
+ * `-99.99`). Null/undefined/non-finite input renders the placeholder.
+ *
+ * @public
+ */
+export function formatNumber(
+  value: FormatInput,
+  options: FormatOptions = {}
+): string {
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+  } = options
+  const n = toFiniteNumber(value)
+  if (n === null) {
+    return placeholder
+  }
+  const { sign, body } = signAndBody(n, decimals, locale, true, rounding, false)
+  return `${sign}${body}`
+}
+
+/**
  * Format a USD value, unsigned: `$1,234.50`, `-$1,500.00`, `$0.00`.
  *
  * Two decimal places with locale digit grouping. Negatives place the `-`
@@ -89,12 +155,17 @@ export function formatUsd(
   value: FormatInput,
   options: FormatOptions = {}
 ): string {
-  const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER, locale } = options
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+  } = options
   const n = toFiniteNumber(value)
   if (n === null) {
     return placeholder
   }
-  const { sign, body } = signAndBody(n, decimals, locale, true)
+  const { sign, body } = signAndBody(n, decimals, locale, true, rounding, false)
   return `${sign}$${body}`
 }
 
@@ -111,18 +182,17 @@ export function formatSignedUsd(
   value: FormatInput,
   options: FormatOptions = {}
 ): string {
-  const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER, locale } = options
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+  } = options
   const n = toFiniteNumber(value)
   if (n === null) {
     return placeholder
   }
-  const rounded = Number(n.toFixed(decimals))
-  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : ''
-  const body = Math.abs(rounded).toLocaleString(locale, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-    useGrouping: true,
-  })
+  const { sign, body } = signAndBody(n, decimals, locale, true, rounding, true)
   return `${sign}$${body}`
 }
 
@@ -139,18 +209,17 @@ export function formatSignedPercent(
   value: FormatInput,
   options: FormatOptions = {}
 ): string {
-  const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER, locale } = options
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+  } = options
   const n = toFiniteNumber(value)
   if (n === null) {
     return placeholder
   }
-  const rounded = Number(n.toFixed(decimals))
-  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : ''
-  const body = Math.abs(rounded).toLocaleString(locale, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-    useGrouping: false,
-  })
+  const { sign, body } = signAndBody(n, decimals, locale, false, rounding, true)
   return `${sign}${body}%`
 }
 
@@ -168,14 +237,25 @@ export function formatPrice(
   value: FormatInput,
   options: FormatOptions = {}
 ): string {
-  const { placeholder = DEFAULT_PLACEHOLDER, locale } = options
+  const {
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+  } = options
   const n = toFiniteNumber(value)
   if (n === null) {
     return placeholder
   }
   const abs = Math.abs(n)
   const decimals = options.decimals ?? autoDecimals(abs)
-  const { sign, body } = signAndBody(n, decimals, locale, abs >= 1000)
+  const { sign, body } = signAndBody(
+    n,
+    decimals,
+    locale,
+    abs >= 1000,
+    rounding,
+    false
+  )
   return `${sign}$${body}`
 }
 

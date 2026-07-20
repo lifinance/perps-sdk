@@ -19,10 +19,10 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 | Package | Install for | Description |
 | --- | --- | --- |
-| [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, WebSocket client |
+| [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, `PerpsWsClient` WebSocket client |
 | [`@lifi/perps-sdk-provider-hyperliquid`](./packages/perps-sdk-provider-hyperliquid/README.md) | Hyperliquid | Hyperliquid provider plugin |
 | [`@lifi/perps-sdk-provider-lighter`](./packages/perps-sdk-provider-lighter/README.md) | Lighter | Lighter provider plugin |
-| [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo Perps provider plugin |
+| [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo provider plugin |
 | [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
 ## Development

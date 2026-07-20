@@ -30,7 +30,7 @@ export { Lighter, lighterProvider } from './LighterProvider.js'
 export * from './signers/index.js'
 export * from './types/index.js'
 export * from './utils/index.js'
-export type { LighterAuthProvider } from './websocket/LighterWsProvider.js'
+export type { LighterAuthTokenResolver } from './websocket/LighterWsProvider.js'
 export {
   LighterWsProvider,
   type LighterWsProviderOptions,
