@@ -78,7 +78,7 @@ const unsubscribe = await ws.subscribe(
 
 ### Credential storage
 
-Every provider persists its trading credentials (agent keys, API keys, session tokens) through a pluggable `StorageAdapter`. The default `localStorageAdapter` encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key non-extractable in IndexedDB — key material is never stored as plaintext. Environments without WebCrypto or IndexedDB degrade to non-persistent sessions rather than plaintext writes. Pass a custom adapter to a provider's store to use another backend.
+Every provider persists its trading credentials (agent keys, API keys, session tokens) through a pluggable `StorageAdapter`. The default `localStorageAdapter` encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB — key material is never stored as plaintext. Environments without WebCrypto or IndexedDB degrade to non-persistent sessions rather than plaintext writes. Pass a custom adapter to a provider's store to use another backend.
 
 ## Examples
 
