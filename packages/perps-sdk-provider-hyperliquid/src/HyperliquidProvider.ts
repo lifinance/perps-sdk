@@ -204,6 +204,8 @@ export function hyperliquidProvider(
   return {
     type: PROVIDER_KEY,
 
+    internalSetupActions: [ActionType.SET_REFERRAL],
+
     bind: (client: PerpsSDKClient): void => contextRef.bind(client),
 
     getAgentAddress: async (address: Address): Promise<Address> =>

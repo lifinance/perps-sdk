@@ -285,6 +285,17 @@ export interface PerpsProviderPlugin {
   readonly type: string
 
   /**
+   * Setup actions the provider completes on its own, without surfacing a card
+   * to the caller. `PerpsClient.checkSetup` drains each such pending step in
+   * place — building, signing, and executing it with the provider's own
+   * credentials — and omits it from the returned `setup` list. A descriptor
+   * whose `signers` include {@link PerpsSigner.USER} is never treated as
+   * internal, even when named here. Omit when the provider has no
+   * self-completed setup steps.
+   */
+  readonly internalSetupActions?: readonly ActionType[]
+
+  /**
    * Inject the runtime {@link PerpsSDKClient} into the plugin once, during
    * {@link createPerpsClient}. The plugin captures it (config, fetch, retry,
    * provider registry) in its factory closure so the clientless read methods

@@ -73,6 +73,12 @@ describe('hyperliquidProvider', () => {
     expect(hyperliquidProvider().type).toBe('hyperliquid')
   })
 
+  it('declares SET_REFERRAL as an internal setup action', () => {
+    expect(hyperliquidProvider().internalSetupActions).toContain(
+      ActionType.SET_REFERRAL
+    )
+  })
+
   describe('order formatting and liquidation surface', () => {
     const btcMarket: PerpsMarket = MARKETS_RESPONSE.markets[0]
     const perpMarket: PerpsMarket = {

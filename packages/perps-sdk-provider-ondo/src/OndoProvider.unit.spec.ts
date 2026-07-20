@@ -392,6 +392,12 @@ describe('OndoProvider — `type` field', () => {
     const provider = ondoProvider()
     expect(provider.type).toBe('ondo')
   })
+
+  it('declares SET_REFERRAL as an internal setup action', () => {
+    expect(ondoProvider().internalSetupActions).toContain(
+      ActionType.SET_REFERRAL
+    )
+  })
 })
 
 describe('OndoProvider — order formatting and liquidation surface', () => {
