@@ -22,7 +22,12 @@ import {
   type TriggerOrder,
 } from '@lifi/perps-types'
 import Big from 'big.js'
-import { HYPERLIQUID_FEE_TIER_FALLBACK, SPOT_MARKET_ID } from '../constants.js'
+import {
+  DEFAULT_HYPERLIQUID_API_URL,
+  HYPERLIQUID_FEE_TIER_FALLBACK,
+  SPOT_MARKET_ID,
+} from '../constants.js'
+import { HlAbstractionMode } from '../types/index.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -49,6 +54,8 @@ import type {
 import {
   decodeCompressedJson,
   decodeFastAssetCtxs,
+  hlInfoOptions,
+  infoRequest,
   isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
@@ -99,6 +106,23 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
+  // The clearinghouse stream covers perps equity only, so an accountSummary
+  // frame is honest solely for modes whose collateral lives per-dex. The
+  // abstraction mode is read per subscribed user (null = never set =
+  // standard); unified/portfolio users get NO summary frames — consumers
+  // fall back to the mode-aware REST summary — and the last computed frame
+  // is held until the first read resolves, so the first frame is delayed,
+  // never wrong. The read is refreshed in the background once older than
+  // the TTL (long-lived subscriptions must see an in-session account-mode
+  // switch) and dropped with the user's last clearinghouse subscription.
+  private readonly abstractionByUser = new Map<
+    string,
+    { mode: HlAbstractionMode | null; readAt: number } | 'pending'
+  >()
+  private readonly heldSummaryByUser = new Map<
+    string,
+    { portfolioValue: string; availableMargin: string; marginUsed: string; unrealizedPnl: string }
+  >()
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
   private spotCtxByMarketId: Record<string, HlWsSpotAssetCtx> = {}
   private marketsContextByMarketId: Record<string, MarketContext> = {}
@@ -201,6 +225,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     // subscription; refcount it so neither's teardown starves the other.
     if (sub.channel === 'positions' || sub.channel === 'accountSummary') {
       const user = sub.address.toLowerCase()
+      // A fresh summary listener re-reads the mode immediately: consumers
+      // resubscribe when they observe an account-config change, making the
+      // gate flip event-driven rather than waiting out the TTL.
+      if (sub.channel === 'accountSummary') {
+        const entry = this.abstractionByUser.get(user)
+        if (entry !== undefined && entry !== 'pending') {
+          this.fetchAbstractionMode(sub.address, user, entry)
+        }
+      }
       const wireKey = `clearinghouse:${user}`
       const payload = this.toHlPayload(sub)
       const count = this.clearinghouseRefs.get(user) ?? 0
@@ -213,6 +246,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         const remaining = (this.clearinghouseRefs.get(user) ?? 1) - 1
         if (remaining <= 0) {
           this.clearinghouseRefs.delete(user)
+          // Drop the summary gate's mode read with the subscription so a
+          // resubscribe reflects an account-mode change.
+          this.abstractionByUser.delete(user)
+          this.heldSummaryByUser.delete(user)
           this.unregisterSub(wireKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -969,16 +1006,113 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     // Equity semantics, matching the REST summary: `accountValue` already
     // carries locked margin and unrealized PnL. Spot balances stream apart,
-    // so this portfolio value covers perps equity only.
-    this.emit(`accountSummary:${data.user.toLowerCase()}`, {
-      channel: 'accountSummary',
-      data: {
-        portfolioValue: accountValue.toString(),
-        availableMargin: (accountValue - marginUsed).toString(),
-        marginUsed: marginUsed.toString(),
-        unrealizedPnl: unrealizedPnl.toString(),
-      },
+    // so this portfolio value covers perps equity only — which is why the
+    // frame is gated on the abstraction mode below.
+    this.emitSummaryIfModeAllows(data.user, {
+      portfolioValue: accountValue.toString(),
+      availableMargin: (accountValue - marginUsed).toString(),
+      marginUsed: marginUsed.toString(),
+      unrealizedPnl: unrealizedPnl.toString(),
     })
+  }
+
+  /** Whether the mode's collateral lives per-dex, making the perps-only
+   * summary frame honest. Unified/portfolio hold collateral in spot. */
+  private static summaryComputableFor(
+    mode: HlAbstractionMode | null
+  ): boolean {
+    return (
+      mode !== HlAbstractionMode.UNIFIED_ACCOUNT &&
+      mode !== HlAbstractionMode.PORTFOLIO_MARGIN
+    )
+  }
+
+  /** Re-read the abstraction mode this long after the previous read, so an
+   * in-session account-mode switch flips the gate within one refresh. */
+  private static readonly ABSTRACTION_TTL_MS = 15_000
+
+  private emitSummaryIfModeAllows(
+    user: string,
+    summary: {
+      portfolioValue: string
+      availableMargin: string
+      marginUsed: string
+      unrealizedPnl: string
+    }
+  ) {
+    const key = user.toLowerCase()
+    // Without a client there is no way to read the mode; keep the historic
+    // always-emit behavior rather than silencing every standalone consumer.
+    if (this.client === undefined) {
+      this.emit(`accountSummary:${key}`, {
+        channel: 'accountSummary',
+        data: summary,
+      })
+      return
+    }
+    const entry = this.abstractionByUser.get(key)
+    if (entry === undefined || entry === 'pending') {
+      this.heldSummaryByUser.set(key, summary)
+      if (entry === undefined) {
+        this.fetchAbstractionMode(user, key)
+      }
+      return
+    }
+    if (Date.now() - entry.readAt > HyperliquidWsProvider.ABSTRACTION_TTL_MS) {
+      // Refresh in the background; the current mode keeps gating meanwhile,
+      // so frames neither stall nor mis-emit while the read is in flight.
+      this.fetchAbstractionMode(user, key, entry)
+    }
+    if (!HyperliquidWsProvider.summaryComputableFor(entry.mode)) {
+      return
+    }
+    this.emit(`accountSummary:${key}`, {
+      channel: 'accountSummary',
+      data: summary,
+    })
+  }
+
+  private fetchAbstractionMode(
+    user: string,
+    key: string,
+    refreshing?: { mode: HlAbstractionMode | null; readAt: number }
+  ) {
+    const client = this.client
+    if (client === undefined) {
+      return
+    }
+    // A background refresh keeps the current entry live (stamped now so
+    // frames don't re-kick the read); the first read holds frames instead.
+    this.abstractionByUser.set(
+      key,
+      refreshing ? { ...refreshing, readAt: Date.now() } : 'pending'
+    )
+    // "Never set abstraction" is a successful 200 `null` body — only a fetch
+    // failure clears a first read so the next frame retries it. A failed
+    // refresh keeps the previous mode until the TTL passes again.
+    infoRequest<HlAbstractionMode | null>(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { type: 'userAbstraction', user },
+      hlInfoOptions(client)
+    ).then(
+      (mode) => {
+        this.abstractionByUser.set(key, { mode, readAt: Date.now() })
+        const held = this.heldSummaryByUser.get(key)
+        this.heldSummaryByUser.delete(key)
+        if (held && HyperliquidWsProvider.summaryComputableFor(mode)) {
+          this.emit(`accountSummary:${key}`, {
+            channel: 'accountSummary',
+            data: held,
+          })
+        }
+      },
+      (error) => {
+        if (!refreshing) {
+          this.abstractionByUser.delete(key)
+        }
+        wsLog.handlerFailure(this.providerKey, error)
+      }
+    )
   }
 
   private handleSpotState(data: HlWsSpotStateData) {
