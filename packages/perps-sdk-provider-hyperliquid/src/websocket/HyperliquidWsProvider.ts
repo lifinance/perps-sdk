@@ -27,7 +27,6 @@ import {
   HYPERLIQUID_FEE_TIER_FALLBACK,
   SPOT_MARKET_ID,
 } from '../constants.js'
-import { HlAbstractionMode } from '../types/index.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -51,6 +50,7 @@ import type {
   HlWsTrade,
   HlWsUserFillsData,
 } from '../types/index.js'
+import { HlAbstractionMode } from '../types/index.js'
 import {
   decodeCompressedJson,
   decodeFastAssetCtxs,
@@ -121,7 +121,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   >()
   private readonly heldSummaryByUser = new Map<
     string,
-    { portfolioValue: string; availableMargin: string; marginUsed: string; unrealizedPnl: string }
+    {
+      portfolioValue: string
+      availableMargin: string
+      marginUsed: string
+      unrealizedPnl: string
+    }
   >()
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
   private spotCtxByMarketId: Record<string, HlWsSpotAssetCtx> = {}
@@ -1018,9 +1023,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   /** Whether the mode's collateral lives per-dex, making the perps-only
    * summary frame honest. Unified/portfolio hold collateral in spot. */
-  private static summaryComputableFor(
-    mode: HlAbstractionMode | null
-  ): boolean {
+  private static summaryComputableFor(mode: HlAbstractionMode | null): boolean {
     return (
       mode !== HlAbstractionMode.UNIFIED_ACCOUNT &&
       mode !== HlAbstractionMode.PORTFOLIO_MARGIN

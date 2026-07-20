@@ -3390,29 +3390,29 @@ describe('accountSummary channel', () => {
       },
     })
 
-  it.each([['unifiedAccount'], ['portfolioMargin']])(
-    'withholds summary frames when the account holds collateral in spot (%s)',
-    async (mode) => {
-      abstractionFetchMock.mockResolvedValue(mode)
-      try {
-        const provider = createEnrichingProvider()
-        const listener = vi.fn()
-        await provider.subscribe(
-          { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
-          listener
-        )
+  it.each([
+    ['unifiedAccount'],
+    ['portfolioMargin'],
+  ])('withholds summary frames when the account holds collateral in spot (%s)', async (mode) => {
+    abstractionFetchMock.mockResolvedValue(mode)
+    try {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
 
-        getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
-        await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await flushMicrotasks()
 
-        // The perps-only frame cannot price spot-held collateral; consumers
-        // fall back to the mode-aware REST summary instead.
-        expect(listener).not.toHaveBeenCalled()
-      } finally {
-        abstractionFetchMock.mockReset()
-      }
+      // The perps-only frame cannot price spot-held collateral; consumers
+      // fall back to the mode-aware REST summary instead.
+      expect(listener).not.toHaveBeenCalled()
+    } finally {
+      abstractionFetchMock.mockReset()
     }
-  )
+  })
 
   it('re-reads the abstraction mode after the last holder unsubscribes', async () => {
     vi.useFakeTimers()
