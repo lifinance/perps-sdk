@@ -15,6 +15,7 @@ const STD_TOKEN = '1731536000:7:253:abc123'
 
 interface MakeManagerOptions {
   storage?: StorageAdapter
+  providerKey?: 'lighter' | 'lighter-rh'
   /** Unix milliseconds. Defaults to a stable mid-2024 anchor for determinism. */
   nowMs?: number
   fetcherResponse?: Partial<LighterCreateTokenResponse>
@@ -38,6 +39,7 @@ function makeManager(options: MakeManagerOptions = {}) {
     }))
   const manager = new LighterReadOnlyTokenManager({
     storage,
+    providerKey: options.providerKey,
     fetcher,
     now: () => options.nowMs ?? ANCHOR_NOW_MS,
   })
@@ -349,6 +351,70 @@ describe('LighterReadOnlyTokenManager', () => {
       const b = await bSetup.manager.get(ADDRESS_B, 7)
       expect(a?.token).toBe('ro:7:all:a:zz')
       expect(b?.token).toBe('ro:7:all:b:zz')
+    })
+  })
+
+  describe('provider instance namespacing', () => {
+    it('persists tokens under per-providerKey keys so instances sharing a storage backend never cross-serve', async () => {
+      const storage = createMemoryStorage()
+      const mainnet = makeManager({
+        storage,
+        fetcherResponse: { api_token: 'ro:7:all:mainnet:xx' },
+      })
+      const rh = makeManager({
+        storage,
+        providerKey: 'lighter-rh',
+        fetcherResponse: { api_token: 'ro:7:all:rh:xx' },
+      })
+
+      await mainnet.manager.approve(STD_TOKEN, {
+        address: ADDRESS_A,
+        accountIndex: 7,
+        expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
+        scope: 'all',
+      })
+
+      expect(await rh.manager.get(ADDRESS_A, 7)).toBeUndefined()
+      expect(
+        await storage.get(`lifi:perps:lighter:rotoken:${ADDRESS_A}:7`)
+      ).not.toBeNull()
+      expect(
+        await storage.get(`lifi:perps:lighter-rh:rotoken:${ADDRESS_A}:7`)
+      ).toBeNull()
+
+      await rh.manager.approve(STD_TOKEN, {
+        address: ADDRESS_A,
+        accountIndex: 7,
+        expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
+        scope: 'all',
+      })
+
+      // Fresh managers (a page reload) reading the shared persistent layer
+      // must resolve each instance's own token.
+      const mainnetReloaded = new LighterReadOnlyTokenManager({
+        storage,
+        now: () => ANCHOR_NOW_MS,
+      })
+      const rhReloaded = new LighterReadOnlyTokenManager({
+        storage,
+        providerKey: 'lighter-rh',
+        now: () => ANCHOR_NOW_MS,
+      })
+      expect((await mainnetReloaded.get(ADDRESS_A, 7))?.token).toBe(
+        'ro:7:all:mainnet:xx'
+      )
+      expect((await rhReloaded.get(ADDRESS_A, 7))?.token).toBe('ro:7:all:rh:xx')
+    })
+
+    it('stamps the approve() config provider with the instance key', async () => {
+      const rh = makeManager({ providerKey: 'lighter-rh' })
+      const result = await rh.manager.approve(STD_TOKEN, {
+        address: ADDRESS_A,
+        accountIndex: 7,
+        expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
+        scope: 'all',
+      })
+      expect(result.config.provider).toBe('lighter-rh')
     })
   })
 

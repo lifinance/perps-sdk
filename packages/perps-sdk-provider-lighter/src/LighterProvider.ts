@@ -308,6 +308,7 @@ export const lighterProvider = (
   const signer = options.signer
   const keyStore = options.keyStore
   const readOnlyTokenManager = new LighterReadOnlyTokenManager({
+    providerKey,
     lighterApiUrl: restUrl,
     ...options.readOnlyTokenOptions,
   })

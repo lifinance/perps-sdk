@@ -2123,12 +2123,14 @@ describe('LighterProvider — instance config', () => {
   })
 
   it('lighterRhInstance builds the RH config from the required signing chain id', () => {
-    const instance = lighterRhInstance({ signerChainId: 4663 })
+    // Arbitrary fixture value — the real RH zkLighter L2 chain id is
+    // unconfirmed (and is neither 304 nor 4663; see LighterRhInstanceOverrides).
+    const instance = lighterRhInstance({ signerChainId: 9999 })
     expect(instance).toEqual({
       providerKey: LIGHTER_RH_PROVIDER_KEY,
       restUrl: LIGHTER_RH_REST_URL,
       wsUrl: LIGHTER_RH_WS_URL,
-      signerChainId: 4663,
+      signerChainId: 9999,
       explorerTxBaseUrl: undefined,
     })
     expect(LIGHTER_RH_REST_URL).toBe('https://api.rh.lighter.xyz')
