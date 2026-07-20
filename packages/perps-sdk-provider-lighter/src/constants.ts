@@ -1,4 +1,4 @@
-import type { FeeTier } from '@lifi/perps-types'
+import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
 
 /**
  * Lighter provider key as it appears on `Provider.key` from the backend.
@@ -23,6 +23,109 @@ export const LIGHTER_SPOT_CATEGORY_ID = 'spot'
  */
 export const DEFAULT_LIGHTER_REST_URL = 'https://mainnet.zklighter.elliot.ai'
 export const DEFAULT_LIGHTER_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
+
+/**
+ * zkLighter L2 signing chain id fed to {@link LighterSigner} on mainnet.
+ *
+ * @public
+ */
+export const DEFAULT_LIGHTER_SIGNER_CHAIN_ID = 304
+
+/**
+ * Base URL the mainnet Lighter zkLighter explorer resolves a tx hash against
+ * (`${base}${txHash}`).
+ *
+ * @public
+ */
+export const DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL =
+  'https://app.lighter.xyz/explorer/logs/'
+
+/**
+ * The venue-specific facts that distinguish one Lighter deployment from
+ * another. One provider + WS pair is built per instance from these; a client
+ * may register several so long as their `providerKey`s differ.
+ *
+ * @public
+ */
+export interface LighterInstanceConfig {
+  /** Wire-visible `Provider.key` and the plugin `type`; unique per instance. */
+  providerKey: LighterProviderKey
+  restUrl: string
+  wsUrl: string
+  /**
+   * zkLighter L2 signing chain id to construct this instance's
+   * {@link LighterSigner} with.
+   */
+  signerChainId: number
+  /**
+   * Explorer tx base URL for transfer-activity links (`${base}${txHash}`).
+   * When omitted, transfer links are not emitted for this instance.
+   */
+  explorerTxBaseUrl?: string
+}
+
+/**
+ * The built-in mainnet Lighter instance — the defaults `lighterProvider()` and
+ * `lighterWsProvider()` apply when constructed with no instance overrides.
+ *
+ * @public
+ */
+export const LIGHTER_MAINNET_INSTANCE: LighterInstanceConfig = {
+  providerKey: LIGHTER_PROVIDER_KEY,
+  restUrl: DEFAULT_LIGHTER_REST_URL,
+  wsUrl: DEFAULT_LIGHTER_WS_URL,
+  signerChainId: DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+  explorerTxBaseUrl: DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
+}
+
+/**
+ * Provider key for the Lighter instance running on Robinhood chain.
+ *
+ * @public
+ */
+export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
+
+/** @public */
+export const LIGHTER_RH_REST_URL = 'https://api.rh.lighter.xyz'
+/** @public */
+export const LIGHTER_RH_WS_URL = 'wss://api.rh.lighter.xyz/stream'
+
+/**
+ * Deployment-supplied facts the RH instance cannot source from public
+ * documentation and the caller must confirm.
+ *
+ * @public
+ */
+export interface LighterRhInstanceOverrides {
+  /**
+   * zkLighter L2 signing chain id for the RH instance. Unverified from public
+   * sources — must be the value confirmed against lighter-go / RH support, not
+   * mainnet's 304 nor the RH L1 chain id 4663.
+   */
+  signerChainId: number
+  /**
+   * RH zkLighter explorer tx base URL. Omit until confirmed; transfer links are
+   * then left unset rather than pointed at the mainnet explorer.
+   */
+  explorerTxBaseUrl?: string
+}
+
+/**
+ * Build the `lighter-rh` {@link LighterInstanceConfig}. The signing chain id is
+ * a required argument because it is not verifiable from public sources — the
+ * caller must pass the value confirmed against lighter-go / RH support.
+ *
+ * @public
+ */
+export const lighterRhInstance = (
+  overrides: LighterRhInstanceOverrides
+): LighterInstanceConfig => ({
+  providerKey: LIGHTER_RH_PROVIDER_KEY,
+  restUrl: LIGHTER_RH_REST_URL,
+  wsUrl: LIGHTER_RH_WS_URL,
+  signerChainId: overrides.signerChainId,
+  explorerTxBaseUrl: overrides.explorerTxBaseUrl,
+})
 
 /** @internal */
 export const DEFAULT_TRADES_LIMIT = 50

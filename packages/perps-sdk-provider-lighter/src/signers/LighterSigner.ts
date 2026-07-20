@@ -1,5 +1,8 @@
 import { ActionType } from '@lifi/perps-types'
-import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
+import {
+  DEFAULT_LIGHTER_REST_URL,
+  DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+} from '../constants.js'
 import {
   LT_ASSET_ID_USDC,
   LT_ROUTE_PERP,
@@ -61,8 +64,6 @@ export interface ApiKeyPair {
   privateKey: string
 }
 
-const DEFAULT_CHAIN_ID = 304
-
 // Signing "unset" sentinels mirror lighter-go `types/txtypes/constants.go`.
 // Passing them yields an empty `L2TxAttributes` — no integrator fees, default
 // self-trade rules.
@@ -103,7 +104,7 @@ export class LighterSigner {
 
   constructor(config: LighterSignerConfig = {}) {
     this.apiUrl = config.apiUrl ?? DEFAULT_LIGHTER_REST_URL
-    this.chainId = config.chainId ?? DEFAULT_CHAIN_ID
+    this.chainId = config.chainId ?? DEFAULT_LIGHTER_SIGNER_CHAIN_ID
     this.loaderOptions = {
       wasmBinaryUrl: config.wasmBinaryUrl,
       wasmExecJsUrl: config.wasmExecJsUrl,
