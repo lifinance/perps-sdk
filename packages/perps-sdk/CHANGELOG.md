@@ -1,5 +1,20 @@
 # @lifi/perps-sdk
 
+## 4.0.0
+
+### Major Changes
+
+- [#258](https://github.com/lifinance/perps-sdk/pull/258) [`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsSigner` now has exactly two values: `USER` (the end-user's wallet must sign or consent — expect a wallet interaction) and `SDK` (the provider package completes signing with credentials it holds or creates, no user interaction). The previous `AGENT` and `API_KEY` values are removed; each provider package is the authority on what `SDK` means for its venue. The array shape of `signers` is unchanged.
+
+### Minor Changes
+
+- [#257](https://github.com/lifinance/perps-sdk/pull/257) [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parametrize the Lighter provider by instance config so a single implementation can back multiple Lighter deployments. `lighterProvider()` and `lighterWsProvider()` now accept a `providerKey`, `restUrl`, `wsUrl`, and `explorerTxBaseUrl`, and `LighterSigner` accepts the signing chain id — each instance namespaces its own market/asset registries, retry policy, and auth-token caches. A bare `lighterProvider()` is unchanged (`type: 'lighter'`, mainnet URLs, chain id 304). Adds the `lighter-rh` (Robinhood chain) instance constants and the `lighterRhInstance()` factory, plus `explorerTxUrlFromBase` for resolving explorer links from a per-instance base URL.
+
+### Patch Changes
+
+- Updated dependencies [[`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0)]:
+  - @lifi/perps-types@3.0.0
+
 ## 3.1.1
 
 ### Patch Changes
