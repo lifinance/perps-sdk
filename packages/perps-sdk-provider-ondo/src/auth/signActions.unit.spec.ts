@@ -5,6 +5,7 @@ import type {
   SessionActionStep,
   SiweActionStep,
   SiweSignedActionStep,
+  WasmBlobActionStep,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import { createWalletClient, http, verifyMessage } from 'viem'
@@ -103,6 +104,20 @@ const PLACE_ORDER_STEP: HmacActionStep = {
     path: '/v1/perps/orders',
     body: '{"market":"AAPL-USD.P","side":"buy","size":"1","type":"market"}',
   },
+}
+
+const REFERRAL_SESSION_STEP: HmacActionStep = {
+  action: ActionType.SET_REFERRAL,
+  request: {
+    method: 'POST',
+    path: '/v1/account/referral',
+    body: '{"code":"LIFI"}',
+  },
+}
+
+const WASM_STEP: WasmBlobActionStep = {
+  action: ActionType.REGISTER_API_KEY,
+  wasmSignParams: {},
 }
 
 const jsonResponse = (body: unknown, status = 200): Response =>
@@ -472,20 +487,54 @@ describe('ondoSignActions — SESSION', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('rejects non-session steps under the session method', async () => {
-    const deps = makeDeps(vi.fn<typeof fetch>())
+  it('executes a request-bearing session step against the venue with the session token and returns no signed steps', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const signed = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [REFERRAL_SESSION_STEP],
+      account.address
+    )
+
+    expect(signed).toEqual([])
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/v1/account/referral`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ code: 'LIFI' })
+    expect(new Headers(init.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+  })
+
+  it('throws OndoSessionExpiredError for a request-bearing session step without a stored session token', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
 
     await expect(
       ondoSignActions(
         deps,
         SigningMethod.SESSION,
-        [PLACE_ORDER_STEP],
+        [REFERRAL_SESSION_STEP],
         account.address
       )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('rejects a step that is neither a session marker nor request-bearing under the session method', async () => {
+    const deps = makeDeps(vi.fn<typeof fetch>())
+
+    await expect(
+      ondoSignActions(deps, SigningMethod.SESSION, [WASM_STEP], account.address)
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 
-  it('rejects session steps with an action it has no executor for', async () => {
+  it('rejects a bare session marker with an action it has no executor for', async () => {
     const deps = makeDeps(vi.fn<typeof fetch>())
 
     await expect(

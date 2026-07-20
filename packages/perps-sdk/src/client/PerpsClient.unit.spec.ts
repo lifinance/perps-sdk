@@ -1291,6 +1291,280 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // checkSetup — provider-declared internal setup steps are drained in place
+  // and never surface in the returned setup list.
+  // ---------------------------------------------------------------------------
+
+  describe('checkSetup — internal setup steps', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const providersHandler = (setup: unknown[]) =>
+      http.get(`${BASE_URL}/providers`, () =>
+        HttpResponse.json({
+          providers: [
+            {
+              key,
+              name: 'Venue',
+              logoURI: 'https://example.com/venue.png',
+              signingMethod: SigningMethod.EIP712,
+              active: true,
+              setup,
+              options: [],
+              actions: [],
+              categories: [],
+            },
+          ],
+        })
+      )
+
+    const internalStep = (signers: PerpsSigner[]) => ({
+      type: ActionType.SET_REFERRAL,
+      signers,
+      signingMethod: SigningMethod.EIP712,
+      sequence: 10,
+      params: [],
+    })
+
+    it('drains a backend-executed internal step and omits it from setup', async () => {
+      const signActions = vi.fn(
+        async (
+          _method: SigningMethod,
+          steps: { action: ActionType }[]
+        ): Promise<SignedActionStep[]> =>
+          steps.map((s) => ({
+            action: s.action,
+            typedData: {
+              domain: {},
+              types: {},
+              primaryType: 'X',
+              message: {},
+            },
+            signature: '0xsig',
+          })) as unknown as SignedActionStep[]
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                typedData: {
+                  domain: {},
+                  types: {},
+                  primaryType: 'X',
+                  message: {},
+                },
+              },
+            ],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCount++
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(createCalls).toEqual([ActionType.SET_REFERRAL])
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executeCount).toBe(1)
+    })
+
+    it('drains a client-executed internal step with no executeAction hop', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executeCount).toBe(0)
+    })
+
+    it('never drains an internal step the provider config already reports satisfied', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
+            ]),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).not.toHaveBeenCalled()
+      expect(createCount).toBe(0)
+    })
+
+    it('never blocks setup when a silent internal step fails; the step stays hidden', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => {
+        throw new Error('venue rejected the silent step')
+      })
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    it('never hides a step whose signers include USER, even when declared internal', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.USER])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action }],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result.isReady).toBe(false)
+      expect(signActions).not.toHaveBeenCalled()
+      expect(executeCount).toBe(0)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Signer-agnostic core: Lighter (no agent) end-to-end + both-plugin
   // orchestration. A Lighter plugin with no agent machinery drives a full
   // setup + execute flow without core ever resolving an agent signer.

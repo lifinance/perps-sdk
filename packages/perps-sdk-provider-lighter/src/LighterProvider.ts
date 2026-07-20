@@ -668,6 +668,8 @@ export const lighterProvider = (
   return {
     type: providerKey,
 
+    internalSetupActions: [ActionType.SET_REFERRAL],
+
     bind(client: PerpsSDKClient): void {
       boundClient = client
     },
