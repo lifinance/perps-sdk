@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 3.1.1
+
+### Patch Changes
+
+- [#246](https://github.com/lifinance/perps-sdk/pull/246) [`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Polish package READMEs: consistent badge headers and structure, quick-start snippets, and a WebSocket section in the core README.
+
+- Updated dependencies [[`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b)]:
+  - @lifi/perps-types@2.0.1
+
 ## 3.1.0
 
 ### Minor Changes
