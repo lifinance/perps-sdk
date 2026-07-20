@@ -139,8 +139,9 @@ export class LighterSigner {
    * `WasmBlobActionStep`. Returns the signed `{ txType, txInfo, txHash }`
    * triple the backend forwards to Lighter's `sendTx` endpoint.
    *
-   * For REGISTER_API_KEY use `signChangePubKey` instead — it returns an
-   * additional `messageToSign` the L1 wallet must countersign.
+   * For REGISTER_API_KEY use `signChangePubKey` and for APPROVE_INTEGRATOR
+   * use `signApproveIntegrator` instead — both return an additional
+   * `messageToSign` the L1 wallet must countersign.
    */
   async sign(
     action: ActionType,
@@ -151,6 +152,12 @@ export class LighterSigner {
       throw new Error(
         'Use signChangePubKey() for REGISTER_API_KEY — the L1 eth_sign hop ' +
           'must be coordinated by the caller.'
+      )
+    }
+    if (action === ActionType.APPROVE_INTEGRATOR) {
+      throw new Error(
+        'Use signApproveIntegrator() for APPROVE_INTEGRATOR — sign() does ' +
+          'not collect the required L1 user wallet signature.'
       )
     }
     const wasm = await this.ensureLoaded()
