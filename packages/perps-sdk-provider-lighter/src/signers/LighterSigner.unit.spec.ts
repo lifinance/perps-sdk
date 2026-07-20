@@ -392,8 +392,7 @@ describe('LighterSigner', () => {
   })
 
   it('signs APPROVE_INTEGRATOR into a type-45 blob with positional args in struct order', async () => {
-    const signed = await signer.sign(
-      ActionType.APPROVE_INTEGRATOR,
+    const signed = await signer.signApproveIntegrator(
       {
         integrator_account_index: 5,
         max_perps_taker_fee: 250,
@@ -424,8 +423,7 @@ describe('LighterSigner', () => {
 
   it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {
     await expect(
-      signer.sign(
-        ActionType.APPROVE_INTEGRATOR,
+      signer.signApproveIntegrator(
         {
           integrator_account_index: 5,
           max_perps_taker_fee: 250,
@@ -565,6 +563,16 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/signChangePubKey/)
+  })
+
+  it('APPROVE_INTEGRATOR through sign() throws (must use signApproveIntegrator)', async () => {
+    await expect(
+      signer.sign(
+        ActionType.APPROVE_INTEGRATOR,
+        { integrator_account_index: 45, nonce: 0 },
+        ctx()
+      )
+    ).rejects.toThrow(/signApproveIntegrator/)
   })
 
   it('signChangePubKey returns txInfo with empty L1Sig and an EIP-191 message', async () => {
