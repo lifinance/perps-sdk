@@ -7,13 +7,17 @@
 
 </div>
 
-# `@lifi/perps-sdk-provider-hyperliquid`
+<h1 align="center"><code>@lifi/perps-sdk-provider-hyperliquid</code></h1>
 
-Hyperliquid provider plugin for [`@lifi/perps-sdk`](https://www.npmjs.com/package/@lifi/perps-sdk) — a workspace package of the [`perps-sdk`](https://www.npmjs.com/package/@lifi/perps-sdk) monorepo. Register it on a `PerpsClient` to trade Hyperliquid perpetuals through the SDK's unified interface.
+Hyperliquid provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/). Register it on a `PerpsClient` to trade Hyperliquid perpetuals through the SDK's unified interface.
+
+## Installation
 
 ```bash
 pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
 ```
+
+## Quick start
 
 ```ts
 import { createPerpsClient } from '@lifi/perps-sdk'
@@ -26,10 +30,15 @@ const client = createPerpsClient({
 })
 ```
 
-See the [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) and the [full documentation](https://public-perps-docs.mintlify.app/) for setup, options, the exported surface, and the agent signing model.
+## Agent key storage
 
-## Security: agent key storage
+Setup registers an agent keypair whose private key signs orders locally, so trading needs no per-order wallet popups. The agent key authorizes trading only — it cannot withdraw funds.
 
-The agent keypair is persisted via a `StorageAdapter`, which defaults to browser `localStorage`. The agent private key is therefore readable by any same-origin script — an XSS vulnerability in the host page can exfiltrate it. To harden this, pass a more secure `StorageAdapter` (e.g. one backed by an encrypted or in-memory store) to the `HyperliquidAgentStore` constructor.
+The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass your own `StorageAdapter` to the `HyperliquidAgentStore` constructor to use a different backend — a custom adapter bypasses this encryption and is responsible for protecting the key at rest.
 
-The blast radius is bounded: the agent key authorizes trading only. Fund withdrawal still requires L1 `APPROVE_AGENT` consent, which the agent key alone cannot grant.
+## Documentation
+
+- [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API
+- [Full documentation](https://public-perps-docs.mintlify.app/) — the exported surface and the agent signing model
+- [API reference](https://public-perps-docs.mintlify.app/api-reference)
+- [Source and issues](https://github.com/lifinance/perps-sdk)
