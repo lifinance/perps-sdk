@@ -41,7 +41,7 @@ const accountModeOption: ProviderAction = {
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description: 'Choose how this account interacts with Hyperliquid.',
-  signers: [PerpsSigner.AGENT],
+  signers: [PerpsSigner.SDK],
   signingMethod: SigningMethod.EIP712,
   params: [
     {
@@ -132,7 +132,7 @@ describe('projectHyperliquidConfigSettings', () => {
       type: ActionType.PLACE_ORDER,
       title: 'Place order',
       description: 'Trading action — should not appear here.',
-      signers: [PerpsSigner.AGENT],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.EIP712,
       params: [],
     }

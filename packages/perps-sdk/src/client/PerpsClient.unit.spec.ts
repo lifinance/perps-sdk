@@ -1448,7 +1448,7 @@ describe('PerpsClient', () => {
       const hlAgent = await hl.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         userAddress,
-        [PerpsSigner.AGENT]
+        [PerpsSigner.SDK]
       )
 
       const executeCalls: ExecuteActionRequest[] = []
@@ -1530,7 +1530,7 @@ describe('PerpsClient', () => {
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.API_KEY],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.HMAC,
         },
       ],

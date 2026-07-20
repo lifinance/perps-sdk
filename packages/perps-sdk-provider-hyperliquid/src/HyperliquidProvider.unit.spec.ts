@@ -202,7 +202,7 @@ describe('hyperliquidProvider', () => {
       const place = await provider.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         ADDRESS,
-        [PerpsSigner.AGENT]
+        [PerpsSigner.SDK]
       )
       expect(place.signerAddress).toBe(agentAddress)
     })
@@ -211,7 +211,7 @@ describe('hyperliquidProvider', () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       await expect(
         provider.resolveActionRequest!(ActionType.PLACE_ORDER, ADDRESS, [
-          PerpsSigner.AGENT,
+          PerpsSigner.SDK,
         ])
       ).rejects.toThrow()
     })
@@ -272,7 +272,7 @@ describe('hyperliquidProvider', () => {
         SigningMethod.EIP712,
         [eip712Step()],
         ADDRESS,
-        { signers: [PerpsSigner.AGENT] }
+        { signers: [PerpsSigner.SDK] }
       )
       expect(signed.action).toBe(ActionType.PLACE_ORDER)
       expect('signature' in signed && signed.signature).toMatch(
