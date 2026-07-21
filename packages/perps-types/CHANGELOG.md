@@ -1,5 +1,13 @@
 # @lifi/perps-types
 
+## 3.1.0
+
+### Minor Changes
+
+- [#266](https://github.com/lifinance/perps-sdk/pull/266) [`128ad0c`](https://github.com/lifinance/perps-sdk/commit/128ad0cf2ea7a862ad5626eb16b2b9aa8750ecc0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional `tags` and `aliases` fields to `Asset` for cross-venue search/grouping metadata.
+
+- [#252](https://github.com/lifinance/perps-sdk/pull/252) [`df52f91`](https://github.com/lifinance/perps-sdk/commit/df52f9175081de8a51b94145a8a7c5337d8b21c6) Thanks [@TristanNcl](https://github.com/TristanNcl)! - count HYPE and BTC as portfolio-margin collateral at their loan-to-value weight when computing available margin
+
 ## 3.0.0
 
 ### Major Changes
