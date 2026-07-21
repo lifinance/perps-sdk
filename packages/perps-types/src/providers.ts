@@ -90,14 +90,16 @@ export interface Provider {
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
   /**
-   * Deposit/collateral token a client bridges in to fund an account at this
-   * venue — the target of the deposit flow, carrying its own on-chain
-   * identity. Distinct from a category's `quoteAsset` (the pricing unit):
-   * all live venues settle in USDC today so the two coincide, but a venue
-   * whose collateral is not USDC changes only this field, not `quoteAsset`.
-   * Absent when the provider advertises no on-chain deposit token.
+   * External on-chain tokens a client can bridge/swap in to fund an account at
+   * this venue — each the target of a LI.FI deposit route, carrying its own
+   * on-chain identity. Ordered; the first is the default a client preselects.
+   * v1 venues advertise a single token; multiple entries let a venue accept
+   * several deposit currencies. Distinct from a category's `quoteAsset` (the
+   * pricing unit): a venue whose collateral is not USDC changes only this
+   * field, not `quoteAsset`. Absent when the provider advertises no on-chain
+   * deposit token.
    */
-  depositAsset?: DepositAsset
+  depositAssets?: DepositAsset[]
   /**
    * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
    * `minMarginUsd` parameter. Absent means no minimum advertised.

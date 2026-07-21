@@ -149,7 +149,7 @@ const hyperliquidProvider: Provider = {
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   chainId: 1337,
-  depositAsset: arbitrumUsdcDeposit,
+  depositAssets: [arbitrumUsdcDeposit],
   minOrderValueUsd: 10,
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
@@ -389,13 +389,13 @@ type _ChainIdIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
 >
 
-// `depositAsset` is an optional `DepositAsset` — additive, so the existing
+// `depositAssets` is an optional `DepositAsset[]` — additive, so the existing
 // `/providers` payload and all current consumers keep type-checking.
 type _DepositAssetShape = Expect<
-  Equals<Provider['depositAsset'], DepositAsset | undefined>
+  Equals<Provider['depositAssets'], DepositAsset[] | undefined>
 >
 type _DepositAssetIsOptional = Expect<
-  Equals<Extract<RequiredKeys<Provider>, 'depositAsset'>, never>
+  Equals<Extract<RequiredKeys<Provider>, 'depositAssets'>, never>
 >
 
 // `ProviderAction` keys: the three core fields plus the optional
@@ -632,28 +632,33 @@ describe('Provider.chainId', () => {
   })
 })
 
-describe('Provider.depositAsset', () => {
-  it('carries the on-chain deposit/collateral token the client bridges to', () => {
-    expect(hyperliquidProvider.depositAsset?.chainId).toBe(42161)
-    expect(hyperliquidProvider.depositAsset?.address).toBe(
+describe('Provider.depositAssets', () => {
+  it('carries the on-chain deposit tokens the client routes to', () => {
+    expect(hyperliquidProvider.depositAssets?.[0]?.chainId).toBe(42161)
+    expect(hyperliquidProvider.depositAssets?.[0]?.address).toBe(
       '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
     )
-    expect(hyperliquidProvider.depositAsset?.decimals).toBe(6)
+    expect(hyperliquidProvider.depositAssets?.[0]?.decimals).toBe(6)
+  })
+
+  it('is an ordered list — the first entry is the default', () => {
+    expect(Array.isArray(hyperliquidProvider.depositAssets)).toBe(true)
+    expect(hyperliquidProvider.depositAssets?.[0]).toBe(arbitrumUsdcDeposit)
   })
 
   it('is distinct from the category quoteAsset (pricing unit)', () => {
     expect(hyperliquidProvider.categories[0]?.quoteAsset?.displaySymbol).toBe(
       'USDC'
     )
-    expect(hyperliquidProvider.depositAsset?.displaySymbol).toBe('USDC')
+    expect(hyperliquidProvider.depositAssets?.[0]?.displaySymbol).toBe('USDC')
     expect(
       'address' in (hyperliquidProvider.categories[0]?.quoteAsset ?? {})
     ).toBe(false)
   })
 
   it('is optional — a provider may advertise no on-chain deposit token', () => {
-    expect(providerWithNoDescriptors.depositAsset).toBeUndefined()
-    expect(lighterProvider.depositAsset).toBeUndefined()
+    expect(providerWithNoDescriptors.depositAssets).toBeUndefined()
+    expect(lighterProvider.depositAssets).toBeUndefined()
   })
 })
 
