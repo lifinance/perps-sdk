@@ -3476,6 +3476,73 @@ describe('accountSummary channel', () => {
     }
   })
 
+  it('haircuts spot HYPE collateral at 0.5 LTV under portfolioMargin but not unified', async () => {
+    // Non-quote spot collateral is where the two modes diverge: portfolio
+    // margin credits HYPE toward buying power at 0.5 LTV; unified treats it
+    // as a flat holding worth nothing to available margin.
+    const hypeSpot: Market = {
+      ...HL_SPOT_MARKET,
+      id: '@200',
+      baseAsset: {
+        ...HL_SPOT_MARKET.baseAsset,
+        id: '150',
+        displaySymbol: 'HYPE',
+      },
+    }
+
+    const availableMarginFor = async (mode: string): Promise<string> => {
+      abstractionFetchMock.mockResolvedValue(mode)
+      const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+      const listener = vi.fn()
+      const contextListener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        contextListener
+      )
+      await flushMicrotasks()
+
+      // Price HYPE spot at $40 so the 100-unit balance values to $4000. HL
+      // streams spot context over `sac` (base64 + raw DEFLATE); the decode is
+      // async, so gate on the context emission before valuing the balance.
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            '@200': { midPx: '40', markPx: '40' },
+          }),
+        })
+      )
+      await vi.waitFor(() => {
+        expect(
+          contextListener.mock.calls.at(-1)?.[0]?.data['@200']
+        ).toBeDefined()
+      })
+
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+          { coin: 'HYPE', token: 150, total: '100', hold: '0' },
+        ])
+      )
+      await flushMicrotasks()
+      return listener.mock.calls.at(-1)?.[0].data.availableMargin
+    }
+
+    try {
+      // USDC 1000 + HYPE 4000×0.5 + uPnL 100 − marginUsed 940 = 2160.
+      expect(await availableMarginFor('portfolioMargin')).toBe('2160')
+      // USDC 1000 + uPnL 100 − marginUsed 940 = 160; HYPE contributes nothing.
+      expect(await availableMarginFor('unifiedAccount')).toBe('160')
+    } finally {
+      abstractionFetchMock.mockReset()
+    }
+  })
+
   it('tears the spot pipeline down when a refresh resolves back to standard', async () => {
     vi.useFakeTimers()
     abstractionFetchMock.mockResolvedValue('unifiedAccount')
