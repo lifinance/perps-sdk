@@ -26,36 +26,41 @@ export interface Asset {
 }
 
 /**
- * An external, on-chain ERC-20 token a client bridges/swaps INTO to fund an
- * account at a venue — the destination of a LI.FI route (its `toChain` /
- * `toToken`). The source token is arbitrary: LI.FI routes whatever the user
- * holds to this target, so only the target is described here. How the venue
- * represents the credited balance internally is deliberately not modeled —
- * the balance surfaces in-venue once the deposit arrives.
+ * An external, on-chain ERC-20 token a client bridges/swaps in to fund an
+ * account at a venue — the collateral currency, described by its canonical
+ * on-chain identity (a LI.FI-recognized token). The source token is arbitrary:
+ * LI.FI routes whatever the user holds into this one, so only the target
+ * currency is described here. How the venue represents the credited balance
+ * internally is deliberately not modeled — it surfaces in-venue once the
+ * deposit arrives.
  *
  * Distinct from a category's {@link ProviderCategory.quoteAsset} (the
  * pricing/quote unit a market is denominated in): all live venues settle in
  * USDC today so the two coincide, but they are different concepts and may
  * diverge. Unlike {@link Asset} (a provider-native registry entry keyed by an
  * opaque provider id), this carries full on-chain identity — chain, address,
- * decimals — so the client can construct the route target directly.
+ * decimals.
  * @public
  */
 export interface DepositAsset {
   /**
-   * Chain the token lives on. MUST be a `@lifi/types` `ChainId` value — it is
-   * passed verbatim as the LI.FI `getQuote` `toChain`.
+   * The chain the ERC-20 contract lives on, aligned to `@lifi/types` `ChainId`
+   * values (documentation-level, not a type dependency). This is the token's
+   * on-chain home (e.g. Arbitrum for HL's USDC), NOT necessarily the LI.FI
+   * deposit route's `toChain`: some venues route to a distinct LI.FI venue
+   * chain (see the SDK's `LIFI_DEPOSIT_CHAIN_BY_PROVIDER`), so the two may
+   * differ and the client maps between them.
    */
   chainId: number
-  /**
-   * Canonical ERC-20 contract on {@link DepositAsset.chainId} — the LI.FI
-   * route target (`toToken`).
-   */
+  /** ERC-20 contract address on {@link DepositAsset.chainId}. */
   address: Address
-  /** ERC-20 decimals, used to scale route amounts. */
+  /** ERC-20 decimals, used to scale deposit amounts. */
   decimals: number
+  /** Display ticker for UI labels; same semantics as {@link Asset.displaySymbol}. */
   displaySymbol: string
+  /** Token logo for UI; same semantics as {@link Asset.logoURI}. */
   logoURI: string
+  /** Optional longer display name; same semantics as {@link Asset.displayName}. */
   displayName?: string
 }
 
