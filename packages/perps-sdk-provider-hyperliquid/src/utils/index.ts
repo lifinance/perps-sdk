@@ -40,3 +40,4 @@ export {
   spotBalance,
   spotPriceById,
 } from './spotBalance.js'
+export { partitionSpotBalances, type SpotPartition } from './spotCollateral.js'

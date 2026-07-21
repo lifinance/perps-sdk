@@ -55,6 +55,12 @@ export interface Balance {
   units: string
   /** USD value the SDK fills from the prices map; consumers render with zero math. */
   valueUsd: string
+  /**
+   * Fraction of `valueUsd` that backs available margin (a loan-to-value
+   * ratio). Absent means 1 — full value. Set below 1 for collateral the
+   * venue haircuts; ignored on non-collateral balances.
+   */
+  collateralWeight?: number
 }
 
 /** @public */
