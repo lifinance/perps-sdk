@@ -69,10 +69,12 @@ export type HlPreTransferCheck = {
 
 /**
  * Possible values returned by the `userAbstraction` info endpoint.
- * `null` means abstraction has never been set (standard mode).
+ * `null` means abstraction has never been set; `'default'`/`'disabled'` are
+ * the live and legacy spellings of standard (non-abstracted) mode.
  * @public
  */
 export const HlAbstractionMode = {
+  DEFAULT: 'default',
   DISABLED: 'disabled',
   UNIFIED_ACCOUNT: 'unifiedAccount',
   PORTFOLIO_MARGIN: 'portfolioMargin',

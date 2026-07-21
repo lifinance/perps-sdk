@@ -19,6 +19,10 @@ export interface Asset {
   displaySymbol: string
   logoURI: string
   displayName?: string
+  /** Curated lowercase-kebab slugs for search and grouping (e.g. `'memory'`, `'metal'`, `'ai'`). */
+  tags?: string[]
+  /** Other venues' display symbols for the same real-world asset (e.g. Hyperliquid `SILVER` carries `['XAG']`). */
+  aliases?: string[]
 }
 
 /**

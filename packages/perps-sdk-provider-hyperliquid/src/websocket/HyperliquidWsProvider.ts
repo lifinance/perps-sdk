@@ -7,22 +7,32 @@ import {
   type QuoteListener,
   ReconnectingWebSocket,
   resolveSubscribeQuote,
+  type SubscriptionListener,
+  summarizeAccount,
   WsProviderBase,
   type WsProviderFactory,
+  type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
 import {
+  type AccountResponse,
+  type Balance,
   type MarketContext,
   type OpenOrder,
   type OrderbookLevel,
   type OrderbookResponse,
   OrderSide,
   OrderType,
+  type Position,
   type Subscription,
   type TriggerOrder,
 } from '@lifi/perps-types'
 import Big from 'big.js'
-import { HYPERLIQUID_FEE_TIER_FALLBACK, SPOT_MARKET_ID } from '../constants.js'
+import {
+  DEFAULT_HYPERLIQUID_API_URL,
+  HYPERLIQUID_FEE_TIER_FALLBACK,
+  SPOT_MARKET_ID,
+} from '../constants.js'
 import type {
   HlAssetPosition,
   HlOrderDetail,
@@ -46,9 +56,12 @@ import type {
   HlWsTrade,
   HlWsUserFillsData,
 } from '../types/index.js'
+import { HlAbstractionMode } from '../types/index.js'
 import {
   decodeCompressedJson,
   decodeFastAssetCtxs,
+  hlInfoOptions,
+  infoRequest,
   isOpenAssetPosition,
   isTriggerOrder,
   mapFill,
@@ -56,6 +69,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapPosition,
+  partitionSpotBalances,
   priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
@@ -99,6 +113,42 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
+  // The clearinghouse stream covers perps equity only, so its summary is
+  // honest solely for modes whose collateral lives per-dex. The abstraction
+  // mode is read per subscribed user (null = never set = standard) and
+  // selects the summary source: standard/dexAbstraction emit the equity
+  // summary straight from clearinghouse frames, unified/portfolio run the
+  // spot-fed pipeline below. Frames arriving before the first read are held
+  // and released on resolution (delayed, never wrong). The read refreshes on
+  // fresh summary subscribes and once older than the TTL, and drops with
+  // the user's last clearinghouse subscription.
+  private readonly abstractionByUser = new Map<
+    string,
+    { mode: HlAbstractionMode | null; readAt: number } | 'pending'
+  >()
+  private readonly spotRefs = new Map<string, number>()
+  // Unified/portfolio summary pipeline: collateral lives in spot, margin and
+  // uPnL on the positions — the summary recomputes from the latest of both
+  // envelopes with the same gross calculator the REST getAccountSummary uses.
+  private readonly unifiedSummaryByUser = new Map<
+    string,
+    {
+      releaseSpot: Promise<() => void>
+      spot?: { collateralBalances: Balance[]; balances: Balance[] }
+    }
+  >()
+  // Kept outside the pipeline entry: the first clearinghouse frame lands
+  // while the mode read is still pending, before the pipeline exists.
+  private readonly latestPositionsByUser = new Map<string, Position[]>()
+  private readonly heldSummaryByUser = new Map<
+    string,
+    {
+      portfolioValue: string
+      availableMargin: string
+      marginUsed: string
+      unrealizedPnl: string
+    }
+  >()
   private perpCtxBySubDex = new Map<string, Record<string, HlWsPerpAssetCtx>>()
   private spotCtxByMarketId: Record<string, HlWsSpotAssetCtx> = {}
   private marketsContextByMarketId: Record<string, MarketContext> = {}
@@ -140,6 +190,33 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
+  }
+
+  override async subscribe(
+    sub: Subscription,
+    listener: SubscriptionListener,
+    onStatus?: WsStatusListener
+  ): Promise<() => void> {
+    const unsubscribe = await super.subscribe(sub, listener, onStatus)
+    // The summary source is decided by the abstraction mode, so every
+    // summary subscribe (re-)reads it — consumers resubscribe when they
+    // observe an account-config change, and the wire channel is usually
+    // reused (multiplexed listeners, teardown linger), so openChannel cannot
+    // carry this trigger. Coalesced so one React commit's burst of
+    // resubscribing hooks fires a single read.
+    if (sub.channel === 'accountSummary') {
+      const user = sub.address.toLowerCase()
+      const entry = this.abstractionByUser.get(user)
+      if (entry === undefined) {
+        this.fetchAbstractionMode(sub.address, user)
+      } else if (
+        entry !== 'pending' &&
+        Date.now() - entry.readAt > HyperliquidWsProvider.REFRESH_COALESCE_MS
+      ) {
+        this.fetchAbstractionMode(sub.address, user, entry)
+      }
+    }
+    return unsubscribe
   }
 
   async subscribeQuote(
@@ -197,6 +274,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
 
+    // The spot wire is shared between the public spotBalances channel and
+    // the unified-summary pipeline; refcounted like the clearinghouse sub.
+    if (sub.channel === 'spotBalances') {
+      const release = await this.acquireSpotWire(sub.address)
+      await this.rws.ready()
+      return release
+    }
+
     // `positions` and `accountSummary` are two views over the same wire
     // subscription; refcount it so neither's teardown starves the other.
     if (sub.channel === 'positions' || sub.channel === 'accountSummary') {
@@ -213,6 +298,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         const remaining = (this.clearinghouseRefs.get(user) ?? 1) - 1
         if (remaining <= 0) {
           this.clearinghouseRefs.delete(user)
+          // Drop the summary gate's mode read (and its pipeline) with the
+          // subscription so a resubscribe reflects an account-mode change.
+          this.abstractionByUser.delete(user)
+          this.heldSummaryByUser.delete(user)
+          this.latestPositionsByUser.delete(user)
+          this.syncUnifiedPipeline(user, user, null)
           this.unregisterSub(wireKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -955,6 +1046,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       data: positions,
     })
 
+    this.latestPositionsByUser.set(data.user.toLowerCase(), positions)
+    this.emitUnifiedSummary(data.user.toLowerCase())
+
     let accountValue = 0
     let marginUsed = 0
     for (const [, state] of data.clearinghouseStates) {
@@ -969,30 +1063,222 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     // Equity semantics, matching the REST summary: `accountValue` already
     // carries locked margin and unrealized PnL. Spot balances stream apart,
-    // so this portfolio value covers perps equity only.
-    this.emit(`accountSummary:${data.user.toLowerCase()}`, {
-      channel: 'accountSummary',
-      data: {
-        portfolioValue: accountValue.toString(),
-        availableMargin: (accountValue - marginUsed).toString(),
-        marginUsed: marginUsed.toString(),
-        unrealizedPnl: unrealizedPnl.toString(),
-      },
+    // so this portfolio value covers perps equity only — which is why the
+    // frame is gated on the abstraction mode below.
+    this.emitSummaryIfModeAllows(data.user, {
+      portfolioValue: accountValue.toString(),
+      availableMargin: (accountValue - marginUsed).toString(),
+      marginUsed: marginUsed.toString(),
+      unrealizedPnl: unrealizedPnl.toString(),
     })
   }
 
-  private handleSpotState(data: HlWsSpotStateData) {
-    const priceById = spotPriceById(
-      this.registry?.markets ?? [],
-      this.mergedMids()
+  /** Whether the mode's collateral lives per-dex, making the perps-only
+   * summary frame honest. Unified/portfolio hold collateral in spot. */
+  private static summaryComputableFor(mode: HlAbstractionMode | null): boolean {
+    return (
+      mode !== HlAbstractionMode.UNIFIED_ACCOUNT &&
+      mode !== HlAbstractionMode.PORTFOLIO_MARGIN
     )
-    this.emit(`spotState:${data.user.toLowerCase()}`, {
-      channel: 'spotBalances',
-      data: data.spotState.balances.map((b) => ({
-        ...spotBalance(spotAssetFromToken(b), b.total, priceById),
-        locked: b.hold,
-      })),
+  }
+
+  private async acquireSpotWire(address: string): Promise<() => void> {
+    // Lowercased in the payload too, so releases from either holder (public
+    // channel or pipeline) unsubscribe with an identical payload.
+    const user = address.toLowerCase()
+    const wireKey = `spot:${user}`
+    const payload = { type: 'spotState', user }
+    const count = this.spotRefs.get(user) ?? 0
+    this.spotRefs.set(user, count + 1)
+    if (count === 0) {
+      await this.registerSub(wireKey, payload)
+    }
+    let released = false
+    return () => {
+      if (released) {
+        return
+      }
+      released = true
+      const remaining = (this.spotRefs.get(user) ?? 1) - 1
+      if (remaining <= 0) {
+        this.spotRefs.delete(user)
+        this.unregisterSub(wireKey)
+        this.rws.send(
+          JSON.stringify({ method: 'unsubscribe', subscription: payload })
+        )
+      } else {
+        this.spotRefs.set(user, remaining)
+      }
+    }
+  }
+
+  /** Start or stop the spot-fed unified pipeline to match the resolved mode. */
+  private syncUnifiedPipeline(
+    key: string,
+    address: string,
+    mode: HlAbstractionMode | null
+  ) {
+    const unified = !HyperliquidWsProvider.summaryComputableFor(mode)
+    const existing = this.unifiedSummaryByUser.get(key)
+    if (unified && existing === undefined) {
+      this.unifiedSummaryByUser.set(key, {
+        releaseSpot: this.acquireSpotWire(address).catch((error) => {
+          wsLog.handlerFailure(this.providerKey, error)
+          return () => {}
+        }),
+      })
+    } else if (!unified && existing !== undefined) {
+      this.unifiedSummaryByUser.delete(key)
+      void existing.releaseSpot.then((release) => release())
+    }
+  }
+
+  private emitUnifiedSummary(key: string) {
+    const pipeline = this.unifiedSummaryByUser.get(key)
+    const positions = this.latestPositionsByUser.get(key)
+    // Both envelopes must have arrived: a spot-only summary would report
+    // zero margin used against real positions.
+    if (pipeline?.spot === undefined || positions === undefined) {
+      return
+    }
+    const summary = summarizeAccount(
+      // summarizeAccount reads only the two balance lists.
+      {
+        collateralBalances: pipeline.spot.collateralBalances,
+        balances: pipeline.spot.balances,
+      } as AccountResponse,
+      positions,
+      'gross'
+    )
+    this.emit(`accountSummary:${key}`, {
+      channel: 'accountSummary',
+      data: summary,
     })
+  }
+
+  /** Re-read the abstraction mode this long after the previous read, so an
+   * in-session account-mode switch flips the gate within one refresh. */
+  private static readonly ABSTRACTION_TTL_MS = 15_000
+
+  /** Subscribe-triggered re-reads younger than this are skipped: a config
+   * change resubscribes every consumer hook in one React commit, and one
+   * read serves them all. */
+  private static readonly REFRESH_COALESCE_MS = 200
+
+  private emitSummaryIfModeAllows(
+    user: string,
+    summary: {
+      portfolioValue: string
+      availableMargin: string
+      marginUsed: string
+      unrealizedPnl: string
+    }
+  ) {
+    const key = user.toLowerCase()
+    // Without a client there is no way to read the mode; keep the historic
+    // always-emit behavior rather than silencing every standalone consumer.
+    if (this.client === undefined) {
+      this.emit(`accountSummary:${key}`, {
+        channel: 'accountSummary',
+        data: summary,
+      })
+      return
+    }
+    const entry = this.abstractionByUser.get(key)
+    if (entry === undefined || entry === 'pending') {
+      this.heldSummaryByUser.set(key, summary)
+      if (entry === undefined) {
+        this.fetchAbstractionMode(user, key)
+      }
+      return
+    }
+    if (Date.now() - entry.readAt > HyperliquidWsProvider.ABSTRACTION_TTL_MS) {
+      // Refresh in the background; the current mode keeps gating meanwhile,
+      // so frames neither stall nor mis-emit while the read is in flight.
+      this.fetchAbstractionMode(user, key, entry)
+    }
+    if (!HyperliquidWsProvider.summaryComputableFor(entry.mode)) {
+      return
+    }
+    this.emit(`accountSummary:${key}`, {
+      channel: 'accountSummary',
+      data: summary,
+    })
+  }
+
+  private fetchAbstractionMode(
+    user: string,
+    key: string,
+    refreshing?: { mode: HlAbstractionMode | null; readAt: number }
+  ) {
+    const client = this.client
+    if (client === undefined) {
+      return
+    }
+    // A background refresh keeps the current entry live (stamped now so
+    // frames don't re-kick the read); the first read holds frames instead.
+    this.abstractionByUser.set(
+      key,
+      refreshing ? { ...refreshing, readAt: Date.now() } : 'pending'
+    )
+    // "Never set abstraction" is a successful 200 `null` body — only a fetch
+    // failure clears a first read so the next frame retries it. A failed
+    // refresh keeps the previous mode until the TTL passes again.
+    infoRequest<HlAbstractionMode | null>(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { type: 'userAbstraction', user },
+      hlInfoOptions(client)
+    ).then(
+      (mode) => {
+        this.abstractionByUser.set(key, { mode, readAt: Date.now() })
+        this.syncUnifiedPipeline(key, user, mode)
+        const held = this.heldSummaryByUser.get(key)
+        this.heldSummaryByUser.delete(key)
+        if (held && HyperliquidWsProvider.summaryComputableFor(mode)) {
+          this.emit(`accountSummary:${key}`, {
+            channel: 'accountSummary',
+            data: held,
+          })
+        }
+      },
+      (error) => {
+        if (!refreshing) {
+          this.abstractionByUser.delete(key)
+        }
+        wsLog.handlerFailure(this.providerKey, error)
+      }
+    )
+  }
+
+  private handleSpotState(data: HlWsSpotStateData) {
+    const user = data.user.toLowerCase()
+    const markets = this.registry?.markets ?? []
+    const priceById = spotPriceById(markets, this.mergedMids())
+    const rows = data.spotState.balances.map((b) => ({
+      balance: spotBalance(spotAssetFromToken(b), b.total, priceById),
+      hold: b.hold,
+    }))
+    this.emit(`spotState:${user}`, {
+      channel: 'spotBalances',
+      data: rows.map(({ balance, hold }) => ({ ...balance, locked: hold })),
+    })
+
+    const pipeline = this.unifiedSummaryByUser.get(user)
+    if (pipeline !== undefined) {
+      const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
+      const entry = this.abstractionByUser.get(user)
+      const portfolioMargin =
+        entry !== undefined &&
+        entry !== 'pending' &&
+        entry.mode === HlAbstractionMode.PORTFOLIO_MARGIN
+      // Same partition as getAccount so REST and WS agree on collateral.
+      pipeline.spot = partitionSpotBalances(
+        rows.map(({ balance }) => balance),
+        quoteAssetIds,
+        portfolioMargin
+      )
+      this.emitUnifiedSummary(user)
+    }
   }
 }
 
