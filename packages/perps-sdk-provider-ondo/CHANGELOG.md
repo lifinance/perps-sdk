@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 2.1.1
+
+### Patch Changes
+
+- [#262](https://github.com/lifinance/perps-sdk/pull/262) [`bf8a97d`](https://github.com/lifinance/perps-sdk/commit/bf8a97dcc6937350da1f62ae8364f32ec96a3252) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix Ondo live candles appending a new bar per WebSocket tick: `OndoWsProvider.handleKline` now emits the bucket-open time (`kline.s`) as the candle time instead of the per-update timestamp (`kline.t`), so consecutive updates update the forming candle in place.
+
+- Updated dependencies [[`128ad0c`](https://github.com/lifinance/perps-sdk/commit/128ad0cf2ea7a862ad5626eb16b2b9aa8750ecc0), [`df52f91`](https://github.com/lifinance/perps-sdk/commit/df52f9175081de8a51b94145a8a7c5337d8b21c6)]:
+  - @lifi/perps-types@3.1.0
+
 ## 2.1.0
 
 ### Minor Changes
