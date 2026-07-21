@@ -1,4 +1,4 @@
-import type { Asset } from './asset.js'
+import type { Asset, DepositAsset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
@@ -89,6 +89,15 @@ export interface Provider {
   chainId?: number
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
+  /**
+   * Deposit/collateral token a client bridges in to fund an account at this
+   * venue — the target of the deposit flow, carrying its own on-chain
+   * identity. Distinct from a category's `quoteAsset` (the pricing unit):
+   * all live venues settle in USDC today so the two coincide, but a venue
+   * whose collateral is not USDC changes only this field, not `quoteAsset`.
+   * Absent when the provider advertises no on-chain deposit token.
+   */
+  depositAsset?: DepositAsset
   /**
    * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
    * `minMarginUsd` parameter. Absent means no minimum advertised.

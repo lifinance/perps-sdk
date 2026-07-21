@@ -7,7 +7,7 @@ import type {
   HyperliquidAccountConfig,
   LighterAccountConfig,
 } from './account.js'
-import type { Asset } from './asset.js'
+import type { Asset, DepositAsset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 import type {
@@ -22,6 +22,14 @@ import type {
 const usdcAsset: Asset = {
   providerId: 'hyperliquid',
   id: 'USDC',
+  displaySymbol: 'USDC',
+  logoURI: 'https://example.invalid/usdc.svg',
+}
+
+const arbitrumUsdcDeposit: DepositAsset = {
+  chainId: 42161,
+  address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  decimals: 6,
   displaySymbol: 'USDC',
   logoURI: 'https://example.invalid/usdc.svg',
 }
@@ -141,6 +149,7 @@ const hyperliquidProvider: Provider = {
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   chainId: 1337,
+  depositAsset: arbitrumUsdcDeposit,
   minOrderValueUsd: 10,
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
@@ -380,6 +389,15 @@ type _ChainIdIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
 >
 
+// `depositAsset` is an optional `DepositAsset` — additive, so the existing
+// `/providers` payload and all current consumers keep type-checking.
+type _DepositAssetShape = Expect<
+  Equals<Provider['depositAsset'], DepositAsset | undefined>
+>
+type _DepositAssetIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'depositAsset'>, never>
+>
+
 // `ProviderAction` keys: the three core fields plus the optional
 // presentation / ordering hints. Catches an accidental rename / addition.
 type _ProviderActionKeys = Expect<
@@ -472,6 +490,8 @@ export type _TypeAssertions = [
   _SupportedIntervalsIsRequired,
   _ChainIdShape,
   _ChainIdIsOptional,
+  _DepositAssetShape,
+  _DepositAssetIsOptional,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -609,6 +629,31 @@ describe('Provider.chainId', () => {
   it('admits a provider with no settlement chain', () => {
     expect(providerWithNoDescriptors.chainId).toBeUndefined()
     expect(announcedProvider.chainId).toBeUndefined()
+  })
+})
+
+describe('Provider.depositAsset', () => {
+  it('carries the on-chain deposit/collateral token the client bridges to', () => {
+    expect(hyperliquidProvider.depositAsset?.chainId).toBe(42161)
+    expect(hyperliquidProvider.depositAsset?.address).toBe(
+      '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+    )
+    expect(hyperliquidProvider.depositAsset?.decimals).toBe(6)
+  })
+
+  it('is distinct from the category quoteAsset (pricing unit)', () => {
+    expect(hyperliquidProvider.categories[0]?.quoteAsset?.displaySymbol).toBe(
+      'USDC'
+    )
+    expect(hyperliquidProvider.depositAsset?.displaySymbol).toBe('USDC')
+    expect(
+      'address' in (hyperliquidProvider.categories[0]?.quoteAsset ?? {})
+    ).toBe(false)
+  })
+
+  it('is optional — a provider may advertise no on-chain deposit token', () => {
+    expect(providerWithNoDescriptors.depositAsset).toBeUndefined()
+    expect(lighterProvider.depositAsset).toBeUndefined()
   })
 })
 
