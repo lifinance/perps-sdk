@@ -68,7 +68,7 @@ export function createTestAgentProvider(
       signers: PerpsSignerType[]
     ): Promise<ActionSignerContribution> => {
       // Mirror the real Hyperliquid plugin: APPROVE_AGENT is user-signed and
-      // contributes the agent address as a param; other agent-signed actions
+      // contributes the agent address as a param; other SDK-signed actions
       // carry the agent as signerAddress.
       if ((action as string) === 'approveAgent') {
         if (!agents.has(address.toLowerCase())) {
@@ -76,7 +76,7 @@ export function createTestAgentProvider(
         }
         return { params: { agentAddress: agentAddress(address) } }
       }
-      if (signers.includes(PerpsSigner.AGENT)) {
+      if (signers.includes(PerpsSigner.SDK)) {
         return { signerAddress: agentAddress(address) }
       }
       return {}

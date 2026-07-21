@@ -70,7 +70,10 @@ export interface SDKRequestOptions {
    * getOrder, getActivity, getAccount). Create via
    * `lighterSigner.createAuthToken(deadline, context)`. Sent only to Lighter
    * venue endpoints, never to the LI.FI backend — read-only by design
-   * (8h max TTL, cannot authorize writes).
+   * (8h max TTL, cannot authorize writes). Each call routes to a single Lighter
+   * instance via `params.provider`, so this token scopes to that instance's
+   * venue; token caches are held per `lighterProvider()` instance and do not
+   * cross between instances.
    */
   lighterAuthToken?: string
 }

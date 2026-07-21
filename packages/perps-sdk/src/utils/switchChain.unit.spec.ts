@@ -71,7 +71,7 @@ describe('userEip712TargetChainId', () => {
   it('returns undefined for an AGENT-signed batch', () => {
     const agent: ProviderAction = {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.AGENT],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.EIP712,
     }
     expect(userEip712TargetChainId(agent, [eip712Step(42161)])).toBeUndefined()

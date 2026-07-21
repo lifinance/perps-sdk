@@ -15,11 +15,23 @@
 
 export { projectLighterConfigSettings } from './accountConfig.js'
 export { getAccountSummary } from './accountSummary.js'
+export type {
+  LighterInstanceConfig,
+  LighterRhInstanceOverrides,
+} from './constants.js'
 export {
   DEFAULT_API_KEY_INDEX,
+  DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
+  DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+  DEFAULT_LIGHTER_WS_URL,
+  LIGHTER_MAINNET_INSTANCE,
   LIGHTER_PROVIDER_KEY,
+  LIGHTER_RH_PROVIDER_KEY,
+  LIGHTER_RH_REST_URL,
+  LIGHTER_RH_WS_URL,
   LIGHTER_SPOT_CATEGORY_ID,
+  lighterRhInstance,
 } from './constants.js'
 export type {
   LighterPerpsProvider,

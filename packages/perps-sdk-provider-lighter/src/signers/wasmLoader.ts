@@ -163,9 +163,13 @@ export interface LighterWasmExports {
    * 10 args: integratorAccountIndex, maxPerpsTakerFee, maxPerpsMakerFee,
    * maxSpotTakerFee, maxSpotMakerFee, approvalExpiry, skipNonce, then the
    * trailing three. Fees are uint32 ppm of `FeeTick` (1_000_000); a non-nil
-   * fee requires a non-nil integrator index.
+   * fee requires a non-nil integrator index. `messageToSign` is the EIP-191
+   * `L2ApproveIntegrator` L1 body the user's wallet must countersign — the
+   * venue rejects the tx without the resulting `L1Sig`.
    */
-  SignApproveIntegrator: (...args: unknown[]) => SignResult
+  SignApproveIntegrator: (
+    ...args: unknown[]
+  ) => SignResult & { messageToSign?: string }
   /**
    * 5 args: accountTradingMode (0 = Classic/Simple, 1 = Unified), skipNonce,
    * then the trailing three. `accountTradingMode` is validated to {0, 1} by

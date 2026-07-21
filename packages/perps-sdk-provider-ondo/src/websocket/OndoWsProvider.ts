@@ -70,6 +70,13 @@ const ONDO_AUTH_CHANNEL = {
 
 type AuthChannel = keyof typeof ONDO_AUTH_CHANNEL
 
+// Fan-out channels that reserve the connection's single authenticated-address
+// binding; `accountSummary` rides the auth wires without being one itself.
+const ONDO_AUTH_FANOUT: readonly string[] = [
+  ...Object.keys(ONDO_AUTH_CHANNEL),
+  'accountSummary',
+]
+
 const isAuthChannel = (
   channel: Subscription['channel']
 ): channel is AuthChannel => channel in ONDO_AUTH_CHANNEL
@@ -157,9 +164,11 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     )
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
-    // The venue's login lives and dies with the connection.
+    // The venue's login lives and dies with the connection, so a drop must
+    // forget both the in-flight login and the address it bound.
     this.rws.on('close', () => {
       this.loginPromise = undefined
+      this.accountAddress = undefined
     })
   }
 
@@ -217,31 +226,35 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const needsLogin =
       isAuthChannel(sub.channel) || sub.channel === 'accountSummary'
 
+    let boundHere = false
     if (needsLogin) {
-      // One login per connection means one authenticated address.
       const address = (sub as { address: Address }).address.toLowerCase()
-      if (
-        this.accountAddress !== undefined &&
-        this.accountAddress !== address
-      ) {
-        throw new Error(
-          `Ondo WS supports one authenticated address per connection; already bound to ${this.accountAddress}, cannot subscribe for ${address}.`
-        )
-      }
-      this.accountAddress = address
-      // Account frames carry venue market symbols; the registry supplies the
-      // market identity the mapped orders/fills/positions embed.
-      await this.registry?.sync()
+      boundHere = this.accountAddress !== address
+      this.bindAddress(address)
     }
 
-    if (sub.channel === 'accountSummary') {
-      await this.seedAccountSummary((sub as { address: Address }).address)
+    try {
+      if (needsLogin) {
+        // Account frames carry venue market symbols; the registry supplies the
+        // market identity the mapped orders/fills/positions embed.
+        await this.registry?.sync()
+      }
+      if (sub.channel === 'accountSummary') {
+        await this.seedAccountSummary((sub as { address: Address }).address)
+      }
+      // Authenticated wire subs are shared and ref-counted; public ones are 1:1.
+      for (const [key, state] of wireSubs) {
+        await this.acquireWire(key, state, needsLogin)
+      }
+      await this.rws.ready()
+    } catch (err) {
+      // Login/seed failed before the binding took hold on the wire: release a
+      // binding this call newly reserved so a later subscribe can rebind.
+      if (boundHere) {
+        this.accountAddress = undefined
+      }
+      throw err
     }
-    // Authenticated wire subs are shared and ref-counted; public ones are 1:1.
-    for (const [key, state] of wireSubs) {
-      await this.acquireWire(key, state, needsLogin)
-    }
-    await this.rws.ready()
 
     return () => {
       if (sub.channel === 'accountSummary') {
@@ -251,6 +264,53 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         this.releaseWire(key, state, needsLogin)
       }
     }
+  }
+
+  /**
+   * Reserve the connection's single authenticated slot for `address`. A prior
+   * binding whose channels have all been released — still lingering in the
+   * base teardown window — is reclaimed (cycling the connection) before the
+   * new one takes it; a binding that another address still holds live throws.
+   */
+  private bindAddress(address: string): void {
+    if (this.accountAddress === address) {
+      return
+    }
+    if (this.accountAddress !== undefined && !this.releaseBindingIfIdle()) {
+      throw new Error(
+        `Ondo WS supports one authenticated address per connection; already bound to ${this.accountAddress}, cannot subscribe for ${address}.`
+      )
+    }
+    this.accountAddress = address
+  }
+
+  /**
+   * Force-tear-down the bound address's authenticated channels when every one
+   * is idle, which cycles the connection via {@link releaseBinding}. Returns
+   * false — leaving the binding intact — while any is still live.
+   */
+  private releaseBindingIfIdle(): boolean {
+    const bound = this.accountAddress
+    if (bound === undefined) {
+      return true
+    }
+    for (const channel of ONDO_AUTH_FANOUT) {
+      if (!this.closeChannelIfIdle(`${channel}:${bound}`)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  /**
+   * Forget the authenticated binding and cycle the connection. The venue
+   * permits one login per socket, so a later subscribe for a different address
+   * must authenticate on a fresh connection rather than re-login on this one.
+   */
+  private releaseBinding(): void {
+    this.accountAddress = undefined
+    this.loginPromise = undefined
+    this.rws.reconnect()
   }
 
   /** Register a wire sub, ref-counting the shared authenticated channels. */
@@ -288,10 +348,18 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.unregisterSub(key)
     this.rws.send(JSON.stringify({ op: 'unsubscribe', ...state.frame }))
+    // Last authenticated wire gone: forget the binding and cycle the socket so
+    // the next address logs in on a fresh connection.
+    if (shared && this.authWireRefs.size === 0) {
+      this.releaseBinding()
+    }
   }
 
   protected async sendSubscribe(state: SubState): Promise<void> {
     if (state.needsAuth && state.address !== undefined) {
+      // Re-assert the binding: a replay after a reconnect (which cleared it on
+      // close) must restore the address account frames emit under.
+      this.accountAddress = state.address.toLowerCase()
       await this.ensureLogin(state.address)
     }
     this.rws.send(JSON.stringify({ op: 'subscribe', ...state.frame }))
@@ -301,6 +369,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.contexts = {}
     this.pendingFunding.clear()
     this.loginPromise = undefined
+    this.accountAddress = undefined
   }
 
   /** Wire subs for `sub`, keyed uniquely for the base's replay registry. */

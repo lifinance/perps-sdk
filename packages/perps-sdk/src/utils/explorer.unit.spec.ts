@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { ExplorerChainId, explorerTxUrl } from './explorer.js'
+import {
+  ExplorerChainId,
+  explorerTxUrl,
+  explorerTxUrlFromBase,
+} from './explorer.js'
 
 describe('explorerTxUrl', () => {
   it('builds an Etherscan URL for Ethereum L1', () => {
@@ -32,5 +36,23 @@ describe('explorerTxUrl', () => {
 
   it('returns undefined for an absent hash', () => {
     expect(explorerTxUrl(ExplorerChainId.ETHEREUM, undefined)).toBeUndefined()
+  })
+})
+
+describe('explorerTxUrlFromBase', () => {
+  it('concatenates an explicit base URL with the tx hash', () => {
+    expect(explorerTxUrlFromBase('https://scan.example/tx/', '0xabc')).toBe(
+      'https://scan.example/tx/0xabc'
+    )
+  })
+
+  it('returns undefined when the base URL is absent', () => {
+    expect(explorerTxUrlFromBase(undefined, '0xabc')).toBeUndefined()
+  })
+
+  it('returns undefined when the tx hash is absent', () => {
+    expect(
+      explorerTxUrlFromBase('https://scan.example/tx/', undefined)
+    ).toBeUndefined()
   })
 })

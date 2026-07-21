@@ -158,7 +158,11 @@ export {
   LIFI_DEPOSIT_CHAIN_BY_PROVIDER,
   lifiDepositChainForProvider,
 } from './utils/depositChain.js'
-export { ExplorerChainId, explorerTxUrl } from './utils/explorer.js'
+export {
+  ExplorerChainId,
+  explorerTxUrl,
+  explorerTxUrlFromBase,
+} from './utils/explorer.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
 export type { FormatOptions, RoundingMode } from './utils/format.js'
 export {

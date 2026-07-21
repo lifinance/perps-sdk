@@ -78,7 +78,7 @@ const hlAccountModeOption: ProviderAction = {
   title: 'Account mode',
   description:
     'Choose how this account interacts with Hyperliquid. Defaults to dexAbstraction.',
-  signers: [PerpsSigner.AGENT],
+  signers: [PerpsSigner.SDK],
   signingMethod: SigningMethod.EIP712,
   params: [
     {
@@ -135,7 +135,7 @@ const hyperliquidProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.AGENT],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.EIP712,
     },
   ],
@@ -157,7 +157,7 @@ const lighterProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.API_KEY],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.WASM_BLOB,
     },
   ],

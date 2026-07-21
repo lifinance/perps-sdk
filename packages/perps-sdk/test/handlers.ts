@@ -71,7 +71,7 @@ export const mockProviders: ProvidersResponse = {
           type: ActionType.ACCOUNT_MODE,
           title: 'Account mode',
           description: 'Choose how this account interacts with Hyperliquid.',
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.EIP712,
           params: [
             {
@@ -90,22 +90,22 @@ export const mockProviders: ProvidersResponse = {
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.CANCEL_ORDER,
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.MODIFY_ORDER,
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.EIP712,
         },
         {
           type: ActionType.UPDATE_POSITION_MARGIN,
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.EIP712,
         },
         {
@@ -133,7 +133,7 @@ export const mockProviders: ProvidersResponse = {
         {
           type: ActionType.REGISTER_API_KEY,
           title: 'Register API key',
-          signers: [PerpsSigner.API_KEY],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.WASM_BLOB,
           params: [],
         },
@@ -142,7 +142,7 @@ export const mockProviders: ProvidersResponse = {
         {
           type: ActionType.ACCOUNT_TYPE,
           title: 'Account tier',
-          signers: [PerpsSigner.API_KEY],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.WASM_BLOB,
           params: [],
         },
@@ -150,7 +150,7 @@ export const mockProviders: ProvidersResponse = {
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.API_KEY],
+          signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.WASM_BLOB,
         },
       ],

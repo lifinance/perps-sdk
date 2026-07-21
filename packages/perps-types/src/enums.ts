@@ -198,11 +198,18 @@ export type ActivityClassification =
   | FundingClassification
   | TransferClassification
 
-/** @public */
+/**
+ * Who completes signing for an action.
+ *
+ * `USER` — the end-user's wallet must sign or consent; widgets should expect a
+ * wallet interaction. `SDK` — the provider package completes signing with
+ * credentials it holds or creates, with no user interaction.
+ *
+ * @public
+ */
 export enum PerpsSigner {
   USER = 'USER',
-  AGENT = 'AGENT',
-  API_KEY = 'API_KEY',
+  SDK = 'SDK',
 }
 
 /** @public */
