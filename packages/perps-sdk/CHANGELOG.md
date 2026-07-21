@@ -1,5 +1,16 @@
 # @lifi/perps-sdk
 
+## 4.3.0
+
+### Minor Changes
+
+- [#263](https://github.com/lifinance/perps-sdk/pull/263) [`b988876`](https://github.com/lifinance/perps-sdk/commit/b9888768be56fc84f6f2e0c8fc32118a11cbfa59) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `selectUserSetupActions`, which filters a provider's `setup` descriptors to those a user must satisfy (their `signers` include `USER`). Steps the SDK signs on its own are held back so onboarding lists render one card per user action instead of inert placeholders for steps `checkSetup` completes inline.
+
+### Patch Changes
+
+- Updated dependencies [[`73fcc51`](https://github.com/lifinance/perps-sdk/commit/73fcc51a843d9294d98c6e0228ea98ba28cf0a5f)]:
+  - @lifi/perps-types@3.2.0
+
 ## 4.2.0
 
 ### Minor Changes
