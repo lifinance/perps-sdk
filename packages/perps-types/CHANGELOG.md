@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 3.2.0
+
+### Minor Changes
+
+- [#265](https://github.com/lifinance/perps-sdk/pull/265) [`73fcc51`](https://github.com/lifinance/perps-sdk/commit/73fcc51a843d9294d98c6e0228ea98ba28cf0a5f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `Provider.depositAssets` (`DepositAsset[]`) describing the external on-chain ERC-20 tokens a client routes into to fund an account at a venue — each carrying its canonical on-chain identity — `chainId` (the chain the ERC-20 lives on, a `@lifi/types` `ChainId`), `address`, `decimals` — plus `displaySymbol`/`logoURI` for display. Ordered, with the first entry as the client's default; a single-element list today, with room for multiple deposit currencies later. Distinct from a category's `quoteAsset` (the pricing unit); additive and optional, so existing `/providers` payloads and consumers are unaffected.
+
 ## 3.1.0
 
 ### Minor Changes
