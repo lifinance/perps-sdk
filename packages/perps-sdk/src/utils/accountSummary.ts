@@ -8,6 +8,12 @@ import { stringToFloat } from './parse.js'
 const sumValueUsd = (balances: AccountResponse['balances']): number =>
   balances.reduce((sum, b) => sum + stringToFloat(b.valueUsd), 0)
 
+const sumMarginUsd = (balances: AccountResponse['balances']): number =>
+  balances.reduce(
+    (sum, b) => sum + stringToFloat(b.valueUsd) * (b.collateralWeight ?? 1),
+    0
+  )
+
 /**
  * What the summed `collateralBalances` rows already contain, relative to the
  * positions' locked margin and unrealized PnL:
@@ -51,12 +57,17 @@ export function summarizeAccount(
   }
 
   const collateral = sumValueUsd(account.collateralBalances)
+  // Margin-eligible collateral: each row's value scaled by its loan-to-value
+  // weight (1 when unset), so a haircut asset backs buying power at less than
+  // face while `portfolioValue` still reflects its full value.
+  const marginCollateral = sumMarginUsd(account.collateralBalances)
   const balances = sumValueUsd(account.balances)
 
-  const grossCollateral =
-    semantics === 'free' || semantics === 'net'
-      ? collateral + marginUsed
-      : collateral
+  const withLocked = semantics === 'free' || semantics === 'net'
+  const grossCollateral = withLocked ? collateral + marginUsed : collateral
+  const grossMarginCollateral = withLocked
+    ? marginCollateral + marginUsed
+    : marginCollateral
   const equity =
     semantics === 'equity' || semantics === 'net'
       ? grossCollateral
@@ -66,7 +77,9 @@ export function summarizeAccount(
   // toward it. The `'free'` rows exclude uPnL from available margin, holding
   // it purely as free collateral.
   const availableMargin =
-    semantics === 'free' ? grossCollateral - marginUsed : equity - marginUsed
+    grossMarginCollateral +
+    (semantics === 'gross' ? unrealizedPnl : 0) -
+    marginUsed
 
   return {
     portfolioValue: (balances + equity).toString(),

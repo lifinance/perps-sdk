@@ -22,6 +22,7 @@ import {
   type HlUserFees,
 } from '../types/index.js'
 import {
+  partitionSpotBalances,
   perpsDexNames,
   spotAssetFromToken,
   spotBalance,
@@ -96,18 +97,13 @@ const buildBalances = (
   priceById: Map<string, number>,
   quoteAssetByCategory: Map<string, Asset>
 ): BalancePartition => {
-  const balances: Balance[] = []
-  const collateralBalances: Balance[] = []
-
-  // Spot balances: collateral if and only if the token is a category quote asset.
-  for (const b of spotState.balances) {
-    const balance = spotBalance(spotAssetFromToken(b), b.total, priceById)
-    if (quoteAssetIds.has(balance.asset.id)) {
-      collateralBalances.push(balance)
-    } else {
-      balances.push(balance)
-    }
-  }
+  const { balances, collateralBalances } = partitionSpotBalances(
+    spotState.balances.map((b) =>
+      spotBalance(spotAssetFromToken(b), b.total, priceById)
+    ),
+    quoteAssetIds,
+    abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
+  )
 
   // Unified/portfolio modes hold everything in spot — per-dex equity would
   // double-count. Only disabled/dexAbstraction carry separate venue collateral.

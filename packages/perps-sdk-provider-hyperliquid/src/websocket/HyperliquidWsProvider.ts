@@ -69,6 +69,7 @@ import {
   mapOrderStatus,
   mapOrderType,
   mapPosition,
+  partitionSpotBalances,
   priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
@@ -1264,19 +1265,18 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
     const pipeline = this.unifiedSummaryByUser.get(user)
     if (pipeline !== undefined) {
-      // Same partition as getAccount: collateral iff the token is a
-      // category quote asset.
       const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
-      const collateralBalances: Balance[] = []
-      const balances: Balance[] = []
-      for (const { balance } of rows) {
-        if (quoteAssetIds.has(balance.asset.id)) {
-          collateralBalances.push(balance)
-        } else {
-          balances.push(balance)
-        }
-      }
-      pipeline.spot = { collateralBalances, balances }
+      const entry = this.abstractionByUser.get(user)
+      const portfolioMargin =
+        entry !== undefined &&
+        entry !== 'pending' &&
+        entry.mode === HlAbstractionMode.PORTFOLIO_MARGIN
+      // Same partition as getAccount so REST and WS agree on collateral.
+      pipeline.spot = partitionSpotBalances(
+        rows.map(({ balance }) => balance),
+        quoteAssetIds,
+        portfolioMargin
+      )
       this.emitUnifiedSummary(user)
     }
   }
