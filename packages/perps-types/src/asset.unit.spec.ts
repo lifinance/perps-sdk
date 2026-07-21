@@ -16,6 +16,15 @@ const eth: Asset = {
   displayName: 'Ethereum',
 }
 
+const silver: Asset = {
+  providerId: 'hyperliquid',
+  id: 'SILVER',
+  displaySymbol: 'SILVER',
+  logoURI: 'https://example.com/silver.png',
+  tags: ['metal', 'commodity'],
+  aliases: ['XAG'],
+}
+
 const response: AssetsResponse = {
   assets: [usdc, eth],
 }
@@ -31,6 +40,13 @@ describe('Asset', () => {
   it('admits an optional displayName', () => {
     expect(usdc.displayName).toBeUndefined()
     expect(eth.displayName).toBe('Ethereum')
+  })
+
+  it('admits optional tags and aliases', () => {
+    expect(usdc.tags).toBeUndefined()
+    expect(usdc.aliases).toBeUndefined()
+    expect(silver.tags).toEqual(['metal', 'commodity'])
+    expect(silver.aliases).toEqual(['XAG'])
   })
 
   it('carries no collateral flag', () => {
