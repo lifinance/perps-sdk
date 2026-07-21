@@ -197,6 +197,7 @@ export {
   predictUnrealizedPnl,
   realizedPnlOnClose,
 } from './utils/positionMath.js'
+export { selectUserSetupActions } from './utils/setupActions.js'
 export {
   signTypedData,
   signTypedDataWithSigner,
