@@ -467,13 +467,14 @@ describe('OndoWsProvider', () => {
       inject(p, 'candle:AAPL-USD.P:1m', listener)
 
       // The kline frame carries no resolution field — only the interval
-      // start/end. e − s = 60s identifies the 1m subscription.
+      // start/end. e − s = 60s identifies the 1m subscription. The emitted
+      // candle time is the bucket-open `s`, not the per-update `t`.
       feed(p, {
         type: 'update',
         channel: 'kLinePerps',
         data: {
           m: 'AAPL-USD.P',
-          t: 1709648400,
+          t: 1709648375,
           s: 1709648340,
           e: 1709648400,
           o: 226.8,
@@ -488,7 +489,7 @@ describe('OndoWsProvider', () => {
       expect(listener).toHaveBeenCalledWith({
         channel: 'candle',
         data: {
-          t: 1709648400 * 1000,
+          t: 1709648340 * 1000,
           o: '226.8',
           h: '228.1',
           l: '226.5',
@@ -497,6 +498,41 @@ describe('OndoWsProvider', () => {
         },
       })
       p.close()
+    })
+
+    it('keys consecutive updates within one bucket to the same bucket-open time so the forming candle updates in place', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:AAPL-USD.P:15m', listener)
+
+      const bucketStart = 1709648100
+      const bucketEnd = bucketStart + 900
+      const frame = (t: number, c: number) => ({
+        type: 'update' as const,
+        channel: 'kLinePerps' as const,
+        data: {
+          m: 'AAPL-USD.P',
+          t,
+          s: bucketStart,
+          e: bucketEnd,
+          o: 226.8,
+          h: 228.1,
+          l: 226.5,
+          c,
+          v: 12345.67,
+          x: false,
+        },
+      })
+
+      feed(p, frame(bucketStart + 1, 227.0))
+      feed(p, frame(bucketStart + 2, 227.5))
+
+      const [first, second] = listener.mock.calls.map(([e]) => e.data.t)
+      expect(first).toBe(bucketStart * 1000)
+      expect(second).toBe(bucketStart * 1000)
+      // Widget keys candles by Math.floor(t / 1000); an unchanged key across a
+      // bucket's lifetime is what makes the merge update rather than append.
+      expect(Math.floor(first / 1000)).toBe(Math.floor(second / 1000))
     })
   })
 
