@@ -676,7 +676,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.emit(`candle:${kline.m}:${interval}`, {
       channel: 'candle',
       data: {
-        t: kline.t * 1000,
+        t: kline.s * 1000,
         o: String(kline.o),
         h: String(kline.h),
         l: String(kline.l),
