@@ -3390,10 +3390,24 @@ describe('accountSummary channel', () => {
       },
     })
 
+  const spotFrame = (
+    user: string,
+    balances: Array<{
+      coin: string
+      token: number
+      total: string
+      hold: string
+    }>
+  ) =>
+    JSON.stringify({
+      channel: 'spotState',
+      data: { user, spotState: { balances } },
+    })
+
   it.each([
     ['unifiedAccount'],
     ['portfolioMargin'],
-  ])('withholds summary frames when the account holds collateral in spot (%s)', async (mode) => {
+  ])('streams the spot-fed gross summary for %s accounts', async (mode) => {
     abstractionFetchMock.mockResolvedValue(mode)
     try {
       const provider = createEnrichingProvider()
@@ -3402,14 +3416,155 @@ describe('accountSummary channel', () => {
         { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
         listener
       )
+      // The subscribe-time mode read resolves spot-held collateral, so the
+      // provider joins the spotState wire alongside the clearinghouse one.
+      await flushMicrotasks()
+      const spotSubs = getMockRwsInstance()
+        .sent.map((raw: string) => JSON.parse(raw))
+        .filter((msg: any) => msg.subscription?.type === 'spotState')
+      expect(spotSubs).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'spotState', user: '0xabc' },
+        },
+      ])
 
+      // Positions envelope alone: the perps-only equity frame is withheld
+      // and the pipeline still lacks the collateral side.
       getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
       await flushMicrotasks()
-
-      // The perps-only frame cannot price spot-held collateral; consumers
-      // fall back to the mode-aware REST summary instead.
       expect(listener).not.toHaveBeenCalled()
+
+      // Spot envelope completes the pair: gross semantics over spot
+      // collateral (1000) + positions' uPnL (100) − margin used (940).
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '1100',
+          availableMargin: '160',
+          marginUsed: '940',
+          unrealizedPnl: '100',
+        },
+      })
+
+      // Either envelope updating recomputes: spot first…
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '2000', hold: '0' },
+        ])
+      )
+      expect(listener).toHaveBeenLastCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '2100',
+          availableMargin: '1160',
+          marginUsed: '940',
+          unrealizedPnl: '100',
+        },
+      })
+      // …then positions.
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await flushMicrotasks()
+      expect(listener).toHaveBeenCalledTimes(3)
     } finally {
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('tears the spot pipeline down when a refresh resolves back to standard', async () => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    try {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      // The user switches back to standard mid-session; the TTL refresh
+      // lands on the next frame, which still computes under the old mode.
+      abstractionFetchMock.mockResolvedValue(null)
+      await vi.advanceTimersByTimeAsync(20_000)
+      getMockRwsInstance().sent = []
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      expect(listener).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Refresh resolved standard: the pipeline released its spot wire and
+      // the equity summary flows straight from clearinghouse frames again.
+      const spotUnsubs = getMockRwsInstance()
+        .sent.map((raw: string) => JSON.parse(raw))
+        .filter((msg: any) => msg.subscription?.type === 'spotState')
+      expect(spotUnsubs).toEqual([
+        {
+          method: 'unsubscribe',
+          subscription: { type: 'spotState', user: '0xabc' },
+        },
+      ])
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(listener).toHaveBeenLastCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '1000',
+          availableMargin: '60',
+          marginUsed: '940',
+          unrealizedPnl: '100',
+        },
+      })
+    } finally {
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('shares the spot wire with the public spotBalances channel', async () => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    try {
+      const provider = createEnrichingProvider()
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      const unsubSummary = await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await vi.advanceTimersByTimeAsync(0)
+
+      const spotMessages = () =>
+        getMockRwsInstance()
+          .sent.map((raw: string) => JSON.parse(raw))
+          .filter((msg: any) => msg.subscription?.type === 'spotState')
+      expect(spotMessages()).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'spotState', user: '0xabc' },
+        },
+      ])
+
+      // The pipeline's release must not starve the public channel's wire.
+      getMockRwsInstance().sent = []
+      unsubSummary()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS)
+      expect(spotMessages()).toEqual([])
+    } finally {
+      vi.useRealTimers()
       abstractionFetchMock.mockReset()
     }
   })
@@ -3511,6 +3666,49 @@ describe('accountSummary channel', () => {
       getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
       await vi.advanceTimersByTimeAsync(0)
       expect(relisten).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('re-reads the mode when a listener joins a live channel, coalescing bursts', async () => {
+    vi.useFakeTimers()
+    try {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(abstractionFetchMock).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      // A config-change resubscribe joins the still-open channel (the first
+      // listener never detached, so openChannel does not re-run) — the
+      // subscribe path itself must trigger the re-read.
+      await vi.advanceTimersByTimeAsync(1_000)
+      abstractionFetchMock.mockResolvedValue('unifiedAccount')
+      const second = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        second
+      )
+      // A burst of hooks resubscribing in the same commit coalesces to one read.
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      expect(abstractionFetchMock).toHaveBeenCalledTimes(2)
+
+      // The re-read resolved unified: frames are withheld from here on.
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(second).not.toHaveBeenCalled()
+      expect(listener).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
       abstractionFetchMock.mockReset()
