@@ -12,7 +12,12 @@ import type {
   ProviderAction,
   SignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createAction } from '../services/createAction.js'
@@ -439,13 +444,22 @@ export class PerpsClient {
       (descriptor) => !satisfiedSetup.has(descriptor.type)
     )
 
+    const hiddenSetup = await this.resolveInternalSetup(
+      provider,
+      address,
+      pendingSetup
+    )
+    const visibleSetup = pendingSetup.filter(
+      (descriptor) => !hiddenSetup.has(descriptor.type)
+    )
+
     // The backend filters already-satisfied setup actions and returns typed
     // data for those still outstanding; each plugin contributes its own
     // signer-bearing request fields.
     const actions = await this.buildProviderSetupActions(
       provider,
       address,
-      pendingSetup
+      visibleSetup
     )
 
     return {
@@ -483,6 +497,64 @@ export class PerpsClient {
         .filter((setting) => setting.satisfied && setupTypes.has(setting.type))
         .map((setting) => setting.type)
     )
+  }
+
+  /**
+   * Drain the pending setup steps the provider declares as internal via
+   * `PerpsProviderPlugin.internalSetupActions`, returning the set of action
+   * types to omit from the caller-facing setup list. Each such step is built,
+   * signed, and executed in place with the provider's own credentials. A
+   * descriptor whose `signers` include {@link PerpsSigner.USER} is left to
+   * render as a normal step. A drain failure is swallowed so it never blocks
+   * setup — the step stays unsatisfied and is retried on a later `checkSetup`.
+   */
+  private async resolveInternalSetup(
+    provider: string,
+    address: Address,
+    pending: ProviderAction[]
+  ): Promise<Set<ActionType>> {
+    const plugin = this.sdkClient.getProvider(provider)
+    const internal = plugin?.internalSetupActions
+    if (!internal || internal.length === 0) {
+      return new Set()
+    }
+    const internalTypes = new Set(internal)
+    const hidden = new Set<ActionType>()
+    for (const descriptor of pending) {
+      if (
+        !internalTypes.has(descriptor.type) ||
+        descriptor.signers.includes(PerpsSigner.USER)
+      ) {
+        continue
+      }
+      hidden.add(descriptor.type)
+      try {
+        const steps = await this.buildProviderSetupActions(provider, address, [
+          descriptor,
+        ])
+        for (const step of steps) {
+          const signed = await this.signProviderSetupAction(
+            provider,
+            address,
+            step
+          )
+          if (signed !== undefined) {
+            await this.executeProviderSetup({
+              provider,
+              address,
+              setup: [step],
+              signedActions: [signed],
+            })
+          }
+        }
+      } catch (error) {
+        console.debug(
+          `[perps-sdk] internal setup step '${descriptor.type}' for '${provider}' did not complete; will retry on the next checkSetup.`,
+          error
+        )
+      }
+    }
+    return hidden
   }
 
   /**

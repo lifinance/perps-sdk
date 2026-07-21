@@ -1,5 +1,30 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 2.1.0
+
+### Minor Changes
+
+- [#260](https://github.com/lifinance/perps-sdk/pull/260) [`09cd2b6`](https://github.com/lifinance/perps-sdk/commit/09cd2b6bbe2061afc1903d3ac622722500f1fd92) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Provider packages can now declare setup actions they complete themselves via `PerpsProviderPlugin.internalSetupActions`. `PerpsClient.checkSetup` drains each such pending step in place — building, signing, and executing it with the provider's own credentials — and omits it from the returned setup list. A descriptor whose `signers` include `USER` is never treated as internal, and a failed internal step never blocks setup: it stays unsatisfied and is retried on a later `checkSetup`. The Ondo `SESSION` signing arm now executes backend-authored request-bearing steps with the stored session token.
+
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0), [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762)]:
+  - @lifi/perps-types@3.0.0
+  - @lifi/perps-sdk@4.0.0
+
+## 1.0.2
+
+### Patch Changes
+
+- [#246](https://github.com/lifinance/perps-sdk/pull/246) [`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Polish package READMEs: consistent badge headers and structure, quick-start snippets, and a WebSocket section in the core README.
+
+- [#253](https://github.com/lifinance/perps-sdk/pull/253) [`e43e046`](https://github.com/lifinance/perps-sdk/commit/e43e046b1dfaf0856a49994dcbb5857f187429c7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix the Ondo WS provider staying bound to a previous wallet address: releasing all authenticated channels (or a socket drop) now clears the binding and cycles the connection, so a subsequent subscribe for a different address logs in cleanly.
+
+- Updated dependencies [[`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b)]:
+  - @lifi/perps-types@2.0.1
+
 ## 1.0.1
 
 ### Patch Changes

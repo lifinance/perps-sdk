@@ -40,7 +40,7 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -209,6 +209,8 @@ export const ondoProvider = (
 
   return {
     type: ONDO_PROVIDER_KEY,
+
+    internalSetupActions: [ActionType.SET_REFERRAL],
 
     bind(client: PerpsSDKClient): void {
       boundClient = client

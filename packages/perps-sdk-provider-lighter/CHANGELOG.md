@@ -1,5 +1,36 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 5.1.0
+
+### Minor Changes
+
+- [#260](https://github.com/lifinance/perps-sdk/pull/260) [`09cd2b6`](https://github.com/lifinance/perps-sdk/commit/09cd2b6bbe2061afc1903d3ac622722500f1fd92) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Provider packages can now declare setup actions they complete themselves via `PerpsProviderPlugin.internalSetupActions`. `PerpsClient.checkSetup` drains each such pending step in place — building, signing, and executing it with the provider's own credentials — and omits it from the returned setup list. A descriptor whose `signers` include `USER` is never treated as internal, and a failed internal step never blocks setup: it stays unsatisfied and is retried on a later `checkSetup`. The Ondo `SESSION` signing arm now executes backend-authored request-bearing steps with the stored session token.
+
+## 5.0.0
+
+### Minor Changes
+
+- [#257](https://github.com/lifinance/perps-sdk/pull/257) [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parametrize the Lighter provider by instance config so a single implementation can back multiple Lighter deployments. `lighterProvider()` and `lighterWsProvider()` now accept a `providerKey`, `restUrl`, `wsUrl`, and `explorerTxBaseUrl`, and `LighterSigner` accepts the signing chain id — each instance namespaces its own market/asset registries, retry policy, and auth-token caches. A bare `lighterProvider()` is unchanged (`type: 'lighter'`, mainnet URLs, chain id 304). Adds the `lighter-rh` (Robinhood chain) instance constants and the `lighterRhInstance()` factory, plus `explorerTxUrlFromBase` for resolving explorer links from a per-instance base URL.
+
+### Patch Changes
+
+- Updated dependencies [[`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0), [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762)]:
+  - @lifi/perps-types@3.0.0
+  - @lifi/perps-sdk@4.0.0
+
+## 4.0.1
+
+### Patch Changes
+
+- [#246](https://github.com/lifinance/perps-sdk/pull/246) [`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Polish package READMEs: consistent badge headers and structure, quick-start snippets, and a WebSocket section in the core README.
+
+- [#256](https://github.com/lifinance/perps-sdk/pull/256) [`a0572ba`](https://github.com/lifinance/perps-sdk/commit/a0572bacfe2024f2bf165361e3ea1ea863cd5981) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LighterSigner.sign()` now throws for APPROVE_INTEGRATOR, which must go through `signApproveIntegrator()` — `sign()` cannot collect the required L1 user wallet signature, so blobs signed through it would reach the venue with an empty `L1Sig`.
+
+- [#255](https://github.com/lifinance/perps-sdk/pull/255) [`85a9636`](https://github.com/lifinance/perps-sdk/commit/85a96365ba9f588df0b2921ccb02536cc222ba34) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter APPROVE_INTEGRATOR now collects the user's L1 wallet signature and embeds it as `txInfo.L1Sig` before submission, so the venue accepts the integrator approval.
+
+- Updated dependencies [[`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b)]:
+  - @lifi/perps-types@2.0.1
+
 ## 4.0.0
 
 ### Major Changes

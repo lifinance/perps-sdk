@@ -7,16 +7,18 @@
 
 </div>
 
-# `@lifi/perps-types`
+<h1 align="center"><code>@lifi/perps-types</code></h1>
 
-Types for the LI.FI Perps SDK.
-
-## Summary
-
-This package contains the shared, zero-dependency types for the [LI.FI Perps SDK](https://www.npmjs.com/package/@lifi/perps-sdk) and its provider plugins — a workspace package of the `perps-sdk` monorepo. You rarely install it directly; it arrives transitively with `@lifi/perps-sdk`.
+Shared, zero-dependency types for the [LI.FI Perps SDK](https://www.npmjs.com/package/@lifi/perps-sdk) and its provider plugins. You rarely install it directly — it arrives transitively with `@lifi/perps-sdk`, which re-exports every type.
 
 ## Installation
 
 ```bash
 pnpm add @lifi/perps-types
 ```
+
+## Documentation
+
+- [Full documentation](https://public-perps-docs.mintlify.app/)
+- [API reference](https://public-perps-docs.mintlify.app/api-reference)
+- [Source and issues](https://github.com/lifinance/perps-sdk)

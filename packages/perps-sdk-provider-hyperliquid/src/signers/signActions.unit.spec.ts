@@ -35,7 +35,7 @@ describe('hyperliquidSignActions', () => {
       SigningMethod.EIP712,
       [step],
       ADDRESS,
-      { signers: [PerpsSigner.AGENT] }
+      { signers: [PerpsSigner.SDK] }
     )) as Eip712SignedActionStep[]
 
     expect(signed.action).toBe(step.action)
@@ -106,7 +106,7 @@ describe('hyperliquidSignActions', () => {
         [eip712Step()],
         ADDRESS,
         {
-          signers: [PerpsSigner.AGENT],
+          signers: [PerpsSigner.SDK],
         }
       )
     ).rejects.toThrow('Agent not found')
@@ -118,7 +118,7 @@ describe('hyperliquidSignActions', () => {
 
     await expect(
       hyperliquidSignActions(store, SigningMethod.WASM_BLOB, [], ADDRESS, {
-        signers: [PerpsSigner.AGENT],
+        signers: [PerpsSigner.SDK],
       })
     ).rejects.toThrow(/only signs EIP712 actions/)
   })

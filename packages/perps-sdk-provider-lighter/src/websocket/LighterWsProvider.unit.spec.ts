@@ -1,5 +1,6 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
@@ -514,6 +515,27 @@ describe('LighterWsProvider', () => {
         { price: '100.5', size: '6' },
         { price: '101', size: '4' },
       ])
+      p.close()
+    })
+
+    it('stamps a second instance’s provider key on emitted data', () => {
+      const p = new LighterWsProvider(
+        LIGHTER_RH_WS_URL,
+        LIGHTER_RH_PROVIDER_KEY,
+        {},
+        freshClient()
+      )
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [{ price: '100', size: '1' }],
+        [{ price: '101', size: '2' }]
+      )
+      expect(listener.mock.calls[0][0].data.provider).toBe(
+        LIGHTER_RH_PROVIDER_KEY
+      )
       p.close()
     })
 

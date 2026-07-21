@@ -34,6 +34,25 @@ const TX_BASE_URL_BY_CHAIN: Record<ExplorerChainId, string> = {
 }
 
 /**
+ * Build a fully-resolved block-explorer URL from an explicit base URL, for
+ * settling venues whose explorer is not one of the {@link ExplorerChainId}
+ * entries (e.g. a second provider instance carrying its own base).
+ *
+ * @returns The explorer URL, or `undefined` when either the base or the hash is
+ *   absent (no explorer configured, or no on-chain tx to link).
+ * @public
+ */
+export function explorerTxUrlFromBase(
+  baseUrl: string | undefined,
+  txHash: string | undefined
+): string | undefined {
+  if (!baseUrl || !txHash) {
+    return undefined
+  }
+  return `${baseUrl}${txHash}`
+}
+
+/**
  * Build a fully-resolved block-explorer URL for a tx on a known chain.
  *
  * @returns The explorer URL, or `undefined` when the hash is empty (no on-chain
@@ -44,8 +63,5 @@ export function explorerTxUrl(
   chainId: ExplorerChainId,
   txHash: string | undefined
 ): string | undefined {
-  if (!txHash) {
-    return undefined
-  }
-  return `${TX_BASE_URL_BY_CHAIN[chainId]}${txHash}`
+  return explorerTxUrlFromBase(TX_BASE_URL_BY_CHAIN[chainId], txHash)
 }

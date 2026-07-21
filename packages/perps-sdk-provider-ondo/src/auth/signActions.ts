@@ -1,6 +1,7 @@
 import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
 import type {
   ActionStep,
+  HmacActionStep,
   HmacSignedActionStep,
   SessionActionStep,
   SignedActionStep,
@@ -97,6 +98,29 @@ async function ensureApiKey(
 }
 
 /**
+ * Execute a backend-authored session request directly against the venue with
+ * the stored session JWT. The pre-serialized wire body is parsed back to an
+ * object and re-sent by the client; no signature covers the bytes. An absent
+ * session throws {@link OndoSessionExpiredError} so callers re-run SIWE login.
+ */
+async function executeSessionRequest(
+  deps: OndoSignActionsDeps,
+  address: Address,
+  request: HmacActionStep['request']
+): Promise<void> {
+  const token = await deps.tokenStore.get(address)
+  if (token === null) {
+    throw new OndoSessionExpiredError(
+      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+    )
+  }
+  await deps.client.send(request.method, request.path, {
+    body: request.body === undefined ? undefined : JSON.parse(request.body),
+    headers: { Authorization: `Bearer ${token.token}` },
+  })
+}
+
+/**
  * Ondo's `signActions` arms.
  *
  * `SIWE` signs the backend-built ERC-4361 challenge with the user's wallet and
@@ -104,9 +128,9 @@ async function ensureApiKey(
  * persisted in the token store and never transits the LI.FI backend.
  *
  * `SESSION` executes client-only setup steps directly against the venue with
- * the stored session token, keyed on the step's action — the marker steps
- * carry no request material by design. Returns no signed steps, so
- * `executeAction` is skipped.
+ * the stored session token. A backend-authored request-bearing step is
+ * dispatched as-is; a bare marker step is keyed on its action. Returns no
+ * signed steps, so `executeAction` is skipped.
  *
  * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
  * from the client-held API key (creating one on first use), attaching the
@@ -184,6 +208,10 @@ export async function ondoSignActions(
 
     case SigningMethod.SESSION: {
       for (const step of steps) {
+        if (hasRequest(step)) {
+          await executeSessionRequest(deps, address, step.request)
+          continue
+        }
         if (!isSessionStep(step)) {
           throw new PerpsError(
             PerpsErrorCode.SDKError,

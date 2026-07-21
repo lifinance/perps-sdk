@@ -259,9 +259,19 @@ export interface LighterAssetCollateral {
   enabled: boolean
 }
 
+/**
+ * Provider keys for the Lighter instances the SDK supports: mainnet
+ * (`'lighter'`) and the Robinhood-chain deployment (`'lighter-rh'`). Both are
+ * served by the same provider implementation and carry the same account-config
+ * shape, so they discriminate the Lighter arm of {@link AccountConfig} jointly.
+ *
+ * @public
+ */
+export type LighterProviderKey = 'lighter' | 'lighter-rh'
+
 /** @public */
 export interface LighterAccountConfig {
-  provider: 'lighter'
+  provider: LighterProviderKey
   accountIndex: number
   apiKeyIndex: number
   apiKeyRegistered: boolean
