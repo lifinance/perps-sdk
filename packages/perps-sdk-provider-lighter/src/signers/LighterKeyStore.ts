@@ -1,10 +1,13 @@
 import { readValidatedRecord, type StorageAdapter } from '@lifi/perps-sdk'
+import type { LighterProviderKey } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 // The private key here is a Lighter custom keypair — generated via WASM
 // GenerateAPIKey — not an Ethereum private key. The storage key is namespaced
-// by provider (`lighter`) so the same user can hold credentials for other
-// WASM-blob providers without collision.
+// by the resolved provider instance key so two Lighter instances sharing a
+// storage adapter (e.g. `lighter` and `lighter-rh`) never clobber each other's
+// API key.
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 
@@ -42,13 +45,33 @@ const isLighterApiKey = (value: unknown): value is LighterApiKey => {
 export class LighterKeyStore {
   private readonly storage: StorageAdapter
   private readonly cache = new Map<string, LighterApiKey>()
+  private providerKey: LighterProviderKey
 
-  constructor(storage: StorageAdapter) {
+  constructor(
+    storage: StorageAdapter,
+    providerKey: LighterProviderKey = LIGHTER_PROVIDER_KEY
+  ) {
     this.storage = storage
+    this.providerKey = providerKey
   }
 
+  /**
+   * Bind the resolved provider instance key. {@link LighterProvider} calls this
+   * during registration so a consumer-constructed keystore adopts the plugin
+   * instance's identity without pre-namespacing the adapter.
+   * @internal
+   */
+  bindProviderKey(providerKey: LighterProviderKey): void {
+    this.providerKey = providerKey
+  }
+
+  // The default instance keeps the legacy, un-namespaced key so existing
+  // `lighter` users are not orphaned; only additional instances get a segment.
   private storageKey(address: Address): string {
-    return `${STORAGE_PREFIX}:${address.toLowerCase()}`
+    const lower = address.toLowerCase()
+    return this.providerKey === LIGHTER_PROVIDER_KEY
+      ? `${STORAGE_PREFIX}:${lower}`
+      : `${STORAGE_PREFIX}:${this.providerKey}:${lower}`
   }
 
   async get(address: Address): Promise<LighterApiKey | null> {
