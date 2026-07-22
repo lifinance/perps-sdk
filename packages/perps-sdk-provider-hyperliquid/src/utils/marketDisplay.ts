@@ -5,20 +5,25 @@ import {
   PROVIDER_KEY,
   SPOT_MARKET_ID,
 } from '../constants.js'
+import { applyLogoOverride } from './assetLogo.js'
 
 /**
- * Synthesise the {@link Asset} for a Hyperliquid wire coin. `id` and `logoURI`
- * keep the raw coin — the logo CDN is keyed by it, HIP-3 `dex:` prefix
- * included. `displaySymbol` drops the prefix: the category is carried by
- * `categoryId`, never by the display string.
+ * Synthesise the {@link Asset} for a Hyperliquid wire coin. `id` keeps the raw
+ * coin — the logo CDN is keyed by it, HIP-3 `dex:` prefix included.
+ * `displaySymbol` drops the prefix: the category is carried by `categoryId`,
+ * never by the display string. `logoURI` is the CDN URL corrected by the
+ * shared override table (see {@link applyLogoOverride}).
  * @public
  */
-export const coinAsset = (coin: string): Asset => ({
-  providerId: PROVIDER_KEY,
-  id: coin,
-  displaySymbol: coin.includes(':') ? coin.slice(coin.indexOf(':') + 1) : coin,
-  logoURI: `https://app.hyperliquid.xyz/coins/${coin}.svg`,
-})
+export const coinAsset = (coin: string): Asset =>
+  applyLogoOverride({
+    providerId: PROVIDER_KEY,
+    id: coin,
+    displaySymbol: coin.includes(':')
+      ? coin.slice(coin.indexOf(':') + 1)
+      : coin,
+    logoURI: `https://app.hyperliquid.xyz/coins/${coin}.svg`,
+  })
 
 /**
  * Distinct wire `dex` names to fan `clearinghouseState` / `frontendOpenOrders`
