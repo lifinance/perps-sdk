@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 5.1.1
+
+### Patch Changes
+
+- [#268](https://github.com/lifinance/perps-sdk/pull/268) [`25dc35c`](https://github.com/lifinance/perps-sdk/commit/25dc35cb08c337764a80f2fd6d5ff28fa2f6fced) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Scope `LighterKeyStore` persisted API-key storage by the resolved provider instance key so two Lighter instances sharing one adapter (e.g. `lighter` and `lighter-rh`) no longer clobber each other's key. The default `lighter` instance keeps its existing un-namespaced storage key, so current users are not orphaned; `LighterProvider` injects its resolved `providerKey` into the supplied keystore.
+
 ## 5.1.0
 
 ### Minor Changes

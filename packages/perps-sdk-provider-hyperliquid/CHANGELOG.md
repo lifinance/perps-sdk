@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 4.3.0
+
+### Minor Changes
+
+- [#270](https://github.com/lifinance/perps-sdk/pull/270) [`e4f1c15`](https://github.com/lifinance/perps-sdk/commit/e4f1c1559c39c285c839e635f69b1c1dd5d61130) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Own the canonical Hyperliquid coin/token→Asset logo mapping: `coinAsset` and spot-balance synthesis now apply the curated logo override table (USDC, USDT0, HYPE) and the `_spot`/Unit-token base rules, and the derivation (`applyLogoOverride`, `spotLogoURI`, `UNIT_TOKEN_NAMES`) is exported for downstream consumers.
+
 ## 4.2.0
 
 ### Minor Changes
