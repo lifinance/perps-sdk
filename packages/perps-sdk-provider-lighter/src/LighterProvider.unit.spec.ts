@@ -358,6 +358,33 @@ describe('LighterProvider — `type` field', () => {
   })
 })
 
+describe('LighterProvider — keyStore instance scoping', () => {
+  it('injects its resolved providerKey into the supplied keyStore', async () => {
+    const storage = createMemoryStorage()
+    const keyStore = new LighterKeyStore(storage)
+
+    lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+      keyStore,
+    })
+
+    await keyStore.set(ADDRESS, {
+      accountIndex: 7,
+      apiKeyIndex: 1,
+      apiKeyPrivateKey: `0x${'44'.repeat(32)}`,
+      apiKeyPublicKey: `0x${'55'.repeat(32)}`,
+    })
+
+    await expect(
+      storage.get(`lifi-perps-lighter-key:lighter-rh:${ADDRESS.toLowerCase()}`)
+    ).resolves.not.toBeNull()
+    await expect(
+      storage.get(`lifi-perps-lighter-key:${ADDRESS.toLowerCase()}`)
+    ).resolves.toBeNull()
+  })
+})
+
 describe('LighterProvider — order formatting and liquidation surface', () => {
   const btcMarket = {
     ...MARKETS_RESPONSE.markets[0],
