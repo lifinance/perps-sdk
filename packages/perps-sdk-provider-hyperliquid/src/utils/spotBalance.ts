@@ -2,6 +2,7 @@ import { stringToFloat } from '@lifi/perps-sdk'
 import type { Asset, Balance, Market } from '@lifi/perps-types'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlSpotBalance } from '../types/index.js'
+import { spotLogoURI } from './assetLogo.js'
 import { coinAsset } from './marketDisplay.js'
 
 /**
@@ -31,11 +32,14 @@ export const spotPriceById = (
 /**
  * The held spot {@link Asset} for an HL balance: the venue token index
  * (`b.token`) as `Asset.id` — equal to that token's spot `Market.baseAsset.id`
- * — with display fields derived from the coin.
+ * — with display fields derived from the coin and the override-aware spot logo.
+ * `HlSpotBalance` carries no `fullName`, so Unit-bridged balances take the base
+ * `_spot` rule (see {@link spotLogoURI}).
  */
 export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
   ...coinAsset(b.coin),
   id: String(b.token),
+  logoURI: spotLogoURI(b.coin),
 })
 
 /** Assemble a typed spot {@link Balance} from its resolved asset and raw size. */

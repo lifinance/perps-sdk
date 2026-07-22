@@ -25,6 +25,19 @@ describe('coinAsset', () => {
       logoURI: 'https://app.hyperliquid.xyz/coins/BTC.svg',
     })
   })
+
+  it('applies the logo override while keeping id from the bare coin', () => {
+    expect(coinAsset('HYPE')).toEqual({
+      providerId: 'hyperliquid',
+      id: 'HYPE',
+      displaySymbol: 'HYPE',
+      logoURI:
+        'https://static.debank.com/image/hyper_token/logo_url/hyper/0b3e288cfe418e9ce69eef4c96374583.png',
+    })
+    expect(coinAsset('USDC').logoURI).toBe(
+      'https://app.hyperliquid.xyz/coins/USDC.svg'
+    )
+  })
 })
 
 describe('perpsDexNames', () => {

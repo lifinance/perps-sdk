@@ -2514,7 +2514,7 @@ describe('HyperliquidWsProvider', () => {
             providerId: 'hyperliquid',
             id: '5',
             displaySymbol: 'PURR',
-            logoURI: 'https://app.hyperliquid.xyz/coins/PURR.svg',
+            logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
           },
           units: '100',
           valueUsd: '50',
@@ -2538,7 +2538,7 @@ describe('HyperliquidWsProvider', () => {
             providerId: 'hyperliquid',
             id: '9',
             displaySymbol: 'GHOST',
-            logoURI: 'https://app.hyperliquid.xyz/coins/GHOST.svg',
+            logoURI: 'https://app.hyperliquid.xyz/coins/GHOST_spot.svg',
           },
           units: '1',
           // No market for GHOST → unpriced.

@@ -4,6 +4,11 @@
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
 export {
+  applyLogoOverride,
+  spotLogoURI,
+  UNIT_TOKEN_NAMES,
+} from './assetLogo.js'
+export {
   decodeCompressedJson,
   decodeFastAssetCtxs,
 } from './decodeFastAssetCtxs.js'

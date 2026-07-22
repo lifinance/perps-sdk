@@ -284,7 +284,8 @@ describe('getAccount', () => {
           providerId: 'hyperliquid',
           id: '150',
           displaySymbol: 'HYPE',
-          logoURI: 'https://app.hyperliquid.xyz/coins/HYPE.svg',
+          logoURI:
+            'https://static.debank.com/image/hyper_token/logo_url/hyper/0b3e288cfe418e9ce69eef4c96374583.png',
         },
         units: '100',
         valueUsd: '4000',
@@ -296,7 +297,7 @@ describe('getAccount', () => {
           providerId: 'hyperliquid',
           id: '197',
           displaySymbol: 'UBTC',
-          logoURI: 'https://app.hyperliquid.xyz/coins/UBTC.svg',
+          logoURI: 'https://app.hyperliquid.xyz/coins/UBTC_spot.svg',
         },
         units: '0.1',
         valueUsd: '10000',
