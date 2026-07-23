@@ -275,6 +275,7 @@ describe('OndoAccountConfig', () => {
       termsAccepted: true,
       apiKeyRegistered: true,
       referralSet: true,
+      depositAddress: null,
     }
 
     expect(config.loggedIn).toBe(true)
@@ -291,6 +292,7 @@ describe('OndoAccountConfig', () => {
       termsAccepted: false,
       apiKeyRegistered: true,
       referralSet: false,
+      depositAddress: null,
     }
 
     expect(config.loggedIn).toBe(false)
@@ -304,6 +306,7 @@ describe('OndoAccountConfig', () => {
       provider: 'ondo',
       loggedIn: false,
       referralSet: false,
+      depositAddress: null,
     }
 
     expect(missing.provider).toBe('ondo')
@@ -317,6 +320,7 @@ describe('OndoAccountConfig', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: false,
+      depositAddress: null,
     }
 
     if (config.provider === 'ondo') {
@@ -334,6 +338,7 @@ describe('OndoAccountConfig', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: false,
+      depositAddress: null,
       // @ts-expect-error the JWT itself never appears in AccountConfig
       authToken: 'eyJhbGciOiJIUzI1NiJ9',
     }

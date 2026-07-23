@@ -22,6 +22,10 @@ import {
   OndoApiError,
   OndoSessionExpiredError,
 } from '../utils/apiClient.js'
+import {
+  buildOndoProvisionPayload,
+  listOndoDepositAddress,
+} from '../utils/depositAddress.js'
 import { completeSiweLogin } from './completeSiweLogin.js'
 import { hmacSignRequest } from './hmac.js'
 import { isOndoApiKey, type OndoApiKeyStore } from './OndoApiKeyStore.js'
@@ -219,6 +223,28 @@ export async function ondoSignActions(
           )
         }
         switch (step.action) {
+          case ActionType.CREATE_DEPOSIT_ADDRESS: {
+            const token = await deps.tokenStore.get(address)
+            if (token === null) {
+              throw new OndoSessionExpiredError(
+                `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+              )
+            }
+            const account = await deps.client.get<{ accountID?: unknown }>(
+              '/v1/account',
+              { authToken: token.token }
+            )
+            const payload = buildOndoProvisionPayload(
+              step.session,
+              typeof account.accountID === 'string' ? account.accountID : ''
+            )
+            await deps.client.post('/v1/provision_address', payload, {
+              authToken: token.token,
+            })
+            await listOndoDepositAddress(deps.client, token.token)
+            break
+          }
+
           case ActionType.ACCEPT_PROVIDER_TERMS: {
             const token = await deps.tokenStore.get(address)
             if (token === null) {

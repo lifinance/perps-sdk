@@ -97,6 +97,15 @@ const REGISTER_KEY_STEP: SessionActionStep = {
   session: {},
 }
 
+const CREATE_DEPOSIT_STEP: SessionActionStep = {
+  action: ActionType.CREATE_DEPOSIT_ADDRESS,
+  session: {
+    network: 'ethereum',
+    symbol: 'USDC',
+    depositDestination: { wallet: 'margin' },
+  },
+}
+
 const PLACE_ORDER_STEP: HmacActionStep = {
   action: ActionType.PLACE_ORDER,
   request: {
@@ -485,6 +494,151 @@ describe('ondoSignActions — SESSION', () => {
 
     expect(signed).toEqual([])
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('hydrates and provisions the fixed deposit policy, then refreshes the canonical address', async () => {
+    const depositAddress = '0x2222222222222222222222222222222222222222'
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: { accountID: 'acct-99' } })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            { address: depositAddress, coin: 'USDC', network: 'ethereum' },
+          ],
+        })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [CREATE_DEPOSIT_STEP],
+        account.address
+      )
+    ).resolves.toEqual([])
+
+    const accountCall = fetchImpl.mock.calls[0] as [string, RequestInit]
+    const provisionCall = fetchImpl.mock.calls[1] as [string, RequestInit]
+    const refreshCall = fetchImpl.mock.calls[2] as [string, RequestInit]
+    expect(accountCall[0]).toBe(`${BASE_URL}/v1/account`)
+    expect(provisionCall[0]).toBe(`${BASE_URL}/v1/provision_address`)
+    expect(JSON.parse(provisionCall[1].body as string)).toEqual({
+      network: 'ethereum',
+      symbol: 'USDC',
+      deposit_destination: { id: 'acct-99', wallet: 'margin' },
+    })
+    expect(new Headers(provisionCall[1].headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    expect(refreshCall[0]).toBe(`${BASE_URL}/v1/wallet/deposit_address/list`)
+    expect(JSON.parse(refreshCall[1].body as string)).toEqual({
+      coins: ['USDC'],
+      network: 'ethereum',
+    })
+  })
+
+  it('rejects a missing or arbitrary deposit policy before provisioning', async () => {
+    const missingFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: { accountID: 'acct-99' } })
+      )
+    const missingDeps = makeDeps(missingFetch)
+    await missingDeps.tokenStore.set(account.address, tokenFixture())
+    await expect(
+      ondoSignActions(
+        missingDeps,
+        SigningMethod.SESSION,
+        [
+          {
+            action: ActionType.CREATE_DEPOSIT_ADDRESS,
+            session: {},
+          } as ActionStep,
+        ],
+        account.address
+      )
+    ).rejects.toThrow(/unsupported deposit policy/)
+
+    const arbitraryFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: { accountID: 'acct-99' } })
+      )
+    const arbitraryDeps = makeDeps(arbitraryFetch)
+    await arbitraryDeps.tokenStore.set(account.address, tokenFixture())
+    const arbitrary = {
+      ...CREATE_DEPOSIT_STEP,
+      session: {
+        network: 'solana',
+        symbol: 'USDT',
+        depositDestination: { wallet: 'spot' },
+      },
+    }
+    await expect(
+      ondoSignActions(
+        arbitraryDeps,
+        SigningMethod.SESSION,
+        [arbitrary],
+        account.address
+      )
+    ).rejects.toThrow(/unsupported deposit policy/)
+  })
+
+  it('distinguishes a malformed refresh result from an empty address list', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: { accountID: 'acct-99' } })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: { addresses: [{}] } })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [CREATE_DEPOSIT_STEP],
+        account.address
+      )
+    ).rejects.toThrow(/deposit-address response is malformed/)
+  })
+
+  it('uses the existing session-expiry path for a missing or rejected JWT', async () => {
+    const missing = makeDeps(vi.fn<typeof fetch>())
+    await expect(
+      ondoSignActions(
+        missing,
+        SigningMethod.SESSION,
+        [CREATE_DEPOSIT_STEP],
+        account.address
+      )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+
+    const rejectedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: false, error: 'expired' }, 401)
+      )
+    const rejected = makeDeps(rejectedFetch)
+    await rejected.tokenStore.set(account.address, tokenFixture())
+    await expect(
+      ondoSignActions(
+        rejected,
+        SigningMethod.SESSION,
+        [CREATE_DEPOSIT_STEP],
+        account.address
+      )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
   })
 
   it('executes a request-bearing session step against the venue with the session token and returns no signed steps', async () => {
