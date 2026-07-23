@@ -2,6 +2,8 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  HL_DELISTED_MARKET,
+  HL_DELISTED_USER_FUNDING,
   HL_MARKETS,
   HL_USER_FUNDING,
   HL_USER_NON_FUNDING_LEDGER,
@@ -46,6 +48,28 @@ describe('getActivity', () => {
     if (funding.type === ActivityType.FUNDING) {
       expect(funding.market.categoryId).toBe('hyperliquid')
       expect(funding.market.quoteAsset.displaySymbol).toBe('USDC')
+    }
+  })
+
+  it('maps funding activity for a known delisted market', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFunding: HL_DELISTED_USER_FUNDING,
+      },
+      [...HL_MARKETS, HL_DELISTED_MARKET]
+    ))
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.FUNDING],
+    })
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].type).toBe(ActivityType.FUNDING)
+    if (result.items[0].type === ActivityType.FUNDING) {
+      expect(result.items[0].market.id).toBe('DELISTED')
+      expect(result.items[0].market.isDelisted).toBe(true)
     }
   })
 

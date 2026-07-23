@@ -1,5 +1,6 @@
 import {
   getMarketRegistry,
+  isActiveMarket,
   isActiveOrderStatus,
   type MarketRegistry,
   type PerpsSDKClient,
@@ -248,6 +249,16 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
 
     await this.registry?.sync()
+
+    if (
+      this.registry !== undefined &&
+      (sub.channel === 'marketContext' ||
+        sub.channel === 'orderbook' ||
+        sub.channel === 'candle' ||
+        sub.channel === 'trades')
+    ) {
+      this.registry.requireActive(sub.marketId)
+    }
 
     // Markets context aggregates slower asset-context feeds with fast mid/mark
     // ticks from `fastAssetCtxs`.
@@ -688,7 +699,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private spotMarketIdBySacKey(): Map<string, string> {
     const map = new Map<string, string>()
-    for (const market of this.registry?.markets ?? []) {
+    for (const market of this.registry?.activeMarkets ?? []) {
       if (market.categoryId !== SPOT_MARKET_ID) {
         continue
       }
@@ -751,6 +762,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
    * other where it carries only one of mid/mark.
    */
   private computeMarketContext(marketId: string): MarketContext | undefined {
+    const market = this.registry?.get(marketId)
+    if (market !== undefined && !isActiveMarket(market)) {
+      return undefined
+    }
     const fast = this.fastCtxByMarketId[marketId]
     const spotCtx = this.spotCtxByMarketId[marketId]
     if (spotCtx !== undefined) {
@@ -1252,7 +1267,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private handleSpotState(data: HlWsSpotStateData) {
     const user = data.user.toLowerCase()
-    const markets = this.registry?.markets ?? []
+    const markets = this.registry?.activeMarkets ?? []
     const priceById = spotPriceById(markets, this.mergedMids())
     const rows = data.spotState.balances.map((b) => ({
       balance: spotBalance(spotAssetFromToken(b), b.total, priceById),

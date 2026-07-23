@@ -122,6 +122,18 @@ export const HL_MARKETS: Market[] = [
   },
 ]
 
+export const HL_DELISTED_MARKET: Market = {
+  providerId: 'hyperliquid',
+  id: 'DELISTED',
+  categoryId: 'hyperliquid',
+  baseAsset: baseAsset('DELISTED'),
+  quoteAsset: USDC_ASSET,
+  szDecimals: 0,
+  maxLeverage: 10,
+  onlyIsolated: false,
+  isDelisted: true,
+}
+
 /**
  * Backend spot market: the venue references it by coin `@142`, the backend
  * lists it under `id: '@142'` with an enriched `BTC/USDC` display and a
@@ -260,6 +272,13 @@ export const HL_USER_FILLS: HlUserFills = [
   },
 ]
 
+export const HL_DELISTED_USER_FILLS: HlUserFills = [
+  {
+    ...HL_USER_FILLS[0],
+    coin: 'DELISTED',
+  },
+]
+
 export const HL_SPOT_USER_FILLS: HlUserFills = [
   {
     tid: 101,
@@ -287,6 +306,16 @@ export const HL_USER_FUNDING: HlUserFunding = [
       usdc: '2.5',
       szi: '0.1',
       fundingRate: '0.0001',
+    },
+  },
+]
+
+export const HL_DELISTED_USER_FUNDING: HlUserFunding = [
+  {
+    ...HL_USER_FUNDING[0],
+    delta: {
+      ...HL_USER_FUNDING[0].delta,
+      coin: 'DELISTED',
     },
   },
 ]

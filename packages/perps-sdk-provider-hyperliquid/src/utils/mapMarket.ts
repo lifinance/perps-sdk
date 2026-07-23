@@ -22,6 +22,9 @@ export const mapMarket = (
 ): PerpsMarket => ({
   providerId: PROVIDER_KEY,
   id: universe.name,
+  ...(universe.isDelisted === undefined
+    ? {}
+    : { isDelisted: universe.isDelisted }),
   categoryId,
   baseAsset: coinAsset(universe.name),
   quoteAsset: coinAsset(QUOTE_SYMBOL),

@@ -22,6 +22,7 @@ export { PerpsError } from './errors/PerpsError.js'
 export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
 export {
   getMarketRegistry,
+  isActiveMarket,
   MarketRegistry,
   toMarketDisplay,
 } from './registry/marketRegistry.js'

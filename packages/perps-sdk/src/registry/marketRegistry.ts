@@ -23,10 +23,16 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
     return this.items
   }
 
+  /** The synced markets that are available for live and write operations. */
+  get activeMarkets(): readonly Market[] {
+    return this.items.filter(isActiveMarket)
+  }
+
   /**
    * Lookup by `Market.id`, throwing when the backend list does not know the
-   * id. The list is the source of truth for every tradable market, so an id
-   * the venue references but the backend does not know is a hard error —
+   * id. The list is the source of truth for enriched historical and live
+   * market metadata, so an id the venue references but the backend does not
+   * know is a hard error —
    * never a silent fallback to an unenriched stand-in.
    *
    * @throws {PerpsError} `MarketNotFound`.
@@ -37,6 +43,26 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
       const error = new PerpsError(
         PerpsErrorCode.MarketNotFound,
         `No ${this.provider} market found for marketId '${marketId}'`
+      )
+      error.tool = this.provider
+      throw error
+    }
+    return market
+  }
+
+  /**
+   * Lookup a market for live or write use. Delisted markets remain resolvable
+   * through {@link require} for historical display mapping, but this method
+   * rejects them.
+   *
+   * @throws {PerpsError} `MarketNotFound` when the market is absent or delisted.
+   */
+  requireActive(marketId: string): Market {
+    const market = this.require(marketId)
+    if (!isActiveMarket(market)) {
+      const error = new PerpsError(
+        PerpsErrorCode.MarketNotFound,
+        `Market '${marketId}' is not available for live use`
       )
       error.tool = this.provider
       throw error
@@ -59,6 +85,10 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
 }
 
 const registries = new WeakMap<PerpsSDKClient, Map<string, MarketRegistry>>()
+
+/** A market is active unless the provider explicitly marks it delisted. */
+export const isActiveMarket = (market: Market): boolean =>
+  market.isDelisted !== true
 
 /**
  * The stable {@link MarketRegistry} for `(client, provider)`.
@@ -95,4 +125,5 @@ export const toMarketDisplay = (market: Market): MarketDisplay => ({
   categoryId: market.categoryId,
   baseAsset: market.baseAsset,
   quoteAsset: market.quoteAsset,
+  ...(market.isDelisted === undefined ? {} : { isDelisted: market.isDelisted }),
 })

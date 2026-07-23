@@ -24,6 +24,13 @@ describe('mapMarket (Hyperliquid)', () => {
     expect(result.onlyIsolated).toBe(false)
   })
 
+  it('carries the explicit delisted status', () => {
+    expect(
+      mapMarket({ ...universe, isDelisted: true }, 'hyperliquid').isDelisted
+    ).toBe(true)
+    expect(mapMarket(universe, 'hyperliquid').isDelisted).toBeUndefined()
+  })
+
   it('carries no live mark/stats fields', () => {
     const result = mapMarket(universe, 'hyperliquid')
 

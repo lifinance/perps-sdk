@@ -35,6 +35,7 @@ const market = (id: string, categoryId: string): Market => ({
 
 const BTC = market('BTC', 'hyperliquid')
 const BRENT = market('xyz:BRENTOIL', 'xyz')
+const DELISTED = { ...market('DELISTED', 'hyperliquid'), isDelisted: true }
 
 /** Serve `responses` in order, recording each request's cache mode. */
 const serveMarkets = (responses: MarketsResponse[]) => {
@@ -110,6 +111,19 @@ describe('MarketRegistry', () => {
 
     expect(warn).toHaveBeenCalledTimes(1)
     expect(requests).toHaveLength(1)
+  })
+
+  it('resolves known delisted markets for history but rejects them for active use', async () => {
+    serveMarkets([{ markets: [BTC, DELISTED] }])
+    const registry = getMarketRegistry(freshClient(), 'hyperliquid')
+    await registry.sync()
+
+    expect(registry.require('DELISTED')).toEqual(DELISTED)
+    expect(registry.activeMarkets).toEqual([BTC])
+    expect(() => registry.requireActive('DELISTED')).toThrow(PerpsError)
+    expect(() => registry.requireActive('DELISTED')).toThrow(
+      /not available for live use/
+    )
   })
 
   it('require throws MarketNotFound for an id the backend does not know', async () => {

@@ -36,6 +36,25 @@ describe('getMarket', () => {
     expect(market).toEqual(mockMarkets.markets[0])
   })
 
+  it('rejects a delisted market for live lookup', async () => {
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, () =>
+        HttpResponse.json({
+          markets: [{ ...mockMarkets.markets[0], isDelisted: true }],
+        })
+      )
+    )
+
+    const error = await getMarket(client, {
+      provider: 'hyperliquid',
+      marketId: 'BTC',
+    }).catch((e) => e)
+
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error.code).toBe(PerpsErrorCode.MarketNotFound)
+    expect(error.tool).toBe('hyperliquid')
+  })
+
   it('throws a MarketNotFound PerpsError when the backend yields an empty market list', async () => {
     server.use(
       http.get(`${DEFAULT_API_URL}/markets`, () =>
