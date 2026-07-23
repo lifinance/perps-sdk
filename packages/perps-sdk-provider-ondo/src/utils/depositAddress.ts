@@ -83,9 +83,10 @@ export const listOndoDepositAddress = async (
     )
   )
 
-const policyCandidate = (
-  marker: Record<string, unknown>
-): Record<string, unknown> => {
+const policyCandidate = (marker: object): Record<string, unknown> => {
+  if (!isRecord(marker)) {
+    throw malformed('session marker must be an object')
+  }
   const candidate = marker.policy
   if (candidate === undefined) {
     return marker
@@ -102,7 +103,7 @@ const policyCandidate = (
  * the one fixed Ondo policy before any venue write is attempted.
  */
 export const buildOndoProvisionPayload = (
-  marker: Record<string, unknown>,
+  marker: object,
   accountID: string
 ): Record<string, unknown> => {
   if (typeof accountID !== 'string' || accountID.length === 0) {
