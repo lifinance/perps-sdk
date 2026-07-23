@@ -7,7 +7,26 @@ import {
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import { isAddress } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
+
+const normalizeInfoValue = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return isAddress(value, { strict: false }) ? value.toLowerCase() : value
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeInfoValue)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        normalizeInfoValue(nestedValue),
+      ])
+    )
+  }
+  return value
+}
 
 /** @internal */
 export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
@@ -81,7 +100,7 @@ export async function infoRequest<T>(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(normalizeInfoValue(body)),
       },
       {
         policy,

@@ -28,6 +28,7 @@ import {
   type TriggerOrder,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import { isAddress } from 'viem'
 import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
@@ -79,6 +80,9 @@ import { DecodeChain } from './decodeChain.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
+const normalizeHlAddress = (address: string): string =>
+  isAddress(address, { strict: false }) ? address.toLowerCase() : address
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -535,14 +539,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           coin: sub.marketId,
         }
       case 'orderUpdates':
-        return { type: 'orderUpdates', user: sub.address }
+        return { type: 'orderUpdates', user: normalizeHlAddress(sub.address) }
       case 'fills':
-        return { type: 'userFills', user: sub.address }
+        return { type: 'userFills', user: normalizeHlAddress(sub.address) }
       case 'positions':
       case 'accountSummary':
-        return { type: 'allDexsClearinghouseState', user: sub.address }
+        return {
+          type: 'allDexsClearinghouseState',
+          user: normalizeHlAddress(sub.address),
+        }
       case 'spotBalances':
-        return { type: 'spotState', user: sub.address }
+        return { type: 'spotState', user: normalizeHlAddress(sub.address) }
     }
   }
 
