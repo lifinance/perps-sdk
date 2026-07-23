@@ -241,6 +241,8 @@ export async function ondoSignActions(
             await deps.client.post('/v1/provision_address', payload, {
               authToken: token.token,
             })
+            // Re-query to validate that Ondo can read the provisioned address;
+            // getAccount performs the authoritative state refresh afterward.
             await listOndoDepositAddress(deps.client, token.token)
             break
           }

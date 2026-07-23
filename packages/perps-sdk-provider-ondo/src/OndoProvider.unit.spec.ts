@@ -1098,6 +1098,23 @@ describe('OndoProvider — projectConfig', () => {
       provider.projectConfig(
         {
           ...loggedOutConfig,
+          depositAddress: '',
+        },
+        [DEPOSIT_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      {
+        type: ActionType.CREATE_DEPOSIT_ADDRESS,
+        values: [{ name: 'depositAddress', value: '' }],
+        satisfied: false,
+      },
+    ])
+
+    expect(
+      provider.projectConfig(
+        {
+          ...loggedOutConfig,
           depositAddress: DEPOSIT_ADDRESS,
         },
         [DEPOSIT_DESCRIPTOR],
