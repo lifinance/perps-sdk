@@ -9,15 +9,22 @@ import type {
 } from './account.js'
 import type { Asset, DepositAsset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
-import type { OhlcvInterval } from './market.js'
+import type { ProviderFunding as ExportedProviderFunding } from './index.js'
+import type { MarketContext, OhlcvInterval } from './market.js'
 import type {
   Param,
   ParamOption,
   Provider,
   ProviderAction,
   ProviderCategory,
+  ProviderFunding,
   TradeNotice,
 } from './providers.js'
+
+const hourlyProviderFunding: ProviderFunding = {
+  ratePeriodSeconds: 60 * 60,
+  payoutCadenceSeconds: 60 * 60,
+}
 
 const usdcAsset: Asset = {
   providerId: 'hyperliquid',
@@ -148,6 +155,7 @@ const hyperliquidProvider: Provider = {
     },
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
+  funding: hourlyProviderFunding,
   chainId: 1337,
   depositAssets: [arbitrumUsdcDeposit],
   minOrderValueUsd: 10,
@@ -173,6 +181,7 @@ const lighterProvider: Provider = {
   categories: [
     { id: 'lighter', quoteAsset: { ...usdcAsset, providerId: 'lighter' } },
   ],
+  funding: hourlyProviderFunding,
   chainId: 3586256,
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
@@ -359,6 +368,31 @@ type _SetupFieldShape = Expect<Equals<Provider['setup'], ProviderAction[]>>
 type _OptionsFieldShape = Expect<Equals<Provider['options'], ProviderAction[]>>
 type _ActionsFieldShape = Expect<Equals<Provider['actions'], ProviderAction[]>>
 
+type _ProviderFundingKeys = Expect<
+  Equals<keyof ProviderFunding, 'ratePeriodSeconds' | 'payoutCadenceSeconds'>
+>
+type _ProviderFundingRatePeriod = Expect<
+  Equals<ProviderFunding['ratePeriodSeconds'], number>
+>
+type _ProviderFundingPayoutCadence = Expect<
+  Equals<ProviderFunding['payoutCadenceSeconds'], number>
+>
+type _ProviderFundingExport = Expect<
+  Equals<ExportedProviderFunding, ProviderFunding>
+>
+type _ProviderFundingOptional = Expect<
+  Equals<Provider['funding'], ProviderFunding | undefined>
+>
+type _ProviderFundingIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'funding'>, never>
+>
+type _MarketContextHasNoFundingCadence = Expect<
+  Equals<
+    Extract<keyof MarketContext, 'ratePeriodSeconds' | 'payoutCadenceSeconds'>,
+    never
+  >
+>
+
 // Both arrays are required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
   [K in keyof T]-?: object extends Pick<T, K> ? never : K
@@ -484,6 +518,13 @@ export type _TypeAssertions = [
   _SetupFieldShape,
   _OptionsFieldShape,
   _ActionsFieldShape,
+  _ProviderFundingKeys,
+  _ProviderFundingRatePeriod,
+  _ProviderFundingPayoutCadence,
+  _ProviderFundingExport,
+  _ProviderFundingOptional,
+  _ProviderFundingIsOptional,
+  _MarketContextHasNoFundingCadence,
   _SetupIsRequired,
   _OptionsIsRequired,
   _SupportedIntervalsShape,
@@ -573,6 +614,22 @@ describe('ProviderCategory.tradeNotice', () => {
 
   it('keeps the message plaintext — a URL stays inline text', () => {
     expect(warnNotice.message).toContain('docs.example.invalid')
+  })
+})
+
+describe('Provider.funding', () => {
+  it('keeps the rate period distinct from the payout cadence', () => {
+    expect(hyperliquidProvider.funding).toEqual({
+      ratePeriodSeconds: 60 * 60,
+      payoutCadenceSeconds: 60 * 60,
+    })
+    expect(lighterProvider.funding?.ratePeriodSeconds).toBe(60 * 60)
+    expect(lighterProvider.funding?.payoutCadenceSeconds).toBe(60 * 60)
+  })
+
+  it('is optional for providers without funding metadata', () => {
+    expect(providerWithNoDescriptors.funding).toBeUndefined()
+    expect(announcedProvider.funding).toBeUndefined()
   })
 })
 
