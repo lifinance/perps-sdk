@@ -338,6 +338,21 @@ describe('Session steps', () => {
     expect(step.action).toBe(ActionType.ACCEPT_PROVIDER_TERMS)
   })
 
+  it('accepts the fixed CREATE_DEPOSIT_ADDRESS policy marker', () => {
+    const depositMarker: SessionActionStep = {
+      action: ActionType.CREATE_DEPOSIT_ADDRESS,
+      session: {
+        network: 'ethereum',
+        symbol: 'USDC',
+        depositDestination: { wallet: 'margin' },
+      },
+    }
+    const step: ActionStep = depositMarker
+
+    expect(step.action).toBe(ActionType.CREATE_DEPOSIT_ADDRESS)
+    expect(depositMarker.session.depositDestination.wallet).toBe('margin')
+  })
+
   it('is wired through ActionParamsMap on ACCEPT_PROVIDER_TERMS with empty params', () => {
     type Resolved = ActionParamsMap[ActionType.ACCEPT_PROVIDER_TERMS]
     const params: Resolved = {}

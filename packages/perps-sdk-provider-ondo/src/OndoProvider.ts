@@ -82,6 +82,7 @@ import {
   estimateLiquidationPrice,
   formatOrderPrice,
   formatOrderSize,
+  listOndoDepositAddress,
   mapFill,
   mapFundingActivity,
   mapLiquidationActivity,
@@ -169,6 +170,7 @@ export const ondoProvider = (
     termsAccepted: false,
     apiKeyRegistered: false,
     referralSet: false,
+    depositAddress: null,
   }
 
   const loggedOutAccount = (address: Address): AccountResponse => ({
@@ -232,21 +234,23 @@ export const ondoProvider = (
         },
         async (token) => {
           const client = apiClient(opts)
-          const [balance, rawPositions, referral, account] = await Promise.all([
-            client.get<OndoBalanceSummary>('/v1/perps/balance', {
-              authToken: token.token,
-            }),
-            client.get<OndoPosition[]>('/v1/perps/positions', {
-              authToken: token.token,
-            }),
-            client.get<OndoAccountReferral | null>('/v1/account/referral', {
-              authToken: token.token,
-            }),
-            client.get<OndoAccountInfo>('/v1/account', {
-              authToken: token.token,
-            }),
-            marketRegistry().sync(),
-          ])
+          const [balance, rawPositions, referral, account, depositAddress] =
+            await Promise.all([
+              client.get<OndoBalanceSummary>('/v1/perps/balance', {
+                authToken: token.token,
+              }),
+              client.get<OndoPosition[]>('/v1/perps/positions', {
+                authToken: token.token,
+              }),
+              client.get<OndoAccountReferral | null>('/v1/account/referral', {
+                authToken: token.token,
+              }),
+              client.get<OndoAccountInfo>('/v1/account', {
+                authToken: token.token,
+              }),
+              listOndoDepositAddress(client, token.token),
+              marketRegistry().sync(),
+            ])
 
           const positions: Position[] = mapOpenPositions(
             rawPositions,
@@ -280,6 +284,7 @@ export const ondoProvider = (
                 account.privacyVersion === ONDO_PRIVACY_VERSION,
               apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
+              depositAddress,
             },
           }
         }
@@ -619,19 +624,26 @@ export const ondoProvider = (
       return projectOndoConfigSettings(config, setup, configOptions)
     },
 
-    signActions(
+    async signActions(
       method: SigningMethod,
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
-      return ondoSignActions(
-        { client: apiClient(), tokenStore, apiKeyStore },
-        method,
-        steps,
-        address,
-        ctx
-      )
+      try {
+        return await ondoSignActions(
+          { client: apiClient(), tokenStore, apiKeyStore },
+          method,
+          steps,
+          address,
+          ctx
+        )
+      } catch (err) {
+        if (err instanceof OndoSessionExpiredError) {
+          await tokenStore.remove(address)
+        }
+        throw err
+      }
     },
 
     // The venue rejecting an HMAC-signed request with Unauthorized means the
