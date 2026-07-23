@@ -70,6 +70,14 @@ export interface ProviderCategory {
 }
 
 /** @public */
+export interface ProviderFunding {
+  /** Number of seconds represented by the provider's funding rate. */
+  ratePeriodSeconds: number
+  /** Number of seconds between funding payouts. */
+  payoutCadenceSeconds: number
+}
+
+/** @public */
 export interface Provider {
   key: string
   name: string
@@ -82,6 +90,8 @@ export interface Provider {
   actions: ProviderAction[]
   categories: ProviderCategory[]
   wsUrl?: string
+  /** Global funding metadata shared by all markets at this provider. */
+  funding?: ProviderFunding
   /**
    * Settlement chain id for this venue, aligned to `@lifi/types` `ChainId`
    * values. Absent when the provider has no settlement chain.
