@@ -142,6 +142,7 @@ function projectLighterDescriptor(
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:
     case ActionType.SIWE_LOGIN:
+    case ActionType.CREATE_DEPOSIT_ADDRESS:
     case ActionType.ACCEPT_PROVIDER_TERMS:
     case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.DEPOSIT:

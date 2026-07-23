@@ -318,6 +318,8 @@ export interface OndoAccountConfig {
   apiKeyRegistered: boolean
   /** A referral code (any referrer's) is already applied to the account. Always `false` when logged out. */
   referralSet: boolean
+  /** Canonical Ethereum USDC deposit address, or `null` when none is provisioned. */
+  depositAddress: string | null
 }
 
 /** @public */
