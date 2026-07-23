@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 2.2.0
+
+### Minor Changes
+
+- [#271](https://github.com/lifinance/perps-sdk/pull/271) [`822bb5f`](https://github.com/lifinance/perps-sdk/commit/822bb5ff4ddb238b8b73c77ce65ffd7e498f449d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the Ondo `CREATE_DEPOSIT_ADDRESS` session marker and client-side deposit-address provisioning flow. The shared `SessionActionStep` type now carries the fixed Ethereum USDC margin-wallet policy for this action, and the Ondo account config exposes the canonical provisioned address.
+
+### Patch Changes
+
+- Updated dependencies [[`822bb5f`](https://github.com/lifinance/perps-sdk/commit/822bb5ff4ddb238b8b73c77ce65ffd7e498f449d), [`ac32417`](https://github.com/lifinance/perps-sdk/commit/ac324179de2843e8dc7521863c986de304db2fb2)]:
+  - @lifi/perps-types@3.3.0
+
 ## 2.1.1
 
 ### Patch Changes
