@@ -3,7 +3,7 @@ import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Market } from '@lifi/perps-types'
+import type { Market, Subscription } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -307,6 +307,29 @@ describe('HyperliquidWsProvider', () => {
       expect(payloads).toContainEqual({
         method: 'subscribe',
         subscription: { type: 'fastAssetCtxs' },
+      })
+    })
+
+    it.each([
+      ['orderUpdates', 'orderUpdates'],
+      ['fills', 'userFills'],
+      ['positions', 'allDexsClearinghouseState'],
+      ['accountSummary', 'allDexsClearinghouseState'],
+      ['spotBalances', 'spotState'],
+    ] as const)('lowercases the user for the %s subscription payload', async (channel, payloadType) => {
+      const provider = createProvider()
+      const wallet = '0x3A18b8e1e653DF2a60e312e342084604F5E3e876'
+      const subscription: Subscription = {
+        channel,
+        dex: 'hyperliquid',
+        address: wallet,
+      }
+
+      await provider.subscribe(subscription, vi.fn())
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toMatchObject({
+        method: 'subscribe',
+        subscription: { type: payloadType, user: wallet.toLowerCase() },
       })
     })
 
