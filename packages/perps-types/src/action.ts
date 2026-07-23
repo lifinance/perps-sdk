@@ -71,17 +71,28 @@ export interface HmacActionStep {
 
 /**
  * A marker for a client-only setup step the SDK executes directly against the
- * venue with the provider session token. Deliberately carries no request
- * material: a bearer token authorizes whatever request it is attached to, so
- * the SDK authors the venue call itself, keyed on `action`, and never applies
- * the token to a backend-authored path or body. The signing arm returns no
- * signed step, so `executeAction` is skipped.
+ * venue with the provider session token. `session` may carry a small,
+ * the deposit-address policy marker, but never a venue path, request headers,
+ * or credentials. The provider authors the venue call itself, keyed on `action`,
+ * and the signing arm returns no signed step, so `executeAction` is skipped.
  * @public
  */
-export interface SessionActionStep {
-  action: ActionType
-  session: Record<string, never>
+export interface CreateDepositAddressSessionMarker {
+  network: 'ethereum'
+  symbol: 'USDC'
+  depositDestination: { wallet: 'margin' }
 }
+
+/** @public */
+export type SessionActionStep =
+  | {
+      action: Exclude<ActionType, ActionType.CREATE_DEPOSIT_ADDRESS>
+      session: Record<string, never>
+    }
+  | {
+      action: ActionType.CREATE_DEPOSIT_ADDRESS
+      session: CreateDepositAddressSessionMarker
+    }
 
 /** @public */
 export interface SiweActionStep {
@@ -367,6 +378,7 @@ export interface ActionParamsMap {
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
+  [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
   [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_VOTE]: VoteParams

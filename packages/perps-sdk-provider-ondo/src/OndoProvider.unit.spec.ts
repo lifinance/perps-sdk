@@ -248,6 +248,8 @@ const LIQUIDATION_RESULT: OndoLiquidationEvent = {
   filledQuantity: '10',
 }
 
+const DEPOSIT_ADDRESS = '0x2222222222222222222222222222222222222222'
+
 const ACCOUNT_INFO_RESULT = {
   accountID: 'acct-1',
   identifier: ADDRESS.toLowerCase(),
@@ -276,6 +278,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 let referralResult: { code: string; rebate?: number } | null
 /** `GET /v1/account` result; its versions drive `termsAccepted`. */
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
+/** POST /v1/wallet/deposit_address/list result. */
+let depositAddressResult: unknown
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -289,6 +293,7 @@ beforeEach(() => {
   recorded = []
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
   accountInfoResult = { ...ACCOUNT_INFO_RESULT }
+  depositAddressResult = []
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -341,6 +346,9 @@ beforeEach(() => {
         privacyVersion: body.privacyVersion,
       }
       return respond(envelope({}))
+    }
+    if (u.includes('/v1/wallet/deposit_address/list')) {
+      return respond(envelope(depositAddressResult))
     }
     if (u.includes('/v1/account/referral')) {
       return respond(envelope(referralResult))
@@ -440,6 +448,7 @@ describe('OndoProvider — logged-out degrade paths', () => {
         termsAccepted: false,
         apiKeyRegistered: false,
         referralSet: false,
+        depositAddress: null,
       },
     })
     expect(recorded).toHaveLength(0)
@@ -508,6 +517,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: true,
+      depositAddress: null,
     })
     expect(account.positions).toEqual([
       {
@@ -535,6 +545,50 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(venueCalls.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
   })
 
+  it('exposes the canonical Ethereum USDC deposit address and leaves it absent when none exists', async () => {
+    depositAddressResult = [
+      { address: DEPOSIT_ADDRESS, coin: 'USDC', network: 'ethereum' },
+    ]
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ depositAddress: DEPOSIT_ADDRESS })
+
+    depositAddressResult = []
+    const empty = await provider.getAccount({ address: ADDRESS })
+    expect(empty.config).toMatchObject({ depositAddress: null })
+  })
+
+  it('does not turn a malformed deposit-address result into an unsatisfied setup state', async () => {
+    depositAddressResult = {
+      addresses: [{ coin: 'USDC', network: 'ethereum' }],
+    }
+    const { provider } = await loggedInProvider()
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /deposit-address response is malformed/
+    )
+  })
+
+  it('evicts the session when the deposit-address query is unauthorized', async () => {
+    const { provider, store } = await loggedInProvider()
+    depositAddressResult = undefined
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('/v1/wallet/deposit_address/list')) {
+        return respond({ success: false, error: 'token expired' }, 401)
+      }
+      return respond(envelope([]))
+    })
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).resolves.toMatchObject({
+      config: { loggedIn: false, depositAddress: null },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+
   it('reports referralSet: false when no referral is applied to the account', async () => {
     referralResult = null
     const { provider } = await loggedInProvider()
@@ -546,6 +600,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: false,
+      depositAddress: null,
     })
   })
 
@@ -636,6 +691,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         termsAccepted: false,
         apiKeyRegistered: false,
         referralSet: false,
+        depositAddress: null,
       },
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()
@@ -958,6 +1014,7 @@ describe('OndoProvider — getAccountSummary', () => {
         termsAccepted: true,
         apiKeyRegistered: true,
         referralSet: true,
+        depositAddress: null,
       } as const,
     } satisfies AccountResponse
     const positions: Position[] = [
@@ -1006,13 +1063,71 @@ describe('OndoProvider — projectConfig', () => {
     signingMethod: SigningMethod.SESSION,
   }
 
+  const DEPOSIT_DESCRIPTOR: ProviderAction = {
+    type: ActionType.CREATE_DEPOSIT_ADDRESS,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+
   const loggedOutConfig = {
     provider: 'ondo',
     loggedIn: false,
     termsAccepted: false,
     apiKeyRegistered: false,
     referralSet: false,
+    depositAddress: null,
   } as const
+
+  it('projects CREATE_DEPOSIT_ADDRESS only when a valid address is present', () => {
+    const provider = ondoProvider()
+    const unsatisfied = provider.projectConfig(
+      {
+        ...loggedOutConfig,
+        depositAddress: null,
+      },
+      [DEPOSIT_DESCRIPTOR],
+      []
+    )
+    expect(unsatisfied[0]).toEqual({
+      type: ActionType.CREATE_DEPOSIT_ADDRESS,
+      values: [{ name: 'depositAddress', value: null }],
+      satisfied: false,
+    })
+
+    expect(
+      provider.projectConfig(
+        {
+          ...loggedOutConfig,
+          depositAddress: '',
+        },
+        [DEPOSIT_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      {
+        type: ActionType.CREATE_DEPOSIT_ADDRESS,
+        values: [{ name: 'depositAddress', value: '' }],
+        satisfied: false,
+      },
+    ])
+
+    expect(
+      provider.projectConfig(
+        {
+          ...loggedOutConfig,
+          depositAddress: DEPOSIT_ADDRESS,
+        },
+        [DEPOSIT_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      {
+        type: ActionType.CREATE_DEPOSIT_ADDRESS,
+        values: [{ name: 'depositAddress', value: DEPOSIT_ADDRESS }],
+        satisfied: true,
+      },
+    ])
+  })
 
   it('projects SIWE_LOGIN with the session expiry when logged in', () => {
     const provider = ondoProvider()
@@ -1025,6 +1140,7 @@ describe('OndoProvider — projectConfig', () => {
           termsAccepted: true,
           apiKeyRegistered: false,
           referralSet: false,
+          depositAddress: null,
         },
         [SIWE_DESCRIPTOR],
         []
@@ -1098,6 +1214,7 @@ describe('OndoProvider — projectConfig', () => {
           termsAccepted: true,
           apiKeyRegistered: true,
           referralSet: true,
+          depositAddress: null,
         },
         [SIWE_DESCRIPTOR, REFERRAL_DESCRIPTOR],
         []

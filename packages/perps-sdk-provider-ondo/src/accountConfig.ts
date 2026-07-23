@@ -15,8 +15,9 @@ function assertNever(value: never): never {
 
 /**
  * Project a single Ondo descriptor against the typed `OndoAccountConfig`
- * into an `AccountConfigSetting`. Ondo has four setup descriptors:
+ * into an `AccountConfigSetting`. Ondo has five setup descriptors:
  * `SIWE_LOGIN`, satisfied by the presence of a live session token;
+ * `CREATE_DEPOSIT_ADDRESS`, satisfied by a canonical Ethereum USDC address;
  * `ACCEPT_PROVIDER_TERMS`, satisfied once the venue terms are accepted;
  * `REGISTER_API_KEY`, satisfied by a locally stored venue API key; and
  * `SET_REFERRAL`, satisfied when a referral code is already applied to the
@@ -38,6 +39,14 @@ function projectOndoDescriptor(
           { name: 'authTokenExpiry', value: config.authTokenExpiry ?? null },
         ],
         satisfied: config.loggedIn,
+      }
+
+    case ActionType.CREATE_DEPOSIT_ADDRESS:
+      return {
+        type: descriptor.type,
+        values: [{ name: 'depositAddress', value: config.depositAddress }],
+        satisfied:
+          config.depositAddress !== null && config.depositAddress.length > 0,
       }
 
     case ActionType.ACCEPT_PROVIDER_TERMS:

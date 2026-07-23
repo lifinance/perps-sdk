@@ -121,6 +121,7 @@ export enum ActionType {
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
+  CREATE_DEPOSIT_ADDRESS = 'createDepositAddress',
   /** Provider-level (venue) terms acceptance, executed client-side with the provider session credential. Distinct from `META_ACCEPT_TERMS`, which covers LI.FI's own app-wide terms. */
   ACCEPT_PROVIDER_TERMS = 'acceptProviderTerms',
   DEPOSIT = 'deposit',

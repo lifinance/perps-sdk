@@ -16,6 +16,14 @@ export {
   type OndoRequestOptions,
   OndoSessionExpiredError,
 } from './apiClient.js'
+export {
+  buildOndoProvisionPayload,
+  listOndoDepositAddress,
+  ONDO_DEPOSIT_POLICY,
+  type OndoDepositAddressRecord,
+  type OndoDepositPolicyMarker,
+  parseOndoDepositAddress,
+} from './depositAddress.js'
 export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFundingActivity, mapLiquidationActivity } from './mapActivity.js'
 export { mapFill } from './mapFill.js'
