@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 4.4.0
+
+### Minor Changes
+
+- [#277](https://github.com/lifinance/perps-sdk/pull/277) [`448312a`](https://github.com/lifinance/perps-sdk/commit/448312a4a3521b30bdd97bef5068f5bd8ff33d71) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Expose exact-decimal `scaleToInteger` from the generic SDK and remove the Lighter-specific export.
+
 ## 4.3.1
 
 ### Patch Changes
