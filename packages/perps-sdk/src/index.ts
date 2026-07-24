@@ -191,6 +191,8 @@ export {
   predictUnrealizedPnl,
   realizedPnlOnClose,
 } from './utils/positionMath.js'
+export type { ScaleToIntegerPolicy } from './utils/scaleToInteger.js'
+export { scaleToInteger } from './utils/scaleToInteger.js'
 export {
   signTypedData,
   signTypedDataWithSigner,
