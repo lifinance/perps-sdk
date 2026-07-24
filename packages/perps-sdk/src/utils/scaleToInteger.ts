@@ -31,7 +31,7 @@ export const scaleToInteger = (
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid decimals for Lighter integer scaling: ${decimals}`
+      `Invalid decimals for integer scaling: ${decimals}`
     )
   }
   let parsed: Big
@@ -40,7 +40,7 @@ export const scaleToInteger = (
   } catch {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid decimal string for Lighter integer scaling: '${value}'`
+      `Invalid decimal string for integer scaling: '${value}'`
     )
   }
   const scaled = parsed

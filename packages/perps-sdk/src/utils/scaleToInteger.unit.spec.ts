@@ -62,22 +62,22 @@ describe('scaleToInteger', () => {
   it('rejects non-numeric input loudly', () => {
     expectValidationError(
       () => scaleToInteger('abc', 2, 'truncate'),
-      /Invalid decimal string/
+      /Invalid decimal string for integer scaling/
     )
     expectValidationError(
       () => scaleToInteger('', 2, 'round'),
-      /Invalid decimal string/
+      /Invalid decimal string for integer scaling/
     )
   })
 
   it('rejects invalid decimals', () => {
     expectValidationError(
       () => scaleToInteger('1', -1, 'truncate'),
-      /Invalid decimals/
+      /Invalid decimals for integer scaling/
     )
     expectValidationError(
       () => scaleToInteger('1', 1.5, 'round'),
-      /Invalid decimals/
+      /Invalid decimals for integer scaling/
     )
   })
 })
