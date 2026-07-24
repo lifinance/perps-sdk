@@ -81,6 +81,8 @@ export async function signWasmBlobActions(
   for (const step of steps) {
     if (step.action === ActionType.REGISTER_API_KEY) {
       signed.push(await signRegisterApiKey(deps, address, step, ctx))
+    } else if (step.action === ActionType.APPROVE_INTEGRATOR) {
+      signed.push(await signApproveIntegrator(deps, address, step, ctx))
     } else if (
       TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
     ) {
@@ -192,6 +194,61 @@ async function signRegisterApiKey(
       txType: changePubKey.txType,
       txInfo: txInfoWithL1Sig,
       txHash: changePubKey.txHash,
+    },
+  }
+}
+
+/**
+ * APPROVE_INTEGRATOR flow:
+ *   1. Load the user's stored API key (no keypair generation).
+ *   2. Wasm-sign the `L2ApproveIntegrator` blob with that key, obtaining the
+ *      EIP-191 L1 message the wallet must countersign.
+ *   3. Have the user's L1 Ethereum wallet sign that message.
+ *   4. Inject the L1 signature into the txInfo JSON as `L1Sig`.
+ *
+ * Requires the end-user's wallet in `ctx.userWallet`: Lighter rejects the tx
+ * without the user's `L1Sig` when the integrator account belongs to a
+ * different L1 address with non-zero fee caps.
+ */
+async function signApproveIntegrator(
+  deps: LighterSignActionsDeps,
+  address: Address,
+  step: WasmBlobActionStep,
+  ctx: SignActionsContext | undefined
+): Promise<WasmBlobSignedActionStep> {
+  const walletSigner = ctx?.userWallet
+  if (!walletSigner) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'APPROVE_INTEGRATOR requires the end-user wallet — pass `userWallet` to ' +
+        'createPerpsClient or call setUserWallet(walletClient).'
+    )
+  }
+
+  const apiKey = await requireApiKey(deps, address)
+  const signed = await deps.signer.signApproveIntegrator(step.wasmSignParams, {
+    apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
+    apiKeyIndex: apiKey.apiKeyIndex,
+    accountIndex: apiKey.accountIndex,
+  })
+
+  const l1Signature = await walletSigner.signMessage({
+    account: walletSigner.account,
+    message: signed.messageToSign,
+  })
+
+  const txInfoWithL1Sig = deps.signer.embedL1Signature(
+    signed.txInfo,
+    l1Signature
+  )
+
+  return {
+    action: step.action,
+    wasmSignParams: step.wasmSignParams,
+    signedTx: {
+      txType: signed.txType,
+      txInfo: txInfoWithL1Sig,
+      txHash: signed.txHash,
     },
   }
 }
@@ -333,9 +390,10 @@ export async function signEvmTxActions(
   }
 
   const switchToChain = ctx?.switchToChain
+  const onProgress = ctx?.onProgress
   const signed: EvmTxSignedActionStep[] = []
   let legSigner = walletSigner
-  for (const step of steps) {
+  for (const [index, step] of steps.entries()) {
     const params = step.txParams
 
     if (legSigner.chain?.id !== params.chainId && switchToChain) {
@@ -360,6 +418,15 @@ export async function signEvmTxActions(
       chain: legSigner.chain,
       account: legSigner.account,
     })
+    onProgress?.({
+      index,
+      total: steps.length,
+      action: step.action,
+      functionName: params.functionName,
+      chainId: params.chainId,
+      status: 'submitted',
+      txHash,
+    })
 
     const receipt = await waitForTransactionReceipt(legSigner, {
       hash: txHash,
@@ -371,6 +438,15 @@ export async function signEvmTxActions(
           'remaining legs.'
       )
     }
+    onProgress?.({
+      index,
+      total: steps.length,
+      action: step.action,
+      functionName: params.functionName,
+      chainId: params.chainId,
+      status: 'confirmed',
+      txHash,
+    })
 
     signed.push({
       action: step.action,

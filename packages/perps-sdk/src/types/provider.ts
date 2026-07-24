@@ -19,7 +19,6 @@ import type {
   ProviderAction,
   Quote,
   QuoteSide,
-  RestCallSignedActionStep,
   SignedActionStep,
   SigningMethod,
   TradeType,
@@ -56,6 +55,27 @@ export interface PerpsSDKClient {
  *
  * @public
  */
+/**
+ * Progress for one on-chain leg of an `EVM_TX` batch (e.g. a native deposit's
+ * `approve` then `deposit`). Emitted twice per leg: `submitted` once the wallet
+ * broadcasts and the hash is known, then `confirmed` once the receipt mines. A
+ * consumer can render a live per-transaction stepper from these.
+ *
+ * @public
+ */
+export interface SignActionProgress {
+  /** 0-based index of this leg within the batch. */
+  index: number
+  /** Total legs in the batch. */
+  total: number
+  action: ActionType
+  /** Contract function the leg invokes, e.g. `"approve"` or the deposit method. */
+  functionName: string
+  chainId: number
+  status: 'submitted' | 'confirmed'
+  txHash: string
+}
+
 export interface SignActionsContext {
   userWallet?: PerpsClientSigner
   /**
@@ -76,6 +96,13 @@ export interface SignActionsContext {
    * absent (local/private-key signer, or no hook).
    */
   switchToChain?: (chainId: number) => Promise<PerpsClientSigner>
+  /**
+   * Optional progress sink for on-chain legs. A plugin whose legs broadcast
+   * transactions (Lighter's `EVM_TX`) calls it as each leg is submitted and
+   * confirmed, so a consumer can show a live per-transaction stepper. Bound by
+   * core from the `onProgress` passed to {@link PerpsClient.execute}.
+   */
+  onProgress?: (progress: SignActionProgress) => void
 }
 
 /**
@@ -256,6 +283,17 @@ export interface PerpsProviderPlugin {
    * look the provider up via {@link PerpsSDKClient.getProvider}.
    */
   readonly type: string
+
+  /**
+   * Setup actions the provider completes on its own, without surfacing a card
+   * to the caller. `PerpsClient.checkSetup` drains each such pending step in
+   * place — building, signing, and executing it with the provider's own
+   * credentials — and omits it from the returned `setup` list. A descriptor
+   * whose `signers` include {@link PerpsSigner.USER} is never treated as
+   * internal, even when named here. Omit when the provider has no
+   * self-completed setup steps.
+   */
+  readonly internalSetupActions?: readonly ActionType[]
 
   /**
    * Inject the runtime {@link PerpsSDKClient} into the plugin once, during
@@ -450,20 +488,11 @@ export interface PerpsProviderPlugin {
   ): Promise<SignedActionStep[]>
 
   /**
-   * Execute credential-bearing rest-call steps directly against the venue.
-   * Required for providers whose descriptors declare
-   * `SigningMethod.AUTH_TOKEN`: the client-held credential (attached by
-   * `signActions` as `headers`) must never transit the LI.FI backend, so the
-   * venue call happens SDK-side. The provider owns base-URL resolution and
-   * mapping the venue response onto {@link ActionResult}s — these results are
-   * authoritative for the caller; `PerpsClient.execute` submits the steps to
-   * the backend afterwards for bookkeeping only, with `headers` stripped.
+   * Observe the per-step results of an `/executeAction` round trip before the
+   * core surfaces failures. Lets a provider react to structured failure codes
+   * — e.g. evicting a locally stored credential the venue no longer accepts.
    */
-  executeRestCallActions?(
-    steps: RestCallSignedActionStep[],
-    address: Address,
-    options?: SDKRequestOptions
-  ): Promise<ActionResult[]>
+  onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
 }
 
 /**

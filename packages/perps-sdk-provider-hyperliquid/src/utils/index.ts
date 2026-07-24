@@ -4,6 +4,11 @@
 
 export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
 export {
+  applyLogoOverride,
+  spotLogoURI,
+  UNIT_TOKEN_NAMES,
+} from './assetLogo.js'
+export {
   decodeCompressedJson,
   decodeFastAssetCtxs,
 } from './decodeFastAssetCtxs.js'
@@ -40,3 +45,4 @@ export {
   spotBalance,
   spotPriceById,
 } from './spotBalance.js'
+export { partitionSpotBalances, type SpotPartition } from './spotCollateral.js'

@@ -146,10 +146,8 @@ export class OndoApiClient {
   }
 
   /**
-   * Arbitrary-method request with caller-prebuilt headers — the execution
-   * surface for credential-bearing `RestCallSignedActionStep`s, whose
-   * `Authorization` header is attached by `signActions` from the token store.
-   * Only GET is ever retried; writes are not idempotent.
+   * Arbitrary-method request with caller-prebuilt headers. Only GET is ever
+   * retried; writes are not idempotent.
    */
   async send<T>(
     method: OndoHttpMethod,

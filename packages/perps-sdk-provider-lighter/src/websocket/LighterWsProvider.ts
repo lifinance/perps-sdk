@@ -2,6 +2,7 @@ import {
   cachePromise,
   getMarketRegistry,
   type MarketRegistry,
+  type PerpsProvider,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
@@ -25,6 +26,7 @@ import {
   LIGHTER_BASE_FEE_TIER,
   LIGHTER_PROVIDER_KEY,
 } from '../constants.js'
+import type { LighterPerpsProvider } from '../LighterProvider.js'
 import type {
   LtAccountPosition,
   LtOrder,
@@ -54,16 +56,16 @@ import {
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
 // (order_book/N), `trades` (trade/N).
-// Authenticated channels (require an `authProvider` option):
+// Authenticated channels (resolve an auth token per subscribe send):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
 //   - positions    → account_all_positions/{account_index}
 //
 // Auth pattern (per Lighter WS spec): the subscribe payload carries the
 // token directly — `{ type: "subscribe", channel: "...", auth: "<token>" }`.
-// Tokens are created via the Lighter WASM signer (CreateAuthToken) by the
-// caller; we re-request a fresh token on every subscribe send so reconnects
-// after the original token expires automatically pick up a new one.
+// The token is resolved per send (default: the co-registered `lighterProvider`
+// plugin's `resolveAuthToken`), so reconnects after the original token expires
+// automatically pick up a fresh one.
 //
 // account_index is resolved per-address via `/api/v1/account?by=l1_address`
 // and cached for the lifetime of the provider — Lighter's account index is
@@ -93,14 +95,20 @@ function channelNeedsMarkets(channel: Subscription['channel']): boolean {
 }
 
 /**
- * Creates a fresh Lighter auth token for the given L1 address, or returns
- * `undefined` if no API key is registered. Called both on initial subscribe
- * and on every reconnect, so it must always return a token valid for at
- * least the next few minutes.
+ * Resolves a Lighter auth token for the given L1 address, or `undefined` when
+ * no source can produce one. Called on the initial subscribe and again on
+ * every reconnect, so it must return a token still valid a few minutes out.
+ *
+ * The default resolver — the co-registered `lighterProvider` plugin's
+ * `resolveAuthToken` — satisfies that: it never yields an expired token.
+ * Stored read-only tokens past expiry are filtered out and otherwise carry a
+ * ~10-year lifetime; near-expiry standard tokens are re-created within their
+ * renew buffer; and a server-rejected token self-heals on the next resolve. A
+ * supplied override owns its own freshness.
  *
  * @public
  */
-export type LighterAuthProvider = (
+export type LighterAuthTokenResolver = (
   address: Address
 ) => Promise<string | undefined>
 
@@ -138,11 +146,12 @@ export interface LighterWsProviderOptions {
   /** REST base URL for `/api/v1/account` lookups. Defaults to mainnet. */
   restUrl?: string
   /**
-   * Async function returning a Lighter auth token for an address. Required
-   * for authenticated channels (orderUpdates, positions). Without it those
-   * subscriptions will throw at subscribe time.
+   * Override for auth-token resolution on authenticated channels
+   * (orderUpdates, positions). Defaults to the co-registered `lighterProvider`
+   * plugin's `resolveAuthToken`; supply this only for a standalone WS client
+   * with no Lighter REST plugin on the same {@link PerpsSDKClient}.
    */
-  authProvider?: LighterAuthProvider
+  resolveAuthToken?: LighterAuthTokenResolver
 }
 
 /**
@@ -154,7 +163,9 @@ export interface LighterWsProviderOptions {
  */
 export class LighterWsProvider extends WsProviderBase<SubState> {
   private readonly api: LighterApiClient
-  private readonly authProvider: LighterAuthProvider | undefined
+  private readonly resolveAuthTokenOverride:
+    | LighterAuthTokenResolver
+    | undefined
   private readonly client: PerpsSDKClient | undefined
 
   private readonly orderbooks = new Map<number, OrderbookState>()
@@ -174,7 +185,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   constructor(
     wsUrl: string = DEFAULT_LIGHTER_WS_URL,
-    providerKey = 'lighter',
+    providerKey: string = LIGHTER_PROVIDER_KEY,
     options: LighterWsProviderOptions = {},
     client?: PerpsSDKClient
   ) {
@@ -188,14 +199,30 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         policy: resolveRetryPolicy(
           LIGHTER_RETRY_DEFAULTS,
           client?.config.retry,
-          LIGHTER_PROVIDER_KEY
+          providerKey
         ),
         fetchImpl: client?.config.fetch,
       }
     )
-    this.authProvider = options.authProvider
+    this.resolveAuthTokenOverride = options.resolveAuthToken
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
+  }
+
+  /**
+   * Auth-token resolver for gated channels: the explicit `resolveAuthToken`
+   * override if supplied, else the co-registered Lighter plugin's
+   * `resolveAuthToken`. `undefined` when neither is available.
+   */
+  private authTokenResolver(): LighterAuthTokenResolver | undefined {
+    if (this.resolveAuthTokenOverride !== undefined) {
+      return this.resolveAuthTokenOverride
+    }
+    const provider = this.client?.getProvider(this.providerKey)
+    if (provider !== undefined && hasAuthTokenResolver(provider)) {
+      return (address) => provider.resolveAuthToken(address)
+    }
+    return undefined
   }
 
   async subscribeQuote(
@@ -279,12 +306,14 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       channel,
     }
     if (needsAuth) {
-      if (!this.authProvider || !address) {
+      const resolve = this.authTokenResolver()
+      if (!resolve || !address) {
         throw new Error(
-          `Lighter WS channel '${channel}' requires authentication but no authProvider was supplied.`
+          `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
+            'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
         )
       }
-      const token = await this.authProvider(address)
+      const token = await resolve(address)
       if (!token) {
         throw new Error(
           `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
@@ -439,19 +468,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     try {
       msg = JSON.parse(raw) as LtWsMessage
     } catch {
-      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
 
     if (!isValidLighterFrame(msg)) {
-      wsLog.parseFailure(LIGHTER_PROVIDER_KEY, raw)
+      wsLog.parseFailure(this.providerKey, raw)
       return
     }
 
     try {
       this.dispatch(msg)
     } catch (error) {
-      wsLog.handlerFailure(LIGHTER_PROVIDER_KEY, error)
+      wsLog.handlerFailure(this.providerKey, error)
     }
   }
 
@@ -770,6 +799,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 }
 
+/**
+ * Narrow a co-registered {@link PerpsProvider} to the Lighter plugin that
+ * exposes `resolveAuthToken`. The base plugin contract is provider-agnostic,
+ * so the WS layer must feature-detect rather than assume the capability.
+ */
+function hasAuthTokenResolver(
+  provider: PerpsProvider
+): provider is LighterPerpsProvider {
+  return (
+    'resolveAuthToken' in provider &&
+    typeof (provider as LighterPerpsProvider).resolveAuthToken === 'function'
+  )
+}
+
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
 
@@ -885,13 +928,18 @@ function collectAuthChannelItems<T>(
 }
 
 /**
- * `WsProviderFactory` constructor for Lighter — pass to
- * `new PerpsWsClient(client, { wsProviders: { lighter: lighterWsProvider({ authProvider }) } })`.
+ * `WsProviderFactory` constructor for Lighter — register with
+ * `new PerpsWsClient(client, { wsProviders: { lighter: lighterWsProvider() } })`.
  *
- * Closes over the per-instance options (auth provider, restUrl override) so
- * `PerpsWsClient` can call the returned factory with just
- * `({ provider, wsUrl, markets })` at subscribe time. `markets` is
- * unused — Lighter advertises a single venue, no sub-DEX filtering.
+ * Bare construction is the default path: authenticated channels resolve their
+ * auth token through the `lighterProvider()` plugin co-registered on the same
+ * {@link PerpsSDKClient}, so no wiring is needed. Pass `resolveAuthToken` only
+ * as the exception — a standalone WS client with no Lighter REST plugin on
+ * that client.
+ *
+ * Closes over the per-instance options (`resolveAuthToken` override, `restUrl`)
+ * so `PerpsWsClient` can call the returned factory with just
+ * `({ provider, wsUrl, client })` at subscribe time.
  *
  * @public
  */

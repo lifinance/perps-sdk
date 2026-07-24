@@ -5,6 +5,7 @@ import type {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   TimeInForce,
   TriggerCondition,
 } from './enums.js'
@@ -48,20 +49,50 @@ export interface EvmTxActionStep {
 }
 
 /**
- * A venue REST call crossing the backend→SDK boundary unauthenticated. The SDK
- * attaches the client-held credential and executes the call directly against
- * the venue.
+ * A venue request crossing the backend→SDK boundary unsigned. The SDK computes
+ * a per-request HMAC signature from a client-held API key, attaches it as a
+ * structured `hmac` field (yielding an {@link HmacSignedActionStep}), and the
+ * signed step rides the normal `executeAction` path.
  * @public
  */
-export interface RestCallActionStep {
+export interface HmacActionStep {
   action: ActionType
   request: {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE'
     /** Venue-relative, e.g. `/v1/perps/orders`; base URL resolution is provider-side. */
     path: string
-    body?: Record<string, unknown>
+    /**
+     * Pre-serialized request body that transits verbatim — the exact byte
+     * string the HMAC signature covers, never re-serialized downstream.
+     */
+    body?: string
   }
 }
+
+/**
+ * A marker for a client-only setup step the SDK executes directly against the
+ * venue with the provider session token. `session` may carry a small,
+ * the deposit-address policy marker, but never a venue path, request headers,
+ * or credentials. The provider authors the venue call itself, keyed on `action`,
+ * and the signing arm returns no signed step, so `executeAction` is skipped.
+ * @public
+ */
+export interface CreateDepositAddressSessionMarker {
+  network: 'ethereum'
+  symbol: 'USDC'
+  depositDestination: { wallet: 'margin' }
+}
+
+/** @public */
+export type SessionActionStep =
+  | {
+      action: Exclude<ActionType, ActionType.CREATE_DEPOSIT_ADDRESS>
+      session: Record<string, never>
+    }
+  | {
+      action: ActionType.CREATE_DEPOSIT_ADDRESS
+      session: CreateDepositAddressSessionMarker
+    }
 
 /** @public */
 export interface SiweActionStep {
@@ -78,7 +109,8 @@ export type ActionStep =
   | Eip712ActionStep
   | WasmBlobActionStep
   | EvmTxActionStep
-  | RestCallActionStep
+  | HmacActionStep
+  | SessionActionStep
   | SiweActionStep
 
 /** @public */
@@ -107,11 +139,19 @@ export interface EvmTxSignedActionStep {
 }
 
 /** @public */
-export interface RestCallSignedActionStep {
+export interface HmacSignedActionStep {
   action: ActionType
-  request: RestCallActionStep['request']
-  /** Attached client-side from the credential store; MUST NOT be sent to the LI.FI backend. */
-  headers: Record<string, string>
+  request: HmacActionStep['request']
+  /**
+   * Per-request HMAC material computed SDK-side; the backend builds the venue's
+   * transport headers from it at relay time.
+   */
+  hmac: {
+    keyId: string
+    /** Sign-time Unix timestamp in milliseconds; part of the signed message. */
+    timestampMs: number
+    signature: string
+  }
 }
 
 /** @public */
@@ -126,7 +166,7 @@ export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
   | EvmTxSignedActionStep
-  | RestCallSignedActionStep
+  | HmacSignedActionStep
   | SiweSignedActionStep
 
 /** @public */
@@ -140,6 +180,8 @@ export type ActionResult =
       action: ActionType
       success: false
       error: string
+      /** Structured classification of the failure, when the backend can provide one. */
+      errorCode?: PerpsErrorCode
     }
 
 /** @public */
@@ -336,6 +378,8 @@ export interface ActionParamsMap {
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
+  [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
+  [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_VOTE]: VoteParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams

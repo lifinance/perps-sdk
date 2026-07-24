@@ -22,6 +22,11 @@ const balance = (valueUsd: string): Balance => ({
   valueUsd,
 })
 
+const weighted = (valueUsd: string, collateralWeight: number): Balance => ({
+  ...balance(valueUsd),
+  collateralWeight,
+})
+
 const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   market: {
     providerId: 'hyperliquid',
@@ -156,6 +161,34 @@ describe('summarizeAccount', () => {
       )
       expect(summary.availableMargin).toBe('950')
       expect(summary.portfolioValue).toBe('1300')
+    })
+  })
+
+  describe('collateral weight (loan-to-value haircut)', () => {
+    it('counts a weighted row at its LTV toward available margin, full value toward portfolio', () => {
+      const summary = summarizeAccount(
+        account([balance('1000'), weighted('2000', 0.5)]),
+        [position('200', '100')],
+        'gross'
+      )
+      // available margin: 1000 + 2000*0.5 + uPnL 100 − margin 200 = 1900
+      expect(summary.availableMargin).toBe('1900')
+      // portfolio value uses full collateral: 3000 + uPnL 100 = 3100
+      expect(summary.portfolioValue).toBe('3100')
+    })
+
+    it('treats an absent weight as full value', () => {
+      const withWeight = summarizeAccount(
+        account([weighted('1000', 1)]),
+        [position('100', '0')],
+        'gross'
+      )
+      const withoutWeight = summarizeAccount(
+        account([balance('1000')]),
+        [position('100', '0')],
+        'gross'
+      )
+      expect(withWeight).toEqual(withoutWeight)
     })
   })
 

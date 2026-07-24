@@ -1,4 +1,4 @@
-import type { Asset } from './asset.js'
+import type { Asset, DepositAsset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
@@ -70,6 +70,14 @@ export interface ProviderCategory {
 }
 
 /** @public */
+export interface ProviderFunding {
+  /** Number of seconds represented by the provider's funding rate. */
+  ratePeriodSeconds: number
+  /** Number of seconds between funding payouts. */
+  payoutCadenceSeconds: number
+}
+
+/** @public */
 export interface Provider {
   key: string
   name: string
@@ -82,6 +90,8 @@ export interface Provider {
   actions: ProviderAction[]
   categories: ProviderCategory[]
   wsUrl?: string
+  /** Global funding metadata shared by all markets at this provider. */
+  funding?: ProviderFunding
   /**
    * Settlement chain id for this venue, aligned to `@lifi/types` `ChainId`
    * values. Absent when the provider has no settlement chain.
@@ -89,6 +99,17 @@ export interface Provider {
   chainId?: number
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
+  /**
+   * External on-chain tokens a client can bridge/swap in to fund an account at
+   * this venue — each the target of a LI.FI deposit route, carrying its own
+   * on-chain identity. Ordered; the first is the default a client preselects.
+   * v1 venues advertise a single token; multiple entries let a venue accept
+   * several deposit currencies. Distinct from a category's `quoteAsset` (the
+   * pricing unit): a venue whose collateral is not USDC changes only this
+   * field, not `quoteAsset`. Absent when the provider advertises no on-chain
+   * deposit token.
+   */
+  depositAssets?: DepositAsset[]
   /**
    * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
    * `minMarginUsd` parameter. Absent means no minimum advertised.

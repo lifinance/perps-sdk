@@ -5,9 +5,10 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
+  HmacActionStep,
+  HmacSignedActionStep,
   Position,
   ProviderAction,
-  RestCallActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -25,11 +26,14 @@ import {
   SigningMethod,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { hmacSignRequest } from './auth/hmac.js'
+import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoProvider } from './OndoProvider.js'
-import type { OndoAuthToken } from './types/auth.js'
+import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
   OndoBalanceSummary,
+  OndoCreatedApiKey,
   OndoFill,
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
@@ -60,7 +64,23 @@ const AUTH_TOKEN: OndoAuthToken = {
   issuedAtSecs: nowSecs() - 60,
   expirationSecs: AUTH_TOKEN_EXPIRY,
   token: 'ondo-jwt-token',
-  newAccount: false,
+}
+
+const API_KEY: OndoApiKey = {
+  keyId: 'key-1',
+  apiSecret: 'super-secret',
+  name: 'lifi-perps',
+  createdAt: '2026-07-14T00:00:00.000Z',
+  scopes: ['trade'],
+}
+
+// Real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`.
+const CREATED_API_KEY: OndoCreatedApiKey = {
+  keyId: 'ondoKeyId_abc',
+  name: 'lifi-perps',
+  createdAt: '2026-07-15T12:31:55.781433839Z',
+  scopes: ['trade'],
+  secretKey: 'ondoApiSecret_xyz',
 }
 
 const MARKETS_RESPONSE = {
@@ -228,6 +248,8 @@ const LIQUIDATION_RESULT: OndoLiquidationEvent = {
   filledQuantity: '10',
 }
 
+const DEPOSIT_ADDRESS = '0x2222222222222222222222222222222222222222'
+
 const ACCOUNT_INFO_RESULT = {
   accountID: 'acct-1',
   identifier: ADDRESS.toLowerCase(),
@@ -254,6 +276,10 @@ let recorded: Recorded[] = []
 let fetchMock: ReturnType<typeof vi.fn>
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
 let referralResult: { code: string; rebate?: number } | null
+/** `GET /v1/account` result; its versions drive `termsAccepted`. */
+let accountInfoResult: typeof ACCOUNT_INFO_RESULT
+/** POST /v1/wallet/deposit_address/list result. */
+let depositAddressResult: unknown
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -266,6 +292,8 @@ const envelope = <T>(result: T) => ({ success: true, result })
 beforeEach(() => {
   recorded = []
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
+  accountInfoResult = { ...ACCOUNT_INFO_RESULT }
+  depositAddressResult = []
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -307,11 +335,26 @@ beforeEach(() => {
         result: [LIQUIDATION_RESULT],
       })
     }
+    if (u.includes('/v1/agreement')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        termsVersion: number
+        privacyVersion: number
+      }
+      accountInfoResult = {
+        ...accountInfoResult,
+        termsVersion: body.termsVersion,
+        privacyVersion: body.privacyVersion,
+      }
+      return respond(envelope({}))
+    }
+    if (u.includes('/v1/wallet/deposit_address/list')) {
+      return respond(envelope(depositAddressResult))
+    }
     if (u.includes('/v1/account/referral')) {
       return respond(envelope(referralResult))
     }
     if (u.includes('/v1/account')) {
-      return respond(envelope(ACCOUNT_INFO_RESULT))
+      return respond(envelope(accountInfoResult))
     }
     throw new Error(`Unhandled URL in test: ${u}`)
   })
@@ -357,6 +400,12 @@ describe('OndoProvider — `type` field', () => {
     const provider = ondoProvider()
     expect(provider.type).toBe('ondo')
   })
+
+  it('declares SET_REFERRAL as an internal setup action', () => {
+    expect(ondoProvider().internalSetupActions).toContain(
+      ActionType.SET_REFERRAL
+    )
+  })
 })
 
 describe('OndoProvider — order formatting and liquidation surface', () => {
@@ -393,7 +442,14 @@ describe('OndoProvider — logged-out degrade paths', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: false, referralSet: false },
+      config: {
+        provider: 'ondo',
+        loggedIn: false,
+        termsAccepted: false,
+        apiKeyRegistered: false,
+        referralSet: false,
+        depositAddress: null,
+      },
     })
     expect(recorded).toHaveLength(0)
   })
@@ -458,7 +514,10 @@ describe('OndoProvider — getAccount (logged in)', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: AUTH_TOKEN_EXPIRY,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: true,
+      depositAddress: null,
     })
     expect(account.positions).toEqual([
       {
@@ -483,6 +542,51 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(
       venueCalls.some((r) => r.url === `${API_URL}/v1/account/referral`)
     ).toBe(true)
+    expect(venueCalls.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
+  })
+
+  it('exposes the canonical Ethereum USDC deposit address and leaves it absent when none exists', async () => {
+    depositAddressResult = [
+      { address: DEPOSIT_ADDRESS, coin: 'USDC', network: 'ethereum' },
+    ]
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ depositAddress: DEPOSIT_ADDRESS })
+
+    depositAddressResult = []
+    const empty = await provider.getAccount({ address: ADDRESS })
+    expect(empty.config).toMatchObject({ depositAddress: null })
+  })
+
+  it('does not turn a malformed deposit-address result into an unsatisfied setup state', async () => {
+    depositAddressResult = {
+      addresses: [{ coin: 'USDC', network: 'ethereum' }],
+    }
+    const { provider } = await loggedInProvider()
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /deposit-address response is malformed/
+    )
+  })
+
+  it('evicts the session when the deposit-address query is unauthorized', async () => {
+    const { provider, store } = await loggedInProvider()
+    depositAddressResult = undefined
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('/v1/wallet/deposit_address/list')) {
+        return respond({ success: false, error: 'token expired' }, 401)
+      }
+      return respond(envelope([]))
+    })
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).resolves.toMatchObject({
+      config: { loggedIn: false, depositAddress: null },
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
 
   it('reports referralSet: false when no referral is applied to the account', async () => {
@@ -493,8 +597,72 @@ describe('OndoProvider — getAccount (logged in)', () => {
       provider: 'ondo',
       loggedIn: true,
       authTokenExpiry: AUTH_TOKEN_EXPIRY,
+      termsAccepted: true,
+      apiKeyRegistered: false,
       referralSet: false,
+      depositAddress: null,
     })
+  })
+
+  it('reports apiKeyRegistered from local key presence, logged in or out', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+
+    const loggedIn = await provider.getAccount({ address: ADDRESS })
+    expect(loggedIn.config).toMatchObject({ apiKeyRegistered: true })
+
+    const keyOnlyStorage = createMemoryStorage()
+    await new OndoApiKeyStore(keyOnlyStorage, API_URL).set(ADDRESS, API_KEY)
+    const loggedOut = ondoProvider({ apiUrl: API_URL, storage: keyOnlyStorage })
+    loggedOut.bind(STUB_CLIENT)
+    const account = await loggedOut.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: false,
+      apiKeyRegistered: true,
+    })
+  })
+
+  it('reports termsAccepted: false when the account terms version is stale', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, termsVersion: 2 }
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: true,
+      termsAccepted: false,
+    })
+  })
+
+  it('reports termsAccepted: false when the account privacy version is stale', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, privacyVersion: 2 }
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      loggedIn: true,
+      termsAccepted: false,
+    })
+  })
+
+  it('reflects acceptance after the agreement POST, without re-login', async () => {
+    accountInfoResult = {
+      ...ACCOUNT_INFO_RESULT,
+      termsVersion: 2,
+      privacyVersion: 2,
+    }
+    const { provider } = await loggedInProvider()
+
+    const before = await provider.getAccount({ address: ADDRESS })
+    expect(before.config).toMatchObject({ termsAccepted: false })
+
+    await provider.signActions?.(
+      SigningMethod.SESSION,
+      [{ action: ActionType.ACCEPT_PROVIDER_TERMS, session: {} }],
+      ADDRESS
+    )
+
+    const after = await provider.getAccount({ address: ADDRESS })
+    expect(after.config).toMatchObject({ termsAccepted: true })
   })
 
   it('evicts the stored token and returns the logged-out snapshot when the venue rejects it', async () => {
@@ -517,7 +685,14 @@ describe('OndoProvider — getAccount (logged in)', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: false, referralSet: false },
+      config: {
+        provider: 'ondo',
+        loggedIn: false,
+        termsAccepted: false,
+        apiKeyRegistered: false,
+        referralSet: false,
+        depositAddress: null,
+      },
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
@@ -833,7 +1008,14 @@ describe('OndoProvider — getAccountSummary', () => {
       marginUsed: '401',
       unrealizedPnl: '15.5',
       feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: { provider: 'ondo', loggedIn: true, referralSet: true } as const,
+      config: {
+        provider: 'ondo',
+        loggedIn: true,
+        termsAccepted: true,
+        apiKeyRegistered: true,
+        referralSet: true,
+        depositAddress: null,
+      } as const,
     } satisfies AccountResponse
     const positions: Position[] = [
       {
@@ -868,8 +1050,84 @@ describe('OndoProvider — projectConfig', () => {
   const REFERRAL_DESCRIPTOR: ProviderAction = {
     type: ActionType.SET_REFERRAL,
     signers: [PerpsSigner.USER],
-    signingMethod: SigningMethod.AUTH_TOKEN,
+    signingMethod: SigningMethod.HMAC,
   }
+  const TERMS_DESCRIPTOR: ProviderAction = {
+    type: ActionType.ACCEPT_PROVIDER_TERMS,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+  const REGISTER_KEY_DESCRIPTOR: ProviderAction = {
+    type: ActionType.REGISTER_API_KEY,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+
+  const DEPOSIT_DESCRIPTOR: ProviderAction = {
+    type: ActionType.CREATE_DEPOSIT_ADDRESS,
+    signers: [PerpsSigner.USER],
+    signingMethod: SigningMethod.SESSION,
+  }
+
+  const loggedOutConfig = {
+    provider: 'ondo',
+    loggedIn: false,
+    termsAccepted: false,
+    apiKeyRegistered: false,
+    referralSet: false,
+    depositAddress: null,
+  } as const
+
+  it('projects CREATE_DEPOSIT_ADDRESS only when a valid address is present', () => {
+    const provider = ondoProvider()
+    const unsatisfied = provider.projectConfig(
+      {
+        ...loggedOutConfig,
+        depositAddress: null,
+      },
+      [DEPOSIT_DESCRIPTOR],
+      []
+    )
+    expect(unsatisfied[0]).toEqual({
+      type: ActionType.CREATE_DEPOSIT_ADDRESS,
+      values: [{ name: 'depositAddress', value: null }],
+      satisfied: false,
+    })
+
+    expect(
+      provider.projectConfig(
+        {
+          ...loggedOutConfig,
+          depositAddress: '',
+        },
+        [DEPOSIT_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      {
+        type: ActionType.CREATE_DEPOSIT_ADDRESS,
+        values: [{ name: 'depositAddress', value: '' }],
+        satisfied: false,
+      },
+    ])
+
+    expect(
+      provider.projectConfig(
+        {
+          ...loggedOutConfig,
+          depositAddress: DEPOSIT_ADDRESS,
+        },
+        [DEPOSIT_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      {
+        type: ActionType.CREATE_DEPOSIT_ADDRESS,
+        values: [{ name: 'depositAddress', value: DEPOSIT_ADDRESS }],
+        satisfied: true,
+      },
+    ])
+  })
 
   it('projects SIWE_LOGIN with the session expiry when logged in', () => {
     const provider = ondoProvider()
@@ -879,7 +1137,10 @@ describe('OndoProvider — projectConfig', () => {
           provider: 'ondo',
           loggedIn: true,
           authTokenExpiry: AUTH_TOKEN_EXPIRY,
+          termsAccepted: true,
+          apiKeyRegistered: false,
           referralSet: false,
+          depositAddress: null,
         },
         [SIWE_DESCRIPTOR],
         []
@@ -896,17 +1157,49 @@ describe('OndoProvider — projectConfig', () => {
   it('projects SIWE_LOGIN as unsatisfied with a null expiry when logged out', () => {
     const provider = ondoProvider()
     expect(
-      provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
-        [SIWE_DESCRIPTOR],
-        []
-      )
+      provider.projectConfig(loggedOutConfig, [SIWE_DESCRIPTOR], [])
     ).toEqual([
       {
         type: ActionType.SIWE_LOGIN,
         values: [{ name: 'authTokenExpiry', value: null }],
         satisfied: false,
       },
+    ])
+  })
+
+  it('projects ACCEPT_PROVIDER_TERMS satisfaction from termsAccepted', () => {
+    const provider = ondoProvider()
+    expect(
+      provider.projectConfig(
+        { ...loggedOutConfig, loggedIn: true, termsAccepted: true },
+        [TERMS_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: true },
+    ])
+    expect(
+      provider.projectConfig(loggedOutConfig, [TERMS_DESCRIPTOR], [])
+    ).toEqual([
+      { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: false },
+    ])
+  })
+
+  it('projects REGISTER_API_KEY satisfaction from apiKeyRegistered', () => {
+    const provider = ondoProvider()
+    expect(
+      provider.projectConfig(
+        { ...loggedOutConfig, apiKeyRegistered: true },
+        [REGISTER_KEY_DESCRIPTOR],
+        []
+      )
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
+    ])
+    expect(
+      provider.projectConfig(loggedOutConfig, [REGISTER_KEY_DESCRIPTOR], [])
+    ).toEqual([
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
     ])
   })
 
@@ -918,7 +1211,10 @@ describe('OndoProvider — projectConfig', () => {
           provider: 'ondo',
           loggedIn: true,
           authTokenExpiry: AUTH_TOKEN_EXPIRY,
+          termsAccepted: true,
+          apiKeyRegistered: true,
           referralSet: true,
+          depositAddress: null,
         },
         [SIWE_DESCRIPTOR, REFERRAL_DESCRIPTOR],
         []
@@ -936,11 +1232,7 @@ describe('OndoProvider — projectConfig', () => {
       },
     ])
     expect(
-      provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
-        [REFERRAL_DESCRIPTOR],
-        []
-      )
+      provider.projectConfig(loggedOutConfig, [REFERRAL_DESCRIPTOR], [])
     ).toEqual([
       {
         type: ActionType.SET_REFERRAL,
@@ -961,7 +1253,7 @@ describe('OndoProvider — projectConfig', () => {
     ).toThrowError(PerpsError)
     expect(() =>
       provider.projectConfig(
-        { provider: 'ondo', loggedIn: false, referralSet: false },
+        loggedOutConfig,
         [{ ...SIWE_DESCRIPTOR, type: ActionType.PLACE_ORDER }],
         []
       )
@@ -970,52 +1262,114 @@ describe('OndoProvider — projectConfig', () => {
 })
 
 describe('OndoProvider — write-action surface', () => {
-  const PLACE_ORDER_STEP: RestCallActionStep = {
+  const PLACE_ORDER_STEP: HmacActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
       path: '/v1/perps/orders',
-      body: { market: 'AAPL-USD.P', side: 'buy', size: '1', type: 'market' },
+      body: '{"market":"AAPL-USD.P","side":"buy","size":"1","type":"market"}',
     },
   }
 
-  it('signActions(AUTH_TOKEN) attaches the stored session JWT', async () => {
-    const { provider } = await loggedInProvider()
-    const signed = await provider.signActions?.(
-      SigningMethod.AUTH_TOKEN,
+  it('signActions(HMAC) HMAC-signs each step with the stored API key', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+
+    const signed = (await provider.signActions?.(
+      SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )
-    expect(signed).toEqual([
-      {
-        action: ActionType.PLACE_ORDER,
-        request: PLACE_ORDER_STEP.request,
-        headers: { Authorization: 'Bearer ondo-jwt-token' },
-      },
-    ])
+    )) as HmacSignedActionStep[]
+
+    const [step] = signed
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+    expect(step.request).toEqual(PLACE_ORDER_STEP.request)
+    expect(step.hmac.keyId).toBe(API_KEY.keyId)
+
+    const { timestampMs } = step.hmac
+    const expected = await hmacSignRequest(API_KEY.apiSecret, {
+      timestampMs,
+      method: PLACE_ORDER_STEP.request.method,
+      pathWithQuery: PLACE_ORDER_STEP.request.path,
+      body: PLACE_ORDER_STEP.request.body,
+    })
+    expect(step.hmac.signature).toBe(expected)
+    // The API secret never appears in the signed step — only the signature.
+    expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('executeRestCallActions executes against the venue and reports results', async () => {
+  it('signActions(HMAC) creates a key on first use, JWT-authorized', async () => {
     const { provider } = await loggedInProvider()
-    const results = await provider.executeRestCallActions?.(
-      [
-        {
-          action: ActionType.PLACE_ORDER,
-          request: PLACE_ORDER_STEP.request,
-          headers: { Authorization: 'Bearer ondo-jwt-token' },
-        },
-      ],
+    fetchMock.mockImplementationOnce(async (url: string | URL) => {
+      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+      return respond(envelope(CREATED_API_KEY))
+    })
+
+    const signed = (await provider.signActions?.(
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      ADDRESS
+    )) as HmacSignedActionStep[]
+
+    expect(signed[0].hmac.keyId).toBe(CREATED_API_KEY.keyId)
+  })
+
+  it('flips apiKeyRegistered to true after a successful REGISTER_API_KEY, with the real wire shape', async () => {
+    const { provider } = await loggedInProvider()
+
+    const before = await provider.getAccount({ address: ADDRESS })
+    expect(before.config).toMatchObject({ apiKeyRegistered: false })
+
+    fetchMock.mockImplementationOnce(async (url: string | URL) => {
+      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+      return respond(envelope(CREATED_API_KEY))
+    })
+    await provider.signActions?.(
+      SigningMethod.SESSION,
+      [{ action: ActionType.REGISTER_API_KEY, session: {} }],
       ADDRESS
     )
-    expect(results?.[0]).toMatchObject({
-      action: ActionType.PLACE_ORDER,
-      success: true,
-    })
-    const call = recorded.find(
-      (r) => r.url === `${API_URL}/v1/perps/orders` && r.init?.method === 'POST'
-    )
-    expect(call).toBeDefined()
-    expect(authHeaderOf(call as Recorded)).toBe('Bearer ondo-jwt-token')
+
+    const after = await provider.getAccount({ address: ADDRESS })
+    expect(after.config).toMatchObject({ apiKeyRegistered: true })
+  })
+})
+
+describe('OndoProvider — onExecuteResults key eviction', () => {
+  it('evicts the stored API key when a result fails with Unauthorized', async () => {
+    const { provider, storage } = await loggedInProvider()
+    const keyStore = new OndoApiKeyStore(storage, API_URL)
+    await keyStore.set(ADDRESS, API_KEY)
+
+    await provider.onExecuteResults?.(ADDRESS, [
+      {
+        action: ActionType.PLACE_ORDER,
+        success: false,
+        error: 'API key not found',
+        errorCode: PerpsErrorCode.Unauthorized,
+      },
+    ])
+
+    await expect(keyStore.get(ADDRESS)).resolves.toBeNull()
+  })
+
+  it('keeps the stored API key on success and on non-Unauthorized failures', async () => {
+    const { provider, storage } = await loggedInProvider()
+    const keyStore = new OndoApiKeyStore(storage, API_URL)
+    await keyStore.set(ADDRESS, API_KEY)
+
+    await provider.onExecuteResults?.(ADDRESS, [
+      { action: ActionType.PLACE_ORDER, success: true },
+      {
+        action: ActionType.PLACE_ORDER,
+        success: false,
+        error: 'insufficient margin',
+        errorCode: PerpsErrorCode.InsufficientMargin,
+      },
+      { action: ActionType.PLACE_ORDER, success: false, error: 'opaque' },
+    ])
+
+    await expect(keyStore.get(ADDRESS)).resolves.toEqual(API_KEY)
   })
 })
 

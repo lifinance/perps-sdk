@@ -7,15 +7,22 @@ import type {
   EvmCall,
   EvmTxActionStep,
   EvmTxSignedActionStep,
+  HmacActionStep,
+  HmacSignedActionStep,
   PlaceOrderParams,
-  RestCallActionStep,
-  RestCallSignedActionStep,
+  SessionActionStep,
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
   UpdateLeverageParams,
 } from './action.js'
-import { ActionType, MarginMode, OrderSide, OrderType } from './enums.js'
+import {
+  ActionType,
+  MarginMode,
+  OrderSide,
+  OrderType,
+  PerpsErrorCode,
+} from './enums.js'
 
 // Locks in that `marginMode` is optional on `PlaceOrderParams` /
 // `UpdateLeverageParams` and accepts both `MarginMode.CROSS` and
@@ -154,6 +161,27 @@ describe('ActionResult', () => {
     }
   })
 
+  it('accepts an optional structured errorCode on the failure variant only', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'API key not found',
+      errorCode: PerpsErrorCode.Unauthorized,
+    }
+
+    if (!result.success) {
+      expect(result.errorCode).toBe(PerpsErrorCode.Unauthorized)
+    }
+
+    const success: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: true,
+      // @ts-expect-error — `errorCode` is not present on the success variant
+      errorCode: PerpsErrorCode.Unauthorized,
+    }
+    expect(success.action).toBe(ActionType.PLACE_ORDER)
+  })
+
   it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
     const results: ActionResult[] = [
       {
@@ -216,13 +244,13 @@ describe('EvmCall / EVM_TX steps', () => {
   })
 })
 
-describe('RestCall steps', () => {
-  const placeOrder: RestCallActionStep = {
+describe('Hmac steps', () => {
+  const placeOrder: HmacActionStep = {
     action: ActionType.PLACE_ORDER,
     request: {
       method: 'POST',
       path: '/v1/perps/orders',
-      body: { symbol: 'AAPL-USD.P', side: 'buy', qty: '1' },
+      body: '{"symbol":"AAPL-USD.P","side":"buy","qty":"1"}',
     },
   }
 
@@ -230,15 +258,13 @@ describe('RestCall steps', () => {
     expect(placeOrder.action).toBe(ActionType.PLACE_ORDER)
     expect(placeOrder.request.method).toBe('POST')
     expect(placeOrder.request.path).toBe('/v1/perps/orders')
-    expect(placeOrder.request.body).toEqual({
-      symbol: 'AAPL-USD.P',
-      side: 'buy',
-      qty: '1',
-    })
+    expect(placeOrder.request.body).toBe(
+      '{"symbol":"AAPL-USD.P","side":"buy","qty":"1"}'
+    )
   })
 
-  it('body is optional (a DELETE cancel carries none)', () => {
-    const cancelAll: RestCallActionStep = {
+  it('body is a pre-serialized string, optional (a DELETE cancel carries none)', () => {
+    const cancelAll: HmacActionStep = {
       action: ActionType.CANCEL_ALL_ORDERS,
       request: { method: 'DELETE', path: '/v1/perps/orders' },
     }
@@ -247,7 +273,7 @@ describe('RestCall steps', () => {
   })
 
   it('restricts method to the four HTTP verbs', () => {
-    const bad: RestCallActionStep = {
+    const bad: HmacActionStep = {
       action: ActionType.PLACE_ORDER,
       // @ts-expect-error method must be 'GET' | 'POST' | 'PUT' | 'DELETE'
       request: { method: 'PATCH', path: '/v1/perps/orders' },
@@ -262,26 +288,76 @@ describe('RestCall steps', () => {
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
-  it('RestCallSignedActionStep adds the client-attached headers', () => {
-    const signed: RestCallSignedActionStep = {
+  it('HmacSignedActionStep adds the structured HMAC material', () => {
+    const signed: HmacSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
-      headers: { Authorization: 'Bearer test-jwt' },
+      hmac: {
+        keyId: 'key-1',
+        timestampMs: 1700000000000,
+        signature: 'deadbeef',
+      },
     }
     const step: SignedActionStep = signed
 
-    expect(signed.headers.Authorization).toBe('Bearer test-jwt')
+    expect(signed.hmac.signature).toBe('deadbeef')
     expect(step.action).toBe(ActionType.PLACE_ORDER)
   })
 
-  it('requires headers on the signed variant', () => {
-    // @ts-expect-error headers is required on RestCallSignedActionStep
-    const missingHeaders: RestCallSignedActionStep = {
+  it('requires the hmac field on the signed variant', () => {
+    // @ts-expect-error hmac is required on HmacSignedActionStep
+    const missingHmac: HmacSignedActionStep = {
       action: ActionType.PLACE_ORDER,
       request: placeOrder.request,
     }
 
-    expect(missingHeaders.action).toBe(ActionType.PLACE_ORDER)
+    expect(missingHmac.action).toBe(ActionType.PLACE_ORDER)
+  })
+})
+
+describe('Session steps', () => {
+  const marker: SessionActionStep = {
+    action: ActionType.ACCEPT_PROVIDER_TERMS,
+    session: {},
+  }
+
+  it('carries no request material — the SDK authors the venue call itself', () => {
+    const withRequest: SessionActionStep = {
+      action: ActionType.ACCEPT_PROVIDER_TERMS,
+      // @ts-expect-error — session is an empty marker, never a request payload
+      session: { path: '/v1/agreement' },
+    }
+
+    expect(withRequest.action).toBe(ActionType.ACCEPT_PROVIDER_TERMS)
+    expect(marker.session).toEqual({})
+  })
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = marker
+
+    expect(step.action).toBe(ActionType.ACCEPT_PROVIDER_TERMS)
+  })
+
+  it('accepts the fixed CREATE_DEPOSIT_ADDRESS policy marker', () => {
+    const depositMarker: SessionActionStep = {
+      action: ActionType.CREATE_DEPOSIT_ADDRESS,
+      session: {
+        network: 'ethereum',
+        symbol: 'USDC',
+        depositDestination: { wallet: 'margin' },
+      },
+    }
+    const step: ActionStep = depositMarker
+
+    expect(step.action).toBe(ActionType.CREATE_DEPOSIT_ADDRESS)
+    expect(depositMarker.session.depositDestination.wallet).toBe('margin')
+  })
+
+  it('is wired through ActionParamsMap on ACCEPT_PROVIDER_TERMS with empty params', () => {
+    type Resolved = ActionParamsMap[ActionType.ACCEPT_PROVIDER_TERMS]
+    const params: Resolved = {}
+
+    expect(params).toEqual({})
   })
 })
 

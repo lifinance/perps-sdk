@@ -2,6 +2,8 @@ import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  HL_DELISTED_MARKET,
+  HL_DELISTED_USER_FILLS,
   HL_MARKETS,
   HL_SPOT_MARKET,
   HL_SPOT_USER_FILLS,
@@ -90,6 +92,21 @@ describe('getFills', () => {
     expect(result.items[0].market.baseAsset.logoURI).toBe(
       'https://app.hyperliquid.xyz/coins/BTC_spot.svg'
     )
+  })
+
+  it('maps fills for a known delisted market', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userFills: HL_DELISTED_USER_FILLS },
+      [...HL_MARKETS, HL_DELISTED_MARKET]
+    ))
+
+    const result = await getFills(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].market.id).toBe('DELISTED')
+    expect(result.items[0].market.isDelisted).toBe(true)
   })
 
   it('throws MarketNotFound for a fill on a market absent from /markets', async () => {

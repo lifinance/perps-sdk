@@ -4,7 +4,7 @@ import type {
   CreateActionResponse,
   ExecuteActionRequest,
   ExecuteActionResponse,
-  RestCallSignedActionStep,
+  HmacSignedActionStep,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -691,6 +691,37 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('invokes the plugin onExecuteResults hook with the failing results before throwing', async () => {
+      const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const onExecuteResults = vi.fn(async () => {})
+      ;(hookedProvider as any).onExecuteResults = onExecuteResults
+      const hookedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [hookedProvider],
+      })
+      await hookedProvider.createAgent(userAddress)
+      failExecuteAction('venue says no')
+
+      await expect(
+        (hookedClient as any).executeProviderSetup({
+          provider: 'hyperliquid',
+          address: userAddress,
+          ...userSetup(ActionType.APPROVE_AGENT),
+        })
+      ).rejects.toMatchObject({ message: 'venue says no' })
+
+      expect(onExecuteResults).toHaveBeenCalledTimes(1)
+      expect(onExecuteResults.mock.calls[0][0]).toBe(userAddress)
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
+        {
+          action: ActionType.APPROVE_AGENT,
+          success: false,
+          error: 'venue says no',
+        },
+      ])
+    })
+
     it('resolves normally when the mandatory setup action succeeds', async () => {
       await agentProvider.createAgent(userAddress)
       server.use(
@@ -1005,6 +1036,532 @@ describe('PerpsClient', () => {
       expect(result.setup.length).toBeGreaterThan(0)
       expect(result.isReady).toBe(false)
     })
+
+    it('stages SIWE first for setup even when accountExists reports false', async () => {
+      const ondoProviderKey = 'ondo'
+      const accountExists = vi.fn(async () => false)
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.HMAC,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.HMAC,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          if (body.action === ActionType.SIWE_LOGIN) {
+            return HttpResponse.json({
+              actions: [
+                {
+                  action: ActionType.SIWE_LOGIN,
+                  siwe: {
+                    challengeId: 'challenge-1',
+                    message: 'Sign in to Ondo',
+                  },
+                },
+              ],
+            } satisfies CreateActionResponse)
+          }
+          return HttpResponse.json({
+            actions: [
+              {
+                action: ActionType.SET_REFERRAL,
+                request: {
+                  method: 'POST',
+                  path: '/v1/account/referral',
+                  body: '{"code":"LIFI"}',
+                },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(accountExists).not.toHaveBeenCalled()
+      expect(createCalls).toEqual([
+        ActionType.SIWE_LOGIN,
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result).toMatchObject({
+        accountExists: true,
+        isReady: false,
+      })
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SIWE_LOGIN,
+        ActionType.SET_REFERRAL,
+      ])
+    })
+
+    it('skips SIWE setup when provider config reports it already satisfied', async () => {
+      const ondoProviderKey = 'ondo'
+      const getAccount = vi.fn(async () => mockAccount)
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount,
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SIWE_LOGIN, values: [], satisfied: true },
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: false },
+            ]),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.HMAC,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.HMAC,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          return HttpResponse.json({
+            actions: [{ action: body.action }],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(getAccount).toHaveBeenCalledOnce()
+      expect(createCalls).toEqual([ActionType.SET_REFERRAL])
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result.isReady).toBe(false)
+    })
+
+    it('returns ready when provider config reports all setup satisfied', async () => {
+      const ondoProviderKey = 'ondo'
+      const ondoClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: ondoProviderKey,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SIWE_LOGIN, values: [], satisfied: true },
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
+            ]),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCallCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: ondoProviderKey,
+                name: 'Ondo',
+                logoURI: 'https://example.com/ondo.png',
+                signingMethod: SigningMethod.HMAC,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.SIWE_LOGIN,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.SIWE,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.SET_REFERRAL,
+                    signers: [PerpsSigner.USER],
+                    signingMethod: SigningMethod.HMAC,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                options: [],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCallCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await ondoClient.checkSetup({
+        provider: ondoProviderKey,
+        address: userAddress,
+      })
+
+      expect(createCallCount).toBe(0)
+      expect(result).toEqual({
+        accountExists: true,
+        setup: [],
+        isReady: true,
+      })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // checkSetup — provider-declared internal setup steps are drained in place
+  // and never surface in the returned setup list.
+  // ---------------------------------------------------------------------------
+
+  describe('checkSetup — internal setup steps', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const providersHandler = (setup: unknown[]) =>
+      http.get(`${BASE_URL}/providers`, () =>
+        HttpResponse.json({
+          providers: [
+            {
+              key,
+              name: 'Venue',
+              logoURI: 'https://example.com/venue.png',
+              signingMethod: SigningMethod.EIP712,
+              active: true,
+              setup,
+              options: [],
+              actions: [],
+              categories: [],
+            },
+          ],
+        })
+      )
+
+    const internalStep = (signers: PerpsSigner[]) => ({
+      type: ActionType.SET_REFERRAL,
+      signers,
+      signingMethod: SigningMethod.EIP712,
+      sequence: 10,
+      params: [],
+    })
+
+    it('drains a backend-executed internal step and omits it from setup', async () => {
+      const signActions = vi.fn(
+        async (
+          _method: SigningMethod,
+          steps: { action: ActionType }[]
+        ): Promise<SignedActionStep[]> =>
+          steps.map((s) => ({
+            action: s.action,
+            typedData: {
+              domain: {},
+              types: {},
+              primaryType: 'X',
+              message: {},
+            },
+            signature: '0xsig',
+          })) as unknown as SignedActionStep[]
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          return HttpResponse.json({
+            actions: [
+              {
+                action: body.action,
+                typedData: {
+                  domain: {},
+                  types: {},
+                  primaryType: 'X',
+                  message: {},
+                },
+              },
+            ],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCount++
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(createCalls).toEqual([ActionType.SET_REFERRAL])
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executeCount).toBe(1)
+    })
+
+    it('drains a client-executed internal step with no executeAction hop', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executeCount).toBe(0)
+    })
+
+    it('never drains an internal step the provider config already reports satisfied', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
+            ]),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).not.toHaveBeenCalled()
+      expect(createCount).toBe(0)
+    })
+
+    it('never blocks setup when a silent internal step fails; the step stays hidden', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => {
+        throw new Error('venue rejected the silent step')
+      })
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      server.use(
+        providersHandler([internalStep([PerpsSigner.SDK])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result).toEqual({ accountExists: true, setup: [], isReady: true })
+      expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    it('never hides a step whose signers include USER, even when declared internal', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            internalSetupActions: [ActionType.SET_REFERRAL],
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep([PerpsSigner.USER])]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action }],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.SET_REFERRAL,
+      ])
+      expect(result.isReady).toBe(false)
+      expect(signActions).not.toHaveBeenCalled()
+      expect(executeCount).toBe(0)
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -1165,7 +1722,7 @@ describe('PerpsClient', () => {
       const hlAgent = await hl.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         userAddress,
-        [PerpsSigner.AGENT]
+        [PerpsSigner.SDK]
       )
 
       const executeCalls: ExecuteActionRequest[] = []
@@ -1232,7 +1789,7 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('execute — authToken rest-call actions run client-side', () => {
+  describe('execute — hmac actions ride executeAction', () => {
     const BASE_URL = DEFAULT_API_URL
     const ondoAddress = '0x9999999999999999999999999999999999999999' as Address
 
@@ -1240,32 +1797,33 @@ describe('PerpsClient', () => {
       key: 'ondo',
       name: 'Ondo',
       logoURI: 'https://example.com/ondo.png',
-      signingMethod: SigningMethod.AUTH_TOKEN,
+      signingMethod: SigningMethod.HMAC,
       active: true,
       setup: [],
       options: [],
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.API_KEY],
-          signingMethod: SigningMethod.AUTH_TOKEN,
+          signers: [PerpsSigner.SDK],
+          signingMethod: SigningMethod.HMAC,
         },
       ],
       categories: [],
     }
 
-    const restCallStep = {
+    const hmacStep = {
       action: ActionType.PLACE_ORDER,
       request: {
         method: 'POST' as const,
         path: '/v1/perps/orders',
-        body: { market_id: 1, side: 'BUY' },
+        body: '{"market_id":1,"side":"BUY"}',
       },
     }
 
-    const CREDENTIAL_HEADERS = {
-      Authorization: 'Bearer test-jwt',
-      'ONDO-BUILDER': 'lifi',
+    const HMAC_MATERIAL = {
+      keyId: 'key-1',
+      timestampMs: 1700000000000,
+      signature: 'abc123def456',
     }
 
     const orderParams = {
@@ -1276,29 +1834,19 @@ describe('PerpsClient', () => {
       price: '95000.00',
     }
 
-    /**
-     * Minimal authToken plugin: `signActions` attaches the client-held
-     * credential headers, `executeRestCallActions` plays the venue and
-     * returns the authoritative results.
-     */
-    function createAuthTokenProvider() {
+    // Minimal hmac plugin: `signActions` attaches the per-request HMAC
+    // material; the signed step then rides the normal executeAction path like
+    // any other signing method.
+    function createHmacProvider() {
       const signActions = vi.fn(
         async (
           _method,
-          steps: (typeof restCallStep)[]
+          steps: (typeof hmacStep)[]
         ): Promise<SignedActionStep[]> =>
           steps.map((s) => ({
             action: s.action,
             request: s.request,
-            headers: { ...CREDENTIAL_HEADERS },
-          }))
-      )
-      const executeRestCallActions = vi.fn(
-        async (steps: { action: ActionType }[]) =>
-          steps.map((s) => ({
-            action: s.action,
-            success: true as const,
-            orderId: 'ondo-order-1',
+            hmac: { ...HMAC_MATERIAL },
           }))
       )
       return {
@@ -1306,19 +1854,12 @@ describe('PerpsClient', () => {
         bind: vi.fn(),
         projectConfig: vi.fn(() => []),
         signActions,
-        executeRestCallActions,
       } as unknown as PerpsProviderPlugin & {
         signActions: ReturnType<typeof vi.fn>
-        executeRestCallActions: ReturnType<typeof vi.fn>
       }
     }
 
-    /**
-     * Register the ondo provider metadata plus createAction/executeAction
-     * handlers, capturing every backend-bound raw body so tests can assert
-     * the credential never crosses to the LI.FI backend.
-     */
-    function useOndoHandlers(opts: { executeStatus?: number } = {}) {
+    function useOndoHandlers() {
       const backendBodies: string[] = []
       const executeRequests: ExecuteActionRequest[] = []
       server.use(
@@ -1330,19 +1871,13 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           backendBodies.push(await request.text())
           return HttpResponse.json({
-            actions: [restCallStep],
+            actions: [hmacStep],
           } satisfies CreateActionResponse)
         }),
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const raw = await request.text()
           backendBodies.push(raw)
           executeRequests.push(JSON.parse(raw) as ExecuteActionRequest)
-          if (opts.executeStatus) {
-            return HttpResponse.json(
-              { code: PerpsErrorCode.ServerError, message: 'boom' },
-              { status: opts.executeStatus }
-            )
-          }
           return HttpResponse.json({
             results: [
               {
@@ -1365,8 +1900,8 @@ describe('PerpsClient', () => {
       })
     }
 
-    it('routes the signed rest-call steps to executeRestCallActions and returns the venue results', async () => {
-      const ondo = createAuthTokenProvider()
+    it('submits the signed steps to executeAction and returns the backend results', async () => {
+      const ondo = createHmacProvider()
       const { executeRequests } = useOndoHandlers()
 
       const result = await createOndoClient(ondo).execute({
@@ -1376,27 +1911,23 @@ describe('PerpsClient', () => {
         params: orderParams,
       })
 
-      // The plugin received the credential-bearing signed steps…
-      expect(ondo.executeRestCallActions).toHaveBeenCalledOnce()
-      const [steps, calledAddress] = ondo.executeRestCallActions.mock.calls[0]
-      expect(calledAddress).toBe(ondoAddress)
-      expect(steps[0].request).toEqual(restCallStep.request)
-      expect(steps[0].headers).toEqual(CREDENTIAL_HEADERS)
-      // …and its results are authoritative — not the backend's echo.
+      expect(ondo.signActions.mock.calls[0][0]).toBe(SigningMethod.HMAC)
+      expect(executeRequests).toHaveLength(1)
+      const [step] = executeRequests[0].actions as HmacSignedActionStep[]
+      expect(step.request).toEqual(hmacStep.request)
+      expect(step.hmac).toEqual(HMAC_MATERIAL)
       expect(result.results).toEqual([
         {
           action: ActionType.PLACE_ORDER,
           success: true,
-          orderId: 'ondo-order-1',
+          orderId: 'backend-echo',
         },
       ])
-      // The backend bookkeeping submission still happened, exactly once.
-      expect(executeRequests).toHaveLength(1)
     })
 
-    it('never sends credential headers to the LI.FI backend', async () => {
-      const ondo = createAuthTokenProvider()
-      const { backendBodies, executeRequests } = useOndoHandlers()
+    it('carries the HMAC material to the backend for relay', async () => {
+      const ondo = createHmacProvider()
+      const { executeRequests } = useOndoHandlers()
 
       await createOndoClient(ondo).execute({
         provider: 'ondo',
@@ -1405,117 +1936,33 @@ describe('PerpsClient', () => {
         params: orderParams,
       })
 
-      expect(backendBodies.length).toBeGreaterThan(0)
-      for (const body of backendBodies) {
-        expect(body).not.toContain('Authorization')
-        expect(body).not.toContain('ONDO-')
-        expect(body).not.toContain('test-jwt')
-      }
-      const [step] = executeRequests[0].actions as RestCallSignedActionStep[]
-      expect(step.headers).toEqual({})
+      const [step] = executeRequests[0].actions as HmacSignedActionStep[]
+      expect(step.hmac.signature).toBe('abc123def456')
+      expect(step.hmac.keyId).toBe('key-1')
     })
 
-    it('a backend bookkeeping failure does not mask the venue success but is logged', async () => {
-      const ondo = createAuthTokenProvider()
-      const { executeRequests } = useOndoHandlers({ executeStatus: 503 })
-      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    it('invokes the plugin onExecuteResults hook with the backend results', async () => {
+      const ondo = createHmacProvider()
+      const onExecuteResults = vi.fn(async () => {})
+      ;(ondo as any).onExecuteResults = onExecuteResults
+      useOndoHandlers()
 
-      const result = await createOndoClient(ondo).execute({
+      await createOndoClient(ondo).execute({
         provider: 'ondo',
         address: ondoAddress,
         action: ActionType.PLACE_ORDER,
         params: orderParams,
       })
 
-      // The order already landed on the venue — the failed bookkeeping
-      // submission must not surface as a caller-visible failure.
-      expect(result.results).toEqual([
+      expect(onExecuteResults).toHaveBeenCalledTimes(1)
+      expect(onExecuteResults.mock.calls[0][0]).toBe(ondoAddress)
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
         {
           action: ActionType.PLACE_ORDER,
           success: true,
-          orderId: 'ondo-order-1',
+          orderId: 'backend-echo',
         },
       ])
-      // Bookkeeping was attempted exactly once — money-adjacent, never retried.
-      expect(executeRequests).toHaveLength(1)
-      // …but the failure must still be observable, not swallowed silently.
-      expect(errorLog).toHaveBeenCalledOnce()
-      const [message, error] = errorLog.mock.calls[0]
-      expect(message).toContain('[ondo]')
-      expect(message).toMatch(/bookkeeping/)
-      expect(error).toBeInstanceOf(Error)
-      errorLog.mockRestore()
-    })
-
-    it('throws SDKError when the provider does not implement executeRestCallActions', async () => {
-      const ondo = createAuthTokenProvider()
-      ;(ondo as { executeRestCallActions?: unknown }).executeRestCallActions =
-        undefined
-      const { executeRequests } = useOndoHandlers()
-
-      await expect(
-        createOndoClient(ondo).execute({
-          provider: 'ondo',
-          address: ondoAddress,
-          action: ActionType.PLACE_ORDER,
-          params: orderParams,
-        })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.SDKError,
-        message: expect.stringMatching(/executeRestCallActions/),
-      })
-      expect(executeRequests).toHaveLength(0)
-    })
-
-    it('throws SDKError when the plugin signs an authToken action with non-rest-call steps', async () => {
-      const ondo = createAuthTokenProvider()
-      ondo.signActions.mockResolvedValueOnce([
-        {
-          action: ActionType.PLACE_ORDER,
-          typedData: {
-            domain: { name: 'Test', chainId: 1 },
-            types: { Order: [{ name: 'x', type: 'uint256' }] },
-            primaryType: 'Order',
-            message: { x: 0 },
-          },
-          signature: '0xsig',
-        },
-      ])
-      const { executeRequests } = useOndoHandlers()
-
-      await expect(
-        createOndoClient(ondo).execute({
-          provider: 'ondo',
-          address: ondoAddress,
-          action: ActionType.PLACE_ORDER,
-          params: orderParams,
-        })
-      ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
-      expect(ondo.executeRestCallActions).not.toHaveBeenCalled()
-      expect(executeRequests).toHaveLength(0)
-    })
-
-    it('never invokes executeRestCallActions on the eip712 path', async () => {
-      const hl = createTestAgentProvider({ type: 'hyperliquid' })
-      const spy = vi.fn()
-      ;(
-        hl as unknown as { executeRestCallActions: unknown }
-      ).executeRestCallActions = spy
-      const hlClient = new PerpsClient({
-        integrator: 'test-app',
-        apiKey: 'test-key',
-        providers: [hl],
-      })
-      await hl.createAgent(userAddress)
-
-      const result = await hlClient.placeOrder({
-        address: userAddress,
-        provider: 'hyperliquid',
-        ...orderParams,
-      })
-
-      expect(result.results[0].success).toBe(true)
-      expect(spy).not.toHaveBeenCalled()
     })
   })
 

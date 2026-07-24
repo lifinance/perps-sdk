@@ -1,5 +1,108 @@
 # @lifi/perps-sdk
 
+## 4.3.1
+
+### Patch Changes
+
+- [#275](https://github.com/lifinance/perps-sdk/pull/275) [`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain delisted Hyperliquid markets for historical account data while excluding them from live market and trading flows.
+
+- Updated dependencies [[`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d)]:
+  - @lifi/perps-types@3.3.1
+
+## 4.3.0
+
+### Minor Changes
+
+- [#263](https://github.com/lifinance/perps-sdk/pull/263) [`b988876`](https://github.com/lifinance/perps-sdk/commit/b9888768be56fc84f6f2e0c8fc32118a11cbfa59) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `selectUserSetupActions`, which filters a provider's `setup` descriptors to those a user must satisfy (their `signers` include `USER`). Steps the SDK signs on its own are held back so onboarding lists render one card per user action instead of inert placeholders for steps `checkSetup` completes inline.
+
+### Patch Changes
+
+- Updated dependencies [[`73fcc51`](https://github.com/lifinance/perps-sdk/commit/73fcc51a843d9294d98c6e0228ea98ba28cf0a5f)]:
+  - @lifi/perps-types@3.2.0
+
+## 4.2.0
+
+### Minor Changes
+
+- [#252](https://github.com/lifinance/perps-sdk/pull/252) [`df52f91`](https://github.com/lifinance/perps-sdk/commit/df52f9175081de8a51b94145a8a7c5337d8b21c6) Thanks [@TristanNcl](https://github.com/TristanNcl)! - count HYPE and BTC as portfolio-margin collateral at their loan-to-value weight when computing available margin
+
+### Patch Changes
+
+- Updated dependencies [[`128ad0c`](https://github.com/lifinance/perps-sdk/commit/128ad0cf2ea7a862ad5626eb16b2b9aa8750ecc0), [`df52f91`](https://github.com/lifinance/perps-sdk/commit/df52f9175081de8a51b94145a8a7c5337d8b21c6)]:
+  - @lifi/perps-types@3.1.0
+
+## 4.1.0
+
+### Minor Changes
+
+- [#260](https://github.com/lifinance/perps-sdk/pull/260) [`09cd2b6`](https://github.com/lifinance/perps-sdk/commit/09cd2b6bbe2061afc1903d3ac622722500f1fd92) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Provider packages can now declare setup actions they complete themselves via `PerpsProviderPlugin.internalSetupActions`. `PerpsClient.checkSetup` drains each such pending step in place — building, signing, and executing it with the provider's own credentials — and omits it from the returned setup list. A descriptor whose `signers` include `USER` is never treated as internal, and a failed internal step never blocks setup: it stays unsatisfied and is retried on a later `checkSetup`. The Ondo `SESSION` signing arm now executes backend-authored request-bearing steps with the stored session token.
+
+## 4.0.0
+
+### Major Changes
+
+- [#258](https://github.com/lifinance/perps-sdk/pull/258) [`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsSigner` now has exactly two values: `USER` (the end-user's wallet must sign or consent — expect a wallet interaction) and `SDK` (the provider package completes signing with credentials it holds or creates, no user interaction). The previous `AGENT` and `API_KEY` values are removed; each provider package is the authority on what `SDK` means for its venue. The array shape of `signers` is unchanged.
+
+### Minor Changes
+
+- [#257](https://github.com/lifinance/perps-sdk/pull/257) [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parametrize the Lighter provider by instance config so a single implementation can back multiple Lighter deployments. `lighterProvider()` and `lighterWsProvider()` now accept a `providerKey`, `restUrl`, `wsUrl`, and `explorerTxBaseUrl`, and `LighterSigner` accepts the signing chain id — each instance namespaces its own market/asset registries, retry policy, and auth-token caches. A bare `lighterProvider()` is unchanged (`type: 'lighter'`, mainnet URLs, chain id 304). Adds the `lighter-rh` (Robinhood chain) instance constants and the `lighterRhInstance()` factory, plus `explorerTxUrlFromBase` for resolving explorer links from a per-instance base URL.
+
+### Patch Changes
+
+- Updated dependencies [[`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0)]:
+  - @lifi/perps-types@3.0.0
+
+## 3.1.1
+
+### Patch Changes
+
+- [#246](https://github.com/lifinance/perps-sdk/pull/246) [`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Polish package READMEs: consistent badge headers and structure, quick-start snippets, and a WebSocket section in the core README.
+
+- Updated dependencies [[`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b)]:
+  - @lifi/perps-types@2.0.1
+
+## 3.1.0
+
+### Minor Changes
+
+- [#250](https://github.com/lifinance/perps-sdk/pull/250) [`195d3b4`](https://github.com/lifinance/perps-sdk/commit/195d3b492943dab672dcb2f2d692e29287208e80) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `formatNumber`, a currency-symbol-free display formatter, and a `rounding: 'halfUp' | 'floor'` option on `FormatOptions` so ceiling-validated readouts (available balance, removable margin) can truncate toward zero.
+
+## 3.0.0
+
+### Major Changes
+
+- [#238](https://github.com/lifinance/perps-sdk/pull/238) [`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Replace Ondo venue-side REST execution with API-key HMAC signing.
+
+  - **perps-types**: remove `RestCallActionStep`, `RestCallSignedActionStep`, and `SigningMethod.AUTH_TOKEN`; add `SigningMethod.HMAC`, `HmacActionStep`, and `HmacSignedActionStep`. The step names its signing mechanism (like `Eip712ActionStep`/`WasmBlobActionStep`), not its transport. The signed step carries a structured `hmac { keyId, timestampMs, signature }` field — there is no `headers` map on the wire, so no venue header names (nor a Bearer JWT / API secret) can ride it. `request.body` is a pre-serialized string that transits verbatim (the exact bytes the HMAC covers).
+  - **perps-sdk**: drop the `AUTH_TOKEN` execution detour and the `executeRestCallActions` plugin hook; `HMAC` steps sign then ride the standard `executeAction` path like EIP-712.
+  - **perps-sdk-provider-ondo**: remove the venue-side REST execution model; add per-request HMAC-SHA256 signing (`hmacSignRequest`) with a client-held API key minted silently on first trading use, an `OndoApiKeyStore`, and first-login venue-terms acceptance. The JWT and API secret stay userland — only the HMAC key id, timestamp, and signature leave the client, and the backend builds the venue's transport headers at relay time.
+
+### Minor Changes
+
+- [#238](https://github.com/lifinance/perps-sdk/pull/238) [`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Surface Ondo venue-terms acceptance and API-key creation as explicit setup steps.
+
+  - **perps-types**: add `ActionType.ACCEPT_PROVIDER_TERMS` (provider-level venue terms, distinct from the app-level `META_ACCEPT_TERMS`), `SigningMethod.SESSION` (client-only venue REST authorized by a stored provider session token), and `SessionActionStep` — a marker step carrying no request material, so a backend-authored path or body can never be executed with the client's bearer token. `OndoAccountConfig` gains required `termsAccepted` and `apiKeyRegistered` flags. The `ActionResult` failure variant gains an optional structured `errorCode`.
+  - **perps-sdk**: new optional plugin hook `onExecuteResults(address, results)`, invoked after every `executeAction` round-trip on both the execute and provider-setup paths, so plugins can react to structured failures.
+  - **perps-sdk-provider-ondo**: venue-terms acceptance moves out of the SIWE login (no more implicit `POST /v1/agreement` on first login) and API-key creation out of lazy first-use minting into explicit `SESSION`-signed setup steps executed directly against the venue; the lazy mint remains as a headless fallback. `getAccount` reports `termsAccepted` (from the login token's `newAccount` flag) and `apiKeyRegistered` (local key presence). A stored API key is evicted when an execute result carries `errorCode: Unauthorized`, so the `REGISTER_API_KEY` setup step re-stages instead of every action failing.
+  - **perps-sdk-provider-lighter / -hyperliquid**: exhaustive `ActionType` projections extended for the new member (rejected as unsupported).
+
+### Patch Changes
+
+- Updated dependencies [[`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307), [`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307)]:
+  - @lifi/perps-types@2.0.0
+
+## 2.4.0
+
+### Minor Changes
+
+- [#240](https://github.com/lifinance/perps-sdk/pull/240) [`7cb09a5`](https://github.com/lifinance/perps-sdk/commit/7cb09a53cf195089879b52eb7d84c0960da137b7) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Add an optional `onProgress` sink to `PerpsClient.execute()` (new public `SignActionProgress` type, carried on `SignActionsContext`). Lighter's `EVM_TX` signer emits `submitted`/`confirmed` per broadcast leg (approve, deposit), so consumers can render a live per-transaction deposit stepper.
+
+## 2.3.2
+
+### Patch Changes
+
+- [#236](https://github.com/lifinance/perps-sdk/pull/236) [`f56c36e`](https://github.com/lifinance/perps-sdk/commit/f56c36e6e80edf305d05b7e09540d9a329af9b88) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a release changeset so the Ondo provider cache-sync fix branch triggers versioning and publish workflows.
+
 ## 2.3.1
 
 ### Patch Changes

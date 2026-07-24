@@ -24,13 +24,22 @@ const validToken = (jwt = 'jwt-abc') => ({
   issuedAtSecs: Math.floor(Date.now() / 1000) - 60,
   expirationSecs: Math.floor(Date.now() / 1000) + 3600,
   token: jwt,
-  newAccount: false,
 })
 
 /** Storage pre-seeded with a valid production session for TEST_ADDR. */
 const seededStorage = (): StorageAdapter => {
   const storage = createMemoryStorage()
   void storage.set(SESSION_KEY, JSON.stringify(validToken()))
+  return storage
+}
+
+const OTHER_SESSION_KEY = `lifi-perps-ondo-session:api.ondoperps.xyz:${OTHER_ADDR}`
+
+/** Storage seeded with distinct sessions for TEST_ADDR and OTHER_ADDR. */
+const seededBothStorage = (): StorageAdapter => {
+  const storage = createMemoryStorage()
+  void storage.set(SESSION_KEY, JSON.stringify(validToken('jwt-a')))
+  void storage.set(OTHER_SESSION_KEY, JSON.stringify(validToken('jwt-b')))
   return storage
 }
 
@@ -178,6 +187,7 @@ describe('OndoWsProvider', () => {
     ;(p as any).rws.ready = vi.fn().mockResolvedValue(undefined)
     ;(p as any).rws.getStatus = () => 'connected'
     ;(p as any).rws.send = send
+    ;(p as any).rws.reconnect = vi.fn()
     return send
   }
 
@@ -457,13 +467,14 @@ describe('OndoWsProvider', () => {
       inject(p, 'candle:AAPL-USD.P:1m', listener)
 
       // The kline frame carries no resolution field — only the interval
-      // start/end. e − s = 60s identifies the 1m subscription.
+      // start/end. e − s = 60s identifies the 1m subscription. The emitted
+      // candle time is the bucket-open `s`, not the per-update `t`.
       feed(p, {
         type: 'update',
         channel: 'kLinePerps',
         data: {
           m: 'AAPL-USD.P',
-          t: 1709648400,
+          t: 1709648375,
           s: 1709648340,
           e: 1709648400,
           o: 226.8,
@@ -478,7 +489,7 @@ describe('OndoWsProvider', () => {
       expect(listener).toHaveBeenCalledWith({
         channel: 'candle',
         data: {
-          t: 1709648400 * 1000,
+          t: 1709648340 * 1000,
           o: '226.8',
           h: '228.1',
           l: '226.5',
@@ -487,6 +498,41 @@ describe('OndoWsProvider', () => {
         },
       })
       p.close()
+    })
+
+    it('keys consecutive updates within one bucket to the same bucket-open time so the forming candle updates in place', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:AAPL-USD.P:15m', listener)
+
+      const bucketStart = 1709648100
+      const bucketEnd = bucketStart + 900
+      const frame = (t: number, c: number) => ({
+        type: 'update' as const,
+        channel: 'kLinePerps' as const,
+        data: {
+          m: 'AAPL-USD.P',
+          t,
+          s: bucketStart,
+          e: bucketEnd,
+          o: 226.8,
+          h: 228.1,
+          l: 226.5,
+          c,
+          v: 12345.67,
+          x: false,
+        },
+      })
+
+      feed(p, frame(bucketStart + 1, 227.0))
+      feed(p, frame(bucketStart + 2, 227.5))
+
+      const [first, second] = listener.mock.calls.map(([e]) => e.data.t)
+      expect(first).toBe(bucketStart * 1000)
+      expect(second).toBe(bucketStart * 1000)
+      // Widget keys candles by Math.floor(t / 1000); an unchanged key across a
+      // bucket's lifetime is what makes the merge update rather than append.
+      expect(Math.floor(first / 1000)).toBe(Math.floor(second / 1000))
     })
   })
 
@@ -718,6 +764,85 @@ describe('OndoWsProvider', () => {
           vi.fn()
         )
       ).rejects.toThrow(/address/i)
+      p.close()
+    })
+
+    it('rebinds to a new address after the previous one unsubscribes to zero, logging in afresh', async () => {
+      const p = makeProvider(seededBothStorage())
+      const send = stubSocket(p)
+
+      const unsubscribeA = await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn()
+      )
+      // Release all of A's authenticated channels (unsubscribe-to-zero).
+      unsubscribeA()
+
+      // B must reclaim the binding A released (still lingering in the base's
+      // teardown window), cycle the connection, and log in cleanly — not throw
+      // the one-address guard.
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+        vi.fn()
+      )
+
+      expect((p as any).rws.reconnect).toHaveBeenCalledTimes(1)
+      const logins = send.mock.calls
+        .map((c) => String(c[0]))
+        .filter((c) => c.includes('"op":"login"'))
+      expect(logins).toEqual([
+        JSON.stringify({ op: 'login', args: { token: 'jwt-a' } }),
+        JSON.stringify({ op: 'login', args: { token: 'jwt-b' } }),
+      ])
+      p.close()
+    })
+
+    it('clears the address binding on a socket drop so a different address binds afterwards', async () => {
+      const p = makeProvider(seededBothStorage())
+      const send = stubSocket(p)
+
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        vi.fn()
+      )
+      expect((p as any).accountAddress).toBe(TEST_ADDR.toLowerCase())
+
+      // The venue forgets the login with the connection, so the binding must
+      // reset on close — not just loginPromise.
+      for (const fn of (p as any).rws.listeners.close) {
+        fn(1006, 'dropped')
+      }
+      expect((p as any).accountAddress).toBeUndefined()
+
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+        vi.fn()
+      )
+      expect((p as any).accountAddress).toBe(OTHER_ADDR.toLowerCase())
+      const lastLogin = send.mock.calls
+        .map((c) => String(c[0]))
+        .filter((c) => c.includes('"op":"login"'))
+        .at(-1)
+      expect(lastLogin).toBe(
+        JSON.stringify({ op: 'login', args: { token: 'jwt-b' } })
+      )
+      p.close()
+    })
+
+    it('rolls back the address binding when the login fails', async () => {
+      // No stored session for TEST_ADDR → the login throws.
+      const p = makeProvider(createMemoryStorage())
+      stubSocket(p)
+
+      await expect(
+        p.subscribe(
+          { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow(/session/i)
+
+      // A failed login must not leave the connection bound to TEST_ADDR.
+      expect((p as any).accountAddress).toBeUndefined()
       p.close()
     })
 

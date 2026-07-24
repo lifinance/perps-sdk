@@ -126,4 +126,60 @@ describe('LighterKeyStore', () => {
       apiKey
     )
   })
+
+  describe('provider-instance scoping', () => {
+    const rhKey: LighterApiKey = {
+      ...apiKey,
+      apiKeyPrivateKey: `0x${'33'.repeat(32)}`,
+    }
+    const NAMESPACED_KEY =
+      'lifi-perps-lighter-key:lighter-rh:0xabcdef0000000000000000000000000000000001'
+
+    it('keeps the legacy un-namespaced key for the default instance', async () => {
+      const storage = spyStorage(createMemoryStorage())
+      await new LighterKeyStore(storage, 'lighter').set(ADDRESS, apiKey)
+      expect(storage.set).toHaveBeenCalledWith(
+        STORAGE_KEY,
+        JSON.stringify(apiKey)
+      )
+    })
+
+    it('namespaces the storage key for a non-default instance', async () => {
+      const storage = spyStorage(createMemoryStorage())
+      await new LighterKeyStore(storage, 'lighter-rh').set(ADDRESS, apiKey)
+      expect(storage.set).toHaveBeenCalledWith(
+        NAMESPACED_KEY,
+        JSON.stringify(apiKey)
+      )
+    })
+
+    it('persists instance keys to independent slots over a shared adapter', async () => {
+      const shared = createMemoryStorage()
+
+      await new LighterKeyStore(shared, 'lighter').set(ADDRESS, apiKey)
+      await new LighterKeyStore(shared, 'lighter-rh').set(ADDRESS, rhKey)
+
+      // Cold reads (fresh stores → empty cache) must each resolve their own key;
+      // on the pre-fix code both writes share one slot and the second clobbers the first.
+      await expect(
+        new LighterKeyStore(shared, 'lighter').get(ADDRESS)
+      ).resolves.toEqual(apiKey)
+      await expect(
+        new LighterKeyStore(shared, 'lighter-rh').get(ADDRESS)
+      ).resolves.toEqual(rhKey)
+    })
+
+    it('bindProviderKey overrides the ctor default and re-scopes the storage key', async () => {
+      const storage = spyStorage(createMemoryStorage())
+      const store = new LighterKeyStore(storage)
+      store.bindProviderKey('lighter-rh')
+
+      await store.set(ADDRESS, apiKey)
+
+      expect(storage.set).toHaveBeenCalledWith(
+        NAMESPACED_KEY,
+        JSON.stringify(apiKey)
+      )
+    })
+  })
 })

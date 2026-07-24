@@ -55,6 +55,12 @@ export interface Balance {
   units: string
   /** USD value the SDK fills from the prices map; consumers render with zero math. */
   valueUsd: string
+  /**
+   * Fraction of `valueUsd` that backs available margin (a loan-to-value
+   * ratio). Absent means 1 — full value. Set below 1 for collateral the
+   * venue haircuts; ignored on non-collateral balances.
+   */
+  collateralWeight?: number
 }
 
 /** @public */
@@ -259,9 +265,19 @@ export interface LighterAssetCollateral {
   enabled: boolean
 }
 
+/**
+ * Provider keys for the Lighter instances the SDK supports: mainnet
+ * (`'lighter'`) and the Robinhood-chain deployment (`'lighter-rh'`). Both are
+ * served by the same provider implementation and carry the same account-config
+ * shape, so they discriminate the Lighter arm of {@link AccountConfig} jointly.
+ *
+ * @public
+ */
+export type LighterProviderKey = 'lighter' | 'lighter-rh'
+
 /** @public */
 export interface LighterAccountConfig {
-  provider: 'lighter'
+  provider: LighterProviderKey
   accountIndex: number
   apiKeyIndex: number
   apiKeyRegistered: boolean
@@ -296,8 +312,14 @@ export interface OndoAccountConfig {
   loggedIn: boolean
   /** Unix seconds. Present iff `loggedIn === true`. The token itself never appears here. */
   authTokenExpiry?: number
+  /** Venue terms accepted, inferred from the login token's `newAccount` flag. Always `false` when logged out. */
+  termsAccepted: boolean
+  /** A venue API key is present in local storage. Local presence only — venue-side validity is not verified. */
+  apiKeyRegistered: boolean
   /** A referral code (any referrer's) is already applied to the account. Always `false` when logged out. */
   referralSet: boolean
+  /** Canonical Ethereum USDC deposit address, or `null` when none is provisioned. */
+  depositAddress: string | null
 }
 
 /** @public */

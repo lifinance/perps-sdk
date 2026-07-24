@@ -121,6 +121,9 @@ export enum ActionType {
   REGISTER_API_KEY = 'registerApiKey',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
+  CREATE_DEPOSIT_ADDRESS = 'createDepositAddress',
+  /** Provider-level (venue) terms acceptance, executed client-side with the provider session credential. Distinct from `META_ACCEPT_TERMS`, which covers LI.FI's own app-wide terms. */
+  ACCEPT_PROVIDER_TERMS = 'acceptProviderTerms',
   DEPOSIT = 'deposit',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_VOTE = 'metaVote',
@@ -196,11 +199,18 @@ export type ActivityClassification =
   | FundingClassification
   | TransferClassification
 
-/** @public */
+/**
+ * Who completes signing for an action.
+ *
+ * `USER` — the end-user's wallet must sign or consent; widgets should expect a
+ * wallet interaction. `SDK` — the provider package completes signing with
+ * credentials it holds or creates, with no user interaction.
+ *
+ * @public
+ */
 export enum PerpsSigner {
   USER = 'USER',
-  AGENT = 'AGENT',
-  API_KEY = 'API_KEY',
+  SDK = 'SDK',
 }
 
 /** @public */
@@ -208,8 +218,10 @@ export enum SigningMethod {
   EIP712 = 'eip712',
   WASM_BLOB = 'wasmBlob',
   EVM_TX = 'evmTx',
-  /** Per-action auth is a client-held credential attached to a venue REST call, executed SDK-side. */
-  AUTH_TOKEN = 'authToken',
+  /** Per-request HMAC signature computed SDK-side from a client-held API key; the signed step rides the normal `executeAction` path. */
+  HMAC = 'hmac',
   /** ERC-4361 `personal_sign` over a backend-built login challenge. */
   SIWE = 'siwe',
+  /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
+  SESSION = 'session',
 }

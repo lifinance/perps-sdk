@@ -392,8 +392,7 @@ describe('LighterSigner', () => {
   })
 
   it('signs APPROVE_INTEGRATOR into a type-45 blob with positional args in struct order', async () => {
-    const signed = await signer.sign(
-      ActionType.APPROVE_INTEGRATOR,
+    const signed = await signer.signApproveIntegrator(
       {
         integrator_account_index: 5,
         max_perps_taker_fee: 250,
@@ -424,8 +423,7 @@ describe('LighterSigner', () => {
 
   it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {
     await expect(
-      signer.sign(
-        ActionType.APPROVE_INTEGRATOR,
+      signer.signApproveIntegrator(
         {
           integrator_account_index: 5,
           max_perps_taker_fee: 250,
@@ -437,6 +435,45 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/max_spot_taker_fee/)
+  })
+
+  it('signApproveIntegrator returns the type-45 blob plus the L2ApproveIntegrator L1 message body', async () => {
+    const signed = await signer.signApproveIntegrator(
+      {
+        integrator_account_index: 5,
+        max_perps_taker_fee: 250,
+        max_perps_maker_fee: 100,
+        max_spot_taker_fee: 300,
+        max_spot_maker_fee: 150,
+        approval_expiry: 1_893_456_000,
+        nonce: 3,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(45)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    // L1Sig is empty until the caller injects the wallet signature.
+    expect(JSON.parse(signed.txInfo).L1Sig).toBe('')
+
+    // Byte-for-byte match with lighter-go `TemplateL2ApproveIntegrator`
+    // (`types/txtypes/utils.go`) rendered by `GetL1SignatureBody(chainId)` —
+    // each field is `getHex10FromUint64`: 16 zero-padded lowercase hex digits.
+    // Field order: nonce, accountIndex(42), apiKeyIndex(1), integrator index,
+    // fees, approvalExpiry, chainId(304, the signer default).
+    const expectedMessage =
+      'Approve Integrator\n\n' +
+      'nonce: 0x0000000000000003\n' +
+      'account index: 0x000000000000002a\n' +
+      'api key index: 0x0000000000000001\n' +
+      'integrator account index: 0x0000000000000005\n' +
+      'max perps taker fee: 0x00000000000000fa\n' +
+      'max perps maker fee: 0x0000000000000064\n' +
+      'max spot taker fee: 0x000000000000012c\n' +
+      'max spot maker fee: 0x0000000000000096\n' +
+      'approval expiry: 0x0000000070dbd880\n' +
+      'chainId: 0x0000000000000130\n' +
+      'Only sign this message for a trusted client!'
+    expect(signed.messageToSign).toBe(expectedMessage)
   })
 
   it('signs ACCOUNT_MODE into a type-41 blob carrying the trading mode', async () => {
@@ -526,6 +563,16 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/signChangePubKey/)
+  })
+
+  it('APPROVE_INTEGRATOR through sign() throws (must use signApproveIntegrator)', async () => {
+    await expect(
+      signer.sign(
+        ActionType.APPROVE_INTEGRATOR,
+        { integrator_account_index: 45, nonce: 0 },
+        ctx()
+      )
+    ).rejects.toThrow(/signApproveIntegrator/)
   })
 
   it('signChangePubKey returns txInfo with empty L1Sig and an EIP-191 message', async () => {

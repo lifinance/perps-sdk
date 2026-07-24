@@ -1,5 +1,69 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 5.1.1
+
+### Patch Changes
+
+- [#268](https://github.com/lifinance/perps-sdk/pull/268) [`25dc35c`](https://github.com/lifinance/perps-sdk/commit/25dc35cb08c337764a80f2fd6d5ff28fa2f6fced) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Scope `LighterKeyStore` persisted API-key storage by the resolved provider instance key so two Lighter instances sharing one adapter (e.g. `lighter` and `lighter-rh`) no longer clobber each other's key. The default `lighter` instance keeps its existing un-namespaced storage key, so current users are not orphaned; `LighterProvider` injects its resolved `providerKey` into the supplied keystore.
+
+## 5.1.0
+
+### Minor Changes
+
+- [#260](https://github.com/lifinance/perps-sdk/pull/260) [`09cd2b6`](https://github.com/lifinance/perps-sdk/commit/09cd2b6bbe2061afc1903d3ac622722500f1fd92) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Provider packages can now declare setup actions they complete themselves via `PerpsProviderPlugin.internalSetupActions`. `PerpsClient.checkSetup` drains each such pending step in place — building, signing, and executing it with the provider's own credentials — and omits it from the returned setup list. A descriptor whose `signers` include `USER` is never treated as internal, and a failed internal step never blocks setup: it stays unsatisfied and is retried on a later `checkSetup`. The Ondo `SESSION` signing arm now executes backend-authored request-bearing steps with the stored session token.
+
+## 5.0.0
+
+### Minor Changes
+
+- [#257](https://github.com/lifinance/perps-sdk/pull/257) [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parametrize the Lighter provider by instance config so a single implementation can back multiple Lighter deployments. `lighterProvider()` and `lighterWsProvider()` now accept a `providerKey`, `restUrl`, `wsUrl`, and `explorerTxBaseUrl`, and `LighterSigner` accepts the signing chain id — each instance namespaces its own market/asset registries, retry policy, and auth-token caches. A bare `lighterProvider()` is unchanged (`type: 'lighter'`, mainnet URLs, chain id 304). Adds the `lighter-rh` (Robinhood chain) instance constants and the `lighterRhInstance()` factory, plus `explorerTxUrlFromBase` for resolving explorer links from a per-instance base URL.
+
+### Patch Changes
+
+- Updated dependencies [[`5b463da`](https://github.com/lifinance/perps-sdk/commit/5b463da30aeea57d05bc7daa84610a088c9425c0), [`e5df3a5`](https://github.com/lifinance/perps-sdk/commit/e5df3a5b712fa8c1f0ba55e7161318473de1c762)]:
+  - @lifi/perps-types@3.0.0
+  - @lifi/perps-sdk@4.0.0
+
+## 4.0.1
+
+### Patch Changes
+
+- [#246](https://github.com/lifinance/perps-sdk/pull/246) [`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Polish package READMEs: consistent badge headers and structure, quick-start snippets, and a WebSocket section in the core README.
+
+- [#256](https://github.com/lifinance/perps-sdk/pull/256) [`a0572ba`](https://github.com/lifinance/perps-sdk/commit/a0572bacfe2024f2bf165361e3ea1ea863cd5981) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LighterSigner.sign()` now throws for APPROVE_INTEGRATOR, which must go through `signApproveIntegrator()` — `sign()` cannot collect the required L1 user wallet signature, so blobs signed through it would reach the venue with an empty `L1Sig`.
+
+- [#255](https://github.com/lifinance/perps-sdk/pull/255) [`85a9636`](https://github.com/lifinance/perps-sdk/commit/85a96365ba9f588df0b2921ccb02536cc222ba34) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter APPROVE_INTEGRATOR now collects the user's L1 wallet signature and embeds it as `txInfo.L1Sig` before submission, so the venue accepts the integrator approval.
+
+- Updated dependencies [[`92372e2`](https://github.com/lifinance/perps-sdk/commit/92372e20db4b30c7cb94466979dd56ff5fc73a2b)]:
+  - @lifi/perps-types@2.0.1
+
+## 4.0.0
+
+### Major Changes
+
+- [#248](https://github.com/lifinance/perps-sdk/pull/248) [`de3b1ea`](https://github.com/lifinance/perps-sdk/commit/de3b1eaff1f3a58d3e4db6c8e59d4150a4d18639) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter WS account channels now resolve their auth token from the co-registered `lighterProvider()` plugin by default, so `lighterWsProvider()` authenticates positions/orders/fills with no manual wiring. **Breaking:** the `authProvider` option is renamed to `resolveAuthToken` and the `LighterAuthProvider` type to `LighterAuthTokenResolver`, with no back-compat alias; the option is now an override for standalone WS clients only.
+
+## 3.0.0
+
+### Patch Changes
+
+- [#238](https://github.com/lifinance/perps-sdk/pull/238) [`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Surface Ondo venue-terms acceptance and API-key creation as explicit setup steps.
+
+  - **perps-types**: add `ActionType.ACCEPT_PROVIDER_TERMS` (provider-level venue terms, distinct from the app-level `META_ACCEPT_TERMS`), `SigningMethod.SESSION` (client-only venue REST authorized by a stored provider session token), and `SessionActionStep` — a marker step carrying no request material, so a backend-authored path or body can never be executed with the client's bearer token. `OndoAccountConfig` gains required `termsAccepted` and `apiKeyRegistered` flags. The `ActionResult` failure variant gains an optional structured `errorCode`.
+  - **perps-sdk**: new optional plugin hook `onExecuteResults(address, results)`, invoked after every `executeAction` round-trip on both the execute and provider-setup paths, so plugins can react to structured failures.
+  - **perps-sdk-provider-ondo**: venue-terms acceptance moves out of the SIWE login (no more implicit `POST /v1/agreement` on first login) and API-key creation out of lazy first-use minting into explicit `SESSION`-signed setup steps executed directly against the venue; the lazy mint remains as a headless fallback. `getAccount` reports `termsAccepted` (from the login token's `newAccount` flag) and `apiKeyRegistered` (local key presence). A stored API key is evicted when an execute result carries `errorCode: Unauthorized`, so the `REGISTER_API_KEY` setup step re-stages instead of every action failing.
+  - **perps-sdk-provider-lighter / -hyperliquid**: exhaustive `ActionType` projections extended for the new member (rejected as unsupported).
+
+- Updated dependencies [[`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307), [`5ba65da`](https://github.com/lifinance/perps-sdk/commit/5ba65daa6c3c2664d78d57ce4149784d79eba307)]:
+  - @lifi/perps-types@2.0.0
+  - @lifi/perps-sdk@3.0.0
+
+## 2.4.0
+
+### Minor Changes
+
+- [#240](https://github.com/lifinance/perps-sdk/pull/240) [`7cb09a5`](https://github.com/lifinance/perps-sdk/commit/7cb09a53cf195089879b52eb7d84c0960da137b7) Thanks [@TristanNcl](https://github.com/TristanNcl)! - Add an optional `onProgress` sink to `PerpsClient.execute()` (new public `SignActionProgress` type, carried on `SignActionsContext`). Lighter's `EVM_TX` signer emits `submitted`/`confirmed` per broadcast leg (approve, deposit), so consumers can render a live per-transaction deposit stepper.
+
 ## 2.3.0
 
 ### Minor Changes

@@ -7,21 +7,36 @@ import type {
   HyperliquidAccountConfig,
   LighterAccountConfig,
 } from './account.js'
-import type { Asset } from './asset.js'
+import type { Asset, DepositAsset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
-import type { OhlcvInterval } from './market.js'
+import type { ProviderFunding as ExportedProviderFunding } from './index.js'
+import type { MarketContext, OhlcvInterval } from './market.js'
 import type {
   Param,
   ParamOption,
   Provider,
   ProviderAction,
   ProviderCategory,
+  ProviderFunding,
   TradeNotice,
 } from './providers.js'
+
+const hourlyProviderFunding: ProviderFunding = {
+  ratePeriodSeconds: 60 * 60,
+  payoutCadenceSeconds: 60 * 60,
+}
 
 const usdcAsset: Asset = {
   providerId: 'hyperliquid',
   id: 'USDC',
+  displaySymbol: 'USDC',
+  logoURI: 'https://example.invalid/usdc.svg',
+}
+
+const arbitrumUsdcDeposit: DepositAsset = {
+  chainId: 42161,
+  address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  decimals: 6,
   displaySymbol: 'USDC',
   logoURI: 'https://example.invalid/usdc.svg',
 }
@@ -78,7 +93,7 @@ const hlAccountModeOption: ProviderAction = {
   title: 'Account mode',
   description:
     'Choose how this account interacts with Hyperliquid. Defaults to dexAbstraction.',
-  signers: [PerpsSigner.AGENT],
+  signers: [PerpsSigner.SDK],
   signingMethod: SigningMethod.EIP712,
   params: [
     {
@@ -135,12 +150,14 @@ const hyperliquidProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.AGENT],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.EIP712,
     },
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
+  funding: hourlyProviderFunding,
   chainId: 1337,
+  depositAssets: [arbitrumUsdcDeposit],
   minOrderValueUsd: 10,
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
@@ -157,13 +174,14 @@ const lighterProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.API_KEY],
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.WASM_BLOB,
     },
   ],
   categories: [
     { id: 'lighter', quoteAsset: { ...usdcAsset, providerId: 'lighter' } },
   ],
+  funding: hourlyProviderFunding,
   chainId: 3586256,
   minOrderValueUsd: 10,
   minReduceOrderValueUsd: 1,
@@ -350,6 +368,31 @@ type _SetupFieldShape = Expect<Equals<Provider['setup'], ProviderAction[]>>
 type _OptionsFieldShape = Expect<Equals<Provider['options'], ProviderAction[]>>
 type _ActionsFieldShape = Expect<Equals<Provider['actions'], ProviderAction[]>>
 
+type _ProviderFundingKeys = Expect<
+  Equals<keyof ProviderFunding, 'ratePeriodSeconds' | 'payoutCadenceSeconds'>
+>
+type _ProviderFundingRatePeriod = Expect<
+  Equals<ProviderFunding['ratePeriodSeconds'], number>
+>
+type _ProviderFundingPayoutCadence = Expect<
+  Equals<ProviderFunding['payoutCadenceSeconds'], number>
+>
+type _ProviderFundingExport = Expect<
+  Equals<ExportedProviderFunding, ProviderFunding>
+>
+type _ProviderFundingOptional = Expect<
+  Equals<Provider['funding'], ProviderFunding | undefined>
+>
+type _ProviderFundingIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'funding'>, never>
+>
+type _MarketContextHasNoFundingCadence = Expect<
+  Equals<
+    Extract<keyof MarketContext, 'ratePeriodSeconds' | 'payoutCadenceSeconds'>,
+    never
+  >
+>
+
 // Both arrays are required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
   [K in keyof T]-?: object extends Pick<T, K> ? never : K
@@ -378,6 +421,15 @@ type _SupportedIntervalsIsRequired = Expect<
 type _ChainIdShape = Expect<Equals<Provider['chainId'], number | undefined>>
 type _ChainIdIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
+>
+
+// `depositAssets` is an optional `DepositAsset[]` — additive, so the existing
+// `/providers` payload and all current consumers keep type-checking.
+type _DepositAssetShape = Expect<
+  Equals<Provider['depositAssets'], DepositAsset[] | undefined>
+>
+type _DepositAssetIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'depositAssets'>, never>
 >
 
 // `ProviderAction` keys: the three core fields plus the optional
@@ -466,12 +518,21 @@ export type _TypeAssertions = [
   _SetupFieldShape,
   _OptionsFieldShape,
   _ActionsFieldShape,
+  _ProviderFundingKeys,
+  _ProviderFundingRatePeriod,
+  _ProviderFundingPayoutCadence,
+  _ProviderFundingExport,
+  _ProviderFundingOptional,
+  _ProviderFundingIsOptional,
+  _MarketContextHasNoFundingCadence,
   _SetupIsRequired,
   _OptionsIsRequired,
   _SupportedIntervalsShape,
   _SupportedIntervalsIsRequired,
   _ChainIdShape,
   _ChainIdIsOptional,
+  _DepositAssetShape,
+  _DepositAssetIsOptional,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -556,6 +617,22 @@ describe('ProviderCategory.tradeNotice', () => {
   })
 })
 
+describe('Provider.funding', () => {
+  it('keeps the rate period distinct from the payout cadence', () => {
+    expect(hyperliquidProvider.funding).toEqual({
+      ratePeriodSeconds: 60 * 60,
+      payoutCadenceSeconds: 60 * 60,
+    })
+    expect(lighterProvider.funding?.ratePeriodSeconds).toBe(60 * 60)
+    expect(lighterProvider.funding?.payoutCadenceSeconds).toBe(60 * 60)
+  })
+
+  it('is optional for providers without funding metadata', () => {
+    expect(providerWithNoDescriptors.funding).toBeUndefined()
+    expect(announcedProvider.funding).toBeUndefined()
+  })
+})
+
 describe('Provider order-value minimums', () => {
   it('carries minOrderValueUsd to feed validateMargin', () => {
     expect(hyperliquidProvider.minOrderValueUsd).toBe(10)
@@ -609,6 +686,36 @@ describe('Provider.chainId', () => {
   it('admits a provider with no settlement chain', () => {
     expect(providerWithNoDescriptors.chainId).toBeUndefined()
     expect(announcedProvider.chainId).toBeUndefined()
+  })
+})
+
+describe('Provider.depositAssets', () => {
+  it('carries the on-chain deposit tokens the client routes to', () => {
+    expect(hyperliquidProvider.depositAssets?.[0]?.chainId).toBe(42161)
+    expect(hyperliquidProvider.depositAssets?.[0]?.address).toBe(
+      '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+    )
+    expect(hyperliquidProvider.depositAssets?.[0]?.decimals).toBe(6)
+  })
+
+  it('is an ordered list — the first entry is the default', () => {
+    expect(Array.isArray(hyperliquidProvider.depositAssets)).toBe(true)
+    expect(hyperliquidProvider.depositAssets?.[0]).toBe(arbitrumUsdcDeposit)
+  })
+
+  it('is distinct from the category quoteAsset (pricing unit)', () => {
+    expect(hyperliquidProvider.categories[0]?.quoteAsset?.displaySymbol).toBe(
+      'USDC'
+    )
+    expect(hyperliquidProvider.depositAssets?.[0]?.displaySymbol).toBe('USDC')
+    expect(
+      'address' in (hyperliquidProvider.categories[0]?.quoteAsset ?? {})
+    ).toBe(false)
+  })
+
+  it('is optional — a provider may advertise no on-chain deposit token', () => {
+    expect(providerWithNoDescriptors.depositAssets).toBeUndefined()
+    expect(lighterProvider.depositAssets).toBeUndefined()
   })
 })
 

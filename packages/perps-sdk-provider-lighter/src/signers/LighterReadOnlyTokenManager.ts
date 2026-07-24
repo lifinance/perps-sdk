@@ -7,12 +7,11 @@ import {
 import type {
   ApproveReadOnlyTokenParams,
   LighterAccountConfig,
+  LighterProviderKey,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { DEFAULT_LIGHTER_REST_URL } from '../constants.js'
-
-const STORAGE_PREFIX = 'lifi:perps:lighter:rotoken'
+import { DEFAULT_LIGHTER_REST_URL, LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 /**
  * Default token name persisted alongside Lighter's `tokens/create` row.
@@ -73,6 +72,13 @@ export type LighterTokenFetcher = (params: {
 /** @public */
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
+  /**
+   * Provider instance key. Namespaces persisted tokens so two Lighter
+   * instances sharing a storage backend never serve each other's token for a
+   * coincident `(address, accountIndex)` pair, and stamps the `provider` of
+   * the {@link ApproveReadOnlyTokenResult} config. Defaults to `'lighter'`.
+   */
+  providerKey?: LighterProviderKey
   /** Lighter API host. Defaults to {@link DEFAULT_LIGHTER_REST_URL}. */
   lighterApiUrl?: string
   /** Override the multipart POST. Defaults to a `fetch`-based implementation. */
@@ -145,6 +151,7 @@ const isLighterReadOnlyToken = (
  */
 export class LighterReadOnlyTokenManager {
   private readonly storage: StorageAdapter
+  private readonly providerKey: LighterProviderKey
   private readonly lighterApiUrl: string
   private readonly fetcher: LighterTokenFetcher
   private readonly now: () => number
@@ -152,13 +159,14 @@ export class LighterReadOnlyTokenManager {
 
   constructor(options: LighterReadOnlyTokenManagerOptions = {}) {
     this.storage = options.storage ?? localStorageAdapter
+    this.providerKey = options.providerKey ?? LIGHTER_PROVIDER_KEY
     this.lighterApiUrl = options.lighterApiUrl ?? DEFAULT_LIGHTER_REST_URL
     this.fetcher = options.fetcher ?? defaultLighterTokenFetcher
     this.now = options.now ?? (() => Date.now())
   }
 
   private storageKey(address: Address, accountIndex: number): string {
-    return `${STORAGE_PREFIX}:${address.toLowerCase()}:${accountIndex}`
+    return `lifi:perps:${this.providerKey}:rotoken:${address.toLowerCase()}:${accountIndex}`
   }
 
   private isExpired(token: LighterReadOnlyToken): boolean {
@@ -291,7 +299,7 @@ export class LighterReadOnlyTokenManager {
     return {
       token,
       config: {
-        provider: 'lighter',
+        provider: this.providerKey,
         accountIndex: token.accountIndex,
         readOnlyTokenApproved: true,
         readOnlyTokenExpiry: token.expiry,

@@ -22,6 +22,7 @@ export { PerpsError } from './errors/PerpsError.js'
 export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
 export {
   getMarketRegistry,
+  isActiveMarket,
   MarketRegistry,
   toMarketDisplay,
 } from './registry/marketRegistry.js'
@@ -127,6 +128,7 @@ export type {
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
   QuoteListener,
+  SignActionProgress,
   SignActionsContext,
 } from './types/provider.js'
 export {
@@ -157,11 +159,16 @@ export {
   LIFI_DEPOSIT_CHAIN_BY_PROVIDER,
   lifiDepositChainForProvider,
 } from './utils/depositChain.js'
-export { ExplorerChainId, explorerTxUrl } from './utils/explorer.js'
+export {
+  ExplorerChainId,
+  explorerTxUrl,
+  explorerTxUrlFromBase,
+} from './utils/explorer.js'
 export { classifyFillFromPosition } from './utils/fillClassification.js'
-export type { FormatOptions } from './utils/format.js'
+export type { FormatOptions, RoundingMode } from './utils/format.js'
 export {
   formatCompactUsd,
+  formatNumber,
   formatPrice,
   formatSignedPercent,
   formatSignedUsd,
@@ -193,6 +200,7 @@ export {
 } from './utils/positionMath.js'
 export type { ScaleToIntegerPolicy } from './utils/scaleToInteger.js'
 export { scaleToInteger } from './utils/scaleToInteger.js'
+export { selectUserSetupActions } from './utils/setupActions.js'
 export {
   signTypedData,
   signTypedDataWithSigner,

@@ -19,7 +19,6 @@ const tokenFixture = (overrides?: Partial<OndoAuthToken>): OndoAuthToken => ({
   issuedAtSecs: nowSecs() - 60,
   expirationSecs: nowSecs() + 3600,
   token: 'ondo-jwt-token',
-  newAccount: false,
   ...overrides,
 })
 

@@ -4,13 +4,25 @@ import {
   type PerpsSDKClient,
 } from '@lifi/perps-sdk'
 import {
+  ActionType,
   ActivityType,
   LiquidityRole,
   OrderSide,
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LIGHTER_CODE_ACCOUNT_NOT_FOUND } from './constants.js'
+import {
+  DEFAULT_LIGHTER_REST_URL,
+  DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+  DEFAULT_LIGHTER_WS_URL,
+  LIGHTER_CODE_ACCOUNT_NOT_FOUND,
+  LIGHTER_MAINNET_INSTANCE,
+  LIGHTER_PROVIDER_KEY,
+  LIGHTER_RH_PROVIDER_KEY,
+  LIGHTER_RH_REST_URL,
+  LIGHTER_RH_WS_URL,
+  lighterRhInstance,
+} from './constants.js'
 import { lighterProvider } from './LighterProvider.js'
 import { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterSigner } from './signers/LighterSigner.js'
@@ -337,6 +349,39 @@ describe('LighterProvider — `type` field', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     expect(provider.type).toBe('lighter')
+  })
+
+  it('declares SET_REFERRAL as an internal setup action', () => {
+    expect(lighterProvider().internalSetupActions).toContain(
+      ActionType.SET_REFERRAL
+    )
+  })
+})
+
+describe('LighterProvider — keyStore instance scoping', () => {
+  it('injects its resolved providerKey into the supplied keyStore', async () => {
+    const storage = createMemoryStorage()
+    const keyStore = new LighterKeyStore(storage)
+
+    lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+      keyStore,
+    })
+
+    await keyStore.set(ADDRESS, {
+      accountIndex: 7,
+      apiKeyIndex: 1,
+      apiKeyPrivateKey: `0x${'44'.repeat(32)}`,
+      apiKeyPublicKey: `0x${'55'.repeat(32)}`,
+    })
+
+    await expect(
+      storage.get(`lifi-perps-lighter-key:lighter-rh:${ADDRESS.toLowerCase()}`)
+    ).resolves.not.toBeNull()
+    await expect(
+      storage.get(`lifi-perps-lighter-key:${ADDRESS.toLowerCase()}`)
+    ).resolves.toBeNull()
   })
 })
 
@@ -2096,5 +2141,133 @@ describe('LighterProvider — accountExists', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(provider.accountExists({ address: ADDRESS })).rejects.toThrow()
+  })
+})
+
+describe('LighterProvider — instance config', () => {
+  it('LIGHTER_MAINNET_INSTANCE carries the mainnet defaults', () => {
+    expect(LIGHTER_MAINNET_INSTANCE).toEqual({
+      providerKey: LIGHTER_PROVIDER_KEY,
+      restUrl: DEFAULT_LIGHTER_REST_URL,
+      wsUrl: DEFAULT_LIGHTER_WS_URL,
+      signerChainId: DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+      explorerTxBaseUrl: 'https://app.lighter.xyz/explorer/logs/',
+    })
+    expect(DEFAULT_LIGHTER_SIGNER_CHAIN_ID).toBe(304)
+  })
+
+  it('lighterRhInstance builds the RH config from the required signing chain id', () => {
+    // Arbitrary fixture value — the real RH zkLighter L2 chain id is
+    // unconfirmed (and is neither 304 nor 4663; see LighterRhInstanceOverrides).
+    const instance = lighterRhInstance({ signerChainId: 9999 })
+    expect(instance).toEqual({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+      wsUrl: LIGHTER_RH_WS_URL,
+      signerChainId: 9999,
+      explorerTxBaseUrl: undefined,
+    })
+    expect(LIGHTER_RH_REST_URL).toBe('https://api.rh.lighter.xyz')
+    expect(LIGHTER_RH_WS_URL).toBe('wss://api.rh.lighter.xyz/stream')
+  })
+
+  it('a bare `lighterProvider()` still reports `type: lighter` (default unchanged)', () => {
+    expect(lighterProvider().type).toBe('lighter')
+  })
+
+  it('a parametrized instance reports its own `type`', () => {
+    const rh = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+    })
+    expect(rh.type).toBe('lighter-rh')
+  })
+
+  it('two instances read each from its own REST base with its own auth token', async () => {
+    const main = lighterProvider()
+    const rh = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+    })
+    main.bind(STUB_CLIENT)
+    rh.bind(STUB_CLIENT)
+
+    await main.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'main-tok' }
+    )
+    await rh.getAccount({ address: ADDRESS }, { lighterAuthToken: 'rh-tok' })
+
+    const limitsCalls = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    const mainCall = limitsCalls.find((r) =>
+      r.url.startsWith(DEFAULT_LIGHTER_REST_URL)
+    )
+    const rhCall = limitsCalls.find((r) =>
+      r.url.startsWith(LIGHTER_RH_REST_URL)
+    )
+
+    expect(mainCall?.url).toContain('auth=main-tok')
+    expect(rhCall?.url).toContain('auth=rh-tok')
+    // No token leak: the RH host never sees the mainnet token and vice versa.
+    expect(mainCall?.url).not.toContain('rh-tok')
+    expect(rhCall?.url).not.toContain('main-tok')
+  })
+
+  it('namespaces the backend markets fetch by provider key per instance', async () => {
+    const backendUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          backendUrls.push(u)
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          return respond({
+            code: 0,
+            user_tier: 'STANDARD',
+            current_maker_fee_tick: 100,
+            current_taker_fee_tick: 280,
+          })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+
+    // Fresh client so neither instance's market registry is cached from an
+    // earlier test (the registry WeakMap is keyed by the client object).
+    const client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+    const main = lighterProvider()
+    const rh = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+    })
+    main.bind(client)
+    rh.bind(client)
+
+    await main.getAccount({ address: ADDRESS })
+    await rh.getAccount({ address: ADDRESS })
+
+    expect(backendUrls.some((u) => u.endsWith('provider=lighter'))).toBe(true)
+    expect(backendUrls.some((u) => u.endsWith('provider=lighter-rh'))).toBe(
+      true
+    )
   })
 })

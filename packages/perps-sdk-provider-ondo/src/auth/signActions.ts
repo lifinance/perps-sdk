@@ -1,43 +1,145 @@
 import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
 import type {
-  ActionResult,
   ActionStep,
-  RestCallSignedActionStep,
+  HmacActionStep,
+  HmacSignedActionStep,
+  SessionActionStep,
   SignedActionStep,
   SiweActionStep,
 } from '@lifi/perps-types'
-import { PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
+  ONDO_API_KEY_NAME,
+  ONDO_API_KEY_SCOPES,
+  ONDO_PRIVACY_VERSION,
+  ONDO_TERMS_VERSION,
+} from '../constants.js'
+import type { OndoApiKey } from '../types/auth.js'
+import type { OndoCreatedApiKey } from '../types/wire.js'
+import {
   type OndoApiClient,
-  type OndoHttpMethod,
+  OndoApiError,
   OndoSessionExpiredError,
 } from '../utils/apiClient.js'
+import {
+  buildOndoProvisionPayload,
+  listOndoDepositAddress,
+} from '../utils/depositAddress.js'
 import { completeSiweLogin } from './completeSiweLogin.js'
+import { hmacSignRequest } from './hmac.js'
+import { isOndoApiKey, type OndoApiKeyStore } from './OndoApiKeyStore.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 
 /** @internal */
 export interface OndoSignActionsDeps {
   client: OndoApiClient
   tokenStore: OndoTokenStore
+  apiKeyStore: OndoApiKeyStore
 }
 
 const isSiweStep = (step: ActionStep): step is SiweActionStep => 'siwe' in step
+
+const isSessionStep = (step: ActionStep): step is SessionActionStep =>
+  'session' in step
 
 const hasRequest = (
   step: ActionStep
 ): step is Extract<ActionStep, { request: unknown }> => 'request' in step
 
 /**
+ * Map the `POST /v1/api_keys` wire result to the stored domain record. The
+ * venue reveals the HMAC secret as `secretKey`; the store keeps it as
+ * `apiSecret`. Throws {@link OndoApiError} if the mapped record is unusable, so
+ * a future wire drift fails loudly at creation instead of persisting a record
+ * that reads back as evicted.
+ */
+function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
+  const record: OndoApiKey = {
+    keyId: created.keyId,
+    apiSecret: created.secretKey,
+    name: created.name,
+    createdAt: created.createdAt,
+    scopes: created.scopes,
+  }
+  if (!isOndoApiKey(record)) {
+    throw new OndoApiError(
+      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify(created).slice(0, 200)}`
+    )
+  }
+  return record
+}
+
+/**
+ * Fetch the stored trading API key, creating one on first use. Creation is
+ * JWT-authorized (`POST /v1/api_keys`); the returned record — including the
+ * secret the venue reveals only once — is mapped to the domain shape and
+ * stored immediately. An absent session throws {@link OndoSessionExpiredError}
+ * so callers re-run SIWE login.
+ */
+async function ensureApiKey(
+  deps: OndoSignActionsDeps,
+  address: Address
+): Promise<OndoApiKey> {
+  const existing = await deps.apiKeyStore.get(address)
+  if (existing !== null) {
+    return existing
+  }
+  const token = await deps.tokenStore.get(address)
+  if (token === null) {
+    throw new OndoSessionExpiredError(
+      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+    )
+  }
+  const created = await deps.client.post<OndoCreatedApiKey>(
+    '/v1/api_keys',
+    { name: ONDO_API_KEY_NAME, scopes: ONDO_API_KEY_SCOPES },
+    { authToken: token.token }
+  )
+  const apiKey = toStoredApiKey(created)
+  await deps.apiKeyStore.set(address, apiKey)
+  return apiKey
+}
+
+/**
+ * Execute a backend-authored session request directly against the venue with
+ * the stored session JWT. The pre-serialized wire body is parsed back to an
+ * object and re-sent by the client; no signature covers the bytes. An absent
+ * session throws {@link OndoSessionExpiredError} so callers re-run SIWE login.
+ */
+async function executeSessionRequest(
+  deps: OndoSignActionsDeps,
+  address: Address,
+  request: HmacActionStep['request']
+): Promise<void> {
+  const token = await deps.tokenStore.get(address)
+  if (token === null) {
+    throw new OndoSessionExpiredError(
+      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+    )
+  }
+  await deps.client.send(request.method, request.path, {
+    body: request.body === undefined ? undefined : JSON.parse(request.body),
+    headers: { Authorization: `Bearer ${token.token}` },
+  })
+}
+
+/**
  * Ondo's `signActions` arms.
  *
- * `SIWE` signs the backend-built ERC-4361 challenge with the user's wallet
- * and completes the login directly against Ondo — the returned session JWT is
+ * `SIWE` signs the backend-built ERC-4361 challenge with the user's wallet and
+ * completes the login directly against Ondo — the returned session JWT is
  * persisted in the token store and never transits the LI.FI backend.
  *
- * `AUTH_TOKEN` attaches the stored session JWT as an `Authorization: Bearer`
- * header on each REST-call step; an absent or expired token throws
- * {@link OndoSessionExpiredError} so callers re-run the SIWE login.
+ * `SESSION` executes client-only setup steps directly against the venue with
+ * the stored session token. A backend-authored request-bearing step is
+ * dispatched as-is; a bare marker step is keyed on its action. Returns no
+ * signed steps, so `executeAction` is skipped.
+ *
+ * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
+ * from the client-held API key (creating one on first use), attaching the
+ * `hmac` material. The signed step rides the normal `executeAction` path; the
+ * API secret itself never leaves the client.
  *
  * @public
  */
@@ -77,84 +179,108 @@ export async function ondoSignActions(
       return signed
     }
 
-    case SigningMethod.AUTH_TOKEN: {
-      const token = await deps.tokenStore.get(address)
-      if (token === null) {
-        throw new OndoSessionExpiredError(
-          `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-        )
-      }
-      return steps.map((step): RestCallSignedActionStep => {
-        if (!hasRequest(step)) {
+    case SigningMethod.HMAC: {
+      const apiKey = await ensureApiKey(deps, address)
+      return Promise.all(
+        steps.map(async (step): Promise<HmacSignedActionStep> => {
+          if (!hasRequest(step)) {
+            throw new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo received a step without a request ('${step.action}') under the hmac signing method.`
+            )
+          }
+          // Stamped immediately before executeAction; Ondo enforces a 30s window.
+          const timestampMs = Date.now()
+          const signature = await hmacSignRequest(apiKey.apiSecret, {
+            timestampMs,
+            method: step.request.method,
+            pathWithQuery: step.request.path,
+            body: step.request.body,
+          })
+          return {
+            action: step.action,
+            request: step.request,
+            hmac: {
+              keyId: apiKey.keyId,
+              timestampMs,
+              signature,
+            },
+          }
+        })
+      )
+    }
+
+    case SigningMethod.SESSION: {
+      for (const step of steps) {
+        if (hasRequest(step)) {
+          await executeSessionRequest(deps, address, step.request)
+          continue
+        }
+        if (!isSessionStep(step)) {
           throw new PerpsError(
             PerpsErrorCode.SDKError,
-            `Ondo received a non-REST step ('${step.action}') under the AUTH_TOKEN signing method.`
+            `Ondo received a non-session step ('${step.action}') under the session signing method.`
           )
         }
-        return {
-          action: step.action,
-          request: step.request,
-          headers: { Authorization: `Bearer ${token.token}` },
+        switch (step.action) {
+          case ActionType.CREATE_DEPOSIT_ADDRESS: {
+            const token = await deps.tokenStore.get(address)
+            if (token === null) {
+              throw new OndoSessionExpiredError(
+                `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+              )
+            }
+            const account = await deps.client.get<{ accountID?: unknown }>(
+              '/v1/account',
+              { authToken: token.token }
+            )
+            const payload = buildOndoProvisionPayload(
+              step.session,
+              typeof account.accountID === 'string' ? account.accountID : ''
+            )
+            await deps.client.post('/v1/provision_address', payload, {
+              authToken: token.token,
+            })
+            // Re-query to validate that Ondo can read the provisioned address;
+            // getAccount performs the authoritative state refresh afterward.
+            await listOndoDepositAddress(deps.client, token.token)
+            break
+          }
+
+          case ActionType.ACCEPT_PROVIDER_TERMS: {
+            const token = await deps.tokenStore.get(address)
+            if (token === null) {
+              throw new OndoSessionExpiredError(
+                `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+              )
+            }
+            await deps.client.post(
+              '/v1/agreement',
+              {
+                termsVersion: ONDO_TERMS_VERSION,
+                privacyVersion: ONDO_PRIVACY_VERSION,
+              },
+              { authToken: token.token }
+            )
+            break
+          }
+          case ActionType.REGISTER_API_KEY:
+            await ensureApiKey(deps, address)
+            break
+          default:
+            throw new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo has no session-step executor for action '${step.action}'.`
+            )
         }
-      })
+      }
+      return []
     }
 
     default:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Ondo does not sign via '${method}'. Supported methods: siwe, authToken.`
+        `Ondo does not sign via '${method}'. Supported methods: siwe, hmac, session.`
       )
   }
-}
-
-/**
- * Execute credential-bearing REST-call steps directly against Ondo,
- * sequentially — later steps in a batch may depend on earlier ones (e.g.
- * leverage update before order placement), so after the first failure the
- * remainder is skipped rather than executed out of order.
- *
- * @public
- */
-export async function executeOndoRestCallActions(
-  client: OndoApiClient,
-  steps: RestCallSignedActionStep[]
-): Promise<ActionResult[]> {
-  const results: ActionResult[] = []
-  let failed = false
-  for (const step of steps) {
-    if (failed) {
-      results.push({
-        action: step.action,
-        success: false,
-        error: 'Skipped: a preceding step in the batch failed.',
-      })
-      continue
-    }
-    try {
-      const result = await client.send<unknown>(
-        step.request.method as OndoHttpMethod,
-        step.request.path,
-        { body: step.request.body, headers: step.headers }
-      )
-      const orderId =
-        typeof result === 'object' &&
-        result !== null &&
-        typeof (result as { orderId?: unknown }).orderId === 'string'
-          ? (result as { orderId: string }).orderId
-          : undefined
-      results.push({
-        action: step.action,
-        success: true,
-        ...(orderId === undefined ? {} : { orderId }),
-      })
-    } catch (err) {
-      failed = true
-      results.push({
-        action: step.action,
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-  return results
 }

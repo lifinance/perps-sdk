@@ -37,26 +37,26 @@ import type {
   PositionsResponse,
   ProviderAction,
   Quote,
-  RestCallSignedActionStep,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
+import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
-import {
-  executeOndoRestCallActions,
-  ondoSignActions,
-} from './auth/signActions.js'
+import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
   ONDO_BASE_FEE_TIER,
+  ONDO_PRIVACY_VERSION,
   ONDO_PROVIDER_KEY,
+  ONDO_TERMS_VERSION,
 } from './constants.js'
 import type { OndoAuthToken } from './types/auth.js'
 import type {
+  OndoAccountInfo,
   OndoAccountReferral,
   OndoBalanceSummary,
   OndoFill,
@@ -82,6 +82,7 @@ import {
   estimateLiquidationPrice,
   formatOrderPrice,
   formatOrderSize,
+  listOndoDepositAddress,
   mapFill,
   mapFundingActivity,
   mapLiquidationActivity,
@@ -140,10 +141,9 @@ export const ondoProvider = (
   }
 
   const apiUrl = options.apiUrl ?? DEFAULT_ONDO_API_URL
-  const tokenStore = new OndoTokenStore(
-    options.storage ?? localStorageAdapter,
-    apiUrl
-  )
+  const storage = options.storage ?? localStorageAdapter
+  const tokenStore = new OndoTokenStore(storage, apiUrl)
+  const apiKeyStore = new OndoApiKeyStore(storage, apiUrl)
 
   const apiClient = (opts?: SDKRequestOptions): OndoApiClient => {
     const client = requireClient()
@@ -167,7 +167,10 @@ export const ondoProvider = (
   const emptyConfig: OndoAccountConfig = {
     provider: ONDO_PROVIDER_KEY,
     loggedIn: false,
+    termsAccepted: false,
+    apiKeyRegistered: false,
     referralSet: false,
+    depositAddress: null,
   }
 
   const loggedOutAccount = (address: Address): AccountResponse => ({
@@ -209,6 +212,8 @@ export const ondoProvider = (
   return {
     type: ONDO_PROVIDER_KEY,
 
+    internalSetupActions: [ActionType.SET_REFERRAL],
+
     bind(client: PerpsSDKClient): void {
       boundClient = client
     },
@@ -217,23 +222,35 @@ export const ondoProvider = (
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
+      const apiKeyRegistered = (await apiKeyStore.get(params.address)) !== null
       return withSession(
         params.address,
-        () => loggedOutAccount(params.address),
+        () => {
+          const account = loggedOutAccount(params.address)
+          return {
+            ...account,
+            config: { ...emptyConfig, apiKeyRegistered },
+          }
+        },
         async (token) => {
           const client = apiClient(opts)
-          const [balance, rawPositions, referral] = await Promise.all([
-            client.get<OndoBalanceSummary>('/v1/perps/balance', {
-              authToken: token.token,
-            }),
-            client.get<OndoPosition[]>('/v1/perps/positions', {
-              authToken: token.token,
-            }),
-            client.get<OndoAccountReferral | null>('/v1/account/referral', {
-              authToken: token.token,
-            }),
-            marketRegistry().sync(),
-          ])
+          const [balance, rawPositions, referral, account, depositAddress] =
+            await Promise.all([
+              client.get<OndoBalanceSummary>('/v1/perps/balance', {
+                authToken: token.token,
+              }),
+              client.get<OndoPosition[]>('/v1/perps/positions', {
+                authToken: token.token,
+              }),
+              client.get<OndoAccountReferral | null>('/v1/account/referral', {
+                authToken: token.token,
+              }),
+              client.get<OndoAccountInfo>('/v1/account', {
+                authToken: token.token,
+              }),
+              listOndoDepositAddress(client, token.token),
+              marketRegistry().sync(),
+            ])
 
           const positions: Position[] = mapOpenPositions(
             rawPositions,
@@ -262,7 +279,12 @@ export const ondoProvider = (
               provider: ONDO_PROVIDER_KEY,
               loggedIn: true,
               authTokenExpiry: token.expirationSecs,
+              termsAccepted:
+                account.termsVersion === ONDO_TERMS_VERSION &&
+                account.privacyVersion === ONDO_PRIVACY_VERSION,
+              apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
+              depositAddress,
             },
           }
         }
@@ -602,27 +624,42 @@ export const ondoProvider = (
       return projectOndoConfigSettings(config, setup, configOptions)
     },
 
-    signActions(
+    async signActions(
       method: SigningMethod,
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
-      return ondoSignActions(
-        { client: apiClient(), tokenStore },
-        method,
-        steps,
-        address,
-        ctx
-      )
+      try {
+        return await ondoSignActions(
+          { client: apiClient(), tokenStore, apiKeyStore },
+          method,
+          steps,
+          address,
+          ctx
+        )
+      } catch (err) {
+        if (err instanceof OndoSessionExpiredError) {
+          await tokenStore.remove(address)
+        }
+        throw err
+      }
     },
 
-    executeRestCallActions(
-      steps: RestCallSignedActionStep[],
-      _address: Address,
-      opts?: SDKRequestOptions
-    ): Promise<ActionResult[]> {
-      return executeOndoRestCallActions(apiClient(opts), steps)
+    // The venue rejecting an HMAC-signed request with Unauthorized means the
+    // locally stored API key is dead (deleted or descoped venue-side); evict
+    // it so REGISTER_API_KEY re-stages instead of every action failing.
+    async onExecuteResults(
+      address: Address,
+      results: ActionResult[]
+    ): Promise<void> {
+      const unauthorized = results.some(
+        (result) =>
+          !result.success && result.errorCode === PerpsErrorCode.Unauthorized
+      )
+      if (unauthorized) {
+        await apiKeyStore.remove(address)
+      }
     },
   }
 }

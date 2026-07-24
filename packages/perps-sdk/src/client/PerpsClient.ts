@@ -2,6 +2,7 @@ import type {
   AccountResponse,
   AccountSummary,
   ActionParamsMap,
+  ActionResult,
   ActionStep,
   CreateActionResponse,
   ExecuteActionResponse,
@@ -9,10 +10,14 @@ import type {
   Position,
   Provider,
   ProviderAction,
-  RestCallSignedActionStep,
   SignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createAction } from '../services/createAction.js'
@@ -39,13 +44,13 @@ import type {
   ActionSignerContribution,
   PerpsProvider,
   PerpsSDKClient,
+  SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
 import {
   switchSigningChain,
   userEip712TargetChainId,
 } from '../utils/switchChain.js'
-import { clientLog } from './clientLog.js'
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
@@ -196,7 +201,8 @@ export class PerpsClient {
     provider: string,
     address: Address,
     descriptor: ProviderAction,
-    actions: ActionStep[]
+    actions: ActionStep[],
+    onProgress?: (progress: SignActionProgress) => void
   ): Promise<SignedActionStep[]> {
     const plugin = this.requireProvider(provider)
     if (typeof plugin.signActions !== 'function') {
@@ -211,8 +217,24 @@ export class PerpsClient {
       descriptor.signingMethod,
       actions,
       address,
-      this.buildSignActionsContext(descriptor, userWallet)
+      this.buildSignActionsContext(descriptor, userWallet, onProgress)
     )
+  }
+
+  /**
+   * Let the plugin observe `/executeAction` per-step results before the core
+   * surfaces failures — e.g. to evict a locally stored credential the venue
+   * rejected.
+   */
+  private async notifyExecuteResults(
+    provider: string,
+    address: Address,
+    results: ActionResult[]
+  ): Promise<void> {
+    const plugin = this.requireProvider(provider)
+    if (typeof plugin.onExecuteResults === 'function') {
+      await plugin.onExecuteResults(address, results)
+    }
   }
 
   /**
@@ -256,9 +278,13 @@ export class PerpsClient {
    */
   private buildSignActionsContext(
     descriptor: ProviderAction,
-    userWallet?: PerpsClientSigner
+    userWallet?: PerpsClientSigner,
+    onProgress?: (progress: SignActionProgress) => void
   ): SignActionsContext {
     const ctx: SignActionsContext = { signers: descriptor.signers }
+    if (onProgress !== undefined) {
+      ctx.onProgress = onProgress
+    }
     const wallet = userWallet ?? this.sdkClient.userWallet
     if (wallet !== undefined) {
       ctx.userWallet = wallet
@@ -399,16 +425,42 @@ export class PerpsClient {
   async checkSetup(params: GetSetupParams): Promise<ProviderSetup> {
     const { provider, address } = params
 
+    const metadata = await this.getProviderMetadata(provider)
+    const hasSiweSetup = metadata.setup.some(
+      (descriptor) => descriptor.signingMethod === SigningMethod.SIWE
+    )
+
     // Gate on existence first: an unfunded account has no setup, so short-circuit
     // before any createAction round-trip and let the consumer prompt a deposit.
-    if (!(await this.accountExists(provider, address))) {
+    //
+    // SIWE-first providers (Ondo) are the exception: they cannot reliably probe
+    // account existence before the user signs in, so setup must still stage.
+    if (!hasSiweSetup && !(await this.accountExists(provider, address))) {
       return { accountExists: false, setup: [], isReady: false }
     }
+
+    const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
+    const pendingSetup = metadata.setup.filter(
+      (descriptor) => !satisfiedSetup.has(descriptor.type)
+    )
+
+    const hiddenSetup = await this.resolveInternalSetup(
+      provider,
+      address,
+      pendingSetup
+    )
+    const visibleSetup = pendingSetup.filter(
+      (descriptor) => !hiddenSetup.has(descriptor.type)
+    )
 
     // The backend filters already-satisfied setup actions and returns typed
     // data for those still outstanding; each plugin contributes its own
     // signer-bearing request fields.
-    const { actions } = await this.buildProviderSetup({ provider, address })
+    const actions = await this.buildProviderSetupActions(
+      provider,
+      address,
+      visibleSetup
+    )
 
     return {
       accountExists: true,
@@ -418,23 +470,109 @@ export class PerpsClient {
   }
 
   /**
-   * Build the unsigned setup `ActionStep`s still outstanding for an account,
-   * ordered by descriptor `sequence`. The backend filters already-satisfied
-   * setup; each plugin contributes its own signer-bearing request fields and
-   * any local-state params (e.g. Lighter's known pubkey).
-   *
-   * @public
+   * Resolve setup descriptors already satisfied from the provider's own typed
+   * account config projection. This catches client-held auth state (e.g. Ondo
+   * SIWE/JWT) that the backend cannot observe.
    */
-  async buildProviderSetup(
-    params: BuildProviderSetupParams
-  ): Promise<CreateActionResponse> {
-    const { provider, address } = params
-
+  private async resolveSatisfiedSetup(
+    provider: string,
+    address: Address
+  ): Promise<Set<ActionType>> {
     const metadata = await this.getProviderMetadata(provider)
-    const orderedSetup = [...metadata.setup].sort(
+    const plugin = this.sdkClient.getProvider(provider)
+    if (!plugin || typeof plugin.getAccount !== 'function') {
+      return new Set()
+    }
+    const account = await plugin.getAccount({ address })
+    const settings = plugin.projectConfig(
+      account.config,
+      metadata.setup,
+      metadata.options
+    )
+    const setupTypes = new Set(
+      metadata.setup.map((descriptor) => descriptor.type)
+    )
+    return new Set(
+      settings
+        .filter((setting) => setting.satisfied && setupTypes.has(setting.type))
+        .map((setting) => setting.type)
+    )
+  }
+
+  /**
+   * Drain the pending setup steps the provider declares as internal via
+   * `PerpsProviderPlugin.internalSetupActions`, returning the set of action
+   * types to omit from the caller-facing setup list. Each such step is built,
+   * signed, and executed in place with the provider's own credentials. A
+   * descriptor whose `signers` include {@link PerpsSigner.USER} is left to
+   * render as a normal step. A drain failure is swallowed so it never blocks
+   * setup — the step stays unsatisfied and is retried on a later `checkSetup`.
+   */
+  private async resolveInternalSetup(
+    provider: string,
+    address: Address,
+    pending: ProviderAction[]
+  ): Promise<Set<ActionType>> {
+    const plugin = this.sdkClient.getProvider(provider)
+    const internal = plugin?.internalSetupActions
+    if (!internal || internal.length === 0) {
+      return new Set()
+    }
+    const internalTypes = new Set(internal)
+    const hidden = new Set<ActionType>()
+    for (const descriptor of pending) {
+      if (
+        !internalTypes.has(descriptor.type) ||
+        descriptor.signers.includes(PerpsSigner.USER)
+      ) {
+        continue
+      }
+      hidden.add(descriptor.type)
+      try {
+        const steps = await this.buildProviderSetupActions(provider, address, [
+          descriptor,
+        ])
+        for (const step of steps) {
+          const signed = await this.signProviderSetupAction(
+            provider,
+            address,
+            step
+          )
+          if (signed !== undefined) {
+            await this.executeProviderSetup({
+              provider,
+              address,
+              setup: [step],
+              signedActions: [signed],
+            })
+          }
+        }
+      } catch (error) {
+        console.debug(
+          `[perps-sdk] internal setup step '${descriptor.type}' for '${provider}' did not complete; will retry on the next checkSetup.`,
+          error
+        )
+      }
+    }
+    return hidden
+  }
+
+  /**
+   * Build unsigned setup steps for the supplied descriptor subset, preserving
+   * provider sequence order with SIWE descriptors prioritized.
+   */
+  private async buildProviderSetupActions(
+    provider: string,
+    address: Address,
+    descriptors: ProviderAction[]
+  ): Promise<ActionStep[]> {
+    const setupPriority = (descriptor: ProviderAction): number =>
+      descriptor.signingMethod === SigningMethod.SIWE ? 0 : 1
+    const orderedSetup = [...descriptors].sort(
       (a, b) =>
+        setupPriority(a) - setupPriority(b) ||
         (a.sequence ?? Number.MAX_SAFE_INTEGER) -
-        (b.sequence ?? Number.MAX_SAFE_INTEGER)
+          (b.sequence ?? Number.MAX_SAFE_INTEGER)
     )
 
     const plugin = this.sdkClient.getProvider(provider)
@@ -459,7 +597,29 @@ export class PerpsClient {
       allActions.push(...actions)
     }
 
-    return { actions: allActions }
+    return allActions
+  }
+
+  /**
+   * Build the unsigned setup `ActionStep`s still outstanding for an account,
+   * ordered by descriptor `sequence`. The backend filters already-satisfied
+   * setup; each plugin contributes its own signer-bearing request fields and
+   * any local-state params (e.g. Lighter's known pubkey).
+   *
+   * @public
+   */
+  async buildProviderSetup(
+    params: BuildProviderSetupParams
+  ): Promise<CreateActionResponse> {
+    const { provider, address } = params
+
+    const metadata = await this.getProviderMetadata(provider)
+    const actions = await this.buildProviderSetupActions(
+      provider,
+      address,
+      metadata.setup
+    )
+    return { actions }
   }
 
   /**
@@ -495,6 +655,8 @@ export class PerpsClient {
       action,
       actions: signedActions,
     })
+
+    await this.notifyExecuteResults(provider, address, results.results)
 
     const failure = results.results.find((r) => !r.success)
     if (failure) {
@@ -734,8 +896,11 @@ export class PerpsClient {
     address: Address
     action: T
     params: ActionParamsMap[T]
+    /** Progress sink for on-chain legs (e.g. a native deposit's approve then
+     * deposit); called as each leg is submitted and confirmed. */
+    onProgress?: (progress: SignActionProgress) => void
   }): Promise<ExecuteActionResponse> {
-    const { provider, address, action } = params
+    const { provider, address, action, onProgress } = params
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = findActionDescriptor(metadata, action)
 
@@ -757,18 +922,9 @@ export class PerpsClient {
       provider,
       address,
       descriptor,
-      actions
+      actions,
+      onProgress
     )
-
-    if (descriptor.signingMethod === SigningMethod.AUTH_TOKEN) {
-      return this.executeAuthTokenActions(
-        provider,
-        address,
-        signerAddress ?? address,
-        action,
-        signedActions
-      )
-    }
 
     // A plugin may execute an action entirely client-side (e.g. Lighter's
     // token-authenticated venue mutations), leaving no backend-bound step. With
@@ -777,7 +933,7 @@ export class PerpsClient {
       return { results: [] }
     }
 
-    return executeAction(this.sdkClient, {
+    const response = await executeAction(this.sdkClient, {
       provider,
       address,
       // The submitting account: the plugin-resolved signer (Hyperliquid's
@@ -786,64 +942,9 @@ export class PerpsClient {
       action,
       actions: signedActions,
     })
-  }
 
-  /**
-   * The `AUTH_TOKEN` arm of {@link execute}: the venue call runs client-side
-   * via the plugin's `executeRestCallActions` because the credential headers
-   * must never transit the LI.FI backend. The venue's results are what the
-   * caller gets; the backend `executeAction` submission that follows is
-   * bookkeeping only, sent with `headers` stripped.
-   */
-  private async executeAuthTokenActions(
-    provider: string,
-    address: Address,
-    signerAddress: Address,
-    action: ActionType,
-    signedActions: SignedActionStep[]
-  ): Promise<ExecuteActionResponse> {
-    const plugin = this.requireProvider(provider)
-    if (typeof plugin.executeRestCallActions !== 'function') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider '${provider}' does not implement executeRestCallActions ` +
-          `for signingMethod 'authToken'.`
-      )
-    }
+    await this.notifyExecuteResults(provider, address, response.results)
 
-    const restCallSteps = signedActions.map(
-      (step): RestCallSignedActionStep => {
-        if (!('request' in step) || !('headers' in step)) {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            `Provider '${provider}' signed action '${step.action}' with a ` +
-              `non-rest-call step for signingMethod 'authToken'.`
-          )
-        }
-        return step
-      }
-    )
-
-    const results = await plugin.executeRestCallActions(restCallSteps, address)
-
-    try {
-      await executeAction(this.sdkClient, {
-        provider,
-        address,
-        signerAddress,
-        action,
-        actions: restCallSteps.map((step) => ({
-          action: step.action,
-          request: step.request,
-          headers: {},
-        })),
-      })
-    } catch (error) {
-      // The venue call already succeeded above — a failed bookkeeping
-      // submission must not mask a landed order, so it is logged, not thrown.
-      clientLog.bookkeepingFailure(provider, error)
-    }
-
-    return { results }
+    return response
   }
 }
