@@ -3184,7 +3184,7 @@ describe('HyperliquidWsProvider', () => {
       warnSpy.mockRestore()
     })
 
-    it('skips an unknown market id and refreshes the registry once', async () => {
+    it('skips an unknown market id without refetching the registry', async () => {
       marketsFetchMock.mockReset()
       marketsFetchMock.mockResolvedValue({ markets: HL_MARKETS })
       const provider = new HyperliquidWsProvider(
@@ -3209,7 +3209,7 @@ describe('HyperliquidWsProvider', () => {
       await flushMicrotasks()
       getMockRwsInstance().simulateMessage(frame)
 
-      expect(marketsFetchMock).toHaveBeenCalledTimes(2)
+      expect(marketsFetchMock).toHaveBeenCalledTimes(1)
       expect(listener).toHaveBeenCalledTimes(2)
       expect(
         listener.mock.calls[0][0].data.map((p: any) => p.market.id)

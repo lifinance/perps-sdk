@@ -70,15 +70,13 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
     return market
   }
 
-  protected fetchItems(bypassHttpCache: boolean): Promise<Market[]> {
+  protected fetchItems(): Promise<Market[]> {
     const url = buildUrl(`${this.client.config.apiUrl}/markets`, {
       provider: this.provider,
     })
-    return request<MarketsResponse>(
-      this.client.config,
-      url,
-      bypassHttpCache ? { cache: 'no-cache' } : {}
-    ).then((response) => response.markets)
+    return request<MarketsResponse>(this.client.config, url).then(
+      (response) => response.markets
+    )
   }
 
   protected keyOf(market: Market): string {

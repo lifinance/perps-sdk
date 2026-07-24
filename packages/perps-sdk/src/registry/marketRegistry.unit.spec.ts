@@ -35,7 +35,7 @@ const market = (id: string, categoryId: string): Market => ({
 
 const BTC = market('BTC', 'hyperliquid')
 const BRENT = market('xyz:BRENTOIL', 'xyz')
-const SPOT = market('@123', 'spot')
+
 const DELISTED = { ...market('DELISTED', 'hyperliquid'), isDelisted: true }
 
 /** Serve `responses` in order, recording each request's cache mode. */
@@ -85,24 +85,6 @@ describe('MarketRegistry', () => {
     expect(requests).toHaveLength(1)
   })
 
-  it('refreshes a stale snapshot when a newly listed spot ID is missing', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const requests = serveMarkets([
-      { markets: [BTC] },
-      { markets: [BTC, SPOT] },
-    ])
-    const registry = getMarketRegistry(freshClient(), 'hyperliquid')
-
-    await registry.sync()
-    expect(registry.get('@123')).toBeUndefined()
-
-    await vi.waitFor(() => {
-      expect(registry.get('@123')).toEqual(SPOT)
-    })
-    expect(requests).toHaveLength(2)
-    expect(requests[1].cache).toBe('no-cache')
-  })
-
   it('refetches on each non-concurrent sync, leaving freshness to the HTTP layer', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const requests = serveMarkets([
@@ -115,7 +97,7 @@ describe('MarketRegistry', () => {
     expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
     await registry.sync()
 
-    expect(requests).toHaveLength(3)
+    expect(requests).toHaveLength(2)
     expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
   })
 
@@ -131,7 +113,7 @@ describe('MarketRegistry', () => {
     expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
 
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(requests).toHaveLength(3)
+    expect(requests).toHaveLength(2)
   })
 
   it('resolves known delisted markets for history but rejects them for active use', async () => {

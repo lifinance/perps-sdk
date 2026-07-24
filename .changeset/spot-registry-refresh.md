@@ -2,4 +2,4 @@
 '@lifi/perps-sdk': patch
 ---
 
-Refresh reference-data registries on cache misses so newly listed markets bypass stale HTTP caches without replaying persistent unknown-ID warnings.
+Keep unknown reference-data warnings deduplicated across registry syncs so repeated account refreshes do not replay persistent unsupported IDs.
