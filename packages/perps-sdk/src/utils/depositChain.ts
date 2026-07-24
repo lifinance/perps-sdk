@@ -22,6 +22,7 @@ export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Partial<
 > = {
   hyperliquid: ChainId.HPL,
   lighter: ChainId.LTR,
+  'lighter-rh': ChainId.OUT,
 }
 
 /**

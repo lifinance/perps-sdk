@@ -14,10 +14,16 @@ describe('LIFI_DEPOSIT_CHAIN_BY_PROVIDER', () => {
     expect(LIFI_DEPOSIT_CHAIN_BY_PROVIDER.lighter).toBe(ChainId.LTR)
   })
 
+  it('maps lighter-rh to the LI.FI Robinhood Chain', () => {
+    expect(ChainId.OUT).toBeDefined()
+    expect(LIFI_DEPOSIT_CHAIN_BY_PROVIDER['lighter-rh']).toBe(ChainId.OUT)
+  })
+
   it('covers exactly the declared providers', () => {
     expect(Object.keys(LIFI_DEPOSIT_CHAIN_BY_PROVIDER).sort()).toEqual([
       'hyperliquid',
       'lighter',
+      'lighter-rh',
     ])
   })
 })
@@ -26,6 +32,7 @@ describe('lifiDepositChainForProvider', () => {
   it('resolves known provider keys', () => {
     expect(lifiDepositChainForProvider('hyperliquid')).toBe(ChainId.HPL)
     expect(lifiDepositChainForProvider('lighter')).toBe(ChainId.LTR)
+    expect(lifiDepositChainForProvider('lighter-rh')).toBe(ChainId.OUT)
   })
 
   it('returns undefined for an unknown provider key', () => {
