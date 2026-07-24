@@ -144,6 +144,7 @@ function projectLighterDescriptor(
     case ActionType.SIWE_LOGIN:
     case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.DEPOSIT:
+    case ActionType.CREATE_DEPOSIT_ADDRESS:
     case ActionType.META_VOTE:
     case ActionType.META_ACCEPT_TERMS:
       throw new PerpsError(

@@ -4,6 +4,8 @@ import type {
   ActionParamsMap,
   ActionStep,
   CreateActionResponse,
+  DepositAsset,
+  DepositMethod,
   ExecuteActionResponse,
   MarketRef,
   Position,
@@ -384,6 +386,24 @@ export class PerpsClient {
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
     return this.requireProvider(provider).accountExists({ address })
+  }
+
+  /**
+   * Resolve provider-owned funding methods for a wallet address and source
+   * asset. Providers that do not implement discovery return an empty list.
+   *
+   * @public
+   */
+  async getProviderDepositMethods(
+    provider: string,
+    address: Address,
+    sourceAsset: DepositAsset
+  ): Promise<DepositMethod[]> {
+    const plugin = this.requireProvider(provider)
+    if (typeof plugin.getDepositMethods !== 'function') {
+      return []
+    }
+    return plugin.getDepositMethods({ address, sourceAsset })
   }
 
   /**

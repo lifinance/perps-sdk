@@ -1,5 +1,6 @@
 import {
   type ActionSignerContribution,
+  type DepositMethod,
   type LiquidationEstimateParams,
   PerpsError,
   PerpsErrorMessage,
@@ -8,6 +9,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositMethodsParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -26,6 +28,7 @@ import {
   type ActionStep,
   ActionType,
   type ActivitiesResponse,
+  DepositMethodKind,
   type FillsResponse,
   type Market,
   type Order,
@@ -276,6 +279,39 @@ export function hyperliquidProvider(
         opts
       ),
 
+    async getDepositMethods({
+      address,
+      sourceAsset,
+    }: ProviderGetDepositMethodsParams): Promise<DepositMethod[]> {
+      const exists = await this.accountExists({ address })
+      const isArbitrumUsdc =
+        sourceAsset.chainId === 42161 &&
+        sourceAsset.address.toLowerCase() ===
+          '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'.toLowerCase()
+      if (isArbitrumUsdc) {
+        return [
+          {
+            kind: DepositMethodKind.PROVIDER_BRIDGE,
+            accountState: exists ? 'existing' : 'missing',
+            sourceAsset,
+            destinationAsset: sourceAsset,
+          },
+        ]
+      }
+      return [
+        {
+          kind: DepositMethodKind.LIFI_ROUTE,
+          accountState: exists ? 'existing' : 'missing',
+          sourceAsset,
+          destinationAsset: {
+            chainId: 42161,
+            address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+            symbol: 'USDC',
+            decimals: 6,
+          },
+        },
+      ]
+    },
     getOrders: (
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions

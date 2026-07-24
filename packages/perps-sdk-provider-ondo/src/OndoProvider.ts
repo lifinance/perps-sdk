@@ -1,4 +1,5 @@
 import {
+  type DepositMethod,
   getMarketRegistry,
   localStorageAdapter,
   PerpsError,
@@ -7,6 +8,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositMethodsParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -41,7 +43,11 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActivityType,
+  DepositMethodKind,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -222,18 +228,23 @@ export const ondoProvider = (
         () => loggedOutAccount(params.address),
         async (token) => {
           const client = apiClient(opts)
-          const [balance, rawPositions, referral] = await Promise.all([
-            client.get<OndoBalanceSummary>('/v1/perps/balance', {
-              authToken: token.token,
-            }),
-            client.get<OndoPosition[]>('/v1/perps/positions', {
-              authToken: token.token,
-            }),
-            client.get<OndoAccountReferral | null>('/v1/account/referral', {
-              authToken: token.token,
-            }),
-            marketRegistry().sync(),
-          ])
+          const [balance, rawPositions, referral, accountInfo] =
+            await Promise.all([
+              client.get<OndoBalanceSummary>('/v1/perps/balance', {
+                authToken: token.token,
+              }),
+              client.get<OndoPosition[]>('/v1/perps/positions', {
+                authToken: token.token,
+              }),
+              client.get<OndoAccountReferral | null>('/v1/account/referral', {
+                authToken: token.token,
+              }),
+              client.get<{
+                depositAddress?: Address
+                deposit_address?: Address
+              }>('/v1/account', { authToken: token.token }),
+              marketRegistry().sync(),
+            ])
 
           const positions: Position[] = mapOpenPositions(
             rawPositions,
@@ -263,6 +274,12 @@ export const ondoProvider = (
               loggedIn: true,
               authTokenExpiry: token.expirationSecs,
               referralSet: referral !== null && referral !== undefined,
+              ...((accountInfo.depositAddress ?? accountInfo.deposit_address)
+                ? {
+                    depositAddress:
+                      accountInfo.depositAddress ?? accountInfo.deposit_address,
+                  }
+                : {}),
             },
           }
         }
@@ -279,6 +296,65 @@ export const ondoProvider = (
         async (token) => {
           await apiClient(opts).get('/v1/account', { authToken: token.token })
           return true
+        }
+      )
+    },
+
+    async getDepositMethods({
+      address,
+      sourceAsset,
+    }: ProviderGetDepositMethodsParams): Promise<DepositMethod[]> {
+      return withSession(
+        address,
+        () => [],
+        async (token) => {
+          const account = await apiClient().get<{
+            depositAddress?: Address
+            deposit_address?: Address
+          }>('/v1/account', { authToken: token.token })
+          const recipient = account.depositAddress ?? account.deposit_address
+          if (recipient === undefined) {
+            return []
+          }
+          const ethereumUsdc = {
+            chainId: 1,
+            address:
+              '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' as `0x${string}`,
+            symbol: 'USDC',
+            decimals: 6,
+          }
+          const ethereumGas = {
+            chainId: 1,
+            address:
+              '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as `0x${string}`,
+            symbol: 'ETH',
+            decimals: 18,
+          }
+          const isEthereumUsdc =
+            sourceAsset.chainId === ethereumUsdc.chainId &&
+            sourceAsset.address.toLowerCase() ===
+              ethereumUsdc.address.toLowerCase()
+          if (isEthereumUsdc) {
+            return [
+              {
+                kind: DepositMethodKind.RAW_TRANSFER,
+                accountState: 'existing',
+                sourceAsset,
+                destinationAsset: ethereumUsdc,
+                recipient,
+                prerequisites: [{ asset: ethereumGas, kind: 'gas' }],
+              },
+            ]
+          }
+          return [
+            {
+              kind: DepositMethodKind.LIFI_ROUTE,
+              accountState: 'existing',
+              sourceAsset,
+              destinationAsset: ethereumUsdc,
+              recipient,
+            },
+          ]
         }
       )
     },

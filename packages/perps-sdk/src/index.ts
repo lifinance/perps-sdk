@@ -121,6 +121,7 @@ export type {
   ProviderAccountExistsParams,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
+  ProviderGetDepositMethodsParams,
   ProviderGetFillsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,

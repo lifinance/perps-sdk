@@ -1,4 +1,5 @@
 import {
+  type DepositMethod,
   ExplorerChainId,
   explorerTxUrl,
   getAssetRegistry,
@@ -10,6 +11,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositMethodsParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -40,7 +42,12 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  ActivityType,
+  DepositMethodKind,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -816,6 +823,65 @@ export const lighterProvider = (
         }
         throw err
       }
+    },
+
+    async getDepositMethods({
+      address,
+      sourceAsset,
+    }: ProviderGetDepositMethodsParams): Promise<DepositMethod[]> {
+      const exists = await this.accountExists({ address })
+      const ethereumUsdc = {
+        chainId: 1,
+        address: '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' as `0x${string}`,
+        symbol: 'USDC',
+        decimals: 6,
+      }
+      const ethereumGas = {
+        chainId: 1,
+        address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as `0x${string}`,
+        symbol: 'ETH',
+        decimals: 18,
+      }
+      if (exists) {
+        return [
+          {
+            kind: DepositMethodKind.LIFI_ROUTE,
+            accountState: 'existing',
+            sourceAsset,
+            destinationAsset: ethereumUsdc,
+          },
+        ]
+      }
+      const isEthereumUsdc =
+        sourceAsset.chainId === ethereumUsdc.chainId &&
+        sourceAsset.address.toLowerCase() === ethereumUsdc.address.toLowerCase()
+      return [
+        {
+          kind: DepositMethodKind.PROVIDER_BRIDGE,
+          accountState: 'missing',
+          sourceAsset,
+          destinationAsset: ethereumUsdc,
+          providerAction: {
+            action: ActionType.DEPOSIT,
+            legs: [
+              { action: ActionType.DEPOSIT, title: 'Approve USDC' },
+              { action: ActionType.DEPOSIT, title: 'Deposit USDC' },
+            ],
+          },
+          prerequisites: [
+            { asset: ethereumGas, kind: 'gas' },
+            ...(isEthereumUsdc
+              ? []
+              : [
+                  {
+                    asset: ethereumUsdc,
+                    kind: 'funding' as const,
+                    optional: true,
+                  },
+                ]),
+          ],
+        },
+      ]
     },
 
     async getPositions(

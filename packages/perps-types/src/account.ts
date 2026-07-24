@@ -298,6 +298,8 @@ export interface OndoAccountConfig {
   authTokenExpiry?: number
   /** A referral code (any referrer's) is already applied to the account. Always `false` when logged out. */
   referralSet: boolean
+  /** Provisioned Ethereum recipient for deposits, when CREATE_DEPOSIT_ADDRESS is satisfied. */
+  depositAddress?: Address
 }
 
 /** @public */

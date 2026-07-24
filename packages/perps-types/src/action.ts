@@ -337,6 +337,7 @@ export interface ActionParamsMap {
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
+  [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
   [ActionType.META_VOTE]: VoteParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
 }

@@ -8,6 +8,8 @@ import type {
   ActionType,
   ActivitiesResponse,
   ActivityType,
+  DepositAsset,
+  DepositMethod,
   FillsResponse,
   Market,
   Order,
@@ -133,6 +135,16 @@ export interface ProviderGetAccountParams {
  */
 export interface ProviderAccountExistsParams {
   address: Address
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getDepositMethods}.
+ *
+ * @public
+ */
+export interface ProviderGetDepositMethodsParams {
+  address: Address
+  sourceAsset: DepositAsset
 }
 
 /**
@@ -282,6 +294,16 @@ export interface PerpsProviderPlugin {
     params: ProviderAccountExistsParams,
     options?: SDKRequestOptions
   ): Promise<boolean>
+
+  /**
+   * Resolve funding methods for the wallet address and selected source asset.
+   * Providers own account-state and route decisions; the consumer owns live
+   * balance checks.
+   */
+  getDepositMethods?(
+    params: ProviderGetDepositMethodsParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositMethod[]>
 
   getPositions(
     params: ProviderGetPositionsParams,

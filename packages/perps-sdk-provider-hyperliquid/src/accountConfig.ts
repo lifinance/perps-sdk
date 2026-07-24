@@ -62,6 +62,7 @@ function projectHyperliquidDescriptor(
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.SIWE_LOGIN:
     case ActionType.DEPOSIT:
+    case ActionType.CREATE_DEPOSIT_ADDRESS:
     case ActionType.META_VOTE:
     case ActionType.META_ACCEPT_TERMS:
       throw new PerpsError(

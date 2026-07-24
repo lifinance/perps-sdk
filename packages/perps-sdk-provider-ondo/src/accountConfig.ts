@@ -45,6 +45,15 @@ function projectOndoDescriptor(
         satisfied: config.referralSet,
       }
 
+    case ActionType.CREATE_DEPOSIT_ADDRESS:
+      return {
+        type: descriptor.type,
+        values: [
+          { name: 'depositAddress', value: config.depositAddress ?? null },
+        ],
+        satisfied: config.depositAddress !== undefined,
+      }
+
     case ActionType.APPROVE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
     case ActionType.APPROVE_INTEGRATOR:

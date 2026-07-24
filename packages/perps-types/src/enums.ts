@@ -122,6 +122,7 @@ export enum ActionType {
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
   DEPOSIT = 'deposit',
+  CREATE_DEPOSIT_ADDRESS = 'createDepositAddress',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_VOTE = 'metaVote',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
