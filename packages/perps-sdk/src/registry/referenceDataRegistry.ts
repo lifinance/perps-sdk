@@ -1,5 +1,8 @@
 import type { PerpsSDKClient } from '../types/provider.js'
 
+/** Minimum gap between unknown-id-triggered, HTTP-cache-bypassing refetches. */
+const REFRESH_COOLDOWN_MS = 60_000
+
 /**
  * Per-provider hash index over one of the provider's reference-data lists
  * (`/markets`, `/assets`), keyed by the list's own primary key.
@@ -7,7 +10,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * NOT a cache: it holds no freshness policy of its own. Every {@link sync}
  * refetches through the HTTP layer, whose `cache-control` headers decide
  * whether the response comes from disk or the network. A lookup miss warns
- * once and returns `undefined`; the next {@link sync} reconciles the index.
+ * once per id and schedules a cooldown-gated cache-bypassing refresh so newly
+ * listed reference data can pierce a stale browser snapshot.
  *
  * @internal
  */
@@ -16,6 +20,7 @@ export abstract class ReferenceDataRegistry<T> {
   private current: readonly T[] = []
   private inflight: Promise<readonly T[]> | undefined
   private warnedIds = new Set<string>()
+  private refreshAfter = 0
 
   protected constructor(
     protected readonly client: PerpsSDKClient,
@@ -23,8 +28,8 @@ export abstract class ReferenceDataRegistry<T> {
     private readonly kind: string
   ) {}
 
-  /** Fetch the provider's full list through the HTTP layer. */
-  protected abstract fetchItems(): Promise<T[]>
+  /** Fetch the provider's full list, bypassing the HTTP cache when asked. */
+  protected abstract fetchItems(bypassHttpCache: boolean): Promise<T[]>
 
   /** The item's primary key — what {@link get} is keyed by. */
   protected abstract keyOf(item: T): string
@@ -36,7 +41,7 @@ export abstract class ReferenceDataRegistry<T> {
    */
   sync(): Promise<readonly T[]> {
     if (!this.inflight) {
-      this.inflight = this.load().finally(() => {
+      this.inflight = this.load(false).finally(() => {
         this.inflight = undefined
       })
     }
@@ -58,14 +63,29 @@ export abstract class ReferenceDataRegistry<T> {
       this.warnedIds.add(id)
       console.warn(`[${this.provider}] unknown ${this.kind} id '${id}'`)
     }
+    this.scheduleRefresh()
     return undefined
   }
 
-  private async load(): Promise<readonly T[]> {
-    const items = await this.fetchItems()
+  private async load(bypassHttpCache: boolean): Promise<readonly T[]> {
+    const items = await this.fetchItems(bypassHttpCache)
     this.index = new Map(items.map((item) => [this.keyOf(item), item]))
     this.current = items
-    this.warnedIds.clear()
     return items
+  }
+
+  private scheduleRefresh(): void {
+    const now = Date.now()
+    if (now < this.refreshAfter) {
+      return
+    }
+    // Set before any await so concurrent misses cannot trigger a refetch storm.
+    this.refreshAfter = now + REFRESH_COOLDOWN_MS
+    this.load(true).catch((error) =>
+      console.error(
+        `[${this.provider}] ${this.kind} registry refresh failed`,
+        error
+      )
+    )
   }
 }
