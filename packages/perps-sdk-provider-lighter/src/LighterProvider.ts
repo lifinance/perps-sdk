@@ -12,6 +12,7 @@ import {
   type ProviderGetActivityParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
@@ -33,6 +34,7 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   LighterProviderKey,
+  MarketSettings,
   Order,
   OrdersResponse,
   Position,
@@ -42,7 +44,12 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  ActivityType,
+  MarginMode,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -77,6 +84,7 @@ import type {
   LtTransferHistoryResponse,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
+import { LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -892,6 +900,43 @@ export const lighterProvider = (
         provider: providerKey,
         positions,
         pagination: { limit: params.limit ?? positions.length, hasMore: false },
+      }
+    },
+
+    /**
+     * Lighter reports a market's margin mode and leverage only on the
+     * account's position row, so a market the account never touched (or a
+     * missing account) resolves `undefined` rather than a venue default.
+     */
+    async getMarketSettings(
+      params: ProviderGetMarketSettingsParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarketSettings | undefined> {
+      let account: LtDetailedAccount
+      try {
+        account = await fetchDetailedAccount(apiClient(opts), params.address)
+      } catch (err) {
+        if (
+          err instanceof PerpsError &&
+          err.code === PerpsErrorCode.AccountNotFound
+        ) {
+          return undefined
+        }
+        throw err
+      }
+      const row = account.positions.find(
+        (p) => String(p.market_id) === params.marketId
+      )
+      if (!row) {
+        return undefined
+      }
+      const imf = Number.parseFloat(row.initial_margin_fraction)
+      return {
+        marginMode:
+          row.margin_mode === LT_MARGIN_MODE_ISOLATED
+            ? MarginMode.ISOLATED
+            : MarginMode.CROSS,
+        leverage: imf > 0 ? Math.round(100 / imf) : undefined,
       }
     },
 

@@ -68,6 +68,21 @@ export type HlPreTransferCheck = {
 }
 
 /**
+ * `activeAssetData` info response: the user's live per-asset trading state.
+ * `leverage` reflects the venue-stored setting whether or not a position is
+ * open on the asset.
+ * @public
+ */
+export type HlActiveAssetData = {
+  user: string
+  coin: string
+  leverage: { type: 'cross' | 'isolated'; value: number }
+  maxTradeSzs: [string, string]
+  availableToTrade: [string, string]
+  markPx: string
+}
+
+/**
  * Possible values returned by the `userAbstraction` info endpoint.
  * `null` means abstraction has never been set; `'default'`/`'disabled'` are
  * the live and legacy spellings of standard (non-abstracted) mode.

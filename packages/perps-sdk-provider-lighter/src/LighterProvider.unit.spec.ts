@@ -11,6 +11,7 @@ import {
   ActionType,
   ActivityType,
   LiquidityRole,
+  MarginMode,
   OrderSide,
   PerpsErrorCode,
 } from '@lifi/perps-types'
@@ -2361,5 +2362,74 @@ describe('LighterProvider — instance config', () => {
     expect(backendUrls.some((u) => u.endsWith('provider=lighter-rh'))).toBe(
       true
     )
+  })
+})
+
+describe('LighterProvider — getMarketSettings', () => {
+  // Live capture of an isolated BTC position row: IMF 50% ⇒ 2x leverage.
+  const ACCOUNT_WITH_ISOLATED_ROW = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '50.00',
+            open_order_count: 0,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '0.00019',
+            avg_entry_price: '61856.6',
+            position_value: '12.352603',
+            unrealized_pnl: '-0.006954',
+            realized_pnl: '0.000000',
+            liquidation_price: '39131.4',
+            total_funding_paid_out: '0.000000',
+            margin_mode: 1,
+            margin_set_flag: 1,
+            allocated_margin: '10.179731',
+            total_discount: '0.000000',
+          },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_ISOLATED_ROW)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("reads the market's mode and leverage from the account position row", async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({ address: ADDRESS, marketId: '0' })
+    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  })
+
+  it('resolves undefined for a market without a row', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({ address: ADDRESS, marketId: '7' })
+    ).resolves.toBeUndefined()
   })
 })

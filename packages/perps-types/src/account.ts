@@ -87,6 +87,17 @@ export interface AccountSummary {
   unrealizedPnl: string
 }
 
+/**
+ * The user's venue-side settings for one market: the margin mode and
+ * leverage the next order on it will use. Fields are absent when the venue
+ * exposes no readable value for them.
+ * @public
+ */
+export interface MarketSettings {
+  marginMode?: MarginMode
+  leverage?: number
+}
+
 /** @public */
 export interface TriggerOrder {
   orderId: string

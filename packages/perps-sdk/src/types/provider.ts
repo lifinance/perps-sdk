@@ -10,6 +10,7 @@ import type {
   ActivityType,
   FillsResponse,
   Market,
+  MarketSettings,
   Order,
   OrdersResponse,
   PerpsMarket,
@@ -186,6 +187,17 @@ export interface ProviderGetPositionsParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getMarketSettings}.
+ *
+ * @public
+ */
+export interface ProviderGetMarketSettingsParams {
+  address: Address
+  /** Opaque `Market.id` (not `displaySymbol`). */
+  marketId: string
+}
+
+/**
  * Read params for {@link PerpsProvider.getOrders}.
  *
  * @public
@@ -349,6 +361,18 @@ export interface PerpsProviderPlugin {
     params: ProviderGetPositionsParams,
     options?: SDKRequestOptions
   ): Promise<PositionsResponse>
+
+  /**
+   * The user's current venue-side settings for one market — the margin mode
+   * and leverage the next order on it will use. Optional because venues
+   * expose this unevenly: Hyperliquid reads it directly (`activeAssetData`),
+   * Lighter only reports it on an account's position row. `undefined` means
+   * the venue has nothing to read for this market.
+   */
+  getMarketSettings?(
+    params: ProviderGetMarketSettingsParams,
+    options?: SDKRequestOptions
+  ): Promise<MarketSettings | undefined>
 
   getOrders(
     params: ProviderGetOrdersParams,
