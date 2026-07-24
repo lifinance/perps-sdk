@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 4.4.1
+
+### Patch Changes
+
+- [#280](https://github.com/lifinance/perps-sdk/pull/280) [`8151264`](https://github.com/lifinance/perps-sdk/commit/81512644e330921504192b149faf77a3f21a8610) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Keep unknown reference-data warnings deduplicated across registry syncs so repeated account refreshes do not replay persistent unsupported IDs.
+
 ## 4.4.0
 
 ### Minor Changes
