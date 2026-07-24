@@ -122,6 +122,7 @@ const ACCOUNT_PAYLOAD = {
       available_balance: '100',
       status: 1,
       collateral: '500',
+      cross_initial_margin_requirement: '120',
       transaction_time: 0,
       account_trading_mode: 1,
       account_index: 42,
@@ -859,9 +860,11 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       displaySymbol: 'USDC',
       logoURI: USDC_LOGO,
     })
-    // AC5: only asset identity changes — free collateral stays `available_balance`.
-    expect(account.collateralBalances[0].units).toBe('100')
-    expect(account.collateralBalances[0].valueUsd).toBe('100')
+    // Free collateral = `collateral` (500) net of the cross positions'
+    // locked margin (120) — NOT `available_balance`, which is total
+    // withdrawable and includes isolated positions' excess margin.
+    expect(account.collateralBalances[0].units).toBe('380')
+    expect(account.collateralBalances[0].valueUsd).toBe('380')
   })
 
   it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {

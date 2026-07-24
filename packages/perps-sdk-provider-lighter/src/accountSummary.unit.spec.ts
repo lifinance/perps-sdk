@@ -64,16 +64,28 @@ const account = (
 })
 
 describe('getAccountSummary', () => {
-  it('adds locked margin back but never re-adds the PnL already in available_balance', () => {
-    // available_balance 800 nets margin out and marks the +50 pnl in
+  it('adds locked margin and PnL back onto the free collateral', () => {
+    // The collateral row is free collateral: margin and PnL both excluded,
+    // carried entirely by the positions.
     const summary = getAccountSummary(account([balance('800')]), [
       position('200', '50'),
     ])
     expect(summary.availableMargin).toBe('800')
     expect(summary.marginUsed).toBe('200')
     expect(summary.unrealizedPnl).toBe('50')
-    // portfolio = available 800 (pnl included) + locked margin 200
-    expect(summary.portfolioValue).toBe('1000')
+    // portfolio = free 800 + locked margin 200 + pnl 50
+    expect(summary.portfolioValue).toBe('1050')
+  })
+
+  it('reconciles a live isolated-account capture to the venue totals', () => {
+    // Captured from a real account: free cross collateral 1.506802, one
+    // isolated BTC position with allocated_margin 10.179731 and uPnL
+    // −0.006954; the venue's total_asset_value read 11.679579.
+    const summary = getAccountSummary(account([balance('1.506802')]), [
+      position('10.179731', '-0.006954'),
+    ])
+    expect(Number.parseFloat(summary.availableMargin)).toBeCloseTo(1.506802, 6)
+    expect(Number.parseFloat(summary.portfolioValue)).toBeCloseTo(11.679579, 5)
   })
 
   it('adds non-collateral balances to portfolio value only', () => {

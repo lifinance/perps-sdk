@@ -589,19 +589,34 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     const stats = msg.stats
     const portfolio = Number.parseFloat(stats?.portfolio_value ?? '')
-    const available = Number.parseFloat(stats?.available_balance ?? '')
+    // Free cross collateral, NOT the top-level `available_balance`: Lighter
+    // defines that as total withdrawable — free collateral plus the excess
+    // margin of isolated positions — which overstates tradable margin.
+    // Older gateways omit `cross_stats`; their account-wide figure and the
+    // matching portfolio-based identity keep serving as the fallback.
+    const crossAvailable = Number.parseFloat(
+      stats?.cross_stats?.available_balance ?? ''
+    )
+    const hasCross = Number.isFinite(crossAvailable)
+    const available = hasCross
+      ? crossAvailable
+      : Number.parseFloat(stats?.available_balance ?? '')
     if (!Number.isFinite(portfolio) || !Number.isFinite(available)) {
       return
     }
-    // Identities of the REST 'net' semantics: `available_balance` nets locked
-    // margin out with PnL marked in, and `collateral` is gross, PnL-exclusive.
+    // `collateral` (total) = free cross collateral + every locked portion,
+    // so netting the free part out yields the margin in use; the portfolio
+    // marks unrealized PnL in on top of it.
     const collateral = Number.parseFloat(stats?.collateral ?? '')
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
         portfolioValue: portfolio.toString(),
         availableMargin: available.toString(),
-        marginUsed: Math.max(portfolio - available, 0).toString(),
+        marginUsed:
+          hasCross && Number.isFinite(collateral)
+            ? Math.max(collateral - available, 0).toString()
+            : Math.max(portfolio - available, 0).toString(),
         unrealizedPnl: Number.isFinite(collateral)
           ? (portfolio - collateral).toString()
           : '0',

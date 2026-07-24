@@ -775,15 +775,23 @@ export const lighterProvider = (
         LIGHTER_SPOT_CATEGORY_ID
 
       // USDC collateral is the category quote asset → collateralBalances.
-      // `available_balance` is the free collateral (Lighter's `collateral` is
-      // gross, i.e. includes margin locked in positions); the locked portion is
-      // carried by the positions' `marginUsed`.
+      // NOT `available_balance`: Lighter defines that as total withdrawable —
+      // free cross collateral PLUS the excess margin of isolated positions —
+      // so it overstates tradable margin whenever a position is isolated.
+      // Free collateral is `collateral` (which isolated allocations already
+      // left) net of the margin locked by cross positions; the positions'
+      // own `marginUsed` carries every locked portion.
+      const freeCollateral = Math.max(
+        Number.parseFloat(account.collateral) -
+          Number.parseFloat(account.cross_initial_margin_requirement ?? '0'),
+        0
+      ).toString()
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
           asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
-          units: account.available_balance,
-          valueUsd: account.available_balance,
+          units: freeCollateral,
+          valueUsd: freeCollateral,
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens

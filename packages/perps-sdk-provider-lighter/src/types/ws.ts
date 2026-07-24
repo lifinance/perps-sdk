@@ -150,7 +150,10 @@ export type LtWsAccountAllTradesMessage = LtWsMessage & {
 }
 
 /**
- * `user_stats/{account_index}` frame; decimal strings in USD.
+ * `user_stats/{account_index}` frame; decimal strings in USD. The top-level
+ * figures span the whole account (`available_balance` = total withdrawable,
+ * including isolated positions' excess margin); `cross_stats` scopes them to
+ * the cross pool, whose `available_balance` is the free tradable collateral.
  * @public
  */
 export type LtWsUserStatsMessage = LtWsMessage & {
@@ -158,6 +161,11 @@ export type LtWsUserStatsMessage = LtWsMessage & {
     collateral?: string
     portfolio_value?: string
     available_balance?: string
+    cross_stats?: {
+      collateral?: string
+      portfolio_value?: string
+      available_balance?: string
+    }
   }
 }
 
