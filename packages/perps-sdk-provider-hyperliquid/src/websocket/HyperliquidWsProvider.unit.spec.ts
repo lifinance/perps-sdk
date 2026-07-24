@@ -6,7 +6,11 @@ import {
 import type { Market, Subscription } from '@lifi/perps-types'
 import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
-import { HL_MARKETS, HL_SPOT_MARKET } from '../../test/fixtures.js'
+import {
+  HL_DELISTED_MARKET,
+  HL_MARKETS,
+  HL_SPOT_MARKET,
+} from '../../test/fixtures.js'
 import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
 
 const XYZ_BRENTOIL_MARKET: Market = {
@@ -693,6 +697,25 @@ describe('HyperliquidWsProvider', () => {
         s: null,
         m: null,
       })
+    })
+
+    it('rejects live subscriptions for a known delisted market', async () => {
+      const provider = createEnrichingProvider([
+        ...HL_MARKETS,
+        HL_DELISTED_MARKET,
+      ])
+
+      await expect(
+        provider.subscribe(
+          {
+            channel: 'orderbook',
+            dex: 'hyperliquid',
+            marketId: 'DELISTED',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow(/not available for live use/)
+      expect(getMockRwsInstance().sent).toHaveLength(0)
     })
 
     it('should map candle subscription to candle payload', async () => {

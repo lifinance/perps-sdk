@@ -11,6 +11,8 @@ export interface BaseMarket {
   providerId: string
   /** Opaque provider market id; referenced elsewhere as `marketId`. */
   id: string
+  /** Whether the venue has delisted this market. */
+  isDelisted?: boolean
   /** References a {@link ProviderCategory} by id. */
   categoryId: string
   baseAsset: Asset
@@ -60,7 +62,7 @@ export type Market = PerpsMarket | SpotMarket
 /** @public */
 export type MarketDisplay = Pick<
   BaseMarket,
-  'providerId' | 'id' | 'categoryId' | 'baseAsset' | 'quoteAsset'
+  'providerId' | 'id' | 'categoryId' | 'baseAsset' | 'quoteAsset' | 'isDelisted'
 >
 
 /**
