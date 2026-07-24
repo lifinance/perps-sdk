@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 4.3.1
+
+### Patch Changes
+
+- [#275](https://github.com/lifinance/perps-sdk/pull/275) [`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain delisted Hyperliquid markets for historical account data while excluding them from live market and trading flows.
+
+- Updated dependencies [[`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d)]:
+  - @lifi/perps-types@3.3.1
+
 ## 4.3.0
 
 ### Minor Changes

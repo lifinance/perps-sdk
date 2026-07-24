@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 4.3.1
+
+### Patch Changes
+
+- [#272](https://github.com/lifinance/perps-sdk/pull/272) [`48820f8`](https://github.com/lifinance/perps-sdk/commit/48820f842b3911759d351e6538b659e98c0ba225) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Normalize valid Ethereum wallet addresses in Hyperliquid REST and WebSocket requests.
+
+- [#275](https://github.com/lifinance/perps-sdk/pull/275) [`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain delisted Hyperliquid markets for historical account data while excluding them from live market and trading flows.
+
+- Updated dependencies [[`882c3e3`](https://github.com/lifinance/perps-sdk/commit/882c3e335c053512892779b90dbc424dfeaf4f2d)]:
+  - @lifi/perps-types@3.3.1
+
 ## 4.3.0
 
 ### Minor Changes
