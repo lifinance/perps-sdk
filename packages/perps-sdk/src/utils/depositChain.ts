@@ -8,7 +8,7 @@ import { ChainId } from '@lifi/types'
  *
  * @public
  */
-export type DepositProviderKey = AccountConfig['provider']
+export type DepositProviderKey = AccountConfig['provider'] | 'lighter-rh'
 
 /**
  * Declared single source of truth: perps provider key → the LI.FI chain a
@@ -22,6 +22,7 @@ export const LIFI_DEPOSIT_CHAIN_BY_PROVIDER: Partial<
 > = {
   hyperliquid: ChainId.HPL,
   lighter: ChainId.LTR,
+  'lighter-rh': ChainId.OUT,
 }
 
 /**

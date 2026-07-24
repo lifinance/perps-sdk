@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
-    "@lifi/types": "17.82.1",
+    "@lifi/types": "17.86.0",
     "partysocket": "^1.1.19",
     "viem": "^2.48.8"
   },
