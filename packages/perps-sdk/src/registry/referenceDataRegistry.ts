@@ -7,7 +7,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * NOT a cache: it holds no freshness policy of its own. Every {@link sync}
  * refetches through the HTTP layer, whose `cache-control` headers decide
  * whether the response comes from disk or the network. A lookup miss warns
- * once and returns `undefined`; the next {@link sync} reconciles the index.
+ * once per id and returns `undefined`; subsequent syncs reconcile the index
+ * without replaying the warning for an id that remains absent.
  *
  * @internal
  */
@@ -65,7 +66,6 @@ export abstract class ReferenceDataRegistry<T> {
     const items = await this.fetchItems()
     this.index = new Map(items.map((item) => [this.keyOf(item), item]))
     this.current = items
-    this.warnedIds.clear()
     return items
   }
 }

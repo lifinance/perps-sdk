@@ -35,6 +35,7 @@ const market = (id: string, categoryId: string): Market => ({
 
 const BTC = market('BTC', 'hyperliquid')
 const BRENT = market('xyz:BRENTOIL', 'xyz')
+
 const DELISTED = { ...market('DELISTED', 'hyperliquid'), isDelisted: true }
 
 /** Serve `responses` in order, recording each request's cache mode. */
@@ -100,7 +101,7 @@ describe('MarketRegistry', () => {
     expect(registry.get('xyz:BRENTOIL')).toEqual(BRENT)
   })
 
-  it('on a miss: warns once per id and does not refetch', async () => {
+  it('keeps unknown-id warnings once across syncs', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const requests = serveMarkets([{ markets: [BTC] }])
     const registry = getMarketRegistry(freshClient(), 'hyperliquid')
@@ -108,9 +109,11 @@ describe('MarketRegistry', () => {
 
     expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
     expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
+    await registry.sync()
+    expect(registry.get('xyz:BRENTOIL')).toBeUndefined()
 
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(requests).toHaveLength(1)
+    expect(requests).toHaveLength(2)
   })
 
   it('resolves known delisted markets for history but rejects them for active use', async () => {
