@@ -1,4 +1,4 @@
-import { isAddress } from 'viem'
+import { type Address, isAddress } from 'viem'
 import type { OndoApiClient } from './apiClient.js'
 import { OndoApiError } from './apiClient.js'
 
@@ -48,7 +48,7 @@ const entriesFromResult = (result: unknown): unknown[] => {
  * An empty list is a valid, unsatisfied setup state; malformed records are
  * errors so an API/schema failure cannot be mistaken for an absent address.
  */
-export const parseOndoDepositAddress = (result: unknown): string | null => {
+export const parseOndoDepositAddress = (result: unknown): Address | null => {
   const entries = entriesFromResult(result)
   for (const entry of entries) {
     if (!isRecord(entry)) {
@@ -74,7 +74,7 @@ export const parseOndoDepositAddress = (result: unknown): string | null => {
 export const listOndoDepositAddress = async (
   client: OndoApiClient,
   authToken: string
-): Promise<string | null> =>
+): Promise<Address | null> =>
   parseOndoDepositAddress(
     await client.post<unknown>(
       '/v1/wallet/deposit_address/list',

@@ -974,6 +974,70 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // getDepositFlow — optional plugin method, undefined when unimplemented
+  // ---------------------------------------------------------------------------
+
+  describe('getDepositFlow', () => {
+    const flow = {
+      kind: 'lifiSwap',
+      destination: { chainId: 1337, address: userAddress, decimals: 6 },
+    } as const
+
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: 'hyperliquid',
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates to the plugin with the address and returns its flow', async () => {
+      const getDepositFlow = vi.fn(async () => flow)
+      await expect(
+        clientWith({ getDepositFlow }).getDepositFlow({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toEqual(flow)
+      expect(getDepositFlow).toHaveBeenCalledWith({ address: userAddress })
+    })
+
+    it('resolves undefined when the plugin does not implement discovery', async () => {
+      await expect(
+        clientWith({}).getDepositFlow({ provider, address: userAddress })
+      ).resolves.toBeUndefined()
+    })
+
+    it('propagates the plugin error', async () => {
+      const getDepositFlow = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
+      })
+      await expect(
+        clientWith({ getDepositFlow }).getDepositFlow({
+          provider,
+          address: userAddress,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getDepositFlow({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // checkSetup — deposit-first gate on accountExists
   // ---------------------------------------------------------------------------
 

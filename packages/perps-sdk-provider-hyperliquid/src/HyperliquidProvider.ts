@@ -1,5 +1,7 @@
 import {
   type ActionSignerContribution,
+  type DepositFlow,
+  HYPERLIQUID_USDC,
   type LiquidationEstimateParams,
   PerpsError,
   PerpsErrorMessage,
@@ -263,6 +265,14 @@ export function hyperliquidProvider(
       opts?: SDKRequestOptions
     ): Promise<boolean> =>
       getAccountExists(contextRef.require(), { address: params.address }, opts),
+
+    // Hyperliquid credits the venue account from a deposit of its venue-chain
+    // USDC whether or not the account exists yet, so the flow does not depend on
+    // account state.
+    getDepositFlow: async (): Promise<DepositFlow> => ({
+      kind: 'lifiSwap',
+      destination: HYPERLIQUID_USDC,
+    }),
 
     getPositions: (
       params: ProviderGetPositionsParams,

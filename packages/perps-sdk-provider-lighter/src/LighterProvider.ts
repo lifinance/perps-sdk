@@ -1,4 +1,5 @@
 import {
+  type DepositFlow,
   explorerTxUrlFromBase,
   getAssetRegistry,
   getMarketRegistry,
@@ -9,6 +10,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -56,6 +58,7 @@ import {
   LIGHTER_PROVIDER_KEY,
   LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
+import { lighterDepositFlow } from './depositFlow.js'
 import { createAuthToken } from './signers/createAuthToken.js'
 import type { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterReadOnlyTokenManagerOptions } from './signers/LighterReadOnlyTokenManager.js'
@@ -666,6 +669,24 @@ export const lighterProvider = (
     return { deposits, withdraws, fundings, liquidations, transfers }
   }
 
+  const resolveAccountExists = async (
+    address: Address,
+    opts?: SDKRequestOptions
+  ): Promise<boolean> => {
+    try {
+      await fetchDetailedAccount(apiClient(opts), address)
+      return true
+    } catch (err) {
+      if (
+        err instanceof PerpsError &&
+        err.code === PerpsErrorCode.AccountNotFound
+      ) {
+        return false
+      }
+      throw err
+    }
+  }
+
   return {
     type: providerKey,
 
@@ -826,18 +847,17 @@ export const lighterProvider = (
       params: ProviderAccountExistsParams,
       opts?: SDKRequestOptions
     ): Promise<boolean> {
-      try {
-        await fetchDetailedAccount(apiClient(opts), params.address)
-        return true
-      } catch (err) {
-        if (
-          err instanceof PerpsError &&
-          err.code === PerpsErrorCode.AccountNotFound
-        ) {
-          return false
-        }
-        throw err
-      }
+      return resolveAccountExists(params.address, opts)
+    },
+
+    async getDepositFlow(
+      params: ProviderGetDepositFlowParams,
+      opts?: SDKRequestOptions
+    ): Promise<DepositFlow> {
+      return lighterDepositFlow(
+        providerKey,
+        await resolveAccountExists(params.address, opts)
+      )
     },
 
     async getPositions(

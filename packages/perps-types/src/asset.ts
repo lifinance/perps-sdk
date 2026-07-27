@@ -48,8 +48,8 @@ export interface DepositAsset {
    * values (documentation-level, not a type dependency). This is the token's
    * on-chain home (e.g. Arbitrum for HL's USDC), NOT necessarily the LI.FI
    * deposit route's `toChain`: some venues route to a distinct LI.FI venue
-   * chain (see the SDK's `LIFI_DEPOSIT_CHAIN_BY_PROVIDER`), so the two may
-   * differ and the client maps between them.
+   * chain (see the SDK's declared deposit assets), so the two may differ and
+   * the client maps between them.
    */
   chainId: number
   /** ERC-20 contract address on {@link DepositAsset.chainId}. */

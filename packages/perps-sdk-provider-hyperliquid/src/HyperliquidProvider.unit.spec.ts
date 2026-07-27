@@ -1,4 +1,8 @@
-import { createMemoryStorage, createPerpsClient } from '@lifi/perps-sdk'
+import {
+  createMemoryStorage,
+  createPerpsClient,
+  HYPERLIQUID_USDC,
+} from '@lifi/perps-sdk'
 import type {
   Eip712ActionStep,
   PerpsMarket,
@@ -77,6 +81,12 @@ describe('hyperliquidProvider', () => {
     expect(hyperliquidProvider().internalSetupActions).toContain(
       ActionType.SET_REFERRAL
     )
+  })
+
+  it('discovers a venue-chain USDC swap regardless of account state', async () => {
+    await expect(
+      hyperliquidProvider().getDepositFlow?.({ address: ADDRESS })
+    ).resolves.toEqual({ kind: 'lifiSwap', destination: HYPERLIQUID_USDC })
   })
 
   describe('order formatting and liquidation surface', () => {

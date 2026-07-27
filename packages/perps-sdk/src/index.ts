@@ -3,7 +3,7 @@
 
 /**
  * `@lifi/perps-sdk` — the public entry point. Exports `createPerpsClient` and
- * `PerpsClient` (the primary API), the realtime `PerpsWsClient`, the pure
+ * `PerpsClient` (the primary API), the WebSocket `PerpsWsClient`, the pure
  * calculation/parsing/order helpers, and re-exports the shared `@lifi/perps-types`.
  *
  * @packageDocumentation
@@ -39,6 +39,11 @@ export type { GetAssetsParams } from './services/getAssets.js'
 export { getAssets } from './services/getAssets.js'
 export type { GetFillsParams } from './services/getFills.js'
 export { getFills } from './services/getFills.js'
+export type { GetGasRecommendationParams } from './services/getGasRecommendation.js'
+export {
+  getGasRecommendation,
+  LIFI_API_URL,
+} from './services/getGasRecommendation.js'
 export type { GetMarketParams } from './services/getMarket.js'
 export { getMarket } from './services/getMarket.js'
 export type { GetMarketsParams } from './services/getMarkets.js'
@@ -93,6 +98,7 @@ export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
   GetAccountResult,
+  GetDepositFlowParams,
   GetSetupParams,
   ModifyOrdersParams,
   PerpsClientOptions,
@@ -114,6 +120,13 @@ export type {
   SwitchChainHook,
 } from './types/config.js'
 export type {
+  DeclaredDepositAsset,
+  DepositFlow,
+  DepositFlowFirstDepositPipeline,
+  DepositFlowLifiSwap,
+  DepositFlowSetupRequired,
+} from './types/deposit.js'
+export type {
   ActionSignerContribution,
   LiquidationEstimateParams,
   PerpsProvider,
@@ -122,6 +135,7 @@ export type {
   ProviderAccountExistsParams,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
+  ProviderGetDepositFlowParams,
   ProviderGetFillsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,
@@ -154,11 +168,14 @@ export {
   removableMargin,
   walkOrderbook,
 } from './utils/calculations.js'
-export type { DepositProviderKey } from './utils/depositChain.js'
 export {
-  LIFI_DEPOSIT_CHAIN_BY_PROVIDER,
-  lifiDepositChainForProvider,
-} from './utils/depositChain.js'
+  ETHEREUM_NATIVE_GAS,
+  ETHEREUM_USDC,
+  HYPERLIQUID_USDC,
+  LIGHTER_USDC,
+  ROBINHOOD_NATIVE_GAS,
+  ROBINHOOD_USDG,
+} from './utils/depositAssets.js'
 export {
   ExplorerChainId,
   explorerTxUrl,
