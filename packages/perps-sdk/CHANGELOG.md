@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 4.4.2
+
+### Patch Changes
+
+- [#285](https://github.com/lifinance/perps-sdk/pull/285) [`2ffa07e`](https://github.com/lifinance/perps-sdk/commit/2ffa07e50db81625c1d9a0fa85e1fcbae8bde149) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map the Lighter Robinhood instance to LI.FI's Robinhood Chain deposit target.
+
 ## 4.4.1
 
 ### Patch Changes
