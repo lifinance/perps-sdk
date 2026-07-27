@@ -29,6 +29,7 @@ import type {
   PerpsClientSigner,
   SDKRequestOptions,
 } from './config.js'
+import type { DepositFlow } from './deposit.js'
 
 /**
  * Low-level SDK client: resolved config, the optional end-user wallet, and the
@@ -159,6 +160,15 @@ export interface ProviderGetAccountParams {
  * @public
  */
 export interface ProviderAccountExistsParams {
+  address: Address
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getDepositFlow}.
+ *
+ * @public
+ */
+export interface ProviderGetDepositFlowParams {
   address: Address
 }
 
@@ -320,6 +330,20 @@ export interface PerpsProviderPlugin {
     params: ProviderAccountExistsParams,
     options?: SDKRequestOptions
   ): Promise<boolean>
+
+  /**
+   * The deposit flow this venue offers `params.address`, resolved from the
+   * venue's own account and setup state — which collateral token a deposit must
+   * land in, whether the address first needs the account-opening pipeline, and
+   * whether venue setup gates naming a destination at all.
+   *
+   * Optional: a provider that cannot be funded through the SDK omits it, and
+   * `PerpsClient.getDepositFlow` then resolves `undefined`.
+   */
+  getDepositFlow?(
+    params: ProviderGetDepositFlowParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositFlow>
 
   getPositions(
     params: ProviderGetPositionsParams,

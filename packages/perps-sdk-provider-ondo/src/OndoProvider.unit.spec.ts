@@ -1,5 +1,6 @@
 import {
   createMemoryStorage,
+  ETHEREUM_USDC,
   PerpsError,
   type PerpsSDKClient,
 } from '@lifi/perps-sdk'
@@ -738,6 +739,63 @@ describe('OndoProvider — accountExists (logged in)', () => {
     await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
       false
     )
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+})
+
+describe('OndoProvider — getDepositFlow', () => {
+  it('swaps into Ethereum USDC addressed to the provisioned deposit address', async () => {
+    depositAddressResult = [
+      { address: DEPOSIT_ADDRESS, coin: 'USDC', network: 'ethereum' },
+    ]
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'lifiSwap',
+      destination: ETHEREUM_USDC,
+      toAddress: DEPOSIT_ADDRESS,
+    })
+  })
+
+  it('reports the deposit-address setup gate when the venue has provisioned none', async () => {
+    depositAddressResult = []
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.CREATE_DEPOSIT_ADDRESS],
+    })
+  })
+
+  it('reports the login gate without a session', async () => {
+    await expect(
+      loggedOutProvider().getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
+    })
+  })
+
+  it('reports the login gate and evicts the token when the venue rejects it', async () => {
+    const { provider, store } = await loggedInProvider()
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      return respond({ success: false, error: 'token expired' }, 401)
+    })
+
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
+    })
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
 })

@@ -1,7 +1,11 @@
 import {
   createMemoryStorage,
+  ETHEREUM_NATIVE_GAS,
+  ETHEREUM_USDC,
+  LIGHTER_USDC,
   PerpsError,
   type PerpsSDKClient,
+  ROBINHOOD_USDG,
 } from '@lifi/perps-sdk'
 import {
   ActionType,
@@ -2141,6 +2145,69 @@ describe('LighterProvider — accountExists', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(provider.accountExists({ address: ADDRESS })).rejects.toThrow()
+  })
+})
+
+describe('LighterProvider — getDepositFlow', () => {
+  it('swaps into venue collateral when the account resolves', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({ kind: 'lifiSwap', destination: LIGHTER_USDC })
+  })
+
+  it('runs the account-opening pipeline when the account does not exist', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond({ code: LIGHTER_CODE_ACCOUNT_NOT_FOUND }, 400)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'firstDepositPipeline',
+      chainId: ETHEREUM_USDC.chainId,
+      gasAsset: ETHEREUM_NATIVE_GAS,
+      collateral: ETHEREUM_USDC,
+      bridgeAction: ActionType.DEPOSIT,
+    })
+  })
+
+  it('resolves the Robinhood instance against its own collateral', async () => {
+    const provider = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+    })
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).resolves.toEqual({ kind: 'lifiSwap', destination: ROBINHOOD_USDG })
+  })
+
+  it('propagates a non-account-not-found probe error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return new Response('boom', { status: 500 })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getDepositFlow({ address: ADDRESS })
+    ).rejects.toThrow()
   })
 })
 

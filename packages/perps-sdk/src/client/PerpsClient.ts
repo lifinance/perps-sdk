@@ -30,6 +30,7 @@ import type {
   ExecuteProviderSetupParams,
   ExecuteProviderSetupResult,
   GetAccountResult,
+  GetDepositFlowParams,
   GetSetupParams,
   ModifyOrdersParams,
   PerpsClientOptions,
@@ -40,6 +41,7 @@ import type {
   WithdrawParams,
 } from '../types/api.js'
 import type { PerpsClientSigner, SwitchChainHook } from '../types/config.js'
+import type { DepositFlow } from '../types/deposit.js'
 import type {
   ActionSignerContribution,
   PerpsProvider,
@@ -410,6 +412,23 @@ export class PerpsClient {
    */
   async accountExists(provider: string, address: Address): Promise<boolean> {
     return this.requireProvider(provider).accountExists({ address })
+  }
+
+  /**
+   * The deposit flow for `params.address` at `params.provider`, delegated to the
+   * provider plugin — every deposit decision (the collateral destination, the
+   * account-opening pipeline, an outstanding setup gate) is venue-owned.
+   *
+   * @returns `undefined` when the registered plugin declares no deposit flow.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   plugin's flow resolution fails.
+   * @public
+   */
+  async getDepositFlow(
+    params: GetDepositFlowParams
+  ): Promise<DepositFlow | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getDepositFlow?.({ address: params.address })
   }
 
   /**

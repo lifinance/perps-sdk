@@ -1,4 +1,6 @@
 import {
+  type DepositFlow,
+  ETHEREUM_USDC,
   getMarketRegistry,
   localStorageAdapter,
   PerpsError,
@@ -7,6 +9,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -301,6 +304,39 @@ export const ondoProvider = (
         async (token) => {
           await apiClient(opts).get('/v1/account', { authToken: token.token })
           return true
+        }
+      )
+    },
+
+    async getDepositFlow(
+      params: ProviderGetDepositFlowParams,
+      opts?: SDKRequestOptions
+    ): Promise<DepositFlow> {
+      // Ondo credits deposits to a per-user address the venue provisions behind
+      // an authenticated session, so both the session and the address must exist
+      // before a route has a recipient.
+      return withSession<DepositFlow>(
+        params.address,
+        () => ({
+          kind: 'setupRequired',
+          setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
+        }),
+        async (token) => {
+          const depositAddress = await listOndoDepositAddress(
+            apiClient(opts),
+            token.token
+          )
+          if (depositAddress === null) {
+            return {
+              kind: 'setupRequired',
+              setup: [ActionType.CREATE_DEPOSIT_ADDRESS],
+            }
+          }
+          return {
+            kind: 'lifiSwap',
+            destination: ETHEREUM_USDC,
+            toAddress: depositAddress,
+          }
         }
       )
     },

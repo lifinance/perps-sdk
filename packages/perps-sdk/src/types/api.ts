@@ -210,6 +210,16 @@ export interface GetSetupParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getDepositFlow}.
+ *
+ * @public
+ */
+export interface GetDepositFlowParams {
+  provider: string
+  address: Address
+}
+
+/**
  * Result from {@link PerpsClient.checkSetup}.
  *
  * Reports the unsatisfied entries on `Provider.setup` for the queried account

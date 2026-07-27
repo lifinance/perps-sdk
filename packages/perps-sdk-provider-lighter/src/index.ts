@@ -33,6 +33,7 @@ export {
   LIGHTER_SPOT_CATEGORY_ID,
   lighterRhInstance,
 } from './constants.js'
+export { lighterDepositFlow } from './depositFlow.js'
 export type {
   LighterPerpsProvider,
   LighterProviderOptions,
