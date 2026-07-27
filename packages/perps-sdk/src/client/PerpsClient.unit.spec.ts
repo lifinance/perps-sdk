@@ -983,7 +983,7 @@ describe('PerpsClient', () => {
       destination: { chainId: 1337, address: userAddress, decimals: 6 },
     } as const
 
-    const clientWith = (plugin: Partial<PerpsProviderPlugin>): PerpsClient =>
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
       new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -1000,9 +1000,7 @@ describe('PerpsClient', () => {
     it('delegates to the plugin with the address and returns its flow', async () => {
       const getDepositFlow = vi.fn(async () => flow)
       await expect(
-        clientWith({
-          getDepositFlow,
-        } as unknown as Partial<PerpsProviderPlugin>).getDepositFlow({
+        clientWith({ getDepositFlow }).getDepositFlow({
           provider,
           address: userAddress,
         })
@@ -1021,9 +1019,7 @@ describe('PerpsClient', () => {
         throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
       })
       await expect(
-        clientWith({
-          getDepositFlow,
-        } as unknown as Partial<PerpsProviderPlugin>).getDepositFlow({
+        clientWith({ getDepositFlow }).getDepositFlow({
           provider,
           address: userAddress,
         })
