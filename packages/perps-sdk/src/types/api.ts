@@ -3,6 +3,7 @@ import type {
   AccountResponse,
   ActionStep,
   ExecuteActionResponse,
+  MarginMode,
   MarketRef,
   ModifyOrderInput,
   OrderSide,
@@ -122,6 +123,12 @@ export interface PlaceOrderParams {
   size: string
   price: string
   leverage?: number
+  /**
+   * Margin mode the order trades under; omitted falls to the venue's cross
+   * default. Lighter's order tx carries the mode directly; Hyperliquid
+   * applies it via a prepended leverage update (requires `leverage`).
+   */
+  marginMode?: MarginMode
   reduceOnly?: boolean
   timeInForce?: TimeInForce
   expiresAt?: string

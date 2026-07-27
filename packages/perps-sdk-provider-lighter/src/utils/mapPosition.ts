@@ -35,7 +35,10 @@ export const mapPosition = (
         : (parseFloat(pos.position_value) / Math.abs(size)).toString(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
-    leverage: imf > 0 ? Math.round(100 / imf) : 1,
+    // Two decimals: Lighter leverage is fractional (IMF 45% = 2.22x), and
+    // whole-number rounding understates the margin requirement consumers
+    // derive from it (removable-margin bounds would exceed the venue's).
+    leverage: imf > 0 ? Math.round(10_000 / imf) / 100 : 1,
     marginUsed,
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }

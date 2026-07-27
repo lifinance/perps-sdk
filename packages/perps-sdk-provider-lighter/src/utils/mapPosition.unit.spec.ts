@@ -136,7 +136,7 @@ describe('mapPosition (Lighter)', () => {
       expect(parseFloat(result.markPrice)).toBeCloseTo(79209.4, 1)
     })
 
-    it('derives leverage as round(100 / initial_margin_fraction)', () => {
+    it('derives fractional leverage from the initial_margin_fraction', () => {
       expect(
         mapPosition(basePosition({ initial_margin_fraction: '2.00' }), SYMBOL)
           .leverage
@@ -145,6 +145,13 @@ describe('mapPosition (Lighter)', () => {
         mapPosition(basePosition({ initial_margin_fraction: '12.50' }), SYMBOL)
           .leverage
       ).toBe(8)
+      // Fractional IMFs must not round to a whole leverage: 45% is 2.22x,
+      // and rounding to 2 would inflate removable-margin bounds past the
+      // venue's requirement.
+      expect(
+        mapPosition(basePosition({ initial_margin_fraction: '45.00' }), SYMBOL)
+          .leverage
+      ).toBe(2.22)
     })
   })
 })
