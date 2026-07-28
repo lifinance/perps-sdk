@@ -14,6 +14,7 @@ import type {
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
+  TriggerOrderInput,
   UpdateLeverageParams,
 } from './action.js'
 import {
@@ -92,6 +93,26 @@ describe('UpdateLeverageParams', () => {
     }
 
     expect(params.marginMode).toBe(MarginMode.CROSS)
+  })
+})
+
+describe('TriggerOrderInput', () => {
+  it('accepts a fixture without size (entire position)', () => {
+    const leg: TriggerOrderInput = {
+      triggerPrice: '65000',
+    }
+
+    expect(leg.size).toBeUndefined()
+  })
+
+  it('accepts a fixed partial size', () => {
+    const leg: TriggerOrderInput = {
+      triggerPrice: '65000',
+      limitPrice: '64900',
+      size: '0.0876',
+    }
+
+    expect(leg.size).toBe('0.0876')
   })
 })
 

@@ -254,6 +254,11 @@ export type ActionResult =
 export interface TriggerOrderInput {
   triggerPrice: string
   limitPrice?: string
+  /**
+   * Base-asset size the trigger closes. Omitted covers the entire position,
+   * tracking later size changes; set, it is a fixed partial amount.
+   */
+  size?: string
 }
 
 /**
