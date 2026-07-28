@@ -11,8 +11,10 @@ import {
   ActionType,
   ActivityType,
   LiquidityRole,
+  MarginMode,
   OrderSide,
   PerpsErrorCode,
+  PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -69,6 +71,7 @@ const MARKETS_RESPONSE = {
       markPrice: '50000',
       maxLeverage: 50,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
       funding: { rate: '0.0001', nextFundingTime: 0 },
     },
   ],
@@ -122,6 +125,7 @@ const ACCOUNT_PAYLOAD = {
       available_balance: '100',
       status: 1,
       collateral: '500',
+      cross_initial_margin_requirement: '120',
       transaction_time: 0,
       account_trading_mode: 1,
       account_index: 42,
@@ -800,6 +804,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     accounts: [
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
+        cross_asset_value: '450',
         assets: [
           {
             symbol: 'USDC',
@@ -820,7 +825,10 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     ],
   }
 
+  let accountPayload = ACCOUNT_WITH_SPOT
+
   beforeEach(() => {
+    accountPayload = ACCOUNT_WITH_SPOT
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
@@ -835,7 +843,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
           return respond(PROVIDERS_WITH_LOGO)
         }
         if (u.includes('/api/v1/account?')) {
-          return respond(ACCOUNT_WITH_SPOT)
+          return respond(accountPayload)
         }
         if (u.includes('/api/v1/orderBookDetails')) {
           return respond(ORDER_BOOK_DETAILS_PAYLOAD)
@@ -859,9 +867,29 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       displaySymbol: 'USDC',
       logoURI: USDC_LOGO,
     })
-    // AC5: only asset identity changes — free collateral stays `available_balance`.
-    expect(account.collateralBalances[0].units).toBe('100')
-    expect(account.collateralBalances[0].valueUsd).toBe('100')
+    // Cross availability comes only from Lighter's cross pool:
+    // cross_asset_value (450) − cross_initial_margin_requirement (120).
+    // Top-level collateral (500) also includes isolated allocations.
+    expect(account.collateralBalances[0].units).toBe('330')
+    expect(account.collateralBalances[0].valueUsd).toBe('330')
+  })
+
+  it('rejects malformed current cross-pool fields', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          cross_asset_value: 'not-a-decimal',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /cross_asset_value/
+    )
   })
 
   it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {
@@ -2336,5 +2364,153 @@ describe('LighterProvider — instance config', () => {
     expect(backendUrls.some((u) => u.endsWith('provider=lighter-rh'))).toBe(
       true
     )
+  })
+})
+
+describe('LighterProvider — getMarketSettings', () => {
+  // Live capture of an isolated BTC position row: IMF 50% ⇒ 2x leverage.
+  const ACCOUNT_WITH_ISOLATED_ROW = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '50.00',
+            open_order_count: 0,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '0.00019',
+            avg_entry_price: '61856.6',
+            position_value: '12.352603',
+            unrealized_pnl: '-0.006954',
+            realized_pnl: '0.000000',
+            liquidation_price: '39131.4',
+            total_funding_paid_out: '0.000000',
+            margin_mode: 1,
+            margin_set_flag: 1,
+            allocated_margin: '10.179731',
+            total_discount: '0.000000',
+          },
+        ],
+      },
+    ],
+  }
+
+  let accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+
+  beforeEach(() => {
+    accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond(accountPayload)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("reads the market's mode and leverage from the account position row", async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  })
+
+  it('preserves fractional venue leverage without two-decimal rounding', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '60',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 100 / 60,
+    })
+  })
+
+  it('does not return a partial setting when leverage is invalid', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '0',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('resolves undefined for a market without a row', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '7', categoryId: 'lighter' },
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('resolves undefined for a spot market without a request', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '2048', categoryId: 'spot' },
+      })
+    ).resolves.toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

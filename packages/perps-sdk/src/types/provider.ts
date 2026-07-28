@@ -10,11 +10,14 @@ import type {
   ActivityType,
   FillsResponse,
   Market,
+  MarketRef,
+  MarketSettings,
   Order,
   OrdersResponse,
   PerpsMarket,
   PerpsSigner,
   Position,
+  PositionMarginConstraints,
   PositionsResponse,
   ProviderAction,
   Quote,
@@ -186,6 +189,18 @@ export interface ProviderGetPositionsParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getMarketSettings}.
+ *
+ * @public
+ */
+export interface ProviderGetMarketSettingsParams {
+  address: Address
+  /** The market's `id` and `categoryId`; the category identifies spot
+   * markets, which carry no venue leverage state. */
+  market: MarketRef
+}
+
+/**
  * Read params for {@link PerpsProvider.getOrders}.
  *
  * @public
@@ -350,6 +365,18 @@ export interface PerpsProviderPlugin {
     options?: SDKRequestOptions
   ): Promise<PositionsResponse>
 
+  /**
+   * The user's current venue-side settings for one market — the margin mode
+   * and leverage the next order on it will use. Optional because venues
+   * expose this unevenly: Hyperliquid reads it directly (`activeAssetData`),
+   * Lighter only reports it on an account's position row. `undefined` means
+   * the venue has nothing to read for this market.
+   */
+  getMarketSettings?(
+    params: ProviderGetMarketSettingsParams,
+    options?: SDKRequestOptions
+  ): Promise<MarketSettings | undefined>
+
   getOrders(
     params: ProviderGetOrdersParams,
     options?: SDKRequestOptions
@@ -435,6 +462,18 @@ export interface PerpsProviderPlugin {
     market: PerpsMarket,
     params: LiquidationEstimateParams
   ): number | undefined
+
+  /**
+   * Exact venue-owned constraints for changing `position`'s dedicated margin.
+   * Pure — providers normalize raw venue quantities onto the position before
+   * returning these inputs.
+   *
+   * @returns `undefined` when this position has no individual margin
+   *   adjustment (for example a cross position or a cross-only venue).
+   */
+  positionMarginConstraints(
+    position: Position
+  ): PositionMarginConstraints | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

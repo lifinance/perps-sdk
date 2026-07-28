@@ -3,11 +3,12 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  MarketSettings,
   OndoAccountConfig,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
-import { ActivityType } from './enums.js'
+import { ActivityType, MarginMode } from './enums.js'
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest
@@ -391,5 +392,28 @@ describe('exhaustive narrowing across ActivityItem', () => {
       fee: '0.1',
     }
     expect(route(withdrawal)).toBe('withdrawal:50:0.1')
+  })
+})
+
+describe('MarketSettings', () => {
+  it('requires margin mode and leverage as a complete pair', () => {
+    const complete: MarketSettings = {
+      marginMode: MarginMode.ISOLATED,
+      leverage: 2.5,
+    }
+
+    // @ts-expect-error a mode without leverage is not a complete setting
+    const missingLeverage: MarketSettings = {
+      marginMode: MarginMode.CROSS,
+    }
+    // @ts-expect-error leverage without a mode is not a complete setting
+    const missingMode: MarketSettings = { leverage: 3 }
+
+    expect(complete).toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 2.5,
+    })
+    expect(missingLeverage.marginMode).toBe(MarginMode.CROSS)
+    expect(missingMode.leverage).toBe(3)
   })
 })

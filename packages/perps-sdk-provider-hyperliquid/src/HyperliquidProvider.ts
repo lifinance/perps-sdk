@@ -11,6 +11,7 @@ import {
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
@@ -30,6 +31,7 @@ import {
   type ActivitiesResponse,
   type FillsResponse,
   type Market,
+  type MarketSettings,
   type Order,
   type OrdersResponse,
   PerpsErrorCode,
@@ -56,6 +58,7 @@ import { getAccount } from './services/getAccount.js'
 import { getAccountExists } from './services/getAccountExists.js'
 import { getActivity } from './services/getActivity.js'
 import { getFills } from './services/getFills.js'
+import { getMarketSettings } from './services/getMarketSettings.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPositions } from './services/getPositions.js'
@@ -68,6 +71,7 @@ import type { HlExtraAgents } from './types/index.js'
 import { hlInfoOptions, infoRequest } from './utils/infoClient.js'
 import { calculateLiquidationPrice } from './utils/liquidation.js'
 import { formatOrderPrice, formatOrderSize } from './utils/orderFormatting.js'
+import { positionMarginConstraints } from './utils/transferMargin.js'
 
 /**
  * Options for {@link hyperliquidProvider}.
@@ -288,6 +292,16 @@ export function hyperliquidProvider(
         opts
       ),
 
+    getMarketSettings: (
+      params: ProviderGetMarketSettingsParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarketSettings | undefined> =>
+      getMarketSettings(
+        contextRef.require(),
+        { address: params.address, market: params.market },
+        opts
+      ),
+
     getOrders: (
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
@@ -382,6 +396,8 @@ export function hyperliquidProvider(
         params.isLong,
         market.maxLeverage
       ),
+
+    positionMarginConstraints,
 
     projectConfig: (
       config: AccountConfig,

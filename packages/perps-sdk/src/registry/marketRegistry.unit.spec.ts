@@ -1,5 +1,9 @@
-import type { Market, MarketsResponse } from '@lifi/perps-types'
-import { PerpsErrorCode } from '@lifi/perps-types'
+import {
+  type Market,
+  type MarketsResponse,
+  PerpsErrorCode,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/handlers.js'
@@ -8,7 +12,11 @@ import {
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { getMarketRegistry, toMarketDisplay } from './marketRegistry.js'
+import {
+  getMarketRegistry,
+  toMarketDisplay,
+  toPerpsMarketDisplay,
+} from './marketRegistry.js'
 
 const market = (id: string, categoryId: string): Market => ({
   providerId: 'hyperliquid',
@@ -30,6 +38,7 @@ const market = (id: string, categoryId: string): Market => ({
   markPrice: '100',
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 })
 
@@ -170,5 +179,31 @@ describe('toMarketDisplay', () => {
       baseAsset: BRENT.baseAsset,
       quoteAsset: BRENT.quoteAsset,
     })
+  })
+})
+
+describe('toPerpsMarketDisplay', () => {
+  it('preserves the position margin adjustment capability', () => {
+    expect(toPerpsMarketDisplay(BRENT)).toEqual({
+      providerId: 'hyperliquid',
+      id: 'xyz:BRENTOIL',
+      categoryId: 'xyz',
+      baseAsset: BRENT.baseAsset,
+      quoteAsset: BRENT.quoteAsset,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+    })
+  })
+
+  it('rejects a spot market', () => {
+    expect(() =>
+      toPerpsMarketDisplay({
+        providerId: 'hyperliquid',
+        id: '@142',
+        categoryId: 'spot',
+        baseAsset: BTC.baseAsset,
+        quoteAsset: BTC.quoteAsset,
+        szDecimals: 2,
+      })
+    ).toThrow(PerpsError)
   })
 })

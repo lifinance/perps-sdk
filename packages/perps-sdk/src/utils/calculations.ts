@@ -170,34 +170,6 @@ export function effectiveLeverage(params: {
 }
 
 /**
- * Margin that can be removed from a position while keeping its leverage at or
- * below the asset's maximum.
- *
- * The minimum margin to stay within `maxLeverage` is the required margin for
- * the position's notional (see {@link calculateRequiredMargin}); anything above
- * that is removable.
- *
- * @param marginUsed - Margin currently backing the position in USD
- * @param positionValueUsd - Position notional value in USD
- * @param maxLeverage - Maximum leverage allowed for the asset
- * @returns Removable margin in USD (never negative); falls back to the full
- *   `marginUsed` when `maxLeverage` is zero (no constraint available)
- * @public
- */
-export function removableMargin(params: {
-  marginUsed: number
-  positionValueUsd: number
-  maxLeverage: number
-}): number {
-  const { marginUsed, positionValueUsd, maxLeverage } = params
-  if (maxLeverage === 0) {
-    return marginUsed
-  }
-  const minMargin = calculateRequiredMargin(positionValueUsd, maxLeverage)
-  return Math.max(0, marginUsed - minMargin)
-}
-
-/**
  * Signed expected PnL for a trigger price — see {@link calculateExpectedPnl}.
  *
  * @public

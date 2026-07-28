@@ -9,6 +9,7 @@ import {
   resolveSubscribeQuote,
   type StorageAdapter,
   toMarketDisplay,
+  toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -16,6 +17,7 @@ import {
 import type {
   MarketContext,
   MarketDisplay,
+  PerpsMarketDisplay,
   Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -42,7 +44,7 @@ import { OndoSessionExpiredError } from '../utils/apiClient.js'
 import {
   classifyAndMapOrders,
   mapFill,
-  mapOpenPositions,
+  mapPosition,
   OndoApiClient,
 } from '../utils/index.js'
 import { intervalFromBarSpan, mapInterval } from '../utils/ohlcvInterval.js'
@@ -744,6 +746,13 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return known && toMarketDisplay(known)
   }
 
+  private resolvePerpsMarket = (
+    market: string
+  ): PerpsMarketDisplay | undefined => {
+    const known = this.registry?.get(market)
+    return known && toPerpsMarketDisplay(known)
+  }
+
   private handleOrders(orders: OndoOrder[]): void {
     const address = this.accountAddress
     if (address === undefined) {
@@ -780,15 +789,19 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (address === undefined) {
       return
     }
-    const known = positions.filter(
-      (position) => this.resolveMarket(position.market) !== undefined
-    )
+    const mapped = positions.flatMap((position) => {
+      if (
+        position.direction === 'neutral' ||
+        Number.parseFloat(position.netQuantity) === 0
+      ) {
+        return []
+      }
+      const market = this.resolvePerpsMarket(position.market)
+      return market === undefined ? [] : [mapPosition(position, market)]
+    })
     this.emit(`positions:${address}`, {
       channel: 'positions',
-      data: mapOpenPositions(
-        known,
-        (market) => this.resolveMarket(market) as MarketDisplay
-      ),
+      data: mapped,
     })
     if (this.accountSummary !== undefined) {
       let marginUsed = 0

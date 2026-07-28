@@ -22,7 +22,11 @@ const balance = (valueUsd: string): Balance => ({
   valueUsd,
 })
 
-const position = (marginUsed: string, unrealizedPnl: string): Position => ({
+const position = (
+  marginUsed: string,
+  unrealizedPnl: string,
+  marginMode = MarginMode.CROSS
+): Position => ({
   market: {
     providerId: 'lighter',
     id: '1',
@@ -38,7 +42,7 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   unrealizedPnl,
   leverage: 10,
   marginUsed,
-  marginMode: MarginMode.CROSS,
+  marginMode,
 })
 
 const account = (
@@ -64,16 +68,37 @@ const account = (
 })
 
 describe('getAccountSummary', () => {
-  it('adds locked margin back but never re-adds the PnL already in available_balance', () => {
-    // available_balance 800 nets margin out and marks the +50 pnl in
+  it('does not count cross unrealized PnL twice', () => {
+    // Cross available margin is marked to market by Lighter already.
     const summary = getAccountSummary(account([balance('800')]), [
       position('200', '50'),
     ])
     expect(summary.availableMargin).toBe('800')
     expect(summary.marginUsed).toBe('200')
     expect(summary.unrealizedPnl).toBe('50')
-    // portfolio = available 800 (pnl included) + locked margin 200
     expect(summary.portfolioValue).toBe('1000')
+  })
+
+  it('adds isolated unrealized PnL to the isolated allocation', () => {
+    // Captured from a real account: free cross collateral 1.506802, one
+    // isolated BTC position with allocated_margin 10.179731 and uPnL
+    // −0.006954; the venue's total_asset_value read 11.679579.
+    const summary = getAccountSummary(account([balance('1.506802')]), [
+      position('10.179731', '-0.006954', MarginMode.ISOLATED),
+    ])
+    expect(summary.availableMargin).toBe('1.506802')
+    expect(summary.portfolioValue).toBe('11.679579')
+  })
+
+  it('reconciles mixed cross and isolated positions without double-counting cross PnL', () => {
+    const summary = getAccountSummary(account([balance('800')]), [
+      position('200', '50'),
+      position('100', '-30', MarginMode.ISOLATED),
+    ])
+    expect(summary.availableMargin).toBe('800')
+    expect(summary.marginUsed).toBe('300')
+    expect(summary.unrealizedPnl).toBe('20')
+    expect(summary.portfolioValue).toBe('1070')
   })
 
   it('adds non-collateral balances to portfolio value only', () => {

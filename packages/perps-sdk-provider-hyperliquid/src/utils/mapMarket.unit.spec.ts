@@ -1,3 +1,4 @@
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlUniverseItem } from '../types/index.js'
 import { mapMarket } from './mapMarket.js'
@@ -22,6 +23,9 @@ describe('mapMarket (Hyperliquid)', () => {
     expect(result.maintenanceMarginRate).toBeCloseTo(0.01, 9)
     expect(result.maxLeverage).toBe(50)
     expect(result.onlyIsolated).toBe(false)
+    expect(result.positionMarginAdjustment).toBe(
+      PositionMarginAdjustment.ADD_AND_REMOVE
+    )
   })
 
   it('carries the explicit delisted status', () => {
@@ -39,6 +43,24 @@ describe('mapMarket (Hyperliquid)', () => {
     expect('prevDayPrice' in result).toBe(false)
     expect('funding' in result).toBe(false)
     expect('openInterest' in result).toBe(false)
+  })
+
+  it.each([
+    ['strictIsolated', PositionMarginAdjustment.ADD_ONLY],
+    ['noCross', PositionMarginAdjustment.ADD_AND_REMOVE],
+  ] as const)('maps %s without flattening its transfer capability', (mode, expected) => {
+    const result = mapMarket({ ...universe, marginMode: mode }, 'hyperliquid')
+
+    expect(result.onlyIsolated).toBe(true)
+    expect(result.positionMarginAdjustment).toBe(expected)
+  })
+
+  it('fails closed for the ambiguous deprecated onlyIsolated flag', () => {
+    const result = mapMarket({ ...universe, onlyIsolated: true }, 'hyperliquid')
+
+    expect(result.positionMarginAdjustment).toBe(
+      PositionMarginAdjustment.ADD_ONLY
+    )
   })
 
   it('coerces a missing onlyIsolated flag to false', () => {

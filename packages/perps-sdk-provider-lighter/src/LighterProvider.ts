@@ -12,6 +12,7 @@ import {
   type ProviderGetActivityParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
@@ -20,6 +21,7 @@ import {
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
+  toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -33,6 +35,7 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   LighterProviderKey,
+  MarketSettings,
   Order,
   OrdersResponse,
   Position,
@@ -42,7 +45,12 @@ import type {
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  ActivityType,
+  MarginMode,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -77,6 +85,7 @@ import type {
   LtTransferHistoryResponse,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
+import { LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -94,12 +103,15 @@ import {
   fetchDetailedAccount,
   formatOrderPrice,
   formatOrderSize,
+  leverageFromImf,
   lighterAsset,
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
+  positionMarginConstraints,
   toIsoFromMs,
   toIsoFromSeconds,
+  toRequiredBig,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -755,7 +767,7 @@ export const lighterProvider = (
           normalizeLighterPublicKey(registeredKey.public_key)
 
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
-        registry.require(String(id))
+        toPerpsMarketDisplay(registry.require(String(id)))
       )
 
       const totalMarginUsed = positions.reduce(
@@ -774,16 +786,24 @@ export const lighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      // USDC collateral is the category quote asset → collateralBalances.
-      // `available_balance` is the free collateral (Lighter's `collateral` is
-      // gross, i.e. includes margin locked in positions); the locked portion is
-      // carried by the positions' `marginUsed`.
+      // Cross buying power is isolated from per-position allocations. Lighter
+      // reports cross equity (already marked by cross uPnL) separately from
+      // the initial margin locked by cross positions.
+      const availableMargin = toRequiredBig(
+        account.cross_asset_value,
+        'cross_asset_value'
+      ).minus(
+        toRequiredBig(
+          account.cross_initial_margin_requirement,
+          'cross_initial_margin_requirement'
+        )
+      )
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
           asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
-          units: account.available_balance,
-          valueUsd: account.available_balance,
+          units: availableMargin.toString(),
+          valueUsd: availableMargin.toString(),
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
@@ -872,7 +892,7 @@ export const lighterProvider = (
       ])
 
       let positions: Position[] = mapOpenPositions(account.positions, (id) =>
-        registry.require(String(id))
+        toPerpsMarketDisplay(registry.require(String(id)))
       )
 
       if (params.marketId !== undefined) {
@@ -883,6 +903,50 @@ export const lighterProvider = (
         provider: providerKey,
         positions,
         pagination: { limit: params.limit ?? positions.length, hasMore: false },
+      }
+    },
+
+    /**
+     * Lighter reports a market's margin mode and leverage only on the
+     * account's position row, so a market the account never touched (or a
+     * missing account) resolves `undefined` rather than a venue default.
+     */
+    async getMarketSettings(
+      params: ProviderGetMarketSettingsParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarketSettings | undefined> {
+      // Spot markets carry no margin mode or leverage.
+      if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        return undefined
+      }
+      let account: LtDetailedAccount
+      try {
+        account = await fetchDetailedAccount(apiClient(opts), params.address)
+      } catch (err) {
+        if (
+          err instanceof PerpsError &&
+          err.code === PerpsErrorCode.AccountNotFound
+        ) {
+          return undefined
+        }
+        throw err
+      }
+      const row = account.positions.find(
+        (p) => String(p.market_id) === params.market.marketId
+      )
+      if (!row) {
+        return undefined
+      }
+      const leverage = leverageFromImf(row.initial_margin_fraction)
+      if (leverage === undefined) {
+        return undefined
+      }
+      return {
+        marginMode:
+          row.margin_mode === LT_MARGIN_MODE_ISOLATED
+            ? MarginMode.ISOLATED
+            : MarginMode.CROSS,
+        leverage,
       }
     },
 
@@ -1254,6 +1318,8 @@ export const lighterProvider = (
     formatOrderSize,
 
     estimateLiquidationPrice,
+
+    positionMarginConstraints,
 
     projectConfig(
       config: AccountConfig,

@@ -23,6 +23,7 @@ import {
   OrderType,
   PerpsErrorCode,
   PerpsSigner,
+  PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -107,6 +108,7 @@ const MARKETS_RESPONSE = {
       markPrice: '202.05',
       maxLeverage: 20,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.NONE,
       maintenanceMarginRate: 0.02,
       funding: { rate: '0.0001', nextFundingTime: 0 },
     },
@@ -119,6 +121,11 @@ const MARKET_DISPLAY = {
   categoryId: 'ondo',
   baseAsset: MARKETS_RESPONSE.markets[0].baseAsset,
   quoteAsset: MARKETS_RESPONSE.markets[0].quoteAsset,
+}
+
+const PERPS_MARKET_DISPLAY = {
+  ...MARKET_DISPLAY,
+  positionMarginAdjustment: PositionMarginAdjustment.NONE,
 }
 
 const BALANCE_RESULT: OndoBalanceSummary = {
@@ -522,7 +529,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
     })
     expect(account.positions).toEqual([
       {
-        market: MARKET_DISPLAY,
+        market: PERPS_MARKET_DISPLAY,
         side: PositionSide.LONG,
         size: '10',
         entryPrice: '200.5',
@@ -531,6 +538,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         unrealizedPnl: '15.5',
         leverage: 5,
         marginUsed: '401',
+        initialMarginRequirement: '401',
         marginMode: MarginMode.CROSS,
       },
     ])
@@ -1077,7 +1085,7 @@ describe('OndoProvider — getAccountSummary', () => {
     } satisfies AccountResponse
     const positions: Position[] = [
       {
-        market: MARKET_DISPLAY,
+        market: PERPS_MARKET_DISPLAY,
         side: PositionSide.LONG,
         size: '10',
         entryPrice: '200.5',
@@ -1086,6 +1094,7 @@ describe('OndoProvider — getAccountSummary', () => {
         unrealizedPnl: '15.5',
         leverage: 5,
         marginUsed: '401',
+        initialMarginRequirement: '401',
         marginMode: MarginMode.CROSS,
       },
     ]

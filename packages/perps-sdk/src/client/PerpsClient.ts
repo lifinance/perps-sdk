@@ -7,7 +7,9 @@ import type {
   CreateActionResponse,
   ExecuteActionResponse,
   MarketRef,
+  MarketSettings,
   Position,
+  PositionMarginConstraints,
   Provider,
   ProviderAction,
   SignedActionStep,
@@ -383,6 +385,41 @@ export class PerpsClient {
       metadata.options
     )
     return { ...response, settings }
+  }
+
+  /**
+   * The user's current venue-side settings for a market — the margin mode
+   * and leverage the next order on it will use. Resolves `undefined` when
+   * the venue exposes no readable setting for the market (or the provider
+   * has no such read at all).
+   *
+   * @throws {PerpsError} When the provider plugin is not registered.
+   * @public
+   */
+  async getMarketSettings(params: {
+    provider: string
+    address: Address
+    market: MarketRef
+  }): Promise<MarketSettings | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getMarketSettings?.({
+      address: params.address,
+      market: params.market,
+    })
+  }
+
+  /**
+   * Resolve the exact venue-owned margin requirements for `position`.
+   * Returns `undefined` when the position has no individual margin adjustment.
+   *
+   * @public
+   */
+  getPositionMarginConstraints(
+    position: Position
+  ): PositionMarginConstraints | undefined {
+    return this.requireProvider(
+      position.market.providerId
+    ).positionMarginConstraints(position)
   }
 
   /**

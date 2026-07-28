@@ -5,6 +5,7 @@ import type {
   PerpsMarket,
   SpotMarket,
 } from '@lifi/perps-types'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../test/handlers.js'
@@ -35,6 +36,7 @@ const BTC_PERP: PerpsMarket = {
   szDecimals: 5,
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 // Same displaySymbol on the spot leg — disambiguated by `type`.

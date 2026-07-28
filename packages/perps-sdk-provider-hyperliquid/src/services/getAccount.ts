@@ -4,6 +4,7 @@ import {
   type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
+  toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
@@ -214,7 +215,12 @@ export const getAccount = async (
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions
       .filter(isOpenAssetPosition)
-      .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
+      .map((ap) =>
+        mapPosition(
+          ap,
+          toPerpsMarketDisplay(registry.require(ap.position.coin))
+        )
+      )
   )
 
   const stateByDex = new Map<string, HlClearinghouseState>()

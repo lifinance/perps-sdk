@@ -9,6 +9,7 @@ import {
   ReconnectingWebSocket,
   resolveRetryPolicy,
   resolveSubscribeQuote,
+  toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -51,6 +52,7 @@ import {
   mapFill,
   mapMarketContext,
   mapPosition,
+  toRequiredBig,
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
@@ -588,23 +590,51 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const stats = msg.stats
-    const portfolio = Number.parseFloat(stats?.portfolio_value ?? '')
-    const available = Number.parseFloat(stats?.available_balance ?? '')
-    if (!Number.isFinite(portfolio) || !Number.isFinite(available)) {
+    if (stats === undefined) {
       return
     }
-    // Identities of the REST 'net' semantics: `available_balance` nets locked
-    // margin out with PnL marked in, and `collateral` is gross, PnL-exclusive.
-    const collateral = Number.parseFloat(stats?.collateral ?? '')
+
+    const portfolio = toRequiredBig(
+      stats.portfolio_value,
+      'stats.portfolio_value'
+    )
+    const collateral = toRequiredBig(stats.collateral, 'stats.collateral')
+
+    let available: Big
+    let marginUsed: Big
+    if (stats.cross_stats === undefined) {
+      // Compatibility with legacy gateways that omitted the entire
+      // cross_stats object.
+      available = toRequiredBig(
+        stats.available_balance,
+        'stats.available_balance'
+      )
+      marginUsed = portfolio.minus(available)
+    } else {
+      const crossCollateral = toRequiredBig(
+        stats.cross_stats.collateral,
+        'stats.cross_stats.collateral'
+      )
+      const crossPortfolio = toRequiredBig(
+        stats.cross_stats.portfolio_value,
+        'stats.cross_stats.portfolio_value'
+      )
+      available = toRequiredBig(
+        stats.cross_stats.available_balance,
+        'stats.cross_stats.available_balance'
+      )
+      const isolatedMargin = collateral.minus(crossCollateral)
+      const crossMargin = crossPortfolio.minus(available)
+      marginUsed = isolatedMargin.plus(crossMargin)
+    }
+
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
         portfolioValue: portfolio.toString(),
         availableMargin: available.toString(),
-        marginUsed: Math.max(portfolio - available, 0).toString(),
-        unrealizedPnl: Number.isFinite(collateral)
-          ? (portfolio - collateral).toString()
-          : '0',
+        marginUsed: marginUsed.toString(),
+        unrealizedPnl: portfolio.minus(collateral).toString(),
       },
     })
   }
@@ -649,7 +679,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       } else {
         const market = this.registry?.get(String(p.market_id))
         if (market) {
-          state.set(p.market_id, mapPosition(p, market))
+          state.set(p.market_id, mapPosition(p, toPerpsMarketDisplay(market)))
         }
       }
     }

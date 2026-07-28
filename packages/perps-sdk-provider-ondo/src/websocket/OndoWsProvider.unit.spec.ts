@@ -3,6 +3,7 @@ import {
   createPerpsClient,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_ONDO_API_URL, DEFAULT_ONDO_WS_URL } from '../constants.js'
@@ -120,6 +121,7 @@ describe('OndoWsProvider', () => {
         displaySymbol: 'USD',
         logoURI: '',
       },
+      positionMarginAdjustment: PositionMarginAdjustment.NONE,
     },
     {
       providerId: 'ondo',
@@ -137,6 +139,7 @@ describe('OndoWsProvider', () => {
         displaySymbol: 'USD',
         logoURI: '',
       },
+      positionMarginAdjustment: PositionMarginAdjustment.NONE,
     },
   ]
 

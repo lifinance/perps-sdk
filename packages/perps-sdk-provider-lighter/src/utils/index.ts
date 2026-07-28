@@ -9,6 +9,7 @@ export {
 } from './activityCursor.js'
 export { LighterApiClient } from './apiClient.js'
 export { assetMarginModeInt, isAssetMarginEnabled } from './assetCollateral.js'
+export { toBigOrNull, toRequiredBig } from './decimal.js'
 export { fetchDetailedAccount } from './fetchDetailedAccount.js'
 export { lighterAsset } from './lighterAsset.js'
 export { estimateLiquidationPrice } from './liquidation.js'
@@ -24,10 +25,11 @@ export {
   mapStatusReason,
   mapTriggerOrder,
 } from './mapOrder.js'
-export { mapPosition } from './mapPosition.js'
+export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'
+export { positionMarginConstraints } from './transferMargin.js'
 export {
   leverageToFraction,
   mapOrderTypeToInt,

@@ -4,7 +4,12 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import type { Market, Subscription } from '@lifi/perps-types'
-import { FillStatus, OrderSide, OrderType } from '@lifi/perps-types'
+import {
+  FillStatus,
+  OrderSide,
+  OrderType,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import {
   HL_DELISTED_MARKET,
@@ -29,6 +34,7 @@ const XYZ_BRENTOIL_MARKET: Market = {
     displaySymbol: 'USDC',
     logoURI: '',
   },
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 } as Market
 
 const assetPositionOf = (coin: string) => ({

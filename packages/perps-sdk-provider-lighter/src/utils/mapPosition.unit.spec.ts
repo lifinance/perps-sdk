@@ -1,4 +1,9 @@
-import { MarginMode, PositionSide } from '@lifi/perps-types'
+import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
 import {
@@ -8,6 +13,24 @@ import {
 import { mapPosition } from './mapPosition.js'
 
 const SYMBOL = 'BTC'
+const MARKET: PerpsMarketDisplay = {
+  providerId: 'lighter',
+  id: '1',
+  categoryId: 'lighter',
+  baseAsset: {
+    providerId: 'lighter',
+    id: '1',
+    displaySymbol: SYMBOL,
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'lighter',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+}
 
 const basePosition = (
   overrides: Partial<LtAccountPosition> = {}
@@ -48,11 +71,12 @@ describe('mapPosition (Lighter)', () => {
           position_value: '83.961964',
           initial_margin_fraction: '2.00',
         }),
-        SYMBOL
+        MARKET
       )
 
       // 83.961964 × 2.00 / 100 = 1.67923928
       expect(parseFloat(result.marginUsed)).toBeCloseTo(1.67923928, 8)
+      expect(result.initialMarginRequirement).toBe('1.67923928')
       expect(result.marginMode).toBe(MarginMode.CROSS)
     })
 
@@ -95,6 +119,7 @@ describe('mapPosition (Lighter)', () => {
       )
 
       expect(result.marginUsed).toBe('1046.077285')
+      expect(result.initialMarginRequirement).toBe('47.3541')
       expect(result.marginMode).toBe(MarginMode.ISOLATED)
     })
 
@@ -110,7 +135,7 @@ describe('mapPosition (Lighter)', () => {
           allocated_margin: '0.000000',
           initial_margin_fraction: '2.00',
         }),
-        SYMBOL
+        MARKET
       )
 
       expect(parseFloat(result.marginUsed)).toBe(0)
@@ -119,10 +144,10 @@ describe('mapPosition (Lighter)', () => {
 
   describe('other invariants', () => {
     it('maps sign>=0 to LONG and sign<0 to SHORT', () => {
-      expect(mapPosition(basePosition({ sign: 1 }), SYMBOL).side).toBe(
+      expect(mapPosition(basePosition({ sign: 1 }), MARKET).side).toBe(
         PositionSide.LONG
       )
-      expect(mapPosition(basePosition({ sign: -1 }), SYMBOL).side).toBe(
+      expect(mapPosition(basePosition({ sign: -1 }), MARKET).side).toBe(
         PositionSide.SHORT
       )
     })
@@ -130,21 +155,51 @@ describe('mapPosition (Lighter)', () => {
     it('computes markPrice from position_value / |size|', () => {
       const result = mapPosition(
         basePosition({ position: '0.00106', position_value: '83.961964' }),
-        SYMBOL
+        MARKET
       )
       // 83.961964 / 0.00106 ≈ 79209.4
       expect(parseFloat(result.markPrice)).toBeCloseTo(79209.4, 1)
     })
 
-    it('derives leverage as round(100 / initial_margin_fraction)', () => {
+    it('derives fractional leverage from the initial_margin_fraction', () => {
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '2.00' }), SYMBOL)
+        mapPosition(basePosition({ initial_margin_fraction: '2.00' }), MARKET)
           .leverage
       ).toBe(50)
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '12.50' }), SYMBOL)
+        mapPosition(basePosition({ initial_margin_fraction: '12.50' }), MARKET)
           .leverage
       ).toBe(8)
+      // Fractional IMFs must not round to whole or two-decimal display
+      // leverage. Risk calculations consume the exact IMF separately.
+      expect(
+        mapPosition(basePosition({ initial_margin_fraction: '45.00' }), MARKET)
+          .leverage
+      ).toBe(100 / 45)
+      expect(
+        mapPosition(
+          basePosition({
+            position_value: '1.000001',
+            initial_margin_fraction: '45.00',
+          }),
+          MARKET
+        ).initialMarginRequirement
+      ).toBe('0.45000045')
+    })
+
+    it.each([
+      '0',
+      '-1',
+      'n/a',
+    ])('rejects invalid initial_margin_fraction %s', (initialMarginFraction) => {
+      expect(() =>
+        mapPosition(
+          basePosition({
+            initial_margin_fraction: initialMarginFraction,
+          }),
+          MARKET
+        )
+      ).toThrowError()
     })
   })
 })

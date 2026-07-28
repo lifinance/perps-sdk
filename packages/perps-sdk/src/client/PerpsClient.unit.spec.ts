@@ -5,12 +5,16 @@ import type {
   ExecuteActionRequest,
   ExecuteActionResponse,
   HmacSignedActionStep,
+  Position,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
+  MarginMode,
   PerpsErrorCode,
   PerpsSigner,
+  PositionMarginAdjustment,
+  PositionSide,
   SigningMethod,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
@@ -1034,6 +1038,133 @@ describe('PerpsClient', () => {
       await expect(
         noProviderClient.getDepositFlow({ provider, address: userAddress })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  describe('getMarketSettings', () => {
+    const market = { marketId: 'BTC', categoryId: 'perps' }
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates the address and complete market identity', async () => {
+      const settings = { marginMode: MarginMode.CROSS, leverage: 20 }
+      const getMarketSettings = vi.fn(async () => settings)
+
+      await expect(
+        clientWith({ getMarketSettings }).getMarketSettings({
+          provider,
+          address: userAddress,
+          market,
+        })
+      ).resolves.toEqual(settings)
+      expect(getMarketSettings).toHaveBeenCalledWith({
+        address: userAddress,
+        market,
+      })
+    })
+
+    it('resolves undefined when the plugin has no settings read', async () => {
+      await expect(
+        clientWith({}).getMarketSettings({
+          provider,
+          address: userAddress,
+          market,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('propagates provider errors', async () => {
+      const getMarketSettings = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
+      })
+
+      await expect(
+        clientWith({ getMarketSettings }).getMarketSettings({
+          provider,
+          address: userAddress,
+          market,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+
+      await expect(
+        noProviderClient.getMarketSettings({
+          provider,
+          address: userAddress,
+          market,
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  describe('getPositionMarginConstraints', () => {
+    const position: Position = {
+      market: {
+        providerId: provider,
+        id: 'BTC',
+        categoryId: 'perps',
+        baseAsset: {
+          providerId: provider,
+          id: 'BTC',
+          displaySymbol: 'BTC',
+        },
+        quoteAsset: {
+          providerId: provider,
+          id: 'USDC',
+          displaySymbol: 'USDC',
+        },
+        positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+      },
+      side: PositionSide.LONG,
+      size: '1',
+      entryPrice: '10000',
+      markPrice: '10000',
+      liquidationPrice: '8000',
+      unrealizedPnl: '0',
+      leverage: 10,
+      marginUsed: '1500',
+      initialMarginRequirement: '1000',
+      marginMode: MarginMode.ISOLATED,
+    }
+
+    it('delegates the complete position to its registered provider', () => {
+      const constraints = {
+        minimumMarginRequirement: '1000',
+        amountIncrement: '0.000001',
+      }
+      const positionMarginConstraints = vi.fn(() => constraints)
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            positionMarginConstraints,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      expect(client.getPositionMarginConstraints(position)).toEqual(constraints)
+      expect(positionMarginConstraints).toHaveBeenCalledWith(position)
     })
   })
 
