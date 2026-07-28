@@ -20,7 +20,6 @@ export interface GetActivityParams {
   startTime?: number
   /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
-  /** Optional filter for activity types. */
   type?: ActivityType[]
 }
 

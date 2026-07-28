@@ -20,7 +20,6 @@ export interface ExecuteActionParams {
   signerAddress?: Address
   /** Action descriptor shared by the signed steps. */
   action: ActionType
-  /** Signed steps returned from client-side signing. */
   actions: SignedActionStep[]
 }
 
