@@ -2,7 +2,14 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
+import type { LtWsUserStatsMessage } from '../types/index.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
+
+type LighterWsProviderInternals = {
+  accountIndexCache: Map<string, number>
+  handleMessage(raw: string): void
+  handleUserStats(message: LtWsUserStatsMessage): void
+}
 
 // The market registry fetches `${apiUrl}/markets` over HTTP — served by the
 // global fetch stub installed in beforeEach below.
@@ -1452,7 +1459,105 @@ describe('LighterWsProvider', () => {
   })
 
   describe('accountSummary via user_stats', () => {
-    it('maps a user_stats frame through the net-semantics identities', () => {
+    it('maps the free cross collateral, not the account-wide withdrawable', () => {
+      const p = makeProvider()
+      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+      // Live capture of an account with an isolated BTC position: the
+      // top-level available_balance (5.50) includes the position's excess
+      // margin; only cross_stats carries the tradable figure (1.51).
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {
+            collateral: '11.686533',
+            portfolio_value: '11.677736',
+            available_balance: '5.502356',
+            cross_stats: {
+              collateral: '1.506802',
+              portfolio_value: '1.506802',
+              available_balance: '1.506802',
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('accountSummary')
+      expect(event.data.portfolioValue).toBe('11.677736')
+      expect(event.data.availableMargin).toBe('1.506802')
+      // marginUsed = collateral − free cross (≈ the isolated allocation);
+      // unrealizedPnl = portfolio − collateral. Exact decimal arithmetic:
+      // the emitted strings carry no float artifacts.
+      expect(event.data.marginUsed).toBe('10.179731')
+      expect(event.data.unrealizedPnl).toBe('-0.008797')
+      p.close()
+    })
+
+    it.each([
+      ['positive', '1600', '1100', '800', '100'],
+      ['negative', '1400', '900', '600', '-100'],
+    ])('keeps %s cross PnL out of margin used', (_direction, portfolioValue, crossPortfolio, crossAvailable, pnl) => {
+      const p = makeProvider()
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {
+            collateral: '1500',
+            portfolio_value: portfolioValue,
+            available_balance: '9999',
+            cross_stats: {
+              collateral: '1000',
+              portfolio_value: crossPortfolio,
+              available_balance: crossAvailable,
+            },
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.availableMargin).toBe(crossAvailable)
+      // Cross margin = cross portfolio − cross available = 300;
+      // isolated allocation = total collateral − cross collateral = 500.
+      expect(event.data.marginUsed).toBe('800')
+      expect(event.data.unrealizedPnl).toBe(pnl)
+      p.close()
+    })
+
+    it('rejects malformed current cross_stats instead of using the legacy fallback', () => {
+      const p = makeProvider()
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      expect(() =>
+        internals.handleUserStats({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {
+            collateral: '1500',
+            portfolio_value: '1600',
+            available_balance: '9999',
+            cross_stats: {
+              collateral: '1000',
+              portfolio_value: '1100',
+              available_balance: 'not-a-decimal',
+            },
+          },
+        })
+      ).toThrow(/cross_stats\.available_balance/)
+      p.close()
+    })
+
+    it('falls back to the account-wide identities without cross_stats', () => {
       const p = makeProvider()
       ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
@@ -1472,12 +1577,11 @@ describe('LighterWsProvider', () => {
 
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
-      expect(event.channel).toBe('accountSummary')
       expect(event.data.portfolioValue).toBe('35.072119')
       expect(event.data.availableMargin).toBe('11.05625')
       // marginUsed = portfolio - available; unrealizedPnl = portfolio - collateral
-      expect(Number.parseFloat(event.data.marginUsed)).toBeCloseTo(24.015869)
-      expect(Number.parseFloat(event.data.unrealizedPnl)).toBeCloseTo(9.29435)
+      expect(event.data.marginUsed).toBe('24.015869')
+      expect(event.data.unrealizedPnl).toBe('9.29435')
       p.close()
     })
 

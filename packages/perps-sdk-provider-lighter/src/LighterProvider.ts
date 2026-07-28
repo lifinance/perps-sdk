@@ -100,6 +100,7 @@ import {
   mapOrderDetail,
   toIsoFromMs,
   toIsoFromSeconds,
+  toRequiredBig,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -774,16 +775,24 @@ export const lighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      // USDC collateral is the category quote asset → collateralBalances.
-      // `available_balance` is the free collateral (Lighter's `collateral` is
-      // gross, i.e. includes margin locked in positions); the locked portion is
-      // carried by the positions' `marginUsed`.
+      // Cross buying power is isolated from per-position allocations. Lighter
+      // reports cross equity (already marked by cross uPnL) separately from
+      // the initial margin locked by cross positions.
+      const availableMargin = toRequiredBig(
+        account.cross_asset_value,
+        'cross_asset_value'
+      ).minus(
+        toRequiredBig(
+          account.cross_initial_margin_requirement,
+          'cross_initial_margin_requirement'
+        )
+      )
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
           asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
-          units: account.available_balance,
-          valueUsd: account.available_balance,
+          units: availableMargin.toString(),
+          valueUsd: availableMargin.toString(),
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
