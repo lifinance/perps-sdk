@@ -43,11 +43,8 @@ export interface WasmBlobActionStep {
  * @public
  */
 export interface EvmCall {
-  /** Numeric EVM chain id on which the call is submitted. */
   chainId: number
-  /** Destination contract address. */
   to: Address
-  /** Contract function name to invoke. */
   functionName: string
   /** Function arguments supplied to the contract call in declaration order. */
   args: readonly unknown[]

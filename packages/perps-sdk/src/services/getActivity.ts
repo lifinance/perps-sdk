@@ -10,11 +10,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetActivityParams {
-  /** Provider key whose account activity is read. */
   provider: string
-  /** User account address to query. */
   address: Address
-  /** Maximum records to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -22,7 +19,6 @@ export interface GetActivityParams {
   startTime?: number
   /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
-  /** Optional venue activity-type filter. */
   type?: ActivityType[]
 }
 

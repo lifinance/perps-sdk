@@ -9,17 +9,14 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOhlcvParams {
-  /** Provider key whose candles are returned. */
   provider: string
   /** Opaque provider `Market.id`, not a display symbol. */
   marketId: string
-  /** Provider-supported candle interval. */
   interval: OhlcvInterval
   /** Unix timestamp in milliseconds for the start bound. */
   startTime?: number
   /** Unix timestamp in milliseconds for the end bound. */
   endTime?: number
-  /** Maximum candles to return. */
   limit?: number
 }
 

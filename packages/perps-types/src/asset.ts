@@ -56,11 +56,8 @@ export interface DepositAsset {
   address: Address
   /** ERC-20 decimals, used to scale deposit amounts. */
   decimals: number
-  /** Display ticker for UI labels; same semantics as {@link Asset.displaySymbol}. */
   displaySymbol: string
-  /** Token logo for UI; same semantics as {@link Asset.logoURI}. */
   logoURI: string
-  /** Optional longer display name; same semantics as {@link Asset.displayName}. */
   displayName?: string
 }
 

@@ -10,7 +10,6 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  * @public
  */
 export interface GetAccountExistsParams {
-  /** EVM user address checked against Hyperliquid's Core account registry. */
   address: Address
 }
 

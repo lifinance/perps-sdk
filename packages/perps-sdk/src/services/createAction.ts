@@ -14,15 +14,11 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface CreateActionParams<T extends ActionType = ActionType> {
-  /** Provider key whose action is being staged. */
   provider: string
-  /** User account address associated with the action. */
   address: Address
   /** Optional provider-owned signer address sent to the backend. */
   signerAddress?: Address
-  /** Action descriptor to materialise. */
   action: T
-  /** Action-specific payload matching `action`. */
   params: ActionParamsMap[T]
 }
 

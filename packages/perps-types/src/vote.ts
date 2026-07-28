@@ -34,7 +34,6 @@ export type VoteType = 'provider'
  * @public
  */
 export interface VoteParams {
-  /** Key of the inactive provider being voted on (the voted-on subject). */
   targetProvider: string
   direction: VoteDirection
   voteType: VoteType
@@ -45,7 +44,6 @@ export interface VoteParams {
  * @public
  */
 export interface VoteMessage {
-  /** Key of the inactive provider being voted on. */
   targetProvider: string
   direction: VoteDirection
   voteType: VoteType

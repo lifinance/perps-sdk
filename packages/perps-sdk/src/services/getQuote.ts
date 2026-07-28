@@ -9,7 +9,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetQuoteParams {
-  /** Provider key whose orderbook supplies the quote. */
   provider: string
   /** Human `displaySymbol`, e.g. `"BTC"`, resolved by the provider. */
   symbol: string

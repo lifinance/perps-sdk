@@ -111,9 +111,7 @@ export interface PerpsClientOptions {
  * @public
  */
 export interface BuildProviderSetupParams {
-  /** Provider key whose setup descriptors should be built. */
   provider: string
-  /** User account address for the setup request. */
   address: Address
 }
 
@@ -123,21 +121,16 @@ export interface BuildProviderSetupParams {
  * @public
  */
 export interface PlaceOrderParams {
-  /** Provider key receiving the order. */
   provider: string
-  /** User account address submitting the order. */
   address: Address
   /** Opaque provider market reference. */
   market: MarketRef
-  /** Buy or sell direction. */
   side: OrderSide
-  /** Provider-supported order type. */
   type: OrderType
   /** Base-asset size as a decimal wire string. */
   size: string
   /** Limit price as a decimal wire string; required by limit-style orders. */
   price: string
-  /** Optional leverage multiplier for venues that support it. */
   leverage?: number
   /**
    * Margin mode the order trades under; omitted falls to the venue's cross
@@ -151,9 +144,7 @@ export interface PlaceOrderParams {
   timeInForce?: TimeInForce
   /** Optional Unix timestamp or provider wire expiry string. */
   expiresAt?: string
-  /** Optional attached take-profit trigger order. */
   takeProfit?: TriggerOrderInput
-  /** Optional attached stop-loss trigger order. */
   stopLoss?: TriggerOrderInput
 }
 
@@ -164,17 +155,12 @@ export interface PlaceOrderParams {
  * @public
  */
 export interface PlaceTriggerOrderParams {
-  /** Provider key receiving the trigger order. */
   provider: string
-  /** User account address submitting the order. */
   address: Address
   /** Opaque provider market reference. */
   market: MarketRef
-  /** Buy or sell direction of the closing trigger order. */
   side: OrderSide
-  /** Optional take-profit trigger. */
   takeProfit?: TriggerOrderInput
-  /** Optional stop-loss trigger. */
   stopLoss?: TriggerOrderInput
 }
 
@@ -184,9 +170,7 @@ export interface PlaceTriggerOrderParams {
  * @public
  */
 export interface WithdrawParams {
-  /** Provider key from which funds are withdrawn. */
   provider: string
-  /** User account address submitting the withdrawal. */
   address: Address
   /** Provider-specific withdrawal payload, including amount/destination. */
   withdrawal: WithdrawalParams
@@ -200,15 +184,11 @@ export interface WithdrawParams {
  * @public
  */
 export interface SendAssetActionParams {
-  /** Provider key receiving the transfer. */
   provider: string
-  /** User account address submitting the transfer. */
   address: Address
   /** Canonical `Asset.id` (Hyperliquid spot uses the token index as a string); never a display symbol. */
   collateral: string
-  /** Source DEX/account identifier understood by the provider. */
   sourceDex: string
-  /** Destination DEX/account identifier understood by the provider. */
   destinationDex: string
   /** Transfer amount as a provider-compatible decimal wire string. */
   amount: string
@@ -220,9 +200,7 @@ export interface SendAssetActionParams {
  * @public
  */
 export interface CancelOrdersParams {
-  /** Provider key whose orders are cancelled. */
   provider: string
-  /** User account address owning the orders. */
   address: Address
   /** Venue order ids. Market-scoped venues such as Lighter also accept `"<market_id>:<order_id>"`. */
   ids: string[]
@@ -236,9 +214,7 @@ export interface CancelOrdersParams {
  * @public
  */
 export interface ModifyOrdersParams {
-  /** Provider key whose orders are modified. */
   provider: string
-  /** User account address owning the orders. */
   address: Address
   /** Provider-specific order modifications. */
   modifications: ModifyOrderInput[]
@@ -250,9 +226,7 @@ export interface ModifyOrdersParams {
  * @public
  */
 export interface GetSetupParams {
-  /** Provider key whose setup state is queried. */
   provider: string
-  /** User account address whose setup is queried. */
   address: Address
 }
 
@@ -262,9 +236,7 @@ export interface GetSetupParams {
  * @public
  */
 export interface GetDepositFlowParams {
-  /** Provider key whose deposit flow is queried. */
   provider: string
-  /** User account address whose flow is resolved. */
   address: Address
 }
 
@@ -299,9 +271,7 @@ export interface ProviderSetup {
  * Parameters for the internal `PerpsClient.executeProviderSetup` batch submit.
  */
 export interface ExecuteProviderSetupParams {
-  /** Provider to satisfy setup for */
   provider: string
-  /** User wallet address */
   address: Address
   /** The unsatisfied setup steps from checkSetup() */
   setup: ActionStep[]

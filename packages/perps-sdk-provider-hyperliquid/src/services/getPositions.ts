@@ -21,11 +21,9 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  * @public
  */
 export interface GetPositionsParams {
-  /** EVM user address whose open positions are fetched. */
   address: Address
   /** Optional filter using the normalized opaque `Market.id`. */
   marketId?: string
-  /** Page-size hint; Hyperliquid returns all open positions in one response. */
   limit?: number
 }
 

@@ -30,7 +30,6 @@ import {
  * @public
  */
 export interface GetActivityParams {
-  /** EVM user address whose ledger and funding updates are fetched. */
   address: Address
   /** Maximum items returned; defaults to 50 and is capped at 200. */
   limit?: number

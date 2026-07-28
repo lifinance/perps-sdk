@@ -42,7 +42,6 @@ import type { DepositFlow } from './deposit.js'
  * @public
  */
 export interface PerpsSDKClient {
-  /** Immutable resolved SDK configuration. */
   readonly config: PerpsBaseConfig
   /** End-user wallet for USER-signed or on-chain EVM legs, when configured. */
   readonly userWallet?: PerpsClientSigner
@@ -61,19 +60,13 @@ export interface PerpsSDKClient {
  * @public
  */
 export interface SignActionProgress {
-  /** 0-based index of this leg within the batch. */
   index: number
-  /** Total legs in the batch. */
   total: number
-  /** Action type whose on-chain leg is being submitted. */
   action: ActionType
-  /** Contract function the leg invokes, e.g. `"approve"` or a deposit method. */
   functionName: string
-  /** EVM chain id on which this leg was broadcast. */
   chainId: number
   /** Whether the transaction was broadcast or its receipt confirmed. */
   status: 'submitted' | 'confirmed'
-  /** Transaction hash returned by the wallet. */
   txHash: string
 }
 
@@ -150,7 +143,6 @@ export interface ActionSignerContribution {
 export interface LiquidationEstimateParams {
   /** Entry price in quote currency per base unit. */
   entryPrice: number
-  /** User-selected leverage multiplier. */
   leverage: number
   /** `true` for long, `false` for short. */
   isLong: boolean
@@ -163,7 +155,6 @@ export interface LiquidationEstimateParams {
  * @public
  */
 export interface ProviderGetAccountParams {
-  /** Account address whose venue state is read. */
   address: Address
 }
 
@@ -173,7 +164,6 @@ export interface ProviderGetAccountParams {
  * @public
  */
 export interface ProviderAccountExistsParams {
-  /** Account address to probe at the venue. */
   address: Address
 }
 
@@ -183,7 +173,6 @@ export interface ProviderAccountExistsParams {
  * @public
  */
 export interface ProviderGetDepositFlowParams {
-  /** Account address whose deposit flow is resolved. */
   address: Address
 }
 
@@ -193,11 +182,9 @@ export interface ProviderGetDepositFlowParams {
  * @public
  */
 export interface ProviderGetPositionsParams {
-  /** Account address whose open positions are read. */
   address: Address
   /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
-  /** Maximum number of positions to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -221,11 +208,9 @@ export interface ProviderGetMarketSettingsParams {
  * @public
  */
 export interface ProviderGetOrdersParams {
-  /** Account address whose open orders are read. */
   address: Address
   /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
-  /** Maximum number of orders to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -237,7 +222,6 @@ export interface ProviderGetOrdersParams {
  * @public
  */
 export interface ProviderGetOrderParams {
-  /** Account address that owns the order. */
   address: Address
   /** Venue order id, opaque to the SDK. */
   id: string
@@ -249,9 +233,7 @@ export interface ProviderGetOrderParams {
  * @public
  */
 export interface ProviderGetFillsParams {
-  /** Account address whose fills are read. */
   address: Address
-  /** Maximum number of fills to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -267,9 +249,7 @@ export interface ProviderGetFillsParams {
  * @public
  */
 export interface ProviderGetActivityParams {
-  /** Account address whose activity is read. */
   address: Address
-  /** Maximum number of activity records to return, when supported. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -277,7 +257,6 @@ export interface ProviderGetActivityParams {
   startTime?: number
   /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
-  /** Optional venue activity-type filter. */
   type?: ActivityType[]
 }
 

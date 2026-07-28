@@ -20,17 +20,13 @@ export interface FundingInfo {
  * @public
  */
 export interface BaseMarket {
-  /** Provider key that owns this market. */
   providerId: string
   /** Opaque provider market id; referenced elsewhere as `marketId`. */
   id: string
-  /** Whether the venue has delisted this market. */
   isDelisted?: boolean
   /** References a {@link ProviderCategory} by id. */
   categoryId: string
-  /** Base asset being traded. */
   baseAsset: Asset
-  /** Quote asset used for prices and settlement. */
   quoteAsset: Asset
   /** Maximum fractional precision accepted for order sizes. */
   szDecimals: number
@@ -63,9 +59,7 @@ export interface BaseMarket {
  * @public
  */
 export interface PerpsMarket extends BaseMarket {
-  /** Maximum leverage multiplier accepted for this market. */
   maxLeverage: number
-  /** Whether the market supports only isolated margin. */
   onlyIsolated: boolean
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment

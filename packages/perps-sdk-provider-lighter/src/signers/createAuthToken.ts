@@ -23,7 +23,6 @@ export interface CreateAuthTokenInputs {
    * Defaults to 1 hour, matching the previous `PerpsClient` behaviour.
    */
   lifetimeSeconds?: number
-  /** Optional clock injection for tests. */
   now?: () => number
 }
 

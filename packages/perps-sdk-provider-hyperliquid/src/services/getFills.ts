@@ -21,7 +21,6 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  * @public
  */
 export interface GetFillsParams {
-  /** EVM user address whose fills are fetched. */
   address: Address
   /** Maximum items returned; defaults to 50 and is capped at 200. */
   limit?: number

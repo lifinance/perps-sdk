@@ -19,9 +19,7 @@ const STORAGE_PREFIX = 'lifi-perps-agent'
  * @public
  */
 export interface HyperliquidAgent {
-  /** Agent wallet address. */
   address: Address
-  /** Agent private key. */
   privateKey: Hex
 }
 

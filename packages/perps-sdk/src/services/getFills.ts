@@ -10,11 +10,8 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetFillsParams {
-  /** Provider key whose fills are read. */
   provider: string
-  /** User account address to query. */
   address: Address
-  /** Maximum fills to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string

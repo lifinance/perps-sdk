@@ -9,7 +9,6 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOrderbookParams {
-  /** Provider key whose orderbook is returned. */
   provider: string
   /** Opaque provider `Market.id`, not a display symbol. */
   marketId: string

@@ -26,7 +26,6 @@ export interface DeclaredDepositAsset {
  * @public
  */
 export interface DepositFlowLifiSwap {
-  /** Discriminant for a LI.FI-routed swap flow. */
   kind: 'lifiSwap'
   /** Destination collateral token and its full chain identity. */
   destination: DeclaredDepositAsset
@@ -46,7 +45,6 @@ export interface DepositFlowLifiSwap {
  * @public
  */
 export interface DepositFlowFirstDepositPipeline {
-  /** Discriminant for a first-deposit account-opening flow. */
   kind: 'firstDepositPipeline'
   /** Chain on which the deposit legs broadcast; the wallet must be switched here. */
   chainId: number
@@ -66,7 +64,6 @@ export interface DepositFlowFirstDepositPipeline {
  * @public
  */
 export interface DepositFlowSetupRequired {
-  /** Discriminant for a setup-gated deposit flow. */
   kind: 'setupRequired'
   /** Setup action types that must be completed, in execution order. */
   setup: ActionType[]

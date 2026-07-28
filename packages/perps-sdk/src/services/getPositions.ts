@@ -10,13 +10,10 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetPositionsParams {
-  /** Provider key whose account positions are read. */
   provider: string
-  /** User account address to query. */
   address: Address
   /** Optional opaque `Market.id` filter, not a display symbol. */
   marketId?: string
-  /** Maximum positions to return, when supported by the venue. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
