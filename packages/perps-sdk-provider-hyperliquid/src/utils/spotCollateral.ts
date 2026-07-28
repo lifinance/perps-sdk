@@ -13,17 +13,21 @@ const PORTFOLIO_MARGIN_LTV: Readonly<Record<string, number>> = {
   UBTC: 0.5,
 }
 
-/** @internal */
+/**
+ * Result of {@link partitionSpotBalances}: balances that count toward
+ * collateral and balances treated as ordinary holdings.
+ * @public
+ */
 export interface SpotPartition {
   collateralBalances: Balance[]
   balances: Balance[]
 }
 
 /**
- * Split spot balances into margin collateral and flat holdings. A balance is
- * collateral when its token is a category quote asset (full value) or, under
- * portfolio margin, an LTV-weighted asset (HYPE/BTC); everything else is a
- * flat holding.
+ * Partition spot balances into collateral and ordinary holdings. Quote assets
+ * are full-value collateral; portfolio-margin-supported assets retain their
+ * LTV as `collateralWeight`.
+ * @public
  */
 export const partitionSpotBalances = (
   spotBalances: readonly Balance[],

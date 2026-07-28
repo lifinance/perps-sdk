@@ -24,6 +24,7 @@ export type RetryClassification =
  * @public
  */
 export interface RetryClassifyContext {
+  /** Non-2xx response being classified for retry or terminal failure. */
   response: Response
 }
 
@@ -34,9 +35,13 @@ export interface RetryClassifyContext {
  * @public
  */
 export interface RetryAttemptContext {
+  /** Zero-based attempt index for the response/error. */
   attempt: number
+  /** Response received, when the attempt reached the server. */
   response?: Response
+  /** Network error thrown before a response was received. */
   error?: unknown
+  /** Classification returned by the policy's classifier. */
   classification: RetryClassification
 }
 
@@ -50,11 +55,17 @@ export interface RetryAttemptContext {
  * @public
  */
 export interface RetryPolicy {
+  /** Maximum total attempts, including the initial request. */
   maxAttempts?: number
+  /** Initial exponential-backoff ceiling in milliseconds. */
   baseDelayMs?: number
+  /** Maximum backoff delay in milliseconds. */
   maxDelayMs?: number
+  /** Whether a valid `Retry-After` response header takes precedence. */
   respectRetryAfter?: boolean
+  /** Classify a response; `undefined` delegates to the base classifier. */
   classify?: (ctx: RetryClassifyContext) => RetryClassification | undefined
+  /** Final per-attempt veto after classification requests a retry. */
   shouldRetry?: (ctx: RetryAttemptContext) => boolean | Promise<boolean>
 }
 
@@ -65,12 +76,19 @@ export interface RetryPolicy {
  * @public
  */
 export interface ResolvedRetryPolicy {
+  /** Whether retries are enabled. */
   enabled: boolean
+  /** Maximum total attempts, including the initial request. */
   maxAttempts: number
+  /** Initial exponential-backoff ceiling in milliseconds. */
   baseDelayMs: number
+  /** Maximum backoff delay in milliseconds. */
   maxDelayMs: number
+  /** Whether a valid `Retry-After` header is honored. */
   respectRetryAfter: boolean
+  /** Final response classifier used for each failed attempt. */
   classify: (ctx: RetryClassifyContext) => RetryClassification
+  /** Optional final veto after classification requests a retry. */
   shouldRetry?: (ctx: RetryAttemptContext) => boolean | Promise<boolean>
 }
 
@@ -82,7 +100,9 @@ export interface ResolvedRetryPolicy {
  * @public
  */
 export interface ProviderRetryConfig {
+  /** Fallback policy for providers without an explicit key. */
   default?: RetryPolicy | false
+  /** Override keyed by provider type, or `lifi` for backend requests. */
   [providerKey: string]: RetryPolicy | false | undefined
 }
 

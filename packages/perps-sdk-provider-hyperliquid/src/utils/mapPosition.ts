@@ -12,7 +12,12 @@ import type { HlAssetPosition } from '../types/index.js'
 export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
   Number.parseFloat(ap.position.szi) !== 0
 
-/** @public */
+/**
+ * Map a non-zero Hyperliquid position payload to the SDK's normalized
+ * position. Signed wire size determines side; decimal strings remain strings
+ * in the normalized response.
+ * @public
+ */
 export const mapPosition = (
   ap: HlAssetPosition,
   market: PerpsMarketDisplay

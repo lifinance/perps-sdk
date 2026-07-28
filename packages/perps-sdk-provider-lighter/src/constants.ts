@@ -22,6 +22,11 @@ export const LIGHTER_SPOT_CATEGORY_ID = 'spot'
  * @public
  */
 export const DEFAULT_LIGHTER_REST_URL = 'https://mainnet.zklighter.elliot.ai'
+/**
+ * Default mainnet WebSocket stream URL for Lighter.
+ *
+ * @public
+ */
 export const DEFAULT_LIGHTER_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 
 /**
@@ -85,9 +90,17 @@ export const LIGHTER_MAINNET_INSTANCE: LighterInstanceConfig = {
  */
 export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
 
-/** @public */
+/**
+ * Default REST base URL for the Lighter Robinhood deployment.
+ *
+ * @public
+ */
 export const LIGHTER_RH_REST_URL = 'https://api.rh.lighter.xyz'
-/** @public */
+/**
+ * Default WebSocket URL for the Lighter Robinhood deployment.
+ *
+ * @public
+ */
 export const LIGHTER_RH_WS_URL = 'wss://api.rh.lighter.xyz/stream'
 
 /**

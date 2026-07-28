@@ -9,6 +9,8 @@
  * @param read - Returns the currently cached promise, or `undefined` if none.
  * @param write - Stores (or with `undefined`, clears) the cached promise.
  * @param factory - Creates the promise when the slot is empty.
+ *
+ * @public
  */
 export function cachePromise<T>(
   read: () => Promise<T> | undefined,

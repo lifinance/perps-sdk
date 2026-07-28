@@ -69,7 +69,13 @@ export type LighterTokenFetcher = (params: {
   scopes: string
 }) => Promise<LighterCreateTokenResponse>
 
-/** @public */
+/**
+ * Dependencies and overrides for {@link LighterReadOnlyTokenManager}.
+ * Storage and token-fetching defaults target the browser's local storage and
+ * Lighter's mainnet REST API.
+ *
+ * @public
+ */
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
   /**
@@ -87,13 +93,23 @@ export interface LighterReadOnlyTokenManagerOptions {
   now?: () => number
 }
 
-/** @public */
+/**
+ * Input to the read-only-token approval flow. Extends the shared approval
+ * parameters with the L1 address whose wallet authorizes token creation.
+ *
+ * @public
+ */
 export interface ApproveReadOnlyTokenInputs extends ApproveReadOnlyTokenParams {
   /** L1 wallet address that signs the create message. */
   address: Address
 }
 
-/** @public */
+/**
+ * Result of approving or creating a Lighter read-only token. `config` is the
+ * account-state projection callers can persist alongside the token.
+ *
+ * @public
+ */
 export interface ApproveReadOnlyTokenResult {
   token: LighterReadOnlyToken
   /** Projection of the post-create Lighter account state. */
@@ -239,6 +255,10 @@ export class LighterReadOnlyTokenManager {
     await this.storage.set(key, JSON.stringify(token))
   }
 
+  /**
+   * Remove the stored token for an `(address, accountIndex)` pair and clear
+   * the corresponding cache entry.
+   */
   async remove(address: Address, accountIndex: number): Promise<void> {
     const key = this.storageKey(address, accountIndex)
     this.cache.delete(key)

@@ -1,6 +1,12 @@
 // Market / asset / orderbook metadata returned by Lighter's REST API.
 
-/** @public */
+/**
+ * Venue configuration nested in a Lighter perpetual-market descriptor.
+ * Numeric fields are Lighter wire mode values; booleans indicate whether the
+ * market is currently restricted or hidden.
+ *
+ * @public
+ */
 export interface LtMarketConfig {
   market_margin_mode: number
   insurance_fund_account_index: number
@@ -11,7 +17,14 @@ export interface LtMarketConfig {
   hidden: boolean
 }
 
-/** @public */
+/**
+ * Perpetual-market metadata returned by Lighter's order-book-details endpoint.
+ * Decimal strings use the market's native asset/quote precision. Decimal-count
+ * fields describe supported and canonical order precision; fee and margin
+ * fractions use Lighter's wire representation.
+ *
+ * @public
+ */
 export interface LtPerpsOrderBookDetail {
   symbol: string
   market_id: number
@@ -48,7 +61,13 @@ export interface LtPerpsOrderBookDetail {
   strategy_index: number
 }
 
-/** @public */
+/**
+ * Spot-market metadata returned by Lighter's order-book-details endpoint.
+ * Decimal strings use the market's native asset/quote precision; decimal-count
+ * fields describe supported order precision.
+ *
+ * @public
+ */
 export interface LtSpotOrderBookDetail {
   symbol: string
   market_id: number
@@ -77,14 +96,23 @@ export interface LtSpotOrderBookDetail {
   daily_chart: Record<string, unknown>
 }
 
-/** @public */
+/**
+ * Response envelope containing both perpetual and spot market descriptors.
+ *
+ * @public
+ */
 export interface LtOrderBookDetailsResponse {
   code: number
   order_book_details: LtPerpsOrderBookDetail[]
   spot_order_book_details: LtSpotOrderBookDetail[]
 }
 
-/** @public */
+/**
+ * Token metadata returned by Lighter's token-list endpoint. `market` identifies
+ * whether the token is associated with a perpetual or spot market.
+ *
+ * @public
+ */
 export interface LtToken {
   symbol: string
   name: string
@@ -93,13 +121,22 @@ export interface LtToken {
   market: 'PERPS' | 'SPOT'
 }
 
-/** @public */
+/**
+ * Response envelope for Lighter's token-list endpoint.
+ *
+ * @public
+ */
 export interface LtTokenListResponse {
   code: number
   tokens: LtToken[]
 }
 
-/** @public */
+/**
+ * Asset metadata returned by Lighter. `l1_decimals` is the token precision on
+ * L1; `decimals` is the Lighter ledger precision.
+ *
+ * @public
+ */
 export interface LtAssetDetail {
   asset_id: number
   symbol: string
@@ -108,13 +145,22 @@ export interface LtAssetDetail {
   l1_address: string
 }
 
-/** @public */
+/**
+ * Response envelope for Lighter's asset-details endpoint.
+ *
+ * @public
+ */
 export interface LtAssetDetailsResponse {
   code: number
   asset_details: LtAssetDetail[]
 }
 
-/** @public */
+/**
+ * OHLCV candle returned by Lighter. `t` is the candle timestamp in Unix
+ * milliseconds; `o`, `h`, `l`, and `c` are prices and `v` is volume.
+ *
+ * @public
+ */
 export interface LtCandle {
   t: number
   o: number
@@ -124,14 +170,24 @@ export interface LtCandle {
   v: number
 }
 
-/** @public */
+/**
+ * Response envelope for a Lighter candle query. `r` is the endpoint's result
+ * value and `c` contains the returned candles.
+ *
+ * @public
+ */
 export interface LtCandlesResponse {
   code: number
   r: string
   c: LtCandle[]
 }
 
-/** @public */
+/**
+ * Funding-rate snapshot for one Lighter perpetual market. `rate` is the
+ * venue-provided funding-rate value for the named exchange and market.
+ *
+ * @public
+ */
 export interface LtFundingRate {
   market_id: number
   exchange: string
@@ -139,7 +195,11 @@ export interface LtFundingRate {
   rate: number
 }
 
-/** @public */
+/**
+ * Response envelope containing current funding rates by market.
+ *
+ * @public
+ */
 export interface LtFundingRatesResponse {
   code: number
   funding_rates: LtFundingRate[]

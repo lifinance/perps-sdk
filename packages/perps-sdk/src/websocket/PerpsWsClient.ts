@@ -18,7 +18,6 @@ import type {
  * @public
  */
 export type WsProviderFactory = (params: {
-  /** Provider key (e.g. `'lighter'`, `'hyperliquid'`). */
   provider: string
   /** WS URL discovered from `/providers`. */
   wsUrl: string

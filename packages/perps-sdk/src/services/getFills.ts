@@ -12,11 +12,13 @@ import type { PerpsSDKClient } from '../types/provider.js'
 export interface GetFillsParams {
   provider: string
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
-  /** Filter: fills after this timestamp (ms) */
+  /** Include fills at or after this Unix timestamp in milliseconds. */
   startTime?: number
-  /** Filter: fills before this timestamp (ms) */
+  /** Include fills at or before this Unix timestamp in milliseconds. */
   endTime?: number
 }
 

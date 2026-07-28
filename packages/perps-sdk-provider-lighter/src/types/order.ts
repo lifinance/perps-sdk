@@ -1,6 +1,14 @@
 // Order shapes returned by Lighter's REST API.
 
-/** @public */
+/**
+ * Order payload returned by Lighter's REST API. Amounts and prices are decimal
+ * strings in market precision. `order_expiry` is an absolute Unix-millisecond
+ * expiry; `created_at`, `updated_at`, and `transaction_time` are Unix seconds.
+ * Enum-like side, type, time-in-force, status, and trigger fields retain
+ * Lighter's wire strings.
+ *
+ * @public
+ */
 export type LtOrder = {
   order_index: number
   client_order_index: number
@@ -36,14 +44,25 @@ export type LtOrder = {
   transaction_time: number
 }
 
-/** @public */
+/**
+ * Paginated order-history response from Lighter. `next_cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtOrdersResponse {
   code: number
   next_cursor: string
   orders: LtOrder[]
 }
 
-/** @public */
+/**
+ * Single order-book level returned by Lighter. Amounts and prices are decimal
+ * strings in the market's native precision; expiry and transaction time are
+ * Unix milliseconds.
+ *
+ * @public
+ */
 export interface LtOrderBookOrder {
   order_index: number
   order_id: string
@@ -55,7 +74,11 @@ export interface LtOrderBookOrder {
   transaction_time: number
 }
 
-/** @public */
+/**
+ * Order-book response containing separate ask and bid levels plus their counts.
+ *
+ * @public
+ */
 export interface LtOrderBookOrdersResponse {
   code: number
   total_asks: number

@@ -1,4 +1,8 @@
-/** @public */
+/**
+ * Numeric error codes returned by the perps API.
+ *
+ * @public
+ */
 export enum PerpsErrorCode {
   // Base errors (2000-2009)
   DefaultError = 2000,
@@ -36,13 +40,13 @@ export enum PerpsErrorCode {
   RouteNotFound = 2060,
 }
 
-/** @public */
+/** Side of an order or execution, using provider wire values. @public */
 export enum OrderSide {
   BUY = 'BUY',
   SELL = 'SELL',
 }
 
-/** @public */
+/** Supported regular and trigger order kinds, using provider wire values. @public */
 export enum OrderType {
   MARKET = 'MARKET',
   LIMIT = 'LIMIT',
@@ -53,13 +57,13 @@ export enum OrderType {
   TRIGGER_ONLY = 'TRIGGER_ONLY',
 }
 
-/** @public */
+/** Direction of an open position. @public */
 export enum PositionSide {
   LONG = 'LONG',
   SHORT = 'SHORT',
 }
 
-/** @public */
+/** Margin allocation mode for a position. @public */
 export enum MarginMode {
   ISOLATED = 'ISOLATED',
   CROSS = 'CROSS',
@@ -75,7 +79,7 @@ export enum PositionMarginAdjustment {
   ADD_AND_REMOVE = 'ADD_AND_REMOVE',
 }
 
-/** @public */
+/** Provider order time-in-force policies. @public */
 export enum TimeInForce {
   GTC = 'GTC',
   IOC = 'IOC',
@@ -83,7 +87,7 @@ export enum TimeInForce {
   GTT = 'GTT',
 }
 
-/** @public */
+/** Lifecycle status of a provider order. @public */
 export enum OrderStatus {
   PENDING = 'PENDING',
   OPEN = 'OPEN',
@@ -95,7 +99,7 @@ export enum OrderStatus {
   TRIGGERED = 'TRIGGERED',
 }
 
-/** @public */
+/** Lifecycle status of an execution/fill. @public */
 export enum FillStatus {
   FILLED = 'FILLED',
   PARTIALLY_FILLED = 'PARTIALLY_FILLED',
@@ -103,13 +107,18 @@ export enum FillStatus {
   REJECTED = 'REJECTED',
 }
 
-/** @public */
+/** Whether a fill supplied maker or taker liquidity. @public */
 export enum LiquidityRole {
   MAKER = 'maker',
   TAKER = 'taker',
 }
 
-/** @public */
+/**
+ * Action identifiers used in setup, create-action, and execute-action
+ * requests. Values are the backend wire strings.
+ *
+ * @public
+ */
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
@@ -141,26 +150,26 @@ export enum ActionType {
   META_ACCEPT_TERMS = 'metaAcceptTerms',
 }
 
-/** @public */
+/** Price relation that activates a trigger order. @public */
 export enum TriggerCondition {
   ABOVE = 'ABOVE',
   BELOW = 'BELOW',
 }
 
-/** @public */
+/** Take-profit or stop-loss trigger order classification. @public */
 export enum TriggerOrderType {
   TAKE_PROFIT = 'TAKE_PROFIT',
   STOP_LOSS = 'STOP_LOSS',
 }
 
-/** @public */
+/** Lifecycle status of a trigger order. @public */
 export enum TriggerOrderStatus {
   WAITING = 'WAITING',
   TRIGGERED = 'TRIGGERED',
   CANCELLED = 'CANCELLED',
 }
 
-/** @public */
+/** Account activity record categories. @public */
 export enum ActivityType {
   DEPOSIT = 'DEPOSIT',
   WITHDRAWAL = 'WITHDRAWAL',
@@ -169,7 +178,7 @@ export enum ActivityType {
   TRANSFER = 'TRANSFER',
 }
 
-/** @public */
+/** Human-readable classification of how a fill changed a position. @public */
 export enum FillClassification {
   OPENED_LONG = 'Opened Long',
   OPENED_SHORT = 'Opened Short',
@@ -185,24 +194,24 @@ export enum FillClassification {
   SPOT_SELL = 'Spot Sell',
 }
 
-/** @public */
+/** Classification emitted for a liquidation activity. @public */
 export enum LiquidationClassification {
   LIQUIDATED = 'Liquidated',
 }
 
-/** @public */
+/** Classification emitted for a funding activity. @public */
 export enum FundingClassification {
   FUNDING = 'Funding',
 }
 
-/** @public */
+/** Classification emitted for an inbound, outbound, or internal transfer. @public */
 export enum TransferClassification {
   DEPOSIT = 'Deposit',
   WITHDRAWAL = 'Withdrawal',
   TRANSFER = 'Transfer',
 }
 
-/** @public */
+/** Union of classifications emitted by all activity record categories. @public */
 export type ActivityClassification =
   | FillClassification
   | LiquidationClassification
@@ -223,7 +232,12 @@ export enum PerpsSigner {
   SDK = 'SDK',
 }
 
-/** @public */
+/**
+ * Signing mechanisms supported by action steps. Values are serialized in
+ * provider metadata and action responses.
+ *
+ * @public
+ */
 export enum SigningMethod {
   EIP712 = 'eip712',
   WASM_BLOB = 'wasmBlob',

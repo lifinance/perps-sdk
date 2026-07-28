@@ -1,6 +1,12 @@
 // Fill shapes returned by Hyperliquid `/info`.
 
-/** @public */
+/**
+ * One user trade fill returned by Hyperliquid `userFills` or
+ * `userFillsByTime`. Prices, size, fee, PnL, and starting position are decimal
+ * strings; `time` is milliseconds since the Unix epoch and `tid`/`oid` are
+ * numeric trade and order IDs.
+ * @public
+ */
 export type HlUserFill = {
   tid: number
   oid: number
@@ -17,8 +23,8 @@ export type HlUserFill = {
   startPosition: string
 }
 
-/** @public */
+/** All fills returned by the unbounded `userFills` query. @public */
 export type HlUserFills = HlUserFill[]
 
-/** @public */
+/** Fills returned by the time-bounded `userFillsByTime` query. @public */
 export type HlUserFillsByTime = HlUserFill[]

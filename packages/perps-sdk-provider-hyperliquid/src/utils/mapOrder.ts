@@ -34,7 +34,7 @@ export const mapOrderType = (orderType: string): OrderType => {
   }
 }
 
-/** @public */
+/** Return whether an SDK order type represents a take-profit or stop trigger. @public */
 export const isTriggerType = (type: OrderType): boolean =>
   type === OrderType.TAKE_PROFIT_MARKET ||
   type === OrderType.TAKE_PROFIT_LIMIT ||
@@ -83,7 +83,11 @@ export const isTriggerOrder = (
   return isTriggerType(mapOrderType(o.orderType))
 }
 
-/** @public */
+/**
+ * Map an open Hyperliquid order to the SDK's normalized open-order shape.
+ * Numeric IDs become strings and wire millisecond timestamps become ISO dates.
+ * @public
+ */
 export const mapOpenOrder = (
   o: HlFrontendOpenOrder,
   market: MarketDisplay
@@ -102,7 +106,10 @@ export const mapOpenOrder = (
   createdAt: new Date(o.timestamp).toISOString(),
 })
 
-/** @public */
+/**
+ * Map a Hyperliquid trigger/TP-SL order to the SDK's trigger-order shape.
+ * @public
+ */
 export const mapTriggerOrder = (
   o: HlFrontendOpenOrder,
   market: MarketDisplay
@@ -232,7 +239,11 @@ const mapTimeInForce = (tif: string | undefined): TimeInForce | undefined => {
   }
 }
 
-/** @public */
+/**
+ * Map an `orderStatus` detail to the SDK's normalized order shape, preserving
+ * decimal size/price strings and translating status, side, and time-in-force.
+ * @public
+ */
 export const mapOrder = (
   detail: HlOrderDetail,
   market: MarketDisplay

@@ -10,16 +10,33 @@
 //   - spot_market_stats/{id}  → context for one spot market
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
 
-/** @public */
+/**
+ * Common envelope fields on every Lighter WebSocket frame.
+ *
+ * `channel` identifies the subscribed stream when present; `type` is the
+ * subscription, update, or control-frame discriminator.
+ *
+ * @public
+ */
 export type LtWsMessage = {
   channel?: string
   type: string
 }
 
-/** @public */
+/**
+ * Lighter WebSocket keepalive frame.
+ *
+ * @public
+ */
 export type LtWsPingMessage = LtWsMessage & { type: 'ping' }
 
-/** @public */
+/**
+ * Perpetual-market statistics pushed by Lighter's `market_stats` channels.
+ * Price, interest, volume, and funding values are decimal strings; the funding
+ * timestamp is a Unix timestamp in milliseconds.
+ *
+ * @public
+ */
 export type LtWsMarketStats = {
   market_id: number
   index_price: string
@@ -75,20 +92,34 @@ export type LtWsSpotMarketStatsAllMessage = LtWsMessage & {
   spot_market_stats?: LtWsSpotMarketStats | Record<string, LtWsSpotMarketStats>
 }
 
-/** @public */
+/**
+ * One bid or ask level in a Lighter order-book snapshot or delta. Price and
+ * size are decimal strings in the market's native precision.
+ *
+ * @public
+ */
 export type LtWsOrderBookLevel = {
   price: string
   size: string
 }
 
-/** @public */
+/**
+ * Lighter order-book state containing ask and bid levels. `offset`, when
+ * present, identifies the sequence offset used for stateful delta updates.
+ *
+ * @public
+ */
 export type LtWsOrderBook = {
   asks: LtWsOrderBookLevel[]
   bids: LtWsOrderBookLevel[]
   offset?: number
 }
 
-/** @public */
+/**
+ * Subscription or update frame carrying a Lighter order-book snapshot/delta.
+ *
+ * @public
+ */
 export type LtWsOrderBookMessage = LtWsMessage & {
   type: 'subscribed/order_book' | 'update/order_book'
   order_book: LtWsOrderBook
@@ -109,7 +140,11 @@ export type LtWsTrade = {
   timestamp: number
 }
 
-/** @public */
+/**
+ * Subscription or update frame carrying public trades from a Lighter market.
+ *
+ * @public
+ */
 export type LtWsTradeMessage = LtWsMessage & {
   type: 'subscribed/trade' | 'update/trade'
   trades?: LtWsTrade[]
@@ -138,7 +173,13 @@ export type LtWsAccountAllOrdersMessage = LtWsMessage & {
   data?: { orders?: Record<string, unknown[]> | unknown[] }
 }
 
-/** @public */
+/**
+ * Authenticated account trade-history frame. Trade arrays may be flat or
+ * market-indexed depending on whether the frame is an initial snapshot or
+ * update.
+ *
+ * @public
+ */
 export type LtWsAccountAllTradesMessage = LtWsMessage & {
   type: 'subscribed/account_all_trades' | 'update/account_all_trades'
   trades?: Record<string, unknown[]> | unknown[]
@@ -169,6 +210,13 @@ export type LtWsUserStatsMessage = LtWsMessage & {
   }
 }
 
+/**
+ * Authenticated account-position frame. Position and funding maps are keyed
+ * by Lighter market index; the provider normalizes the payload before emitting
+ * account updates.
+ *
+ * @public
+ */
 export type LtWsAccountAllPositionsMessage = LtWsMessage & {
   type: 'subscribed/account_all_positions' | 'update/account_all_positions'
   positions?: Record<string, unknown>

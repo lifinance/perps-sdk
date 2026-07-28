@@ -15,18 +15,18 @@ import type {
 } from './market.js'
 import type { Address } from './primitives.js'
 
-/** @public */
+/** Subscription for the provider's aggregate market-context stream. @public */
 export type MarketsContextSubscription = {
   channel: 'marketsContext'
   dex: string
 }
-/** @public */
+/** Subscription for one market's live context stream. @public */
 export type MarketContextSubscription = {
   channel: 'marketContext'
   dex: string
   marketId: string
 }
-/** @public */
+/** Subscription for streamed order-book updates for one market. @public */
 export type OrderbookSubscription = {
   channel: 'orderbook'
   dex: string
@@ -40,51 +40,55 @@ export type OrderbookSubscription = {
    */
   priceStep?: number
 }
-/** @public */
+/** Subscription for OHLCV candle updates for one market and interval. @public */
 export type CandleSubscription = {
   channel: 'candle'
   dex: string
   marketId: string
   interval: OhlcvInterval
 }
-/** @public */
+/** Subscription for recent trade updates for one market. @public */
 export type TradesSubscription = {
   channel: 'trades'
   dex: string
   marketId: string
 }
-/** @public */
+/** Subscription for order lifecycle updates for one account. @public */
 export type OrderUpdatesSubscription = {
   channel: 'orderUpdates'
   dex: string
   address: Address
 }
-/** @public */
+/** Subscription for execution/fill updates for one account. @public */
 export type FillsSubscription = {
   channel: 'fills'
   dex: string
   address: Address
 }
-/** @public */
+/** Subscription for the full open-position set for one account. @public */
 export type PositionsSubscription = {
   channel: 'positions'
   dex: string
   address: Address
 }
-/** @public */
+/** Subscription for spot-balance updates for one account. @public */
 export type SpotBalancesSubscription = {
   channel: 'spotBalances'
   dex: string
   address: Address
 }
-/** @public */
+/** Subscription for aggregate account-summary updates for one account. @public */
 export type AccountSummarySubscription = {
   channel: 'accountSummary'
   dex: string
   address: Address
 }
 
-/** @public */
+/**
+ * Union of all websocket subscription request shapes.
+ *
+ * @public
+ */
 export type Subscription =
   | MarketsContextSubscription
   | MarketContextSubscription
@@ -97,23 +101,23 @@ export type Subscription =
   | SpotBalancesSubscription
   | AccountSummarySubscription
 
-/** @public */
+/** Event containing the provider's aggregate market contexts. @public */
 export type MarketsContextEvent = {
   channel: 'marketsContext'
   data: Record<string, MarketContext>
 }
-/** @public */
+/** Event containing one market's live context. @public */
 export type MarketContextEvent = {
   channel: 'marketContext'
   data: MarketContext
 }
-/** @public */
+/** Event containing an order-book snapshot or update. @public */
 export type OrderbookEvent = { channel: 'orderbook'; data: OrderbookResponse }
-/** @public */
+/** Event containing one OHLCV candle. @public */
 export type CandleEvent = { channel: 'candle'; data: Candle }
-/** @public */
+/** Event containing recent trades. @public */
 export type TradesEvent = { channel: 'trades'; data: Trade[] }
-/** @public */
+/** Event containing order upserts and terminal order ids. @public */
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
   data: {
@@ -128,7 +132,7 @@ export type OrderUpdatesEvent = {
     terminated: string[]
   }
 }
-/** @public */
+/** Event containing newly observed executions/fills. @public */
 export type FillsEvent = { channel: 'fills'; data: Fill[] }
 /**
  * Positions stream frame. `data` is always the full set of currently open
@@ -159,7 +163,11 @@ export type AccountSummaryEvent = {
   data: AccountSummary
 }
 
-/** @public */
+/**
+ * Union of all websocket event frame shapes emitted for subscriptions.
+ *
+ * @public
+ */
 export type SubscriptionEvent =
   | MarketsContextEvent
   | MarketContextEvent

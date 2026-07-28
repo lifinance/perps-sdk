@@ -109,47 +109,101 @@ export type LtChangePubKeyWasmParams = {
   nonce: number
 }
 
-/** @public */
+/**
+ * Lighter wire value for limit orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_LIMIT = 0
-/** @public */
+/**
+ * Lighter wire value for market orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_MARKET = 1
-/** @public */
+/**
+ * Lighter wire value for stop-loss market orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_STOP_LOSS = 2
-/** @public */
+/**
+ * Lighter wire value for stop-loss limit orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_STOP_LOSS_LIMIT = 3
-/** @public */
+/**
+ * Lighter wire value for take-profit market orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_TAKE_PROFIT = 4
-/** @public */
+/**
+ * Lighter wire value for take-profit limit orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_TAKE_PROFIT_LIMIT = 5
-/** @public */
+/**
+ * Lighter wire value for TWAP orders.
+ * @public
+ */
 export const LT_ORDER_TYPE_TWAP = 6
 
-/** @public */
+/**
+ * Lighter wire value for immediate-or-cancel time in force.
+ * @public
+ */
 export const LT_TIME_IN_FORCE_IOC = 0
-/** @public */
+/**
+ * Lighter wire value for good-til-cancelled time in force.
+ * @public
+ */
 export const LT_TIME_IN_FORCE_GTC = 1
-/** @public */
+/**
+ * Lighter wire value for post-only time in force.
+ * @public
+ */
 export const LT_TIME_IN_FORCE_POST_ONLY = 2
 
-/** @public */
+/**
+ * Lighter cross-margin mode value.
+ * @public
+ */
 export const LT_MARGIN_MODE_CROSS = 0
-/** @public */
+/**
+ * Lighter isolated-margin mode value.
+ * @public
+ */
 export const LT_MARGIN_MODE_ISOLATED = 1
 
-/** @public */
+/**
+ * Lighter margin-direction value for removing margin.
+ * @public
+ */
 export const LT_MARGIN_DIRECTION_REMOVE = 0
-/** @public */
+/**
+ * Lighter margin-direction value for adding margin.
+ * @public
+ */
 export const LT_MARGIN_DIRECTION_ADD = 1
 
-/** @public */
+/**
+ * Lighter route selector for perpetuals transfers.
+ * @public
+ */
 export const LT_ROUTE_PERP = 0
-/** @public */
+/**
+ * Lighter route selector for spot transfers.
+ * @public
+ */
 export const LT_ROUTE_SPOT = 1
 
-/** @public */
+/**
+ * Lighter spot USDC asset id.
+ * @public
+ */
 export const LT_ASSET_ID_USDC = 3
 
-/** @public */
+/**
+ * Wire sentinel for an omitted trigger price.
+ * @public
+ */
 export const LT_NIL_TRIGGER_PRICE = 0
 /**
  * Sentinel the lighter-go WASM signer translates to "default 28-day expiry

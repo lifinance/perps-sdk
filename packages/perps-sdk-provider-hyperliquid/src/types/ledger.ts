@@ -50,7 +50,11 @@ export type HlSendAssetDelta = {
   feeToken: string
 }
 
-/** @public */
+/**
+ * Union of known Hyperliquid non-funding ledger deltas plus an open fallback
+ * for endpoint variants the provider does not map.
+ * @public
+ */
 export type HlLedgerDelta =
   | HlSpotTransferDelta
   | HlSendAssetDelta
@@ -81,17 +85,26 @@ export const isSendAssetDelta = (
   delta: HlLedgerDelta
 ): delta is HlSendAssetDelta => delta.type === 'send'
 
-/** @public */
+/**
+ * One timestamped non-funding ledger update. `time` is milliseconds since
+ * epoch and `hash` is the upstream transaction identifier.
+ * @public
+ */
 export type HlLedgerUpdate = {
   time: number
   hash: string
   delta: HlLedgerDelta
 }
 
-/** @public */
+/** Array returned by `userNonFundingLedgerUpdates`. @public */
 export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
 
-/** @public */
+/**
+ * Funding ledger delta returned by Hyperliquid `userFunding`. `usdc` is the
+ * funding payment, `szi` is signed position size, and `fundingRate` is a
+ * decimal fraction; all are decimal strings.
+ * @public
+ */
 export type HlFundingDelta = {
   type: 'funding'
   coin: string
@@ -100,12 +113,16 @@ export type HlFundingDelta = {
   fundingRate: string
 }
 
-/** @public */
+/**
+ * Timestamped funding update. `time` is milliseconds since epoch and `hash`
+ * identifies the underlying venue transaction.
+ * @public
+ */
 export type HlFundingUpdate = {
   time: number
   hash: string
   delta: HlFundingDelta
 }
 
-/** @public */
+/** Array returned by the `userFunding` info query. @public */
 export type HlUserFunding = HlFundingUpdate[]

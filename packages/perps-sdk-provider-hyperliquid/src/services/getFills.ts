@@ -22,12 +22,13 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  */
 export interface GetFillsParams {
   address: Address
+  /** Maximum items returned; defaults to 50 and is capped at 200. */
   limit?: number
-  /** Opaque pagination cursor from a previous page's `pagination.cursor`. */
+  /** Opaque cursor returned in the previous page's `pagination.cursor`. */
   cursor?: string
-  /** Inclusive lower bound in ms-since-epoch — switches to the `userFillsByTime` endpoint. */
+  /** Inclusive lower bound in milliseconds; selects `userFillsByTime`. */
   startTime?: number
-  /** Inclusive upper bound in ms-since-epoch — switches to the `userFillsByTime` endpoint. */
+  /** Inclusive upper bound in milliseconds; selects `userFillsByTime`. */
   endTime?: number
 }
 

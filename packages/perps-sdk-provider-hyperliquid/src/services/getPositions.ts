@@ -22,9 +22,9 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  */
 export interface GetPositionsParams {
   address: Address
-  /** Filter to a single opaque `Market.id` (e.g. `'BTC'`, `'xyz:PURR'`). */
+  /** Optional filter using the normalized opaque `Market.id`. */
   marketId?: string
-  /** Page size hint surfaced on the response. Hyperliquid returns all open positions in one call, so pagination is never required. */
+  /** Page-size hint; Hyperliquid returns all open positions in one response. */
   limit?: number
 }
 

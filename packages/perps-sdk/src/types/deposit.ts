@@ -9,9 +9,11 @@ import type { Address } from 'viem'
  * @public
  */
 export interface DeclaredDepositAsset {
+  /** EVM chain id on which the asset is held or broadcast. */
   chainId: number
-  /** EIP-55 checksummed address; the zero address denotes the chain's native gas token. */
+  /** EIP-55 checksummed address; the zero address denotes native gas. */
   address: Address
+  /** Decimal places used by the token; native gas assets use 18. */
   decimals: number
 }
 
@@ -25,6 +27,7 @@ export interface DeclaredDepositAsset {
  */
 export interface DepositFlowLifiSwap {
   kind: 'lifiSwap'
+  /** Destination collateral token and its full chain identity. */
   destination: DeclaredDepositAsset
   /**
    * Credited address when it is not the user's own — a venue-provisioned
@@ -43,10 +46,13 @@ export interface DepositFlowLifiSwap {
  */
 export interface DepositFlowFirstDepositPipeline {
   kind: 'firstDepositPipeline'
-  /** Chain the deposit legs broadcast on; the user's wallet must be switched to it. */
+  /** Chain on which the deposit legs broadcast; the wallet must be switched here. */
   chainId: number
+  /** Native gas asset needed to broadcast the deposit legs. */
   gasAsset: DeclaredDepositAsset
+  /** Collateral asset credited by the first deposit. */
   collateral: DeclaredDepositAsset
+  /** Action type used to stage the deposit pipeline. */
   bridgeAction: ActionType.DEPOSIT
 }
 
@@ -59,7 +65,7 @@ export interface DepositFlowFirstDepositPipeline {
  */
 export interface DepositFlowSetupRequired {
   kind: 'setupRequired'
-  /** Outstanding `Provider.setup` action types, in the order they must be run. */
+  /** Setup action types that must be completed, in execution order. */
   setup: ActionType[]
 }
 
