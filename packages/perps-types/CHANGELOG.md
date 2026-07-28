@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 4.0.1
+
+### Patch Changes
+
+- [#293](https://github.com/lifinance/perps-sdk/pull/293) [`e068db3`](https://github.com/lifinance/perps-sdk/commit/e068db3c1204e26bff7e1f6fb38436d9e7d07ec6) Thanks [@TristanNcl](https://github.com/TristanNcl)! - expose an optional size on TriggerOrderInput — omitted keeps today's entire-position semantics, set it places a fixed partial trigger
+
 ## 4.0.0
 
 ### Major Changes
