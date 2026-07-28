@@ -463,6 +463,18 @@ export interface PerpsProviderPlugin {
   ): number | undefined
 
   /**
+   * Margin removable from an isolated `position` under the venue's own
+   * transfer-margin requirement — the rule the venue enforces when margin is
+   * moved out of a position, which differs per venue and so cannot be composed
+   * from the market model by a provider-agnostic consumer. Pure — does no I/O.
+   *
+   * @returns The removable margin as a decimal string, conservative by
+   *   construction (rounding only ever reduces it); `undefined` when the venue
+   *   has no per-position margin transfer at all.
+   */
+  removableMargin(position: Position): string | undefined
+
+  /**
    * Project a typed {@link AccountConfig} against the provider's `setup`
    * + `options` descriptors into `AccountConfigSetting[]`. Used by
    * `PerpsClient.getAccount` to attach a `settings` array to the response —

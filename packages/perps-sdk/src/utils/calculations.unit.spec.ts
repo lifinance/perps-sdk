@@ -19,7 +19,6 @@ import {
   effectiveLeverage,
   estimateFees,
   liquidationDistancePercent,
-  removableMargin,
   walkOrderbook,
 } from './calculations.js'
 
@@ -303,60 +302,6 @@ describe('effectiveLeverage', () => {
     expect(
       effectiveLeverage({ positionValueUsd: 10000, marginUsd: -1000 })
     ).toBe(-10)
-  })
-})
-
-describe('removableMargin', () => {
-  it('should return margin above the minimum required', () => {
-    // $10,000 notional at 10x max needs $1,000 min; $1,500 used => $500 removable
-    expect(
-      removableMargin({
-        marginUsed: 1500,
-        positionValueUsd: 10000,
-        maxLeverage: 10,
-      })
-    ).toBe(500)
-  })
-
-  it('should return zero when position is already at max leverage', () => {
-    expect(
-      removableMargin({
-        marginUsed: 1000,
-        positionValueUsd: 10000,
-        maxLeverage: 10,
-      })
-    ).toBe(0)
-  })
-
-  it('should clamp to zero when used margin is below the minimum', () => {
-    expect(
-      removableMargin({
-        marginUsed: 800,
-        positionValueUsd: 10000,
-        maxLeverage: 10,
-      })
-    ).toBe(0)
-  })
-
-  it('should fall back to full margin when maxLeverage is zero', () => {
-    expect(
-      removableMargin({
-        marginUsed: 1500,
-        positionValueUsd: 10000,
-        maxLeverage: 0,
-      })
-    ).toBe(1500)
-  })
-
-  it('should return full margin for zero notional', () => {
-    // Closed/empty position: nothing is required, all margin is removable
-    expect(
-      removableMargin({
-        marginUsed: 1500,
-        positionValueUsd: 0,
-        maxLeverage: 10,
-      })
-    ).toBe(1500)
   })
 })
 

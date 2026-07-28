@@ -92,6 +92,7 @@ import {
   mapOpenPositions,
   mapOrderDetail,
   ondoAsset,
+  removableMargin,
 } from './utils/index.js'
 
 /**
@@ -651,6 +652,8 @@ export const ondoProvider = (
     formatOrderSize,
 
     estimateLiquidationPrice,
+
+    removableMargin,
 
     projectConfig(
       config: AccountConfig,

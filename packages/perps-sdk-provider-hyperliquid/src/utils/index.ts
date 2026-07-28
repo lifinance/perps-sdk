@@ -46,3 +46,4 @@ export {
   spotPriceById,
 } from './spotBalance.js'
 export { partitionSpotBalances, type SpotPartition } from './spotCollateral.js'
+export { removableMargin } from './transferMargin.js'

@@ -107,6 +107,7 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
+  removableMargin,
   toIsoFromMs,
   toIsoFromSeconds,
   toRequiredBig,
@@ -1316,6 +1317,8 @@ export const lighterProvider = (
     formatOrderSize,
 
     estimateLiquidationPrice,
+
+    removableMargin,
 
     projectConfig(
       config: AccountConfig,
