@@ -133,8 +133,9 @@ const buildBalances = (
  * the typed `HyperliquidAccountConfig`.
  *
  * Issues `userFees`, `userAbstraction`, `extraAgents`,
- * `spotClearinghouseState` and one `clearinghouseState` per supported perps
- * sub-dex, all concurrently.
+ * `spotClearinghouseState` and one `clearinghouseState` per perps sub-dex that
+ * still has a live market, all concurrently. USDC parked manually on a
+ * sub-dex whose every market is delisted is therefore not reported.
  *
  * `config.builderFeeApproval` is intentionally omitted — that field
  * compares the venue's `maxBuilderFee` against the integrator-specific

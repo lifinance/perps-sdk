@@ -28,16 +28,25 @@ export const coinAsset = (coin: string): Asset =>
 /**
  * Distinct wire `dex` names to fan `clearinghouseState` / `frontendOpenOrders`
  * reads across, derived from the backend market list. Spot is excluded (it has
- * no clearinghouseState); the main perp dex maps to the empty string.
+ * no clearinghouseState); the main perp dex maps to the empty string. A dex
+ * whose every market is delisted is excluded too — delisting force-settles
+ * positions and cancels orders, so the only state it can still hold is USDC a
+ * user parked there manually, which no read then surfaces.
  * @public
  */
 export const perpsDexNames = (markets: readonly Market[]): string[] => {
-  const names = new Set<string>()
+  const hasLiveMarket = new Map<string, boolean>()
   for (const m of markets) {
     if (m.categoryId === SPOT_MARKET_ID) {
       continue
     }
-    names.add(m.categoryId === MAIN_MARKET_ID ? MAIN_DEX_NAME : m.categoryId)
+    const name = m.categoryId === MAIN_MARKET_ID ? MAIN_DEX_NAME : m.categoryId
+    hasLiveMarket.set(
+      name,
+      (hasLiveMarket.get(name) ?? false) || m.isDelisted !== true
+    )
   }
-  return [...names]
+  return [...hasLiveMarket]
+    .filter(([, hasLive]) => hasLive)
+    .map(([name]) => name)
 }
