@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 6.0.1
+
+### Patch Changes
+
+- [#297](https://github.com/lifinance/perps-sdk/pull/297) [`97d2a65`](https://github.com/lifinance/perps-sdk/commit/97d2a65f04d259a0fc58aef54c67b8cc537db204) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Give Hyperliquid funding activity rows a deterministic `funding:<coin>:<ISO time>` id instead of the shared zero hash, so consumers can key on `id` without collisions.
+
+- [#299](https://github.com/lifinance/perps-sdk/pull/299) [`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Expose `positionSupportsMarginAdjustment(position)` and `positionSupportsMarginRemoval(position)` as the stack's owned answer to whether an open position takes a margin adjustment, and in which direction. Clients gating an edit-margin affordance read these instead of inspecting `Position.marginMode` and `Position.market.positionMarginAdjustment` themselves, or calling `positionMarginConstraints` just to test its `undefined` return. `removableIsolatedMargin` and the Hyperliquid and Lighter `positionMarginConstraints` implementations now gate on the same predicates, so a client's affordance cannot diverge from what the venue accepts.
+
+- Updated dependencies [[`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb)]:
+  - @lifi/perps-types@4.1.0
+
 ## 6.0.0
 
 ### Major Changes

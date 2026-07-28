@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-hyperliquid",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "description": "Hyperliquid provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
