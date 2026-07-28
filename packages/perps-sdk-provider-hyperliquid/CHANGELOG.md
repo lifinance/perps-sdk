@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 5.1.0
+
+### Minor Changes
+
+- [#289](https://github.com/lifinance/perps-sdk/pull/289) [`feed7fa`](https://github.com/lifinance/perps-sdk/commit/feed7fa7a0dece3788a095aa490f81ae8e6249e5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Skip Hyperliquid sub-dexes whose every market is delisted when fanning `clearinghouseState` / `frontendOpenOrders` reads out, cutting the per-call request weight `getAccount`, `getPositions` and `getOrders` spend against Hyperliquid's per-IP budget. A sub-dex keeps being read as long as it has one live market.
+
 ## 5.0.0
 
 ### Minor Changes
