@@ -3,6 +3,7 @@ import {
   type OrderbookLevel,
   PerpsErrorCode,
   type PerpsMarket,
+  PositionMarginAdjustment,
   type SpotMarket,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
@@ -416,6 +417,7 @@ const perpsMarket: PerpsMarket = {
   szDecimals: 5,
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 const perpsPrice: MarketContext = {

@@ -9,6 +9,7 @@ import {
   ReconnectingWebSocket,
   resolveRetryPolicy,
   resolveSubscribeQuote,
+  toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
   wsLog,
@@ -678,7 +679,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       } else {
         const market = this.registry?.get(String(p.market_id))
         if (market) {
-          state.set(p.market_id, mapPosition(p, market))
+          state.set(p.market_id, mapPosition(p, toPerpsMarketDisplay(market)))
         }
       }
     }

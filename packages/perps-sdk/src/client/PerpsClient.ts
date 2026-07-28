@@ -9,6 +9,7 @@ import type {
   MarketRef,
   MarketSettings,
   Position,
+  PositionMarginConstraints,
   Provider,
   ProviderAction,
   SignedActionStep,
@@ -405,6 +406,20 @@ export class PerpsClient {
       address: params.address,
       market: params.market,
     })
+  }
+
+  /**
+   * Resolve the exact venue-owned margin requirements for `position`.
+   * Returns `undefined` when the position has no individual margin adjustment.
+   *
+   * @public
+   */
+  getPositionMarginConstraints(
+    position: Position
+  ): PositionMarginConstraints | undefined {
+    return this.requireProvider(
+      position.market.providerId
+    ).positionMarginConstraints(position)
   }
 
   /**

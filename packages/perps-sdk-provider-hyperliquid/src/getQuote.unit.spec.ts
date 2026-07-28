@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HYPERLIQUID_FEE_TIER_FALLBACK } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
@@ -24,6 +25,7 @@ const MARKETS = {
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
   ],
 }

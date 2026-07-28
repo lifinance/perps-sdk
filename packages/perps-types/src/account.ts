@@ -10,7 +10,7 @@ import type {
   OrderType,
   PositionSide,
 } from './enums.js'
-import type { MarketDisplay } from './market.js'
+import type { MarketDisplay, PerpsMarketDisplay } from './market.js'
 import type { Address } from './primitives.js'
 
 /** @public */
@@ -21,7 +21,7 @@ export interface FeeTier {
 
 /** @public */
 export interface Position {
-  market: MarketDisplay
+  market: PerpsMarketDisplay
   side: PositionSide
   size: string
   entryPrice: string
@@ -29,8 +29,27 @@ export interface Position {
   liquidationPrice: string
   unrealizedPnl: string
   leverage: number
+  /** Margin allocated to the position, excluding unrealized PnL. */
   marginUsed: string
+  /**
+   * Exact initial margin the venue currently requires for this position.
+   * Unlike `leverage`, this decimal string is safe for risk calculations.
+   */
+  initialMarginRequirement: string
   marginMode: MarginMode
+}
+
+/**
+ * Exact provider-owned inputs for changing one position's dedicated margin.
+ * `undefined` from the provider means the position has no individual margin
+ * adjustment.
+ * @public
+ */
+export interface PositionMarginConstraints {
+  /** Exact margin the venue requires this position to retain. */
+  minimumMarginRequirement: string
+  /** Smallest accepted margin amount, as an exact decimal string. */
+  amountIncrement: string
 }
 
 /** @public */

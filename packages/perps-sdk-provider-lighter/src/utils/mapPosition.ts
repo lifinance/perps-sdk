@@ -1,8 +1,9 @@
-import type { MarketDisplay, Position } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
+import { toPositiveRequiredBig, toRequiredBig } from './decimal.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
@@ -31,33 +32,37 @@ export const leverageFromImf = (imf: string): number | undefined => {
  */
 export const mapPosition = (
   pos: LtAccountPosition,
-  market: MarketDisplay
+  market: PerpsMarketDisplay
 ): Position => {
-  const size = parseFloat(pos.position)
+  const size = toRequiredBig(pos.position, 'position')
   const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
-
-  // `allocated_margin` is only populated for isolated positions (always "0"
-  // on cross accounts). For cross, derive margin as
-  // `position_value × initial_margin_fraction / 100` (IMF is in percent).
-  const positionValue = Math.abs(parseFloat(pos.position_value))
-  const imf = parseFloat(pos.initial_margin_fraction)
+  const positionValue = toRequiredBig(
+    pos.position_value,
+    'position_value'
+  ).abs()
+  const imf = toPositiveRequiredBig(
+    pos.initial_margin_fraction,
+    'initial_margin_fraction'
+  )
+  const initialMarginRequirement = positionValue.times(imf).div(100)
   const marginUsed = isIsolated
     ? pos.allocated_margin
-    : ((positionValue * imf) / 100).toString()
+    : initialMarginRequirement.toFixed()
 
   return {
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
-    size: Math.abs(size).toString(),
+    size: size.abs().toFixed(),
     entryPrice: pos.avg_entry_price,
     markPrice:
-      pos.position_value === '0' || size === 0
+      positionValue.eq(0) || size.eq(0)
         ? '0'
-        : (parseFloat(pos.position_value) / Math.abs(size)).toString(),
+        : positionValue.div(size.abs()).toFixed(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
     leverage: leverageFromImf(pos.initial_margin_fraction) ?? 1,
     marginUsed,
+    initialMarginRequirement: initialMarginRequirement.toFixed(),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }
 }

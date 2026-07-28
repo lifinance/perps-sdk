@@ -1,4 +1,4 @@
-import type { MarketDisplay, Position } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
 
@@ -11,7 +11,7 @@ import { mapPosition } from './mapPosition.js'
  */
 export const mapOpenPositions = (
   positions: LtAccountPosition[],
-  resolveMarket: (marketId: number) => MarketDisplay
+  resolveMarket: (marketId: number) => PerpsMarketDisplay
 ): Position[] =>
   positions
     .filter((p) => Number.parseFloat(p.position) !== 0)

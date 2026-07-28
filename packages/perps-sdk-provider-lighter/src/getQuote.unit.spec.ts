@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_BASE_FEE_TIER } from './constants.js'
 import { lighterProvider } from './LighterProvider.js'
@@ -24,6 +25,7 @@ const MARKETS = {
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
   ],
 }

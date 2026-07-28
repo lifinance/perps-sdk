@@ -10,6 +10,7 @@ import {
   resolveSubscribeQuote,
   type SubscriptionListener,
   summarizeAccount,
+  toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
   type WsStatusListener,
@@ -1060,7 +1061,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           return []
         }
         const market = this.registry?.get(ap.position.coin)
-        return market ? [mapPosition(ap as HlAssetPosition, market)] : []
+        return market
+          ? [mapPosition(ap as HlAssetPosition, toPerpsMarketDisplay(market))]
+          : []
       })
     )
     this.emit(`positions:${data.user.toLowerCase()}`, {

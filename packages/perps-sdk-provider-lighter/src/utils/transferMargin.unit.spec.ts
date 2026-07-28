@@ -1,8 +1,13 @@
-import { MarginMode, type Position, PositionSide } from '@lifi/perps-types'
+import { removableIsolatedMargin } from '@lifi/perps-sdk'
+import {
+  MarginMode,
+  type Position,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { removableMargin } from './transferMargin.js'
+import { positionMarginConstraints } from './transferMargin.js'
 
-/** $10,000 notional (2 units at $5,000) unless overridden. */
 const position = (overrides: Partial<Position> = {}): Position => ({
   market: {
     providerId: 'lighter',
@@ -20,6 +25,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
       displaySymbol: 'USDC',
       logoURI: '',
     },
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   side: PositionSide.LONG,
   size: '2',
@@ -27,35 +33,47 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   markPrice: '5000',
   liquidationPrice: '4000',
   unrealizedPnl: '0',
-  leverage: 10,
+  leverage: 100 / 45,
   marginUsed: '1500',
+  initialMarginRequirement: '450.000045',
   marginMode: MarginMode.ISOLATED,
   ...overrides,
 })
 
-describe('removableMargin', () => {
-  it('holds back only the initial margin above 10x', () => {
-    // No notional floor: 20x needs $500 back, unlike Hyperliquid's $1,000.
+describe('positionMarginConstraints', () => {
+  it('preserves the provider-normalized fractional-IMF requirement', () => {
+    expect(positionMarginConstraints(position())).toEqual({
+      minimumMarginRequirement: '450.000045',
+      amountIncrement: '0.000001',
+    })
+  })
+
+  it.each([
+    ['positive', '400', '1449.999955'],
+    ['negative', '-600', '449.999955'],
+  ])('bounds removal using allocated margin plus %s PnL', (_label, pnl, expected) => {
+    const current = position({ unrealizedPnl: pnl })
+    const constraints = positionMarginConstraints(current)
+
+    expect(constraints).toBeDefined()
     expect(
-      removableMargin(position({ leverage: 20, marginUsed: '1500' }))
-    ).toBe('1000')
+      removableIsolatedMargin({ position: current, constraints: constraints! })
+    ).toBe(expected)
   })
 
-  it('holds back the initial margin below 10x', () => {
-    expect(removableMargin(position({ leverage: 5, marginUsed: '2500' }))).toBe(
-      '500'
-    )
-  })
-
-  it('holds back the initial margin at 10x', () => {
+  it('returns undefined for a cross position', () => {
     expect(
-      removableMargin(position({ leverage: 10, marginUsed: '1500' }))
-    ).toBe('500')
+      positionMarginConstraints(position({ marginMode: MarginMode.CROSS }))
+    ).toBeUndefined()
   })
 
-  it('returns zero for a position with no buffer over the requirement', () => {
-    expect(removableMargin(position({ leverage: 20, marginUsed: '500' }))).toBe(
-      '0'
-    )
+  it.each([
+    '0',
+    '-1',
+    'n/a',
+  ])('rejects invalid isolated minimum margin %s', (initialMarginRequirement) => {
+    expect(() =>
+      positionMarginConstraints(position({ initialMarginRequirement }))
+    ).toThrowError()
   })
 })

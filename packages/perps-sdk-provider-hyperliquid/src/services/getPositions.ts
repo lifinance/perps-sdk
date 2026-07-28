@@ -1,4 +1,8 @@
-import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
+import {
+  getMarketRegistry,
+  type SDKRequestOptions,
+  toPerpsMarketDisplay,
+} from '@lifi/perps-sdk'
 import type { PositionsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
@@ -58,7 +62,12 @@ export const getPositions = async (
   let positions = stateResults.flatMap((state) =>
     state.assetPositions
       .filter(isOpenAssetPosition)
-      .map((ap) => mapPosition(ap, registry.require(ap.position.coin)))
+      .map((ap) =>
+        mapPosition(
+          ap,
+          toPerpsMarketDisplay(registry.require(ap.position.coin))
+        )
+      )
   )
 
   if (params.marketId !== undefined) {

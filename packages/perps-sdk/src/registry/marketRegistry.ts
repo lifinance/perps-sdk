@@ -1,5 +1,10 @@
-import type { Market, MarketDisplay, MarketsResponse } from '@lifi/perps-types'
-import { PerpsErrorCode } from '@lifi/perps-types'
+import type {
+  Market,
+  MarketDisplay,
+  MarketsResponse,
+  PerpsMarketDisplay,
+} from '@lifi/perps-types'
+import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import { buildUrl, request } from '../transport/request.js'
 import type { PerpsSDKClient } from '../types/provider.js'
@@ -127,3 +132,41 @@ export const toMarketDisplay = (market: Market): MarketDisplay => ({
   quoteAsset: market.quoteAsset,
   ...(market.isDelisted === undefined ? {} : { isDelisted: market.isDelisted }),
 })
+
+/**
+ * Project a perpetual {@link Market} to the identity embedded on a
+ * {@link Position}, preserving its individual-margin capability.
+ *
+ * @throws {PerpsError} `ValidationError` when passed a spot market.
+ * @public
+ */
+export const toPerpsMarketDisplay = (market: Market): PerpsMarketDisplay => {
+  if (!('positionMarginAdjustment' in market)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Market '${market.id}' is not a perpetual market.`
+    )
+  }
+  const capability = market.positionMarginAdjustment
+  if (
+    capability !== PositionMarginAdjustment.NONE &&
+    capability !== PositionMarginAdjustment.ADD_ONLY &&
+    capability !== PositionMarginAdjustment.ADD_AND_REMOVE
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Market '${market.id}' is not a perpetual market.`
+    )
+  }
+  return {
+    providerId: market.providerId,
+    id: market.id,
+    categoryId: market.categoryId,
+    baseAsset: market.baseAsset,
+    quoteAsset: market.quoteAsset,
+    ...(market.isDelisted === undefined
+      ? {}
+      : { isDelisted: market.isDelisted }),
+    positionMarginAdjustment: capability,
+  }
+}

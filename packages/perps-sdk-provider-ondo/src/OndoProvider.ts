@@ -21,6 +21,7 @@ import {
   type SignActionsContext,
   type StorageAdapter,
   toMarketDisplay,
+  toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -36,6 +37,7 @@ import type {
   OndoAccountConfig,
   Order,
   OrdersResponse,
+  PerpsMarketDisplay,
   Position,
   PositionsResponse,
   ProviderAction,
@@ -92,7 +94,7 @@ import {
   mapOpenPositions,
   mapOrderDetail,
   ondoAsset,
-  removableMargin,
+  positionMarginConstraints,
 } from './utils/index.js'
 
 /**
@@ -167,6 +169,8 @@ export const ondoProvider = (
 
   const requireMarketDisplay = (marketId: string): MarketDisplay =>
     toMarketDisplay(marketRegistry().require(marketId))
+  const requirePerpsMarketDisplay = (marketId: string): PerpsMarketDisplay =>
+    toPerpsMarketDisplay(marketRegistry().require(marketId))
 
   const emptyConfig: OndoAccountConfig = {
     provider: ONDO_PROVIDER_KEY,
@@ -258,7 +262,7 @@ export const ondoProvider = (
 
           const positions: Position[] = mapOpenPositions(
             rawPositions,
-            requireMarketDisplay
+            requirePerpsMarketDisplay
           )
 
           // Single USD collateral row: `walletBalance` is gross (locked margin
@@ -364,7 +368,7 @@ export const ondoProvider = (
 
           let positions: Position[] = mapOpenPositions(
             rawPositions,
-            requireMarketDisplay
+            requirePerpsMarketDisplay
           )
           if (params.marketId !== undefined) {
             positions = positions.filter((p) => p.market.id === params.marketId)
@@ -653,7 +657,7 @@ export const ondoProvider = (
 
     estimateLiquidationPrice,
 
-    removableMargin,
+    positionMarginConstraints,
 
     projectConfig(
       config: AccountConfig,

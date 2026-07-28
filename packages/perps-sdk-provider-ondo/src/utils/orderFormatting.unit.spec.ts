@@ -1,9 +1,13 @@
 import { PerpsError } from '@lifi/perps-sdk'
-import { type Market, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  PerpsErrorCode,
+  type PerpsMarket,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
 
-const marketFixture = (overrides?: Partial<Market>): Market => ({
+const marketFixture = (overrides?: Partial<PerpsMarket>): PerpsMarket => ({
   providerId: 'ondo',
   id: 'AAPL-USD.P',
   categoryId: 'ondo',
@@ -24,6 +28,7 @@ const marketFixture = (overrides?: Partial<Market>): Market => ({
   markPrice: '201.5',
   maxLeverage: 10,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.NONE,
   funding: { rate: '0.0001', nextFundingTime: 0 },
   ...overrides,
 })

@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
@@ -115,6 +116,7 @@ describe('LighterWsProvider', () => {
         displaySymbol: 'USDC',
         logoURI: '',
       },
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
     {
       providerId: 'lighter',
@@ -132,6 +134,7 @@ describe('LighterWsProvider', () => {
         displaySymbol: 'USDC',
         logoURI: '',
       },
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
   ]
 

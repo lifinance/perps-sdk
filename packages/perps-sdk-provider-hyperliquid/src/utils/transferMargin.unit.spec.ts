@@ -1,8 +1,15 @@
-import { MarginMode, type Position, PositionSide } from '@lifi/perps-types'
+import { removableIsolatedMargin } from '@lifi/perps-sdk'
+import {
+  MarginMode,
+  type Position,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { removableMargin } from './transferMargin.js'
+import type { HlAssetPosition } from '../types/index.js'
+import { mapPosition } from './mapPosition.js'
+import { positionMarginConstraints } from './transferMargin.js'
 
-/** $10,000 notional (2 units at $5,000) unless overridden. */
 const position = (overrides: Partial<Position> = {}): Position => ({
   market: {
     providerId: 'hyperliquid',
@@ -20,6 +27,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
       displaySymbol: 'USDC',
       logoURI: '',
     },
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   side: PositionSide.LONG,
   size: '2',
@@ -27,46 +35,92 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   markPrice: '5000',
   liquidationPrice: '4000',
   unrealizedPnl: '0',
-  leverage: 10,
-  marginUsed: '1500',
+  leverage: 20,
+  marginUsed: '500',
+  initialMarginRequirement: '500',
   marginMode: MarginMode.ISOLATED,
   ...overrides,
 })
 
-describe('removableMargin', () => {
-  it('holds back 10% of notional above 10x', () => {
-    // 20x: initial margin is $500 but the floor keeps $1,000 back.
-    expect(
-      removableMargin(position({ leverage: 20, marginUsed: '1500' }))
-    ).toBe('500')
+describe('positionMarginConstraints', () => {
+  it('returns Hyperliquid exact requirements for an isolated position', () => {
+    expect(positionMarginConstraints(position())).toEqual({
+      minimumMarginRequirement: '1000',
+      amountIncrement: '0.000001',
+    })
   })
 
-  it('holds back the initial margin below 10x', () => {
-    // 5x: $2,000 initial margin exceeds the $1,000 floor.
-    expect(removableMargin(position({ leverage: 5, marginUsed: '2500' }))).toBe(
-      '500'
+  it('uses isolated equity exactly once when unrealized PnL is non-zero', () => {
+    const current = mapPosition(
+      {
+        position: {
+          coin: 'ETH',
+          szi: '2',
+          entryPx: '5000',
+          positionValue: '10000',
+          liquidationPx: '4000',
+          unrealizedPnl: '100',
+          // Hyperliquid reports isolated equity here, including the PnL.
+          marginUsed: '1500',
+          leverage: { type: 'isolated', value: 20 },
+        },
+      } satisfies HlAssetPosition,
+      position().market
     )
-  })
+    const constraints = positionMarginConstraints(current)
 
-  it('has both terms coincide at 10x', () => {
+    expect(current.marginUsed).toBe('1400')
+    expect(constraints).toBeDefined()
     expect(
-      removableMargin(position({ leverage: 10, marginUsed: '1500' }))
+      removableIsolatedMargin({ position: current, constraints: constraints! })
     ).toBe('500')
   })
 
-  it('returns zero for a position with no buffer over the requirement', () => {
+  it('retains initial margin when it exceeds the notional floor', () => {
     expect(
-      removableMargin(position({ leverage: 10, marginUsed: '1000' }))
-    ).toBe('0')
+      positionMarginConstraints(
+        position({ initialMarginRequirement: '1500.0000001' })
+      )
+    ).toEqual({
+      minimumMarginRequirement: '1500.0000001',
+      amountIncrement: '0.000001',
+    })
   })
 
-  it('counts unrealized PnL, which marginUsed already carries', () => {
-    // A $400 gain on the 20x position lifts equity to $1,900 over the $1,000
-    // floor.
+  it('keeps constraints available for an add-only strict-isolated market', () => {
     expect(
-      removableMargin(
-        position({ leverage: 20, marginUsed: '1900', unrealizedPnl: '400' })
+      positionMarginConstraints(
+        position({
+          market: {
+            ...position().market,
+            positionMarginAdjustment: PositionMarginAdjustment.ADD_ONLY,
+          },
+        })
       )
-    ).toBe('900')
+    ).toBeDefined()
+  })
+
+  it('returns undefined for cross positions and unsupported markets', () => {
+    expect(
+      positionMarginConstraints(position({ marginMode: MarginMode.CROSS }))
+    ).toBeUndefined()
+    expect(
+      positionMarginConstraints(
+        position({
+          market: {
+            ...position().market,
+            positionMarginAdjustment: PositionMarginAdjustment.NONE,
+          },
+        })
+      )
+    ).toBeUndefined()
+  })
+
+  it.each([
+    ['size', { size: '0' }],
+    ['markPrice', { markPrice: '-1' }],
+    ['initialMarginRequirement', { initialMarginRequirement: 'n/a' }],
+  ] as const)('rejects invalid Position.%s', (_field, overrides) => {
+    expect(() => positionMarginConstraints(position(overrides))).toThrowError()
   })
 })

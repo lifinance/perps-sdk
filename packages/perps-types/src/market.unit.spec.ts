@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Asset } from './asset.js'
+import { PositionMarginAdjustment } from './enums.js'
 import type {
   BaseMarket,
   MarketContext,
   MarketDisplay,
   PerpsMarket,
+  PerpsMarketDisplay,
   SpotMarket,
 } from './market.js'
 
@@ -32,6 +34,7 @@ const perpsMarket: PerpsMarket = {
   priceDecimals: 1,
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   maintenanceMarginRate: 0.01,
 }
 
@@ -50,6 +53,9 @@ describe('PerpsMarket', () => {
     expect(perpsMarket.quoteAsset.displaySymbol).toBe('USDC')
     expect(perpsMarket.maxLeverage).toBe(50)
     expect(perpsMarket.onlyIsolated).toBe(false)
+    expect(perpsMarket.positionMarginAdjustment).toBe(
+      PositionMarginAdjustment.ADD_AND_REMOVE
+    )
   })
 
   it('optionally carries venue tick and margin metadata', () => {
@@ -63,6 +69,7 @@ describe('SpotMarket', () => {
     expect(spotMarket.quoteAsset.displaySymbol).toBe('USDC')
     expect('maxLeverage' in spotMarket).toBe(false)
     expect('funding' in spotMarket).toBe(false)
+    expect('positionMarginAdjustment' in spotMarket).toBe(false)
   })
 })
 
@@ -77,6 +84,23 @@ describe('MarketDisplay', () => {
     }
     expect(display.id).toBe('BTC')
     expect(display.baseAsset.id).toBe('BTC')
+  })
+})
+
+describe('PerpsMarketDisplay', () => {
+  it('carries the position-level margin adjustment capability', () => {
+    const display: PerpsMarketDisplay = {
+      providerId: perpsMarket.providerId,
+      id: perpsMarket.id,
+      categoryId: perpsMarket.categoryId,
+      baseAsset: perpsMarket.baseAsset,
+      quoteAsset: perpsMarket.quoteAsset,
+      positionMarginAdjustment: perpsMarket.positionMarginAdjustment,
+    }
+
+    expect(display.positionMarginAdjustment).toBe(
+      PositionMarginAdjustment.ADD_AND_REMOVE
+    )
   })
 })
 

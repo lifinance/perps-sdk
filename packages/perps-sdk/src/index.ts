@@ -25,6 +25,7 @@ export {
   isActiveMarket,
   MarketRegistry,
   toMarketDisplay,
+  toPerpsMarketDisplay,
 } from './registry/marketRegistry.js'
 // Services
 export type { CreateActionParams } from './services/createAction.js'

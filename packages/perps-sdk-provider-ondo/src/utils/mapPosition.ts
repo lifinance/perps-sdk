@@ -1,4 +1,4 @@
-import type { MarketDisplay, Position } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { OndoPosition } from '../types/wire.js'
@@ -12,7 +12,7 @@ import type { OndoPosition } from '../types/wire.js'
  */
 export const mapPosition = (
   pos: OndoPosition,
-  market: MarketDisplay
+  market: PerpsMarketDisplay
 ): Position => ({
   market,
   side: pos.direction === 'short' ? PositionSide.SHORT : PositionSide.LONG,
@@ -23,6 +23,7 @@ export const mapPosition = (
   unrealizedPnl: pos.unrealizedPnl,
   leverage: Number.parseFloat(pos.leverage),
   marginUsed: pos.usedMargin,
+  initialMarginRequirement: pos.usedMargin,
   marginMode: MarginMode.CROSS,
 })
 
@@ -35,7 +36,7 @@ export const mapPosition = (
  */
 export const mapOpenPositions = (
   positions: OndoPosition[],
-  resolveMarket: (market: string) => MarketDisplay
+  resolveMarket: (market: string) => PerpsMarketDisplay
 ): Position[] =>
   positions
     .filter(

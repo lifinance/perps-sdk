@@ -1,9 +1,12 @@
-import { PerpsErrorCode, type Position } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PerpsErrorCode,
+  type Position,
+  PositionMarginAdjustment,
+  type PositionMarginConstraints,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 import { PerpsError } from '../errors/PerpsError.js'
-
-/** Finer than any venue's collateral precision (USDC carries 6 decimals). */
-const MARGIN_DP = 8
 
 function positionAmount(value: string, field: string): Big {
   try {
@@ -16,61 +19,85 @@ function positionAmount(value: string, field: string): Big {
   }
 }
 
+function constraintAmount(value: string, field: string): Big {
+  try {
+    return new Big(value)
+  } catch {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid decimal string on PositionMarginConstraints.${field}: '${value}'`
+    )
+  }
+}
+
+function requirePositive(value: Big, field: string): Big {
+  if (value.lte(0)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `${field} must be greater than zero.`
+    )
+  }
+  return value
+}
+
 /**
- * Terms of a venue's transfer-margin requirement — see
- * {@link removableIsolatedMargin}.
+ * Exact inputs for {@link removableIsolatedMargin}.
  *
  * @public
  */
 export interface RemovableIsolatedMarginParams {
   position: Position
-  /**
-   * Floor on the retained margin as a fraction of the position's notional,
-   * applied on top of the initial-margin requirement (Hyperliquid publishes
-   * `0.1`). Omit for a venue whose requirement is the initial margin alone.
-   */
-  notionalFloorRatio?: number
+  constraints: PositionMarginConstraints
 }
 
 /**
- * Margin removable from an isolated position under a venue's transfer-margin
- * requirement: the position's equity (`Position.marginUsed`, unrealized PnL
- * already included) less
- * `max(notional / Position.leverage, notionalFloorRatio * notional)`.
+ * Calculate margin that can be removed from an isolated position using the
+ * provider's exact retained-margin requirement. Position equity is allocated
+ * margin plus unrealized PnL.
  *
- * The initial-margin term binds at the position's own leverage, not the
- * market's `maxLeverage`: a position opened below the market cap has to keep
- * the margin its own leverage implies. Conservative by construction — the
- * requirement rounds up and the result rounds down, so the figure can only
- * under-report what the venue accepts.
+ * The result snaps down to the provider's accepted amount increment. Markets
+ * that are add-only and cross-margined positions return `'0'`.
  *
- * @returns Removable margin as a decimal string, never negative; `'0'` when
- *   `Position.leverage` is not positive, leaving the initial-margin term
- *   unevaluable.
- * @throws {PerpsError} `ValidationError` when `size`, `markPrice` or
- *   `marginUsed` is not a decimal string.
+ * @throws {PerpsError} `ValidationError` for malformed, non-positive, or
+ *   inconsistent risk inputs.
  * @public
  */
-export function removableIsolatedMargin(
-  params: RemovableIsolatedMarginParams
-): string {
-  const { position, notionalFloorRatio } = params
-  if (position.leverage <= 0) {
+export function removableIsolatedMargin({
+  position,
+  constraints,
+}: RemovableIsolatedMarginParams): string {
+  if (
+    position.marginMode !== MarginMode.ISOLATED ||
+    position.market.positionMarginAdjustment !==
+      PositionMarginAdjustment.ADD_AND_REMOVE
+  ) {
     return '0'
   }
-  const notional = positionAmount(position.size, 'size')
-    .abs()
-    .times(positionAmount(position.markPrice, 'markPrice'))
-  const initialMargin = notional.div(position.leverage)
-  const notionalFloor =
-    notionalFloorRatio === undefined
-      ? new Big(0)
-      : notional.times(notionalFloorRatio)
-  const required = (
-    initialMargin.gt(notionalFloor) ? initialMargin : notionalFloor
-  ).round(MARGIN_DP, Big.roundUp)
-  const removable = positionAmount(position.marginUsed, 'marginUsed')
-    .minus(required)
-    .round(MARGIN_DP, Big.roundDown)
-  return removable.gt(0) ? removable.toFixed() : '0'
+
+  const marginUsed = requirePositive(
+    positionAmount(position.marginUsed, 'marginUsed'),
+    'Position.marginUsed'
+  )
+  const unrealizedPnl = positionAmount(position.unrealizedPnl, 'unrealizedPnl')
+  const minimumMargin = requirePositive(
+    constraintAmount(
+      constraints.minimumMarginRequirement,
+      'minimumMarginRequirement'
+    ),
+    'PositionMarginConstraints.minimumMarginRequirement'
+  )
+  const amountIncrement = requirePositive(
+    constraintAmount(constraints.amountIncrement, 'amountIncrement'),
+    'PositionMarginConstraints.amountIncrement'
+  )
+
+  const removable = marginUsed.plus(unrealizedPnl).minus(minimumMargin)
+  if (removable.lte(0)) {
+    return '0'
+  }
+  return removable
+    .div(amountIncrement)
+    .round(0, Big.roundDown)
+    .times(amountIncrement)
+    .toFixed()
 }

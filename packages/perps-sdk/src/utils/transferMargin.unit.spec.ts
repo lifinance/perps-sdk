@@ -2,13 +2,14 @@ import {
   MarginMode,
   PerpsErrorCode,
   type Position,
+  PositionMarginAdjustment,
+  type PositionMarginConstraints,
   PositionSide,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { PerpsError } from '../errors/PerpsError.js'
 import { removableIsolatedMargin } from './transferMargin.js'
 
-/** $10,000 notional (2 units at $5,000) unless overridden. */
 const position = (overrides: Partial<Position> = {}): Position => ({
   market: {
     providerId: 'test',
@@ -26,6 +27,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
       displaySymbol: 'USDC',
       logoURI: '',
     },
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   side: PositionSide.LONG,
   size: '2',
@@ -33,129 +35,138 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   markPrice: '5000',
   liquidationPrice: '4000',
   unrealizedPnl: '0',
-  leverage: 10,
+  leverage: 20,
   marginUsed: '1500',
+  initialMarginRequirement: '500',
   marginMode: MarginMode.ISOLATED,
   ...overrides,
 })
 
+const constraints = (
+  overrides: Partial<PositionMarginConstraints> = {}
+): PositionMarginConstraints => ({
+  minimumMarginRequirement: '500',
+  amountIncrement: '0.000001',
+  ...overrides,
+})
+
 describe('removableIsolatedMargin', () => {
-  it('binds on the notional floor above 1 / notionalFloorRatio leverage', () => {
-    // 20x: initial margin $500, floor $1,000 — the floor requires $1,000 back.
+  it('retains the provider minimum margin requirement', () => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 20, marginUsed: '1500' }),
-        notionalFloorRatio: 0.1,
+        position: position(),
+        constraints: constraints({ minimumMarginRequirement: '1000' }),
       })
     ).toBe('500')
   })
 
-  it('binds on the initial margin below 1 / notionalFloorRatio leverage', () => {
-    // 5x: initial margin $2,000 exceeds the $1,000 floor.
+  it('uses the exact provider initial-margin requirement, not display leverage', () => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 5, marginUsed: '2500' }),
-        notionalFloorRatio: 0.1,
+        position: position({
+          leverage: 50,
+          marginUsed: '4500',
+          initialMarginRequirement: '4000',
+        }),
+        constraints: constraints({ minimumMarginRequirement: '4000' }),
       })
     ).toBe('500')
   })
 
-  it('has both terms coincide at 1 / notionalFloorRatio leverage', () => {
-    // 10x: initial margin and floor are both $1,000.
+  it.each([
+    ['positive', '400', '1400'],
+    ['negative', '-600', '400'],
+  ])('includes %s unrealized PnL in position equity', (_label, pnl, expected) => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 10, marginUsed: '1500' }),
-        notionalFloorRatio: 0.1,
+        position: position({ unrealizedPnl: pnl }),
+        constraints: constraints(),
       })
-    ).toBe('500')
+    ).toBe(expected)
   })
 
-  it('returns zero for a position with no buffer over the requirement', () => {
+  it('snaps removable margin down to the provider wire increment', () => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 10, marginUsed: '1000' }),
-        notionalFloorRatio: 0.1,
+        position: position({
+          size: '1',
+          markPrice: '1',
+          marginUsed: '1.23456889',
+          initialMarginRequirement: '0.000001',
+        }),
+        constraints: constraints({ minimumMarginRequirement: '0.000001' }),
+      })
+    ).toBe('1.234567')
+  })
+
+  it.each([
+    PositionMarginAdjustment.ADD_ONLY,
+    PositionMarginAdjustment.NONE,
+  ])('does not remove margin when the market capability is %s', (capability) => {
+    expect(
+      removableIsolatedMargin({
+        position: position({
+          market: {
+            ...position().market,
+            positionMarginAdjustment: capability,
+          },
+        }),
+        constraints: constraints(),
       })
     ).toBe('0')
   })
 
-  it('returns zero when equity is already below the requirement', () => {
+  it('does not remove margin from a cross position', () => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 10, marginUsed: '800' }),
-        notionalFloorRatio: 0.1,
+        position: position({ marginMode: MarginMode.CROSS }),
+        constraints: constraints(),
       })
     ).toBe('0')
   })
 
-  it('requires the initial margin alone when no notional floor is given', () => {
-    // Same 20x position as the floor-binding case: $500 required, not $1,000.
+  it('returns zero when equity is below the retained requirement', () => {
     expect(
       removableIsolatedMargin({
-        position: position({ leverage: 20, marginUsed: '1500' }),
-      })
-    ).toBe('1000')
-  })
-
-  it('takes the initial margin at the position leverage, not a market cap', () => {
-    // A 2x position on a 50x market keeps $5,000, not $200.
-    expect(
-      removableIsolatedMargin({
-        position: position({ leverage: 2, marginUsed: '5200' }),
-        notionalFloorRatio: 0.1,
-      })
-    ).toBe('200')
-  })
-
-  it('rounds a non-terminating requirement so the result under-reports', () => {
-    // $10,000 at 3x needs $3,333.33…; rounding up the requirement leaves
-    // strictly less than the exact $1,666.66… removable.
-    const removable = removableIsolatedMargin({
-      position: position({ leverage: 3, marginUsed: '5000' }),
-      notionalFloorRatio: 0.1,
-    })
-    expect(removable).toBe('1666.66666666')
-    expect(Number(removable)).toBeLessThan(5000 - 10000 / 3)
-  })
-
-  it('returns zero when the position leverage is not positive', () => {
-    expect(
-      removableIsolatedMargin({
-        position: position({ leverage: 0, marginUsed: '1500' }),
-        notionalFloorRatio: 0.1,
+        position: position({ marginUsed: '300', unrealizedPnl: '-100' }),
+        constraints: constraints(),
       })
     ).toBe('0')
   })
 
-  it('treats size as a magnitude', () => {
-    expect(
-      removableIsolatedMargin({
-        position: position({ size: '-2', leverage: 10, marginUsed: '1500' }),
-        notionalFloorRatio: 0.1,
-      })
-    ).toBe('500')
-  })
-
-  it('frees the whole margin of a zero-notional position', () => {
-    expect(
-      removableIsolatedMargin({
-        position: position({ size: '0', marginUsed: '1500' }),
-        notionalFloorRatio: 0.1,
-      })
-    ).toBe('1500')
-  })
-
-  it('rejects a non-decimal position amount', () => {
+  it('rejects malformed exact inputs', () => {
     expect(() =>
       removableIsolatedMargin({
-        position: position({ markPrice: 'n/a' }),
-        notionalFloorRatio: 0.1,
+        position: position({ unrealizedPnl: 'n/a' }),
+        constraints: constraints(),
       })
     ).toThrow(
       new PerpsError(
         PerpsErrorCode.ValidationError,
-        `Invalid decimal string on Position.markPrice: 'n/a'`
+        `Invalid decimal string on Position.unrealizedPnl: 'n/a'`
       )
     )
+  })
+
+  it.each([
+    '0',
+    '-1',
+    'n/a',
+  ])('rejects invalid provider minimum margin %s', (minimumMarginRequirement) => {
+    expect(() =>
+      removableIsolatedMargin({
+        position: position(),
+        constraints: constraints({ minimumMarginRequirement }),
+      })
+    ).toThrow(PerpsError)
+  })
+
+  it('rejects a non-positive wire increment', () => {
+    expect(() =>
+      removableIsolatedMargin({
+        position: position(),
+        constraints: constraints({ amountIncrement: '0' }),
+      })
+    ).toThrow(PerpsError)
   })
 })

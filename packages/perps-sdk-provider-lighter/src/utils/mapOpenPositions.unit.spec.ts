@@ -1,4 +1,7 @@
-import type { MarketDisplay } from '@lifi/perps-types'
+import {
+  type PerpsMarketDisplay,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapOpenPositions } from './mapOpenPositions.js'
@@ -26,16 +29,18 @@ const rawPosition = (
   ...overrides,
 })
 
-const market = (id: number, symbol: string): MarketDisplay => ({
+const market = (id: number, symbol: string): PerpsMarketDisplay => ({
   providerId: 'lighter',
   id: String(id),
   categoryId: 'lighter',
   baseAsset: { providerId: 'lighter', id: String(id), displaySymbol: symbol },
   quoteAsset: { providerId: 'lighter', id: 'USDC', displaySymbol: 'USDC' },
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 })
 
 const SYMBOLS: Record<number, string> = { 0: 'BTC', 1: 'ETH' }
-const resolveMarket = (id: number): MarketDisplay => market(id, SYMBOLS[id])
+const resolveMarket = (id: number): PerpsMarketDisplay =>
+  market(id, SYMBOLS[id])
 
 describe('mapOpenPositions', () => {
   it('drops zero-size rows and maps the rest', () => {

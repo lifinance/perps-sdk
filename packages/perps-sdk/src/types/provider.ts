@@ -17,6 +17,7 @@ import type {
   PerpsMarket,
   PerpsSigner,
   Position,
+  PositionMarginConstraints,
   PositionsResponse,
   ProviderAction,
   Quote,
@@ -463,16 +464,16 @@ export interface PerpsProviderPlugin {
   ): number | undefined
 
   /**
-   * Margin removable from an isolated `position` under the venue's own
-   * transfer-margin requirement — the rule the venue enforces when margin is
-   * moved out of a position, which differs per venue and so cannot be composed
-   * from the market model by a provider-agnostic consumer. Pure — does no I/O.
+   * Exact venue-owned constraints for changing `position`'s dedicated margin.
+   * Pure — providers normalize raw venue quantities onto the position before
+   * returning these inputs.
    *
-   * @returns The removable margin as a decimal string, conservative by
-   *   construction (rounding only ever reduces it); `undefined` when the venue
-   *   has no per-position margin transfer at all.
+   * @returns `undefined` when this position has no individual margin
+   *   adjustment (for example a cross position or a cross-only venue).
    */
-  removableMargin(position: Position): string | undefined
+  positionMarginConstraints(
+    position: Position
+  ): PositionMarginConstraints | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`
