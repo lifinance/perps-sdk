@@ -18,7 +18,9 @@ export interface ExecuteActionParams {
   address: Address
   /** Optional provider-owned signer address used for submission. */
   signerAddress?: Address
+  /** Action descriptor shared by the signed steps. */
   action: ActionType
+  /** Signed steps returned from client-side signing. */
   actions: SignedActionStep[]
 }
 

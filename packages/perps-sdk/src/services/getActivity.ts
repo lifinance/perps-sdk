@@ -12,6 +12,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
 export interface GetActivityParams {
   provider: string
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -19,6 +20,7 @@ export interface GetActivityParams {
   startTime?: number
   /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
+  /** Optional filter for activity types. */
   type?: ActivityType[]
 }
 

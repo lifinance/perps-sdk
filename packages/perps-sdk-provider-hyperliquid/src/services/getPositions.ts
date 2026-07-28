@@ -24,6 +24,7 @@ export interface GetPositionsParams {
   address: Address
   /** Optional filter using the normalized opaque `Market.id`. */
   marketId?: string
+  /** Page-size hint; Hyperliquid returns all open positions in one response. */
   limit?: number
 }
 

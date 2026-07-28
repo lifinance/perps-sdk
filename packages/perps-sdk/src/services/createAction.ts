@@ -19,6 +19,7 @@ export interface CreateActionParams<T extends ActionType = ActionType> {
   /** Optional provider-owned signer address sent to the backend. */
   signerAddress?: Address
   action: T
+  /** Action-specific payload matching `action`. */
   params: ActionParamsMap[T]
 }
 

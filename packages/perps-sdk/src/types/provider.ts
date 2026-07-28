@@ -185,6 +185,7 @@ export interface ProviderGetPositionsParams {
   address: Address
   /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -211,6 +212,7 @@ export interface ProviderGetOrdersParams {
   address: Address
   /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -234,6 +236,7 @@ export interface ProviderGetOrderParams {
  */
 export interface ProviderGetFillsParams {
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -250,6 +253,7 @@ export interface ProviderGetFillsParams {
  */
 export interface ProviderGetActivityParams {
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
@@ -257,6 +261,7 @@ export interface ProviderGetActivityParams {
   startTime?: number
   /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
+  /** Optional filter for activity types. */
   type?: ActivityType[]
 }
 

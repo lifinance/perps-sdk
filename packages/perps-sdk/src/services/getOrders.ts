@@ -14,6 +14,7 @@ export interface GetOrdersParams {
   address: Address
   /** Optional opaque `Market.id` filter, not a display symbol. */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string

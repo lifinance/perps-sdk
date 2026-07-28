@@ -17,6 +17,7 @@ export interface GetOhlcvParams {
   startTime?: number
   /** Unix timestamp in milliseconds for the end bound. */
   endTime?: number
+  /** Maximum candles returned; provider defaults and caps apply. */
   limit?: number
 }
 

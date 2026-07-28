@@ -45,6 +45,7 @@ export interface Position {
   liquidationPrice: string
   /** Unrealized PnL in quote-currency units. */
   unrealizedPnl: string
+  /** Position leverage as a numeric multiple. */
   leverage: number
   /**
    * Margin allocated and reserved by this position as a decimal string,
@@ -283,6 +284,7 @@ export interface BaseActivity {
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
   amount: string
+  /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
 }
 
@@ -296,6 +298,7 @@ export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
   amount: string
   fee: string
+  /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
   explorerLink?: string
 }
 
@@ -350,6 +353,7 @@ export type TransferActivity = BaseActivity & {
   asset: string
   amount: string
   meta?: Record<string, unknown>
+  /** Fully-resolved block-explorer URL for the on-chain transfer tx. */
   explorerLink?: string
 } & (
     | { counterpartyAccountIndex: number; counterpartyAddress?: string }

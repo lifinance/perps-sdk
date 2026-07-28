@@ -131,6 +131,7 @@ export interface PlaceOrderParams {
   size: string
   /** Limit price as a decimal wire string; required by limit-style orders. */
   price: string
+  /** Optional leverage multiplier; provider defaults apply when omitted. */
   leverage?: number
   /**
    * Margin mode the order trades under; omitted falls to the venue's cross
@@ -188,7 +189,9 @@ export interface SendAssetActionParams {
   address: Address
   /** Canonical `Asset.id` (Hyperliquid spot uses the token index as a string); never a display symbol. */
   collateral: string
+  /** Source DEX/account identifier understood by the provider. */
   sourceDex: string
+  /** Destination DEX/account identifier understood by the provider. */
   destinationDex: string
   /** Transfer amount as a provider-compatible decimal wire string. */
   amount: string

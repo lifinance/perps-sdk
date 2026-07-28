@@ -101,5 +101,6 @@ export interface PerpsBaseConfig {
   providers?: ProviderConfigs
   /** Optional global or per-provider retry configuration. */
   retry?: RetryConfig
+  /** Fetch implementation used by core HTTP transport. */
   fetch?: typeof fetch
 }
