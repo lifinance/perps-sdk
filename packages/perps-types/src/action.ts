@@ -226,8 +226,9 @@ export type SignedActionStep =
   | SiweSignedActionStep
 
 /**
- * Per-action execution result. Success arms may include a provider order id;
- * failure arms carry a message and optional structured error code.
+ * Per-action execution result. Success arms may include a provider order id and
+ * the venue transaction it was submitted in; failure arms carry a message and
+ * optional structured error code.
  *
  * @public
  */
@@ -236,6 +237,15 @@ export type ActionResult =
       action: ActionType
       success: true
       orderId?: string
+      /**
+       * Venue transaction hash, present only where the venue's canonical hash is
+       * known at submit time (Lighter). Hyperliquid assigns its hash at block
+       * inclusion and Ondo settles offchain, so neither returns one here.
+       */
+      txHash?: string
+      /** Fully-resolved block-explorer URL for `txHash`; absent when the hash is
+       * absent or the provider has no explorer configured. */
+      explorerLink?: string
     }
   | {
       action: ActionType
