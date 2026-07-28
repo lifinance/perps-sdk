@@ -11,6 +11,8 @@ import type {
 import {
   ActionType,
   MarginMode,
+  OrderSide,
+  OrderType,
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
@@ -828,6 +830,162 @@ describe('PerpsClient', () => {
           params: { mode: 'dexAbstraction' },
         })
       ).resolves.toBeUndefined()
+    })
+  })
+
+  describe('venue txHash → explorer link on execute results', () => {
+    const BASE_URL = DEFAULT_API_URL
+    // A Lighter WASM-signed action: the signer computes the L2 hash before the
+    // network call, so the backend echoes it on the per-step result.
+    const TX_HASH = `0x${'8f2b1c4d'.repeat(8)}`
+    const EXPLORER_BASE = 'https://app.lighter.xyz/explorer/logs/'
+    const TYPED_DATA = {
+      domain: { name: 'venue', chainId: 1 },
+      types: { Setup: [{ name: 'x', type: 'uint256' }] },
+      primaryType: 'Setup' as const,
+      message: { x: 0 },
+    }
+    const ORDER = {
+      market: { symbol: 'BTC' },
+      side: OrderSide.BUY,
+      type: OrderType.MARKET,
+      size: '0.1',
+      price: '95000.00',
+    } as const
+
+    function respondExecute(result: Record<string, unknown>) {
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [
+              {
+                action: body.action,
+                success: true,
+                orderId: '9',
+                ...result,
+              },
+            ],
+          } as ExecuteActionResponse)
+        })
+      )
+    }
+
+    async function placeLighterOrder(
+      plugin: Partial<PerpsProviderPlugin>
+    ): Promise<ExecuteActionResponse> {
+      const lighter = createTestAgentProvider({ type: 'lighter', ...plugin })
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+      await lighter.createAgent(userAddress)
+      return lighterClient.placeOrder({
+        address: userAddress,
+        provider: 'lighter',
+        ...ORDER,
+      })
+    }
+
+    it('carries the backend hash and the provider-built explorer URL', async () => {
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await placeLighterOrder({
+        resolveExplorerLink: (txHash) => `${EXPLORER_BASE}${txHash}`,
+      })
+
+      expect(results).toEqual([
+        {
+          action: ActionType.PLACE_ORDER,
+          success: true,
+          orderId: '9',
+          txHash: TX_HASH,
+          explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
+        },
+      ])
+    })
+
+    it('omits both fields when the backend response carries no hash', async () => {
+      respondExecute({})
+      const resolveExplorerLink = vi.fn(() => `${EXPLORER_BASE}${TX_HASH}`)
+
+      const { results } = await placeLighterOrder({ resolveExplorerLink })
+
+      expect(results[0]).not.toHaveProperty('txHash')
+      expect(results[0]).not.toHaveProperty('explorerLink')
+      expect(resolveExplorerLink).not.toHaveBeenCalled()
+    })
+
+    it('keeps the hash but omits the link for an instance with no explorer', async () => {
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await placeLighterOrder({
+        resolveExplorerLink: () => undefined,
+      })
+
+      expect(results[0]).toMatchObject({ txHash: TX_HASH })
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('leaves a provider with no explorer concept unlinked (Hyperliquid, Ondo)', async () => {
+      await agentProvider.createAgent(userAddress)
+      expect(agentProvider.resolveExplorerLink).toBeUndefined()
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await client.placeOrder({
+        address: userAddress,
+        provider,
+        ...ORDER,
+      })
+
+      expect(results[0]).toMatchObject({ txHash: TX_HASH })
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('yields neither field on the default hashless Hyperliquid response', async () => {
+      await agentProvider.createAgent(userAddress)
+
+      const { results } = await client.placeOrder({
+        address: userAddress,
+        provider,
+        ...ORDER,
+      })
+
+      expect(results[0]).not.toHaveProperty('txHash')
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('links setup-path results and hands the linked results to onExecuteResults', async () => {
+      const onExecuteResults = vi.fn(async () => {})
+      const lighter = createTestAgentProvider({
+        type: 'lighter',
+        resolveExplorerLink: (txHash) => `${EXPLORER_BASE}${txHash}`,
+        onExecuteResults,
+      })
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+      await lighter.createAgent(userAddress)
+      respondExecute({ txHash: TX_HASH })
+
+      await lighterClient.executeProviderSetupAction({
+        provider: 'lighter',
+        address: userAddress,
+        step: { action: ActionType.REGISTER_API_KEY, typedData: TYPED_DATA },
+      })
+
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
+        {
+          action: ActionType.REGISTER_API_KEY,
+          success: true,
+          orderId: '9',
+          txHash: TX_HASH,
+          explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
+        },
+      ])
     })
   })
 

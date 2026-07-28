@@ -242,6 +242,29 @@ export class PerpsClient {
   }
 
   /**
+   * Attach a provider-built explorer URL to every result the backend returned a
+   * venue `txHash` on. The provider owns its explorer target, so core only asks
+   * — a plugin without the hook leaves results untouched.
+   */
+  private resolveExplorerLinks(
+    provider: string,
+    results: ActionResult[]
+  ): ActionResult[] {
+    const plugin = this.requireProvider(provider)
+    const resolveLink = plugin.resolveExplorerLink?.bind(plugin)
+    if (resolveLink === undefined) {
+      return results
+    }
+    return results.map((result) => {
+      if (!result.success || result.txHash === undefined) {
+        return result
+      }
+      const explorerLink = resolveLink(result.txHash)
+      return explorerLink === undefined ? result : { ...result, explorerLink }
+    })
+  }
+
+  /**
    * Resolve the wallet that signs `actions`. For a USER-signed EIP-712 batch,
    * switch the configured wallet to the action's target chain via the
    * `switchChain` hook and return the switched client; the switch is transient
@@ -704,7 +727,7 @@ export class PerpsClient {
       address
     )
 
-    const results = await executeAction(this.sdkClient, {
+    const response = await executeAction(this.sdkClient, {
       provider,
       address,
       // The submitting account: the plugin-resolved signer (Hyperliquid's
@@ -714,14 +737,16 @@ export class PerpsClient {
       actions: signedActions,
     })
 
-    await this.notifyExecuteResults(provider, address, results.results)
+    const results = this.resolveExplorerLinks(provider, response.results)
 
-    const failure = results.results.find((r) => !r.success)
+    await this.notifyExecuteResults(provider, address, results)
+
+    const failure = results.find((r) => !r.success)
     if (failure) {
       throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
     }
 
-    return { results }
+    return { results: { results } }
   }
 
   /**
@@ -1001,8 +1026,10 @@ export class PerpsClient {
       actions: signedActions,
     })
 
-    await this.notifyExecuteResults(provider, address, response.results)
+    const results = this.resolveExplorerLinks(provider, response.results)
 
-    return response
+    await this.notifyExecuteResults(provider, address, results)
+
+    return { results }
   }
 }

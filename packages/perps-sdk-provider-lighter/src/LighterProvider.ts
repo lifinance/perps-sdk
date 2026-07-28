@@ -1359,6 +1359,14 @@ export const lighterProvider = (
       return { knownPublicKey: local.apiKeyPublicKey }
     },
 
+    /**
+     * Lighter's WASM signer computes the L2 tx hash before submission, so an
+     * execute result carries it and resolves against this instance's explorer.
+     */
+    resolveExplorerLink(txHash: string): string | undefined {
+      return explorerTxUrlFromBase(explorerTxBaseUrl, txHash)
+    },
+
     async signActions(
       method: SigningMethod,
       steps: ActionStep[],

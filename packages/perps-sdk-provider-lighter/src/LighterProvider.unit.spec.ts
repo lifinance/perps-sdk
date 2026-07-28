@@ -18,6 +18,7 @@ import {
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
   DEFAULT_LIGHTER_WS_URL,
@@ -2364,6 +2365,40 @@ describe('LighterProvider — instance config', () => {
     expect(backendUrls.some((u) => u.endsWith('provider=lighter-rh'))).toBe(
       true
     )
+  })
+})
+
+describe('LighterProvider — resolveExplorerLink', () => {
+  // A Lighter WASM-signed tx hash as the backend echoes it on an execute result.
+  const TX_HASH = `0x${'8f2b1c4d'.repeat(8)}`
+
+  it('resolves a submitted tx hash against the mainnet explorer', () => {
+    expect(lighterProvider().resolveExplorerLink?.(TX_HASH)).toBe(
+      `${DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL}${TX_HASH}`
+    )
+  })
+
+  it('honours an instance-supplied explorer base', () => {
+    const rh = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+      explorerTxBaseUrl: 'https://explorer.rh.lighter.xyz/logs/',
+    })
+    expect(rh.resolveExplorerLink?.(TX_HASH)).toBe(
+      `https://explorer.rh.lighter.xyz/logs/${TX_HASH}`
+    )
+  })
+
+  it('returns undefined for an instance with no explorer configured', () => {
+    const rh = lighterProvider({
+      providerKey: LIGHTER_RH_PROVIDER_KEY,
+      restUrl: LIGHTER_RH_REST_URL,
+    })
+    expect(rh.resolveExplorerLink?.(TX_HASH)).toBeUndefined()
+  })
+
+  it('returns undefined for an empty hash', () => {
+    expect(lighterProvider().resolveExplorerLink?.('')).toBeUndefined()
   })
 })
 

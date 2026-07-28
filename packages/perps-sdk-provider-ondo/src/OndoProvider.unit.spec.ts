@@ -1338,6 +1338,10 @@ describe('OndoProvider — write-action surface', () => {
     },
   }
 
+  it('exposes no explorer hook — Ondo settles offchain, so execute results carry no tx link', () => {
+    expect(ondoProvider().resolveExplorerLink).toBeUndefined()
+  })
+
   it('signActions(HMAC) HMAC-signs each step with the stored API key', async () => {
     const { provider, storage } = await loggedInProvider()
     await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)

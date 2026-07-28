@@ -573,6 +573,17 @@ export interface PerpsProviderPlugin {
    * — e.g. evicting a locally stored credential the venue no longer accepts.
    */
   onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
+
+  /**
+   * Resolve a venue transaction hash to a block-explorer URL. Core calls it for
+   * every `/executeAction` result the backend returned a `txHash` on, so the
+   * explorer target stays provider-owned.
+   *
+   * Optional: a venue with no explorer (Ondo settles offchain) omits it, and
+   * results then carry the hash alone. May also return `undefined` for an
+   * instance whose explorer is not configured.
+   */
+  resolveExplorerLink?(txHash: string): string | undefined
 }
 
 /**
