@@ -1,10 +1,10 @@
 import type { FeeTier } from './account.js'
 import type { FundingInfo } from './market.js'
 
-/** @public */
+/** Side of the quoted market order, using lowercase wire values. @public */
 export type QuoteSide = 'buy' | 'sell'
 
-/** @public */
+/** Trade instrument kind represented by the quote. @public */
 export type TradeType = 'perps' | 'spot'
 
 /**

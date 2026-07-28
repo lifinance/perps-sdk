@@ -426,6 +426,8 @@ export class PerpsClient {
    * Roll an already-fetched {@link AccountResponse} (plus its positions) up
    * into an {@link AccountSummary}, delegating to the owning provider so the
    * venue-specific collateral and margin semantics are applied correctly.
+   *
+   * @public
    */
   getAccountSummary(
     account: AccountResponse,

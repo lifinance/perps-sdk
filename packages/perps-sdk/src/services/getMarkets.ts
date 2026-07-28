@@ -11,7 +11,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
  */
 export interface GetMarketsParams {
   provider: string
-  /** Optional filter — opaque `Market.id`s (not display symbols). */
+  /** Optional comma-joined filter of opaque `Market.id`s. */
   marketIds?: string[]
 }
 

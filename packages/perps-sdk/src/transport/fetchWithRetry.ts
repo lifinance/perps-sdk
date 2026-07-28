@@ -7,8 +7,11 @@ import type { ResolvedRetryPolicy, RetryClassification } from './retryPolicy.js'
  * @public
  */
 export interface FetchWithRetryOptions {
+  /** Fully resolved retry policy controlling attempts, delays, and classification. */
   policy: ResolvedRetryPolicy
+  /** Optional fetch implementation; defaults to the global `fetch`. */
   fetchImpl?: typeof fetch
+  /** Abort signal; cancellation is propagated without retrying. */
   signal?: AbortSignal
 }
 

@@ -50,6 +50,10 @@ export type WsStatusListener = (status: WsConnectionStatus) => void
  * @public
  */
 export interface WsProvider {
+  /**
+   * Subscribe to one venue channel and return an idempotent unsubscribe.
+   * `onStatus` receives the provider socket's health transitions.
+   */
   subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
@@ -71,5 +75,6 @@ export interface WsProvider {
     params: ProviderGetQuoteParams,
     onQuote: QuoteListener
   ): Promise<() => void>
+  /** Permanently close the provider's realtime connection. */
   close(): void
 }

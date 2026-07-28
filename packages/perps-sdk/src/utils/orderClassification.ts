@@ -15,6 +15,11 @@ import {
 } from '@lifi/perps-types'
 import { stringToFloat } from './parse.js'
 
+/**
+ * Re-exported fill taxonomy used by {@link classifyFillFromPosition}.
+ *
+ * @public
+ */
 export { FillClassification }
 
 const TP_TYPES = new Set<OrderType>([

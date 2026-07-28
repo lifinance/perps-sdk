@@ -1,6 +1,11 @@
 // Order shapes returned by Hyperliquid `/info`.
 
-/** @public */
+/**
+ * Open order payload returned by Hyperliquid `frontendOpenOrders`.
+ * Sizes/prices are decimal strings; timestamps are milliseconds. Trigger
+ * flags and optional `children` describe attached TP/SL orders.
+ * @public
+ */
 export type HlFrontendOpenOrder = {
   oid: number
   coin: string
@@ -20,10 +25,15 @@ export type HlFrontendOpenOrder = {
   cloid: string | null
 }
 
-/** @public */
+/** Array returned by the `frontendOpenOrders` info query. @public */
 export type HlFrontendOpenOrders = HlFrontendOpenOrder[]
 
-/** @public */
+/**
+ * Order detail nested in an `orderStatus` response. `statusTimestamp` is the
+ * last status-change time in milliseconds; `triggerPx` is nullable for orders
+ * without a trigger.
+ * @public
+ */
 export type HlOrderDetail = {
   order: {
     oid: number
@@ -44,13 +54,17 @@ export type HlOrderDetail = {
   statusTimestamp: number
 }
 
-/** @public */
+/** Successful `orderStatus` response containing the requested order. @public */
 export type HlOrderStatusFound = {
   status: 'order'
   order: HlOrderDetail
 }
 
-/** @public */
+/**
+ * Result of `orderStatus`: either a found order or the exact `'unknownOid'`
+ * sentinel when Hyperliquid has no record for the numeric order ID.
+ * @public
+ */
 export type HlOrderStatusResponse =
   | HlOrderStatusFound
   | { status: 'unknownOid' }

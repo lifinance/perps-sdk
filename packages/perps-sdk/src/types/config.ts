@@ -30,6 +30,7 @@ export type SwitchChainHook = (
  * @public
  */
 export interface ProviderConfig {
+  /** Optional provider category/market ids used to filter WS subscriptions. */
   markets?: string[]
 }
 
@@ -64,6 +65,7 @@ export type RequestInterceptor = (
  * @public
  */
 export interface SDKRequestOptions {
+  /** Abort the request and any pending backoff delay. */
   signal?: AbortSignal
   /**
    * Lighter auth token consumed by provider-direct venue reads (getOrders,
@@ -85,12 +87,20 @@ export interface SDKRequestOptions {
  * @public
  */
 export interface PerpsBaseConfig {
+  /** Integrator identifier sent in the `x-lifi-integrator` header. */
   integrator: string
+  /** API key applied to backend requests when non-empty. */
   apiKey: string
+  /** Resolved perps API base URL. */
   apiUrl: string
+  /** Whether SDK version compatibility checks are disabled. */
   disableVersionCheck?: boolean
+  /** Optional outgoing-request URL/options interceptor. */
   requestInterceptor?: RequestInterceptor
+  /** Optional per-provider WS market filters. */
   providers?: ProviderConfigs
+  /** Optional global or per-provider retry configuration. */
   retry?: RetryConfig
+  /** Fetch implementation used by core HTTP transport. */
   fetch?: typeof fetch
 }

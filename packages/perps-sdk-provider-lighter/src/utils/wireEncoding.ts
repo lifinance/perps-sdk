@@ -1,7 +1,6 @@
 /**
- * Lighter wire encoding for the WASM signer: scaled-integer decimal values,
- * basis-point margin fractions, and order-type/TIF/expiry resolution
- * mirroring the lighter-go signer's rules.
+ * Lighter wire encoding for the WASM signer: basis-point margin fractions and
+ * order-type/time-in-force/expiry resolution mirroring lighter-go's rules.
  */
 
 import { PerpsError } from '@lifi/perps-sdk'
@@ -20,8 +19,15 @@ import {
 } from '../types/action.js'
 
 /**
- * Lighter uses basis-points (1/10000) for margin fractions.
- * Convert to a decimal multiplier: 1000 → 0.1 (10x leverage).
+ * Convert Lighter's initial-margin fraction to the largest whole-number
+ * leverage exposed by the provider.
+ *
+ * Lighter expresses margin fractions in basis points (`10_000` = 100%), so
+ * the conversion is `floor(10_000 / fraction)`. Non-finite or non-positive
+ * input uses the safe `1x` fallback.
+ *
+ * @param fraction - Lighter's basis-point initial-margin fraction.
+ * @returns The floored maximum leverage, or `1` for invalid input.
  * @public
  */
 export const marginFractionToMaxLeverage = (fraction: number): number => {
@@ -32,7 +38,15 @@ export const marginFractionToMaxLeverage = (fraction: number): number => {
 }
 
 /**
- * Convert leverage to margin fraction in basis points for WASM signer.
+ * Convert requested leverage to Lighter's basis-point margin fraction.
+ *
+ * The signer expects `round(10_000 / leverage)`, where the result is the
+ * margin requirement in basis points.
+ *
+ * @param leverage - Requested leverage multiplier.
+ * @returns The rounded basis-point margin fraction.
+ * @throws {PerpsError} With `ValidationError` when leverage is less than
+ * or equal to zero.
  * @public
  */
 export const leverageToFraction = (leverage: number): number => {
@@ -46,7 +60,14 @@ export const leverageToFraction = (leverage: number): number => {
 }
 
 /**
- * Map our OrderType enum to Lighter's integer order type.
+ * Map a LI.FI `OrderType` value to Lighter's integer wire type.
+ *
+ * Supported mappings are LIMIT → 0, MARKET → 1, STOP_MARKET → 2,
+ * STOP_LIMIT → 3, TAKE_PROFIT_MARKET → 4, and TAKE_PROFIT_LIMIT → 5.
+ * Omitted or unknown values fall back to LIMIT.
+ *
+ * @param type - LI.FI order type value.
+ * @returns The corresponding Lighter order-type integer.
  * @public
  */
 export const mapOrderTypeToInt = (type?: string): number => {
@@ -62,13 +83,18 @@ export const mapOrderTypeToInt = (type?: string): number => {
 }
 
 /**
- * Lighter pairs each `order_type` with a permitted set of `time_in_force`
- * values: market-style orders (MARKET, STOP_MARKET, TAKE_PROFIT_MARKET) are
- * IOC by definition; limit-style orders may carry any TIF. The Go WASM
- * signer rejects mismatches with `OrderTimeInForce is not valid`. Resolve
- * the caller's optional `timeInForce` against the order type so unspecified
- * values land on the correct default and explicit values are validated up
- * front.
+ * Resolve a Lighter `time_in_force` value that is valid for an order type.
+ *
+ * Market-style orders (MARKET, STOP_MARKET, TAKE_PROFIT_MARKET) are IOC-only.
+ * Limit-style orders default to GTC when no TIF is supplied. An explicit
+ * non-IOC TIF on a market-style order raises a validation error. For
+ * limit-style orders, unknown TIF strings use the GTC fallback from
+ * {@link mapTimeInForceToInt}.
+ *
+ * @param orderTypeInt - Lighter order-type integer.
+ * @param tif - Optional LI.FI time-in-force value.
+ * @returns The validated Lighter time-in-force integer.
+ * @throws {PerpsError} With `ValidationError` for a market-style/TIF mismatch.
  * @public
  */
 export const resolveTimeInForce = (
@@ -93,7 +119,13 @@ export const resolveTimeInForce = (
 }
 
 /**
- * Map our TimeInForce enum to Lighter's integer time-in-force.
+ * Map a LI.FI time-in-force value to Lighter's integer wire value.
+ *
+ * IOC maps to 0, GTC maps to 1, and POST_ONLY maps to 2. Omitted or unknown
+ * values fall back to GTC.
+ *
+ * @param tif - LI.FI time-in-force value.
+ * @returns The corresponding Lighter time-in-force integer.
  * @public
  */
 export const mapTimeInForceToInt = (tif?: string): number => {
@@ -106,14 +138,17 @@ export const mapTimeInForceToInt = (tif?: string): number => {
 }
 
 /**
- * Pick the `order_expiry` value Lighter expects for a given TIF on a
- * regular limit order. `lighter-go/types/txtypes/create_order.go:121-128`
- * enforces:
- *   - IOC limit orders → `OrderExpiry == NilOrderExpiry (0)`
- *   - non-IOC limit orders → `OrderExpiry != NilOrderExpiry`
- * For non-IOC we pass the `-1` sentinel, which the WASM signer rewrites
- * to `now + 28d` (absolute ms). Trigger orders take a different rule —
- * see {@link LT_DEFAULT_ORDER_EXPIRY} call sites.
+ * Select the `order_expiry` sentinel required for a regular Lighter limit
+ * order from its resolved time-in-force.
+ *
+ * IOC uses Lighter's nil expiry (`0`). Every other TIF uses
+ * `LT_DEFAULT_ORDER_EXPIRY` (`-1`), which the WASM signer expands to its
+ * canonical future expiry (`now + 28d`) as an absolute Unix-millisecond
+ * timestamp. Trigger-order expiry handling is provider-specific; see
+ * {@link LT_DEFAULT_ORDER_EXPIRY} and its call sites.
+ *
+ * @param tifInt - Lighter time-in-force integer.
+ * @returns `0` for IOC, otherwise the default-expiry sentinel.
  * @public
  */
 export const orderExpiryForTif = (tifInt: number): number => {

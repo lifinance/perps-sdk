@@ -76,6 +76,13 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     })
   }
 
+  /**
+   * Acquire a ref-counted subscription to a provider channel and return an
+   * idempotent release function. Optional status listeners are reference-counted
+   * alongside the channel listener.
+   *
+   * @public
+   */
   async subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
@@ -112,6 +119,11 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
   }
 
+  /**
+   * Reconnect the underlying socket only when it is terminally disconnected.
+   *
+   * @public
+   */
   reconnect(): void {
     if (this.rws.getStatus() !== 'disconnected') {
       return
@@ -119,6 +131,11 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     this.rws.reconnect()
   }
 
+  /**
+   * Release all channel and status listeners and close the underlying socket.
+   *
+   * @public
+   */
   close(): void {
     for (const entry of this.channels.values()) {
       if (entry.pendingTeardown !== undefined) {

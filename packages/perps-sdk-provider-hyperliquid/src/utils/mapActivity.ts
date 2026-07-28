@@ -165,7 +165,12 @@ export const mapLedgerEntry = (
   }
 }
 
-/** @public */
+/**
+ * Map a Hyperliquid funding ledger update to a normalized funding activity.
+ * `amount`, `positionSize`, and `fundingRate` retain the upstream decimal
+ * strings; `resolveMarket` supplies the provider-agnostic market metadata.
+ * @public
+ */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
   providerKey: string,

@@ -10,11 +10,13 @@ import type { PerpsSDKClient } from '../types/provider.js'
  */
 export interface GetQuoteParams {
   provider: string
-  /** Human `displaySymbol`, e.g. `"BTC"`. */
+  /** Human `displaySymbol`, e.g. `"BTC"`, resolved by the provider. */
   symbol: string
+  /** Buy consumes asks; sell consumes bids. */
   side: QuoteSide
   /** USD notional to fill. */
   size: number
+  /** Product family used to distinguish spot and perpetual markets. */
   type: TradeType
 }
 

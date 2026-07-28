@@ -1,6 +1,11 @@
 import type { HlWsFastAssetCtx } from '../types/index.js'
 
-/** Decode a base64 + raw-DEFLATE (RFC 1951) payload into parsed JSON. */
+/**
+ * Decode a base64-encoded raw-DEFLATE payload and parse its UTF-8 JSON body.
+ * @typeParam T - Expected shape of the decoded JSON value.
+ * @throws If decompression or JSON parsing fails.
+ * @public
+ */
 export async function decodeCompressedJson<T>(base64: string): Promise<T> {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -24,6 +29,7 @@ export async function decodeCompressedJson<T>(base64: string): Promise<T> {
  * (Node 18+, modern browsers), so no dependency is needed.
  *
  * @throws If the input is not valid base64 / raw-DEFLATE / JSON.
+ * @public
  */
 export async function decodeFastAssetCtxs(
   base64: string

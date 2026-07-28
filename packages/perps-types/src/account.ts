@@ -13,23 +13,44 @@ import type {
 import type { MarketDisplay, PerpsMarketDisplay } from './market.js'
 import type { Address } from './primitives.js'
 
-/** @public */
+/**
+ * Maker and taker fee rates for the account's current venue tier.
+ * Values are decimal fractions represented as strings (for example, `"0.0002"`).
+ *
+ * @public
+ */
 export interface FeeTier {
+  /** Decimal fraction charged to maker fills, represented as a string. */
   maker: string
+  /** Decimal fraction charged to taker fills, represented as a string. */
   taker: string
 }
 
-/** @public */
+/**
+ * Normalized open perpetual position with prices, margin, and PnL expressed as
+ * decimal strings to preserve provider precision.
+ *
+ * @public
+ */
 export interface Position {
   market: PerpsMarketDisplay
   side: PositionSide
+  /** Position quantity in base-asset units. */
   size: string
+  /** Average entry price in quote-asset units. */
   entryPrice: string
+  /** Current provider mark price in quote-asset units. */
   markPrice: string
+  /** Estimated liquidation price in quote-asset units. */
   liquidationPrice: string
+  /** Unrealized PnL in quote-currency units. */
   unrealizedPnl: string
+  /** Position leverage as a numeric multiple. */
   leverage: number
-  /** Margin allocated to the position, excluding unrealized PnL. */
+  /**
+   * Margin allocated and reserved by this position as a decimal string,
+   * excluding unrealized PnL.
+   */
   marginUsed: string
   /**
    * Exact initial margin the venue currently requires for this position.
@@ -52,21 +73,34 @@ export interface PositionMarginConstraints {
   amountIncrement: string
 }
 
-/** @public */
+/**
+ * Normalized non-trigger order currently open at a provider.
+ *
+ * @public
+ */
 export interface OpenOrder {
   orderId: string
   market: MarketDisplay
   side: OrderSide
   type: OrderType
+  /** Remaining order quantity in base-asset units. */
   size: string
+  /** Limit/order price in quote-asset units. */
   price: string
+  /** Quantity already filled in base-asset units. */
   filledSize: string
   reduceOnly: boolean
   label?: string
+  /** ISO-8601 creation timestamp. */
   createdAt: string
 }
 
-/** @public */
+/**
+ * Asset balance normalized across providers. `units` and `valueUsd` are
+ * decimal strings; `valueUsd` is the balance's USD valuation.
+ *
+ * @public
+ */
 export interface Balance {
   /** Which category/venue this balance sits in — references a {@link ProviderCategory}. */
   categoryId: string
@@ -82,7 +116,12 @@ export interface Balance {
   collateralWeight?: number
 }
 
-/** @public */
+/**
+ * Account snapshot returned by a provider, including balances, positions,
+ * aggregate margin/PnL, and provider-specific configuration.
+ *
+ * @public
+ */
 export interface AccountResponse {
   provider: string
   address: Address
@@ -92,17 +131,28 @@ export interface AccountResponse {
   collateralBalances: Balance[]
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
   positions: Position[]
+  /** Margin reserved across the account, represented as a decimal string. */
   marginUsed: string
+  /** Unrealized account PnL, represented as a decimal string. */
   unrealizedPnl: string
   feeTier: FeeTier
   config: AccountConfig
 }
 
-/** @public */
+/**
+ * Aggregate account values for a provider stream or response. Monetary values
+ * are decimal strings in USD.
+ *
+ * @public
+ */
 export interface AccountSummary {
+  /** Total account portfolio value in USD. */
   portfolioValue: string
+  /** Margin currently available for new orders in USD. */
   availableMargin: string
+  /** Margin currently reserved by open positions/orders in USD. */
   marginUsed: string
+  /** Aggregate unrealized PnL in USD. */
   unrealizedPnl: string
 }
 
@@ -117,26 +167,41 @@ export interface MarketSettings {
   leverage: number
 }
 
-/** @public */
+/**
+ * Normalized take-profit or stop-loss order waiting for its trigger condition.
+ *
+ * @public
+ */
 export interface TriggerOrder {
   orderId: string
   market: MarketDisplay
   type: OrderType
+  /** Triggered quantity in base-asset units. */
   size: string
+  /** Price at which the trigger activates, in quote-asset units. */
   triggerPrice: string
+  /** Optional limit price submitted after activation, in quote-asset units. */
   limitPrice?: string
   label?: string
   createdAt: string
 }
 
-/** @public */
+/**
+ * Paginated open-position response for one provider and account.
+ *
+ * @public
+ */
 export interface PositionsResponse {
   provider: string
   positions: Position[]
   pagination: Pagination
 }
 
-/** @public */
+/**
+ * Paginated open-order response containing regular and trigger orders.
+ *
+ * @public
+ */
 export interface OrdersResponse {
   provider: string
   openOrders: OpenOrder[]
@@ -144,7 +209,11 @@ export interface OrdersResponse {
   pagination: Pagination
 }
 
-/** @public */
+/**
+ * Normalized execution/fill record for an order.
+ *
+ * @public
+ */
 export interface Fill {
   id: string
   orderId: string
@@ -166,12 +235,17 @@ export interface Fill {
   startPosition?: string
   classification: FillClassification
   createdAt: string
-  // Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
-  // the fill has no on-chain settlement tx.
+  /** Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
+   * the fill has no on-chain settlement tx. */
   explorerLink?: string
 }
 
-/** @public */
+/**
+ * Cursor pagination metadata. `cursor` and `nextUrl` are provider-specific
+ * continuation values and are absent when no further page exists.
+ *
+ * @public
+ */
 export interface Pagination {
   limit: number
   hasMore: boolean
@@ -179,44 +253,70 @@ export interface Pagination {
   nextUrl?: string
 }
 
-/** @public */
+/**
+ * Paginated fill response for one provider and account.
+ *
+ * @public
+ */
 export interface FillsResponse {
   provider: string
   items: Fill[]
   pagination: Pagination
 }
 
-/** @public */
+/**
+ * Common identity and timestamp fields shared by account activity records.
+ * `timestamp` is an ISO-8601 timestamp string.
+ *
+ * @public
+ */
 export interface BaseActivity {
   id: string
   provider: string
   timestamp: string
 }
 
-/** @public */
+/**
+ * Account activity representing a completed deposit.
+ *
+ * @public
+ */
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
   amount: string
-  // Fully-resolved block-explorer URL for the on-chain deposit tx.
+  /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
 }
 
-/** @public */
+/**
+ * Account activity representing a completed withdrawal. `amount` and `fee`
+ * are decimal strings in the transferred asset's units.
+ *
+ * @public
+ */
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
   amount: string
   fee: string
-  // Fully-resolved block-explorer URL for the on-chain withdrawal tx.
+  /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
   explorerLink?: string
 }
 
-/** @public */
+/**
+ * Position details attached to a liquidation activity.
+ *
+ * @public
+ */
 export interface LiquidatedPosition {
   market: MarketDisplay
   size: string
 }
 
-/** @public */
+/**
+ * Account activity representing a liquidation event.
+ *
+ * @public
+ */
 export interface LiquidationActivity extends BaseActivity {
   type: ActivityType.LIQUIDATION
   liquidatedNotionalPosition: string
@@ -225,7 +325,12 @@ export interface LiquidationActivity extends BaseActivity {
   liquidatedPositions: LiquidatedPosition[]
 }
 
-/** @public */
+/**
+ * Account activity representing a periodic funding payment. Amount and rate
+ * retain provider precision as decimal strings.
+ *
+ * @public
+ */
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
   market: MarketDisplay
@@ -236,21 +341,30 @@ export interface FundingActivity extends BaseActivity {
 
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
-/** @public */
+/**
+ * Account activity representing an inbound or outbound transfer. At least one
+ * counterparty identifier is required by the type-level union below.
+ *
+ * @public
+ */
 export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
   asset: string
   amount: string
   meta?: Record<string, unknown>
-  // Fully-resolved block-explorer URL for the on-chain transfer tx.
+  /** Fully-resolved block-explorer URL for the on-chain transfer tx. */
   explorerLink?: string
 } & (
     | { counterpartyAccountIndex: number; counterpartyAddress?: string }
     | { counterpartyAccountIndex?: number; counterpartyAddress: string }
   )
 
-/** @public */
+/**
+ * Discriminated union of all activity records returned by a provider.
+ *
+ * @public
+ */
 export type ActivityItem =
   | DepositActivity
   | WithdrawalActivity
@@ -258,7 +372,11 @@ export type ActivityItem =
   | FundingActivity
   | TransferActivity
 
-/** @public */
+/**
+ * Paginated account-activity response for one provider and account.
+ *
+ * @public
+ */
 export interface ActivitiesResponse {
   provider: string
   items: ActivityItem[]
@@ -267,10 +385,19 @@ export interface ActivitiesResponse {
 
 // Account configuration state — typed `AccountResponse.config`.
 
-/** @public */
+/**
+ * Provider-specific Hyperliquid agent configuration. The record contents are
+ * provider-defined and intentionally left opaque to the shared type package.
+ *
+ * @public
+ */
 export type HyperliquidAgent = Record<string, unknown>
 
-/** @public */
+/**
+ * Hyperliquid builder-fee approval state for an account.
+ *
+ * @public
+ */
 export interface HyperliquidBuilderFeeApproval {
   builderAddress: string
   /** Basis points as a string. */
@@ -278,7 +405,11 @@ export interface HyperliquidBuilderFeeApproval {
   approved: boolean
 }
 
-/** @public */
+/**
+ * Hyperliquid account configuration returned in {@link AccountResponse.config}.
+ *
+ * @public
+ */
 export interface HyperliquidAccountConfig {
   provider: 'hyperliquid'
   /** `null` means abstraction has never been set. */
@@ -287,7 +418,11 @@ export interface HyperliquidAccountConfig {
   builderFeeApproval?: HyperliquidBuilderFeeApproval
 }
 
-/** @public */
+/**
+ * Lighter spot-asset collateral setting for a single asset.
+ *
+ * @public
+ */
 export interface LighterAssetCollateral {
   /** Provider-native spot asset id (matches `Asset.id`). */
   assetId: string
@@ -305,7 +440,12 @@ export interface LighterAssetCollateral {
  */
 export type LighterProviderKey = 'lighter' | 'lighter-rh'
 
-/** @public */
+/**
+ * Lighter account configuration returned in {@link AccountResponse.config}.
+ * Numeric identifiers and account modes use the provider's wire values.
+ *
+ * @public
+ */
 export interface LighterAccountConfig {
   provider: LighterProviderKey
   accountIndex: number
@@ -336,7 +476,12 @@ export interface LighterAccountConfig {
   referralPresent: boolean
 }
 
-/** @public */
+/**
+ * Ondo account/session configuration returned in {@link AccountResponse.config}.
+ * Expiry values are Unix timestamps in seconds.
+ *
+ * @public
+ */
 export interface OndoAccountConfig {
   provider: 'ondo'
   loggedIn: boolean
@@ -352,20 +497,33 @@ export interface OndoAccountConfig {
   depositAddress: string | null
 }
 
-/** @public */
+/**
+ * Provider-specific account configuration discriminated by its `provider` key.
+ *
+ * @public
+ */
 export type AccountConfig =
   | HyperliquidAccountConfig
   | LighterAccountConfig
   | OndoAccountConfig
 
-/** @public */
+/**
+ * Named account-configuration value exposed to clients.
+ *
+ * @public
+ */
 export interface AccountConfigValue {
   name: string
   /** `null` means no current value — consumers fall back to the descriptor default. */
   value: string | number | boolean | null
 }
 
-/** @public */
+/**
+ * Account-configuration action and its available values, optionally including
+ * whether the setting is currently satisfied.
+ *
+ * @public
+ */
 export interface AccountConfigSetting {
   type: ActionType
   values: AccountConfigValue[]

@@ -19,7 +19,11 @@ export interface FormatOptions {
   rounding?: RoundingMode
 }
 
-/** Rounding mode for {@link FormatOptions.rounding}. */
+/**
+ * Rounding mode for {@link FormatOptions.rounding}.
+ *
+ * @public
+ */
 export type RoundingMode = 'halfUp' | 'floor'
 
 const DEFAULT_PLACEHOLDER = '—'

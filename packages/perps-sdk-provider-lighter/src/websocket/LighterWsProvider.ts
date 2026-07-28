@@ -227,6 +227,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return undefined
   }
 
+  /**
+   * Subscribe to a live quote stream resolved through the registered Lighter
+   * market registry. Returns an unsubscribe function; quote subscription
+   * requires the provider to be constructed through `lighterWsProvider` with a
+   * bound {@link PerpsSDKClient}.
+   */
   async subscribeQuote(
     params: ProviderGetQuoteParams,
     onQuote: QuoteListener

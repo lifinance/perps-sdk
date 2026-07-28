@@ -23,7 +23,11 @@ export type HlWsPerpAssetCtx = {
   oraclePx: string
 }
 
-/** @public */
+/**
+ * Partial perp context carried by compressed (`pac`) updates. Omitted fields
+ * are unchanged from the prior context and must be merged by the consumer.
+ * @public
+ */
 export type HlWsPerpAssetCtxPayload = Partial<HlWsPerpAssetCtx>
 
 /**
@@ -44,7 +48,7 @@ export type HlWsAllDexsAssetCtxsData = {
  */
 export type HlWsPacData = [string, HlWsPerpAssetCtxPayload[]][]
 
-/** @public */
+/** Generic Hyperliquid WS envelope; `channel` identifies the subscription and `data` is channel-specific. @public */
 export type HlWsMessage = {
   channel: string
   data: unknown
@@ -61,7 +65,12 @@ export type HlWsFastAssetCtx = {
   midPx?: string | null
 }
 
-/** @public */
+/**
+ * Incremental spot asset context. Hyperliquid may encode numeric fields as
+ * strings or numbers and omits unchanged fields; `midPx: null` means no book
+ * midpoint is available.
+ * @public
+ */
 export type HlWsSpotAssetCtx = {
   dayNtlVlm?: HlWsNumberString
   prevDayPx?: HlWsNumberString
@@ -71,13 +80,13 @@ export type HlWsSpotAssetCtx = {
   circulatingSupply?: HlWsNumberString
 }
 
-/** @public */
+/** Active perp context event keyed by its Hyperliquid wire coin. @public */
 export type HlWsActiveAssetCtxData = {
   coin: string
   ctx: Partial<Record<keyof HlWsPerpAssetCtx, HlWsNumberString | null>>
 }
 
-/** @public */
+/** Active spot context event keyed by its Hyperliquid wire coin. @public */
 export type HlWsActiveSpotAssetCtxData = {
   coin: string
   ctx: HlWsSpotAssetCtx
@@ -90,23 +99,31 @@ export type HlWsActiveSpotAssetCtxData = {
  */
 export type HlWsSacData = Record<string, HlWsSpotAssetCtx>
 
-/** @public */
+/** L2 snapshot envelope with the wire coin attached to {@link HlL2Book}. @public */
 export type HlWsL2BookData = HlL2Book & { coin: string }
 
-/** @public */
+/**
+ * L2 channel payload. `s` is a full snapshot, while `u` is a compressed delta;
+ * `c` carries the checksum/control value when present.
+ * @public
+ */
 export type HlWsL2Data = {
   s?: HlL2Book & { coin: string }
   c?: string
   u?: HlWsCompressedL2Data
 }
 
-/** @public */
+/** One level in a compressed L2 update: `p` is price and `s` is size. @public */
 export type HlWsCompressedL2Level = {
   p: string
   s: string
 }
 
-/** @public */
+/**
+ * Compressed L2 delta. `t` is the update timestamp in milliseconds, `l` holds
+ * bid/ask levels, and optional `r` describes removals.
+ * @public
+ */
 export type HlWsCompressedL2Data = {
   c: string
   t: number
@@ -117,7 +134,11 @@ export type HlWsCompressedL2Data = {
   ]
 }
 
-/** @public */
+/**
+ * Candle event payload. Inherited `t` is candle-open time; `T` is close time,
+ * `s` is the symbol, `i` is interval, and `n` is the trade count.
+ * @public
+ */
 export type HlWsCandleData = HlCandle & {
   T: number
   s: string
@@ -125,7 +146,11 @@ export type HlWsCandleData = HlCandle & {
   n: number
 }
 
-/** @public */
+/**
+ * Public trade event. Prices and size are decimal strings; `time` is
+ * milliseconds since epoch, with optional trade ID and transaction hash.
+ * @public
+ */
 export type HlWsTrade = {
   coin: string
   side: string
@@ -136,14 +161,18 @@ export type HlWsTrade = {
   hash?: string
 }
 
-/** @public */
+/** User fills event; `isSnapshot` distinguishes the initial snapshot from updates. @public */
 export type HlWsUserFillsData = {
   isSnapshot: boolean
   user: string
   fills: HlUserFill[]
 }
 
-/** @public */
+/**
+ * Per-dex clearinghouse event for one user. Each tuple contains a wire DEX name
+ * and the perp positions/equity fields supplied by that DEX.
+ * @public
+ */
 export type HlWsAllDexsClearinghouseStateData = {
   user: string
   clearinghouseStates: [
@@ -152,7 +181,7 @@ export type HlWsAllDexsClearinghouseStateData = {
   ][]
 }
 
-/** @public */
+/** User spot clearinghouse event containing the current spot balances. @public */
 export type HlWsSpotStateData = {
   user: string
   spotState: { balances: HlSpotBalance[] }

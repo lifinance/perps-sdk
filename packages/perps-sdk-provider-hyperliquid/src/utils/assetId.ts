@@ -1,15 +1,14 @@
 /**
- * Spot asset IDs use the @pairIndex format (e.g. "@230").
- *
+ * Return whether a Hyperliquid asset ID identifies spot (`@<pairIndex>`).
+ * @param assetId - Raw Hyperliquid asset ID.
  * @public
  */
 export const assetIsSpot = (assetId: string): boolean => assetId.startsWith('@')
 
 /**
- * Calculate the asset ID for a given provider index and asset index.
- *
- * Main provider (provider = ''): assetId = indexInProvider
- * HIP-3 providers (provider = 'xyz'): assetId = 100_000 + perpDexIndex * 10_000 + indexInProvider
+ * Calculate Hyperliquid's numeric asset ID from a perp DEX index and the
+ * asset's zero-based index within that DEX. The main DEX uses the index
+ * directly; HIP-3 DEXes use `100000 + dexIndex * 10000 + assetIndex`.
  * @public
  */
 export const calculateAssetId = (
@@ -23,7 +22,8 @@ export const calculateAssetId = (
 }
 
 /**
- * Get the provider index from the given list of provider names.
+ * Find a sub-DEX's zero-based index in the names returned by Hyperliquid.
+ * @throws If `provider` is absent from `providerNames`.
  * @public
  */
 export const getProviderIndex = (

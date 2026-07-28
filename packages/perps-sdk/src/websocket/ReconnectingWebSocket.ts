@@ -44,7 +44,9 @@ const WS_PROVIDER_KEY = 'reconnecting-websocket'
  * @public
  */
 export interface ReconnectingWebSocketOptions {
+  /** Maximum reconnect attempts before status becomes `disconnected`; defaults to 10. */
   maxRetries?: number
+  /** Keepalive interval in milliseconds; defaults to 30,000. */
   pingIntervalMs?: number
   /**
    * Keepalive frame sent every `pingIntervalMs` while the socket is open.
@@ -52,9 +54,9 @@ export interface ReconnectingWebSocketOptions {
    */
   pingPayload?: string
   /**
-   * Stale-stream watchdog window. With `pingPayload` configured, the socket is
-   * force-reconnected when no inbound frame arrives within this window.
-   * Defaults to 3× `pingIntervalMs`.
+   * Stale-stream watchdog window in milliseconds. With `pingPayload` configured,
+   * the socket is force-reconnected when no inbound frame arrives within this
+   * window. Defaults to 3× `pingIntervalMs`.
    */
   staleWindowMs?: number
 }

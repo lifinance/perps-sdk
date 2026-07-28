@@ -23,12 +23,20 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
     super(client, provider, 'market')
   }
 
-  /** The most recently synced market list. Empty before the first {@link sync}. */
+  /**
+   * The most recently synced market list. Empty before the first {@link sync}.
+   *
+   * @public
+   */
   get markets(): readonly Market[] {
     return this.items
   }
 
-  /** The synced markets that are available for live and write operations. */
+  /**
+   * The synced markets that are available for live and write operations.
+   *
+   * @public
+   */
   get activeMarkets(): readonly Market[] {
     return this.items.filter(isActiveMarket)
   }
@@ -37,10 +45,10 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
    * Lookup by `Market.id`, throwing when the backend list does not know the
    * id. The list is the source of truth for enriched historical and live
    * market metadata, so an id the venue references but the backend does not
-   * know is a hard error —
-   * never a silent fallback to an unenriched stand-in.
+   * know is a hard error — never a silent fallback to an unenriched stand-in.
    *
    * @throws {PerpsError} `MarketNotFound`.
+   * @public
    */
   require(marketId: string): Market {
     const market = this.get(marketId)
@@ -61,6 +69,7 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
    * rejects them.
    *
    * @throws {PerpsError} `MarketNotFound` when the market is absent or delisted.
+   * @public
    */
   requireActive(marketId: string): Market {
     const market = this.require(marketId)
@@ -91,7 +100,12 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
 
 const registries = new WeakMap<PerpsSDKClient, Map<string, MarketRegistry>>()
 
-/** A market is active unless the provider explicitly marks it delisted. */
+/**
+ * Return whether a market is available for live quoting and trading. A market
+ * remains active unless the backend explicitly sets `isDelisted` to `true`.
+ *
+ * @public
+ */
 export const isActiveMarket = (market: Market): boolean =>
   market.isDelisted !== true
 

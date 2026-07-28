@@ -12,9 +12,11 @@ import type { PerpsSDKClient } from '../types/provider.js'
 export interface GetOrdersParams {
   provider: string
   address: Address
-  /** Optional filter — opaque `Market.id` (not `displaySymbol`) */
+  /** Optional opaque `Market.id` filter, not a display symbol. */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
 }
 

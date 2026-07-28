@@ -5,7 +5,13 @@ import type { LighterSigner } from './LighterSigner.js'
 const DEFAULT_LIFETIME_SECONDS = 60 * 60
 const DEFAULT_THRESHOLD_SECONDS = 30 * 86_400
 
-/** @public */
+/**
+ * Inputs for creating a standard Lighter auth token. The signer and API-key
+ * fields identify the registered Lighter account; `lifetimeSeconds` is capped
+ * by Lighter's token policy and defaults to one hour.
+ *
+ * @public
+ */
 export interface CreateAuthTokenInputs {
   signer: LighterSigner
   apiKey: Pick<
@@ -17,7 +23,7 @@ export interface CreateAuthTokenInputs {
    * Defaults to 1 hour, matching the previous `PerpsClient` behaviour.
    */
   lifetimeSeconds?: number
-  /** Optional clock injection for tests. */
+  /** Optional clock injection for deterministic token-expiry tests. */
   now?: () => number
 }
 

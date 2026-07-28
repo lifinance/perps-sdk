@@ -1,7 +1,16 @@
 // Account / balance shapes returned by Lighter's `/api/v1/account` and
 // `/api/v1/accountLimits` endpoints.
 
-/** @public */
+/**
+ * Per-market position row returned by Lighter's account endpoints.
+ *
+ * Amounts and prices are decimal strings in the market's native precision.
+ * `position` is the size magnitude as a decimal string. `sign` is the
+ * authoritative side indicator: values greater than or equal to zero represent
+ * long positions and values less than zero represent short positions.
+ *
+ * @public
+ */
 export type LtAccountPosition = {
   market_id: number
   /** Present on REST `/api/v1/account` rows; WS position frames may omit it. */
@@ -23,7 +32,14 @@ export type LtAccountPosition = {
   total_discount: string
 }
 
-/** @public */
+/**
+ * Collateral asset row returned in a Lighter account response. `balance` and
+ * `locked_balance` are decimal strings in the asset's native precision.
+ * `margin_mode`, when present, is Lighter's cross-margin flag: `0` disables
+ * margin use for the asset and `1` enables it.
+ *
+ * @public
+ */
 export type LtAccountAsset = {
   symbol: string
   asset_id: number
@@ -46,7 +62,13 @@ export type LtAccountAsset = {
  */
 export type LtDetailedAccountPosition = LtAccountPosition
 
-/** @public */
+/**
+ * Integrator approval and fee caps attached to a detailed account.
+ * Fee values are Lighter's integer fee ticks; `approval_expiry` is a Unix
+ * timestamp.
+ *
+ * @public
+ */
 export interface LtApprovedIntegrator {
   account_index: number
   name: string
@@ -57,7 +79,14 @@ export interface LtApprovedIntegrator {
   approval_expiry: number
 }
 
-/** @public */
+/**
+ * Detailed account payload returned by Lighter's account endpoint, including
+ * account metadata, aggregate collateral values, assets, and positions.
+ * Balance and value fields are decimal strings in the relevant asset/quote
+ * precision; numeric status and mode fields are Lighter wire enums.
+ *
+ * @public
+ */
 export interface LtDetailedAccount {
   code: number
   account_type: number
@@ -85,14 +114,25 @@ export interface LtDetailedAccount {
   approved_integrators?: LtApprovedIntegrator[]
 }
 
-/** @public */
+/**
+ * Response envelope for a detailed-account lookup. `code` is Lighter's
+ * endpoint result code and `total` is the number of account rows returned.
+ *
+ * @public
+ */
 export interface LtDetailedAccountsResponse {
   code: number
   total: number
   accounts: LtDetailedAccount[]
 }
 
-/** @public */
+/**
+ * Account-level limits and fee information returned by Lighter's
+ * `/api/v1/accountLimits` endpoint. Amount fields are decimal strings;
+ * `current_*_fee_tick` values use Lighter's integer fee-tick scale.
+ *
+ * @public
+ */
 export interface LtAccountLimits {
   code: number
   message?: string
@@ -107,7 +147,13 @@ export interface LtAccountLimits {
   effective_lit_stakes: string
 }
 
-/** @public */
+/**
+ * Sub-account summary returned by Lighter's `accountsByL1Address` endpoint.
+ * Balance and collateral values are decimal strings; status and trading-mode
+ * fields are Lighter wire values.
+ *
+ * @public
+ */
 export interface LtSubAccount {
   code: number
   account_type: number
@@ -124,7 +170,11 @@ export interface LtSubAccount {
   account_trading_mode: number
 }
 
-/** @public */
+/**
+ * Response envelope for an L1-address sub-account lookup.
+ *
+ * @public
+ */
 export interface LtAccountsByL1AddressResponse {
   code: number
   l1_address: string

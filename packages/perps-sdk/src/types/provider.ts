@@ -43,22 +43,14 @@ import type { DepositFlow } from './deposit.js'
  */
 export interface PerpsSDKClient {
   readonly config: PerpsBaseConfig
-  /** The end-user's wallet — accepts any viem WalletClient (browser, private key, mnemonic). */
+  /** End-user wallet for USER-signed or on-chain EVM legs, when configured. */
   readonly userWallet?: PerpsClientSigner
-  /** Registered providers, bound to this client, in construction order. */
+  /** Providers bound to this client, in registration order. */
   readonly providers: PerpsProvider[]
-  /** Look up a registered bound {@link PerpsProvider} by its `type` key. */
+  /** Look up a bound provider by its wire `type` key. */
   getProvider(key: string): PerpsProvider | undefined
 }
 
-/**
- * Per-call context passed by `PerpsClient` to a provider's {@link
- * PerpsProvider.signActions} method. Carries the end-user's wallet (when
- * configured); providers that own a session credential (e.g. the Hyperliquid
- * agent keypair, Lighter's API key) resolve it internally.
- *
- * @public
- */
 /**
  * Progress for one on-chain leg of an `EVM_TX` batch (e.g. a native deposit's
  * `approve` then `deposit`). Emitted twice per leg: `submitted` once the wallet
@@ -68,19 +60,26 @@ export interface PerpsSDKClient {
  * @public
  */
 export interface SignActionProgress {
-  /** 0-based index of this leg within the batch. */
   index: number
-  /** Total legs in the batch. */
   total: number
   action: ActionType
-  /** Contract function the leg invokes, e.g. `"approve"` or the deposit method. */
   functionName: string
   chainId: number
+  /** Whether the transaction was broadcast or its receipt confirmed. */
   status: 'submitted' | 'confirmed'
   txHash: string
 }
 
+/**
+ * Per-call context passed by `PerpsClient` to a provider's
+ * {@link PerpsProviderPlugin.signActions} implementation. Carries the
+ * configured end-user wallet, descriptor-declared signer roles, an optional
+ * chain-switch helper, and an optional progress callback.
+ *
+ * @public
+ */
 export interface SignActionsContext {
+  /** End-user wallet used for USER-signed or EVM transaction legs. */
   userWallet?: PerpsClientSigner
   /**
    * The signing batch's declared signers, from the action's `ProviderAction`
@@ -142,8 +141,10 @@ export interface ActionSignerContribution {
  * @public
  */
 export interface LiquidationEstimateParams {
+  /** Entry price in quote currency per base unit. */
   entryPrice: number
   leverage: number
+  /** `true` for long, `false` for short. */
   isLong: boolean
 }
 
@@ -182,9 +183,11 @@ export interface ProviderGetDepositFlowParams {
  */
 export interface ProviderGetPositionsParams {
   address: Address
-  /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
+  /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
 }
 
@@ -207,9 +210,11 @@ export interface ProviderGetMarketSettingsParams {
  */
 export interface ProviderGetOrdersParams {
   address: Address
-  /** Optional filter — opaque `Market.id` (not `displaySymbol`). */
+  /** Optional opaque `Market.id` filter (not a display symbol). */
   marketId?: string
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
 }
 
@@ -220,6 +225,7 @@ export interface ProviderGetOrdersParams {
  */
 export interface ProviderGetOrderParams {
   address: Address
+  /** Venue order id, opaque to the SDK. */
   id: string
 }
 
@@ -230,9 +236,13 @@ export interface ProviderGetOrderParams {
  */
 export interface ProviderGetFillsParams {
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
+  /** Include fills at or after this Unix timestamp in milliseconds. */
   startTime?: number
+  /** Include fills at or before this Unix timestamp in milliseconds. */
   endTime?: number
 }
 
@@ -243,10 +253,15 @@ export interface ProviderGetFillsParams {
  */
 export interface ProviderGetActivityParams {
   address: Address
+  /** Maximum items returned; provider defaults and caps apply. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
+  /** Include activity at or after this Unix timestamp in milliseconds. */
   startTime?: number
+  /** Include activity at or before this Unix timestamp in milliseconds. */
   endTime?: number
+  /** Optional filter for activity types. */
   type?: ActivityType[]
 }
 
@@ -257,11 +272,13 @@ export interface ProviderGetActivityParams {
  * @public
  */
 export interface ProviderGetQuoteParams {
-  /** Human `displaySymbol`, e.g. `"BTC"`. Resolved against the provider's own markets, scoped by `type`. */
+  /** Human `displaySymbol`, resolved against this provider and `type`. */
   symbol: string
+  /** Trade direction used to choose asks for buys or bids for sells. */
   side: QuoteSide
   /** USD notional to fill. */
   size: number
+  /** Product family used to disambiguate spot and perpetual markets. */
   type: TradeType
 }
 
