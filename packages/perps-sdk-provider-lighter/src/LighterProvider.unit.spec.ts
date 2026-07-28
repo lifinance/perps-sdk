@@ -2420,7 +2420,10 @@ describe('LighterProvider — getMarketSettings', () => {
     provider.bind(STUB_CLIENT)
 
     await expect(
-      provider.getMarketSettings?.({ address: ADDRESS, marketId: '0' })
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
     ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
   })
 
@@ -2429,7 +2432,25 @@ describe('LighterProvider — getMarketSettings', () => {
     provider.bind(STUB_CLIENT)
 
     await expect(
-      provider.getMarketSettings?.({ address: ADDRESS, marketId: '7' })
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '7', categoryId: 'lighter' },
+      })
     ).resolves.toBeUndefined()
+  })
+
+  it('resolves undefined for a spot market without a request', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '2048', categoryId: 'spot' },
+      })
+    ).resolves.toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

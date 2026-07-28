@@ -102,6 +102,7 @@ import {
   fetchDetailedAccount,
   formatOrderPrice,
   formatOrderSize,
+  leverageFromImf,
   lighterAsset,
   mapFill,
   mapOpenPositions,
@@ -912,6 +913,10 @@ export const lighterProvider = (
       params: ProviderGetMarketSettingsParams,
       opts?: SDKRequestOptions
     ): Promise<MarketSettings | undefined> {
+      // Spot markets carry no margin mode or leverage.
+      if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        return undefined
+      }
       let account: LtDetailedAccount
       try {
         account = await fetchDetailedAccount(apiClient(opts), params.address)
@@ -925,18 +930,17 @@ export const lighterProvider = (
         throw err
       }
       const row = account.positions.find(
-        (p) => String(p.market_id) === params.marketId
+        (p) => String(p.market_id) === params.market.marketId
       )
       if (!row) {
         return undefined
       }
-      const imf = Number.parseFloat(row.initial_margin_fraction)
       return {
         marginMode:
           row.margin_mode === LT_MARGIN_MODE_ISOLATED
             ? MarginMode.ISOLATED
             : MarginMode.CROSS,
-        leverage: imf > 0 ? Math.round(100 / imf) : undefined,
+        leverage: leverageFromImf(row.initial_margin_fraction),
       }
     },
 

@@ -387,7 +387,7 @@ export class PerpsClient {
   }
 
   /**
-   * The user's current venue-side settings for `marketId` — the margin mode
+   * The user's current venue-side settings for a market — the margin mode
    * and leverage the next order on it will use. Resolves `undefined` when
    * the venue exposes no readable setting for the market (or the provider
    * has no such read at all).
@@ -398,12 +398,12 @@ export class PerpsClient {
   async getMarketSettings(params: {
     provider: string
     address: Address
-    marketId: string
+    market: MarketRef
   }): Promise<MarketSettings | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getMarketSettings?.({
       address: params.address,
-      marketId: params.marketId,
+      market: params.market,
     })
   }
 

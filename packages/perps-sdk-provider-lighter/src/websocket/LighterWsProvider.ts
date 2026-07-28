@@ -19,6 +19,7 @@ import type {
   Position,
   Subscription,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import {
   DEFAULT_LIGHTER_REST_URL,
@@ -87,6 +88,19 @@ const LIGHTER_AUTH_CHANNEL = {
   fills: 'account_all_trades',
   positions: 'account_all_positions',
 } as const
+
+/** Exact-decimal parse of a venue decimal string; null when absent or
+ * unparsable, so callers can gate on presence before deriving. */
+const toBigOrNull = (value: string | undefined): Big | null => {
+  if (value === undefined) {
+    return null
+  }
+  try {
+    return new Big(value)
+  } catch {
+    return null
+  }
+}
 
 /** Channels whose handlers resolve market identity from the registry. */
 function channelNeedsMarkets(channel: Subscription['channel']): boolean {
@@ -626,7 +640,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       const crossMargin = crossPortfolio.minus(available)
       marginUsed = isolatedMargin.plus(crossMargin)
     }
-
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {

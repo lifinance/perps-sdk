@@ -1,6 +1,11 @@
 import type { SDKRequestOptions } from '@lifi/perps-sdk'
-import { MarginMode, type MarketSettings } from '@lifi/perps-types'
+import {
+  MarginMode,
+  type MarketRef,
+  type MarketSettings,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { SPOT_MARKET_ID } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlActiveAssetData } from '../types/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
@@ -12,7 +17,7 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  */
 export interface GetMarketSettingsParams {
   address: Address
-  marketId: string
+  market: MarketRef
 }
 
 /**
@@ -26,13 +31,17 @@ export const getMarketSettings = async (
   params: GetMarketSettingsParams,
   options?: SDKRequestOptions
 ): Promise<MarketSettings | undefined> => {
-  // Spot ids ('@N', 'PURR/USDC') carry no leverage state on the venue.
-  if (params.marketId.includes('@') || params.marketId.includes('/')) {
+  // Spot markets carry no leverage state on the venue.
+  if (params.market.categoryId === SPOT_MARKET_ID) {
     return undefined
   }
   const data = await infoRequest<HlActiveAssetData>(
     apiUrl,
-    { type: 'activeAssetData', user: params.address, coin: params.marketId },
+    {
+      type: 'activeAssetData',
+      user: params.address,
+      coin: params.market.marketId,
+    },
     hlInfoOptions(client, options)
   )
   const leverage = data.leverage

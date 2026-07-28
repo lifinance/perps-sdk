@@ -1,7 +1,29 @@
 import type { MarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
+
+/**
+ * Configured leverage from an IMF percent string: `100 / IMF` at two
+ * decimals, in exact decimal arithmetic. Lighter leverage is fractional
+ * (IMF 45% = 2.22x), and whole-number rounding understates the margin
+ * requirement consumers derive from it. `undefined` for a non-positive or
+ * unparsable IMF.
+ * @public
+ */
+export const leverageFromImf = (imf: string): number | undefined => {
+  let parsed: Big
+  try {
+    parsed = new Big(imf)
+  } catch {
+    return undefined
+  }
+  if (parsed.lte(0)) {
+    return undefined
+  }
+  return new Big(100).div(parsed).round(2, Big.roundHalfUp).toNumber()
+}
 
 /**
  * Map a raw Lighter account position to the generic Position type.
@@ -35,10 +57,7 @@ export const mapPosition = (
         : (parseFloat(pos.position_value) / Math.abs(size)).toString(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
-    // Two decimals: Lighter leverage is fractional (IMF 45% = 2.22x), and
-    // whole-number rounding understates the margin requirement consumers
-    // derive from it (removable-margin bounds would exceed the venue's).
-    leverage: imf > 0 ? Math.round(10_000 / imf) / 100 : 1,
+    leverage: leverageFromImf(pos.initial_margin_fraction) ?? 1,
     marginUsed,
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }

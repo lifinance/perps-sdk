@@ -10,6 +10,7 @@ import type {
   ActivityType,
   FillsResponse,
   Market,
+  MarketRef,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -193,8 +194,9 @@ export interface ProviderGetPositionsParams {
  */
 export interface ProviderGetMarketSettingsParams {
   address: Address
-  /** Opaque `Market.id` (not `displaySymbol`). */
-  marketId: string
+  /** The market's `id` and `categoryId`; the category identifies spot
+   * markets, which carry no venue leverage state. */
+  market: MarketRef
 }
 
 /**

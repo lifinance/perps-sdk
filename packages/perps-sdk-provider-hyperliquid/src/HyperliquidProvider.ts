@@ -297,7 +297,7 @@ export function hyperliquidProvider(
     ): Promise<MarketSettings | undefined> =>
       getMarketSettings(
         contextRef.require(),
-        { address: params.address, marketId: params.marketId },
+        { address: params.address, market: params.market },
         opts
       ),
 
