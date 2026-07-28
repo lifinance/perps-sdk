@@ -169,19 +169,26 @@ export const mapLedgerEntry = (
  * Map a Hyperliquid funding ledger update to a normalized funding activity.
  * `amount`, `positionSize`, and `fundingRate` retain the upstream decimal
  * strings; `resolveMarket` supplies the provider-agnostic market metadata.
+ *
+ * `userFunding` entries all carry the zero hash, so a deterministic
+ * `funding:<coin>:<ISO time>` id is synthesized — funding accrues at most
+ * once per coin per hourly settlement, so the pair is unique per account.
  * @public
  */
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
   providerKey: string,
   resolveMarket: (coin: string) => MarketDisplay
-): FundingActivity => ({
-  id: entry.hash,
-  provider: providerKey,
-  timestamp: new Date(entry.time).toISOString(),
-  type: ActivityType.FUNDING,
-  market: resolveMarket(entry.delta.coin),
-  amount: entry.delta.usdc,
-  positionSize: entry.delta.szi,
-  fundingRate: entry.delta.fundingRate,
-})
+): FundingActivity => {
+  const timestamp = new Date(entry.time).toISOString()
+  return {
+    id: `funding:${entry.delta.coin}:${timestamp}`,
+    provider: providerKey,
+    timestamp,
+    type: ActivityType.FUNDING,
+    market: resolveMarket(entry.delta.coin),
+    amount: entry.delta.usdc,
+    positionSize: entry.delta.szi,
+    fundingRate: entry.delta.fundingRate,
+  }
+}

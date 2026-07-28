@@ -114,8 +114,9 @@ export type HlFundingDelta = {
 }
 
 /**
- * Timestamped funding update. `time` is milliseconds since epoch and `hash`
- * identifies the underlying venue transaction.
+ * Timestamped funding update. `time` is milliseconds since epoch; `hash` is
+ * always the zero hash — funding is a system ledger event with no venue
+ * transaction behind it.
  * @public
  */
 export type HlFundingUpdate = {

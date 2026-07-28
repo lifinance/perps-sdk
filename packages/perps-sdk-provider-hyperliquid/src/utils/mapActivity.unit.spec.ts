@@ -80,6 +80,22 @@ const sendAssetUpdate = (
   },
 })
 
+// Hyperliquid stamps every `userFunding` entry with the zero hash — funding is
+// a system ledger event, so there is no per-entry venue transaction.
+const ZERO_HASH = `0x${'0'.repeat(64)}`
+
+const fundingUpdate = (coin: string, time: number): HlFundingUpdate => ({
+  time,
+  hash: ZERO_HASH,
+  delta: {
+    type: 'funding',
+    coin,
+    usdc: '0.5',
+    szi: '0.1',
+    fundingRate: '0.0001',
+  },
+})
+
 // ---------------------------------------------------------------------------
 // mapLedgerEntry — spotTransfer
 // ---------------------------------------------------------------------------
@@ -490,22 +506,42 @@ describe('mapLedgerEntry — non-transfer branches', () => {
 
 describe('mapFundingActivity', () => {
   it('maps a funding entry', () => {
-    const entry: HlFundingUpdate = {
-      time: 1_700_000_000_000,
-      hash: '0xfund',
-      delta: {
-        type: 'funding',
-        coin: 'BTC',
-        usdc: '0.5',
-        szi: '0.1',
-        fundingRate: '0.0001',
-      },
-    }
-    const result = mapFundingActivity(entry, PROVIDER, resolveMarket)
-    expect(result.type).toBe(ActivityType.FUNDING)
-    expect(result.market.id).toBe('BTC')
-    expect(result.fundingRate).toBe('0.0001')
-    expect(result.amount).toBe('0.5')
-    expect(result.positionSize).toBe('0.1')
+    const result = mapFundingActivity(
+      fundingUpdate('BTC', 1_700_000_000_000),
+      PROVIDER,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: 'funding:BTC:2023-11-14T22:13:20.000Z',
+      provider: PROVIDER,
+      timestamp: '2023-11-14T22:13:20.000Z',
+      type: ActivityType.FUNDING,
+      market: resolveMarket('BTC'),
+      amount: '0.5',
+      positionSize: '0.1',
+      fundingRate: '0.0001',
+    })
+  })
+
+  it('gives entries sharing the zero hash distinct ids', () => {
+    const entries = [
+      fundingUpdate('BTC', 1_700_000_000_000),
+      fundingUpdate('BTC', 1_700_003_600_000),
+      fundingUpdate('ETH', 1_700_000_000_000),
+    ]
+
+    const ids = entries.map(
+      (entry) => mapFundingActivity(entry, PROVIDER, resolveMarket).id
+    )
+
+    expect(new Set(ids).size).toBe(entries.length)
+  })
+
+  it('keeps the id stable across repeated maps of the same entry', () => {
+    const entry = fundingUpdate('BTC', 1_700_000_000_000)
+
+    expect(mapFundingActivity(entry, PROVIDER, resolveMarket).id).toBe(
+      mapFundingActivity(entry, PROVIDER, resolveMarket).id
+    )
   })
 })
