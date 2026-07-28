@@ -41,8 +41,11 @@ describe('coinAsset', () => {
 })
 
 describe('perpsDexNames', () => {
-  const market = (id: string, categoryId: string): Market =>
-    ({ id, categoryId }) as Market
+  const market = (
+    id: string,
+    categoryId: string,
+    isDelisted?: boolean
+  ): Market => ({ id, categoryId, isDelisted }) as Market
 
   it('maps the main dex to the empty wire name and excludes spot', () => {
     const markets = [
@@ -53,5 +56,45 @@ describe('perpsDexNames', () => {
       market('@142', 'spot'),
     ]
     expect(perpsDexNames(markets)).toEqual(['', 'xyz', 'flv'])
+  })
+
+  it('excludes a dex whose every market is delisted', () => {
+    const markets = [
+      market('BTC', 'hyperliquid'),
+      market('flx:GOLD', 'flx', true),
+      market('flx:SILVER', 'flx', true),
+    ]
+    expect(perpsDexNames(markets)).toEqual([''])
+  })
+
+  it('keeps a dex with at least one live market, in any order', () => {
+    expect(
+      perpsDexNames([
+        market('xyz:BRENTOIL', 'xyz', true),
+        market('xyz:WTI', 'xyz'),
+      ])
+    ).toEqual(['xyz'])
+    expect(
+      perpsDexNames([
+        market('xyz:WTI', 'xyz'),
+        market('xyz:BRENTOIL', 'xyz', true),
+      ])
+    ).toEqual(['xyz'])
+  })
+
+  it('excludes the main dex only when all of its markets are delisted', () => {
+    expect(
+      perpsDexNames([
+        market('BTC', 'hyperliquid', true),
+        market('ETH', 'hyperliquid'),
+      ])
+    ).toEqual([''])
+    expect(perpsDexNames([market('BTC', 'hyperliquid', true)])).toEqual([])
+  })
+
+  it('excludes spot regardless of its delisting state', () => {
+    expect(
+      perpsDexNames([market('@142', 'spot'), market('@1', 'spot', true)])
+    ).toEqual([])
   })
 })
