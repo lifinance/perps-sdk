@@ -1,10 +1,9 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import {
-  MarginMode,
   PerpsErrorCode,
   type Position,
-  PositionMarginAdjustment,
   type PositionMarginConstraints,
+  positionSupportsMarginAdjustment,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 
@@ -44,10 +43,7 @@ function positivePositionAmount(value: string, field: string): Big {
 export function positionMarginConstraints(
   position: Position
 ): PositionMarginConstraints | undefined {
-  if (
-    position.marginMode !== MarginMode.ISOLATED ||
-    position.market.positionMarginAdjustment === PositionMarginAdjustment.NONE
-  ) {
+  if (!positionSupportsMarginAdjustment(position)) {
     return undefined
   }
   const initialMargin = positivePositionAmount(

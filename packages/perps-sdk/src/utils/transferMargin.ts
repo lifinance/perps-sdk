@@ -1,9 +1,8 @@
 import {
-  MarginMode,
   PerpsErrorCode,
   type Position,
-  PositionMarginAdjustment,
   type PositionMarginConstraints,
+  positionSupportsMarginRemoval,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 import { PerpsError } from '../errors/PerpsError.js'
@@ -66,11 +65,7 @@ export function removableIsolatedMargin({
   position,
   constraints,
 }: RemovableIsolatedMarginParams): string {
-  if (
-    position.marginMode !== MarginMode.ISOLATED ||
-    position.market.positionMarginAdjustment !==
-      PositionMarginAdjustment.ADD_AND_REMOVE
-  ) {
+  if (!positionSupportsMarginRemoval(position)) {
     return '0'
   }
 

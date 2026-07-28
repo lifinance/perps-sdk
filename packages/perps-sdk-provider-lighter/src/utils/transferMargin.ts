@@ -1,8 +1,7 @@
 import {
-  MarginMode,
   type Position,
-  PositionMarginAdjustment,
   type PositionMarginConstraints,
+  positionSupportsMarginAdjustment,
 } from '@lifi/perps-types'
 import { toPositiveRequiredBig } from './decimal.js'
 
@@ -19,10 +18,7 @@ const AMOUNT_INCREMENT = '0.000001'
 export function positionMarginConstraints(
   position: Position
 ): PositionMarginConstraints | undefined {
-  if (
-    position.marginMode !== MarginMode.ISOLATED ||
-    position.market.positionMarginAdjustment === PositionMarginAdjustment.NONE
-  ) {
+  if (!positionSupportsMarginAdjustment(position)) {
     return undefined
   }
   return {
