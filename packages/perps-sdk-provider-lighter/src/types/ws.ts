@@ -162,9 +162,9 @@ export type LtWsUserStatsMessage = LtWsMessage & {
     portfolio_value?: string
     available_balance?: string
     cross_stats?: {
-      collateral?: string
-      portfolio_value?: string
-      available_balance?: string
+      collateral: string
+      portfolio_value: string
+      available_balance: string
     }
   }
 }

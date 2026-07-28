@@ -81,7 +81,7 @@ export interface LtDetailedAccount {
   cross_asset_value: string
   /** Initial margin locked by cross positions; isolated positions carry
    * their own `allocated_margin` instead. */
-  cross_initial_margin_requirement?: string
+  cross_initial_margin_requirement: string
   approved_integrators?: LtApprovedIntegrator[]
 }
 

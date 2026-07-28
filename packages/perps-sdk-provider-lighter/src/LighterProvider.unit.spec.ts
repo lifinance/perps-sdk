@@ -801,6 +801,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     accounts: [
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
+        cross_asset_value: '450',
         assets: [
           {
             symbol: 'USDC',
@@ -821,7 +822,10 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     ],
   }
 
+  let accountPayload = ACCOUNT_WITH_SPOT
+
   beforeEach(() => {
+    accountPayload = ACCOUNT_WITH_SPOT
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
@@ -836,7 +840,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
           return respond(PROVIDERS_WITH_LOGO)
         }
         if (u.includes('/api/v1/account?')) {
-          return respond(ACCOUNT_WITH_SPOT)
+          return respond(accountPayload)
         }
         if (u.includes('/api/v1/orderBookDetails')) {
           return respond(ORDER_BOOK_DETAILS_PAYLOAD)
@@ -860,11 +864,29 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       displaySymbol: 'USDC',
       logoURI: USDC_LOGO,
     })
-    // Free collateral = `collateral` (500) net of the cross positions'
-    // locked margin (120) — NOT `available_balance`, which is total
-    // withdrawable and includes isolated positions' excess margin.
-    expect(account.collateralBalances[0].units).toBe('380')
-    expect(account.collateralBalances[0].valueUsd).toBe('380')
+    // Cross availability comes only from Lighter's cross pool:
+    // cross_asset_value (450) − cross_initial_margin_requirement (120).
+    // Top-level collateral (500) also includes isolated allocations.
+    expect(account.collateralBalances[0].units).toBe('330')
+    expect(account.collateralBalances[0].valueUsd).toBe('330')
+  })
+
+  it('rejects malformed current cross-pool fields', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          cross_asset_value: 'not-a-decimal',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /cross_asset_value/
+    )
   })
 
   it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {

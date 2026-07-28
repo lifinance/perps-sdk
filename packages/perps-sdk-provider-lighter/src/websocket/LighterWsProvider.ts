@@ -19,7 +19,6 @@ import type {
   Position,
   Subscription,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
 import {
   DEFAULT_LIGHTER_REST_URL,
@@ -52,7 +51,7 @@ import {
   mapFill,
   mapMarketContext,
   mapPosition,
-  toBigOrNull,
+  toRequiredBig,
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
@@ -590,34 +589,51 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const stats = msg.stats
-    const portfolio = toBigOrNull(stats?.portfolio_value)
-    // Free cross collateral, NOT the top-level `available_balance`: Lighter
-    // defines that as total withdrawable — free collateral plus the excess
-    // margin of isolated positions — which overstates tradable margin.
-    // Older gateways omit `cross_stats`; their account-wide figure and the
-    // matching portfolio-based identity keep serving as the fallback.
-    const crossAvailable = toBigOrNull(stats?.cross_stats?.available_balance)
-    const available = crossAvailable ?? toBigOrNull(stats?.available_balance)
-    if (!portfolio || !available) {
+    if (stats === undefined) {
       return
     }
-    // `collateral` (total) = free cross collateral + every locked portion,
-    // so netting the free part out yields the margin in use; the portfolio
-    // marks unrealized PnL in on top of it.
-    const collateral = toBigOrNull(stats?.collateral)
-    const marginUsed =
-      crossAvailable && collateral
-        ? collateral.minus(available)
-        : portfolio.minus(available)
+
+    const portfolio = toRequiredBig(
+      stats.portfolio_value,
+      'stats.portfolio_value'
+    )
+    const collateral = toRequiredBig(stats.collateral, 'stats.collateral')
+
+    let available: Big
+    let marginUsed: Big
+    if (stats.cross_stats === undefined) {
+      // Compatibility with legacy gateways that omitted the entire
+      // cross_stats object.
+      available = toRequiredBig(
+        stats.available_balance,
+        'stats.available_balance'
+      )
+      marginUsed = portfolio.minus(available)
+    } else {
+      const crossCollateral = toRequiredBig(
+        stats.cross_stats.collateral,
+        'stats.cross_stats.collateral'
+      )
+      const crossPortfolio = toRequiredBig(
+        stats.cross_stats.portfolio_value,
+        'stats.cross_stats.portfolio_value'
+      )
+      available = toRequiredBig(
+        stats.cross_stats.available_balance,
+        'stats.cross_stats.available_balance'
+      )
+      const isolatedMargin = collateral.minus(crossCollateral)
+      const crossMargin = crossPortfolio.minus(available)
+      marginUsed = isolatedMargin.plus(crossMargin)
+    }
+
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
         portfolioValue: portfolio.toString(),
         availableMargin: available.toString(),
-        marginUsed: (marginUsed.lt(0) ? new Big(0) : marginUsed).toString(),
-        unrealizedPnl: collateral
-          ? portfolio.minus(collateral).toString()
-          : '0',
+        marginUsed: marginUsed.toString(),
+        unrealizedPnl: portfolio.minus(collateral).toString(),
       },
     })
   }

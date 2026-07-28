@@ -43,7 +43,6 @@ import type {
   SigningMethod,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -99,9 +98,9 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
-  toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
+  toRequiredBig,
 } from './utils/index.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -776,27 +775,24 @@ export const lighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      // USDC collateral is the category quote asset → collateralBalances.
-      // NOT `available_balance`: Lighter defines that as total withdrawable —
-      // free cross collateral PLUS the excess margin of isolated positions —
-      // so it overstates tradable margin whenever a position is isolated.
-      // Free collateral is `collateral` (which isolated allocations already
-      // left) net of the margin locked by cross positions; the positions'
-      // own `marginUsed` carries every locked portion.
-      const netCollateral = (
-        toBigOrNull(account.collateral) ?? new Big(0)
+      // Cross buying power is isolated from per-position allocations. Lighter
+      // reports cross equity (already marked by cross uPnL) separately from
+      // the initial margin locked by cross positions.
+      const availableMargin = toRequiredBig(
+        account.cross_asset_value,
+        'cross_asset_value'
       ).minus(
-        toBigOrNull(account.cross_initial_margin_requirement) ?? new Big(0)
+        toRequiredBig(
+          account.cross_initial_margin_requirement,
+          'cross_initial_margin_requirement'
+        )
       )
-      const freeCollateral = (
-        netCollateral.lt(0) ? new Big(0) : netCollateral
-      ).toString()
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
           asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
-          units: freeCollateral,
-          valueUsd: freeCollateral,
+          units: availableMargin.toString(),
+          valueUsd: availableMargin.toString(),
         },
       ]
       // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
