@@ -1484,9 +1484,10 @@ describe('LighterWsProvider', () => {
       expect(event.data.portfolioValue).toBe('11.677736')
       expect(event.data.availableMargin).toBe('1.506802')
       // marginUsed = collateral − free cross (≈ the isolated allocation);
-      // unrealizedPnl = portfolio − collateral.
-      expect(Number.parseFloat(event.data.marginUsed)).toBeCloseTo(10.179731)
-      expect(Number.parseFloat(event.data.unrealizedPnl)).toBeCloseTo(-0.008797)
+      // unrealizedPnl = portfolio − collateral. Exact decimal arithmetic:
+      // the emitted strings carry no float artifacts.
+      expect(event.data.marginUsed).toBe('10.179731')
+      expect(event.data.unrealizedPnl).toBe('-0.008797')
       p.close()
     })
 
@@ -1513,8 +1514,8 @@ describe('LighterWsProvider', () => {
       expect(event.data.portfolioValue).toBe('35.072119')
       expect(event.data.availableMargin).toBe('11.05625')
       // marginUsed = portfolio - available; unrealizedPnl = portfolio - collateral
-      expect(Number.parseFloat(event.data.marginUsed)).toBeCloseTo(24.015869)
-      expect(Number.parseFloat(event.data.unrealizedPnl)).toBeCloseTo(9.29435)
+      expect(event.data.marginUsed).toBe('24.015869')
+      expect(event.data.unrealizedPnl).toBe('9.29435')
       p.close()
     })
 

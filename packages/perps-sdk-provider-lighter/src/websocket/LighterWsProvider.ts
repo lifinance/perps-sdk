@@ -19,6 +19,7 @@ import type {
   Position,
   Subscription,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import {
   DEFAULT_LIGHTER_REST_URL,
@@ -51,6 +52,7 @@ import {
   mapFill,
   mapMarketContext,
   mapPosition,
+  toBigOrNull,
 } from '../utils/index.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
@@ -588,37 +590,33 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const stats = msg.stats
-    const portfolio = Number.parseFloat(stats?.portfolio_value ?? '')
+    const portfolio = toBigOrNull(stats?.portfolio_value)
     // Free cross collateral, NOT the top-level `available_balance`: Lighter
     // defines that as total withdrawable — free collateral plus the excess
     // margin of isolated positions — which overstates tradable margin.
     // Older gateways omit `cross_stats`; their account-wide figure and the
     // matching portfolio-based identity keep serving as the fallback.
-    const crossAvailable = Number.parseFloat(
-      stats?.cross_stats?.available_balance ?? ''
-    )
-    const hasCross = Number.isFinite(crossAvailable)
-    const available = hasCross
-      ? crossAvailable
-      : Number.parseFloat(stats?.available_balance ?? '')
-    if (!Number.isFinite(portfolio) || !Number.isFinite(available)) {
+    const crossAvailable = toBigOrNull(stats?.cross_stats?.available_balance)
+    const available = crossAvailable ?? toBigOrNull(stats?.available_balance)
+    if (!portfolio || !available) {
       return
     }
     // `collateral` (total) = free cross collateral + every locked portion,
     // so netting the free part out yields the margin in use; the portfolio
     // marks unrealized PnL in on top of it.
-    const collateral = Number.parseFloat(stats?.collateral ?? '')
+    const collateral = toBigOrNull(stats?.collateral)
+    const marginUsed =
+      crossAvailable && collateral
+        ? collateral.minus(available)
+        : portfolio.minus(available)
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
         portfolioValue: portfolio.toString(),
         availableMargin: available.toString(),
-        marginUsed:
-          hasCross && Number.isFinite(collateral)
-            ? Math.max(collateral - available, 0).toString()
-            : Math.max(portfolio - available, 0).toString(),
-        unrealizedPnl: Number.isFinite(collateral)
-          ? (portfolio - collateral).toString()
+        marginUsed: (marginUsed.lt(0) ? new Big(0) : marginUsed).toString(),
+        unrealizedPnl: collateral
+          ? portfolio.minus(collateral).toString()
           : '0',
       },
     })

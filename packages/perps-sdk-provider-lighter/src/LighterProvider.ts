@@ -43,6 +43,7 @@ import type {
   SigningMethod,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -98,6 +99,7 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
+  toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
 } from './utils/index.js'
@@ -781,10 +783,13 @@ export const lighterProvider = (
       // Free collateral is `collateral` (which isolated allocations already
       // left) net of the margin locked by cross positions; the positions'
       // own `marginUsed` carries every locked portion.
-      const freeCollateral = Math.max(
-        Number.parseFloat(account.collateral) -
-          Number.parseFloat(account.cross_initial_margin_requirement ?? '0'),
-        0
+      const netCollateral = (
+        toBigOrNull(account.collateral) ?? new Big(0)
+      ).minus(
+        toBigOrNull(account.cross_initial_margin_requirement) ?? new Big(0)
+      )
+      const freeCollateral = (
+        netCollateral.lt(0) ? new Big(0) : netCollateral
       ).toString()
       const collateralBalances: Balance[] = [
         {
