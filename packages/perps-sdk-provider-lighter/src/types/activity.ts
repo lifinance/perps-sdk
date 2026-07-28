@@ -1,7 +1,13 @@
 // Activity history shapes returned by Lighter's REST API
 // (deposits, withdrawals, funding payments, liquidations, transfers).
 
-/** @public */
+/**
+ * Deposit history row returned by Lighter. `amount` is a decimal asset amount,
+ * `timestamp` is Unix milliseconds, and `l1_tx_hash` identifies the settlement
+ * transaction on the L1 bridge.
+ *
+ * @public
+ */
 export interface LtDepositHistoryItem {
   id: string
   asset_id: number
@@ -11,14 +17,25 @@ export interface LtDepositHistoryItem {
   l1_tx_hash: string
 }
 
-/** @public */
+/**
+ * Paginated deposit-history response from Lighter. `cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtDepositHistoryResponse {
   code: number
   deposits: LtDepositHistoryItem[]
   cursor?: string
 }
 
-/** @public */
+/**
+ * Withdrawal history row returned by Lighter. `amount` is a decimal asset
+ * amount, `timestamp` is Unix milliseconds, and `l1_tx_hash` identifies the
+ * associated L1 transaction.
+ *
+ * @public
+ */
 export interface LtWithdrawHistoryItem {
   id: string
   asset_id: number
@@ -29,14 +46,25 @@ export interface LtWithdrawHistoryItem {
   l1_tx_hash: string
 }
 
-/** @public */
+/**
+ * Paginated withdrawal-history response from Lighter. `cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtWithdrawHistoryResponse {
   code: number
   withdraws: LtWithdrawHistoryItem[]
   cursor?: string
 }
 
-/** @public */
+/**
+ * Funding-payment history row for one perpetual position. `change`,
+ * `position_size`, and `rate` are decimal strings; `timestamp` is a Unix
+ * timestamp in seconds and `position_side` is Lighter's side literal.
+ *
+ * @public
+ */
 export interface LtPositionFunding {
   timestamp: number
   market_id: number
@@ -47,14 +75,24 @@ export interface LtPositionFunding {
   position_side: string
 }
 
-/** @public */
+/**
+ * Paginated position-funding response from Lighter. `next_cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtPositionFundingsResponse {
   code: number
   position_fundings: LtPositionFunding[]
   next_cursor?: string
 }
 
-/** @public */
+/**
+ * Liquidation event row returned by Lighter. `executed_at` is a Unix timestamp
+ * in milliseconds.
+ *
+ * @public
+ */
 export interface LtLiquidation {
   id: number
   market_id: number
@@ -62,14 +100,25 @@ export interface LtLiquidation {
   executed_at: number
 }
 
-/** @public */
+/**
+ * Paginated liquidation-history response from Lighter. `next_cursor` is an
+ * opaque continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtLiquidationsResponse {
   code: number
   liquidations: LtLiquidation[]
   next_cursor?: string
 }
 
-/** @public */
+/**
+ * Asset transfer-history row returned by Lighter. Amounts and fees are decimal
+ * strings in the asset's precision; route literals identify the source and
+ * destination account ledger (`spot` or `perps`).
+ *
+ * @public
+ */
 export interface LtTransfer {
   id: string
   asset_id: number
@@ -86,7 +135,12 @@ export interface LtTransfer {
   tx_hash: string
 }
 
-/** @public */
+/**
+ * Paginated transfer-history response from Lighter. `cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtTransferHistoryResponse {
   code: number
   transfers: LtTransfer[]

@@ -1,6 +1,13 @@
 // Trade (fill) shapes returned by Lighter's `/api/v1/trades` endpoint.
 
-/** @public */
+/**
+ * Public trade/fill row returned by Lighter's `/api/v1/trades` endpoint.
+ * Size, price, and notional fields are decimal strings in market precision;
+ * `timestamp` and `transaction_time` are Unix millisecond timestamps. The
+ * optional fee fields are integer fee ticks and may be absent on older rows.
+ *
+ * @public
+ */
 export type LtTrade = {
   trade_id: number
   tx_hash: string
@@ -34,7 +41,12 @@ export type LtTrade = {
   maker_entry_quote_before?: string
 }
 
-/** @public */
+/**
+ * Paginated trade-history response from Lighter. `next_cursor` is an opaque
+ * continuation value for the next page.
+ *
+ * @public
+ */
 export interface LtTradesResponse {
   code: number
   next_cursor: string

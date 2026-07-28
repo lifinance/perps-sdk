@@ -28,10 +28,15 @@ import type { PerpsProviderPlugin } from './provider.js'
  * @public
  */
 export interface PerpsConfig {
+  /** Integrator identifier sent in the `x-lifi-integrator` request header. */
   integrator: string
+  /** LI.FI API key used for authenticated backend requests. */
   apiKey: string
+  /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
+  /** Skip the SDK-version compatibility check when set. */
   disableVersionCheck?: boolean
+  /** Hook that can rewrite URL/request options before transport. */
   requestInterceptor?: RequestInterceptor
   /**
    * Provider plugins or per-provider config. Two shapes are accepted:
@@ -79,10 +84,11 @@ export interface PerpsConfig {
  * @public
  */
 export interface PerpsClientOptions {
+  /** Integrator identifier sent in the `x-lifi-integrator` request header. */
   integrator: string
-  /** API key for authenticated requests (get one at https://portal.li.fi/) */
+  /** API key for authenticated requests (get one at https://portal.li.fi/). */
   apiKey: string
-  /** Defaults to DEFAULT_API_URL */
+  /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
   /**
    * Provider plugins or per-provider config. Accepts the same two shapes as
@@ -105,7 +111,9 @@ export interface PerpsClientOptions {
  * @public
  */
 export interface BuildProviderSetupParams {
+  /** Provider key whose setup descriptors should be built. */
   provider: string
+  /** User account address for the setup request. */
   address: Address
 }
 
@@ -115,13 +123,21 @@ export interface BuildProviderSetupParams {
  * @public
  */
 export interface PlaceOrderParams {
+  /** Provider key receiving the order. */
   provider: string
+  /** User account address submitting the order. */
   address: Address
+  /** Opaque provider market reference. */
   market: MarketRef
+  /** Buy or sell direction. */
   side: OrderSide
+  /** Provider-supported order type. */
   type: OrderType
+  /** Base-asset size as a decimal wire string. */
   size: string
+  /** Limit price as a decimal wire string; required by limit-style orders. */
   price: string
+  /** Optional leverage multiplier for venues that support it. */
   leverage?: number
   /**
    * Margin mode the order trades under; omitted falls to the venue's cross
@@ -129,10 +145,15 @@ export interface PlaceOrderParams {
    * applies it via a prepended leverage update (requires `leverage`).
    */
   marginMode?: MarginMode
+  /** Whether the order may only reduce an existing position. */
   reduceOnly?: boolean
+  /** Time-in-force policy; provider defaults apply when omitted. */
   timeInForce?: TimeInForce
+  /** Optional Unix timestamp or provider wire expiry string. */
   expiresAt?: string
+  /** Optional attached take-profit trigger order. */
   takeProfit?: TriggerOrderInput
+  /** Optional attached stop-loss trigger order. */
   stopLoss?: TriggerOrderInput
 }
 
@@ -143,11 +164,17 @@ export interface PlaceOrderParams {
  * @public
  */
 export interface PlaceTriggerOrderParams {
+  /** Provider key receiving the trigger order. */
   provider: string
+  /** User account address submitting the order. */
   address: Address
+  /** Opaque provider market reference. */
   market: MarketRef
+  /** Buy or sell direction of the closing trigger order. */
   side: OrderSide
+  /** Optional take-profit trigger. */
   takeProfit?: TriggerOrderInput
+  /** Optional stop-loss trigger. */
   stopLoss?: TriggerOrderInput
 }
 
@@ -157,8 +184,11 @@ export interface PlaceTriggerOrderParams {
  * @public
  */
 export interface WithdrawParams {
+  /** Provider key from which funds are withdrawn. */
   provider: string
+  /** User account address submitting the withdrawal. */
   address: Address
+  /** Provider-specific withdrawal payload, including amount/destination. */
   withdrawal: WithdrawalParams
 }
 
@@ -170,13 +200,17 @@ export interface WithdrawParams {
  * @public
  */
 export interface SendAssetActionParams {
+  /** Provider key receiving the transfer. */
   provider: string
+  /** User account address submitting the transfer. */
   address: Address
-  /** Canonical `Asset.id` of the asset being moved (for Hyperliquid spot
-   * assets, the token index as a string) — never a display symbol. */
+  /** Canonical `Asset.id` (Hyperliquid spot uses the token index as a string); never a display symbol. */
   collateral: string
+  /** Source DEX/account identifier understood by the provider. */
   sourceDex: string
+  /** Destination DEX/account identifier understood by the provider. */
   destinationDex: string
+  /** Transfer amount as a provider-compatible decimal wire string. */
   amount: string
 }
 
@@ -186,12 +220,13 @@ export interface SendAssetActionParams {
  * @public
  */
 export interface CancelOrdersParams {
+  /** Provider key whose orders are cancelled. */
   provider: string
+  /** User account address owning the orders. */
   address: Address
-  /** Venue order ids. Venues whose ids are scoped per market (e.g. Lighter's
-   * `order_index`) also accept the composite `"<market_id>:<order_id>"`. */
+  /** Venue order ids. Market-scoped venues such as Lighter also accept `"<market_id>:<order_id>"`. */
   ids: string[]
-  /** Market context for per-market order ids; the order's `market.id`. */
+  /** Market context for per-market order ids; use the order's opaque `market.id`. */
   assetId?: string
 }
 
@@ -201,8 +236,11 @@ export interface CancelOrdersParams {
  * @public
  */
 export interface ModifyOrdersParams {
+  /** Provider key whose orders are modified. */
   provider: string
+  /** User account address owning the orders. */
   address: Address
+  /** Provider-specific order modifications. */
   modifications: ModifyOrderInput[]
 }
 
@@ -212,7 +250,9 @@ export interface ModifyOrdersParams {
  * @public
  */
 export interface GetSetupParams {
+  /** Provider key whose setup state is queried. */
   provider: string
+  /** User account address whose setup is queried. */
   address: Address
 }
 
@@ -222,7 +262,9 @@ export interface GetSetupParams {
  * @public
  */
 export interface GetDepositFlowParams {
+  /** Provider key whose deposit flow is queried. */
   provider: string
+  /** User account address whose flow is resolved. */
   address: Address
 }
 

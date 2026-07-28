@@ -15,12 +15,14 @@ import type { Address, Hex } from 'viem'
 import type { HyperliquidAgentStore } from './HyperliquidAgentStore.js'
 
 /**
- * Sign a batch of EIP-712 action steps. Hyperliquid owns both EIP712 arms and
- * picks WHO signs from the descriptor's `signers` (forwarded on the context):
- *   - `AGENT` → the user's Hyperliquid agent keypair (provisioned + approved
- *     during setup; a missing agent throws).
- *   - `USER` → the end-user's wallet, read from `ctx.userWallet`.
- * Hyperliquid declares no WASM_BLOB / EVM_TX actions, so those schemes reject.
+ * Sign a batch of Hyperliquid EIP-712 action steps. `AGENT` descriptors use
+ * the persisted per-user agent keypair; `USER` descriptors use
+ * `ctx.userWallet`. Other signing methods are rejected because Hyperliquid
+ * declares no WASM_BLOB or EVM_TX action schemes.
+ *
+ * @throws {PerpsError} When the method is unsupported, the required agent is
+ * missing, or a user-signed action has no wallet.
+ * @public
  */
 export async function hyperliquidSignActions(
   agentStore: HyperliquidAgentStore,

@@ -16,7 +16,11 @@ export class AssetRegistry extends ReferenceDataRegistry<Asset> {
     super(client, provider, 'asset')
   }
 
-  /** The most recently synced asset list. Empty before the first {@link sync}. */
+  /**
+   * The most recently synced asset list. Empty before the first {@link sync}.
+   *
+   * @public
+   */
   get assets(): readonly Asset[] {
     return this.items
   }

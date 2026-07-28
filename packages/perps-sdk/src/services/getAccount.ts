@@ -10,7 +10,9 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetAccountParams {
+  /** Provider key whose account is read. */
   provider: string
+  /** User account address to query. */
   address: Address
 }
 

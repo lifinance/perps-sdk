@@ -10,8 +10,11 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOrderParams {
+  /** Provider key whose order is read. */
   provider: string
+  /** User account address that owns the order. */
   address: Address
+  /** Venue order id, opaque to the SDK. */
   id: string
 }
 

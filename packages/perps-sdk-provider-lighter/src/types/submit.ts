@@ -1,13 +1,24 @@
 // Lighter submit/execute-path wire shapes (sendTx, fastwithdraw, changeAccountTier).
 
-/** @public */
+/**
+ * Request body for Lighter's `/api/v1/sendTx` endpoint. `tx_type` and
+ * `tx_info` are the signed WASM transaction envelope; `price_protection` is an
+ * optional venue-side execution guard.
+ *
+ * @public
+ */
 export interface LtSendTxRequest {
   tx_type: number
   tx_info: string
   price_protection?: boolean
 }
 
-/** @public */
+/**
+ * Response from Lighter's `/api/v1/sendTx` endpoint. `tx_hash` identifies the
+ * submitted transaction; timing and quota fields are optional venue estimates.
+ *
+ * @public
+ */
 export interface LtSendTxResponse {
   code: number
   message: string
@@ -16,13 +27,24 @@ export interface LtSendTxResponse {
   volume_quota_remaining?: number
 }
 
-/** @public */
+/**
+ * Batch request body for Lighter's transaction submission endpoint.
+ * `tx_types` is a JSON-encoded number array and `tx_infos` a JSON-encoded
+ * string array; corresponding entries are submitted in array order.
+ *
+ * @public
+ */
 export interface LtSendTxBatchRequest {
   tx_types: string // JSON-encoded number[]
   tx_infos: string // JSON-encoded string[]
 }
 
-/** @public */
+/**
+ * Batch submission response from Lighter. Each `tx_hash` corresponds to the
+ * transaction at the same index in the submitted batch.
+ *
+ * @public
+ */
 export interface LtSendTxBatchResponse {
   code: number
   message: string

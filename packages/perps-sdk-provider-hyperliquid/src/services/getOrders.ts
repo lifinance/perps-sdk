@@ -21,9 +21,11 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  * @public
  */
 export interface GetOrdersParams {
+  /** EVM user address whose open orders are fetched. */
   address: Address
-  /** Optional filter — opaque `Market.id`. */
+  /** Optional filter using the normalized opaque `Market.id`. */
   marketId?: string
+  /** Page-size hint; Hyperliquid returns all open orders in one response. */
   limit?: number
 }
 

@@ -9,10 +9,11 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOrderbookParams {
+  /** Provider key whose orderbook is returned. */
   provider: string
-  /** Opaque provider `Market.id` (not `displaySymbol`). */
+  /** Opaque provider `Market.id`, not a display symbol. */
   marketId: string
-  /** Number of levels to return (default varies by DEX) */
+  /** Optional number of price levels; venue defaults apply when omitted. */
   depth?: number
 }
 

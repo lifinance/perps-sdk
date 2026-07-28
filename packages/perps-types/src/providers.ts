@@ -2,13 +2,17 @@ import type { Asset, DepositAsset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
-/** @public */
+/** A fixed option value presented for a provider action parameter. @public */
 export interface ParamOption {
   value: string
   label: string
 }
 
-/** @public */
+/**
+ * Metadata describing one provider action parameter and its UI constraints.
+ *
+ * @public
+ */
 export interface Param {
   /** Wire key for the action params object: `{ [param.name]: value }`. */
   name: string
@@ -60,7 +64,11 @@ export interface TradeNotice {
   message: string
 }
 
-/** @public */
+/**
+ * Provider category metadata, including quote asset and optional market notice.
+ *
+ * @public
+ */
 export interface ProviderCategory {
   id: string
   logoURI?: string
@@ -69,7 +77,7 @@ export interface ProviderCategory {
   tradeNotice?: TradeNotice
 }
 
-/** @public */
+/** Provider-wide funding cadence metadata, expressed in seconds. @public */
 export interface ProviderFunding {
   /** Number of seconds represented by the provider's funding rate. */
   ratePeriodSeconds: number
@@ -77,7 +85,12 @@ export interface ProviderFunding {
   payoutCadenceSeconds: number
 }
 
-/** @public */
+/**
+ * Provider descriptor containing capabilities, actions, categories, and
+ * optional deposit/trading limits.
+ *
+ * @public
+ */
 export interface Provider {
   key: string
   name: string
@@ -142,7 +155,7 @@ export interface Provider {
   supportedIntervals: OhlcvInterval[]
 }
 
-/** @public */
+/** Response containing provider descriptors available to the client. @public */
 export interface ProvidersResponse {
   providers: Provider[]
 }

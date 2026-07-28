@@ -30,12 +30,17 @@ import {
  * @public
  */
 export interface GetActivityParams {
+  /** EVM user address whose ledger and funding updates are fetched. */
   address: Address
+  /** Maximum items returned; defaults to 50 and is capped at 200. */
   limit?: number
-  /** `cursor` is a ms-since-epoch upper bound — items with `timestamp < cursor` are returned. */
+  /** Millisecond timestamp cursor; rows strictly older than it are returned. */
   cursor?: string
+  /** Inclusive lower bound in milliseconds since epoch; defaults to 90 days ago. */
   startTime?: number
+  /** Inclusive upper bound in milliseconds since epoch. */
   endTime?: number
+  /** Optional normalized activity-type filter applied after mapping. */
   type?: ActivityType[]
 }
 

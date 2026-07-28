@@ -6,10 +6,10 @@ import { spotLogoURI } from './assetLogo.js'
 import { coinAsset } from './marketDisplay.js'
 
 /**
- * USD price keyed by spot token index: each spot market's live USD price
- * (from `priceByMarketId`, keyed by `Market.id`) under its base-asset id, and
- * every market's quote-asset id at $1. A spot market absent from
- * `priceByMarketId` values its token at 0.
+ * Build USD prices keyed by spot token asset ID. Base tokens use the supplied
+ * market mark price; quote tokens default to exactly `$1`; missing base prices
+ * default to `0`.
+ * @public
  */
 export const spotPriceById = (
   markets: readonly Market[],
@@ -30,11 +30,10 @@ export const spotPriceById = (
 }
 
 /**
- * The held spot {@link Asset} for an HL balance: the venue token index
- * (`b.token`) as `Asset.id` — equal to that token's spot `Market.baseAsset.id`
- * — with display fields derived from the coin and the override-aware spot logo.
- * `HlSpotBalance` carries no `fullName`, so Unit-bridged balances take the base
- * `_spot` rule (see {@link spotLogoURI}).
+ * Convert a Hyperliquid spot balance's numeric token index into an SDK asset.
+ * The balance payload has no `fullName`, so logo resolution uses the base
+ * `_spot` URI rule rather than Unit-underlying lookup.
+ * @public
  */
 export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
   ...coinAsset(b.coin),
@@ -42,7 +41,7 @@ export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
   logoURI: spotLogoURI(b.coin),
 })
 
-/** Assemble a typed spot {@link Balance} from its resolved asset and raw size. */
+/** Assemble a typed spot {@link Balance}; `total` is native token units and its USD value uses `priceById`. @public */
 export const spotBalance = (
   asset: Asset,
   total: string,

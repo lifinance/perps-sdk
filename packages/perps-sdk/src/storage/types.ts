@@ -1,13 +1,17 @@
 /**
- * Storage adapter interface for persisting SDK session credentials (provider
- * agent keypairs, API keys, read-only tokens). Implement this to use custom
- * storage (e.g. encrypted storage, a database, async key-value stores).
+ * Asynchronous key-value storage for SDK session credentials (provider agent
+ * keypairs, API keys, and read-only tokens). Values are opaque strings; an
+ * adapter should preserve them exactly and return `null` when a key is absent.
+ * Implement this interface for encrypted storage, a database, or another
+ * application-owned store.
+ *
+ * @public
  */
 export interface StorageAdapter {
-  /** Get a value by key. */
+  /** Read the value for `key`, or `null` when the key is absent. */
   get(key: string): Promise<string | null>
-  /** Set a value by key. */
+  /** Persist `value` under `key`, replacing any existing value. */
   set(key: string, value: string): Promise<void>
-  /** Remove a value by key. */
+  /** Remove `key`; resolving successfully when it is already absent. */
   remove(key: string): Promise<void>
 }

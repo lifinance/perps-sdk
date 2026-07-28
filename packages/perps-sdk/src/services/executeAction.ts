@@ -14,10 +14,15 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface ExecuteActionParams {
+  /** Provider key whose action is submitted. */
   provider: string
+  /** User account address associated with the action. */
   address: Address
+  /** Optional provider-owned signer address used for submission. */
   signerAddress?: Address
+  /** Action descriptor shared by the signed steps. */
   action: ActionType
+  /** Signed steps returned from client-side signing. */
   actions: SignedActionStep[]
 }
 

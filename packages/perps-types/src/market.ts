@@ -1,14 +1,26 @@
 import type { Asset } from './asset.js'
 import type { PositionMarginAdjustment } from './enums.js'
 
-/** @public */
+/**
+ * Current funding rate and next funding timestamp for a perpetual market.
+ * `rate` is a decimal fraction; `nextFundingTime` is Unix milliseconds.
+ *
+ * @public
+ */
 export interface FundingInfo {
+  /** Funding rate as a decimal fraction. */
   rate: string
+  /** Next funding timestamp in Unix milliseconds. */
   nextFundingTime: number
 }
 
-/** @public */
+/**
+ * Shared market metadata for perpetual and spot instruments.
+ *
+ * @public
+ */
 export interface BaseMarket {
+  /** Provider key that owns this market. */
   providerId: string
   /** Opaque provider market id; referenced elsewhere as `marketId`. */
   id: string
@@ -16,8 +28,11 @@ export interface BaseMarket {
   isDelisted?: boolean
   /** References a {@link ProviderCategory} by id. */
   categoryId: string
+  /** Base asset being traded. */
   baseAsset: Asset
+  /** Quote asset used for prices and settlement. */
   quoteAsset: Asset
+  /** Maximum fractional precision accepted for order sizes. */
   szDecimals: number
   /**
    * Maximum decimal places the venue accepts for order prices on this market.
@@ -42,9 +57,15 @@ export interface BaseMarket {
   sizeIncrement?: string
 }
 
-/** @public */
+/**
+ * Perpetual market metadata, including leverage and margin constraints.
+ *
+ * @public
+ */
 export interface PerpsMarket extends BaseMarket {
+  /** Maximum leverage multiplier accepted for this market. */
   maxLeverage: number
+  /** Whether the market supports only isolated margin. */
   onlyIsolated: boolean
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment
@@ -64,10 +85,15 @@ export interface SpotMarket extends BaseMarket {
   positionMarginAdjustment?: never
 }
 
-/** @public */
+/** Union of perpetual and spot market representations. @public */
 export type Market = PerpsMarket | SpotMarket
 
-/** @public */
+/**
+ * UI-safe market projection containing identity, category, assets, and
+ * delisting state without provider-specific trading constraints.
+ *
+ * @public
+ */
 export type MarketDisplay = Pick<
   BaseMarket,
   'providerId' | 'id' | 'categoryId' | 'baseAsset' | 'quoteAsset' | 'isDelisted'
@@ -96,7 +122,7 @@ export interface MarketRef {
   categoryId: string
 }
 
-/** @public */
+/** Response containing all markets returned for a provider. @public */
 export interface MarketsResponse {
   markets: Market[]
 }
@@ -111,8 +137,11 @@ export interface MarketsResponse {
  * @public
  */
 export interface MarketContext {
+  /** Opaque provider market identifier for this context frame. */
   marketId: string
+  /** Current order-book midpoint, as a decimal quote string. */
   midPrice: string
+  /** Provider mark price, as a decimal quote string. */
   markPrice: string
   oraclePrice?: string
   prevDayPrice?: string
@@ -123,12 +152,17 @@ export interface MarketContext {
   funding?: FundingInfo
 }
 
-/** @public */
+/** Response containing live context for requested markets. @public */
 export interface PricesResponse {
   prices: MarketContext[]
 }
 
-/** @public */
+/**
+ * OHLCV candle with Unix-millisecond open time and decimal-string OHLCV
+ * values. Field names follow the compact provider response shape.
+ *
+ * @public
+ */
 export interface Candle {
   t: number
   o: string
@@ -138,7 +172,7 @@ export interface Candle {
   v: string
 }
 
-/** @public */
+/** Response containing candles for one provider market and interval. @public */
 export interface OhlcvResponse {
   provider: string
   marketId: string
@@ -146,7 +180,12 @@ export interface OhlcvResponse {
   candles: Candle[]
 }
 
-/** @public */
+/**
+ * Supported OHLCV intervals. Values are wire interval strings (`1M` is one
+ * month; lowercase `m` values are minutes).
+ *
+ * @public
+ */
 export type OhlcvInterval =
   | '1m'
   | '3m'
@@ -163,13 +202,13 @@ export type OhlcvInterval =
   | '1w'
   | '1M'
 
-/** @public */
+/** One price/size level in an order book; both values are decimal strings. @public */
 export interface OrderbookLevel {
   price: string
   size: string
 }
 
-/** @public */
+/** Snapshot of bids and asks for one market. `timestamp` is Unix milliseconds. @public */
 export interface OrderbookResponse {
   provider: string
   marketId: string
@@ -178,7 +217,7 @@ export interface OrderbookResponse {
   timestamp: number
 }
 
-/** @public */
+/** Recent trade normalized for a market; `timestamp` is Unix milliseconds. @public */
 export interface Trade {
   provider: string
   marketId: string

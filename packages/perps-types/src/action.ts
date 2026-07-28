@@ -14,13 +14,22 @@ import type { Address, Hex } from './primitives.js'
 import type { PerpsTypedData } from './typedData.js'
 import type { VoteParams } from './vote.js'
 
-/** @public */
+/**
+ * Unsigned EIP-712 action step containing typed data for client signing.
+ *
+ * @public
+ */
 export interface Eip712ActionStep {
   action: ActionType
   typedData: PerpsTypedData
 }
 
-/** @public */
+/**
+ * Unsigned WASM-blob action step containing provider-specific signing
+ * parameters for the client.
+ *
+ * @public
+ */
 export interface WasmBlobActionStep {
   action: ActionType
   wasmSignParams: Record<string, unknown>
@@ -34,15 +43,24 @@ export interface WasmBlobActionStep {
  * @public
  */
 export interface EvmCall {
+  /** Numeric EVM chain id on which the call is submitted. */
   chainId: number
+  /** Destination contract address. */
   to: Address
+  /** Contract function name to invoke. */
   functionName: string
+  /** Function arguments supplied to the contract call in declaration order. */
   args: readonly unknown[]
   /** Human-readable ABI signatures, e.g. `'function approve(address,uint256) returns (bool)'`, fed to viem `parseAbi`. */
   abi: readonly string[]
 }
 
-/** @public */
+/**
+ * Unsigned EVM transaction action step. `txParams` describes the call that the
+ * client encodes and submits.
+ *
+ * @public
+ */
 export interface EvmTxActionStep {
   action: ActionType
   txParams: EvmCall
@@ -78,12 +96,20 @@ export interface HmacActionStep {
  * @public
  */
 export interface CreateDepositAddressSessionMarker {
+  /** Source network for the provider deposit address. */
   network: 'ethereum'
+  /** Deposit asset symbol; currently constrained to USDC. */
   symbol: 'USDC'
+  /** Provider wallet destination policy; currently constrained to margin. */
   depositDestination: { wallet: 'margin' }
 }
 
-/** @public */
+/**
+ * Client-only session action step, with a provider session request marker or
+ * an empty session payload for actions that do not need one.
+ *
+ * @public
+ */
 export type SessionActionStep =
   | {
       action: Exclude<ActionType, ActionType.CREATE_DEPOSIT_ADDRESS>
@@ -94,17 +120,26 @@ export type SessionActionStep =
       session: CreateDepositAddressSessionMarker
     }
 
-/** @public */
+/**
+ * Unsigned SIWE action step containing the backend-issued login challenge.
+ *
+ * @public
+ */
 export interface SiweActionStep {
   action: ActionType
   siwe: {
+    /** Backend identifier for the SIWE challenge. */
     challengeId: string
     /** The backend-built ERC-4361 challenge the wallet must `personal_sign`. */
     message: string
   }
 }
 
-/** @public */
+/**
+ * Union of all unsigned action-step encodings produced by `createAction`.
+ *
+ * @public
+ */
 export type ActionStep =
   | Eip712ActionStep
   | WasmBlobActionStep
@@ -113,14 +148,22 @@ export type ActionStep =
   | SessionActionStep
   | SiweActionStep
 
-/** @public */
+/**
+ * Signed EIP-712 action step ready for backend execution.
+ *
+ * @public
+ */
 export interface Eip712SignedActionStep {
   action: ActionType
   typedData: PerpsTypedData
   signature: Hex
 }
 
-/** @public */
+/**
+ * Signed WASM-blob action step, including provider wire transaction details.
+ *
+ * @public
+ */
 export interface WasmBlobSignedActionStep {
   action: ActionType
   wasmSignParams: Record<string, unknown>
@@ -131,14 +174,22 @@ export interface WasmBlobSignedActionStep {
   }
 }
 
-/** @public */
+/**
+ * Signed EVM transaction action step with the submitted transaction hash.
+ *
+ * @public
+ */
 export interface EvmTxSignedActionStep {
   action: ActionType
   txParams: EvmCall
   txHash: string
 }
 
-/** @public */
+/**
+ * HMAC-authenticated venue request ready for backend execution.
+ *
+ * @public
+ */
 export interface HmacSignedActionStep {
   action: ActionType
   request: HmacActionStep['request']
@@ -154,14 +205,22 @@ export interface HmacSignedActionStep {
   }
 }
 
-/** @public */
+/**
+ * Signed SIWE login action step.
+ *
+ * @public
+ */
 export interface SiweSignedActionStep {
   action: ActionType
   siwe: SiweActionStep['siwe']
   signature: Hex
 }
 
-/** @public */
+/**
+ * Union of all signed action-step encodings accepted by `executeAction`.
+ *
+ * @public
+ */
 export type SignedActionStep =
   | Eip712SignedActionStep
   | WasmBlobSignedActionStep
@@ -169,7 +228,12 @@ export type SignedActionStep =
   | HmacSignedActionStep
   | SiweSignedActionStep
 
-/** @public */
+/**
+ * Per-action execution result. Success arms may include a provider order id;
+ * failure arms carry a message and optional structured error code.
+ *
+ * @public
+ */
 export type ActionResult =
   | {
       action: ActionType
@@ -184,13 +248,22 @@ export type ActionResult =
       errorCode?: PerpsErrorCode
     }
 
-/** @public */
+/**
+ * Trigger prices used to configure take-profit or stop-loss behavior.
+ * Prices are decimal strings in the market's quote currency.
+ *
+ * @public
+ */
 export interface TriggerOrderInput {
   triggerPrice: string
   limitPrice?: string
 }
 
-/** @public */
+/**
+ * Mutable fields for an existing order, identified by venue order id.
+ *
+ * @public
+ */
 export interface ModifyOrderInput {
   id: string
   price?: string
@@ -199,7 +272,12 @@ export interface ModifyOrderInput {
   limitPrice?: string
 }
 
-/** @public */
+/**
+ * Normalized order returned by a provider, including lifecycle and trigger
+ * metadata. Quantities and prices are decimal strings.
+ *
+ * @public
+ */
 export interface Order {
   orderId: string
   market: MarketDisplay
@@ -223,7 +301,11 @@ export interface Order {
   updatedAt: string
 }
 
-/** @public */
+/**
+ * Parameters for placing a regular order on a market.
+ *
+ * @public
+ */
 export interface PlaceOrderParams {
   market: MarketRef
   side: OrderSide
@@ -240,7 +322,11 @@ export interface PlaceOrderParams {
   stopLoss?: TriggerOrderInput
 }
 
-/** @public */
+/**
+ * Parameters for placing a take-profit or stop-loss trigger order.
+ *
+ * @public
+ */
 export interface PlaceTriggerOrderParams {
   market: MarketRef
   side: OrderSide
@@ -248,7 +334,11 @@ export interface PlaceTriggerOrderParams {
   stopLoss?: TriggerOrderInput
 }
 
-/** @public */
+/**
+ * Parameters for cancelling one or more venue orders.
+ *
+ * @public
+ */
 export interface CancelOrderParams {
   /** Venue order ids. Venues whose ids are scoped per market (e.g. Lighter's
    * `order_index`) also accept the composite `"<market_id>:<order_id>"`. */
@@ -257,12 +347,20 @@ export interface CancelOrderParams {
   assetId?: string
 }
 
-/** @public */
+/**
+ * Parameters for applying one or more modifications to existing orders.
+ *
+ * @public
+ */
 export interface ModifyOrderParams {
   modifications: ModifyOrderInput[]
 }
 
-/** @public */
+/**
+ * Parameters for changing leverage on a market.
+ *
+ * @public
+ */
 export interface UpdateLeverageParams {
   market: MarketRef
   leverage: number
@@ -270,14 +368,23 @@ export interface UpdateLeverageParams {
   marginMode?: MarginMode
 }
 
-/** @public */
+/**
+ * Parameters for adding or removing margin from a market position.
+ * `amount` is a decimal string in the venue's collateral units.
+ *
+ * @public
+ */
 export interface UpdatePositionMarginParams {
   market: MarketRef
   action: 'add' | 'remove'
   amount: string
 }
 
-/** @public */
+/**
+ * Parameters for enabling or disabling an asset as cross-margin collateral.
+ *
+ * @public
+ */
 export interface UpdateAssetCollateralParams {
   /** Provider-native spot asset id (matches `Asset.id`), keyed per asset — not per market. */
   assetId: string
@@ -285,13 +392,21 @@ export interface UpdateAssetCollateralParams {
   enabled: boolean
 }
 
-/** @public */
+/**
+ * Parameters for withdrawing a decimal-string amount to an EVM address.
+ *
+ * @public
+ */
 export interface WithdrawalParams {
   destination: Address
   amount: string
 }
 
-/** @public */
+/**
+ * Parameters for depositing a token from an EVM source chain.
+ *
+ * @public
+ */
 export interface DepositParams {
   /** Amount of the token to deposit (human-readable, e.g. "100.5"). */
   amount: string
@@ -301,23 +416,40 @@ export interface DepositParams {
   chainId: number
 }
 
-/** @public */
+/**
+ * Parameters for approving an account agent, including an optional TTL in
+ * milliseconds.
+ *
+ * @public
+ */
 export interface ApproveAgentParams {
   agentAddress: string
   agentTtlMs?: number
 }
 
-/** @public */
+/**
+ * Parameters for selecting a provider account mode by its wire value.
+ *
+ * @public
+ */
 export interface AccountModeParams {
   mode: string
 }
 
-/** @public */
+/**
+ * Parameters for selecting a provider account tier by its wire value.
+ *
+ * @public
+ */
 export interface AccountTypeParams {
   tier: string
 }
 
-/** @public */
+/**
+ * Parameters for moving an asset between provider DEX accounts.
+ *
+ * @public
+ */
 export interface SendAssetParams {
   /** Canonical `Asset.id` of the asset being moved (for Hyperliquid spot
    * assets, the token index as a string) — never a display symbol. */
@@ -327,7 +459,12 @@ export interface SendAssetParams {
   amount: string
 }
 
-/** @public */
+/**
+ * Parameters for cancelling all orders immediately or through a scheduled
+ * cancellation instruction.
+ *
+ * @public
+ */
 export interface CancelAllOrdersParams {
   /** 0=immediate (cancel GTC), 1=scheduled, 2=abort scheduled */
   timeInForce: number
@@ -335,7 +472,11 @@ export interface CancelAllOrdersParams {
   timestampMs?: number
 }
 
-/** @public */
+/**
+ * Parameters for registering a provider API key in a specific slot.
+ *
+ * @public
+ */
 export interface RegisterApiKeyParams {
   /** The API key slot index to register (0-255). Reusing a fixed slot overwrites the old key. */
   apiKeyIndex: number
@@ -348,7 +489,11 @@ export interface RegisterApiKeyParams {
   knownPublicKey?: string
 }
 
-/** @public */
+/**
+ * Parameters for approving a Lighter read-only token and its scope/expiry.
+ *
+ * @public
+ */
 export interface ApproveReadOnlyTokenParams {
   accountIndex: number
   /** Absolute unix-seconds expiry. Lighter requires lifetime between 1 day and 10 years. */
@@ -356,7 +501,12 @@ export interface ApproveReadOnlyTokenParams {
   scope: 'single' | 'all'
 }
 
-/** @public */
+/**
+ * Mapping from each {@link ActionType} to its action-specific parameter shape.
+ * `Record<string, never>` marks actions whose params object must be empty.
+ *
+ * @public
+ */
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
@@ -385,7 +535,11 @@ export interface ActionParamsMap {
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
 }
 
-/** @public */
+/**
+ * Discriminated request sent to create unsigned steps for one action.
+ *
+ * @public
+ */
 export type CreateActionRequest = {
   [K in ActionType]: {
     provider: string
@@ -396,12 +550,20 @@ export type CreateActionRequest = {
   }
 }[ActionType]
 
-/** @public */
+/**
+ * Response containing the unsigned steps created for an action request.
+ *
+ * @public
+ */
 export interface CreateActionResponse {
   actions: ActionStep[]
 }
 
-/** @public */
+/**
+ * Discriminated request sent to execute signed steps for one action.
+ *
+ * @public
+ */
 export type ExecuteActionRequest = {
   [K in ActionType]: {
     provider: string
@@ -412,7 +574,11 @@ export type ExecuteActionRequest = {
   }
 }[ActionType]
 
-/** @public */
+/**
+ * Response containing per-action execution results.
+ *
+ * @public
+ */
 export interface ExecuteActionResponse {
   results: ActionResult[]
 }

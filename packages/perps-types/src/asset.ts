@@ -64,7 +64,7 @@ export interface DepositAsset {
   displayName?: string
 }
 
-/** @public */
+/** Response containing the provider's normalized asset registry. @public */
 export interface AssetsResponse {
   assets: Asset[]
 }

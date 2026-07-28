@@ -11,7 +11,13 @@ import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 
-/** @public */
+/**
+ * Persisted Lighter API-key material associated with one L2 account.
+ * `apiKeyPrivateKey` is a Lighter-native signing key, not an Ethereum key;
+ * `apiKeyIndex` identifies its registered on-chain slot.
+ *
+ * @public
+ */
 export interface LighterApiKey {
   /** Lighter account index, looked up once via accountsByL1Address. */
   accountIndex: number
@@ -41,12 +47,23 @@ const isLighterApiKey = (value: unknown): value is LighterApiKey => {
   )
 }
 
-/** @public */
+/**
+ * Storage-backed cache for Lighter API keys. Records are namespaced by L1
+ * address and provider instance so multiple Lighter deployments can share one
+ * {@link StorageAdapter} without collisions.
+ *
+ * @public
+ */
 export class LighterKeyStore {
   private readonly storage: StorageAdapter
   private readonly cache = new Map<string, LighterApiKey>()
   private providerKey: LighterProviderKey
 
+  /**
+   * Create a key store using `storage` and the optional provider namespace.
+   * The default provider key preserves the package's standard Lighter storage
+   * namespace.
+   */
   constructor(
     storage: StorageAdapter,
     providerKey: LighterProviderKey = LIGHTER_PROVIDER_KEY
@@ -74,6 +91,10 @@ export class LighterKeyStore {
       : `${STORAGE_PREFIX}:${this.providerKey}:${lower}`
   }
 
+  /**
+   * Load the API key for an L1 address, or `null` when no valid record exists.
+   * Invalid persisted records are ignored by the storage validation boundary.
+   */
   async get(address: Address): Promise<LighterApiKey | null> {
     const key = this.storageKey(address)
     const cached = this.cache.get(key)
@@ -88,12 +109,20 @@ export class LighterKeyStore {
     return parsed
   }
 
+  /**
+   * Persist an API key for an L1 address, replacing any existing record under
+   * that provider namespace.
+   */
   async set(address: Address, value: LighterApiKey): Promise<void> {
     const key = this.storageKey(address)
     this.cache.set(key, value)
     await this.storage.set(key, JSON.stringify(value))
   }
 
+  /**
+   * Remove the persisted API key for an L1 address and clear its in-memory
+   * cache entry.
+   */
   async remove(address: Address): Promise<void> {
     const key = this.storageKey(address)
     this.cache.delete(key)

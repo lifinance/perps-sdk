@@ -50,7 +50,12 @@ export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   },
 }
 
-/** @public */
+/**
+ * Transport options for a direct Hyperliquid `/info` request. `policy`
+ * controls retries, `signal` cancels the request, and `fetchImpl` overrides
+ * the runtime's global `fetch` implementation.
+ * @public
+ */
 export interface InfoRequestOptions {
   signal?: AbortSignal
   policy?: ResolvedRetryPolicy

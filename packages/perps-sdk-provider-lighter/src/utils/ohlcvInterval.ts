@@ -20,7 +20,12 @@ const LIGHTER_SUPPORTED_INTERVALS: Record<string, string> = {
   '1w': '1w',
 }
 
-/** @public */
+/**
+ * Validate and map an SDK OHLCV interval to Lighter's resolution string.
+ * Unsupported intervals raise a validation error instead of being rounded.
+ *
+ * @public
+ */
 export const mapInterval = (interval: string): string => {
   const resolution = LIGHTER_SUPPORTED_INTERVALS[interval]
   if (!resolution) {

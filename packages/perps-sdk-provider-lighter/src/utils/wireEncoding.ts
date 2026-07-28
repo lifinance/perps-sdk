@@ -144,7 +144,7 @@ export const mapTimeInForceToInt = (tif?: string): number => {
  * IOC uses Lighter's nil expiry (`0`). Every other TIF uses
  * `LT_DEFAULT_ORDER_EXPIRY` (`-1`), which the WASM signer expands to its
  * canonical future expiry (`now + 28d`) as an absolute Unix-millisecond
- * Trigger-order expiry handling is provider-specific; see
+ * timestamp. Trigger-order expiry handling is provider-specific; see
  * {@link LT_DEFAULT_ORDER_EXPIRY} and its call sites.
  *
  * @param tifInt - Lighter time-in-force integer.

@@ -9,8 +9,9 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetMarketsContextParams {
+  /** Provider key whose live context is returned. */
   provider: string
-  /** Optional filter — opaque `Market.id`s (not display symbols). */
+  /** Optional filter of opaque `Market.id`s (not display symbols). */
   marketIds?: string[]
 }
 

@@ -10,11 +10,15 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetOrdersParams {
+  /** Provider key whose account orders are read. */
   provider: string
+  /** User account address to query. */
   address: Address
-  /** Optional filter — opaque `Market.id` (not `displaySymbol`) */
+  /** Optional opaque `Market.id` filter, not a display symbol. */
   marketId?: string
+  /** Maximum orders to return, when supported by the venue. */
   limit?: number
+  /** Opaque pagination cursor from the previous response. */
   cursor?: string
 }
 

@@ -47,7 +47,12 @@ const UNIT_UNDERLYING_SYMBOL: Readonly<Record<string, string>> = {
   UANSEM: 'ANSEM',
 }
 
-/** Token `name`s of the Unit-bridged HL spot assets. */
+/**
+ * Names of Unit-bridged Hyperliquid spot tokens recognized by the logo
+ * resolver. The set is read-only and is intended for callers that need to
+ * distinguish Unit balances before resolving their icons.
+ * @public
+ */
 export const UNIT_TOKEN_NAMES: ReadonlySet<string> = new Set(
   Object.keys(UNIT_UNDERLYING_SYMBOL)
 )
@@ -58,24 +63,21 @@ const unitSpotLogoURI = (name: string): string => {
   return underlying === undefined ? '' : `${HL_COIN_CDN}/${underlying}.svg`
 }
 
-/** Return `asset` with its `logoURI` replaced when a display-symbol override exists. */
+/**
+ * Apply the provider's known symbol-specific logo corrections to an asset.
+ * Returns the original object when no override exists.
+ * @public
+ */
 export const applyLogoOverride = (asset: Asset): Asset => {
   const override = BASE_ASSET_LOGO_OVERRIDES[asset.displaySymbol]
   return override === undefined ? asset : { ...asset, logoURI: override }
 }
 
 /**
- * Override-aware logo URI for a Hyperliquid spot token. Base rule is
- * `coins/${name}_spot.svg`; a Unit-bridged token (`fullName` starts with
- * "Unit") resolves to its underlying's icon instead; the override table wins
- * over both.
- *
- * When `fullName` is absent — spot *balances* (`HlSpotBalance`) carry no
- * `fullName` and this issue deliberately does not fetch `spotMeta` on the
- * account path — the derivation degrades to the symbol-keyed override + base
- * `_spot` rule, so a Unit-bridged balance uses the base rule rather than its
- * underlying's icon. The registry path (which has `fullName`) keeps full Unit
- * resolution.
+ * Resolve the logo URI for a Hyperliquid spot token. Unit-bridged tokens use
+ * the underlying symbol's icon when `fullName` starts with `'Unit'`; otherwise
+ * the base URI is `coins/${name}_spot.svg`. Known symbol overrides win.
+ * @public
  */
 export const spotLogoURI = (name: string, fullName?: string | null): string => {
   const base = fullName?.startsWith('Unit')

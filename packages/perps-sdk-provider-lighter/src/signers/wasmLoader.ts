@@ -48,7 +48,13 @@ function defaultAssetUrl(filename: string): URL {
   return new URL(`../../wasm/${filename}`, currentModuleUrl())
 }
 
-/** @public */
+/**
+ * Overrides for locating the Lighter Go WASM binary and its runtime loader.
+ * Supplying explicit URLs or source is useful when a bundler does not preserve
+ * the package's relative asset layout.
+ *
+ * @public
+ */
 export interface LoadLighterWasmOptions {
   /** Override URL for the `.wasm` binary (browser: fetch; Node: fs). */
   wasmBinaryUrl?: string | URL
@@ -68,7 +74,13 @@ export interface LoadLighterWasmOptions {
   wasmExecJsSource?: string
 }
 
-/** @public */
+/**
+ * Function table installed by the Lighter Go WASM runtime. Methods mirror the
+ * venue signer ABI and return a result containing either signed transaction
+ * fields or an error; positional argument contracts are documented per method.
+ *
+ * @public
+ */
 export interface LighterWasmExports {
   GenerateAPIKey: () => {
     publicKey?: string

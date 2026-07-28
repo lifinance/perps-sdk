@@ -15,6 +15,8 @@ import type { StorageAdapter } from './types.js'
  *
  * @param raw Stored string, or `null` when the key is absent.
  * @param isValid Shape guard run against the parsed value.
+ *
+ * @public
  */
 export function parseStoredRecord<T>(
   raw: string | null,
@@ -40,6 +42,8 @@ export function parseStoredRecord<T>(
  * Returns `null` for both the genuine-absence and the evicted-poison cases;
  * callers that must distinguish them should compare against the pre-read
  * presence of the key themselves.
+ *
+ * @public
  */
 export async function readValidatedRecord<T>(
   storage: StorageAdapter,

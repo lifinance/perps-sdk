@@ -15,7 +15,8 @@ const STORAGE_PREFIX = 'lifi-perps-agent'
 /**
  * Hyperliquid agent keypair — an EVM keypair the user approves (via
  * `APPROVE_AGENT`) to sign trading actions on their behalf, so each order
- * does not require a wallet prompt.
+ * does not require a wallet prompt. `privateKey` is a 32-byte EVM hex key.
+ * @public
  */
 export interface HyperliquidAgent {
   /** Agent wallet address. */
@@ -60,6 +61,7 @@ const isHyperliquidAgent = (value: unknown): value is HyperliquidAgent => {
  * fully compromised page — a same-origin script can still drive this store to
  * decrypt. Blast radius is limited to agent trading: fund withdrawal still
  * requires L1 `APPROVE_AGENT` consent that the agent key alone cannot grant.
+ * @public
  */
 export class HyperliquidAgentStore {
   private storage: StorageAdapter

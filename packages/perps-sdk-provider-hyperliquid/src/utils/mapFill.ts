@@ -14,6 +14,7 @@ import {
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
 
+/** Re-export the shared fill-position classifier used by Hyperliquid mappings. @public */
 export { classifyFillFromPosition }
 
 /**

@@ -101,15 +101,25 @@ export interface HyperliquidProviderOptions {
  * persistence, and revocation. The base {@link PerpsProviderPlugin} contract
  * stays provider-agnostic — this extension is opt-in for callers that
  * explicitly type against it (e.g. to surface a "revoke agent" affordance).
+ * @public
  */
 export interface HyperliquidPerpsProvider extends PerpsProviderPlugin {
-  /** Resolve the agent wallet address, throwing if none has been created. */
+  /**
+   * Resolve the stored agent wallet address for a user.
+   * @throws {PerpsError} With `AgentNotFound` when no agent has been created.
+   */
   getAgentAddress(address: Address): Promise<Address>
-  /** Whether an agent keypair exists for the user address. */
+  /** Return whether a persisted agent keypair exists for the user address. */
   hasAgent(address: Address): Promise<boolean>
-  /** Remove the user's agent keypair (revoke local authorization). */
+  /**
+   * Remove the user's persisted agent keypair and local authorization.
+   * This does not submit an on-chain `APPROVE_AGENT` revocation.
+   */
   removeAgent(address: Address): Promise<void>
-  /** Import an existing agent keypair for the user address. */
+  /**
+   * Validate, persist, and return an existing agent private key for a user.
+   * The returned private key is stored by the configured {@link StorageAdapter}.
+   */
   importAgent(address: Address, privateKey: Hex): Promise<HyperliquidAgent>
 }
 

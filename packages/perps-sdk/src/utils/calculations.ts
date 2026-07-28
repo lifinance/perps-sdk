@@ -175,7 +175,9 @@ export function effectiveLeverage(params: {
  * @public
  */
 export interface ExpectedPnl {
+  /** Signed expected profit/loss in USD. */
   amount: number
+  /** Signed expected return as a percentage (10 means 10%). */
   percent: number
 }
 

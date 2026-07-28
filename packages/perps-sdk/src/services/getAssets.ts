@@ -9,6 +9,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
  * @public
  */
 export interface GetAssetsParams {
+  /** Provider key whose canonical asset registry is returned. */
   provider: string
 }
 

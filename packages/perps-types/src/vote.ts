@@ -9,7 +9,7 @@ import type { PerpsTypedData, TypedDataParameter } from './typedData.js'
  */
 export const META_PROVIDER = 'meta'
 
-/** @public */
+/** Type alias for the {@link META_PROVIDER} provider-independent sentinel. @public */
 export type MetaProvider = typeof META_PROVIDER
 
 /**
