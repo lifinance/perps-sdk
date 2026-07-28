@@ -2398,13 +2398,16 @@ describe('LighterProvider — getMarketSettings', () => {
     ],
   }
 
+  let accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+
   beforeEach(() => {
+    accountPayload = ACCOUNT_WITH_ISOLATED_ROW
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
         if (u.includes('/api/v1/account?')) {
-          return respond(ACCOUNT_WITH_ISOLATED_ROW)
+          return respond(accountPayload)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -2425,6 +2428,61 @@ describe('LighterProvider — getMarketSettings', () => {
         market: { marketId: '0', categoryId: 'lighter' },
       })
     ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  })
+
+  it('preserves fractional venue leverage without two-decimal rounding', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '60',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 100 / 60,
+    })
+  })
+
+  it('does not return a partial setting when leverage is invalid', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '0',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toBeUndefined()
   })
 
   it('resolves undefined for a market without a row', async () => {

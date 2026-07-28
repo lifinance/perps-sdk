@@ -5,11 +5,10 @@ import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 
 /**
- * Configured leverage from an IMF percent string: `100 / IMF` at two
- * decimals, in exact decimal arithmetic. Lighter leverage is fractional
- * (IMF 45% = 2.22x), and whole-number rounding understates the margin
- * requirement consumers derive from it. `undefined` for a non-positive or
- * unparsable IMF.
+ * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
+ * arithmetic before conversion to `number`. This value is for displaying the
+ * venue setting; provider risk calculations consume the original decimal IMF
+ * instead. `undefined` for a non-positive or unparsable IMF.
  * @public
  */
 export const leverageFromImf = (imf: string): number | undefined => {
@@ -22,7 +21,7 @@ export const leverageFromImf = (imf: string): number | undefined => {
   if (parsed.lte(0)) {
     return undefined
   }
-  return new Big(100).div(parsed).round(2, Big.roundHalfUp).toNumber()
+  return new Big(100).div(parsed).toNumber()
 }
 
 /**

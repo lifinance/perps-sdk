@@ -145,13 +145,12 @@ describe('mapPosition (Lighter)', () => {
         mapPosition(basePosition({ initial_margin_fraction: '12.50' }), SYMBOL)
           .leverage
       ).toBe(8)
-      // Fractional IMFs must not round to a whole leverage: 45% is 2.22x,
-      // and rounding to 2 would inflate removable-margin bounds past the
-      // venue's requirement.
+      // Fractional IMFs must not round to whole or two-decimal display
+      // leverage. Risk calculations consume the exact IMF separately.
       expect(
         mapPosition(basePosition({ initial_margin_fraction: '45.00' }), SYMBOL)
           .leverage
-      ).toBe(2.22)
+      ).toBe(100 / 45)
     })
   })
 })

@@ -2,4 +2,4 @@
 "@lifi/perps-sdk-provider-lighter": patch
 ---
 
-carry fractional position leverage (two decimals) instead of whole-number rounding, which understated margin requirements derived from it
+carry the venue's fractional position leverage as a display value instead of rounding it to a whole number

@@ -935,12 +935,16 @@ export const lighterProvider = (
       if (!row) {
         return undefined
       }
+      const leverage = leverageFromImf(row.initial_margin_fraction)
+      if (leverage === undefined) {
+        return undefined
+      }
       return {
         marginMode:
           row.margin_mode === LT_MARGIN_MODE_ISOLATED
             ? MarginMode.ISOLATED
             : MarginMode.CROSS,
-        leverage: leverageFromImf(row.initial_margin_fraction),
+        leverage,
       }
     },
 

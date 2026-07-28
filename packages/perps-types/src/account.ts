@@ -88,14 +88,14 @@ export interface AccountSummary {
 }
 
 /**
- * The user's venue-side settings for one market: the margin mode and
- * leverage the next order on it will use. Fields are absent when the venue
- * exposes no readable value for them.
+ * The user's complete venue-side settings for one market: the margin mode
+ * and display leverage the next order on it will use. A provider returns
+ * `undefined` when it cannot read both values.
  * @public
  */
 export interface MarketSettings {
-  marginMode?: MarginMode
-  leverage?: number
+  marginMode: MarginMode
+  leverage: number
 }
 
 /** @public */
