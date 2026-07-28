@@ -137,6 +137,7 @@ export type {
   ProviderGetActivityParams,
   ProviderGetDepositFlowParams,
   ProviderGetFillsParams,
+  ProviderGetMarketSettingsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,

@@ -25,7 +25,7 @@ export {
   mapStatusReason,
   mapTriggerOrder,
 } from './mapOrder.js'
-export { mapPosition } from './mapPosition.js'
+export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'

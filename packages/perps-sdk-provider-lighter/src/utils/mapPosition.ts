@@ -1,7 +1,28 @@
 import type { MarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
+
+/**
+ * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
+ * arithmetic before conversion to `number`. This value is for displaying the
+ * venue setting; provider risk calculations consume the original decimal IMF
+ * instead. `undefined` for a non-positive or unparsable IMF.
+ * @public
+ */
+export const leverageFromImf = (imf: string): number | undefined => {
+  let parsed: Big
+  try {
+    parsed = new Big(imf)
+  } catch {
+    return undefined
+  }
+  if (parsed.lte(0)) {
+    return undefined
+  }
+  return new Big(100).div(parsed).toNumber()
+}
 
 /**
  * Map a raw Lighter account position to the generic Position type.
@@ -35,7 +56,7 @@ export const mapPosition = (
         : (parseFloat(pos.position_value) / Math.abs(size)).toString(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
-    leverage: imf > 0 ? Math.round(100 / imf) : 1,
+    leverage: leverageFromImf(pos.initial_margin_fraction) ?? 1,
     marginUsed,
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }

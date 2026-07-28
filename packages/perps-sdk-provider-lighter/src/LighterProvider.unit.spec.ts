@@ -11,6 +11,7 @@ import {
   ActionType,
   ActivityType,
   LiquidityRole,
+  MarginMode,
   OrderSide,
   PerpsErrorCode,
 } from '@lifi/perps-types'
@@ -2361,5 +2362,153 @@ describe('LighterProvider — instance config', () => {
     expect(backendUrls.some((u) => u.endsWith('provider=lighter-rh'))).toBe(
       true
     )
+  })
+})
+
+describe('LighterProvider — getMarketSettings', () => {
+  // Live capture of an isolated BTC position row: IMF 50% ⇒ 2x leverage.
+  const ACCOUNT_WITH_ISOLATED_ROW = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '50.00',
+            open_order_count: 0,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '0.00019',
+            avg_entry_price: '61856.6',
+            position_value: '12.352603',
+            unrealized_pnl: '-0.006954',
+            realized_pnl: '0.000000',
+            liquidation_price: '39131.4',
+            total_funding_paid_out: '0.000000',
+            margin_mode: 1,
+            margin_set_flag: 1,
+            allocated_margin: '10.179731',
+            total_discount: '0.000000',
+          },
+        ],
+      },
+    ],
+  }
+
+  let accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+
+  beforeEach(() => {
+    accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond(accountPayload)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("reads the market's mode and leverage from the account position row", async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  })
+
+  it('preserves fractional venue leverage without two-decimal rounding', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '60',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 100 / 60,
+    })
+  })
+
+  it('does not return a partial setting when leverage is invalid', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_ISOLATED_ROW,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
+          positions: [
+            {
+              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+              initial_margin_fraction: '0',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '0', categoryId: 'lighter' },
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('resolves undefined for a market without a row', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '7', categoryId: 'lighter' },
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('resolves undefined for a spot market without a request', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getMarketSettings?.({
+        address: ADDRESS,
+        market: { marketId: '2048', categoryId: 'spot' },
+      })
+    ).resolves.toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
