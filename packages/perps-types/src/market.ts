@@ -1,4 +1,5 @@
 import type { Asset } from './asset.js'
+import type { PositionMarginAdjustment } from './enums.js'
 
 /** @public */
 export interface FundingInfo {
@@ -45,6 +46,8 @@ export interface BaseMarket {
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
   onlyIsolated: boolean
+  /** Whether individual position margin can be added and/or removed. */
+  positionMarginAdjustment: PositionMarginAdjustment
   /**
    * Venue maintenance margin rate for this market as a fraction (e.g. `0.012`
    * = 1.2%). Feeds client-side liquidation-price estimates via the provider's
@@ -53,8 +56,13 @@ export interface PerpsMarket extends BaseMarket {
   maintenanceMarginRate?: number
 }
 
-/** @public */
-export interface SpotMarket extends BaseMarket {}
+/**
+ * Spot markets cannot expose perpetual-position margin capabilities.
+ * @public
+ */
+export interface SpotMarket extends BaseMarket {
+  positionMarginAdjustment?: never
+}
 
 /** @public */
 export type Market = PerpsMarket | SpotMarket
@@ -63,6 +71,18 @@ export type Market = PerpsMarket | SpotMarket
 export type MarketDisplay = Pick<
   BaseMarket,
   'providerId' | 'id' | 'categoryId' | 'baseAsset' | 'quoteAsset' | 'isDelisted'
+>
+
+/** Perpetual-market identity embedded on an open {@link Position}. @public */
+export type PerpsMarketDisplay = Pick<
+  PerpsMarket,
+  | 'providerId'
+  | 'id'
+  | 'categoryId'
+  | 'baseAsset'
+  | 'quoteAsset'
+  | 'isDelisted'
+  | 'positionMarginAdjustment'
 >
 
 /**

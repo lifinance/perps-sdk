@@ -1,10 +1,14 @@
-import type { MarketDisplay } from '@lifi/perps-types'
-import { MarginMode, PositionSide } from '@lifi/perps-types'
+import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlAssetPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
 
-const BTC_MARKET: MarketDisplay = {
+const BTC_MARKET: PerpsMarketDisplay = {
   providerId: 'hyperliquid',
   id: 'BTC',
   categoryId: 'hyperliquid',
@@ -20,6 +24,7 @@ const BTC_MARKET: MarketDisplay = {
     displaySymbol: 'USDC',
     logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
   },
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 const makeAp = (
@@ -51,6 +56,7 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('95000')
     expect(result.liquidationPrice).toBe('85000')
     expect(result.leverage).toBe(10)
+    expect(result.initialMarginRequirement).toBe('950')
     expect(result.marginMode).toBe(MarginMode.CROSS)
     expect(result.market).toBe(BTC_MARKET)
   })
@@ -72,10 +78,8 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('0')
   })
 
-  it('falls back markPrice to "0" when positionValue is empty', () => {
-    const result = map(makeAp({ szi: '0.1', positionValue: '' }))
-
-    expect(result.markPrice).toBe('0')
+  it('rejects a missing positionValue instead of inventing risk data', () => {
+    expect(() => map(makeAp({ szi: '0.1', positionValue: '' }))).toThrowError()
   })
 
   it('maps isolated leverage type to MarginMode.ISOLATED', () => {
@@ -83,6 +87,8 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.marginMode).toBe(MarginMode.ISOLATED)
     expect(result.leverage).toBe(5)
+    expect(result.marginUsed).toBe('840')
+    expect(result.initialMarginRequirement).toBe('1900')
   })
 
   it('defaults entryPrice and liquidationPrice to "0" when null', () => {

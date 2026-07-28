@@ -14,6 +14,7 @@ import {
   MarginMode,
   OrderSide,
   PerpsErrorCode,
+  PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -70,6 +71,7 @@ const MARKETS_RESPONSE = {
       markPrice: '50000',
       maxLeverage: 50,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
       funding: { rate: '0.0001', nextFundingTime: 0 },
     },
   ],

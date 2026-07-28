@@ -17,6 +17,7 @@ import type {
   PerpsMarket,
   PerpsSigner,
   Position,
+  PositionMarginConstraints,
   PositionsResponse,
   ProviderAction,
   Quote,
@@ -461,6 +462,18 @@ export interface PerpsProviderPlugin {
     market: PerpsMarket,
     params: LiquidationEstimateParams
   ): number | undefined
+
+  /**
+   * Exact venue-owned constraints for changing `position`'s dedicated margin.
+   * Pure — providers normalize raw venue quantities onto the position before
+   * returning these inputs.
+   *
+   * @returns `undefined` when this position has no individual margin
+   *   adjustment (for example a cross position or a cross-only venue).
+   */
+  positionMarginConstraints(
+    position: Position
+  ): PositionMarginConstraints | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

@@ -29,6 +29,7 @@ export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'
+export { positionMarginConstraints } from './transferMargin.js'
 export {
   leverageToFraction,
   mapOrderTypeToInt,

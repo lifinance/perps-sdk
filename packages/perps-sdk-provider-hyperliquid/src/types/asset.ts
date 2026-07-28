@@ -6,6 +6,8 @@ export type HlUniverseItem = {
   szDecimals: number
   maxLeverage: number
   onlyIsolated?: boolean
+  /** Current replacement for deprecated `onlyIsolated`. */
+  marginMode?: 'strictIsolated' | 'noCross'
   isDelisted?: boolean
 }
 

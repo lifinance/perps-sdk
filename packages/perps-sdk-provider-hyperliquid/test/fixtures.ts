@@ -1,4 +1,4 @@
-import type { Market } from '@lifi/perps-types'
+import { type Market, PositionMarginAdjustment } from '@lifi/perps-types'
 import type {
   HlClearinghouseState,
   HlExtraAgents,
@@ -109,6 +109,7 @@ export const HL_MARKETS: Market[] = [
     szDecimals: 5,
     maxLeverage: 50,
     onlyIsolated: false,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   {
     providerId: 'hyperliquid',
@@ -119,6 +120,7 @@ export const HL_MARKETS: Market[] = [
     szDecimals: 4,
     maxLeverage: 50,
     onlyIsolated: false,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
 ]
 
@@ -131,6 +133,7 @@ export const HL_DELISTED_MARKET: Market = {
   szDecimals: 0,
   maxLeverage: 10,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   isDelisted: true,
 }
 

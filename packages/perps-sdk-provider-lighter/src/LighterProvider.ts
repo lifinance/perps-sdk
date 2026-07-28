@@ -21,6 +21,7 @@ import {
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
+  toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -107,6 +108,7 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
+  positionMarginConstraints,
   toIsoFromMs,
   toIsoFromSeconds,
   toRequiredBig,
@@ -765,7 +767,7 @@ export const lighterProvider = (
           normalizeLighterPublicKey(registeredKey.public_key)
 
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
-        registry.require(String(id))
+        toPerpsMarketDisplay(registry.require(String(id)))
       )
 
       const totalMarginUsed = positions.reduce(
@@ -890,7 +892,7 @@ export const lighterProvider = (
       ])
 
       let positions: Position[] = mapOpenPositions(account.positions, (id) =>
-        registry.require(String(id))
+        toPerpsMarketDisplay(registry.require(String(id)))
       )
 
       if (params.marketId !== undefined) {
@@ -1316,6 +1318,8 @@ export const lighterProvider = (
     formatOrderSize,
 
     estimateLiquidationPrice,
+
+    positionMarginConstraints,
 
     projectConfig(
       config: AccountConfig,

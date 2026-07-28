@@ -65,6 +65,16 @@ export enum MarginMode {
   CROSS = 'CROSS',
 }
 
+/** Per-market support for changing an open position's dedicated margin. @public */
+export enum PositionMarginAdjustment {
+  /** The venue does not expose individual position margin. */
+  NONE = 'NONE',
+  /** Margin can be added but cannot be removed. */
+  ADD_ONLY = 'ADD_ONLY',
+  /** Margin can be added and removed. */
+  ADD_AND_REMOVE = 'ADD_AND_REMOVE',
+}
+
 /** @public */
 export enum TimeInForce {
   GTC = 'GTC',

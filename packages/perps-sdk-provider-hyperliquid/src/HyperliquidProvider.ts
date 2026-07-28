@@ -71,6 +71,7 @@ import type { HlExtraAgents } from './types/index.js'
 import { hlInfoOptions, infoRequest } from './utils/infoClient.js'
 import { calculateLiquidationPrice } from './utils/liquidation.js'
 import { formatOrderPrice, formatOrderSize } from './utils/orderFormatting.js'
+import { positionMarginConstraints } from './utils/transferMargin.js'
 
 /**
  * Options for {@link hyperliquidProvider}.
@@ -395,6 +396,8 @@ export function hyperliquidProvider(
         params.isLong,
         market.maxLeverage
       ),
+
+    positionMarginConstraints,
 
     projectConfig: (
       config: AccountConfig,

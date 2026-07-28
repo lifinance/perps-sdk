@@ -8,7 +8,12 @@ import type {
   PerpsMarket,
   SpotMarket,
 } from '@lifi/perps-types'
-import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsSigner,
+  PositionMarginAdjustment,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
@@ -38,6 +43,7 @@ const MARKETS_RESPONSE = {
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
   ],
 }

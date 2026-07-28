@@ -5,6 +5,7 @@ import type {
   ExecuteActionRequest,
   ExecuteActionResponse,
   HmacSignedActionStep,
+  Position,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -12,6 +13,8 @@ import {
   MarginMode,
   PerpsErrorCode,
   PerpsSigner,
+  PositionMarginAdjustment,
+  PositionSide,
   SigningMethod,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
@@ -1108,6 +1111,60 @@ describe('PerpsClient', () => {
           market,
         })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  describe('getPositionMarginConstraints', () => {
+    const position: Position = {
+      market: {
+        providerId: provider,
+        id: 'BTC',
+        categoryId: 'perps',
+        baseAsset: {
+          providerId: provider,
+          id: 'BTC',
+          displaySymbol: 'BTC',
+        },
+        quoteAsset: {
+          providerId: provider,
+          id: 'USDC',
+          displaySymbol: 'USDC',
+        },
+        positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+      },
+      side: PositionSide.LONG,
+      size: '1',
+      entryPrice: '10000',
+      markPrice: '10000',
+      liquidationPrice: '8000',
+      unrealizedPnl: '0',
+      leverage: 10,
+      marginUsed: '1500',
+      initialMarginRequirement: '1000',
+      marginMode: MarginMode.ISOLATED,
+    }
+
+    it('delegates the complete position to its registered provider', () => {
+      const constraints = {
+        minimumMarginRequirement: '1000',
+        amountIncrement: '0.000001',
+      }
+      const positionMarginConstraints = vi.fn(() => constraints)
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            positionMarginConstraints,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      expect(client.getPositionMarginConstraints(position)).toEqual(constraints)
+      expect(positionMarginConstraints).toHaveBeenCalledWith(position)
     })
   })
 

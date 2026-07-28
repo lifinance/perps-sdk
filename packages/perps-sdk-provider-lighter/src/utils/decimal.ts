@@ -35,3 +35,18 @@ export const toRequiredBig = (
     `Lighter field \`${field}\` is not a valid decimal.`
   )
 }
+
+/** Parse a required venue decimal that must be greater than zero. */
+export const toPositiveRequiredBig = (
+  value: string | undefined,
+  field: string
+): Big => {
+  const parsed = toRequiredBig(value, field)
+  if (parsed.lte(0)) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Lighter field \`${field}\` must be greater than zero.`
+    )
+  }
+  return parsed
+}

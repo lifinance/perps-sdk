@@ -1,10 +1,14 @@
-import type { MarketDisplay } from '@lifi/perps-types'
-import { MarginMode, PositionSide } from '@lifi/perps-types'
+import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { OndoPosition } from '../types/wire.js'
 import { mapOpenPositions, mapPosition } from './mapPosition.js'
 
-const MARKET: MarketDisplay = {
+const MARKET: PerpsMarketDisplay = {
   providerId: 'ondo',
   id: 'AAPL-USD.P',
   categoryId: 'ondo',
@@ -20,6 +24,7 @@ const MARKET: MarketDisplay = {
     displaySymbol: 'USD',
     logoURI: '',
   },
+  positionMarginAdjustment: PositionMarginAdjustment.NONE,
 }
 
 const positionFixture = (overrides?: Partial<OndoPosition>): OndoPosition => ({
@@ -52,6 +57,7 @@ describe('mapPosition', () => {
       unrealizedPnl: '15.5',
       leverage: 5,
       marginUsed: '401',
+      initialMarginRequirement: '401',
       marginMode: MarginMode.CROSS,
     })
   })

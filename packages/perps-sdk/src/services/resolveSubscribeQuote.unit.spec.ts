@@ -6,6 +6,7 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/handlers.js'
@@ -40,6 +41,7 @@ const BTC_PERP: PerpsMarket = {
   szDecimals: 5,
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 const PRICES: MarketContext[] = [

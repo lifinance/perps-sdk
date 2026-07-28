@@ -1,4 +1,4 @@
-import type { PerpsMarket } from '@lifi/perps-types'
+import { type PerpsMarket, PositionMarginAdjustment } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { estimateLiquidationPrice } from './liquidation.js'
 
@@ -25,6 +25,7 @@ const market = (overrides: Partial<PerpsMarket>): PerpsMarket => ({
   markPrice: '61729.6',
   maxLeverage: 50,
   onlyIsolated: false,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   funding: { rate: '0.0001', nextFundingTime: 0 },
   maintenanceMarginRate: 0.012,
   ...overrides,

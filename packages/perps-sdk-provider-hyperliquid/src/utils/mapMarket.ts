@@ -1,4 +1,5 @@
 import type { PerpsMarket } from '@lifi/perps-types'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlUniverseItem } from '../types/index.js'
 import { calculateMaintenanceMarginRate } from './liquidation.js'
@@ -31,6 +32,14 @@ export const mapMarket = (
   szDecimals: universe.szDecimals,
   priceDecimals: getMaxPriceDecimals(universe.szDecimals),
   maxLeverage: universe.maxLeverage,
-  onlyIsolated: universe.onlyIsolated === true,
+  onlyIsolated:
+    universe.marginMode !== undefined || universe.onlyIsolated === true,
+  // Deprecated `onlyIsolated` cannot distinguish strict-isolated from
+  // no-cross, so the ambiguous legacy shape fails closed as add-only.
+  positionMarginAdjustment:
+    universe.marginMode === 'noCross' ||
+    (universe.marginMode === undefined && universe.onlyIsolated !== true)
+      ? PositionMarginAdjustment.ADD_AND_REMOVE
+      : PositionMarginAdjustment.ADD_ONLY,
   maintenanceMarginRate: calculateMaintenanceMarginRate(universe.maxLeverage),
 })
