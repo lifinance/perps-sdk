@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 5.0.0
+
+### Major Changes
+
+- [#304](https://github.com/lifinance/perps-sdk/pull/304) [`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the dead `Provider.depositAssets` field and the `DepositAsset` interface. Nothing populated the field — the `/providers` projection that fed it was withdrawn — so any consumer reading it received `undefined`. Per-venue deposit facts are declared in `@lifi/perps-sdk` as `DeclaredDepositAsset` constants (`ETHEREUM_USDC`, `HYPERLIQUID_USDC`, `LIGHTER_USDC`, …) and resolved at runtime through `getDepositFlow`; read deposit targets from there instead.
+
 ## 4.2.0
 
 ### Minor Changes

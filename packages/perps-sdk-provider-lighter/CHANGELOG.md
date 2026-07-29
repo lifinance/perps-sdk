@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 8.2.0
+
+### Minor Changes
+
+- [#303](https://github.com/lifinance/perps-sdk/pull/303) [`438e8e2`](https://github.com/lifinance/perps-sdk/commit/438e8e29b40c7d1af7d9972adaf2f18379985a30) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Sign Lighter withdrawals, transfers and spot/perp route moves against the collateral asset of the instance doing the signing instead of a module-pinned USDC index, and report collateral balances per instance. `LighterInstanceConfig` now carries a `collateral` field (L2 asset index plus display symbol — USDC on mainnet, USDG on the Robinhood chain deployment), `LighterSigner` accepts a `collateralAssetIndex`, and `lighterAsset` accepts the owning instance's provider key.
+
+### Patch Changes
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
 ## 8.1.0
 
 ### Minor Changes
