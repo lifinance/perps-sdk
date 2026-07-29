@@ -41,7 +41,9 @@
     "src/**/*.ts",
     "!src/**/*.spec.ts",
     "!src/**/*.test.ts",
-    "!src/**/*.tsbuildinfo"
+    "!src/**/*.tsbuildinfo",
+    "!tsconfig.json",
+    "!tsconfig.build.json"
   ],
   "scripts": {
     "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:clean",
