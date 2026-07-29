@@ -72,13 +72,14 @@ export type LtUpdateMarginWasmParams = {
 }
 
 /**
- * Backend-provided params for SignWithdraw.
+ * Backend-provided params for SignWithdraw. `asset_index` and `route_type`
+ * are not part of this shape — the signer sources both from the configured
+ * instance collateral asset and the perps route, so the backend must not
+ * send them.
  *
  * @public
  */
 export type LtWithdrawWasmParams = {
-  asset_index: number
-  route_type: number
   amount: number
 }
 
