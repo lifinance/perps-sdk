@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 5.0.0
+
+### Major Changes
+
+- [#302](https://github.com/lifinance/perps-sdk/pull/302) [`c75774d`](https://github.com/lifinance/perps-sdk/commit/c75774dcfaeba85e9becec2ce0e7216483d58ded) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - End the Ondo SIWE login at the client. The SIWE arm of `ondoSignActions` now persists the session JWT and returns no signed step, so the user's wallet signature over the ERC-4361 authentication message is never posted to the LI.FI backend and `SIWE_LOGIN` skips the `/executeAction` hop entirely — the same shape Lighter's client-executed `SET_REFERRAL` already had. Login behaviour is unchanged: the JWT is stored locally, `getAccount` reports `loggedIn: true`, and the `SIWE_LOGIN` setup descriptor reads satisfied.
+
+  Breaking: `completeSiweLogin` resolves the `OndoAuthToken` directly instead of `{ token, signature }`. Callers that destructured `token` must use the returned token itself; the signature has no consumer outside the login exchange.
+
+### Patch Changes
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
 ## 4.0.0
 
 ### Major Changes

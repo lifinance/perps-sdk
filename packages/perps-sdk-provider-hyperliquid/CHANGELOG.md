@@ -1,5 +1,12 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 6.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
 ## 6.0.1
 
 ### Patch Changes

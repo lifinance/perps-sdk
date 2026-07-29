@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 6.2.1
+
+### Patch Changes
+
+- [#306](https://github.com/lifinance/perps-sdk/pull/306) [`2475f77`](https://github.com/lifinance/perps-sdk/commit/2475f77a005b04e19da5c91c19e39e859da9bf73) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix `src/version.ts` reporting a stale, hand-committed version (three majors behind `package.json`) instead of the package's real version. The generator (`scripts/version.js`) now also preserves the `name`/`version` `@public` doc comments it previously stripped, and `changeset:version` regenerates the file in lockstep with every version bump so the committed source, the shipped `src/**/*.ts` files, and the built `dist` output never drift again. The `x-lifi-perps-sdk` request header and any source-consumed build now report the correct SDK version.
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
 ## 6.2.0
 
 ### Minor Changes
