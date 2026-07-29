@@ -1,6 +1,10 @@
 import { defineConfig } from 'vitest/config'
+import { workspaceSrcAliases } from '../../vitest.shared.js'
 
 export default defineConfig({
+  resolve: {
+    alias: workspaceSrcAliases(import.meta.dirname),
+  },
   test: {
     globals: true,
     environment: 'node',
