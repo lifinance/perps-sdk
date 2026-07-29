@@ -43,7 +43,8 @@
     "!**/__mocks__/**",
     "!*.tmp",
     "!*.env",
-    "!tsconfig.json"
+    "!tsconfig.json",
+    "!tsconfig.build.json"
   ],
   "scripts": {
     "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:clean",
@@ -53,7 +54,7 @@
     "build:clean": "rm -rf tsconfig.tsbuildinfo ./dist/tsconfig.tsbuildinfo",
     "build:prerelease": "pnpm node ../../scripts/prerelease.js",
     "clean": "pnpm build:clean && rm -rf dist",
-    "check:types": "tsc --noEmit",
+    "check:types": "tsc --build ./tsconfig.build.json",
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "test": "vitest --run",
     "test:cov": "vitest --run --coverage",

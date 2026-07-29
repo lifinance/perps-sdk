@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/perps-types/tsconfig.build.json" },
+    { "path": "./packages/perps-sdk/tsconfig.build.json" },
+    { "path": "./packages/perps-sdk-provider-lighter/tsconfig.build.json" },
+    { "path": "./packages/perps-sdk-provider-hyperliquid/tsconfig.build.json" },
+    { "path": "./packages/perps-sdk-provider-ondo/tsconfig.build.json" }
+  ]
+}
