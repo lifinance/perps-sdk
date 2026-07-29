@@ -29,7 +29,7 @@
     "check": "biome check",
     "check:write": "biome check --write",
     "check:write:unsafe": "biome check --write --unsafe",
-    "check:types": "pnpm -r --parallel --filter './packages/**' check:types",
+    "check:types": "tsc --build ./tsconfig.build.json",
     "check:circular-deps": "pnpm -r --parallel --filter './packages/**' check:circular-deps",
     "test": "pnpm -r --parallel --filter './packages/**' test",
     "test:cov": "pnpm -r --parallel --filter './packages/**' test:cov",
