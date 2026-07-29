@@ -1,17 +1,8 @@
 import { ActionType } from '@lifi/perps-types'
-import {
-  DEFAULT_LIGHTER_REST_URL,
-  DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
-} from '../constants.js'
-import {
-  LT_ASSET_ID_USDC,
-  LT_ROUTE_PERP,
-  LT_ROUTE_SPOT,
-} from '../types/action.js'
+import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
   type LighterWasmExports,
-  type LoadLighterWasmOptions,
   loadLighterWasm,
   type SignResult,
 } from './wasmLoader.js'
@@ -38,22 +29,16 @@ export interface LighterSignerContext {
 }
 
 /**
- * Configuration for {@link LighterSigner}: optional WASM asset overrides plus
- * the per-instance REST base URL, signing chain id and collateral asset index.
+ * Deployment facts {@link LighterSigner} signs against: the venue's REST base
+ * URL, its zkLighter L2 signing chain id, and the L2 asset index its
+ * withdrawals and transfers settle in.
  *
- * @public
+ * @internal
  */
-export interface LighterSignerConfig extends LoadLighterWasmOptions {
-  /** Lighter REST API base URL. */
-  apiUrl?: string
-  /** Lighter chain ID (304 = mainnet). */
-  chainId?: number
-  /**
-   * L2 asset index this instance's withdrawals and transfers are signed
-   * against — pass the instance's `collateral.assetIndex`. Defaults to
-   * mainnet's USDC slot.
-   */
-  collateralAssetIndex?: number
+export interface LighterSignerConfig {
+  apiUrl: string
+  signerChainId: number
+  collateralAssetIndex: number
 }
 
 /**
@@ -136,25 +121,19 @@ const LIGHTER_ROUTE_BY_DEX: Record<string, number> = {
  * hybrid flows. The instance memoizes WASM initialization and registered
  * `(apiKeyIndex, accountIndex)` clients.
  *
- * @public
+ * @internal
  */
 export class LighterSigner {
   private readonly apiUrl: string
   private readonly chainId: number
   private readonly collateralAssetIndex: number
-  private readonly loaderOptions: LoadLighterWasmOptions
   private wasm: LighterWasmExports | undefined
   private readonly registeredClients = new Set<string>()
 
-  constructor(config: LighterSignerConfig = {}) {
-    this.apiUrl = config.apiUrl ?? DEFAULT_LIGHTER_REST_URL
-    this.chainId = config.chainId ?? DEFAULT_LIGHTER_SIGNER_CHAIN_ID
-    this.collateralAssetIndex = config.collateralAssetIndex ?? LT_ASSET_ID_USDC
-    this.loaderOptions = {
-      wasmBinaryUrl: config.wasmBinaryUrl,
-      wasmExecJsUrl: config.wasmExecJsUrl,
-      wasmExecJsSource: config.wasmExecJsSource,
-    }
+  constructor(config: LighterSignerConfig) {
+    this.apiUrl = config.apiUrl
+    this.chainId = config.signerChainId
+    this.collateralAssetIndex = config.collateralAssetIndex
   }
 
   /**
@@ -163,7 +142,7 @@ export class LighterSigner {
    */
   async initialize(): Promise<void> {
     if (!this.wasm) {
-      this.wasm = await loadLighterWasm(this.loaderOptions)
+      this.wasm = await loadLighterWasm()
     }
   }
 

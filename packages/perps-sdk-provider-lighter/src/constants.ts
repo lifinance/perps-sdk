@@ -38,11 +38,12 @@ export const DEFAULT_LIGHTER_REST_URL = 'https://mainnet.zklighter.elliot.ai'
 export const DEFAULT_LIGHTER_WS_URL = 'wss://mainnet.zklighter.elliot.ai/stream'
 
 /**
- * zkLighter L2 signing chain id fed to {@link LighterSigner} on mainnet.
+ * zkLighter L2 signing chain id for the Lighter mainnet deployment, from
+ * `elliottech/lighter-python` v1.1.2 `lighter/endpoint_profiles.py`.
  *
  * @public
  */
-export const DEFAULT_LIGHTER_SIGNER_CHAIN_ID = 304
+export const LIGHTER_MAINNET_SIGNER_CHAIN_ID = 304
 
 /**
  * Base URL the mainnet Lighter zkLighter explorer resolves a tx hash against
@@ -78,29 +79,30 @@ export const LIGHTER_COLLATERAL_ASSETS: Record<
   LighterProviderKey,
   LighterCollateralAsset
 > = {
-  [LIGHTER_PROVIDER_KEY]: {
+  [LIGHTER_PROVIDER_KEY]: Object.freeze({
     assetIndex: LT_ASSET_ID_USDC,
     displaySymbol: 'USDC',
-  },
-  [LIGHTER_RH_PROVIDER_KEY]: { assetIndex: 3, displaySymbol: 'USDG' },
+  }),
+  [LIGHTER_RH_PROVIDER_KEY]: Object.freeze({
+    assetIndex: 3,
+    displaySymbol: 'USDG',
+  }),
 }
 
 /**
- * The venue-specific facts that distinguish one Lighter deployment from
- * another. One provider + WS pair is built per instance from these; a client
- * may register several so long as their `providerKey`s differ.
+ * The immutable venue facts that distinguish one Lighter deployment from
+ * another. The SDK owns one descriptor per supported deployment; consumers
+ * select a deployment by picking its provider factory, never by assembling
+ * these fields.
  *
  * @public
  */
-export interface LighterInstanceConfig {
-  /** Wire-visible `Provider.key` and the plugin `type`; unique per instance. */
+export interface LighterDeployment {
+  /** Wire-visible `Provider.key` and the plugin `type`; unique per deployment. */
   providerKey: LighterProviderKey
   restUrl: string
   wsUrl: string
-  /**
-   * zkLighter L2 signing chain id to construct this instance's
-   * {@link LighterSigner} with.
-   */
+  /** zkLighter L2 signing chain id this deployment's transactions are signed against. */
   signerChainId: number
   /**
    * Collateral asset this deployment settles in — signed into its withdrawals
@@ -109,75 +111,63 @@ export interface LighterInstanceConfig {
   collateral: LighterCollateralAsset
   /**
    * Explorer tx base URL for transfer-activity links (`${base}${txHash}`).
-   * When omitted, transfer links are not emitted for this instance.
+   * When omitted, transfer links are not emitted for this deployment.
    */
   explorerTxBaseUrl?: string
 }
 
 /**
- * The built-in mainnet Lighter instance — the defaults `lighterProvider()` and
- * `lighterWsProvider()` apply when constructed with no instance overrides.
+ * Lighter mainnet, as served by `lighterProvider()`.
  *
  * @public
  */
-export const LIGHTER_MAINNET_INSTANCE: LighterInstanceConfig = {
+export const LIGHTER_MAINNET_DEPLOYMENT: LighterDeployment = Object.freeze({
   providerKey: LIGHTER_PROVIDER_KEY,
   restUrl: DEFAULT_LIGHTER_REST_URL,
   wsUrl: DEFAULT_LIGHTER_WS_URL,
-  signerChainId: DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+  signerChainId: LIGHTER_MAINNET_SIGNER_CHAIN_ID,
   collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_PROVIDER_KEY],
   explorerTxBaseUrl: DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
-}
+})
 
 /**
- * Default REST base URL for the Lighter Robinhood deployment.
+ * REST base URL for the Lighter Robinhood deployment.
  *
  * @public
  */
 export const LIGHTER_RH_REST_URL = 'https://api.rh.lighter.xyz'
 /**
- * Default WebSocket URL for the Lighter Robinhood deployment.
+ * WebSocket URL for the Lighter Robinhood deployment.
  *
  * @public
  */
 export const LIGHTER_RH_WS_URL = 'wss://api.rh.lighter.xyz/stream'
 
 /**
- * Deployment-supplied facts the RH instance cannot source from public
- * documentation and the caller must confirm.
+ * zkLighter L2 signing chain id for the Lighter Robinhood deployment, from
+ * `elliottech/lighter-python` v1.1.2 `lighter/endpoint_profiles.py`
+ * (`ROBINHOOD.chain_id`) and its `signer_client.py` host fallback. Distinct
+ * from mainnet's 304 and from Robinhood's L1 chain id 4663 — signing with
+ * either yields a venue-rejected transaction.
  *
  * @public
  */
-export interface LighterRhInstanceOverrides {
-  /**
-   * zkLighter L2 signing chain id for the RH instance. Unverified from public
-   * sources — must be the value confirmed against lighter-go / RH support, not
-   * mainnet's 304 nor the RH L1 chain id 4663.
-   */
-  signerChainId: number
-  /**
-   * RH zkLighter explorer tx base URL. Omit until confirmed; transfer links are
-   * then left unset rather than pointed at the mainnet explorer.
-   */
-  explorerTxBaseUrl?: string
-}
+export const LIGHTER_RH_SIGNER_CHAIN_ID = 466324
 
 /**
- * Build the `lighter-rh` {@link LighterInstanceConfig}. The signing chain id is
- * a required argument because it is not verifiable from public sources — the
- * caller must pass the value confirmed against lighter-go / RH support.
+ * Lighter on Robinhood chain, as served by `lighterRhProvider()`. No explorer
+ * base URL: the RH zkLighter explorer is unpublished, so transfer links are
+ * left unset rather than pointed at the mainnet explorer.
  *
  * @public
  */
-export const lighterRhInstance = (
-  overrides: LighterRhInstanceOverrides
-): LighterInstanceConfig => ({
+export const LIGHTER_RH_DEPLOYMENT: LighterDeployment = Object.freeze({
   providerKey: LIGHTER_RH_PROVIDER_KEY,
   restUrl: LIGHTER_RH_REST_URL,
   wsUrl: LIGHTER_RH_WS_URL,
-  signerChainId: overrides.signerChainId,
+  signerChainId: LIGHTER_RH_SIGNER_CHAIN_ID,
   collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_RH_PROVIDER_KEY],
-  explorerTxBaseUrl: overrides.explorerTxBaseUrl,
+  explorerTxBaseUrl: undefined,
 })
 
 /** @internal */

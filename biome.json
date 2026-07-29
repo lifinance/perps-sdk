@@ -13,6 +13,7 @@
       "!**/*.lock",
       "!**/*.json",
       "!**/wasm",
+      "!**/src/**/generated",
       "!**/dist"
     ]
   },

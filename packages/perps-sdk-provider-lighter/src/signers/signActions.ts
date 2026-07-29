@@ -21,18 +21,16 @@ import type { LighterSigner } from './LighterSigner.js'
 
 /**
  * Per-batch dependencies the Lighter `signActions` implementation needs:
- * a WASM signer (`LighterSigner`), the API-key store keyed on L1 address,
+ * the provider instance's WASM signer, its API-key store keyed on L1 address,
  * a REST client for the token-authenticated venue mutations that execute
  * client-side, and an `accountIndex` resolver for the REGISTER_API_KEY
  * hybrid flow.
  *
- * `signer` and `keyStore` are optional because only the `WASM_BLOB` arm signs
- * with them — `EVM_TX` broadcasts through the end-user wallet in `ctx`.
  * @internal
  */
 export interface LighterSignActionsDeps {
-  signer?: LighterSigner
-  keyStore?: LighterKeyStore
+  signer: LighterSigner
+  keyStore: LighterKeyStore
   /** REST client bound to the user's Lighter base URL, used for the direct
    * `changeAccountTier` / `referral/use` POSTs so their auth token never
    * transits the LI.FI backend. */
@@ -44,12 +42,6 @@ export interface LighterSignActionsDeps {
    * with `by=l1_address`.
    */
   resolveAccountIndex(address: Address): Promise<number>
-}
-
-/** {@link LighterSignActionsDeps} narrowed to the arm that signs wasm blobs. */
-type LighterWasmSignActionsDeps = LighterSignActionsDeps & {
-  signer: LighterSigner
-  keyStore: LighterKeyStore
 }
 
 /**
@@ -86,35 +78,25 @@ export async function signWasmBlobActions(
   steps: WasmBlobActionStep[],
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep[]> {
-  const { signer, keyStore } = deps
-  if (signer === undefined || keyStore === undefined) {
-    throw new PerpsError(
-      PerpsErrorCode.SDKError,
-      'lighterProvider.signActions requires `signer` and `keyStore` to be ' +
-        'configured at construction.'
-    )
-  }
-  const wasmDeps: LighterWasmSignActionsDeps = { ...deps, signer, keyStore }
-
   const signed: WasmBlobSignedActionStep[] = []
   for (const step of steps) {
     if (step.action === ActionType.REGISTER_API_KEY) {
-      signed.push(await signRegisterApiKey(wasmDeps, address, step, ctx))
+      signed.push(await signRegisterApiKey(deps, address, step, ctx))
     } else if (step.action === ActionType.APPROVE_INTEGRATOR) {
-      signed.push(await signApproveIntegrator(wasmDeps, address, step, ctx))
+      signed.push(await signApproveIntegrator(deps, address, step, ctx))
     } else if (
       TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
     ) {
-      await executeTokenAuthMutation(wasmDeps, address, step)
+      await executeTokenAuthMutation(deps, address, step)
     } else {
-      signed.push(await signStandardWasmAction(wasmDeps, address, step))
+      signed.push(await signStandardWasmAction(deps, address, step))
     }
   }
   return signed
 }
 
 async function signStandardWasmAction(
-  deps: LighterWasmSignActionsDeps,
+  deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep
 ): Promise<WasmBlobSignedActionStep> {
@@ -144,7 +126,7 @@ async function signStandardWasmAction(
  * user's consent to rotate keys.
  */
 async function signRegisterApiKey(
-  deps: LighterWasmSignActionsDeps,
+  deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
@@ -230,7 +212,7 @@ async function signRegisterApiKey(
  * different L1 address with non-zero fee caps.
  */
 async function signApproveIntegrator(
-  deps: LighterWasmSignActionsDeps,
+  deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
@@ -285,7 +267,7 @@ async function signApproveIntegrator(
  * `code`/`message` verbatim as an {@link PerpsErrorCode.ExchangeRejected}.
  */
 async function executeTokenAuthMutation(
-  deps: LighterWasmSignActionsDeps,
+  deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep
 ): Promise<void> {
@@ -364,7 +346,7 @@ function buildTokenAuthMutationRequest(
 }
 
 async function requireApiKey(
-  deps: LighterWasmSignActionsDeps,
+  deps: LighterSignActionsDeps,
   address: Address
 ): Promise<LighterApiKey> {
   const apiKey = await deps.keyStore.get(address)

@@ -1,6 +1,9 @@
 import { ActionType } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { LIGHTER_MAINNET_INSTANCE, lighterRhInstance } from '../constants.js'
+import {
+  LIGHTER_MAINNET_DEPLOYMENT,
+  LIGHTER_RH_DEPLOYMENT,
+} from '../constants.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
 import { LighterSigner, type LighterSignerContext } from './LighterSigner.js'
 
@@ -9,7 +12,11 @@ describe('LighterSigner', () => {
   let keypair: { publicKey: string; privateKey: string }
 
   beforeAll(async () => {
-    signer = new LighterSigner()
+    signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+    })
     keypair = await signer.generateAPIKey()
   })
 
@@ -687,6 +694,8 @@ describe('LighterSigner — per-instance collateral asset', () => {
 
   it('signs WITHDRAWAL and both TRANSFER paths against the configured collateral index', async () => {
     const signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: FIXTURE_ASSET_INDEX,
     })
     expect(
@@ -698,26 +707,27 @@ describe('LighterSigner — per-instance collateral asset', () => {
     })
   })
 
-  it('signs the lighter-rh instance against USDG, its own collateral slot', async () => {
-    const instance = lighterRhInstance({ signerChainId: 9999 })
+  it('signs the lighter-rh deployment against USDG, its own collateral slot', async () => {
     const signer = new LighterSigner({
-      apiUrl: instance.restUrl,
-      chainId: instance.signerChainId,
-      collateralAssetIndex: instance.collateral.assetIndex,
+      apiUrl: LIGHTER_RH_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_RH_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
     })
-    expect(instance.collateral.displaySymbol).toBe('USDG')
+    expect(LIGHTER_RH_DEPLOYMENT.collateral.displaySymbol).toBe('USDG')
     expect(
       await signedAssetIndexes(signer, await contextFor(signer, 44))
     ).toEqual({
-      withdrawal: instance.collateral.assetIndex,
-      transfer: instance.collateral.assetIndex,
-      sendAsset: instance.collateral.assetIndex,
+      withdrawal: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
+      transfer: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
+      sendAsset: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
     })
   })
 
-  it('signs the mainnet instance against USDC (3) — unchanged default', async () => {
+  it('signs the mainnet deployment against USDC (3)', async () => {
     const signer = new LighterSigner({
-      collateralAssetIndex: LIGHTER_MAINNET_INSTANCE.collateral.assetIndex,
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
     })
     expect(
       await signedAssetIndexes(signer, await contextFor(signer, 45))
