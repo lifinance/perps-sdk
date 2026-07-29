@@ -46,7 +46,7 @@ const jsonResponse = (body: unknown, status = 200): Response =>
   })
 
 describe('completeSiweLogin', () => {
-  it('signs the challenge and exchanges it for an AuthToken plus the signature', async () => {
+  it('signs the challenge and exchanges it for an AuthToken, posting the signature only to Ondo', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -54,7 +54,7 @@ describe('completeSiweLogin', () => {
       )
     const client = new OndoApiClient(BASE_URL, { fetchImpl })
 
-    const { token, signature } = await completeSiweLogin(client, signer, {
+    const token = await completeSiweLogin(client, signer, {
       id: 'challenge-1',
       message: SIWE_MESSAGE,
     })
@@ -71,12 +71,11 @@ describe('completeSiweLogin', () => {
       signature: `0x${string}`
     }
     expect(body.id).toBe('challenge-1')
-    expect(body.signature).toBe(signature)
     await expect(
       verifyMessage({
         address: account.address,
         message: SIWE_MESSAGE,
-        signature,
+        signature: body.signature,
       })
     ).resolves.toBe(true)
   })
