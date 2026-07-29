@@ -61,6 +61,7 @@ import {
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_BASE_FEE_TIER,
+  LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_PROVIDER_KEY,
@@ -314,6 +315,7 @@ export const lighterProvider = (
     (providerKey === LIGHTER_PROVIDER_KEY
       ? DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL
       : undefined)
+  const collateral = LIGHTER_COLLATERAL_ASSETS[providerKey]
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
       ? options.authToken
@@ -801,20 +803,29 @@ export const lighterProvider = (
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
-          asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
+          asset:
+            perpsCategory?.quoteAsset ??
+            lighterAsset(
+              collateral.displaySymbol,
+              collateral.displaySymbol,
+              providerKey
+            ),
           units: availableMargin.toString(),
           valueUsd: availableMargin.toString(),
         },
       ]
-      // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
-      // have no price source at this boundary, so their USD value is unknown.
+      // Spot token holdings — non-collateral. The instance's settlement asset
+      // is valued 1:1; other tokens have no price source at this boundary, so
+      // their USD value is unknown.
       const balances: Balance[] = account.assets.map((a) => {
         const assetId = String(a.asset_id)
         return {
           categoryId: spotCategoryId,
-          asset: assetRegistry.get(assetId) ?? lighterAsset(assetId, a.symbol),
+          asset:
+            assetRegistry.get(assetId) ??
+            lighterAsset(assetId, a.symbol, providerKey),
           units: a.balance,
-          valueUsd: a.symbol === 'USDC' ? a.balance : '0',
+          valueUsd: a.asset_id === collateral.assetIndex ? a.balance : '0',
         }
       })
 
