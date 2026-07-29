@@ -16,6 +16,7 @@
 export { projectLighterConfigSettings } from './accountConfig.js'
 export { getAccountSummary } from './accountSummary.js'
 export type {
+  LighterCollateralAsset,
   LighterInstanceConfig,
   LighterRhInstanceOverrides,
 } from './constants.js'
@@ -25,6 +26,7 @@ export {
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
   DEFAULT_LIGHTER_WS_URL,
+  LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_MAINNET_INSTANCE,
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,

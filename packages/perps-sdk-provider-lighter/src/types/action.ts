@@ -195,7 +195,9 @@ export const LT_ROUTE_PERP = 0
 export const LT_ROUTE_SPOT = 1
 
 /**
- * Lighter spot USDC asset id.
+ * L2 asset index of USDC on Lighter mainnet — the collateral slot mainnet
+ * withdrawals, transfers and L1 bridge deposits address. Other deployments
+ * settle in their own asset; see `LIGHTER_COLLATERAL_ASSETS`.
  * @public
  */
 export const LT_ASSET_ID_USDC = 3
