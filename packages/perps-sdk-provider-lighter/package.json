@@ -24,15 +24,12 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/cjs/index.js"
     },
-    "./wasm/*": "./wasm/*",
     "./package.json": "./package.json"
   },
   "files": [
     "dist/**",
     "!dist/**/*.tsbuildinfo",
     "src/**/*.ts",
-    "wasm/lighter-signer.wasm",
-    "wasm/wasm_exec.js",
     "!src/**/*.spec.ts",
     "!src/**/*.test.ts",
     "!src/**/*.mock.ts",
@@ -45,10 +42,12 @@
     "!tsconfig.build.json"
   ],
   "scripts": {
-    "build": "pnpm clean && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:wasm && pnpm build:clean",
+    "build": "pnpm clean && pnpm build:wasm-exec && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:assets && pnpm build:verify && pnpm build:clean",
     "build:cjs": "tsc --project ./tsconfig.json --module commonjs --outDir ./dist/cjs --removeComments --verbatimModuleSyntax false && mkdir -p ./dist/cjs && printf '{\"type\":\"commonjs\"}' > ./dist/cjs/package.json",
     "build:esm": "tsc --project ./tsconfig.json --module es2022 --outDir ./dist/esm && mkdir -p ./dist/esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./dist/esm/package.json",
-    "build:wasm": "mkdir -p ./dist/wasm && cp ./wasm/lighter-signer.wasm ./wasm/wasm_exec.js ./dist/wasm/",
+    "build:assets": "mkdir -p ./dist/wasm && cp ./wasm/lighter-signer.wasm ./dist/wasm/ && cp ./src/signers/wasmBinaryUrl.js ./dist/esm/signers/wasmBinaryUrl.js && cp ./src/signers/wasmBinaryUrl.cjs ./dist/cjs/signers/wasmBinaryUrl.js",
+    "build:wasm-exec": "pnpm node ./scripts/generate-wasm-exec.mjs",
+    "build:verify": "pnpm node ./scripts/verify-package-assets.mjs",
     "build:types": "tsc --project ./tsconfig.json --module esnext --declarationDir ./dist/types --emitDeclarationOnly --declaration --declarationMap",
     "build:clean": "rm -rf tsconfig.tsbuildinfo ./dist/tsconfig.tsbuildinfo",
     "build:prerelease": "pnpm node ../../scripts/prerelease.js",

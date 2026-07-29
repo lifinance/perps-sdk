@@ -1,78 +1,8 @@
 // The Go runtime installs functions (SignCreateOrder, SignCancelOrder, etc.)
 // onto `globalThis` when `go.run(instance)` starts the main goroutine.
-//
-// The default asset URLs resolve relative to this module's emitted JS file:
-//   src/signers/../../wasm/lighter-signer.wasm     → package-root wasm/
-//   dist/{esm,cjs}/signers/../../wasm/…            → dist/wasm/ (shared)
-// The build script copies the wasm assets into both dist subtrees so the same
-// relative path resolves at runtime regardless of which bundle is loaded.
-//
-// To resolve the module's own URL in both ESM (where `__filename` is absent)
-// and CJS (where `import.meta.url` is a syntax error), we parse a stack trace
-// — `currentModuleUrl` always appears as the first frame, and V8 includes the
-// emitting file path regardless of module system. Callers can override both
-// asset URLs via {@link LoadLighterWasmOptions} to bypass this heuristic.
 
-function currentModuleUrl(): string {
-  const cjsFilename = (globalThis as { __filename?: string }).__filename
-  if (typeof cjsFilename === 'string' && cjsFilename.length > 0) {
-    return `file://${cjsFilename}`
-  }
-  const stack = new Error().stack ?? ''
-  // Stack frames look like one of:
-  //   "    at currentModuleUrl (file:///abs/path/wasmLoader.js:29:10)"
-  //   "    at currentModuleUrl (/abs/path/wasmLoader.js:29:10)"
-  //   "    at currentModuleUrl (file:///abs/path/wasmLoader.ts:29:10)"  (vitest)
-  //   "    at currentModuleUrl (http://localhost:5173/.../wasmLoader.ts?v=…:29:10)" (vite dev)
-  const match = stack.match(/\(([^)]+wasmLoader\.[tj]s[^)]*)\)/)
-  const frame = match?.[1] ?? ''
-  const withoutPos = frame.replace(/:\d+:\d+$/, '')
-  if (
-    withoutPos.startsWith('file://') ||
-    withoutPos.startsWith('http://') ||
-    withoutPos.startsWith('https://')
-  ) {
-    return withoutPos
-  }
-  if (withoutPos.length > 0) {
-    // Bare absolute path (Node CJS without `file://` prefix in some runners).
-    return `file://${withoutPos}`
-  }
-  throw new Error(
-    'Could not resolve the Lighter WASM loader module URL. Pass an explicit ' +
-      '`wasmBinaryUrl` and `wasmExecJsUrl` to loadLighterWasm().'
-  )
-}
-
-function defaultAssetUrl(filename: string): URL {
-  return new URL(`../../wasm/${filename}`, currentModuleUrl())
-}
-
-/**
- * Overrides for locating the Lighter Go WASM binary and its runtime loader.
- * Supplying explicit URLs or source is useful when a bundler does not preserve
- * the package's relative asset layout.
- *
- * @public
- */
-export interface LoadLighterWasmOptions {
-  /** Override URL for the `.wasm` binary (browser: fetch; Node: fs). */
-  wasmBinaryUrl?: string | URL
-  /** Override URL for Go's `wasm_exec.js` runtime. */
-  wasmExecJsUrl?: string | URL
-  /**
-   * Pre-fetched source of Go's `wasm_exec.js`. Preferred over
-   * `wasmExecJsUrl` for bundlers (Vite/webpack) that may transform a `.js`
-   * URL on serve, breaking the IIFE that installs `globalThis.Go`. Pass via
-   * a `?raw` import (Vite) or equivalent so the original source survives
-   * intact.
-   *
-   * @security This string is evaluated via `new Function(...)`. The caller is
-   * responsible for ensuring it originates from the bundled `wasm_exec.js`;
-   * attacker-controlled content would execute arbitrary code in the host.
-   */
-  wasmExecJsSource?: string
-}
+import { WASM_EXEC_JS } from './generated/wasmExecRuntime.js'
+import { lighterWasmBinaryUrl } from './wasmBinaryUrl.js'
 
 /**
  * Function table installed by the Lighter Go WASM runtime. Methods mirror the
@@ -230,109 +160,60 @@ type GoClass = new () => {
 
 let cachedExports: Promise<LighterWasmExports> | undefined
 
-// `node:fs/promises` and `node:url` are Node-only. Static imports force browser
-// bundlers (Vite/Rollup/esbuild) to resolve them up-front, which fails. Dynamic
-// `import('node:...')` lets bundlers leave the branch unreachable in browsers
-// while Node still resolves it at runtime when asked for a `file://` URL.
+// `node:fs/promises` is Node-only and reached solely for a `file://` asset URL,
+// which never happens in a browser. Both ignore comments are required: without
+// `webpackIgnore` a Next.js build fails with `UnhandledSchemeError: Reading
+// from "node:fs/promises" is not handled by plugins`, and Vite would otherwise
+// warn while externalising it. Node's `readFile` accepts the `file://` URL
+// directly, so no `node:url` hop is needed.
 async function readNodeFile(url: URL): Promise<Uint8Array> {
-  const [{ readFile }, { fileURLToPath }] = await Promise.all([
-    import(/* @vite-ignore */ 'node:fs/promises'),
-    import(/* @vite-ignore */ 'node:url'),
-  ])
-  return readFile(fileURLToPath(url))
+  const { readFile } = await import(
+    /* webpackIgnore: true */ /* @vite-ignore */ 'node:fs/promises'
+  )
+  return readFile(url)
 }
 
-/**
- * Resolve a possibly-relative URL string against the current document/page
- * origin. Bundlers like Vite hand out absolute paths (e.g. `/node_modules/…`)
- * for `?url` imports, which `new URL(string)` rejects without a base.
- */
-function toResolvedUrl(url: string | URL): URL {
-  if (url instanceof URL) {
-    return url
-  }
-  const base =
-    typeof globalThis !== 'undefined' &&
-    (globalThis as { location?: { href?: string } }).location?.href
-      ? (globalThis as { location: { href: string } }).location.href
-      : undefined
-  return new URL(url, base)
-}
-
-async function readUrlBytes(url: string | URL): Promise<ArrayBuffer> {
-  const u = toResolvedUrl(url)
-  if (u.protocol === 'file:') {
-    const buf = await readNodeFile(u)
+async function readWasmBinary(url: URL): Promise<ArrayBuffer> {
+  if (url.protocol === 'file:') {
+    const bytes = await readNodeFile(url)
     // Copy the view into a fresh ArrayBuffer — `Buffer.buffer` is a shared
     // ArrayBuffer in Node and the wasm instantiator expects a plain one.
-    return buf.slice().buffer as ArrayBuffer
+    return bytes.slice().buffer as ArrayBuffer
   }
-  const response = await fetch(u)
+  const response = await fetch(url)
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch ${u.href}: ${response.status} ${response.statusText}`
+      `Failed to fetch ${url.href}: ${response.status} ${response.statusText}`
     )
   }
   return response.arrayBuffer()
 }
 
-async function readUrlText(url: string | URL): Promise<string> {
-  const u = toResolvedUrl(url)
-  if (u.protocol === 'file:') {
-    const buf = await readNodeFile(u)
-    return new TextDecoder('utf-8').decode(buf)
-  }
-  const response = await fetch(u)
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch ${u.href}: ${response.status} ${response.statusText}`
-    )
-  }
-  return response.text()
-}
-
 /**
- * Load the Lighter WASM signer. Memoized per-process: subsequent calls return
- * the cached exports. The Go runtime keeps a long-running goroutine to service
- * JS calls — we start it once and never stop it.
- * @public
+ * Load the Lighter WASM signer from the binary shipped with this package.
+ * Memoized per-process: subsequent calls return the cached exports. The Go
+ * runtime keeps a long-running goroutine to service JS calls — we start it
+ * once and never stop it.
+ * @internal
  */
-export async function loadLighterWasm(
-  options?: LoadLighterWasmOptions
-): Promise<LighterWasmExports> {
+export async function loadLighterWasm(): Promise<LighterWasmExports> {
   if (!cachedExports) {
-    cachedExports = loadWasmUncached(options)
+    cachedExports = loadWasmUncached()
   }
   return cachedExports
 }
 
-async function loadWasmUncached(
-  options?: LoadLighterWasmOptions
-): Promise<LighterWasmExports> {
-  const wasmBinaryUrl =
-    options?.wasmBinaryUrl ?? defaultAssetUrl('lighter-signer.wasm')
-
-  // Prefer a pre-fetched source string (bundler `?raw` imports) over a URL —
-  // bundlers may transform a `.js` URL on serve, breaking the IIFE that sets
-  // `globalThis.Go`.
-  const wasmExecSourcePromise: Promise<string> =
-    options?.wasmExecJsSource !== undefined
-      ? Promise.resolve(options.wasmExecJsSource)
-      : readUrlText(options?.wasmExecJsUrl ?? defaultAssetUrl('wasm_exec.js'))
-
-  const [wasmExecSource, wasmBytes] = await Promise.all([
-    wasmExecSourcePromise,
-    readUrlBytes(wasmBinaryUrl),
-  ])
+async function loadWasmUncached(): Promise<LighterWasmExports> {
+  const wasmBytes = await readWasmBinary(lighterWasmBinaryUrl)
 
   // wasm_exec.js is an IIFE that installs `globalThis.Go = class { ... }` plus
-  // fs/process/crypto polyfills. Evaluating it as a string keeps Go's runtime
+  // fs/process/crypto polyfills. Evaluating the packaged text keeps Go's runtime
   // opaque to consumer bundlers — it references require/process/fs/crypto, which
-  // Vite/webpack choke on if they try to parse it as a module. The default-path
-  // source is our build-time-vendored, trusted wasm_exec.js — see the `@security`
-  // note on `LoadLighterWasmOptions.wasmExecJsSource` for the caller-override boundary.
+  // Vite/webpack choke on if they try to parse it as a module. The text is
+  // generated from this package's vendored wasm_exec.js at build time and is
+  // never caller-supplied.
   // nosec
-  const installGo = new Function(`${wasmExecSource}; return globalThis.Go`)
+  const installGo = new Function(`${WASM_EXEC_JS}; return globalThis.Go`)
   const Go = installGo() as GoClass
 
   const go = new Go()
@@ -374,7 +255,7 @@ async function yieldToGoRuntime(): Promise<void> {
 /**
  * Testing helper — drop the cached WASM instance so the next load reinitializes.
  *
- * @public
+ * @internal
  */
 export function resetLighterWasmCache(): void {
   cachedExports = undefined
