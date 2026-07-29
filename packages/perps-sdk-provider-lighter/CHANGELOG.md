@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 8.2.1
+
+### Patch Changes
+
+- [#310](https://github.com/lifinance/perps-sdk/pull/310) [`ec3510c`](https://github.com/lifinance/perps-sdk/commit/ec3510cf031924d28384ab8a45a968eada482dce) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `EVM_TX` actions (deposits) now sign through the end-user wallet on a provider configured without a `signer` or `keyStore`; those dependencies are required only by the `WASM_BLOB` arm.
+
 ## 8.2.0
 
 ### Minor Changes
