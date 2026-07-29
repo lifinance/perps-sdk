@@ -10,12 +10,18 @@ import {
 import {
   ActionType,
   ActivityType,
+  type EvmTxActionStep,
   LiquidityRole,
   MarginMode,
   OrderSide,
   PerpsErrorCode,
   PositionMarginAdjustment,
+  SigningMethod,
+  type WasmBlobActionStep,
 } from '@lifi/perps-types'
+import { createWalletClient, custom } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { arbitrum } from 'viem/chains'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
@@ -2679,5 +2685,137 @@ describe('LighterProvider — getMarketSettings', () => {
       })
     ).resolves.toBeUndefined()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('LighterProvider — signActions dependency requirements', () => {
+  const WALLET_ACCOUNT = privateKeyToAccount(`0x${'11'.repeat(32)}`)
+  const DEPOSIT_TO = `0x${'22'.repeat(20)}` as const
+  const DEPOSIT_TX_HASH = `0x${'ab'.repeat(32)}` as const
+  const WASM_DEPENDENCY_ERROR =
+    'lighterProvider.signActions requires `signer` and `keyStore` to be ' +
+    'configured at construction.'
+
+  /**
+   * Wallet client whose transport mines one successful leg and records every
+   * broadcast, so a test can assert the leg actually reached the chain.
+   */
+  const recordingWallet = () => {
+    const broadcasts: string[] = []
+    const transport = custom({
+      async request({ method }) {
+        switch (method) {
+          case 'eth_chainId':
+            return `0x${arbitrum.id.toString(16)}`
+          case 'eth_getTransactionCount':
+            return '0x0'
+          case 'eth_estimateGas':
+            return '0x5208'
+          case 'eth_maxPriorityFeePerGas':
+            return '0x1'
+          case 'eth_getBlockByNumber':
+            return {
+              baseFeePerGas: '0x1',
+              number: '0x1',
+              timestamp: '0x1',
+              gasLimit: '0x1',
+              hash: `0x${'00'.repeat(32)}`,
+            }
+          case 'eth_sendRawTransaction':
+            broadcasts.push(DEPOSIT_TX_HASH)
+            return DEPOSIT_TX_HASH
+          case 'eth_getTransactionReceipt':
+            return {
+              transactionHash: DEPOSIT_TX_HASH,
+              blockNumber: '0x10',
+              blockHash: `0x${'bb'.repeat(32)}`,
+              status: '0x1',
+              from: WALLET_ACCOUNT.address,
+              to: DEPOSIT_TO,
+              cumulativeGasUsed: '0x1',
+              gasUsed: '0x1',
+              effectiveGasPrice: '0x1',
+              logs: [],
+              logsBloom: `0x${'00'.repeat(256)}`,
+              contractAddress: null,
+              transactionIndex: '0x0',
+              type: '0x2',
+            }
+          default:
+            return null
+        }
+      },
+    })
+    const wallet = createWalletClient({
+      account: WALLET_ACCOUNT,
+      chain: arbitrum,
+      transport,
+    })
+    return { wallet, broadcasts }
+  }
+
+  const depositStep: EvmTxActionStep = {
+    action: ActionType.DEPOSIT,
+    txParams: {
+      chainId: arbitrum.id,
+      to: DEPOSIT_TO,
+      functionName: 'deposit',
+      args: [`0x${'33'.repeat(20)}`, 100n],
+      abi: ['function deposit(address to, uint256 amount) returns (bool)'],
+    },
+  }
+
+  const orderStep: WasmBlobActionStep = {
+    action: ActionType.PLACE_ORDER,
+    wasmSignParams: { kind: 'createOrder' },
+  }
+
+  // The EVM_TX arm signs with `ctx.userWallet` alone, so each of these is a
+  // plugin that can deposit but cannot sign a WASM blob.
+  const partialOptions: [string, () => LighterProviderOptions][] = [
+    ['neither signer nor keyStore', () => ({})],
+    [
+      'a keyStore but no signer',
+      () => ({ keyStore: new LighterKeyStore(createMemoryStorage()) }),
+    ],
+    [
+      'a signer but no keyStore',
+      () => ({ signer: { sign: vi.fn() } as unknown as LighterSigner }),
+    ],
+  ]
+
+  it.each(
+    partialOptions
+  )('broadcasts an EVM_TX leg through the user wallet with %s', async (_case, makeOptions) => {
+    const provider = lighterProvider(makeOptions())
+    provider.bind(STUB_CLIENT)
+    const { wallet, broadcasts } = recordingWallet()
+
+    await expect(
+      provider.signActions?.(SigningMethod.EVM_TX, [depositStep], ADDRESS, {
+        userWallet: wallet,
+      })
+    ).resolves.toEqual([
+      {
+        action: ActionType.DEPOSIT,
+        txParams: depositStep.txParams,
+        txHash: DEPOSIT_TX_HASH,
+      },
+    ])
+    expect(broadcasts).toEqual([DEPOSIT_TX_HASH])
+  })
+
+  it.each(
+    partialOptions
+  )('rejects a WASM_BLOB batch with %s', async (_case, makeOptions) => {
+    const provider = lighterProvider(makeOptions())
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.signActions?.(SigningMethod.WASM_BLOB, [orderStep], ADDRESS)
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: WASM_DEPENDENCY_ERROR,
+    })
   })
 })

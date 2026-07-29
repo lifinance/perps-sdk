@@ -188,8 +188,8 @@ const normalizeLighterPublicKey = (key: string): string =>
  *   - `getOrder` throws `Unauthorized`
  *   - `getAccount` returns zero fee tier rather than failing
  *
- * Write actions (`signActions` for the WASM_BLOB / EVM_TX arms) require
- * `signer` and `keyStore` to be supplied.
+ * `WASM_BLOB` write actions (`signActions`) require `signer` and `keyStore` to
+ * be supplied; the `EVM_TX` arm signs with the end-user wallet alone.
  *
  * @public
  */
@@ -213,14 +213,14 @@ export interface LighterProviderOptions {
   /** Pre-created Lighter read-only bearer. */
   authToken?: string | (() => string | Promise<string>)
   /**
-   * WASM signer instance. Required for `signActions` (write actions) and
-   * for on-demand auth-token creating from the user's API key. The default
+   * WASM signer instance. Required for the `WASM_BLOB` arm of `signActions`
+   * and for on-demand auth-token creating from the user's API key. The default
    * configuration loads the WASM blob shipped with this package.
    */
   signer?: LighterSigner
   /**
-   * Store for the user's per-address Lighter API keypair. Required for
-   * `signActions` (write actions) and for on-demand auth-token creating.
+   * Store for the user's per-address Lighter API keypair. Required for the
+   * `WASM_BLOB` arm of `signActions` and for on-demand auth-token creating.
    */
   keyStore?: LighterKeyStore
   /**
@@ -1384,22 +1384,13 @@ export const lighterProvider = (
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
-      if (signer === undefined || keyStore === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'lighterProvider.signActions requires `signer` and `keyStore` to be ' +
-            'configured at construction.'
-        )
-      }
-      const signerRef = signer
-      const keyStoreRef = keyStore
       return lighterSignActions(
         {
-          signer: signerRef,
-          keyStore: keyStoreRef,
+          signer,
+          keyStore,
           apiClient: apiClient(),
           resolveAccountIndex: async (addr) => {
-            const apiKey = await keyStoreRef.get(addr)
+            const apiKey = keyStore ? await keyStore.get(addr) : null
             if (apiKey !== null) {
               return apiKey.accountIndex
             }
