@@ -1,6 +1,7 @@
 import {
   createMemoryStorage,
   ETHEREUM_USDC,
+  PerpsClient,
   PerpsError,
   type PerpsSDKClient,
 } from '@lifi/perps-sdk'
@@ -9,7 +10,9 @@ import type {
   HmacActionStep,
   HmacSignedActionStep,
   Position,
+  Provider,
   ProviderAction,
+  SiweActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -27,6 +30,9 @@ import {
   PositionSide,
   SigningMethod,
 } from '@lifi/perps-types'
+import { createWalletClient, http } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
@@ -1455,5 +1461,151 @@ describe('OndoProvider — direct-REST base URL', () => {
     await provider.accountExists({ address: ADDRESS })
     const call = recorded.find((r) => r.url.includes('/v1/account'))
     expect(call?.url).toBe('https://api.ondoperps.xyz/v1/account')
+  })
+})
+
+describe('OndoProvider — SIWE login stays client-side', () => {
+  const BACKEND_URL = 'https://backend.test/v1/perps'
+
+  const siweAccount = privateKeyToAccount(
+    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
+  )
+  const userWallet = createWalletClient({
+    account: siweAccount,
+    chain: mainnet,
+    transport: http('http://localhost'),
+  })
+
+  const SIWE_STEP: SiweActionStep = {
+    action: ActionType.SIWE_LOGIN,
+    siwe: {
+      challengeId: 'challenge-1',
+      message: [
+        'ondoperps.xyz wants you to sign in with your Ethereum account:',
+        siweAccount.address,
+        '',
+        'URI: https://ondoperps.xyz',
+        'Version: 1',
+        'Chain ID: 1',
+        'Nonce: 8ee9befj3',
+        'Issued At: 2026-07-03T00:00:00.000Z',
+      ].join('\n'),
+    },
+  }
+
+  const ONDO_METADATA: Provider = {
+    key: 'ondo',
+    name: 'Ondo',
+    logoURI: '',
+    signingMethod: SigningMethod.HMAC,
+    active: true,
+    setup: [
+      {
+        type: ActionType.SIWE_LOGIN,
+        signers: [PerpsSigner.USER],
+        signingMethod: SigningMethod.SIWE,
+      },
+    ],
+    options: [],
+    actions: [],
+    categories: [],
+  }
+
+  // Serves the LI.FI backend hops inline so `/executeAction` is observable,
+  // and falls through to the shared venue mock for every Ondo REST call.
+  const siweClient = () => {
+    const storage = createMemoryStorage()
+    const sessionToken: OndoAuthToken = {
+      ...AUTH_TOKEN,
+      identifier: siweAccount.address.toLowerCase(),
+    }
+    const backendCalls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.startsWith(BACKEND_URL)) {
+          backendCalls.push(u.slice(BACKEND_URL.length))
+          if (u.endsWith('/providers')) {
+            return respond({ providers: [ONDO_METADATA] })
+          }
+          if (u.endsWith('/createAction')) {
+            return respond({ actions: [SIWE_STEP] })
+          }
+          if (u.endsWith('/executeAction')) {
+            return respond({
+              results: [{ action: ActionType.SIWE_LOGIN, success: true }],
+            })
+          }
+        }
+        if (u === `${API_URL}/v1/auth/erc-4361/login/complete_challenge`) {
+          return respond(envelope(sessionToken))
+        }
+        return fetchMock(u, init)
+      })
+    )
+    const client = new PerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+      apiUrl: BACKEND_URL,
+      providers: [ondoProvider({ apiUrl: API_URL, storage })],
+    })
+    client.setUserWallet(userWallet)
+    return {
+      client,
+      backendCalls,
+      sessionToken,
+      store: new OndoTokenStore(storage, API_URL),
+    }
+  }
+
+  it('executeProviderSetupAction persists the token without an /executeAction hop', async () => {
+    const { client, backendCalls, sessionToken, store } = siweClient()
+
+    await client.executeProviderSetupAction({
+      provider: 'ondo',
+      address: siweAccount.address,
+      step: SIWE_STEP,
+    })
+
+    expect(backendCalls).toEqual(['/providers'])
+    await expect(store.get(siweAccount.address)).resolves.toEqual(sessionToken)
+  })
+
+  it('execute stops after createAction, returning no results', async () => {
+    const { client, backendCalls, sessionToken, store } = siweClient()
+
+    const { results } = await client.execute({
+      provider: 'ondo',
+      address: siweAccount.address,
+      action: ActionType.SIWE_LOGIN,
+      params: {},
+    })
+
+    expect(results).toEqual([])
+    expect(backendCalls).toEqual(['/providers', '/createAction'])
+    await expect(store.get(siweAccount.address)).resolves.toEqual(sessionToken)
+  })
+
+  it('leaves the account logged in with SIWE_LOGIN satisfied', async () => {
+    const { client } = siweClient()
+
+    await client.executeProviderSetupAction({
+      provider: 'ondo',
+      address: siweAccount.address,
+      step: SIWE_STEP,
+    })
+    const account = await client.getAccount({
+      provider: 'ondo',
+      address: siweAccount.address,
+    })
+
+    expect(account.config).toMatchObject({ loggedIn: true })
+    expect(account.settings).toContainEqual(
+      expect.objectContaining({
+        type: ActionType.SIWE_LOGIN,
+        satisfied: true,
+      })
+    )
   })
 })

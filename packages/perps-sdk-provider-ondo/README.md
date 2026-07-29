@@ -11,7 +11,7 @@
 
 Ondo Perps provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/). Register it on a `PerpsClient` to trade Ondo perpetuals through the SDK's unified interface.
 
-Ondo authenticates in two stages, both completed client-side. A SIWE (ERC-4361) login — challenge issued by the backend, signed by the user's wallet — yields a JWT session token used for authenticated reads. The package then creates a trading API key via the JWT (`POST /v1/api_keys`) and signs every mutating trade action with it per-request (HMAC-SHA256). Neither the JWT nor the API key secret transits the LI.FI backend; both are persisted browser-side through the storage adapter.
+Ondo authenticates in two stages, both completed client-side. A SIWE (ERC-4361) login — challenge issued by the backend, signed by the user's wallet — yields a JWT session token used for authenticated reads. The package then creates a trading API key via the JWT (`POST /v1/api_keys`) and signs every mutating trade action with it per-request (HMAC-SHA256). None of the wallet's login signature, the JWT, or the API key secret transits the LI.FI backend; the JWT and key are persisted browser-side through the storage adapter.
 
 ## Installation
 
