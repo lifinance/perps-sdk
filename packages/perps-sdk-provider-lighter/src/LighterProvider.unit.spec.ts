@@ -30,7 +30,10 @@ import {
   LIGHTER_RH_WS_URL,
   lighterRhInstance,
 } from './constants.js'
-import { lighterProvider } from './LighterProvider.js'
+import {
+  type LighterProviderOptions,
+  lighterProvider,
+} from './LighterProvider.js'
 import { LighterKeyStore } from './signers/LighterKeyStore.js'
 import type { LighterSigner } from './signers/LighterSigner.js'
 
@@ -907,6 +910,131 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(usdc?.valueUsd).toBe('10')
     expect(btc?.units).toBe('2')
     expect(btc?.valueUsd).toBe('0')
+  })
+})
+
+describe('LighterProvider — instance-aware collateral display', () => {
+  const RH_OPTIONS = {
+    providerKey: LIGHTER_RH_PROVIDER_KEY,
+    restUrl: LIGHTER_RH_REST_URL,
+  } as const
+
+  // The RH deployment holds USDG in asset slot 3 — the slot mainnet holds USDC
+  // in — alongside its equity tokens, so only the instance disambiguates them.
+  const RH_ACCOUNT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        cross_asset_value: '450',
+        assets: [
+          {
+            symbol: 'USDG',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_mode: 0,
+          },
+          {
+            symbol: 'AAPL',
+            asset_id: 4,
+            balance: '2',
+            locked_balance: '0',
+            margin_mode: 1,
+          },
+        ],
+      },
+    ],
+  }
+
+  // The backend serves no asset registry for this instance, so the spot
+  // descriptors fall back to the account payload's own symbols.
+  const stubFetch = (providersPayload: unknown) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond({ assets: [] })
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(providersPayload)
+        }
+        if (u.includes('/api/v1/account?')) {
+          return respond(RH_ACCOUNT)
+        }
+        if (u.includes('/api/v1/orderBookDetails')) {
+          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  }
+
+  /** Fresh client per call — the market/asset registries are cached per client. */
+  const accountFrom = (options: LighterProviderOptions) => {
+    const provider = lighterProvider(options)
+    provider.bind({
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient)
+    return provider.getAccount({ address: ADDRESS })
+  }
+
+  it('falls back to the RH instance collateral (USDG) when the backend has no RH category', async () => {
+    stubFetch(PROVIDERS_RESPONSE)
+    const account = await accountFrom(RH_OPTIONS)
+    expect(account.collateralBalances[0].asset).toEqual({
+      providerId: LIGHTER_RH_PROVIDER_KEY,
+      id: 'USDG',
+      displaySymbol: 'USDG',
+      logoURI: '',
+    })
+  })
+
+  it('falls back to USDC for the mainnet instance', async () => {
+    stubFetch({ providers: [] })
+    const account = await accountFrom({})
+    expect(account.collateralBalances[0].asset).toEqual({
+      providerId: LIGHTER_PROVIDER_KEY,
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: '',
+    })
+  })
+
+  it("values the RH instance's own collateral 1:1 and leaves its equity tokens unpriced", async () => {
+    stubFetch(PROVIDERS_RESPONSE)
+    const account = await accountFrom(RH_OPTIONS)
+    expect(account.balances).toEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: LIGHTER_RH_PROVIDER_KEY,
+          id: '3',
+          displaySymbol: 'USDG',
+          logoURI: '',
+        },
+        units: '10',
+        valueUsd: '10',
+      },
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: LIGHTER_RH_PROVIDER_KEY,
+          id: '4',
+          displaySymbol: 'AAPL',
+          logoURI: '',
+        },
+        units: '2',
+        valueUsd: '0',
+      },
+    ])
   })
 })
 
@@ -2247,6 +2375,7 @@ describe('LighterProvider — instance config', () => {
       restUrl: DEFAULT_LIGHTER_REST_URL,
       wsUrl: DEFAULT_LIGHTER_WS_URL,
       signerChainId: DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+      collateral: { assetIndex: 3, displaySymbol: 'USDC' },
       explorerTxBaseUrl: 'https://app.lighter.xyz/explorer/logs/',
     })
     expect(DEFAULT_LIGHTER_SIGNER_CHAIN_ID).toBe(304)
@@ -2261,6 +2390,9 @@ describe('LighterProvider — instance config', () => {
       restUrl: LIGHTER_RH_REST_URL,
       wsUrl: LIGHTER_RH_WS_URL,
       signerChainId: 9999,
+      // USDG at asset index 3 of the RH deployment's own registry
+      // (`/api/v1/assetDetails` on api.rh.lighter.xyz).
+      collateral: { assetIndex: 3, displaySymbol: 'USDG' },
       explorerTxBaseUrl: undefined,
     })
     expect(LIGHTER_RH_REST_URL).toBe('https://api.rh.lighter.xyz')

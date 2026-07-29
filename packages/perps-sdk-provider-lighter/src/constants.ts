@@ -1,4 +1,5 @@
 import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
+import { LT_ASSET_ID_USDC } from './types/action.js'
 
 /**
  * Lighter provider key as it appears on `Provider.key` from the backend.
@@ -6,6 +7,13 @@ import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
  * @public
  */
 export const LIGHTER_PROVIDER_KEY = 'lighter'
+
+/**
+ * Provider key for the Lighter instance running on Robinhood chain.
+ *
+ * @public
+ */
+export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
 
 /**
  * Category id for Lighter spot token holdings, matching the backend's Lighter
@@ -46,6 +54,38 @@ export const DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL =
   'https://app.lighter.xyz/explorer/logs/'
 
 /**
+ * The collateral asset a Lighter deployment settles in: the L2 asset index its
+ * withdrawals, transfers and route moves are signed against, plus the symbol
+ * shown for the collateral balance.
+ *
+ * @public
+ */
+export interface LighterCollateralAsset {
+  /** L2 asset index, as `asset_id` on the deployment's `/api/v1/assetDetails`. */
+  assetIndex: number
+  displaySymbol: string
+}
+
+/**
+ * Collateral asset per Lighter deployment, each read from that deployment's
+ * `/api/v1/assetDetails`: mainnet settles in USDC, Robinhood chain in USDG.
+ * Both sit at asset index 3 of their own registry — the same slot holds a
+ * different token per deployment, so an index alone never identifies the asset.
+ *
+ * @public
+ */
+export const LIGHTER_COLLATERAL_ASSETS: Record<
+  LighterProviderKey,
+  LighterCollateralAsset
+> = {
+  [LIGHTER_PROVIDER_KEY]: {
+    assetIndex: LT_ASSET_ID_USDC,
+    displaySymbol: 'USDC',
+  },
+  [LIGHTER_RH_PROVIDER_KEY]: { assetIndex: 3, displaySymbol: 'USDG' },
+}
+
+/**
  * The venue-specific facts that distinguish one Lighter deployment from
  * another. One provider + WS pair is built per instance from these; a client
  * may register several so long as their `providerKey`s differ.
@@ -62,6 +102,11 @@ export interface LighterInstanceConfig {
    * {@link LighterSigner} with.
    */
   signerChainId: number
+  /**
+   * Collateral asset this deployment settles in — signed into its withdrawals
+   * and transfers, and reported as its collateral balance.
+   */
+  collateral: LighterCollateralAsset
   /**
    * Explorer tx base URL for transfer-activity links (`${base}${txHash}`).
    * When omitted, transfer links are not emitted for this instance.
@@ -80,15 +125,9 @@ export const LIGHTER_MAINNET_INSTANCE: LighterInstanceConfig = {
   restUrl: DEFAULT_LIGHTER_REST_URL,
   wsUrl: DEFAULT_LIGHTER_WS_URL,
   signerChainId: DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
+  collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_PROVIDER_KEY],
   explorerTxBaseUrl: DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
 }
-
-/**
- * Provider key for the Lighter instance running on Robinhood chain.
- *
- * @public
- */
-export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
 
 /**
  * Default REST base URL for the Lighter Robinhood deployment.
@@ -137,6 +176,7 @@ export const lighterRhInstance = (
   restUrl: LIGHTER_RH_REST_URL,
   wsUrl: LIGHTER_RH_WS_URL,
   signerChainId: overrides.signerChainId,
+  collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_RH_PROVIDER_KEY],
   explorerTxBaseUrl: overrides.explorerTxBaseUrl,
 })
 

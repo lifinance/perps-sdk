@@ -1,6 +1,8 @@
 import { ActionType } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { LighterSigner } from './LighterSigner.js'
+import { LIGHTER_MAINNET_INSTANCE, lighterRhInstance } from '../constants.js'
+import { LT_ASSET_ID_USDC } from '../types/action.js'
+import { LighterSigner, type LighterSignerContext } from './LighterSigner.js'
 
 describe('LighterSigner', () => {
   let signer: LighterSigner
@@ -101,7 +103,8 @@ describe('LighterSigner', () => {
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
     // The signer threads our context (api key + account) AND the backend
-    // amount/nonce into the signed blob; asset index is pinned to USDC (3).
+    // amount/nonce into the signed blob; an unconfigured signer is mainnet, so
+    // the asset index is USDC's slot (3).
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.FromAccountIndex).toBe(42)
     expect(parsed.AssetIndex).toBe(3)
@@ -626,5 +629,102 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/missing numeric field/)
+  })
+})
+
+describe('LighterSigner — per-instance collateral asset', () => {
+  // Distinct from every real deployment's slot, so the assertions can only pass
+  // by threading the configured index through to the signed payload.
+  const FIXTURE_ASSET_INDEX = 7
+  const MEMO_32_BYTES = 'b'.repeat(32)
+
+  /** `AssetIndex` of the signed blob for each of the three collateral actions. */
+  const signedAssetIndexes = async (
+    signer: LighterSigner,
+    ctx: LighterSignerContext
+  ) => {
+    const withdrawal = await signer.sign(
+      ActionType.WITHDRAWAL,
+      { amount: 100_000, nonce: 1 },
+      ctx
+    )
+    const transfer = await signer.sign(
+      ActionType.TRANSFER,
+      {
+        to_account: 7,
+        usdc_amount: 250_000,
+        fee: 100,
+        memo: MEMO_32_BYTES,
+        nonce: 2,
+      },
+      ctx
+    )
+    const sendAsset = await signer.sign(
+      ActionType.SEND_ASSET,
+      {
+        sourceDex: 'spot',
+        destinationDex: 'perps',
+        amount: 250_000,
+        nonce: 3,
+      },
+      ctx
+    )
+    return {
+      withdrawal: JSON.parse(withdrawal.txInfo).AssetIndex,
+      transfer: JSON.parse(transfer.txInfo).AssetIndex,
+      sendAsset: JSON.parse(sendAsset.txInfo).AssetIndex,
+    }
+  }
+
+  const contextFor = async (
+    signer: LighterSigner,
+    accountIndex: number
+  ): Promise<LighterSignerContext> => ({
+    apiKeyPrivateKey: (await signer.generateAPIKey()).privateKey,
+    apiKeyIndex: 3,
+    accountIndex,
+  })
+
+  it('signs WITHDRAWAL and both TRANSFER paths against the configured collateral index', async () => {
+    const signer = new LighterSigner({
+      collateralAssetIndex: FIXTURE_ASSET_INDEX,
+    })
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 43))
+    ).toEqual({
+      withdrawal: FIXTURE_ASSET_INDEX,
+      transfer: FIXTURE_ASSET_INDEX,
+      sendAsset: FIXTURE_ASSET_INDEX,
+    })
+  })
+
+  it('signs the lighter-rh instance against USDG, its own collateral slot', async () => {
+    const instance = lighterRhInstance({ signerChainId: 9999 })
+    const signer = new LighterSigner({
+      apiUrl: instance.restUrl,
+      chainId: instance.signerChainId,
+      collateralAssetIndex: instance.collateral.assetIndex,
+    })
+    expect(instance.collateral.displaySymbol).toBe('USDG')
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 44))
+    ).toEqual({
+      withdrawal: instance.collateral.assetIndex,
+      transfer: instance.collateral.assetIndex,
+      sendAsset: instance.collateral.assetIndex,
+    })
+  })
+
+  it('signs the mainnet instance against USDC (3) — unchanged default', async () => {
+    const signer = new LighterSigner({
+      collateralAssetIndex: LIGHTER_MAINNET_INSTANCE.collateral.assetIndex,
+    })
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 45))
+    ).toEqual({
+      withdrawal: LT_ASSET_ID_USDC,
+      transfer: LT_ASSET_ID_USDC,
+      sendAsset: LT_ASSET_ID_USDC,
+    })
   })
 })
