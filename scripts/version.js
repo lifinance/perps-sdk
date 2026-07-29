@@ -7,7 +7,20 @@ async function run() {
   readFile(packagePath, 'utf8', (_err, data) => {
     const { version, name } = JSON.parse(data)
 
-    const file = `export const name = '${name}'\nexport const version = '${version}'\n`
+    const file = `/**
+ * Package name used in SDK telemetry and request metadata.
+ *
+ * @public
+ */
+export const name = '${name}'
+
+/**
+ * Published SDK version sent in the \`x-lifi-perps-sdk\` request header.
+ *
+ * @public
+ */
+export const version = '${version}'
+`
 
     writeFileSync(`${process.cwd()}/src/version.ts`, file)
   })
