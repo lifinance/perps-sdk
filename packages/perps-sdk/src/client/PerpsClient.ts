@@ -20,8 +20,10 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
+import { getAssetRegistry } from '../registry/assetRegistry.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
@@ -34,6 +36,7 @@ import type {
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
+  GetWithdrawableBalancesParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
@@ -51,6 +54,7 @@ import type {
   SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
+import type { WithdrawableBalance } from '../types/withdrawal.js'
 import {
   switchSigningChain,
   userEip712TargetChainId,
@@ -491,6 +495,49 @@ export class PerpsClient {
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getDepositFlow?.({ address: params.address })
+  }
+
+  /**
+   * The `(asset, route)` selections `params.address` can actually withdraw at
+   * `params.provider`. The venue owns how its balances split across routes;
+   * this join adds the core `/assets` metadata — precision, L1 identity and
+   * the per-asset minimum — and drops every row the minimum rules out, plus
+   * any row whose asset the provider's registry does not carry, since without
+   * that metadata the amount can be neither scaled nor validated.
+   *
+   * @returns `undefined` when the registered plugin declares no withdrawable
+   *   read.
+   * @throws {PerpsError} When the provider plugin is not registered, or either
+   *   the plugin read or the asset sync fails.
+   * @public
+   */
+  async getWithdrawableBalances(
+    params: GetWithdrawableBalancesParams
+  ): Promise<WithdrawableBalance[] | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    const rows = await plugin.getWithdrawableBalances?.({
+      address: params.address,
+    })
+    if (rows === undefined) {
+      return undefined
+    }
+
+    const registry = getAssetRegistry(this.sdkClient, params.provider)
+    await registry.sync()
+    return rows.flatMap((row) => {
+      const asset = registry.get(row.assetId)
+      if (asset === undefined) {
+        return []
+      }
+      const minimum = asset.minWithdrawalAmount
+      if (
+        minimum !== undefined &&
+        new Big(row.available).lt(new Big(minimum))
+      ) {
+        return []
+      }
+      return [{ asset, route: row.route, available: row.available }]
+    })
   }
 
   /**

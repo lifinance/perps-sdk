@@ -18,6 +18,8 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -105,6 +107,7 @@ import {
   formatOrderSize,
   leverageFromImf,
   lighterAsset,
+  lighterWithdrawableBalances,
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
@@ -844,6 +847,17 @@ export const createLighterProvider = (
         providerKey,
         await resolveAccountExists(params.address, opts)
       )
+    },
+
+    async getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      const account = await fetchDetailedAccount(
+        apiClient(opts),
+        params.address
+      )
+      return lighterWithdrawableBalances(account.assets)
     },
 
     async getPositions(

@@ -72,14 +72,26 @@ export type LtUpdateMarginWasmParams = {
 }
 
 /**
- * Backend-provided params for SignWithdraw.
+ * Backend-provided params for SignWithdraw. The asset and route are the
+ * caller's selection, not a signer default, and the remaining fields are the
+ * venue metadata the signer needs to scale and bounds-check `amount` without
+ * an asset registry of its own.
  *
  * @public
  */
 export type LtWithdrawWasmParams = {
+  /** Lighter L2 `asset_id` being withdrawn. */
   asset_index: number
+  /** {@link LT_ROUTE_PERP} or {@link LT_ROUTE_SPOT}; anything else is rejected. */
   route_type: number
-  amount: number
+  /** Decimal amount in the asset's own units, unscaled. */
+  amount: string
+  /** The asset's L2 precision — the exponent `amount` is scaled by. */
+  decimals: number
+  /** Venue minimum for a single withdrawal, in the asset's own units. */
+  min_withdrawal_amount: string
+  /** Asset symbol, named in a sub-minimum rejection. */
+  symbol: string
 }
 
 /**
