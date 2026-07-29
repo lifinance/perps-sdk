@@ -38,8 +38,8 @@ export interface LighterSignerContext {
 }
 
 /**
- * Configuration for {@link LighterSigner}, including optional WASM asset
- * overrides and the Lighter REST base URL and signing chain ID.
+ * Configuration for {@link LighterSigner}: optional WASM asset overrides plus
+ * the per-instance REST base URL, signing chain id and collateral asset index.
  *
  * @public
  */
@@ -48,6 +48,12 @@ export interface LighterSignerConfig extends LoadLighterWasmOptions {
   apiUrl?: string
   /** Lighter chain ID (304 = mainnet). */
   chainId?: number
+  /**
+   * L2 asset index this instance's withdrawals and transfers are signed
+   * against — pass the instance's `collateral.assetIndex`. Defaults to
+   * mainnet's USDC slot.
+   */
+  collateralAssetIndex?: number
 }
 
 /**
@@ -108,12 +114,11 @@ const SKIP_NONCE_DISABLED = 0
 // CancelAll across every market (lighter-go `NilMarketIndex`); a real index
 // scopes the cancel to a single market.
 const NIL_MARKET_INDEX = 255
-// Withdrawals/transfers are USDC on the perps route (lighter-go `USDCAssetIndex`
-// / `AssetRouteType_Perps`). The signer rejects an asset index < 1.
-const USDC_ASSET_INDEX = 3
+// Collateral withdrawals and transfers ride the perps route (lighter-go
+// `AssetRouteType_Perps`). The signer rejects an asset index < 1.
 const ASSET_ROUTE_TYPE_PERPS = 0
 
-// SEND_ASSET is a same-account route→route USDC move (spot↔perp): no counterparty
+// SEND_ASSET is a same-account route→route collateral move (spot↔perp): no
 // fee, and no memo. `SignTransfer` requires a 32-byte memo, so we pass 32 zero
 // bytes in the `0x`-prefixed 64-hex form the WASM signer decodes.
 const SEND_ASSET_NO_FEE = 0
@@ -136,6 +141,7 @@ const LIGHTER_ROUTE_BY_DEX: Record<string, number> = {
 export class LighterSigner {
   private readonly apiUrl: string
   private readonly chainId: number
+  private readonly collateralAssetIndex: number
   private readonly loaderOptions: LoadLighterWasmOptions
   private wasm: LighterWasmExports | undefined
   private readonly registeredClients = new Set<string>()
@@ -143,6 +149,7 @@ export class LighterSigner {
   constructor(config: LighterSignerConfig = {}) {
     this.apiUrl = config.apiUrl ?? DEFAULT_LIGHTER_REST_URL
     this.chainId = config.chainId ?? DEFAULT_LIGHTER_SIGNER_CHAIN_ID
+    this.collateralAssetIndex = config.collateralAssetIndex ?? LT_ASSET_ID_USDC
     this.loaderOptions = {
       wasmBinaryUrl: config.wasmBinaryUrl,
       wasmExecJsUrl: config.wasmExecJsUrl,
@@ -499,7 +506,7 @@ export class LighterSigner {
         )
       case ActionType.WITHDRAWAL:
         return wasm.SignWithdraw(
-          USDC_ASSET_INDEX,
+          this.collateralAssetIndex,
           ASSET_ROUTE_TYPE_PERPS,
           numberField(p, 'amount'),
           SKIP_NONCE_DISABLED,
@@ -517,7 +524,7 @@ export class LighterSigner {
         // long".
         return wasm.SignTransfer(
           numberField(p, 'to_account'),
-          USDC_ASSET_INDEX,
+          this.collateralAssetIndex,
           ASSET_ROUTE_TYPE_PERPS,
           ASSET_ROUTE_TYPE_PERPS,
           numberField(p, 'usdc_amount'),
@@ -529,9 +536,9 @@ export class LighterSigner {
           ctx.accountIndex
         )
       case ActionType.SEND_ASSET: {
-        // Same-account USDC self-transfer between the perp and spot routes.
-        // `toAccountIndex` is the signer's own account; the routes come from
-        // the backend-passed `sourceDex`/`destinationDex` wire strings.
+        // Same-account collateral self-transfer between the perp and spot
+        // routes. `toAccountIndex` is the signer's own account; the routes come
+        // from the backend-passed `sourceDex`/`destinationDex` wire strings.
         const fromRouteType = routeFromDex(stringField(p, 'sourceDex'))
         const toRouteType = routeFromDex(stringField(p, 'destinationDex'))
         if (fromRouteType === toRouteType) {
@@ -542,7 +549,7 @@ export class LighterSigner {
         }
         return wasm.SignTransfer(
           ctx.accountIndex,
-          LT_ASSET_ID_USDC,
+          this.collateralAssetIndex,
           fromRouteType,
           toRouteType,
           numberField(p, 'amount'),
