@@ -168,6 +168,16 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/route_type 2 is invalid/)
   })
 
+  it('identifies an empty withdrawal amount', async () => {
+    await expect(
+      signer.sign(
+        ActionType.WITHDRAWAL,
+        { ...ETH_SPOT_WITHDRAWAL, amount: '', nonce: 12 },
+        ctx()
+      )
+    ).rejects.toThrow("Lighter sign params string field 'amount' is empty")
+  })
+
   it('rejects a withdrawal below the asset minimum, naming asset and minimum', async () => {
     await expect(
       signer.sign(

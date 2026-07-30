@@ -530,11 +530,19 @@ export class PerpsClient {
         return []
       }
       const minimum = asset.minWithdrawalAmount
-      if (
-        minimum !== undefined &&
-        new Big(row.available).lt(new Big(minimum))
-      ) {
-        return []
+      if (minimum !== undefined) {
+        let floor: Big
+        try {
+          floor = new Big(minimum)
+        } catch {
+          throw new PerpsError(
+            PerpsErrorCode.SDKError,
+            `Asset '${asset.id}' field \`minWithdrawalAmount\` is not a valid decimal.`
+          )
+        }
+        if (new Big(row.available).lt(floor)) {
+          return []
+        }
       }
       return [{ asset, route: row.route, available: row.available }]
     })

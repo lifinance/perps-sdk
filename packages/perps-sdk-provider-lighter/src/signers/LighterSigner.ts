@@ -662,7 +662,10 @@ function routeFromDex(dex: string): number {
 
 function stringField(p: Record<string, unknown>, key: string): string {
   const v = p[key]
-  if (typeof v === 'string' && v !== '') {
+  if (v === '') {
+    throw new Error(`Lighter sign params string field '${key}' is empty`)
+  }
+  if (typeof v === 'string') {
     return v
   }
   throw new Error(

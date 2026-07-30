@@ -1230,10 +1230,13 @@ describe('PerpsClient', () => {
       { providerId: provider, id: '9', displaySymbol: 'LDO', logoURI: '' },
     ]
 
-    const clientWith = (plugin: Record<string, unknown>): PerpsClient => {
+    const clientWith = (
+      plugin: Record<string, unknown>,
+      assets = ASSETS
+    ): PerpsClient => {
       server.use(
         http.get(`${DEFAULT_API_URL}/assets`, () =>
-          HttpResponse.json({ assets: ASSETS })
+          HttpResponse.json({ assets })
         )
       )
       return new PerpsClient({
@@ -1285,6 +1288,23 @@ describe('PerpsClient', () => {
           ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([])
+    })
+
+    it('identifies malformed minimum metadata by asset and field', async () => {
+      const assets = [
+        { ...ASSETS[0], minWithdrawalAmount: 'not-a-decimal' },
+        ...ASSETS.slice(1),
+      ]
+      await expect(
+        clientWith(
+          withRows([{ assetId: '1', route: 'spot', available: '0.00609091' }]),
+          assets
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message:
+          "Asset '1' field `minWithdrawalAmount` is not a valid decimal.",
+      })
     })
 
     it('keeps a row sitting exactly on the asset minimum', async () => {
