@@ -95,6 +95,11 @@ export interface Provider {
   key: string
   name: string
   logoURI: string
+  /**
+   * Public attribution code supplied by the backend for authenticated
+   * referral-state comparison. Absent when the provider has no referral setup.
+   */
+  referralCode?: string
   signingMethod: SigningMethod
   /** When false, the provider is announced but not yet selectable in clients. */
   active: boolean
