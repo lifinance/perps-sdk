@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 5.1.1
+
+### Patch Changes
+
+- [#316](https://github.com/lifinance/perps-sdk/pull/316) [`bc3a171`](https://github.com/lifinance/perps-sdk/commit/bc3a17160902041001615e3e6eb6e1c97b32f79b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional runtime referral attribution metadata to provider responses.
+
 ## 5.1.0
 
 ### Minor Changes
