@@ -101,6 +101,7 @@ export type {
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
+  GetWithdrawableBalancesParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PerpsConfig,
@@ -143,10 +144,16 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
+  ProviderGetWithdrawableBalancesParams,
   QuoteListener,
   SignActionProgress,
   SignActionsContext,
 } from './types/provider.js'
+export type {
+  ProviderWithdrawableBalance,
+  WithdrawableBalance,
+  WithdrawalRoute,
+} from './types/withdrawal.js'
 export {
   type CollateralSemantics,
   summarizeAccount,

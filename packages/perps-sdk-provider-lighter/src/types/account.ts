@@ -33,24 +33,36 @@ export type LtAccountPosition = {
 }
 
 /**
- * Collateral asset row returned in a Lighter account response. `balance` and
- * `locked_balance` are decimal strings in the asset's native precision.
- * `margin_mode`, when present, is Lighter's cross-margin flag: `0` disables
- * margin use for the asset and `1` enables it.
+ * Cross-margin collateral flag Lighter reports on an account asset row.
+ *
+ * @public
+ */
+export type LtAssetMarginMode = 'enabled' | 'disabled'
+
+/**
+ * Held asset row returned in a Lighter account response. The two balances are
+ * the asset's two withdrawal routes: `balance` is the spot route
+ * (`AssetRouteType_Spot`) and `margin_balance` the perps route
+ * (`AssetRouteType_Perps`). All amounts are decimal strings.
  *
  * @public
  */
 export type LtAccountAsset = {
   symbol: string
   asset_id: number
+  /** Spot-route balance, `locked_balance` included. */
   balance: string
+  /** Portion of `balance` reserved by pending activity and not withdrawable. */
   locked_balance: string
+  /** Perps-route balance — the asset's collateral leg. */
+  margin_balance: string
+  /** Collateral weighting Lighter applies to the asset, as a decimal factor. */
+  multiplier: string
   /**
-   * Cross-margin collateral flag: 0 = MarginDisabled, 1 = MarginEnabled.
    * Lighter surfaces it via `additional_properties`, so it may be absent —
    * chiefly outside Unified Trading Account mode.
    */
-  margin_mode?: number
+  margin_mode?: LtAssetMarginMode
 }
 
 /**

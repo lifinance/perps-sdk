@@ -1199,6 +1199,165 @@ describe('PerpsClient', () => {
     })
   })
 
+  // ---------------------------------------------------------------------------
+  // getWithdrawableBalances — provider route split joined with core asset metadata
+  // ---------------------------------------------------------------------------
+
+  describe('getWithdrawableBalances', () => {
+    // Per-asset precision and minimums as live
+    // `GET https://mainnet.zklighter.elliot.ai/api/v1/assetDetails` reports them.
+    const ASSETS = [
+      {
+        providerId: provider,
+        id: '1',
+        displaySymbol: 'ETH',
+        logoURI: '',
+        decimals: 8,
+        l1Decimals: 18,
+        l1Address: '0x0000000000000000000000000000000000000000',
+        minWithdrawalAmount: '0.00100000',
+      },
+      {
+        providerId: provider,
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+        decimals: 6,
+        l1Decimals: 6,
+        l1Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        minWithdrawalAmount: '1.000000',
+      },
+      { providerId: provider, id: '9', displaySymbol: 'LDO', logoURI: '' },
+    ]
+
+    const clientWith = (
+      plugin: Record<string, unknown>,
+      assets = ASSETS
+    ): PerpsClient => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/assets`, () =>
+          HttpResponse.json({ assets })
+        )
+      )
+      return new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+    }
+
+    const withRows = (rows: unknown[]) => ({
+      getWithdrawableBalances: vi.fn(async () => rows),
+    })
+
+    it('joins core asset metadata onto every actionable row', async () => {
+      const plugin = withRows([
+        { assetId: '1', route: 'spot', available: '0.00609091' },
+        { assetId: '3', route: 'spot', available: '10.9886' },
+        { assetId: '3', route: 'perps', available: '11.009697536' },
+      ])
+      await expect(
+        clientWith(plugin).getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toEqual([
+        { asset: ASSETS[0], route: 'spot', available: '0.00609091' },
+        { asset: ASSETS[1], route: 'spot', available: '10.9886' },
+        { asset: ASSETS[1], route: 'perps', available: '11.009697536' },
+      ])
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
+        address: userAddress,
+      })
+    })
+
+    it('excludes rows below the asset minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '1', route: 'spot', available: '0.000040752' },
+            { assetId: '3', route: 'spot', available: '0.008924170612' },
+            { assetId: '3', route: 'perps', available: '0.003226339915' },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([])
+    })
+
+    it('identifies malformed minimum metadata by asset and field', async () => {
+      const assets = [
+        { ...ASSETS[0], minWithdrawalAmount: 'not-a-decimal' },
+        ...ASSETS.slice(1),
+      ]
+      await expect(
+        clientWith(
+          withRows([{ assetId: '1', route: 'spot', available: '0.00609091' }]),
+          assets
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message:
+          "Asset '1' field `minWithdrawalAmount` is not a valid decimal.",
+      })
+    })
+
+    it('keeps a row sitting exactly on the asset minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '1', route: 'spot', available: '0.001' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        { asset: ASSETS[0], route: 'spot', available: '0.001' },
+      ])
+    })
+
+    it('keeps rows for an asset that publishes no minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '9', route: 'spot', available: '0.05153' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        { asset: ASSETS[2], route: 'spot', available: '0.05153' },
+      ])
+    })
+
+    it('omits a row whose asset the provider registry does not carry', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '2', route: 'spot', available: '6.00005017' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([])
+    })
+
+    it('resolves undefined when the plugin declares no withdrawable read', async () => {
+      await expect(
+        clientWith({}).getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
   describe('getMarketSettings', () => {
     const market = { marketId: 'BTC', categoryId: 'perps' }
     const clientWith = (plugin: Record<string, unknown>): PerpsClient =>

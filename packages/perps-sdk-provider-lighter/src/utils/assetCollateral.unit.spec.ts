@@ -13,21 +13,12 @@ describe('assetMarginModeInt', () => {
 })
 
 describe('isAssetMarginEnabled', () => {
-  it('decodes MarginEnabled (1) → true', () => {
-    expect(isAssetMarginEnabled(1)).toBe(true)
+  it("decodes 'enabled' → true", () => {
+    expect(isAssetMarginEnabled('enabled')).toBe(true)
   })
 
-  it('decodes MarginDisabled (0) → false', () => {
-    expect(isAssetMarginEnabled(0)).toBe(false)
-  })
-
-  it('treats any non-1 int as not enabled', () => {
-    expect(isAssetMarginEnabled(2)).toBe(false)
-  })
-
-  it('round-trips with assetMarginModeInt', () => {
-    expect(isAssetMarginEnabled(assetMarginModeInt(true))).toBe(true)
-    expect(isAssetMarginEnabled(assetMarginModeInt(false))).toBe(false)
+  it("decodes 'disabled' → false", () => {
+    expect(isAssetMarginEnabled('disabled')).toBe(false)
   })
 })
 

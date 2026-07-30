@@ -244,6 +244,16 @@ export interface GetDepositFlowParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getWithdrawableBalances}.
+ *
+ * @public
+ */
+export interface GetWithdrawableBalancesParams {
+  provider: string
+  address: Address
+}
+
+/**
  * Result from {@link PerpsClient.checkSetup}.
  *
  * Reports the unsatisfied entries on `Provider.setup` for the queried account

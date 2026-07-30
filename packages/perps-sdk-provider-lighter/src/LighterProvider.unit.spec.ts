@@ -790,14 +790,18 @@ describe('LighterProvider — assetCollateral projection', () => {
         asset_id: 0,
         balance: '1',
         locked_balance: '0',
-        margin_mode: 1,
+        margin_balance: '0',
+        multiplier: '1.000000000000000000',
+        margin_mode: 'enabled',
       },
       {
         symbol: 'USDC',
         asset_id: 3,
         balance: '5',
         locked_balance: '0',
-        margin_mode: 0,
+        margin_balance: '0',
+        multiplier: '1.000000000000000000',
+        margin_mode: 'disabled',
       },
     ])
     const provider = lighterProvider()
@@ -819,16 +823,78 @@ describe('LighterProvider — assetCollateral projection', () => {
         asset_id: 0,
         balance: '1',
         locked_balance: '0',
-        margin_mode: 1,
+        margin_balance: '0',
+        multiplier: '1.000000000000000000',
+        margin_mode: 'enabled',
       },
-      { symbol: 'ETH', asset_id: 5, balance: '2', locked_balance: '0' },
+      {
+        symbol: 'ETH',
+        asset_id: 5,
+        balance: '2',
+        locked_balance: '0',
+        margin_balance: '0',
+        multiplier: '1.000000000000000000',
+      },
     ])
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
-    expect(
-      (account.config as { assetCollateral: unknown[] }).assetCollateral
-    ).toEqual([{ assetId: '0', enabled: true }])
+    expect(account.config).toMatchObject({
+      assetCollateral: [{ assetId: '0', enabled: true }],
+    })
+  })
+})
+
+describe('LighterProvider — getWithdrawableBalances', () => {
+  // `assets` captured verbatim from live
+  // `GET https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=12`.
+  const LIVE_ASSETS = [
+    {
+      symbol: 'ETH',
+      asset_id: 1,
+      balance: '0.00609091',
+      locked_balance: '0.00000000',
+      margin_mode: 'disabled',
+      margin_balance: '0.00000000',
+      multiplier: '1.000000000000000000',
+    },
+    {
+      symbol: 'USDC',
+      asset_id: 3,
+      balance: '10.988600',
+      locked_balance: '0.000000',
+      margin_mode: 'disabled',
+      margin_balance: '11.009697536',
+      multiplier: '1.000000000000000000',
+    },
+  ]
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        if (u.includes('/api/v1/account?')) {
+          return respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets: LIVE_ASSETS }],
+          })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  it('reports one row per funded (asset, route) pair', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getWithdrawableBalances({ address: ADDRESS })
+    ).resolves.toEqual([
+      { assetId: '1', route: 'spot', available: '0.00609091' },
+      { assetId: '3', route: 'spot', available: '10.9886' },
+      { assetId: '3', route: 'perps', available: '11.009697536' },
+    ])
   })
 })
 
