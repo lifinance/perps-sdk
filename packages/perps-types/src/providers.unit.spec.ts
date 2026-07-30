@@ -158,6 +158,7 @@ const lighterProvider: Provider = {
   key: 'lighter',
   name: 'Lighter',
   logoURI: 'https://example.invalid/lighter.svg',
+  referralCode: 'lifi',
   signingMethod: SigningMethod.WASM_BLOB,
   active: true,
   setup: [registerApiKeySetup],
@@ -414,6 +415,13 @@ type _ChainIdIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
 >
 
+type _ReferralCodeShape = Expect<
+  Equals<Provider['referralCode'], string | undefined>
+>
+type _ReferralCodeIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'referralCode'>, never>
+>
+
 // `ProviderAction` keys: the three core fields plus the optional
 // presentation / ordering hints. Catches an accidental rename / addition.
 type _ProviderActionKeys = Expect<
@@ -513,6 +521,8 @@ export type _TypeAssertions = [
   _SupportedIntervalsIsRequired,
   _ChainIdShape,
   _ChainIdIsOptional,
+  _ReferralCodeShape,
+  _ReferralCodeIsOptional,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -610,6 +620,16 @@ describe('Provider.funding', () => {
   it('is optional for providers without funding metadata', () => {
     expect(providerWithNoDescriptors.funding).toBeUndefined()
     expect(announcedProvider.funding).toBeUndefined()
+  })
+})
+
+describe('Provider.referralCode', () => {
+  it('carries backend-owned attribution metadata when advertised', () => {
+    expect(lighterProvider.referralCode).toBe('lifi')
+  })
+
+  it('is optional for providers without referral attribution', () => {
+    expect(providerWithNoDescriptors.referralCode).toBeUndefined()
   })
 })
 
