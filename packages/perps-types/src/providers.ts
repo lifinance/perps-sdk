@@ -16,7 +16,13 @@ export interface ParamOption {
 export interface Param {
   /** Wire key for the action params object: `{ [param.name]: value }`. */
   name: string
-  type: 'string'
+  /**
+   * Primitive type of the wire value. `ParamOption.value` and `default`
+   * stay stringified regardless of type; clients parse per `type`
+   * (`'true'`/`'false'` for booleans, decimal strings for numbers) before
+   * writing the typed value into the action params object.
+   */
+  type: 'string' | 'boolean' | 'number'
   /** Present if and only if the parameter has a fixed enumeration of admissible values. */
   values?: ParamOption[]
   default?: ParamOption

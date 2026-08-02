@@ -136,8 +136,10 @@ function projectLighterDescriptor(
     case ActionType.TRANSFER:
     case ActionType.PLACE_ORDER:
     case ActionType.PLACE_TRIGGER_ORDER:
+    case ActionType.PLACE_TWAP_ORDER:
     case ActionType.CANCEL_ORDER:
     case ActionType.CANCEL_ALL_ORDERS:
+    case ActionType.CANCEL_TWAP_ORDER:
     case ActionType.MODIFY_ORDER:
     case ActionType.UPDATE_LEVERAGE:
     case ActionType.UPDATE_POSITION_MARGIN:

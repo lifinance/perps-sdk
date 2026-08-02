@@ -8,6 +8,7 @@ import type {
   PerpsErrorCode,
   TimeInForce,
   TriggerCondition,
+  TwapOrderStatus,
 } from './enums.js'
 import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
@@ -321,7 +322,7 @@ export interface Order {
 export interface PlaceOrderParams {
   market: MarketRef
   side: OrderSide
-  type?: OrderType
+  type?: Exclude<OrderType, OrderType.TWAP>
   size: string
   price?: string
   leverage?: number
@@ -344,6 +345,75 @@ export interface PlaceTriggerOrderParams {
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
+}
+
+/**
+ * Parameters for placing a TWAP order that executes over a fixed duration.
+ *
+ * The core fields are provider-independent. The extras are only meaningful
+ * when the provider advertises them via its `ProviderAction.params`
+ * descriptors: `randomize` (Hyperliquid), and `frequencySeconds` /
+ * `minPrice` / `maxPrice` (Ondo). Providers ignore extras they do not
+ * advertise.
+ *
+ * @public
+ */
+export interface PlaceTwapOrderParams {
+  market: MarketRef
+  side: OrderSide
+  /** Total base-asset size executed across the TWAP's lifetime, as a decimal string. */
+  size: string
+  /** Total execution window in seconds. */
+  durationSeconds: number
+  reduceOnly?: boolean
+  /** Hyperliquid: randomize sub-order timing within the execution window. */
+  randomize?: boolean
+  /** Ondo: interval between child orders in seconds. */
+  frequencySeconds?: number
+  /** Ondo: lowest acceptable child-order price, as a decimal string. */
+  minPrice?: string
+  /** Ondo: highest acceptable child-order price, as a decimal string. */
+  maxPrice?: string
+}
+
+/**
+ * Parameters for cancelling a running TWAP order.
+ *
+ * @public
+ */
+export interface CancelTwapOrderParams {
+  market: MarketRef
+  /**
+   * Provider-native TWAP identifier as a string: HL's numeric twapId,
+   * Ondo's `twap_`-prefixed id, or Lighter's order-index. Providers
+   * stringify/parse their native form. Lighter's order-index is scoped per
+   * market, so `market` disambiguates it; HL and Ondo ids are globally unique.
+   */
+  twapId: string
+}
+
+/**
+ * Normalized running-TWAP read model returned by provider TWAP queries.
+ * Quantities and prices are decimal strings.
+ *
+ * @public
+ */
+export interface TwapOrder {
+  /** Provider-native TWAP identifier, stringified (see {@link CancelTwapOrderParams.twapId}). */
+  twapId: string
+  market: MarketDisplay
+  side: OrderSide
+  /** Total base-asset size the TWAP was placed for. */
+  totalSize: string
+  /** Base-asset size executed so far. */
+  filledSize: string
+  /** Volume-weighted average fill price; absent until the first child fill. */
+  avgFillPrice?: string
+  /** ISO-8601 timestamp at which the TWAP started executing. */
+  startedAt: string
+  /** Total execution window in seconds. */
+  durationSeconds: number
+  status: TwapOrderStatus
 }
 
 /**
@@ -531,8 +601,10 @@ export interface ActionParamsMap {
   [ActionType.TRANSFER]: Record<string, never>
   [ActionType.PLACE_ORDER]: PlaceOrderParams
   [ActionType.PLACE_TRIGGER_ORDER]: PlaceTriggerOrderParams
+  [ActionType.PLACE_TWAP_ORDER]: PlaceTwapOrderParams
   [ActionType.CANCEL_ORDER]: CancelOrderParams
   [ActionType.CANCEL_ALL_ORDERS]: CancelAllOrdersParams
+  [ActionType.CANCEL_TWAP_ORDER]: CancelTwapOrderParams
   [ActionType.MODIFY_ORDER]: ModifyOrderParams
   [ActionType.UPDATE_LEVERAGE]: UpdateLeverageParams
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams

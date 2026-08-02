@@ -126,7 +126,7 @@ export interface PlaceOrderParams {
   /** Opaque provider market reference. */
   market: MarketRef
   side: OrderSide
-  type: OrderType
+  type: Exclude<OrderType, OrderType.TWAP>
   /** Base-asset size as a decimal wire string. */
   size: string
   /** Limit price as a decimal wire string; required by limit-style orders. */
