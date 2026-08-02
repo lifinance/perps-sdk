@@ -524,7 +524,6 @@ describe('LighterProvider — provider-owned credential stores', () => {
       'authToken',
       'tokenLifetimeSeconds',
       'tokenRenewBufferSeconds',
-      'referralCode',
     ]
     const options: LighterProviderOptions = Object.fromEntries(
       optionKeys.map((key) => [key, undefined])
@@ -692,11 +691,42 @@ describe('LighterProvider — auth token plumbing', () => {
 })
 
 describe('LighterProvider — referralPresent', () => {
-  const LIFI_CODE = 'LIFI-REF-CODE'
+  // Deliberately not a real attribution code — the expected value is
+  // backend-owned runtime metadata, so tests only ever use a synthetic one.
+  const RUNTIME_CODE = 'TEST-REF-CODE'
 
-  it('is true and reads the applied referral authenticated by L1 address when LI.FI code is applied', async () => {
-    userReferralsUsedCode = LIFI_CODE
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
+  /**
+   * Serve `/providers` metadata whose entries carry the given `referralCode`
+   * per provider key (`undefined` = descriptor without a code). Other backend
+   * endpoints fall through to the shared defaults.
+   */
+  const stubProvidersMetadata = (
+    codeByProviderKey: Record<string, string | undefined>,
+    onBackendRequest?: (url: string, init: RequestInit | undefined) => void
+  ): void => {
+    overrideFetch((url, init) => {
+      if (url.includes('backend.test/')) {
+        onBackendRequest?.(url, init)
+      }
+      if (url.includes('backend.test/v1/perps/providers')) {
+        return respond({
+          providers: Object.entries(codeByProviderKey).map(
+            ([key, referralCode]) => ({
+              ...PROVIDERS_RESPONSE.providers[0],
+              key,
+              ...(referralCode === undefined ? {} : { referralCode }),
+            })
+          ),
+        })
+      }
+      return undefined
+    })
+  }
+
+  it('is true and reads the applied referral authenticated by L1 address when the runtime code is applied', async () => {
+    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+    userReferralsUsedCode = RUNTIME_CODE
+    const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -711,9 +741,33 @@ describe('LighterProvider — referralPresent', () => {
     expect(call?.url).toContain(`l1_address=${ADDRESS.toLowerCase()}`)
   })
 
+  it('never sends the Lighter auth token to the LI.FI backend', async () => {
+    const backendRequests: Recorded[] = []
+    stubProvidersMetadata({ lighter: RUNTIME_CODE }, (url, init) => {
+      backendRequests.push({ url, init })
+    })
+    userReferralsUsedCode = RUNTIME_CODE
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(backendRequests.length).toBeGreaterThan(0)
+    for (const req of backendRequests) {
+      expect(req.url).not.toContain('ref-token')
+      const headers = JSON.stringify([
+        ...new Headers(req.init?.headers).entries(),
+      ])
+      expect(headers).not.toContain('ref-token')
+      expect(String(req.init?.body ?? '')).not.toContain('ref-token')
+    }
+  })
+
   it('is false when a different referral code is applied', async () => {
+    stubProvidersMetadata({ lighter: RUNTIME_CODE })
     userReferralsUsedCode = 'SOMEONE-ELSE'
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -723,8 +777,9 @@ describe('LighterProvider — referralPresent', () => {
   })
 
   it('is false when no referral is applied', async () => {
+    stubProvidersMetadata({ lighter: RUNTIME_CODE })
     userReferralsUsedCode = ''
-    const provider = lighterProvider({ referralCode: LIFI_CODE })
+    const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -733,8 +788,9 @@ describe('LighterProvider — referralPresent', () => {
     expect(account.config).toMatchObject({ referralPresent: false })
   })
 
-  it('skips the read and reports false when no referral code is configured', async () => {
-    userReferralsUsedCode = LIFI_CODE
+  it('skips the read and reports false when runtime metadata carries no referralCode', async () => {
+    // Shared default `/providers` fixture — descriptor without a referralCode.
+    userReferralsUsedCode = RUNTIME_CODE
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
@@ -745,6 +801,51 @@ describe('LighterProvider — referralPresent', () => {
     expect(
       recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
     ).toBeUndefined()
+  })
+
+  it('skips the read and reports false when no auth token is available', async () => {
+    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+    userReferralsUsedCode = RUNTIME_CODE
+    const provider = lighterProvider({ storage: createMemoryStorage() })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ referralPresent: false })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
+    ).toBeUndefined()
+  })
+
+  it("selects metadata by instance key — RH never compares against mainnet's code", async () => {
+    stubProvidersMetadata({
+      lighter: RUNTIME_CODE,
+      [LIGHTER_RH_PROVIDER_KEY]: undefined,
+    })
+    userReferralsUsedCode = RUNTIME_CODE
+    const provider = lighterRhProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: false })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
+    ).toBeUndefined()
+  })
+
+  it('resolves the RH code from the RH descriptor', async () => {
+    stubProvidersMetadata({
+      lighter: 'MAINNET-ONLY-CODE',
+      [LIGHTER_RH_PROVIDER_KEY]: RUNTIME_CODE,
+    })
+    userReferralsUsedCode = RUNTIME_CODE
+    const provider = lighterRhProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'ref-token' }
+    )
+    expect(account.config).toMatchObject({ referralPresent: true })
   })
 })
 
