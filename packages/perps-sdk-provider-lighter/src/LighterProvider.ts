@@ -212,13 +212,6 @@ export interface LighterProviderOptions {
   tokenLifetimeSeconds?: number
   /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
-  /**
-   * LI.FI's Lighter referral code — the code `getAccount` compares the account's
-   * applied referral against to populate `LighterAccountConfig.referralPresent`.
-   * Must match the backend's configured `LIGHTER_REFERRAL_CODE`; when omitted,
-   * `referralPresent` is always `false` (the SDK has nothing to compare against).
-   */
-  referralCode?: string
 }
 
 interface CachedStandardToken {
@@ -296,7 +289,6 @@ export const createLighterProvider = (
   })
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-  const referralCode = options.referralCode
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
   // Single-flight + backoff for lazy read-only token creation. Without these,
   // concurrent reads on first load all race `tokens/create`, and any sustained
@@ -684,6 +676,9 @@ export const createLighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
+      // Shared promise: the referral read below awaits this instance's runtime
+      // metadata off the same `/providers` fetch — no second request.
+      const providersPromise = getProviders(requireClient())
       const [
         { providers },
         ,
@@ -694,7 +689,7 @@ export const createLighterProvider = (
         storedReadOnlyToken,
         appliedReferralCode,
       ] = await Promise.all([
-        getProviders(requireClient()),
+        providersPromise,
         registry.sync(),
         assetRegistry.sync(),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
@@ -708,12 +703,21 @@ export const createLighterProvider = (
             ),
         keyStore.get(params.address),
         readOnlyTokenManager.get(params.address, account.index),
-        // No referral code to compare against, or no token to authenticate the
-        // read → undefined → `referralPresent: false`.
-        !referralCode || token === undefined
+        // The expected code is backend-owned runtime metadata on this
+        // instance's own provider descriptor (keyed by `providerKey`, so the
+        // RH instance never compares against mainnet attribution). Metadata
+        // without a code, or no token to authenticate the read → undefined →
+        // `referralPresent: false`. The read stays SDK-direct: the token only
+        // ever goes to Lighter, never to the LI.FI backend.
+        token === undefined
           ? Promise.resolve(undefined)
-          : retryOnRevoked(opts, params.address, token, (t) =>
-              fetchAppliedReferralCode(client, params.address, t)
+          : providersPromise.then((response) =>
+              response.providers.find((p) => p.key === providerKey)
+                ?.referralCode
+                ? retryOnRevoked(opts, params.address, token, (t) =>
+                    fetchAppliedReferralCode(client, params.address, t)
+                  )
+                : undefined
             ),
       ])
 
@@ -739,8 +743,8 @@ export const createLighterProvider = (
         0
       )
 
-      const categories =
-        providers.find((p) => p.key === providerKey)?.categories ?? []
+      const instanceMeta = providers.find((p) => p.key === providerKey)
+      const categories = instanceMeta?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
       const spotCategoryId =
         categories.find((c) => c.quoteAsset === null)?.id ??
@@ -811,9 +815,12 @@ export const createLighterProvider = (
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
         readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
         readOnlyTokenScope: storedReadOnlyToken?.scope,
+        // True only when the authenticated `used_code` equals the backend-owned
+        // code for this instance; `appliedReferralCode` is only ever fetched
+        // when that code exists.
         referralPresent:
           appliedReferralCode !== undefined &&
-          appliedReferralCode === referralCode,
+          appliedReferralCode === instanceMeta?.referralCode,
       }
 
       return {
