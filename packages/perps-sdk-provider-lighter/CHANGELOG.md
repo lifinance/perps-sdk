@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 11.0.0
+
+### Major Changes
+
+- [#318](https://github.com/lifinance/perps-sdk/pull/318) [`394d1a7`](https://github.com/lifinance/perps-sdk/commit/394d1a723d26e328572b86547239509410791b40) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - **Breaking:** Remove the `referralCode` option from `LighterProviderOptions`. `getAccount` now resolves the expected Lighter referral code from the backend-owned `referralCode` on the current instance's `/providers` descriptor (selected by provider key, so Lighter RH never compares against mainnet attribution) instead of a compiled-in constructor option. The `/api/v1/referral/userReferrals` read stays SDK-direct and authenticated with the user's Lighter auth token — the token never transits the LI.FI backend — and `LighterAccountConfig.referralPresent` is `true` only when the authenticated `used_code` equals the runtime provider `referralCode`. When the runtime metadata carries no code or no auth token is available, the referral read is skipped and `referralPresent` is `false`.
+
 ## 10.0.0
 
 ### Major Changes
