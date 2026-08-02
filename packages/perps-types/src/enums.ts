@@ -55,7 +55,7 @@ export enum OrderType {
   TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
   TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
   TRIGGER_ONLY = 'TRIGGER_ONLY',
-  /** Read-side only: TWAP parents/children surfaced in venue order feeds. Placement goes through `ActionType.PLACE_TWAP_ORDER`, not `placeOrder`. */
+  /** Read-side only: TWAP parents/children surfaced in venue order feeds. Excluded from `PlaceOrderParams.type` — placement goes through `ActionType.PLACE_TWAP_ORDER`. */
   TWAP = 'TWAP',
 }
 

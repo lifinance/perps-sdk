@@ -322,7 +322,7 @@ export interface Order {
 export interface PlaceOrderParams {
   market: MarketRef
   side: OrderSide
-  type?: OrderType
+  type?: Exclude<OrderType, OrderType.TWAP>
   size: string
   price?: string
   leverage?: number
@@ -386,7 +386,8 @@ export interface CancelTwapOrderParams {
   /**
    * Provider-native TWAP identifier as a string: HL's numeric twapId,
    * Ondo's `twap_`-prefixed id, or Lighter's order-index. Providers
-   * stringify/parse their native form.
+   * stringify/parse their native form. Lighter's order-index is scoped per
+   * market, so `market` disambiguates it; HL and Ondo ids are globally unique.
    */
   twapId: string
 }
@@ -399,7 +400,7 @@ export interface CancelTwapOrderParams {
  */
 export interface TwapOrder {
   /** Provider-native TWAP identifier, stringified (see {@link CancelTwapOrderParams.twapId}). */
-  id: string
+  twapId: string
   market: MarketDisplay
   side: OrderSide
   /** Total base-asset size the TWAP was placed for. */
