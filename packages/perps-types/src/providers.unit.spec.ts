@@ -437,9 +437,11 @@ type _ProviderActionKeys = Expect<
   >
 >
 
-// `Param.type` is the literal `'string'` — numeric / boolean primitives
-// are deferred until a real descriptor needs them.
-type _ParamTypeIsString = Expect<Equals<Param['type'], 'string'>>
+// `Param.type` is the closed three-member primitive union — TWAP extras
+// (ORD-1160) brought in the boolean toggle and numeric interval descriptors.
+type _ParamTypeIsString = Expect<
+  Equals<Param['type'], 'string' | 'boolean' | 'number'>
+>
 
 // `TradeNotice.level` is the closed two-member literal union — catches an
 // accidental widening to `string` or a stray third level.
