@@ -27,7 +27,7 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 ## Development
 
-pnpm workspace — Node `>=24`, pnpm `11` (pinned via `packageManager`). From the repository root:
+pnpm workspace — Node `>=24`, pnpm `11.5.0` (pinned exactly via `packageManager`). From the repository root:
 
 | Command | Does |
 | --- | --- |
