@@ -213,6 +213,8 @@ describe('ActionResult', () => {
 
     if (!result.success) {
       expect(result.errorCode).toBe(PerpsErrorCode.SetupRequired)
+    } else {
+      throw new Error('expected failure branch')
     }
 
     const secondField: ActionResult = {

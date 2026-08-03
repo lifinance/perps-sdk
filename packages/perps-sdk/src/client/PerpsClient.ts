@@ -800,7 +800,10 @@ export class PerpsClient {
 
     const failure = results.find((r) => !r.success)
     if (failure) {
-      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
     }
 
     return { results: { results } }
@@ -873,10 +876,11 @@ export class PerpsClient {
    * `execute` itself is unchanged — it still returns results without throwing,
    * which the trade hooks rely on for partial-fill handling.
    *
-   * @throws {PerpsError} `PerpsErrorCode.ExchangeRejected` carrying the venue
-   *   error when any returned result has `success: false`; also the errors
-   *   `execute` itself can throw (unregistered provider, no signer, signing
-   *   failure).
+   * @throws {PerpsError} Carrying the venue error when any returned result has
+   *   `success: false`, under that result's `errorCode` when the backend
+   *   classified the failure and `PerpsErrorCode.ExchangeRejected` otherwise;
+   *   also the errors `execute` itself can throw (unregistered provider, no
+   *   signer, signing failure).
    * @public
    */
   async executeProviderOption<T extends ActionType>(params: {
@@ -888,7 +892,10 @@ export class PerpsClient {
     const { results } = await this.execute(params)
     const failure = results.find((r) => !r.success)
     if (failure) {
-      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
     }
   }
 
