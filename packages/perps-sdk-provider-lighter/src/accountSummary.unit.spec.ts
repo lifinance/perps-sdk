@@ -4,7 +4,11 @@ import type {
   Balance,
   Position,
 } from '@lifi/perps-types'
-import { MarginMode, PositionSide } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 
@@ -33,6 +37,7 @@ const position = (
     categoryId: 'lighter',
     baseAsset: { ...USDC, id: 'ETH', displaySymbol: 'ETH' },
     quoteAsset: USDC,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   side: PositionSide.LONG,
   size: '1',
@@ -42,6 +47,7 @@ const position = (
   unrealizedPnl,
   leverage: 10,
   marginUsed,
+  initialMarginRequirement: marginUsed,
   marginMode,
 })
 
@@ -63,7 +69,10 @@ const account = (
     apiKeyIndex: 0,
     apiKeyRegistered: true,
     accountType: 0,
+    accountTradingMode: 0,
+    assetCollateral: [],
     readOnlyTokenApproved: true,
+    referralPresent: false,
   },
 })
 

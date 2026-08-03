@@ -1,14 +1,16 @@
 import type {
   AccountResponse,
+  AccountSummary,
   ActivitiesResponse,
   FillsResponse,
   Order,
   OrdersResponse,
   PositionsResponse,
+  Quote,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProviderPlugin } from './core.js'
+import type { PerpsProviderPlugin } from './provider.js'
 
 function makeStubProvider(type: string): PerpsProviderPlugin {
   const stub = async (): Promise<never> => {
@@ -18,11 +20,18 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     type,
     bind: () => {},
     getAccount: () => stub() as unknown as Promise<AccountResponse>,
+    accountExists: () => stub() as unknown as Promise<boolean>,
     getPositions: () => stub() as unknown as Promise<PositionsResponse>,
     getOrders: () => stub() as unknown as Promise<OrdersResponse>,
     getOrder: () => stub() as unknown as Promise<Order>,
     getFills: () => stub() as unknown as Promise<FillsResponse>,
     getActivity: () => stub() as unknown as Promise<ActivitiesResponse>,
+    getQuote: () => stub() as unknown as Promise<Quote>,
+    getAccountSummary: () => stub() as unknown as AccountSummary,
+    formatOrderPrice: (_market, price) => price.toString(),
+    formatOrderSize: (_market, size) => size.toString(),
+    estimateLiquidationPrice: () => undefined,
+    positionMarginConstraints: () => undefined,
     projectConfig: () => [],
   }
 }

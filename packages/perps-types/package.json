@@ -54,6 +54,7 @@
     "build:prerelease": "pnpm node ../../scripts/prerelease.js",
     "clean": "pnpm build:clean && rm -rf dist",
     "check:types": "tsc --build ./tsconfig.build.json",
+    "check:types:spec": "tsc --noEmit -p tsconfig.spec.json",
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "test": "vitest --run",
     "test:cov": "vitest --run --coverage",

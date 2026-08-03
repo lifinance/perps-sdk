@@ -21,6 +21,8 @@ jobs:
         run: pnpm build
       - name: Check types
         run: pnpm check:types
+      - name: Check spec types
+        run: pnpm check:types:spec
       - name: Check circular dependencies
         run: pnpm check:circular-deps
       - name: Knip

@@ -1,4 +1,5 @@
 import { isActiveOrderStatus } from '@lifi/perps-sdk'
+import type { MarketDisplay } from '@lifi/perps-types'
 import { OrderStatus } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlOrderDetail } from '../types/index.js'
@@ -28,6 +29,24 @@ const baseDetail = (
   statusTimestamp: 1_700_000_000_000,
   ...overrides,
 })
+
+const MARKET: MarketDisplay = {
+  providerId: 'hyperliquid',
+  id: 'ETH',
+  categoryId: 'hyperliquid',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'ETH',
+    displaySymbol: 'ETH',
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+}
 
 describe('mapStatusReason (Hyperliquid)', () => {
   it('returns undefined for filled', () => {
@@ -273,7 +292,7 @@ describe('mapOrderStatus (Hyperliquid)', () => {
 
 describe('mapOrder (Hyperliquid) — statusReason wiring', () => {
   it('populates statusReason from the raw status on specific cancels', () => {
-    const order = mapOrder(baseDetail({ status: 'iocCancelRejected' }))
+    const order = mapOrder(baseDetail({ status: 'iocCancelRejected' }), MARKET)
     expect(order.status).toBe(OrderStatus.REJECTED)
     expect(order.statusReason).toBe(
       'Order cancelled: not enough liquidity to fill immediately.'
@@ -281,7 +300,10 @@ describe('mapOrder (Hyperliquid) — statusReason wiring', () => {
   })
 
   it('maps siblingFilledCanceled to a terminal CANCELLED status with a reason', () => {
-    const order = mapOrder(baseDetail({ status: 'siblingFilledCanceled' }))
+    const order = mapOrder(
+      baseDetail({ status: 'siblingFilledCanceled' }),
+      MARKET
+    )
     expect(order.status).toBe(OrderStatus.CANCELLED)
     expect(order.statusReason).toBe(
       'Order cancelled: sibling OCO order filled first.'
@@ -289,31 +311,31 @@ describe('mapOrder (Hyperliquid) — statusReason wiring', () => {
   })
 
   it('populates statusReason for marginCanceled while keeping status CANCELLED', () => {
-    const order = mapOrder(baseDetail({ status: 'marginCanceled' }))
+    const order = mapOrder(baseDetail({ status: 'marginCanceled' }), MARKET)
     expect(order.status).toBe(OrderStatus.CANCELLED)
     expect(order.statusReason).toBe('Order cancelled: insufficient margin.')
   })
 
   it('omits statusReason for filled orders', () => {
-    const order = mapOrder(baseDetail({ status: 'filled' }))
+    const order = mapOrder(baseDetail({ status: 'filled' }), MARKET)
     expect(order.status).toBe(OrderStatus.FILLED)
     expect(order.statusReason).toBeUndefined()
   })
 
   it('omits statusReason for open orders', () => {
-    const order = mapOrder(baseDetail({ status: 'open' }))
+    const order = mapOrder(baseDetail({ status: 'open' }), MARKET)
     expect(order.status).toBe(OrderStatus.OPEN)
     expect(order.statusReason).toBeUndefined()
   })
 
   it('omits statusReason for bare canceled (no actionable detail)', () => {
-    const order = mapOrder(baseDetail({ status: 'canceled' }))
+    const order = mapOrder(baseDetail({ status: 'canceled' }), MARKET)
     expect(order.status).toBe(OrderStatus.CANCELLED)
     expect(order.statusReason).toBeUndefined()
   })
 
   it('omits statusReason for bare rejected (no actionable detail)', () => {
-    const order = mapOrder(baseDetail({ status: 'rejected' }))
+    const order = mapOrder(baseDetail({ status: 'rejected' }), MARKET)
     expect(order.status).toBe(OrderStatus.REJECTED)
     expect(order.statusReason).toBeUndefined()
   })

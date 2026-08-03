@@ -4,6 +4,7 @@ import {
   OrderSide,
   OrderType,
   type Position,
+  PositionMarginAdjustment,
   PositionSide,
   type TriggerOrder,
 } from '@lifi/perps-types'
@@ -34,6 +35,7 @@ const MARKET_BTC = {
   categoryId: 'hyperliquid',
   baseAsset: baseAsset('BTC'),
   quoteAsset: USDC,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 const MARKET_ETH = {
@@ -42,6 +44,7 @@ const MARKET_ETH = {
   categoryId: 'hyperliquid',
   baseAsset: baseAsset('ETH'),
   quoteAsset: USDC,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 }
 
 function position(
@@ -54,6 +57,7 @@ function position(
     unrealizedPnl: '0',
     leverage: 1,
     marginUsed: '0',
+    initialMarginRequirement: '0',
     marginMode: MarginMode.CROSS,
     ...overrides,
   }
@@ -63,7 +67,7 @@ function openOrder(
   overrides: Partial<OpenOrder> & Pick<OpenOrder, 'side' | 'size' | 'price'>
 ): OpenOrder {
   return {
-    id: 'order-1',
+    orderId: 'order-1',
     market: MARKET_BTC,
     type: OrderType.LIMIT,
     filledSize: '0',
@@ -77,7 +81,7 @@ function triggerOrder(
   overrides: Partial<TriggerOrder> & Pick<TriggerOrder, 'size' | 'triggerPrice'>
 ): TriggerOrder {
   return {
-    id: 'trigger-1',
+    orderId: 'trigger-1',
     market: MARKET_BTC,
     type: OrderType.TAKE_PROFIT_MARKET,
     createdAt: '2025-01-01T00:00:00Z',

@@ -21,7 +21,7 @@ const MARKET: Market = {
     id: 'TSLA',
     displaySymbol: 'TSLA',
     logoURI: '',
-    name: 'Tesla',
+    displayName: 'Tesla',
     decimals: 18,
   },
   quoteAsset: {
@@ -29,7 +29,7 @@ const MARKET: Market = {
     id: 'USD',
     displaySymbol: 'USD',
     logoURI: '',
-    name: 'US Dollar',
+    displayName: 'US Dollar',
     decimals: 6,
   },
   szDecimals: 3,

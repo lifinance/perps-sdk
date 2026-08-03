@@ -34,7 +34,7 @@ describe('getMarkets', () => {
   it('excludes delisted markets from public selection', async () => {
     const delisted = {
       ...mockMarkets.markets[0],
-      symbol: 'DELISTED',
+      id: 'DELISTED',
       isDelisted: true,
     }
     server.use(
@@ -45,10 +45,7 @@ describe('getMarkets', () => {
 
     const result = await getMarkets(client, { provider: 'hyperliquid' })
 
-    expect(result.markets.map((market) => market.symbol)).toEqual([
-      'BTC',
-      'ETH',
-    ])
+    expect(result.markets.map((market) => market.id)).toEqual(['BTC', 'ETH'])
   })
 
   it('joins marketIds into a comma-separated query param', async () => {

@@ -1,5 +1,6 @@
 import { createMemoryStorage, PerpsError } from '@lifi/perps-sdk'
 import type {
+  ActionStep,
   HmacActionStep,
   HmacSignedActionStep,
   SessionActionStep,
@@ -599,7 +600,7 @@ describe('ondoSignActions — SESSION', () => {
         symbol: 'USDT',
         depositDestination: { wallet: 'spot' },
       },
-    }
+    } as unknown as ActionStep
     await expect(
       ondoSignActions(
         arbitraryDeps,

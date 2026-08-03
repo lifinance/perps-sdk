@@ -1,11 +1,11 @@
 import {
   createMemoryStorage,
   createPerpsClient,
+  type PerpsProviderPlugin,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
   ActionType,
-  type PerpsProviderPlugin,
   SigningMethod,
   type WasmBlobActionStep,
 } from '@lifi/perps-types'

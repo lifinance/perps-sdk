@@ -4,7 +4,11 @@ import type {
   Balance,
   Position,
 } from '@lifi/perps-types'
-import { MarginMode, PositionSide } from '@lifi/perps-types'
+import {
+  MarginMode,
+  PositionMarginAdjustment,
+  PositionSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { HlAbstractionMode } from './types/index.js'
@@ -30,6 +34,7 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
     categoryId: 'hyperliquid',
     baseAsset: { ...USDC, id: 'BTC', displaySymbol: 'BTC' },
     quoteAsset: USDC,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   },
   side: PositionSide.LONG,
   size: '1',
@@ -39,6 +44,7 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   unrealizedPnl,
   leverage: 10,
   marginUsed,
+  initialMarginRequirement: marginUsed,
   marginMode: MarginMode.CROSS,
 })
 

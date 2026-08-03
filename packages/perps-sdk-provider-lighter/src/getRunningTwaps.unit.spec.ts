@@ -21,7 +21,7 @@ const MARKET: Market = {
     id: '1',
     displaySymbol: 'ETH',
     logoURI: '',
-    name: 'Ether',
+    displayName: 'Ether',
     decimals: 18,
   },
   quoteAsset: {
@@ -29,7 +29,7 @@ const MARKET: Market = {
     id: '3',
     displaySymbol: 'USDC',
     logoURI: '',
-    name: 'USD Coin',
+    displayName: 'USD Coin',
     decimals: 6,
   },
   szDecimals: 4,

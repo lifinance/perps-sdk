@@ -25,11 +25,9 @@ const marketFixture = (overrides?: Partial<PerpsMarket>): PerpsMarket => ({
   },
   szDecimals: 2,
   priceDecimals: 2,
-  markPrice: '201.5',
   maxLeverage: 10,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.NONE,
-  funding: { rate: '0.0001', nextFundingTime: 0 },
   ...overrides,
 })
 
