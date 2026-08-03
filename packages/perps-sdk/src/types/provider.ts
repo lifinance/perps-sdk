@@ -25,6 +25,7 @@ import type {
   SignedActionStep,
   SigningMethod,
   TradeType,
+  TwapOrder,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import type {
@@ -229,6 +230,17 @@ export interface ProviderGetOrdersParams {
 }
 
 /**
+ * Read params for {@link PerpsProvider.getRunningTwaps}.
+ *
+ * @public
+ */
+export interface ProviderGetRunningTwapsParams {
+  address: Address
+  /** Optional opaque `Market.id` filter (not a display symbol). */
+  marketId?: string
+}
+
+/**
  * Read params for {@link PerpsProvider.getOrder}.
  *
  * @public
@@ -423,6 +435,15 @@ export interface PerpsProviderPlugin {
     params: ProviderGetOrdersParams,
     options?: SDKRequestOptions
   ): Promise<OrdersResponse>
+
+  /**
+   * Fetch the account's currently running TWAP parent orders directly from the
+   * venue. Child slice orders are excluded.
+   */
+  getRunningTwaps?(
+    params: ProviderGetRunningTwapsParams,
+    options?: SDKRequestOptions
+  ): Promise<TwapOrder[]>
 
   getOrder(
     params: ProviderGetOrderParams,

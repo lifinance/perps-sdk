@@ -1,6 +1,8 @@
 import type {
   AccountConfigSetting,
   AccountResponse,
+  CancelTwapOrderParams as ActionCancelTwapOrderParams,
+  PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
   ExecuteActionResponse,
   MarginMode,
@@ -163,6 +165,26 @@ export interface PlaceTriggerOrderParams {
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
+}
+
+/**
+ * Client parameters for placing a TWAP order.
+ *
+ * @public
+ */
+export interface PlaceTwapOrderParams extends ActionPlaceTwapOrderParams {
+  provider: string
+  address: Address
+}
+
+/**
+ * Client parameters for cancelling a running TWAP order.
+ *
+ * @public
+ */
+export interface CancelTwapOrderParams extends ActionCancelTwapOrderParams {
+  provider: string
+  address: Address
 }
 
 /**

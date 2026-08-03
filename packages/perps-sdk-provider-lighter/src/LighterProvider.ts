@@ -18,6 +18,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetRunningTwapsParams,
   type ProviderGetWithdrawableBalancesParams,
   type ProviderWithdrawableBalance,
   resolveQuote,
@@ -47,6 +48,7 @@ import type {
   Quote,
   SignedActionStep,
   SigningMethod,
+  TwapOrder,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -116,6 +118,7 @@ import {
   toIsoFromSeconds,
   toRequiredBig,
 } from './utils/index.js'
+import { mapRunningTwap } from './utils/mapTwap.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -967,7 +970,7 @@ export const createLighterProvider = (
       const marketIds =
         params.marketId === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [Number(params.marketId)]
+          : [Number(registry.require(params.marketId).id)]
 
       const responses = await retryOnRevoked(opts, params.address, token, (t) =>
         Promise.all(
@@ -989,6 +992,49 @@ export const createLighterProvider = (
         triggerOrders,
         pagination: { limit: total, hasMore: false },
       }
+    },
+
+    async getRunningTwaps(
+      params: ProviderGetRunningTwapsParams,
+      opts?: SDKRequestOptions
+    ): Promise<TwapOrder[]> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        return []
+      }
+
+      const client = apiClient(opts)
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      const [account] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        registry.sync(),
+      ])
+      const marketIds =
+        params.marketId === undefined
+          ? deriveOrderBearingMarketIds(account)
+          : [Number(registry.require(params.marketId).id)]
+      const responses = await retryOnRevoked(opts, params.address, token, (t) =>
+        Promise.all(
+          marketIds.map((id) =>
+            fetchActiveOrdersForMarket(client, t, account.index, id)
+          )
+        )
+      )
+
+      const twaps: TwapOrder[] = []
+      for (const response of responses) {
+        for (const order of response.orders) {
+          if (order.type === 'twap') {
+            twaps.push(
+              mapRunningTwap(
+                order,
+                registry.require(String(order.market_index))
+              )
+            )
+          }
+        }
+      }
+      return twaps
     },
 
     async getOrder(

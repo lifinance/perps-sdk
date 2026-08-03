@@ -1789,6 +1789,21 @@ describe('LighterProvider — getOrders pagination contract', () => {
     expect(orders.pagination.cursor).toBeUndefined()
     expect(orders.pagination.limit).toBe(returned)
   })
+
+  it('rejects a marketId the Lighter market list does not know', async () => {
+    const provider = lighterProvider({ authToken: 'caller-token' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getOrders({ address: ADDRESS, marketId: 'LIT/USDC' })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+      tool: 'lighter',
+    })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountActiveOrders'))
+    ).toBeUndefined()
+  })
 })
 
 describe('LighterProvider — unauthenticated degrade paths', () => {

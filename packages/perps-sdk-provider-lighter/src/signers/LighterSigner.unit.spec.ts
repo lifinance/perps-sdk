@@ -87,6 +87,48 @@ describe('LighterSigner', () => {
     expect(parsed.L2TxAttributes).toBeNull()
   })
 
+  it('signs PLACE_TWAP_ORDER through SignCreateOrder with wire type 6', async () => {
+    const signed = await signer.sign(
+      ActionType.PLACE_TWAP_ORDER,
+      {
+        market_index: 0,
+        client_order_index: 3156,
+        base_amount: 5000,
+        price: 1,
+        is_ask: 1,
+        order_type: 6,
+        time_in_force: 1,
+        reduce_only: true,
+        trigger_price: 0,
+        order_expiry: 1_775_000_900_000,
+        nonce: 43,
+      },
+      ctx()
+    )
+
+    expect(signed.txType).toBe(14)
+    expect(JSON.parse(signed.txInfo)).toMatchObject({
+      Type: 6,
+      ClientOrderIndex: 3156,
+      IsAsk: 1,
+      ReduceOnly: 1,
+    })
+  })
+
+  it('signs CANCEL_TWAP_ORDER through SignCancelOrder', async () => {
+    const signed = await signer.sign(
+      ActionType.CANCEL_TWAP_ORDER,
+      { market_index: 0, order_index: 3156, nonce: 44 },
+      ctx()
+    )
+
+    expect(signed.txType).toBe(15)
+    expect(JSON.parse(signed.txInfo)).toMatchObject({
+      Index: 3156,
+      Nonce: 44,
+    })
+  })
+
   it('signs CANCEL_ORDER', async () => {
     const signed = await signer.sign(
       ActionType.CANCEL_ORDER,

@@ -52,6 +52,32 @@ const client = createPerpsClient({
 const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
 ```
 
+## High-level client
+
+`PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
+`placeOrder()`, `placeTriggerOrder()`, `placeTwapOrder()`, `cancelOrders()`,
+`cancelTwapOrder()`, and `modifyOrders()`.
+
+Account-specific reads remain provider-owned and go directly to the venue. A
+running-TWAP poll uses the registered provider plugin:
+
+```ts
+import { PerpsClient } from '@lifi/perps-sdk'
+import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
+
+const client = new PerpsClient({
+  integrator: 'my-app',
+  apiKey: 'your-api-key',
+  providers: [hyperliquidProvider()],
+})
+
+const provider = client.client.getProvider('hyperliquid')
+const runningTwaps = await provider?.getRunningTwaps?.({
+  address: '0xUser',
+  marketId: 'ETH',
+})
+```
+
 ## WebSocket
 
 `PerpsWsClient` streams prices, orderbook, and account events over WebSocket. Register a WS provider per DEX; `subscribe()` returns an unsubscribe function, and multiple listeners on the same channel share one wire subscription:

@@ -9,6 +9,7 @@ import {
   LT_ORDER_TYPE_STOP_LOSS_LIMIT,
   LT_ORDER_TYPE_TAKE_PROFIT,
   LT_ORDER_TYPE_TAKE_PROFIT_LIMIT,
+  LT_ORDER_TYPE_TWAP,
   LT_TIME_IN_FORCE_GTC,
   LT_TIME_IN_FORCE_IOC,
   LT_TIME_IN_FORCE_POST_ONLY,
@@ -91,6 +92,7 @@ describe('mapOrderTypeToInt', () => {
     expect(mapOrderTypeToInt('TAKE_PROFIT_LIMIT')).toBe(
       LT_ORDER_TYPE_TAKE_PROFIT_LIMIT
     )
+    expect(mapOrderTypeToInt('TWAP')).toBe(LT_ORDER_TYPE_TWAP)
   })
 
   it('defaults undefined and unknown types to LIMIT', () => {
