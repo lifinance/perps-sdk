@@ -1,5 +1,18 @@
 # @lifi/perps-sdk
 
+## 6.5.0
+
+### Minor Changes
+
+- [#322](https://github.com/lifinance/perps-sdk/pull/322) [`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add TWAP action wrappers, preserve provider TWAP identifiers, sign Lighter TWAP actions, and read running TWAP parents directly from each venue.
+
+### Patch Changes
+
+- [#324](https://github.com/lifinance/perps-sdk/pull/324) [`2ffedda`](https://github.com/lifinance/perps-sdk/commit/2ffedda30f1ec78a29d3cd5e05454732912651ea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add PerpsErrorCode.SetupRequired (2070) for accounts that exist but need a recoverable provider setup action completed before the requested operation can be retried. `executeProviderSetupAction` and `executeProviderOption` now throw under the failing result's `errorCode` when the backend classified the failure, falling back to `ExchangeRejected` when it did not.
+
+- Updated dependencies [[`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852), [`2ffedda`](https://github.com/lifinance/perps-sdk/commit/2ffedda30f1ec78a29d3cd5e05454732912651ea)]:
+  - @lifi/perps-types@5.3.0
+
 ## 6.4.0
 
 ### Minor Changes

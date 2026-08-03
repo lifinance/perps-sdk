@@ -591,7 +591,7 @@ describe('PerpsClient', () => {
     // The backend rejects a mandatory setup action with a 200 OK carrying a
     // per-action `{ success: false, error }`. The SDK must throw so the
     // failure reaches the caller, rather than silently resolving.
-    function failExecuteAction(error: string) {
+    function failExecuteAction(error: string, errorCode?: PerpsErrorCode) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -614,7 +614,9 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [{ action: body.action, success: false, error }],
+            results: [
+              { action: body.action, success: false, error, errorCode },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -673,6 +675,23 @@ describe('PerpsClient', () => {
         })
       ).rejects.toMatchObject({
         code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('throws under the result errorCode when the backend classified the failure', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError = 'Complete the provider setup before trading.'
+      failExecuteAction(venueError, PerpsErrorCode.SetupRequired)
+
+      await expect(
+        (client as any).executeProviderSetup({
+          provider: 'hyperliquid',
+          address: userAddress,
+          ...userSetup(ActionType.APPROVE_AGENT),
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
         message: venueError,
       })
     })
@@ -785,7 +804,11 @@ describe('PerpsClient', () => {
     // The backend rejects the selected value with a 200 OK carrying a
     // per-action `{ success: false, error }`; executeProviderOption must turn
     // that into a throw rather than silently resolving.
-    function respondAccountMode(result: { success: boolean; error?: string }) {
+    function respondAccountMode(result: {
+      success: boolean
+      error?: string
+      errorCode?: PerpsErrorCode
+    }) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -826,6 +849,28 @@ describe('PerpsClient', () => {
         })
       ).rejects.toMatchObject({
         code: PerpsErrorCode.ExchangeRejected,
+        message: venueError,
+      })
+    })
+
+    it('throws under the result errorCode when the backend classified the failure', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError = 'Complete the provider setup before trading.'
+      respondAccountMode({
+        success: false,
+        error: venueError,
+        errorCode: PerpsErrorCode.SetupRequired,
+      })
+
+      await expect(
+        client.executeProviderOption({
+          provider,
+          address: userAddress,
+          action: ActionType.ACCOUNT_MODE,
+          params: { mode: 'dexAbstraction' },
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
         message: venueError,
       })
     })

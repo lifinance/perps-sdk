@@ -38,6 +38,13 @@ export enum PerpsErrorCode {
 
   // Routing errors (2060-2069)
   RouteNotFound = 2060,
+
+  // Setup errors (2070-2079)
+  /**
+   * The account exists, but a recoverable provider setup action must be
+   * completed before the requested operation can be retried.
+   */
+  SetupRequired = 2070,
 }
 
 /** Side of an order or execution, using provider wire values. @public */
