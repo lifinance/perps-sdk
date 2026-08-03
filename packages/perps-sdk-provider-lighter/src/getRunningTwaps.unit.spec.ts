@@ -2,6 +2,7 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import {
   type Market,
   OrderSide,
+  PerpsErrorCode,
   PositionMarginAdjustment,
   TwapOrderStatus,
 } from '@lifi/perps-types'
@@ -36,6 +37,12 @@ const MARKET: Market = {
   maxLeverage: 20,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+}
+
+const MARKET_TWO: Market = {
+  ...MARKET,
+  id: '2',
+  baseAsset: { ...MARKET.baseAsset, id: '2', displaySymbol: 'BTC' },
 }
 
 const order = (type: string, orderIndex: number): LtOrder => ({
@@ -153,5 +160,110 @@ describe('Lighter getRunningTwaps', () => {
         status: TwapOrderStatus.RUNNING,
       },
     ])
+  })
+
+  it('accumulates twaps across every order-bearing market when no market is given', async () => {
+    const requests: string[] = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      requests.push(url)
+      if (url.includes('/markets')) {
+        return Response.json({ markets: [MARKET, MARKET_TWO] })
+      }
+      if (url.includes('/api/v1/account?')) {
+        return Response.json({
+          code: 200,
+          accounts: [
+            {
+              index: 42,
+              positions: [
+                { market_id: 1, open_order_count: 1 },
+                { market_id: 2, pending_order_count: 1 },
+                { market_id: 3, open_order_count: 0 },
+              ],
+            },
+          ],
+        })
+      }
+      if (url.includes('/api/v1/accountActiveOrders')) {
+        const marketId = new URL(url).searchParams.get('market_id')
+        return Response.json({
+          code: 0,
+          next_cursor: '',
+          orders: [
+            {
+              ...order('twap', marketId === '1' ? 88 : 91),
+              market_index: Number(marketId),
+            },
+          ],
+        })
+      }
+      throw new Error(`Unhandled URL: ${url}`)
+    }
+    const client = createPerpsClient({
+      integrator: 'twap-test',
+      apiKey: 'test-key',
+      retry: false,
+      fetch: fetchImpl,
+      providers: [
+        lighterProvider({ restUrl: REST_URL, authToken: 'read-token' }),
+      ],
+    })
+    const provider = client.getProvider('lighter')
+    if (provider?.getRunningTwaps === undefined) {
+      throw new Error('lighter provider does not implement getRunningTwaps')
+    }
+
+    const result = await provider.getRunningTwaps({ address: ADDRESS })
+
+    const orderRequests = requests.filter((url) =>
+      url.includes('/api/v1/accountActiveOrders')
+    )
+    expect(orderRequests).toHaveLength(2)
+    expect(orderRequests[0]).toContain('market_id=1')
+    expect(orderRequests[1]).toContain('market_id=2')
+    for (const url of orderRequests) {
+      expect(url).toContain('auth=read-token')
+    }
+    expect(result.map((twap) => [twap.twapId, twap.market.id])).toEqual([
+      ['88', '1'],
+      ['91', '2'],
+    ])
+  })
+
+  it('rejects a marketId the Lighter market list does not know', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.includes('/markets')) {
+        return Response.json({ markets: [MARKET] })
+      }
+      if (url.includes('/api/v1/account?')) {
+        return Response.json({
+          code: 200,
+          accounts: [{ index: 42, positions: [] }],
+        })
+      }
+      throw new Error(`Unhandled URL: ${url}`)
+    }
+    const client = createPerpsClient({
+      integrator: 'twap-test',
+      apiKey: 'test-key',
+      retry: false,
+      fetch: fetchImpl,
+      providers: [
+        lighterProvider({ restUrl: REST_URL, authToken: 'read-token' }),
+      ],
+    })
+    const provider = client.getProvider('lighter')
+    if (provider?.getRunningTwaps === undefined) {
+      throw new Error('lighter provider does not implement getRunningTwaps')
+    }
+
+    await expect(
+      provider.getRunningTwaps({ address: ADDRESS, marketId: 'LIT/USDC' })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+      tool: 'lighter',
+    })
   })
 })
