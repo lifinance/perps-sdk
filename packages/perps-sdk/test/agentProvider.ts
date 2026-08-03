@@ -15,7 +15,7 @@ import type {
   ActionSignerContribution,
   PerpsProviderPlugin,
   SignActionsContext,
-} from '../src/types/core.js'
+} from '../src/types/provider.js'
 import { signTypedData } from '../src/utils/signTypedData.js'
 
 /**

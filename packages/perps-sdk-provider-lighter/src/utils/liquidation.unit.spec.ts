@@ -22,11 +22,9 @@ const market = (overrides: Partial<PerpsMarket>): PerpsMarket => ({
   },
   szDecimals: 5,
   priceDecimals: 1,
-  markPrice: '61729.6',
   maxLeverage: 50,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
-  funding: { rate: '0.0001', nextFundingTime: 0 },
   maintenanceMarginRate: 0.012,
   ...overrides,
 })

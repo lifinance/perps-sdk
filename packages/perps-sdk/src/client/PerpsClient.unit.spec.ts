@@ -1,7 +1,11 @@
 import type {
   AccountResponse,
+  ActionResult,
+  ActionStep,
+  Asset,
   CreateActionRequest,
   CreateActionResponse,
+  Eip712SignedActionStep,
   ExecuteActionRequest,
   ExecuteActionResponse,
   HmacSignedActionStep,
@@ -11,6 +15,8 @@ import type {
 import {
   ActionType,
   MarginMode,
+  OrderSide,
+  OrderType,
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
@@ -45,6 +51,7 @@ describe('PerpsClient', () => {
   let agentProvider: TestAgentProvider
   const userAddress = '0x1234567890123456789012345678901234567890'
   const provider = 'hyperliquid'
+  const MARKET = { marketId: 'BTC', categoryId: provider }
 
   beforeEach(() => {
     agentProvider = createTestAgentProvider({ type: provider })
@@ -63,7 +70,7 @@ describe('PerpsClient', () => {
         client.placeOrder({
           address: userAddress,
           provider,
-          symbol: 'BTC',
+          market: MARKET,
           side: 'BUY' as any,
           type: 'MARKET' as any,
           size: '0.1',
@@ -90,7 +97,7 @@ describe('PerpsClient', () => {
         noSignClient.placeOrder({
           address: userAddress,
           provider,
-          symbol: 'BTC',
+          market: MARKET,
           side: 'BUY' as any,
           type: 'MARKET' as any,
           size: '0.1',
@@ -114,16 +121,19 @@ describe('PerpsClient', () => {
       const result = await client.placeOrder({
         address: userAddress,
         provider,
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
         price: '95000.00',
       })
 
+      const [first] = result.results
       expect(result.results).toHaveLength(1)
-      expect(result.results[0].success).toBe(true)
-      expect(result.results[0].orderId).toBe('neworder123')
+      if (!first.success) {
+        throw new Error('expected success')
+      }
+      expect(first.orderId).toBe('neworder123')
     })
   })
 
@@ -168,7 +178,9 @@ describe('PerpsClient', () => {
       expect(capturedRequest).toBeDefined()
       expect(capturedRequest!.action).toBe(ActionType.WITHDRAWAL)
       expect(capturedRequest!.signerAddress).toBe(account.address)
-      expect(capturedRequest!.actions[0].signature).toMatch(/^0x[0-9a-f]+$/i)
+      expect(
+        (capturedRequest!.actions[0] as Eip712SignedActionStep).signature
+      ).toMatch(/^0x[0-9a-f]+$/i)
     })
 
     it('throws a clear error when no user wallet is configured', async () => {
@@ -243,7 +255,7 @@ describe('PerpsClient', () => {
           address: userAddress,
           action: ActionType.PLACE_ORDER,
           params: {
-            symbol: 'BTC',
+            market: MARKET,
             side: 'BUY' as any,
             type: 'MARKET' as any,
             size: '0.1',
@@ -276,7 +288,7 @@ describe('PerpsClient', () => {
           address: userAddress,
           action: ActionType.PLACE_ORDER,
           params: {
-            symbol: 'BTC',
+            market: MARKET,
             side: 'BUY' as any,
             type: 'MARKET' as any,
             size: '0.1',
@@ -292,7 +304,7 @@ describe('PerpsClient', () => {
   describe('execute does not retry money-moving writes', () => {
     const BASE_URL = DEFAULT_API_URL
     const orderParams = {
-      symbol: 'BTC',
+      market: MARKET,
       side: 'BUY' as any,
       type: 'MARKET' as any,
       size: '0.1',
@@ -579,7 +591,7 @@ describe('PerpsClient', () => {
     // The backend rejects a mandatory setup action with a 200 OK carrying a
     // per-action `{ success: false, error }`. The SDK must throw so the
     // failure reaches the caller, rather than silently resolving.
-    function failExecuteAction(error: string) {
+    function failExecuteAction(error: string, errorCode?: PerpsErrorCode) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -602,7 +614,9 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [{ action: body.action, success: false, error }],
+            results: [
+              { action: body.action, success: false, error, errorCode },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -665,6 +679,23 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('throws under the result errorCode when the backend classified the failure', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError = 'Complete the provider setup before trading.'
+      failExecuteAction(venueError, PerpsErrorCode.SetupRequired)
+
+      await expect(
+        (client as any).executeProviderSetup({
+          provider: 'hyperliquid',
+          address: userAddress,
+          ...userSetup(ActionType.APPROVE_AGENT),
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: venueError,
+      })
+    })
+
     it('propagates the throw through executeProviderSetupAction (the widget entry point)', async () => {
       // APPROVE_AGENT is a USER-signed EIP-712 step, so executeProviderSetupAction
       // signs it with the configured wallet before submitting.
@@ -697,7 +728,9 @@ describe('PerpsClient', () => {
 
     it('invokes the plugin onExecuteResults hook with the failing results before throwing', async () => {
       const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
-      const onExecuteResults = vi.fn(async () => {})
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
       ;(hookedProvider as any).onExecuteResults = onExecuteResults
       const hookedClient = new PerpsClient({
         integrator: 'test-app',
@@ -771,7 +804,11 @@ describe('PerpsClient', () => {
     // The backend rejects the selected value with a 200 OK carrying a
     // per-action `{ success: false, error }`; executeProviderOption must turn
     // that into a throw rather than silently resolving.
-    function respondAccountMode(result: { success: boolean; error?: string }) {
+    function respondAccountMode(result: {
+      success: boolean
+      error?: string
+      errorCode?: PerpsErrorCode
+    }) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -816,6 +853,28 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('throws under the result errorCode when the backend classified the failure', async () => {
+      await agentProvider.createAgent(userAddress)
+      const venueError = 'Complete the provider setup before trading.'
+      respondAccountMode({
+        success: false,
+        error: venueError,
+        errorCode: PerpsErrorCode.SetupRequired,
+      })
+
+      await expect(
+        client.executeProviderOption({
+          provider,
+          address: userAddress,
+          action: ActionType.ACCOUNT_MODE,
+          params: { mode: 'dexAbstraction' },
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: venueError,
+      })
+    })
+
     it('resolves when the option change succeeds', async () => {
       await agentProvider.createAgent(userAddress)
       respondAccountMode({ success: true })
@@ -828,6 +887,164 @@ describe('PerpsClient', () => {
           params: { mode: 'dexAbstraction' },
         })
       ).resolves.toBeUndefined()
+    })
+  })
+
+  describe('venue txHash → explorer link on execute results', () => {
+    const BASE_URL = DEFAULT_API_URL
+    // A Lighter WASM-signed action: the signer computes the L2 hash before the
+    // network call, so the backend echoes it on the per-step result.
+    const TX_HASH = `0x${'8f2b1c4d'.repeat(8)}`
+    const EXPLORER_BASE = 'https://app.lighter.xyz/explorer/logs/'
+    const TYPED_DATA = {
+      domain: { name: 'venue', chainId: 1 },
+      types: { Setup: [{ name: 'x', type: 'uint256' }] },
+      primaryType: 'Setup' as const,
+      message: { x: 0 },
+    }
+    const ORDER = {
+      market: { marketId: 'BTC', categoryId: 'lighter' },
+      side: OrderSide.BUY,
+      type: OrderType.MARKET,
+      size: '0.1',
+      price: '95000.00',
+    } as const
+
+    function respondExecute(result: Record<string, unknown>) {
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [
+              {
+                action: body.action,
+                success: true,
+                orderId: '9',
+                ...result,
+              },
+            ],
+          } as ExecuteActionResponse)
+        })
+      )
+    }
+
+    async function placeLighterOrder(
+      plugin: Partial<PerpsProviderPlugin>
+    ): Promise<ExecuteActionResponse> {
+      const lighter = createTestAgentProvider({ type: 'lighter', ...plugin })
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+      await lighter.createAgent(userAddress)
+      return lighterClient.placeOrder({
+        address: userAddress,
+        provider: 'lighter',
+        ...ORDER,
+      })
+    }
+
+    it('carries the backend hash and the provider-built explorer URL', async () => {
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await placeLighterOrder({
+        resolveExplorerLink: (txHash) => `${EXPLORER_BASE}${txHash}`,
+      })
+
+      expect(results).toEqual([
+        {
+          action: ActionType.PLACE_ORDER,
+          success: true,
+          orderId: '9',
+          txHash: TX_HASH,
+          explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
+        },
+      ])
+    })
+
+    it('omits both fields when the backend response carries no hash', async () => {
+      respondExecute({})
+      const resolveExplorerLink = vi.fn(() => `${EXPLORER_BASE}${TX_HASH}`)
+
+      const { results } = await placeLighterOrder({ resolveExplorerLink })
+
+      expect(results[0]).not.toHaveProperty('txHash')
+      expect(results[0]).not.toHaveProperty('explorerLink')
+      expect(resolveExplorerLink).not.toHaveBeenCalled()
+    })
+
+    it('keeps the hash but omits the link for an instance with no explorer', async () => {
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await placeLighterOrder({
+        resolveExplorerLink: () => undefined,
+      })
+
+      expect(results[0]).toMatchObject({ txHash: TX_HASH })
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('leaves a provider with no explorer concept unlinked (Hyperliquid, Ondo)', async () => {
+      await agentProvider.createAgent(userAddress)
+      expect(agentProvider.resolveExplorerLink).toBeUndefined()
+      respondExecute({ txHash: TX_HASH })
+
+      const { results } = await client.placeOrder({
+        address: userAddress,
+        provider,
+        ...ORDER,
+      })
+
+      expect(results[0]).toMatchObject({ txHash: TX_HASH })
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('yields neither field on the default hashless Hyperliquid response', async () => {
+      await agentProvider.createAgent(userAddress)
+
+      const { results } = await client.placeOrder({
+        address: userAddress,
+        provider,
+        ...ORDER,
+      })
+
+      expect(results[0]).not.toHaveProperty('txHash')
+      expect(results[0]).not.toHaveProperty('explorerLink')
+    })
+
+    it('links setup-path results and hands the linked results to onExecuteResults', async () => {
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
+      const lighter = createTestAgentProvider({
+        type: 'lighter',
+        resolveExplorerLink: (txHash) => `${EXPLORER_BASE}${txHash}`,
+        onExecuteResults,
+      })
+      const lighterClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighter],
+      })
+      await lighter.createAgent(userAddress)
+      respondExecute({ txHash: TX_HASH })
+
+      await lighterClient.executeProviderSetupAction({
+        provider: 'lighter',
+        address: userAddress,
+        step: { action: ActionType.REGISTER_API_KEY, typedData: TYPED_DATA },
+      })
+
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([
+        {
+          action: ActionType.REGISTER_API_KEY,
+          success: true,
+          orderId: '9',
+          txHash: TX_HASH,
+          explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
+        },
+      ])
     })
   })
 
@@ -1041,6 +1258,165 @@ describe('PerpsClient', () => {
     })
   })
 
+  // ---------------------------------------------------------------------------
+  // getWithdrawableBalances — provider route split joined with core asset metadata
+  // ---------------------------------------------------------------------------
+
+  describe('getWithdrawableBalances', () => {
+    // Per-asset precision and minimums as live
+    // `GET https://mainnet.zklighter.elliot.ai/api/v1/assetDetails` reports them.
+    const ASSETS: Asset[] = [
+      {
+        providerId: provider,
+        id: '1',
+        displaySymbol: 'ETH',
+        logoURI: '',
+        decimals: 8,
+        l1Decimals: 18,
+        l1Address: '0x0000000000000000000000000000000000000000',
+        minWithdrawalAmount: '0.00100000',
+      },
+      {
+        providerId: provider,
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+        decimals: 6,
+        l1Decimals: 6,
+        l1Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        minWithdrawalAmount: '1.000000',
+      },
+      { providerId: provider, id: '9', displaySymbol: 'LDO', logoURI: '' },
+    ]
+
+    const clientWith = (
+      plugin: Record<string, unknown>,
+      assets: Asset[] = ASSETS
+    ): PerpsClient => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/assets`, () =>
+          HttpResponse.json({ assets })
+        )
+      )
+      return new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+    }
+
+    const withRows = (rows: unknown[]) => ({
+      getWithdrawableBalances: vi.fn(async () => rows),
+    })
+
+    it('joins core asset metadata onto every actionable row', async () => {
+      const plugin = withRows([
+        { assetId: '1', route: 'spot', available: '0.00609091' },
+        { assetId: '3', route: 'spot', available: '10.9886' },
+        { assetId: '3', route: 'perps', available: '11.009697536' },
+      ])
+      await expect(
+        clientWith(plugin).getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toEqual([
+        { asset: ASSETS[0], route: 'spot', available: '0.00609091' },
+        { asset: ASSETS[1], route: 'spot', available: '10.9886' },
+        { asset: ASSETS[1], route: 'perps', available: '11.009697536' },
+      ])
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
+        address: userAddress,
+      })
+    })
+
+    it('excludes rows below the asset minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '1', route: 'spot', available: '0.000040752' },
+            { assetId: '3', route: 'spot', available: '0.008924170612' },
+            { assetId: '3', route: 'perps', available: '0.003226339915' },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([])
+    })
+
+    it('identifies malformed minimum metadata by asset and field', async () => {
+      const assets = [
+        { ...ASSETS[0], minWithdrawalAmount: 'not-a-decimal' },
+        ...ASSETS.slice(1),
+      ]
+      await expect(
+        clientWith(
+          withRows([{ assetId: '1', route: 'spot', available: '0.00609091' }]),
+          assets
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message:
+          "Asset '1' field `minWithdrawalAmount` is not a valid decimal.",
+      })
+    })
+
+    it('keeps a row sitting exactly on the asset minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '1', route: 'spot', available: '0.001' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        { asset: ASSETS[0], route: 'spot', available: '0.001' },
+      ])
+    })
+
+    it('keeps rows for an asset that publishes no minimum', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '9', route: 'spot', available: '0.05153' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        { asset: ASSETS[2], route: 'spot', available: '0.05153' },
+      ])
+    })
+
+    it('omits a row whose asset the provider registry does not carry', async () => {
+      await expect(
+        clientWith(
+          withRows([{ assetId: '2', route: 'spot', available: '6.00005017' }])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([])
+    })
+
+    it('resolves undefined when the plugin declares no withdrawable read', async () => {
+      await expect(
+        clientWith({}).getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
   describe('getMarketSettings', () => {
     const market = { marketId: 'BTC', categoryId: 'perps' }
     const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
@@ -1124,11 +1500,13 @@ describe('PerpsClient', () => {
           providerId: provider,
           id: 'BTC',
           displaySymbol: 'BTC',
+          logoURI: 'https://example.com/btc.png',
         },
         quoteAsset: {
           providerId: provider,
           id: 'USDC',
           displaySymbol: 'USDC',
+          logoURI: 'https://example.com/usdc.png',
         },
         positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
       },
@@ -1217,7 +1595,7 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
-            actions: [{ action: body.action }],
+            actions: [{ action: body.action, session: {} } as ActionStep],
           } satisfies CreateActionResponse)
         })
       )
@@ -1393,7 +1771,7 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as CreateActionRequest
           createCalls.push(body.action)
           return HttpResponse.json({
-            actions: [{ action: body.action }],
+            actions: [{ action: body.action, session: {} } as ActionStep],
           } satisfies CreateActionResponse)
         })
       )
@@ -1956,7 +2334,7 @@ describe('PerpsClient', () => {
       const hlResult = await bothClient.placeOrder({
         address: userAddress,
         provider: 'hyperliquid',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
@@ -1965,7 +2343,7 @@ describe('PerpsClient', () => {
       const lighterResult = await bothClient.placeOrder({
         address: lighterAddress,
         provider: 'lighter',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
@@ -2022,7 +2400,7 @@ describe('PerpsClient', () => {
     }
 
     const orderParams = {
-      symbol: 'BTC',
+      market: MARKET,
       side: 'BUY' as any,
       type: 'MARKET' as any,
       size: '0.1',
@@ -2138,7 +2516,9 @@ describe('PerpsClient', () => {
 
     it('invokes the plugin onExecuteResults hook with the backend results', async () => {
       const ondo = createHmacProvider()
-      const onExecuteResults = vi.fn(async () => {})
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
       ;(ondo as any).onExecuteResults = onExecuteResults
       useOndoHandlers()
 
@@ -2343,7 +2723,7 @@ describe('PerpsClient', () => {
       await client.placeOrder({
         address: account.address,
         provider: 'hyperliquid',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',

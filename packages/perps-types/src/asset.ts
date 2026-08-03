@@ -1,5 +1,3 @@
-import type { Address } from './primitives.js'
-
 /**
  * Underlying token/registry entry. The base entity of the perps taxonomy:
  * a tradable unit referenced by markets (as base/quote legs) and held by
@@ -23,42 +21,18 @@ export interface Asset {
   tags?: string[]
   /** Other venues' display symbols for the same real-world asset (e.g. Hyperliquid `SILVER` carries `['XAG']`). */
   aliases?: string[]
-}
-
-/**
- * An external, on-chain ERC-20 token a client bridges/swaps in to fund an
- * account at a venue — the collateral currency, described by its canonical
- * on-chain identity (a LI.FI-recognized token). The source token is arbitrary:
- * LI.FI routes whatever the user holds into this one, so only the target
- * currency is described here. How the venue represents the credited balance
- * internally is deliberately not modeled — it surfaces in-venue once the
- * deposit arrives.
- *
- * Distinct from a category's {@link ProviderCategory.quoteAsset} (the
- * pricing/quote unit a market is denominated in): all live venues settle in
- * USDC today so the two coincide, but they are different concepts and may
- * diverge. Unlike {@link Asset} (a provider-native registry entry keyed by an
- * opaque provider id), this carries full on-chain identity — chain, address,
- * decimals.
- * @public
- */
-export interface DepositAsset {
   /**
-   * The chain the ERC-20 contract lives on, aligned to `@lifi/types` `ChainId`
-   * values (documentation-level, not a type dependency). This is the token's
-   * on-chain home (e.g. Arbitrum for HL's USDC), NOT necessarily the LI.FI
-   * deposit route's `toChain`: some venues route to a distinct LI.FI venue
-   * chain (see the SDK's declared deposit assets), so the two may differ and
-   * the client maps between them.
+   * Precision the venue holds this asset at — the exponent an amount is
+   * scaled by to reach the venue's integer wire value. Absent when the
+   * provider publishes no per-asset precision.
    */
-  chainId: number
-  /** ERC-20 contract address on {@link DepositAsset.chainId}. */
-  address: Address
-  /** ERC-20 decimals, used to scale deposit amounts. */
-  decimals: number
-  displaySymbol: string
-  logoURI: string
-  displayName?: string
+  decimals?: number
+  /** Precision of the asset's L1 token contract, which need not match {@link Asset.decimals}. */
+  l1Decimals?: number
+  /** L1 token contract; the zero address denotes native gas. */
+  l1Address?: string
+  /** Venue minimum for a single withdrawal, denominated in this asset — not USD. */
+  minWithdrawalAmount?: string
 }
 
 /** Response containing the provider's normalized asset registry. @public */

@@ -1,5 +1,76 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 11.1.0
+
+### Minor Changes
+
+- [#322](https://github.com/lifinance/perps-sdk/pull/322) [`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add TWAP action wrappers, preserve provider TWAP identifiers, sign Lighter TWAP actions, and read running TWAP parents directly from each venue.
+
+### Patch Changes
+
+- Updated dependencies [[`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852), [`2ffedda`](https://github.com/lifinance/perps-sdk/commit/2ffedda30f1ec78a29d3cd5e05454732912651ea)]:
+  - @lifi/perps-types@5.3.0
+
+## 11.0.0
+
+### Major Changes
+
+- [#318](https://github.com/lifinance/perps-sdk/pull/318) [`394d1a7`](https://github.com/lifinance/perps-sdk/commit/394d1a723d26e328572b86547239509410791b40) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - **Breaking:** Remove the `referralCode` option from `LighterProviderOptions`. `getAccount` now resolves the expected Lighter referral code from the backend-owned `referralCode` on the current instance's `/providers` descriptor (selected by provider key, so Lighter RH never compares against mainnet attribution) instead of a compiled-in constructor option. The `/api/v1/referral/userReferrals` read stays SDK-direct and authenticated with the user's Lighter auth token — the token never transits the LI.FI backend — and `LighterAccountConfig.referralPresent` is `true` only when the authenticated `used_code` equals the runtime provider `referralCode`. When the runtime metadata carries no code or no auth token is available, the referral read is skipped and `referralPresent` is `false`.
+
+## 10.0.0
+
+### Major Changes
+
+- [#314](https://github.com/lifinance/perps-sdk/pull/314) [`ab7b307`](https://github.com/lifinance/perps-sdk/commit/ab7b307fcca34b443fcb305da6fa1b3ef916e1c1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter withdrawals now sign the caller's `(asset, route)` selection instead of a fixed USDC-out-of-perps default. `LtWithdrawWasmParams` requires `asset_index`, `route_type`, a decimal `amount` string, and the asset's `decimals`, `min_withdrawal_amount` and `symbol`; the signer rejects a route outside `{0, 1}` and any amount below the asset's minimum, and scales by that asset's own precision. `LtAccountAsset` now matches the live `/api/v1/account` payload (`margin_balance`, `multiplier`, and `margin_mode` as `'enabled' | 'disabled'`). New `PerpsClient.getWithdrawableBalances` lists the `(asset, route)` pairs an account can actually withdraw, and `Asset` carries the optional per-asset withdrawal metadata that read joins on.
+
+### Patch Changes
+
+- Updated dependencies [[`ab7b307`](https://github.com/lifinance/perps-sdk/commit/ab7b307fcca34b443fcb305da6fa1b3ef916e1c1)]:
+  - @lifi/perps-types@5.1.0
+
+## 9.0.0
+
+### Major Changes
+
+- [#312](https://github.com/lifinance/perps-sdk/pull/312) [`9b42425`](https://github.com/lifinance/perps-sdk/commit/9b42425299f0af6ac006a59ce9cf4c2fca0d2547) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - **Breaking:** Lighter provider plugins now own signing, key storage and WASM loading. `lighterProvider()` and the new `lighterRhProvider()` each create their own `LighterSigner`, provider-namespaced `LighterKeyStore` and `LighterReadOnlyTokenManager` from an SDK-owned deployment descriptor, so the two deployments coexist on one client without sharing keys, tokens, endpoints, signing chain ids or collateral. `LighterProviderOptions` now exposes only consumer-level overrides (`storage`, `restUrl`, `authToken`, token lifetimes, `referralCode`); the `signer`, `keyStore`, `readOnlyTokenOptions`, `providerKey`, `explorerTxBaseUrl` and WASM URL/source options are removed, along with the `LighterSigner` / `LighterKeyStore` / `LighterReadOnlyTokenManager` / `loadLighterWasm` exports and the `./wasm/*` subpath export. `LIGHTER_MAINNET_INSTANCE` / `lighterRhInstance()` / `LighterInstanceConfig` are replaced by `LIGHTER_MAINNET_DEPLOYMENT` / `LIGHTER_RH_DEPLOYMENT` / `LighterDeployment`, and `DEFAULT_LIGHTER_SIGNER_CHAIN_ID` by `LIGHTER_MAINNET_SIGNER_CHAIN_ID`; `LIGHTER_RH_SIGNER_CHAIN_ID` is 466324 per Lighter's published Python SDK v1.1.2 endpoint profile. Go's `wasm_exec.js` is packaged as build-generated text verified against the vendored source, and `lighter-signer.wasm` stays a separate asset the package resolves itself — Vite and Next.js builds emit it with no consumer `?url`/`?raw` imports or `public/` copy step.
+
+## 8.2.1
+
+### Patch Changes
+
+- [#310](https://github.com/lifinance/perps-sdk/pull/310) [`ec3510c`](https://github.com/lifinance/perps-sdk/commit/ec3510cf031924d28384ab8a45a968eada482dce) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `EVM_TX` actions (deposits) now sign through the end-user wallet on a provider configured without a `signer` or `keyStore`; those dependencies are required only by the `WASM_BLOB` arm.
+
+## 8.2.0
+
+### Minor Changes
+
+- [#303](https://github.com/lifinance/perps-sdk/pull/303) [`438e8e2`](https://github.com/lifinance/perps-sdk/commit/438e8e29b40c7d1af7d9972adaf2f18379985a30) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Sign Lighter withdrawals, transfers and spot/perp route moves against the collateral asset of the instance doing the signing instead of a module-pinned USDC index, and report collateral balances per instance. `LighterInstanceConfig` now carries a `collateral` field (L2 asset index plus display symbol — USDC on mainnet, USDG on the Robinhood chain deployment), `LighterSigner` accepts a `collateralAssetIndex`, and `lighterAsset` accepts the owning instance's provider key.
+
+### Patch Changes
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
+## 8.1.0
+
+### Minor Changes
+
+- [#300](https://github.com/lifinance/perps-sdk/pull/300) [`2112c11`](https://github.com/lifinance/perps-sdk/commit/2112c1115e57324f2e1589472b72354217a891ea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Surface the venue transaction behind a submitted action: a successful `ActionResult` now carries optional `txHash` and a fully-resolved `explorerLink`, so an integrator can link to the venue explorer straight after `executeAction` instead of waiting for the fill or activity row. The backend populates `txHash` only where the venue's canonical hash is known at submit time — Lighter, whose WASM signer computes it before the network call. Explorer resolution stays provider-owned through the new optional `PerpsProviderPlugin.resolveExplorerLink(txHash)` hook, which the Lighter plugin implements against its instance's `explorerTxBaseUrl`. Hyperliquid (hash assigned at block inclusion) and Ondo (offchain) implement no hook, so their results carry neither field — no placeholder links.
+
+### Patch Changes
+
+- Updated dependencies [[`2112c11`](https://github.com/lifinance/perps-sdk/commit/2112c1115e57324f2e1589472b72354217a891ea)]:
+  - @lifi/perps-types@4.2.0
+
+## 8.0.1
+
+### Patch Changes
+
+- [#299](https://github.com/lifinance/perps-sdk/pull/299) [`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Expose `positionSupportsMarginAdjustment(position)` and `positionSupportsMarginRemoval(position)` as the stack's owned answer to whether an open position takes a margin adjustment, and in which direction. Clients gating an edit-margin affordance read these instead of inspecting `Position.marginMode` and `Position.market.positionMarginAdjustment` themselves, or calling `positionMarginConstraints` just to test its `undefined` return. `removableIsolatedMargin` and the Hyperliquid and Lighter `positionMarginConstraints` implementations now gate on the same predicates, so a client's affordance cannot diverge from what the venue accepts.
+
+- Updated dependencies [[`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb)]:
+  - @lifi/perps-types@4.1.0
+
 ## 8.0.0
 
 ### Major Changes

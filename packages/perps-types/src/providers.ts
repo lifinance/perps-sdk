@@ -1,4 +1,4 @@
-import type { Asset, DepositAsset } from './asset.js'
+import type { Asset } from './asset.js'
 import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
@@ -16,7 +16,13 @@ export interface ParamOption {
 export interface Param {
   /** Wire key for the action params object: `{ [param.name]: value }`. */
   name: string
-  type: 'string'
+  /**
+   * Primitive type of the wire value. `ParamOption.value` and `default`
+   * stay stringified regardless of type; clients parse per `type`
+   * (`'true'`/`'false'` for booleans, decimal strings for numbers) before
+   * writing the typed value into the action params object.
+   */
+  type: 'string' | 'boolean' | 'number'
   /** Present if and only if the parameter has a fixed enumeration of admissible values. */
   values?: ParamOption[]
   default?: ParamOption
@@ -95,6 +101,11 @@ export interface Provider {
   key: string
   name: string
   logoURI: string
+  /**
+   * Public attribution code supplied by the backend for authenticated
+   * referral-state comparison. Absent when the provider has no referral setup.
+   */
+  referralCode?: string
   signingMethod: SigningMethod
   /** When false, the provider is announced but not yet selectable in clients. */
   active: boolean
@@ -112,17 +123,6 @@ export interface Provider {
   chainId?: number
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
-  /**
-   * External on-chain tokens a client can bridge/swap in to fund an account at
-   * this venue — each the target of a LI.FI deposit route, carrying its own
-   * on-chain identity. Ordered; the first is the default a client preselects.
-   * v1 venues advertise a single token; multiple entries let a venue accept
-   * several deposit currencies. Distinct from a category's `quoteAsset` (the
-   * pricing unit): a venue whose collateral is not USDC changes only this
-   * field, not `quoteAsset`. Absent when the provider advertises no on-chain
-   * deposit token.
-   */
-  depositAssets?: DepositAsset[]
   /**
    * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
    * `minMarginUsd` parameter. Absent means no minimum advertised.

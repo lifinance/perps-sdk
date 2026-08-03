@@ -6,8 +6,9 @@ import type {
   AccountResponse,
   HyperliquidAccountConfig,
   LighterAccountConfig,
+  LighterProviderKey,
 } from './account.js'
-import type { Asset, DepositAsset } from './asset.js'
+import type { Asset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
@@ -29,14 +30,6 @@ const hourlyProviderFunding: ProviderFunding = {
 const usdcAsset: Asset = {
   providerId: 'hyperliquid',
   id: 'USDC',
-  displaySymbol: 'USDC',
-  logoURI: 'https://example.invalid/usdc.svg',
-}
-
-const arbitrumUsdcDeposit: DepositAsset = {
-  chainId: 42161,
-  address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-  decimals: 6,
   displaySymbol: 'USDC',
   logoURI: 'https://example.invalid/usdc.svg',
 }
@@ -157,7 +150,6 @@ const hyperliquidProvider: Provider = {
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   funding: hourlyProviderFunding,
   chainId: 1337,
-  depositAssets: [arbitrumUsdcDeposit],
   minOrderValueUsd: 10,
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
@@ -167,6 +159,7 @@ const lighterProvider: Provider = {
   key: 'lighter',
   name: 'Lighter',
   logoURI: 'https://example.invalid/lighter.svg',
+  referralCode: 'lifi',
   signingMethod: SigningMethod.WASM_BLOB,
   active: true,
   setup: [registerApiKeySetup],
@@ -281,7 +274,9 @@ const lighterConfig: LighterAccountConfig = {
   apiKeyRegistered: true,
   accountType: 0,
   accountTradingMode: 0,
+  assetCollateral: [],
   readOnlyTokenApproved: false,
+  referralPresent: false,
 }
 
 // RO-token approved state: expiry + scope populated alongside the flag.
@@ -292,9 +287,11 @@ const lighterConfigRoApproved: LighterAccountConfig = {
   apiKeyRegistered: true,
   accountType: 0,
   accountTradingMode: 0,
+  assetCollateral: [],
   readOnlyTokenApproved: true,
   readOnlyTokenExpiry: 1_999_999_999,
   readOnlyTokenScope: 'all',
+  referralPresent: false,
 }
 
 const hyperliquidAccountResponse: AccountResponse = {
@@ -423,13 +420,11 @@ type _ChainIdIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'chainId'>, never>
 >
 
-// `depositAssets` is an optional `DepositAsset[]` — additive, so the existing
-// `/providers` payload and all current consumers keep type-checking.
-type _DepositAssetShape = Expect<
-  Equals<Provider['depositAssets'], DepositAsset[] | undefined>
+type _ReferralCodeShape = Expect<
+  Equals<Provider['referralCode'], string | undefined>
 >
-type _DepositAssetIsOptional = Expect<
-  Equals<Extract<RequiredKeys<Provider>, 'depositAssets'>, never>
+type _ReferralCodeIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'referralCode'>, never>
 >
 
 // `ProviderAction` keys: the three core fields plus the optional
@@ -447,9 +442,11 @@ type _ProviderActionKeys = Expect<
   >
 >
 
-// `Param.type` is the literal `'string'` — numeric / boolean primitives
-// are deferred until a real descriptor needs them.
-type _ParamTypeIsString = Expect<Equals<Param['type'], 'string'>>
+// `Param.type` is the closed three-member primitive union — TWAP extras
+// (ORD-1160) brought in the boolean toggle and numeric interval descriptors.
+type _ParamTypeIsString = Expect<
+  Equals<Param['type'], 'string' | 'boolean' | 'number'>
+>
 
 // `TradeNotice.level` is the closed two-member literal union — catches an
 // accidental widening to `string` or a stray third level.
@@ -468,8 +465,14 @@ type _NarrowHl = Expect<
     HyperliquidAccountConfig
   >
 >
+// `Extract` matches on assignability, so the discriminant must cover every
+// literal in `LighterProviderKey` — narrowing on just `'lighter'` would
+// (incorrectly) extract `never`.
 type _NarrowLighter = Expect<
-  Equals<Extract<AccountConfig, { provider: 'lighter' }>, LighterAccountConfig>
+  Equals<
+    Extract<AccountConfig, { provider: LighterProviderKey }>,
+    LighterAccountConfig
+  >
 >
 
 // `AccountResponse.config` is the discriminated union — NOT
@@ -531,8 +534,8 @@ export type _TypeAssertions = [
   _SupportedIntervalsIsRequired,
   _ChainIdShape,
   _ChainIdIsOptional,
-  _DepositAssetShape,
-  _DepositAssetIsOptional,
+  _ReferralCodeShape,
+  _ReferralCodeIsOptional,
   _ProviderActionKeys,
   _ParamTypeIsString,
   _TradeNoticeLevel,
@@ -633,6 +636,16 @@ describe('Provider.funding', () => {
   })
 })
 
+describe('Provider.referralCode', () => {
+  it('carries backend-owned attribution metadata when advertised', () => {
+    expect(lighterProvider.referralCode).toBe('lifi')
+  })
+
+  it('is optional for providers without referral attribution', () => {
+    expect(providerWithNoDescriptors.referralCode).toBeUndefined()
+  })
+})
+
 describe('Provider order-value minimums', () => {
   it('carries minOrderValueUsd to feed validateMargin', () => {
     expect(hyperliquidProvider.minOrderValueUsd).toBe(10)
@@ -686,36 +699,6 @@ describe('Provider.chainId', () => {
   it('admits a provider with no settlement chain', () => {
     expect(providerWithNoDescriptors.chainId).toBeUndefined()
     expect(announcedProvider.chainId).toBeUndefined()
-  })
-})
-
-describe('Provider.depositAssets', () => {
-  it('carries the on-chain deposit tokens the client routes to', () => {
-    expect(hyperliquidProvider.depositAssets?.[0]?.chainId).toBe(42161)
-    expect(hyperliquidProvider.depositAssets?.[0]?.address).toBe(
-      '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
-    )
-    expect(hyperliquidProvider.depositAssets?.[0]?.decimals).toBe(6)
-  })
-
-  it('is an ordered list — the first entry is the default', () => {
-    expect(Array.isArray(hyperliquidProvider.depositAssets)).toBe(true)
-    expect(hyperliquidProvider.depositAssets?.[0]).toBe(arbitrumUsdcDeposit)
-  })
-
-  it('is distinct from the category quoteAsset (pricing unit)', () => {
-    expect(hyperliquidProvider.categories[0]?.quoteAsset?.displaySymbol).toBe(
-      'USDC'
-    )
-    expect(hyperliquidProvider.depositAssets?.[0]?.displaySymbol).toBe('USDC')
-    expect(
-      'address' in (hyperliquidProvider.categories[0]?.quoteAsset ?? {})
-    ).toBe(false)
-  })
-
-  it('is optional — a provider may advertise no on-chain deposit token', () => {
-    expect(providerWithNoDescriptors.depositAssets).toBeUndefined()
-    expect(lighterProvider.depositAssets).toBeUndefined()
   })
 })
 
@@ -780,7 +763,10 @@ describe('AccountConfig discriminated union', () => {
         case 'hyperliquid':
           return `hl:${config.abstractionMode}:${config.agents.length}`
         case 'lighter':
+        case 'lighter-rh':
           return `lt:${config.accountIndex}:${config.accountType}`
+        case 'ondo':
+          return `ondo:${config.loggedIn}`
         default: {
           const _exhaustive: never = config
           return _exhaustive

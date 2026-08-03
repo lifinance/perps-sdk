@@ -4,12 +4,15 @@ import type {
   CreateActionResponse,
   ExecuteActionResponse,
   FillsResponse,
+  Market,
+  MarketDisplay,
   MarketsResponse,
   Meta,
   OhlcvResponse,
   Order,
   OrderbookResponse,
   OrdersResponse,
+  PerpsMarketDisplay,
   PositionsResponse,
   PricesResponse,
   ProvidersResponse,
@@ -18,12 +21,15 @@ import type {
 import {
   ActionType,
   ActivityType,
+  FillClassification,
   FillStatus,
+  LiquidityRole,
   MarginMode,
   OrderSide,
   OrderStatus,
   OrderType,
   PerpsSigner,
+  PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -32,6 +38,31 @@ import { setupServer } from 'msw/node'
 import { DEFAULT_API_URL } from '../src/client/createPerpsClient.js'
 
 const BASE_URL = DEFAULT_API_URL
+
+// Shared BTC market identity reused by the position/order/fill/activity
+// fixtures below — those response shapes embed a `MarketDisplay` (or the
+// perps-specific superset) rather than a flat symbol/assetId/provider triad.
+const BTC_MARKET_DISPLAY: MarketDisplay = {
+  providerId: 'hyperliquid',
+  id: 'BTC',
+  categoryId: 'hyperliquid',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    displaySymbol: 'BTC',
+    logoURI: 'https://example.com/btc.png',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: 'https://example.com/usdc.png',
+  },
+}
+const BTC_PERPS_MARKET_DISPLAY: PerpsMarketDisplay = {
+  ...BTC_MARKET_DISPLAY,
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+}
 
 export const mockProviders: ProvidersResponse = {
   providers: [
@@ -120,6 +151,7 @@ export const mockProviders: ProvidersResponse = {
         },
       ],
       categories: [],
+      supportedIntervals: [],
     },
     {
       key: 'lighter',
@@ -155,6 +187,7 @@ export const mockProviders: ProvidersResponse = {
         },
       ],
       categories: [],
+      supportedIntervals: [],
     },
   ],
 }
@@ -221,30 +254,48 @@ export const mockCreateAcceptTermsResponse: CreateActionResponse = {
 export const mockMarkets: MarketsResponse = {
   markets: [
     {
-      symbol: 'BTC',
-      name: 'Bitcoin',
-      logoURI: 'https://example.com/btc.png',
-      assetId: 0,
-      provider: 'hyperliquid',
+      providerId: 'hyperliquid',
+      id: 'BTC',
+      categoryId: 'hyperliquid',
+      baseAsset: {
+        providerId: 'hyperliquid',
+        id: 'BTC',
+        displaySymbol: 'BTC',
+        logoURI: 'https://example.com/btc.png',
+      },
+      quoteAsset: {
+        providerId: 'hyperliquid',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: 'https://example.com/usdc.png',
+      },
       szDecimals: 5,
       maxLeverage: 50,
       onlyIsolated: false,
-      funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
-      markPrice: '95000.00',
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
     {
-      symbol: 'ETH',
-      name: 'Ethereum',
-      logoURI: 'https://example.com/eth.png',
-      assetId: 1,
-      provider: 'hyperliquid',
+      providerId: 'hyperliquid',
+      id: 'ETH',
+      categoryId: 'hyperliquid',
+      baseAsset: {
+        providerId: 'hyperliquid',
+        id: 'ETH',
+        displaySymbol: 'ETH',
+        logoURI: 'https://example.com/eth.png',
+      },
+      quoteAsset: {
+        providerId: 'hyperliquid',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: 'https://example.com/usdc.png',
+      },
       szDecimals: 4,
       maxLeverage: 50,
       onlyIsolated: false,
-      funding: { rate: '0.00005', nextFundingTime: 1704067200000 },
-      markPrice: '3400.00',
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
-  ],
+  ] satisfies Market[],
 }
 
 export const mockPrices: PricesResponse = {
@@ -266,7 +317,7 @@ export const mockPrices: PricesResponse = {
 
 export const mockOhlcv: OhlcvResponse = {
   provider: 'hyperliquid',
-  symbol: 'BTC',
+  marketId: 'BTC',
   interval: '1h',
   candles: [
     {
@@ -290,7 +341,7 @@ export const mockOhlcv: OhlcvResponse = {
 
 export const mockOrderbook: OrderbookResponse = {
   provider: 'hyperliquid',
-  symbol: 'BTC',
+  marketId: 'BTC',
   bids: [
     { price: '94999.50', size: '1.5' },
     { price: '94999.00', size: '2.0' },
@@ -305,9 +356,22 @@ export const mockOrderbook: OrderbookResponse = {
 export const mockAccount: AccountResponse = {
   provider: 'hyperliquid',
   address: '0x1234567890123456789012345678901234567890',
-  // `balances` is now keyed by venue/category — tests target the
-  // `hyperliquid` perps venue.
-  balances: { hyperliquid: [{ currency: 'USDC', amount: '10000.00' }] },
+  // Non-collateral holdings are empty in this fixture; the account's USDC
+  // sits in `collateralBalances` as the hyperliquid venue's margin asset.
+  balances: [],
+  collateralBalances: [
+    {
+      categoryId: 'hyperliquid',
+      asset: {
+        providerId: 'hyperliquid',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: 'https://example.com/usdc.png',
+      },
+      units: '10000.00',
+      valueUsd: '10000.00',
+    },
+  ],
   positions: [],
   marginUsed: '500.00',
   unrealizedPnl: '125.50',
@@ -327,9 +391,7 @@ export const mockPositions: PositionsResponse = {
   provider: 'hyperliquid',
   positions: [
     {
-      symbol: 'BTC',
-      assetId: 0,
-      provider: 'hyperliquid',
+      market: BTC_PERPS_MARKET_DISPLAY,
       side: PositionSide.LONG,
       size: '0.1',
       entryPrice: '94000.00',
@@ -338,6 +400,7 @@ export const mockPositions: PositionsResponse = {
       unrealizedPnl: '100.00',
       leverage: 10,
       marginUsed: '940.00',
+      initialMarginRequirement: '940.00',
       marginMode: MarginMode.CROSS,
     },
   ],
@@ -348,10 +411,8 @@ export const mockOrders: OrdersResponse = {
   provider: 'hyperliquid',
   openOrders: [
     {
-      id: 'order1',
-      symbol: 'BTC',
-      assetId: 0,
-      provider: 'hyperliquid',
+      orderId: 'order1',
+      market: BTC_MARKET_DISPLAY,
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       size: '0.05',
@@ -370,14 +431,15 @@ export const mockFills: FillsResponse = {
   items: [
     {
       id: 'hist1',
-      symbol: 'BTC',
-      assetId: 0,
-      provider: 'hyperliquid',
+      orderId: 'order1',
+      market: BTC_MARKET_DISPLAY,
       side: OrderSide.BUY,
       type: OrderType.MARKET,
       size: '0.1',
       price: '94000.00',
       status: FillStatus.FILLED,
+      liquidity: LiquidityRole.TAKER,
+      classification: FillClassification.OPENED_LONG,
       filledSize: '0.1',
       fee: '4.70',
       realizedPnl: null,
@@ -402,7 +464,7 @@ export const mockActivity: ActivitiesResponse = {
       provider: 'hyperliquid',
       timestamp: '2023-12-31T23:00:00.000Z',
       type: ActivityType.FUNDING,
-      symbol: 'BTC',
+      market: BTC_MARKET_DISPLAY,
       amount: '2.50',
       positionSize: '0.1',
       fundingRate: '0.0001',
@@ -413,7 +475,7 @@ export const mockActivity: ActivitiesResponse = {
 
 export const mockOrder: Order = {
   orderId: 'order1',
-  symbol: 'BTC',
+  market: BTC_MARKET_DISPLAY,
   side: OrderSide.BUY,
   type: OrderType.LIMIT,
   price: '93000.00',
@@ -562,7 +624,7 @@ export const handlers = [
   http.get(`${BASE_URL}/markets`, () => HttpResponse.json(mockMarkets)),
 
   http.get(`${BASE_URL}/markets/:symbol`, ({ params }) => {
-    const market = mockMarkets.markets.find((m) => m.symbol === params.symbol)
+    const market = mockMarkets.markets.find((m) => m.id === params.symbol)
     if (!market) {
       return new HttpResponse(null, { status: 404 })
     }

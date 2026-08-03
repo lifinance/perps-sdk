@@ -20,8 +20,10 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
+import { getAssetRegistry } from '../registry/assetRegistry.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
@@ -29,15 +31,18 @@ import { getProviders } from '../services/getProviders.js'
 import type {
   BuildProviderSetupParams,
   CancelOrdersParams,
+  CancelTwapOrderParams,
   ExecuteProviderSetupParams,
   ExecuteProviderSetupResult,
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
+  GetWithdrawableBalancesParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
   PlaceTriggerOrderParams,
+  PlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
   WithdrawParams,
@@ -51,6 +56,7 @@ import type {
   SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
+import type { WithdrawableBalance } from '../types/withdrawal.js'
 import {
   switchSigningChain,
   userEip712TargetChainId,
@@ -239,6 +245,29 @@ export class PerpsClient {
     if (typeof plugin.onExecuteResults === 'function') {
       await plugin.onExecuteResults(address, results)
     }
+  }
+
+  /**
+   * Attach a provider-built explorer URL to every result the backend returned a
+   * venue `txHash` on. The provider owns its explorer target, so core only asks
+   * — a plugin without the hook leaves results untouched.
+   */
+  private resolveExplorerLinks(
+    provider: string,
+    results: ActionResult[]
+  ): ActionResult[] {
+    const plugin = this.requireProvider(provider)
+    const resolveLink = plugin.resolveExplorerLink?.bind(plugin)
+    if (resolveLink === undefined) {
+      return results
+    }
+    return results.map((result) => {
+      if (!result.success || result.txHash === undefined) {
+        return result
+      }
+      const explorerLink = resolveLink(result.txHash)
+      return explorerLink === undefined ? result : { ...result, explorerLink }
+    })
   }
 
   /**
@@ -468,6 +497,57 @@ export class PerpsClient {
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getDepositFlow?.({ address: params.address })
+  }
+
+  /**
+   * The `(asset, route)` selections `params.address` can actually withdraw at
+   * `params.provider`. The venue owns how its balances split across routes;
+   * this join adds the core `/assets` metadata — precision, L1 identity and
+   * the per-asset minimum — and drops every row the minimum rules out, plus
+   * any row whose asset the provider's registry does not carry, since without
+   * that metadata the amount can be neither scaled nor validated.
+   *
+   * @returns `undefined` when the registered plugin declares no withdrawable
+   *   read.
+   * @throws {PerpsError} When the provider plugin is not registered, or either
+   *   the plugin read or the asset sync fails.
+   * @public
+   */
+  async getWithdrawableBalances(
+    params: GetWithdrawableBalancesParams
+  ): Promise<WithdrawableBalance[] | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    const rows = await plugin.getWithdrawableBalances?.({
+      address: params.address,
+    })
+    if (rows === undefined) {
+      return undefined
+    }
+
+    const registry = getAssetRegistry(this.sdkClient, params.provider)
+    await registry.sync()
+    return rows.flatMap((row) => {
+      const asset = registry.get(row.assetId)
+      if (asset === undefined) {
+        return []
+      }
+      const minimum = asset.minWithdrawalAmount
+      if (minimum !== undefined) {
+        let floor: Big
+        try {
+          floor = new Big(minimum)
+        } catch {
+          throw new PerpsError(
+            PerpsErrorCode.SDKError,
+            `Asset '${asset.id}' field \`minWithdrawalAmount\` is not a valid decimal.`
+          )
+        }
+        if (new Big(row.available).lt(floor)) {
+          return []
+        }
+      }
+      return [{ asset, route: row.route, available: row.available }]
+    })
   }
 
   /**
@@ -704,7 +784,7 @@ export class PerpsClient {
       address
     )
 
-    const results = await executeAction(this.sdkClient, {
+    const response = await executeAction(this.sdkClient, {
       provider,
       address,
       // The submitting account: the plugin-resolved signer (Hyperliquid's
@@ -714,14 +794,19 @@ export class PerpsClient {
       actions: signedActions,
     })
 
-    await this.notifyExecuteResults(provider, address, results.results)
+    const results = this.resolveExplorerLinks(provider, response.results)
 
-    const failure = results.results.find((r) => !r.success)
+    await this.notifyExecuteResults(provider, address, results)
+
+    const failure = results.find((r) => !r.success)
     if (failure) {
-      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
     }
 
-    return { results }
+    return { results: { results } }
   }
 
   /**
@@ -791,10 +876,11 @@ export class PerpsClient {
    * `execute` itself is unchanged — it still returns results without throwing,
    * which the trade hooks rely on for partial-fill handling.
    *
-   * @throws {PerpsError} `PerpsErrorCode.ExchangeRejected` carrying the venue
-   *   error when any returned result has `success: false`; also the errors
-   *   `execute` itself can throw (unregistered provider, no signer, signing
-   *   failure).
+   * @throws {PerpsError} Carrying the venue error when any returned result has
+   *   `success: false`, under that result's `errorCode` when the backend
+   *   classified the failure and `PerpsErrorCode.ExchangeRejected` otherwise;
+   *   also the errors `execute` itself can throw (unregistered provider, no
+   *   signer, signing failure).
    * @public
    */
   async executeProviderOption<T extends ActionType>(params: {
@@ -806,7 +892,10 @@ export class PerpsClient {
     const { results } = await this.execute(params)
     const failure = results.find((r) => !r.success)
     if (failure) {
-      throw new PerpsError(PerpsErrorCode.ExchangeRejected, failure.error)
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
     }
   }
 
@@ -846,6 +935,36 @@ export class PerpsClient {
     return this.execute({
       ...params,
       action: ActionType.PLACE_TRIGGER_ORDER,
+      params,
+    })
+  }
+
+  /**
+   * Place a time-weighted average price order through {@link execute}.
+   *
+   * @public
+   */
+  async placeTwapOrder(
+    params: PlaceTwapOrderParams
+  ): Promise<ExecuteActionResponse> {
+    return this.execute({
+      ...params,
+      action: ActionType.PLACE_TWAP_ORDER,
+      params,
+    })
+  }
+
+  /**
+   * Cancel a running time-weighted average price order through {@link execute}.
+   *
+   * @public
+   */
+  async cancelTwapOrder(
+    params: CancelTwapOrderParams
+  ): Promise<ExecuteActionResponse> {
+    return this.execute({
+      ...params,
+      action: ActionType.CANCEL_TWAP_ORDER,
       params,
     })
   }
@@ -1001,8 +1120,10 @@ export class PerpsClient {
       actions: signedActions,
     })
 
-    await this.notifyExecuteResults(provider, address, response.results)
+    const results = this.resolveExplorerLinks(provider, response.results)
 
-    return response
+    await this.notifyExecuteResults(provider, address, results)
+
+    return { results }
   }
 }

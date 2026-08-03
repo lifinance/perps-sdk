@@ -35,11 +35,9 @@ const market = (id: string, categoryId: string): Market => ({
     logoURI: 'https://example.com/USDC.svg',
   },
   szDecimals: 4,
-  markPrice: '100',
   maxLeverage: 50,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
-  funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
 })
 
 const BTC = market('BTC', 'hyperliquid')

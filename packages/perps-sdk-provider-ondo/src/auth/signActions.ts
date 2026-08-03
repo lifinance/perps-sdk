@@ -128,8 +128,9 @@ async function executeSessionRequest(
  * Ondo's `signActions` arms.
  *
  * `SIWE` signs the backend-built ERC-4361 challenge with the user's wallet and
- * completes the login directly against Ondo — the returned session JWT is
- * persisted in the token store and never transits the LI.FI backend.
+ * completes the login directly against Ondo. The session JWT is persisted in
+ * the token store and no signed step is returned, so neither the JWT nor the
+ * wallet signature transits the LI.FI backend.
  *
  * `SESSION` executes client-only setup steps directly against the venue with
  * the stored session token. A backend-authored request-bearing step is
@@ -160,7 +161,6 @@ export async function ondoSignActions(
             'creating the perps client.'
         )
       }
-      const signed: SignedActionStep[] = []
       for (const step of steps) {
         if (!isSiweStep(step)) {
           throw new PerpsError(
@@ -168,15 +168,13 @@ export async function ondoSignActions(
             `Ondo received a non-SIWE step ('${step.action}') under the SIWE signing method.`
           )
         }
-        const { token, signature } = await completeSiweLogin(
-          deps.client,
-          userWallet,
-          { id: step.siwe.challengeId, message: step.siwe.message }
-        )
+        const token = await completeSiweLogin(deps.client, userWallet, {
+          id: step.siwe.challengeId,
+          message: step.siwe.message,
+        })
         await deps.tokenStore.set(address, token)
-        signed.push({ action: step.action, siwe: step.siwe, signature })
       }
-      return signed
+      return []
     }
 
     case SigningMethod.HMAC: {

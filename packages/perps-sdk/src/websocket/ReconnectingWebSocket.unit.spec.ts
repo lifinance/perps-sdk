@@ -95,7 +95,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function latestWs(): MockPartySocketWebSocket {
+function latestWs(): InstanceType<typeof MockPartySocketWebSocket> {
   return MockPartySocketWebSocket.instances[
     MockPartySocketWebSocket.instances.length - 1
   ]

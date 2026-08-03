@@ -102,6 +102,20 @@ export interface OndoOrder {
   triggerPrice?: string
 }
 
+/** Running parent order from `GET /v1/perps/twap/orders`. @public */
+export interface OndoTwapOrder {
+  twapId: string
+  market: string
+  side: OndoOrderSide
+  size: string
+  filledSize: string
+  filledCost: string
+  /** Requested execution duration in seconds. */
+  runningTime: number
+  createdAt: string
+  status: 'running'
+}
+
 /** @public */
 export type OndoFillDirection =
   | 'openLong'

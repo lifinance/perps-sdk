@@ -38,6 +38,13 @@ export enum PerpsErrorCode {
 
   // Routing errors (2060-2069)
   RouteNotFound = 2060,
+
+  // Setup errors (2070-2079)
+  /**
+   * The account exists, but a recoverable provider setup action must be
+   * completed before the requested operation can be retried.
+   */
+  SetupRequired = 2070,
 }
 
 /** Side of an order or execution, using provider wire values. @public */
@@ -55,6 +62,8 @@ export enum OrderType {
   TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
   TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
   TRIGGER_ONLY = 'TRIGGER_ONLY',
+  /** Read-side only: TWAP parents/children surfaced in venue order feeds. Excluded from `PlaceOrderParams.type` — placement goes through `ActionType.PLACE_TWAP_ORDER`. */
+  TWAP = 'TWAP',
 }
 
 /** Direction of an open position. @public */
@@ -131,8 +140,10 @@ export enum ActionType {
   TRANSFER = 'transfer',
   PLACE_ORDER = 'placeOrder',
   PLACE_TRIGGER_ORDER = 'placeTriggerOrder',
+  PLACE_TWAP_ORDER = 'placeTwapOrder',
   CANCEL_ORDER = 'cancelOrder',
   CANCEL_ALL_ORDERS = 'cancelAllOrders',
+  CANCEL_TWAP_ORDER = 'cancelTwapOrder',
   MODIFY_ORDER = 'modifyOrder',
   UPDATE_LEVERAGE = 'updateLeverage',
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
@@ -166,6 +177,13 @@ export enum TriggerOrderType {
 export enum TriggerOrderStatus {
   WAITING = 'WAITING',
   TRIGGERED = 'TRIGGERED',
+  CANCELLED = 'CANCELLED',
+}
+
+/** Lifecycle status of a running TWAP order. @public */
+export enum TwapOrderStatus {
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
 

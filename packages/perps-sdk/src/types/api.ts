@@ -1,6 +1,8 @@
 import type {
   AccountConfigSetting,
   AccountResponse,
+  CancelTwapOrderParams as ActionCancelTwapOrderParams,
+  PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
   ExecuteActionResponse,
   MarginMode,
@@ -126,7 +128,7 @@ export interface PlaceOrderParams {
   /** Opaque provider market reference. */
   market: MarketRef
   side: OrderSide
-  type: OrderType
+  type: Exclude<OrderType, OrderType.TWAP>
   /** Base-asset size as a decimal wire string. */
   size: string
   /** Limit price as a decimal wire string; required by limit-style orders. */
@@ -163,6 +165,26 @@ export interface PlaceTriggerOrderParams {
   side: OrderSide
   takeProfit?: TriggerOrderInput
   stopLoss?: TriggerOrderInput
+}
+
+/**
+ * Client parameters for placing a TWAP order.
+ *
+ * @public
+ */
+export interface PlaceTwapOrderParams extends ActionPlaceTwapOrderParams {
+  provider: string
+  address: Address
+}
+
+/**
+ * Client parameters for cancelling a running TWAP order.
+ *
+ * @public
+ */
+export interface CancelTwapOrderParams extends ActionCancelTwapOrderParams {
+  provider: string
+  address: Address
 }
 
 /**
@@ -239,6 +261,16 @@ export interface GetSetupParams {
  * @public
  */
 export interface GetDepositFlowParams {
+  provider: string
+  address: Address
+}
+
+/**
+ * Parameters for {@link PerpsClient.getWithdrawableBalances}.
+ *
+ * @public
+ */
+export interface GetWithdrawableBalancesParams {
   provider: string
   address: Address
 }

@@ -1,10 +1,10 @@
 import { createMemoryStorage, PerpsError } from '@lifi/perps-sdk'
 import type {
+  ActionStep,
   HmacActionStep,
   HmacSignedActionStep,
   SessionActionStep,
   SiweActionStep,
-  SiweSignedActionStep,
   WasmBlobActionStep,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
@@ -142,7 +142,7 @@ const makeDeps = (fetchImpl: typeof fetch) => ({
 })
 
 describe('ondoSignActions — SIWE', () => {
-  it('signs the challenge, persists the session token, and returns the signed step', async () => {
+  it('persists the session token and returns no signed step', async () => {
     const token = tokenFixture()
     const fetchImpl = vi
       .fn<typeof fetch>()
@@ -157,18 +157,38 @@ describe('ondoSignActions — SIWE', () => {
       { userWallet }
     )
 
-    const step = signed[0] as SiweSignedActionStep
-    expect(step.action).toBe(ActionType.SIWE_LOGIN)
-    expect(step.siwe).toEqual(SIWE_STEP.siwe)
+    expect(signed).toEqual([])
+    await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
+  })
+
+  it('posts the wallet signature to the Ondo login endpoint', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: tokenFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.SIWE,
+      [SIWE_STEP],
+      account.address,
+      { userWallet }
+    )
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/v1/auth/erc-4361/login/complete_challenge`)
+    const { signature } = JSON.parse(init.body as string) as {
+      signature: `0x${string}`
+    }
     await expect(
       verifyMessage({
         address: account.address,
         message: SIWE_MESSAGE,
-        signature: step.signature,
+        signature,
       })
     ).resolves.toBe(true)
-
-    await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
   it('performs only the login call — terms are a separate step', async () => {
@@ -580,7 +600,7 @@ describe('ondoSignActions — SESSION', () => {
         symbol: 'USDT',
         depositDestination: { wallet: 'spot' },
       },
-    }
+    } as unknown as ActionStep
     await expect(
       ondoSignActions(
         arbitraryDeps,

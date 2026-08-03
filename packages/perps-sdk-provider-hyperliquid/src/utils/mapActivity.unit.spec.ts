@@ -29,8 +29,18 @@ const resolveMarket = (coin: string): MarketDisplay => ({
   providerId: PROVIDER,
   id: coin,
   categoryId: PROVIDER,
-  baseAsset: { providerId: PROVIDER, id: coin, displaySymbol: coin },
-  quoteAsset: { providerId: PROVIDER, id: 'USDC', displaySymbol: 'USDC' },
+  baseAsset: {
+    providerId: PROVIDER,
+    id: coin,
+    displaySymbol: coin,
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: PROVIDER,
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
 })
 
 const spotTransferUpdate = (

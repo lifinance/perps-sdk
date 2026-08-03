@@ -38,3 +38,4 @@ export {
   orderExpiryForTif,
   resolveTimeInForce,
 } from './wireEncoding.js'
+export { lighterWithdrawableBalances } from './withdrawableBalances.js'

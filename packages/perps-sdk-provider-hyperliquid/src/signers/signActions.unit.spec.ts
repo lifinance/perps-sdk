@@ -44,11 +44,11 @@ describe('hyperliquidSignActions', () => {
 
     const recovered = await recoverTypedDataAddress({
       domain: step.typedData.domain,
-      types: step.typedData.types as never,
-      primaryType: step.typedData.primaryType as never,
+      types: step.typedData.types,
+      primaryType: step.typedData.primaryType,
       message: step.typedData.message,
       signature: signed.signature as Hex,
-    })
+    } as Parameters<typeof recoverTypedDataAddress>[0])
     expect(recovered.toLowerCase()).toBe(agent.address.toLowerCase())
   })
 
@@ -74,11 +74,11 @@ describe('hyperliquidSignActions', () => {
 
     const recovered = await recoverTypedDataAddress({
       domain: step.typedData.domain,
-      types: step.typedData.types as never,
-      primaryType: step.typedData.primaryType as never,
+      types: step.typedData.types,
+      primaryType: step.typedData.primaryType,
       message: step.typedData.message,
       signature: signed.signature as Hex,
-    })
+    } as Parameters<typeof recoverTypedDataAddress>[0])
     expect(recovered.toLowerCase()).toBe(userAccount.address.toLowerCase())
   })
 

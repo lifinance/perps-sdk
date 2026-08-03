@@ -21,10 +21,11 @@ import type { LighterSigner } from './LighterSigner.js'
 
 /**
  * Per-batch dependencies the Lighter `signActions` implementation needs:
- * a WASM signer (`LighterSigner`), the API-key store keyed on L1 address,
+ * the provider instance's WASM signer, its API-key store keyed on L1 address,
  * a REST client for the token-authenticated venue mutations that execute
- * client-side, and a reference to the host SDK client for descriptor/account
- * fetches within the REGISTER_API_KEY hybrid flow.
+ * client-side, and an `accountIndex` resolver for the REGISTER_API_KEY
+ * hybrid flow.
+ *
  * @internal
  */
 export interface LighterSignActionsDeps {

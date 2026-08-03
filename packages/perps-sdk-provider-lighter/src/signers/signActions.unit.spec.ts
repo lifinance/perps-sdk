@@ -6,7 +6,7 @@ import type {
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { ActionType, SigningMethod } from '@lifi/perps-types'
-import { type Address, createWalletClient, custom } from 'viem'
+import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
@@ -511,7 +511,7 @@ describe('lighterSignActions', () => {
      */
     function makeRecordingWallet(
       legStatuses: ('0x1' | '0x0')[],
-      chain = arbitrum
+      chain: Chain = arbitrum
     ) {
       const order: string[] = []
       const broadcastHashes: string[] = []
@@ -711,7 +711,10 @@ describe('lighterSignActions', () => {
       return { ...step, txParams: { ...step.txParams, chainId } }
     }
 
-    const chainById = { [arbitrum.id]: arbitrum, [base.id]: base } as const
+    const chainById: Record<number, Chain> = {
+      [arbitrum.id]: arbitrum,
+      [base.id]: base,
+    }
 
     it('switches to each leg target chain, once per leg, when legs target different chains', async () => {
       const switched: number[] = []

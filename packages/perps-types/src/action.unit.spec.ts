@@ -203,6 +203,30 @@ describe('ActionResult', () => {
     expect(success.action).toBe(ActionType.PLACE_ORDER)
   })
 
+  it('classifies a recoverable setup prerequisite through the existing errorCode field', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'Provider setup is incomplete.',
+      errorCode: PerpsErrorCode.SetupRequired,
+    }
+
+    if (!result.success) {
+      expect(result.errorCode).toBe(PerpsErrorCode.SetupRequired)
+    } else {
+      throw new Error('expected failure branch')
+    }
+
+    const secondField: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'Provider setup is incomplete.',
+      // @ts-expect-error — `errorCode` is the only classification field
+      setupRequired: true,
+    }
+    expect(secondField.success).toBe(false)
+  })
+
   it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
     const results: ActionResult[] = [
       {
@@ -220,6 +244,48 @@ describe('ActionResult', () => {
     const errors = results.flatMap((r) => (r.success ? [] : [r.error]))
 
     expect(errors).toEqual(['rejected'])
+  })
+
+  it('accepts a venue txHash and a resolved explorerLink on the success variant only', () => {
+    const txHash = `0x${'8f2b1c4d'.repeat(8)}`
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: true,
+      orderId: '9',
+      txHash,
+      explorerLink: `https://app.lighter.xyz/explorer/logs/${txHash}`,
+    }
+
+    if (result.success) {
+      expect(result.txHash).toBe(txHash)
+      expect(result.explorerLink).toBe(
+        `https://app.lighter.xyz/explorer/logs/${txHash}`
+      )
+    } else {
+      throw new Error('expected success branch')
+    }
+
+    const failure: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'rejected',
+      // @ts-expect-error — `txHash` is not present on the failure variant
+      txHash,
+    }
+    expect(failure.action).toBe(ActionType.PLACE_ORDER)
+  })
+
+  it('treats both fields as optional — a hashless venue result carries neither', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: true,
+      orderId: 'hl-1',
+    }
+
+    if (result.success) {
+      expect(result.txHash).toBeUndefined()
+      expect(result.explorerLink).toBeUndefined()
+    }
   })
 })
 

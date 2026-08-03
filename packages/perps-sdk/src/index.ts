@@ -98,14 +98,17 @@ export {
 export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
+  CancelTwapOrderParams as ClientCancelTwapOrderParams,
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
+  GetWithdrawableBalancesParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PerpsConfig,
   PlaceOrderParams as ClientPlaceOrderParams,
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
+  PlaceTwapOrderParams as ClientPlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
   WithdrawParams,
@@ -143,10 +146,17 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
+  ProviderGetRunningTwapsParams,
+  ProviderGetWithdrawableBalancesParams,
   QuoteListener,
   SignActionProgress,
   SignActionsContext,
 } from './types/provider.js'
+export type {
+  ProviderWithdrawableBalance,
+  WithdrawableBalance,
+  WithdrawalRoute,
+} from './types/withdrawal.js'
 export {
   type CollateralSemantics,
   summarizeAccount,

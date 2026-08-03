@@ -26,6 +26,32 @@ describe('PerpsErrorCode.Unauthorized', () => {
   })
 })
 
+describe('PerpsErrorCode.SetupRequired', () => {
+  it('carries the setup-range value 2070', () => {
+    expect(PerpsErrorCode.SetupRequired).toBe(2070)
+  })
+
+  it('is distinct from the codes a client could otherwise conflate it with', () => {
+    expect(PerpsErrorCode.SetupRequired).not.toBe(
+      PerpsErrorCode.AccountNotFound
+    )
+    expect(PerpsErrorCode.SetupRequired).not.toBe(
+      PerpsErrorCode.TermsNotAccepted
+    )
+    expect(PerpsErrorCode.SetupRequired).not.toBe(
+      PerpsErrorCode.ValidationError
+    )
+  })
+
+  it('is the only member in the documented 2070-2079 setup range', () => {
+    const inRange = Object.entries(PerpsErrorCode).filter(
+      ([, value]) => typeof value === 'number' && value >= 2070 && value <= 2079
+    )
+
+    expect(inRange).toEqual([['SetupRequired', 2070]])
+  })
+})
+
 describe('SigningMethod credential members', () => {
   it('HMAC carries wire value "hmac"', () => {
     expect(SigningMethod.HMAC).toBe('hmac')

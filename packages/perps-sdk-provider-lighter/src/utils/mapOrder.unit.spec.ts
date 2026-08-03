@@ -1,9 +1,26 @@
-import { OrderStatus } from '@lifi/perps-types'
+import { type MarketDisplay, OrderStatus } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtOrder } from '../types/index.js'
 import { mapOrderDetail, mapStatusReason } from './mapOrder.js'
 
 const SYMBOL = 'ETH'
+const MARKET: MarketDisplay = {
+  providerId: 'lighter',
+  id: '1',
+  categoryId: 'lighter',
+  baseAsset: {
+    providerId: 'lighter',
+    id: '1',
+    displaySymbol: SYMBOL,
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'lighter',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+}
 
 const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   order_index: 1,
@@ -28,6 +45,11 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   status: 'filled',
   trigger_status: '',
   trigger_time: 0,
+  parent_order_index: 0,
+  parent_order_id: '',
+  to_trigger_order_id_0: '',
+  to_trigger_order_id_1: '',
+  to_cancel_order_id_0: '',
   block_height: 1,
   timestamp: 1_700_000_000,
   created_at: 1_700_000_000,
@@ -132,7 +154,7 @@ describe('mapOrderDetail (Lighter) — statusReason wiring', () => {
   it('populates statusReason from the raw status on terminal cancels', () => {
     const order = mapOrderDetail(
       baseOrder({ status: 'canceled-too-much-slippage' }),
-      SYMBOL
+      MARKET
     )
     expect(order.status).toBe(OrderStatus.CANCELLED)
     expect(order.statusReason).toBe(
@@ -141,19 +163,19 @@ describe('mapOrderDetail (Lighter) — statusReason wiring', () => {
   })
 
   it('omits statusReason for filled orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'filled' }), SYMBOL)
+    const order = mapOrderDetail(baseOrder({ status: 'filled' }), MARKET)
     expect(order.status).toBe(OrderStatus.FILLED)
     expect(order.statusReason).toBeUndefined()
   })
 
   it('omits statusReason for open orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'open' }), SYMBOL)
+    const order = mapOrderDetail(baseOrder({ status: 'open' }), MARKET)
     expect(order.status).toBe(OrderStatus.OPEN)
     expect(order.statusReason).toBeUndefined()
   })
 
   it('omits statusReason for pending orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'pending' }), SYMBOL)
+    const order = mapOrderDetail(baseOrder({ status: 'pending' }), MARKET)
     expect(order.status).toBe(OrderStatus.PENDING)
     expect(order.statusReason).toBeUndefined()
   })

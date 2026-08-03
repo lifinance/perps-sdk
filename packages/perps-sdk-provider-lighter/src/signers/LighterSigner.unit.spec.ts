@@ -1,13 +1,42 @@
 import { ActionType } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { LighterSigner } from './LighterSigner.js'
+import {
+  LIGHTER_MAINNET_DEPLOYMENT,
+  LIGHTER_RH_DEPLOYMENT,
+} from '../constants.js'
+import { LT_ASSET_ID_USDC } from '../types/action.js'
+import { LighterSigner, type LighterSignerContext } from './LighterSigner.js'
+
+// Per-asset precision and minimums as live
+// `GET https://mainnet.zklighter.elliot.ai/api/v1/assetDetails` reports them.
+const USDC_PERPS_WITHDRAWAL = {
+  asset_index: 3,
+  route_type: 0,
+  amount: '1.5',
+  decimals: 6,
+  min_withdrawal_amount: '1.000000',
+  symbol: 'USDC',
+}
+
+const ETH_SPOT_WITHDRAWAL = {
+  asset_index: 1,
+  route_type: 1,
+  amount: '0.00609091',
+  decimals: 8,
+  min_withdrawal_amount: '0.00100000',
+  symbol: 'ETH',
+}
 
 describe('LighterSigner', () => {
   let signer: LighterSigner
   let keypair: { publicKey: string; privateKey: string }
 
   beforeAll(async () => {
-    signer = new LighterSigner()
+    signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+    })
     keypair = await signer.generateAPIKey()
   })
 
@@ -58,6 +87,48 @@ describe('LighterSigner', () => {
     expect(parsed.L2TxAttributes).toBeNull()
   })
 
+  it('signs PLACE_TWAP_ORDER through SignCreateOrder with wire type 6', async () => {
+    const signed = await signer.sign(
+      ActionType.PLACE_TWAP_ORDER,
+      {
+        market_index: 0,
+        client_order_index: 3156,
+        base_amount: 5000,
+        price: 1,
+        is_ask: 1,
+        order_type: 6,
+        time_in_force: 1,
+        reduce_only: true,
+        trigger_price: 0,
+        order_expiry: 1_775_000_900_000,
+        nonce: 43,
+      },
+      ctx()
+    )
+
+    expect(signed.txType).toBe(14)
+    expect(JSON.parse(signed.txInfo)).toMatchObject({
+      Type: 6,
+      ClientOrderIndex: 3156,
+      IsAsk: 1,
+      ReduceOnly: 1,
+    })
+  })
+
+  it('signs CANCEL_TWAP_ORDER through SignCancelOrder', async () => {
+    const signed = await signer.sign(
+      ActionType.CANCEL_TWAP_ORDER,
+      { market_index: 0, order_index: 3156, nonce: 44 },
+      ctx()
+    )
+
+    expect(signed.txType).toBe(15)
+    expect(JSON.parse(signed.txInfo)).toMatchObject({
+      Index: 3156,
+      Nonce: 44,
+    })
+  })
+
   it('signs CANCEL_ORDER', async () => {
     const signed = await signer.sign(
       ActionType.CANCEL_ORDER,
@@ -91,28 +162,86 @@ describe('LighterSigner', () => {
     expect(parsed.Nonce).toBe(5)
   })
 
-  it('signs WITHDRAWAL', async () => {
+  it('signs WITHDRAWAL against the caller-selected asset and route', async () => {
     const signed = await signer.sign(
       ActionType.WITHDRAWAL,
-      { amount: 100_000, nonce: 8 },
+      { ...USDC_PERPS_WITHDRAWAL, nonce: 8 },
       ctx()
     )
     expect(signed.txType).toBe(13)
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
-    // The signer threads our context (api key + account) AND the backend
-    // amount/nonce into the signed blob; asset index is pinned to USDC (3).
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.FromAccountIndex).toBe(42)
     expect(parsed.AssetIndex).toBe(3)
-    expect(parsed.Amount).toBe(100_000)
+    expect(parsed.RouteType).toBe(0)
+    expect(parsed.Amount).toBe(1_500_000)
     expect(parsed.Nonce).toBe(8)
   })
 
-  // The Go signer reads `memo` via `Value.String()` and copies its UTF-8
-  // bytes directly into a `[32]byte`. In practice that means: send 32 ASCII
-  // characters. Multibyte chars or wrong length → "memo expected to be 32
-  // bytes long".
+  it('signs a spot-route withdrawal of an 8-decimal asset', async () => {
+    const signed = await signer.sign(
+      ActionType.WITHDRAWAL,
+      { ...ETH_SPOT_WITHDRAWAL, nonce: 9 },
+      ctx()
+    )
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.AssetIndex).toBe(1)
+    expect(parsed.RouteType).toBe(1)
+    expect(parsed.Amount).toBe(609_091)
+  })
+
+  it('truncates a withdrawal amount finer than the asset grid toward zero', async () => {
+    const signed = await signer.sign(
+      ActionType.WITHDRAWAL,
+      { ...ETH_SPOT_WITHDRAWAL, amount: '0.0060909199', nonce: 10 },
+      ctx()
+    )
+    expect(JSON.parse(signed.txInfo).Amount).toBe(609_091)
+  })
+
+  it('rejects a route_type outside the two Lighter routes', async () => {
+    await expect(
+      signer.sign(
+        ActionType.WITHDRAWAL,
+        { ...USDC_PERPS_WITHDRAWAL, route_type: 2, nonce: 11 },
+        ctx()
+      )
+    ).rejects.toThrow(/route_type 2 is invalid/)
+  })
+
+  it('identifies an empty withdrawal amount', async () => {
+    await expect(
+      signer.sign(
+        ActionType.WITHDRAWAL,
+        { ...ETH_SPOT_WITHDRAWAL, amount: '', nonce: 12 },
+        ctx()
+      )
+    ).rejects.toThrow("Lighter sign params string field 'amount' is empty")
+  })
+
+  it('rejects a withdrawal below the asset minimum, naming asset and minimum', async () => {
+    await expect(
+      signer.sign(
+        ActionType.WITHDRAWAL,
+        { ...ETH_SPOT_WITHDRAWAL, amount: '0.0005', nonce: 12 },
+        ctx()
+      )
+    ).rejects.toThrow(/0.0005 ETH is below the venue minimum of 0.00100000 ETH/)
+  })
+
+  it('accepts a withdrawal exactly at the asset minimum', async () => {
+    const signed = await signer.sign(
+      ActionType.WITHDRAWAL,
+      { ...ETH_SPOT_WITHDRAWAL, amount: '0.00100000', nonce: 13 },
+      ctx()
+    )
+    expect(JSON.parse(signed.txInfo).Amount).toBe(100_000)
+  })
+
+  // The Go signer accepts `memo` as a 66-char `0x`-prefixed hex string, a bare
+  // 64-char hex string, or 32 raw bytes; anything else → "memo expected to be
+  // 32 bytes or 64 hex encoded or 66 if 0x hex encoded".
   const MEMO_32_BYTES = 'a'.repeat(32)
 
   it('signs TRANSFER (fastwithdraw signed-transfer flow)', async () => {
@@ -626,5 +755,112 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/missing numeric field/)
+  })
+})
+
+describe('LighterSigner — per-instance collateral asset', () => {
+  // Distinct from every real deployment's slot, so the assertions can only pass
+  // by threading the configured index through to the signed payload.
+  const FIXTURE_ASSET_INDEX = 7
+  const MEMO_32_BYTES = 'b'.repeat(32)
+
+  /** `AssetIndex` of the signed blob for each instance-owned transfer path. */
+  const signedAssetIndexes = async (
+    signer: LighterSigner,
+    ctx: LighterSignerContext
+  ) => {
+    const transfer = await signer.sign(
+      ActionType.TRANSFER,
+      {
+        to_account: 7,
+        usdc_amount: 250_000,
+        fee: 100,
+        memo: MEMO_32_BYTES,
+        nonce: 2,
+      },
+      ctx
+    )
+    const sendAsset = await signer.sign(
+      ActionType.SEND_ASSET,
+      {
+        sourceDex: 'spot',
+        destinationDex: 'perps',
+        amount: 250_000,
+        nonce: 3,
+      },
+      ctx
+    )
+    return {
+      transfer: JSON.parse(transfer.txInfo).AssetIndex,
+      sendAsset: JSON.parse(sendAsset.txInfo).AssetIndex,
+    }
+  }
+
+  const contextFor = async (
+    signer: LighterSigner,
+    accountIndex: number
+  ): Promise<LighterSignerContext> => ({
+    apiKeyPrivateKey: (await signer.generateAPIKey()).privateKey,
+    apiKeyIndex: 3,
+    accountIndex,
+  })
+
+  it('signs both TRANSFER paths against the configured collateral index', async () => {
+    const signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: FIXTURE_ASSET_INDEX,
+    })
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 43))
+    ).toEqual({
+      transfer: FIXTURE_ASSET_INDEX,
+      sendAsset: FIXTURE_ASSET_INDEX,
+    })
+  })
+
+  it('signs WITHDRAWAL against the caller selection, not the configured collateral index', async () => {
+    const signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: FIXTURE_ASSET_INDEX,
+    })
+    const signed = await signer.sign(
+      ActionType.WITHDRAWAL,
+      { ...ETH_SPOT_WITHDRAWAL, nonce: 1 },
+      await contextFor(signer, 46)
+    )
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.AssetIndex).toBe(1)
+    expect(parsed.RouteType).toBe(1)
+  })
+
+  it('signs the lighter-rh deployment against USDG, its own collateral slot', async () => {
+    const signer = new LighterSigner({
+      apiUrl: LIGHTER_RH_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_RH_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
+    })
+    expect(LIGHTER_RH_DEPLOYMENT.collateral.displaySymbol).toBe('USDG')
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 44))
+    ).toEqual({
+      transfer: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
+      sendAsset: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
+    })
+  })
+
+  it('signs the mainnet deployment against USDC (3)', async () => {
+    const signer = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+    })
+    expect(
+      await signedAssetIndexes(signer, await contextFor(signer, 45))
+    ).toEqual({
+      transfer: LT_ASSET_ID_USDC,
+      sendAsset: LT_ASSET_ID_USDC,
+    })
   })
 })

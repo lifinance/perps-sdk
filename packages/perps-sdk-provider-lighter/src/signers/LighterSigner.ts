@@ -1,17 +1,10 @@
+import { scaleToInteger } from '@lifi/perps-sdk'
 import { ActionType } from '@lifi/perps-types'
-import {
-  DEFAULT_LIGHTER_REST_URL,
-  DEFAULT_LIGHTER_SIGNER_CHAIN_ID,
-} from '../constants.js'
-import {
-  LT_ASSET_ID_USDC,
-  LT_ROUTE_PERP,
-  LT_ROUTE_SPOT,
-} from '../types/action.js'
+import Big from 'big.js'
+import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
   type LighterWasmExports,
-  type LoadLighterWasmOptions,
   loadLighterWasm,
   type SignResult,
 } from './wasmLoader.js'
@@ -38,16 +31,16 @@ export interface LighterSignerContext {
 }
 
 /**
- * Configuration for {@link LighterSigner}, including optional WASM asset
- * overrides and the Lighter REST base URL and signing chain ID.
+ * Deployment facts {@link LighterSigner} signs against: the venue's REST base
+ * URL, its zkLighter L2 signing chain id, and the L2 asset index its
+ * withdrawals and transfers settle in.
  *
- * @public
+ * @internal
  */
-export interface LighterSignerConfig extends LoadLighterWasmOptions {
-  /** Lighter REST API base URL. */
-  apiUrl?: string
-  /** Lighter chain ID (304 = mainnet). */
-  chainId?: number
+export interface LighterSignerConfig {
+  apiUrl: string
+  signerChainId: number
+  collateralAssetIndex: number
 }
 
 /**
@@ -108,12 +101,7 @@ const SKIP_NONCE_DISABLED = 0
 // CancelAll across every market (lighter-go `NilMarketIndex`); a real index
 // scopes the cancel to a single market.
 const NIL_MARKET_INDEX = 255
-// Withdrawals/transfers are USDC on the perps route (lighter-go `USDCAssetIndex`
-// / `AssetRouteType_Perps`). The signer rejects an asset index < 1.
-const USDC_ASSET_INDEX = 3
-const ASSET_ROUTE_TYPE_PERPS = 0
-
-// SEND_ASSET is a same-account route→route USDC move (spot↔perp): no counterparty
+// SEND_ASSET is a same-account route→route collateral move (spot↔perp): no
 // fee, and no memo. `SignTransfer` requires a 32-byte memo, so we pass 32 zero
 // bytes in the `0x`-prefixed 64-hex form the WASM signer decodes.
 const SEND_ASSET_NO_FEE = 0
@@ -131,23 +119,19 @@ const LIGHTER_ROUTE_BY_DEX: Record<string, number> = {
  * hybrid flows. The instance memoizes WASM initialization and registered
  * `(apiKeyIndex, accountIndex)` clients.
  *
- * @public
+ * @internal
  */
 export class LighterSigner {
   private readonly apiUrl: string
   private readonly chainId: number
-  private readonly loaderOptions: LoadLighterWasmOptions
+  private readonly collateralAssetIndex: number
   private wasm: LighterWasmExports | undefined
   private readonly registeredClients = new Set<string>()
 
-  constructor(config: LighterSignerConfig = {}) {
-    this.apiUrl = config.apiUrl ?? DEFAULT_LIGHTER_REST_URL
-    this.chainId = config.chainId ?? DEFAULT_LIGHTER_SIGNER_CHAIN_ID
-    this.loaderOptions = {
-      wasmBinaryUrl: config.wasmBinaryUrl,
-      wasmExecJsUrl: config.wasmExecJsUrl,
-      wasmExecJsSource: config.wasmExecJsSource,
-    }
+  constructor(config: LighterSignerConfig) {
+    this.apiUrl = config.apiUrl
+    this.chainId = config.signerChainId
+    this.collateralAssetIndex = config.collateralAssetIndex
   }
 
   /**
@@ -156,7 +140,7 @@ export class LighterSigner {
    */
   async initialize(): Promise<void> {
     if (!this.wasm) {
-      this.wasm = await loadLighterWasm(this.loaderOptions)
+      this.wasm = await loadLighterWasm()
     }
   }
 
@@ -393,6 +377,7 @@ export class LighterSigner {
     switch (action) {
       case ActionType.PLACE_ORDER:
       case ActionType.PLACE_TRIGGER_ORDER:
+      case ActionType.PLACE_TWAP_ORDER:
         return wasm.SignCreateOrder(
           numberField(p, 'market_index'),
           numberField(p, 'client_order_index'),
@@ -430,6 +415,7 @@ export class LighterSigner {
           ctx.accountIndex
         )
       case ActionType.CANCEL_ORDER:
+      case ActionType.CANCEL_TWAP_ORDER:
         return wasm.SignCancelOrder(
           numberField(p, 'market_index'),
           numberField(p, 'order_index'),
@@ -497,29 +483,45 @@ export class LighterSigner {
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
-      case ActionType.WITHDRAWAL:
+      case ActionType.WITHDRAWAL: {
+        const routeType = numberField(p, 'route_type')
+        if (routeType !== LT_ROUTE_PERP && routeType !== LT_ROUTE_SPOT) {
+          throw new Error(
+            `Lighter WITHDRAWAL route_type ${routeType} is invalid: expected ` +
+              `${LT_ROUTE_PERP} (perps) or ${LT_ROUTE_SPOT} (spot)`
+          )
+        }
+        const symbol = stringField(p, 'symbol')
+        const amount = stringField(p, 'amount')
+        const minimum = stringField(p, 'min_withdrawal_amount')
+        if (new Big(amount).lt(new Big(minimum))) {
+          throw new Error(
+            `Lighter WITHDRAWAL of ${amount} ${symbol} is below the venue ` +
+              `minimum of ${minimum} ${symbol}`
+          )
+        }
         return wasm.SignWithdraw(
-          USDC_ASSET_INDEX,
-          ASSET_ROUTE_TYPE_PERPS,
-          numberField(p, 'amount'),
+          numberField(p, 'asset_index'),
+          routeType,
+          scaleToInteger(amount, numberField(p, 'decimals'), 'truncate'),
           SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,
           ctx.accountIndex
         )
+      }
       case ActionType.TRANSFER:
         // SignTransfer's positional args follow the Go binding order:
         // `toAccountIndex, assetIndex, fromRouteType, toRouteType, amount,
         // usdcFee, memo, skipNonce, nonce, apiKeyIndex, accountIndex`. `memo`
-        // is copied directly into a `[32]byte`, so the backend MUST send a JS
-        // string whose UTF-8 byte length is exactly 32 (in practice: 32 ASCII
-        // characters) — anything else fails with "memo expected to be 32 bytes
-        // long".
+        // is decoded as a 66-char `0x`-prefixed hex string, a bare 64-char hex
+        // string, or 32 raw bytes — anything else fails with "memo expected to
+        // be 32 bytes or 64 hex encoded or 66 if 0x hex encoded".
         return wasm.SignTransfer(
           numberField(p, 'to_account'),
-          USDC_ASSET_INDEX,
-          ASSET_ROUTE_TYPE_PERPS,
-          ASSET_ROUTE_TYPE_PERPS,
+          this.collateralAssetIndex,
+          LT_ROUTE_PERP,
+          LT_ROUTE_PERP,
           numberField(p, 'usdc_amount'),
           numberField(p, 'fee'),
           stringField(p, 'memo'),
@@ -529,9 +531,9 @@ export class LighterSigner {
           ctx.accountIndex
         )
       case ActionType.SEND_ASSET: {
-        // Same-account USDC self-transfer between the perp and spot routes.
-        // `toAccountIndex` is the signer's own account; the routes come from
-        // the backend-passed `sourceDex`/`destinationDex` wire strings.
+        // Same-account collateral self-transfer between the perp and spot
+        // routes. `toAccountIndex` is the signer's own account; the routes come
+        // from the backend-passed `sourceDex`/`destinationDex` wire strings.
         const fromRouteType = routeFromDex(stringField(p, 'sourceDex'))
         const toRouteType = routeFromDex(stringField(p, 'destinationDex'))
         if (fromRouteType === toRouteType) {
@@ -542,7 +544,7 @@ export class LighterSigner {
         }
         return wasm.SignTransfer(
           ctx.accountIndex,
-          LT_ASSET_ID_USDC,
+          this.collateralAssetIndex,
           fromRouteType,
           toRouteType,
           numberField(p, 'amount'),
@@ -662,7 +664,10 @@ function routeFromDex(dex: string): number {
 
 function stringField(p: Record<string, unknown>, key: string): string {
   const v = p[key]
-  if (typeof v === 'string' && v !== '') {
+  if (v === '') {
+    throw new Error(`Lighter sign params string field '${key}' is empty`)
+  }
+  if (typeof v === 'string') {
     return v
   }
   throw new Error(

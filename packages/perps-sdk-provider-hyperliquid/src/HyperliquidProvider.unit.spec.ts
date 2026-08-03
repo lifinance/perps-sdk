@@ -89,6 +89,10 @@ describe('hyperliquidProvider', () => {
     )
   })
 
+  it('exposes no explorer hook — HyperCore assigns its hash at block inclusion, so execute results carry none', () => {
+    expect(hyperliquidProvider().resolveExplorerLink).toBeUndefined()
+  })
+
   it('discovers a venue-chain USDC swap regardless of account state', async () => {
     await expect(
       hyperliquidProvider().getDepositFlow?.({ address: ADDRESS })

@@ -4,6 +4,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -17,10 +18,14 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetRunningTwapsParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
+  type StorageAdapter,
   toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
@@ -34,7 +39,6 @@ import type {
   Balance,
   FillsResponse,
   LighterAccountConfig,
-  LighterProviderKey,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -44,6 +48,7 @@ import type {
   Quote,
   SignedActionStep,
   SigningMethod,
+  TwapOrder,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -56,22 +61,21 @@ import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
   DEFAULT_API_KEY_INDEX,
-  DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
-  DEFAULT_LIGHTER_REST_URL,
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_BASE_FEE_TIER,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
-  LIGHTER_PROVIDER_KEY,
+  LIGHTER_MAINNET_DEPLOYMENT,
+  LIGHTER_RH_DEPLOYMENT,
   LIGHTER_SPOT_CATEGORY_ID,
+  type LighterDeployment,
 } from './constants.js'
 import { lighterDepositFlow } from './depositFlow.js'
 import { createAuthToken } from './signers/createAuthToken.js'
-import type { LighterKeyStore } from './signers/LighterKeyStore.js'
-import type { LighterReadOnlyTokenManagerOptions } from './signers/LighterReadOnlyTokenManager.js'
+import { LighterKeyStore } from './signers/LighterKeyStore.js'
 import { LighterReadOnlyTokenManager } from './signers/LighterReadOnlyTokenManager.js'
-import type { LighterSigner } from './signers/LighterSigner.js'
+import { LighterSigner } from './signers/LighterSigner.js'
 import { lighterSignActions } from './signers/signActions.js'
 import type {
   LtAccountLimits,
@@ -105,6 +109,7 @@ import {
   formatOrderSize,
   leverageFromImf,
   lighterAsset,
+  lighterWithdrawableBalances,
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
@@ -113,6 +118,7 @@ import {
   toIsoFromSeconds,
   toRequiredBig,
 } from './utils/index.js'
+import { mapRunningTwap } from './utils/mapTwap.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -169,78 +175,46 @@ const normalizeLighterPublicKey = (key: string): string =>
   key.replace(/^0x/i, '').toLowerCase()
 
 /**
- * Construction options for the Lighter {@link PerpsProviderPlugin}.
- *
- * `restUrl` defaults to Lighter mainnet; pass a testnet URL or a self-hosted
- * mirror to override.
+ * Consumer-level overrides for a ready-made Lighter provider plugin. Every
+ * deployment fact — provider key, endpoints, signing chain id, collateral
+ * asset, explorer — belongs to the SDK's {@link LighterDeployment} descriptor
+ * and is not settable here; the signer, API-key store and read-only token
+ * manager are created per plugin instance.
  *
  * Auth-token resolution order for the auth-gated reads:
  *   1. Per-call `options.lighterAuthToken`
  *   2. Constructor `authToken` (string or async factory)
- *   3. Persisted long-lived read-only token (via `readOnlyTokenOptions`'s
- *      storage), keyed on the resolved Lighter `accountIndex`
- *   4. Fresh 1h create via the WASM signer + the user's registered API key
- *      from `keyStore`
+ *   3. Persisted long-lived read-only token, keyed on the resolved Lighter
+ *      `accountIndex`
+ *   4. Fresh 1h create via this instance's WASM signer + the user's registered
+ *      API key
  *
  * When none of these yields a token the auth-gated reads degrade gracefully:
  *   - `getOrders`, `getActivity` return empty results (mirrors backend behaviour)
  *   - `getOrder` throws `Unauthorized`
  *   - `getAccount` returns zero fee tier rather than failing
  *
- * Write actions (`signActions` for the WASM_BLOB / EVM_TX arms) require
- * `signer` and `keyStore` to be supplied.
- *
  * @public
  */
 export interface LighterProviderOptions {
   /**
-   * Provider key: the plugin `type`, the `Provider.key` matched against the
-   * backend `/providers` response, and the namespace for this instance's market
-   * / asset registries and retry policy. Defaults to `'lighter'` (mainnet).
-   * Set a distinct key (e.g. `'lighter-rh'`) to register a second Lighter
-   * instance on the same client.
+   * Persistence backend for this instance's Lighter API keypair and read-only
+   * token. Defaults to browser `localStorage` (encrypted at rest). Pass a
+   * custom adapter for SSR / non-browser hosts or another storage backend.
    */
-  providerKey?: LighterProviderKey
-  /** Lighter REST base URL. Defaults to mainnet. */
+  storage?: StorageAdapter
+  /**
+   * Lighter REST base URL. Defaults to the deployment's own endpoint; override
+   * to point at a reverse proxy, self-hosted mirror or rate-limit gateway. The
+   * instance's signer and read-only token manager follow this URL.
+   */
   restUrl?: string
-  /**
-   * Explorer tx base URL for transfer-activity links (`${base}${txHash}`).
-   * Defaults to the mainnet Lighter explorer for the default provider key, and
-   * to `undefined` (no transfer links) for any other key unless supplied.
-   */
-  explorerTxBaseUrl?: string
-  /** Pre-created Lighter read-only bearer. */
+  /** Pre-created Lighter read-only bearer, bypassing SDK token resolution. */
   authToken?: string | (() => string | Promise<string>)
-  /**
-   * WASM signer instance. Required for `signActions` (write actions) and
-   * for on-demand auth-token creating from the user's API key. The default
-   * configuration loads the WASM blob shipped with this package.
-   */
-  signer?: LighterSigner
-  /**
-   * Store for the user's per-address Lighter API keypair. Required for
-   * `signActions` (write actions) and for on-demand auth-token creating.
-   */
-  keyStore?: LighterKeyStore
-  /**
-   * Injection overrides (storage, fetcher, clock, host) for the read-only
-   * token manager, which is always active — Lighter reads create a long-lived
-   * read-only token on first use and reuse it thereafter. The host defaults to
-   * `restUrl`. This does not enable or disable the manager; it only overrides
-   * its dependencies (primarily for tests / non-browser storage).
-   */
-  readOnlyTokenOptions?: LighterReadOnlyTokenManagerOptions
   /** Token lifetime for on-demand standard-token creates (Lighter caps at 8h). Default 1h. */
   tokenLifetimeSeconds?: number
   /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
-  /**
-   * LI.FI's Lighter referral code — the code `getAccount` compares the account's
-   * applied referral against to populate `LighterAccountConfig.referralPresent`.
-   * Must match the backend's configured `LIGHTER_REFERRAL_CODE`; when omitted,
-   * `referralPresent` is always `false` (the SDK has nothing to compare against).
-   */
-  referralCode?: string
 }
 
 interface CachedStandardToken {
@@ -269,27 +243,14 @@ export interface LighterPerpsProvider extends PerpsProviderPlugin {
 }
 
 /**
- * Lighter provider plugin factory. Returns an object implementing
- * {@link PerpsProviderPlugin}, mirroring the `EthereumProvider()` / `hyperliquidProvider()`
- * shape used by the rest of the LI.FI SDK family.
+ * Build a Lighter provider plugin for one deployment. The deployment
+ * descriptor is SDK-owned, so this stays package-internal: consumers reach it
+ * through {@link lighterProvider} / {@link lighterRhProvider}.
  *
- * Read functions call Lighter's REST API directly with no LI.FI backend hop.
- * Auth-gated reads resolve their token via the order documented on
- * {@link LighterProviderOptions}.
- *
- * Write actions (`WASM_BLOB` and `EVM_TX` signing) are dispatched via
- * `signActions` — `PerpsClient.execute` delegates those arms here.
- *
- * @example
- * ```ts
- * const client = createPerpsClient({
- *   integrator: 'my-app',
- *   providers: [lighterProvider()],
- * })
- * ```
- * @public
+ * @internal
  */
-export const lighterProvider = (
+export const createLighterProvider = (
+  deployment: LighterDeployment,
   options: LighterProviderOptions = {}
 ): LighterPerpsProvider => {
   // Late-bind slot: the factory runs before the client exists, so `bind`
@@ -300,37 +261,37 @@ export const lighterProvider = (
     if (boundClient === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        'lighterProvider used before binding. Register it via ' +
-          'createPerpsClient({ providers: [lighterProvider()] }).'
+        `${deployment.providerKey} provider used before binding. Register it ` +
+          'via createPerpsClient({ providers: [lighterProvider()] }).'
       )
     }
     return boundClient
   }
 
-  const providerKey = options.providerKey ?? LIGHTER_PROVIDER_KEY
-  const restUrl = options.restUrl ?? DEFAULT_LIGHTER_REST_URL
-  const explorerTxBaseUrl =
-    options.explorerTxBaseUrl ??
-    (providerKey === LIGHTER_PROVIDER_KEY
-      ? DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL
-      : undefined)
+  const providerKey = deployment.providerKey
+  const restUrl = options.restUrl ?? deployment.restUrl
+  const explorerTxBaseUrl = deployment.explorerTxBaseUrl
+  const collateral = deployment.collateral
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
       ? options.authToken
       : options.authToken !== undefined
         ? () => options.authToken as string
         : undefined
-  const signer = options.signer
-  const keyStore = options.keyStore
-  keyStore?.bindProviderKey(providerKey)
+  const storage = options.storage ?? localStorageAdapter
+  const signer = new LighterSigner({
+    apiUrl: restUrl,
+    signerChainId: deployment.signerChainId,
+    collateralAssetIndex: collateral.assetIndex,
+  })
+  const keyStore = new LighterKeyStore(storage, providerKey)
   const readOnlyTokenManager = new LighterReadOnlyTokenManager({
+    storage,
     providerKey,
     lighterApiUrl: restUrl,
-    ...options.readOnlyTokenOptions,
   })
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
-  const referralCode = options.referralCode
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
   // Single-flight + backoff for lazy read-only token creation. Without these,
   // concurrent reads on first load all race `tokens/create`, and any sustained
@@ -358,12 +319,6 @@ export const lighterProvider = (
     apiKeyPrivateKey: string,
     indices: { apiKeyIndex: number; accountIndex: number }
   ): Promise<string> => {
-    if (signer === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        'lighterProvider: getStandardAuthToken called without a configured signer.'
-      )
-    }
     const cacheKey = address.toLowerCase()
     const nowSec = Math.floor(Date.now() / 1000)
     const cached = standardTokenByAddress.get(cacheKey)
@@ -412,11 +367,11 @@ export const lighterProvider = (
     if (authTokenSource !== undefined) {
       return authTokenSource()
     }
-    if (address === undefined || keyStore === undefined) {
+    if (address === undefined) {
       return undefined
     }
     const apiKey = await keyStore.get(address)
-    if (apiKey === null || signer === undefined) {
+    if (apiKey === null) {
       return undefined
     }
 
@@ -494,7 +449,7 @@ export const lighterProvider = (
     // rides reads during the creation-failure fallback and authorises
     // read-only token creation — so a revocation must re-sign it too.
     standardTokenByAddress.delete(cacheKey)
-    const apiKey = keyStore ? await keyStore.get(address) : null
+    const apiKey = await keyStore.get(address)
     if (apiKey !== null) {
       await readOnlyTokenManager.remove(address, apiKey.accountIndex)
     }
@@ -724,6 +679,9 @@ export const lighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
+      // Shared promise: the referral read below awaits this instance's runtime
+      // metadata off the same `/providers` fetch — no second request.
+      const providersPromise = getProviders(requireClient())
       const [
         { providers },
         ,
@@ -734,7 +692,7 @@ export const lighterProvider = (
         storedReadOnlyToken,
         appliedReferralCode,
       ] = await Promise.all([
-        getProviders(requireClient()),
+        providersPromise,
         registry.sync(),
         assetRegistry.sync(),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
@@ -746,14 +704,23 @@ export const lighterProvider = (
           : retryOnRevoked(opts, params.address, token, (t) =>
               fetchAccountLimits(client, account.index, t)
             ),
-        keyStore ? keyStore.get(params.address) : Promise.resolve(null),
+        keyStore.get(params.address),
         readOnlyTokenManager.get(params.address, account.index),
-        // No referral code to compare against, or no token to authenticate the
-        // read → undefined → `referralPresent: false`.
-        !referralCode || token === undefined
+        // The expected code is backend-owned runtime metadata on this
+        // instance's own provider descriptor (keyed by `providerKey`, so the
+        // RH instance never compares against mainnet attribution). Metadata
+        // without a code, or no token to authenticate the read → undefined →
+        // `referralPresent: false`. The read stays SDK-direct: the token only
+        // ever goes to Lighter, never to the LI.FI backend.
+        token === undefined
           ? Promise.resolve(undefined)
-          : retryOnRevoked(opts, params.address, token, (t) =>
-              fetchAppliedReferralCode(client, params.address, t)
+          : providersPromise.then((response) =>
+              response.providers.find((p) => p.key === providerKey)
+                ?.referralCode
+                ? retryOnRevoked(opts, params.address, token, (t) =>
+                    fetchAppliedReferralCode(client, params.address, t)
+                  )
+                : undefined
             ),
       ])
 
@@ -779,8 +746,8 @@ export const lighterProvider = (
         0
       )
 
-      const categories =
-        providers.find((p) => p.key === providerKey)?.categories ?? []
+      const instanceMeta = providers.find((p) => p.key === providerKey)
+      const categories = instanceMeta?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
       const spotCategoryId =
         categories.find((c) => c.quoteAsset === null)?.id ??
@@ -801,20 +768,29 @@ export const lighterProvider = (
       const collateralBalances: Balance[] = [
         {
           categoryId: perpsCategory?.id ?? providerKey,
-          asset: perpsCategory?.quoteAsset ?? lighterAsset('USDC', 'USDC'),
+          asset:
+            perpsCategory?.quoteAsset ??
+            lighterAsset(
+              collateral.displaySymbol,
+              collateral.displaySymbol,
+              providerKey
+            ),
           units: availableMargin.toString(),
           valueUsd: availableMargin.toString(),
         },
       ]
-      // Spot token holdings — non-collateral. USDC value is 1:1; other tokens
-      // have no price source at this boundary, so their USD value is unknown.
+      // Spot token holdings — non-collateral. The instance's settlement asset
+      // is valued 1:1; other tokens have no price source at this boundary, so
+      // their USD value is unknown.
       const balances: Balance[] = account.assets.map((a) => {
         const assetId = String(a.asset_id)
         return {
           categoryId: spotCategoryId,
-          asset: assetRegistry.get(assetId) ?? lighterAsset(assetId, a.symbol),
+          asset:
+            assetRegistry.get(assetId) ??
+            lighterAsset(assetId, a.symbol, providerKey),
           units: a.balance,
-          valueUsd: a.symbol === 'USDC' ? a.balance : '0',
+          valueUsd: a.asset_id === collateral.assetIndex ? a.balance : '0',
         }
       })
 
@@ -842,9 +818,12 @@ export const lighterProvider = (
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
         readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
         readOnlyTokenScope: storedReadOnlyToken?.scope,
+        // True only when the authenticated `used_code` equals the backend-owned
+        // code for this instance; `appliedReferralCode` is only ever fetched
+        // when that code exists.
         referralPresent:
           appliedReferralCode !== undefined &&
-          appliedReferralCode === referralCode,
+          appliedReferralCode === instanceMeta?.referralCode,
       }
 
       return {
@@ -878,6 +857,17 @@ export const lighterProvider = (
         providerKey,
         await resolveAccountExists(params.address, opts)
       )
+    },
+
+    async getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      const account = await fetchDetailedAccount(
+        apiClient(opts),
+        params.address
+      )
+      return lighterWithdrawableBalances(account.assets)
     },
 
     async getPositions(
@@ -980,7 +970,7 @@ export const lighterProvider = (
       const marketIds =
         params.marketId === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [Number(params.marketId)]
+          : [Number(registry.require(params.marketId).id)]
 
       const responses = await retryOnRevoked(opts, params.address, token, (t) =>
         Promise.all(
@@ -1002,6 +992,49 @@ export const lighterProvider = (
         triggerOrders,
         pagination: { limit: total, hasMore: false },
       }
+    },
+
+    async getRunningTwaps(
+      params: ProviderGetRunningTwapsParams,
+      opts?: SDKRequestOptions
+    ): Promise<TwapOrder[]> {
+      const token = await resolveAuthToken(opts, params.address)
+      if (token === undefined) {
+        return []
+      }
+
+      const client = apiClient(opts)
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      const [account] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        registry.sync(),
+      ])
+      const marketIds =
+        params.marketId === undefined
+          ? deriveOrderBearingMarketIds(account)
+          : [Number(registry.require(params.marketId).id)]
+      const responses = await retryOnRevoked(opts, params.address, token, (t) =>
+        Promise.all(
+          marketIds.map((id) =>
+            fetchActiveOrdersForMarket(client, t, account.index, id)
+          )
+        )
+      )
+
+      const twaps: TwapOrder[] = []
+      for (const response of responses) {
+        for (const order of response.orders) {
+          if (order.type === 'twap') {
+            twaps.push(
+              mapRunningTwap(
+                order,
+                registry.require(String(order.market_index))
+              )
+            )
+          }
+        }
+      }
+      return twaps
     },
 
     async getOrder(
@@ -1338,18 +1371,14 @@ export const lighterProvider = (
 
     /**
      * Hand the backend the local pubkey for REGISTER_API_KEY so its
-     * idempotency check can compare against the on-chain slot. No keystore
-     * configured, or no key stored for this address → omit the field;
-     * backend stages a fresh registration.
+     * idempotency check can compare against the on-chain slot. No key stored
+     * for this address → omit the field; backend stages a fresh registration.
      */
     async resolveSetupParams(
       action: ActionType,
       address: Address
     ): Promise<Record<string, unknown>> {
       if (action !== ActionType.REGISTER_API_KEY) {
-        return {}
-      }
-      if (keyStore === undefined) {
         return {}
       }
       const local = await keyStore.get(address)
@@ -1359,28 +1388,27 @@ export const lighterProvider = (
       return { knownPublicKey: local.apiKeyPublicKey }
     },
 
+    /**
+     * Lighter's WASM signer computes the L2 tx hash before submission, so an
+     * execute result carries it and resolves against this instance's explorer.
+     */
+    resolveExplorerLink(txHash: string): string | undefined {
+      return explorerTxUrlFromBase(explorerTxBaseUrl, txHash)
+    },
+
     async signActions(
       method: SigningMethod,
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
-      if (signer === undefined || keyStore === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'lighterProvider.signActions requires `signer` and `keyStore` to be ' +
-            'configured at construction.'
-        )
-      }
-      const signerRef = signer
-      const keyStoreRef = keyStore
       return lighterSignActions(
         {
-          signer: signerRef,
-          keyStore: keyStoreRef,
+          signer,
+          keyStore,
           apiClient: apiClient(),
           resolveAccountIndex: async (addr) => {
-            const apiKey = await keyStoreRef.get(addr)
+            const apiKey = await keyStore.get(addr)
             if (apiKey !== null) {
               return apiKey.accountIndex
             }
@@ -1396,6 +1424,52 @@ export const lighterProvider = (
     },
   }
 }
+
+/**
+ * Lighter mainnet provider plugin. Returns an object implementing
+ * {@link PerpsProviderPlugin}, mirroring the `EthereumProvider()` /
+ * `hyperliquidProvider()` shape used by the rest of the LI.FI SDK family.
+ *
+ * Read functions call Lighter's REST API directly with no LI.FI backend hop;
+ * auth-gated reads resolve their token via the order documented on
+ * {@link LighterProviderOptions}. Write actions (`WASM_BLOB` and `EVM_TX`
+ * signing) are dispatched via `signActions` — `PerpsClient.execute` delegates
+ * those arms here. The instance owns its WASM signer, API-key store and
+ * read-only token manager.
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   providers: [lighterProvider()],
+ * })
+ * ```
+ * @public
+ */
+export const lighterProvider = (
+  options: LighterProviderOptions = {}
+): LighterPerpsProvider =>
+  createLighterProvider(LIGHTER_MAINNET_DEPLOYMENT, options)
+
+/**
+ * Lighter-on-Robinhood-chain provider plugin. Same contract as
+ * {@link lighterProvider}, bound to the RH deployment: its own endpoints,
+ * zkLighter signing chain id, USDG collateral, and its own signer, API-key
+ * store and read-only token manager. Registering both factories on one client
+ * keeps their credentials and caches separate.
+ *
+ * @example
+ * ```ts
+ * const client = createPerpsClient({
+ *   integrator: 'my-app',
+ *   providers: [lighterProvider(), lighterRhProvider()],
+ * })
+ * ```
+ * @public
+ */
+export const lighterRhProvider = (
+  options: LighterProviderOptions = {}
+): LighterPerpsProvider => createLighterProvider(LIGHTER_RH_DEPLOYMENT, options)
 
 /**
  * Alias matching `@lifi/sdk`'s capitalised factory naming (`EVM()`, `EthereumProvider()`).

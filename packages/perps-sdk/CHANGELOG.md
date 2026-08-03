@@ -1,5 +1,78 @@
 # @lifi/perps-sdk
 
+## 6.5.0
+
+### Minor Changes
+
+- [#322](https://github.com/lifinance/perps-sdk/pull/322) [`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add TWAP action wrappers, preserve provider TWAP identifiers, sign Lighter TWAP actions, and read running TWAP parents directly from each venue.
+
+### Patch Changes
+
+- [#324](https://github.com/lifinance/perps-sdk/pull/324) [`2ffedda`](https://github.com/lifinance/perps-sdk/commit/2ffedda30f1ec78a29d3cd5e05454732912651ea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add PerpsErrorCode.SetupRequired (2070) for accounts that exist but need a recoverable provider setup action completed before the requested operation can be retried. `executeProviderSetupAction` and `executeProviderOption` now throw under the failing result's `errorCode` when the backend classified the failure, falling back to `ExchangeRejected` when it did not.
+
+- Updated dependencies [[`62c2437`](https://github.com/lifinance/perps-sdk/commit/62c2437b7a65cdb6566a9aa01500f75e59e10852), [`2ffedda`](https://github.com/lifinance/perps-sdk/commit/2ffedda30f1ec78a29d3cd5e05454732912651ea)]:
+  - @lifi/perps-types@5.3.0
+
+## 6.4.0
+
+### Minor Changes
+
+- [#320](https://github.com/lifinance/perps-sdk/pull/320) [`2277d7e`](https://github.com/lifinance/perps-sdk/commit/2277d7effe2ea2492772f56cdf49aeed1eb2ea90) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add TWAP order action types and params model (ORD-1160)
+
+  - `ActionType.PLACE_TWAP_ORDER` (`placeTwapOrder`) and `ActionType.CANCEL_TWAP_ORDER` (`cancelTwapOrder`) with `ActionParamsMap` entries, so `CreateActionRequest` / `ExecuteActionRequest` cover TWAP.
+  - `PlaceTwapOrderParams` with a provider-independent core (`market`, `side`, `size`, `durationSeconds`, `reduceOnly?`) plus capability-declared extras: `randomize?` (Hyperliquid) and `frequencySeconds?` / `minPrice?` / `maxPrice?` (Ondo).
+  - `CancelTwapOrderParams` with a stringified provider-native `twapId`.
+  - Read-side: `OrderType.TWAP`, `TwapOrderStatus` (RUNNING / COMPLETED / CANCELLED), and the `TwapOrder` running-TWAP read model.
+  - `OrderType.TWAP` is excluded from the `type` field of `PlaceOrderParams` in both `@lifi/perps-types` and `@lifi/perps-sdk`: TWAP placement goes through `ActionType.PLACE_TWAP_ORDER`. The set of values accepted by `placeOrder` is unchanged.
+  - `Param.type` widened to `'string' | 'boolean' | 'number'` so provider action descriptors can express the TWAP extras (boolean toggle with default, numeric interval with allowed values).
+
+### Patch Changes
+
+- Updated dependencies [[`2277d7e`](https://github.com/lifinance/perps-sdk/commit/2277d7effe2ea2492772f56cdf49aeed1eb2ea90)]:
+  - @lifi/perps-types@5.2.0
+
+## 6.3.0
+
+### Minor Changes
+
+- [#314](https://github.com/lifinance/perps-sdk/pull/314) [`ab7b307`](https://github.com/lifinance/perps-sdk/commit/ab7b307fcca34b443fcb305da6fa1b3ef916e1c1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter withdrawals now sign the caller's `(asset, route)` selection instead of a fixed USDC-out-of-perps default. `LtWithdrawWasmParams` requires `asset_index`, `route_type`, a decimal `amount` string, and the asset's `decimals`, `min_withdrawal_amount` and `symbol`; the signer rejects a route outside `{0, 1}` and any amount below the asset's minimum, and scales by that asset's own precision. `LtAccountAsset` now matches the live `/api/v1/account` payload (`margin_balance`, `multiplier`, and `margin_mode` as `'enabled' | 'disabled'`). New `PerpsClient.getWithdrawableBalances` lists the `(asset, route)` pairs an account can actually withdraw, and `Asset` carries the optional per-asset withdrawal metadata that read joins on.
+
+### Patch Changes
+
+- Updated dependencies [[`ab7b307`](https://github.com/lifinance/perps-sdk/commit/ab7b307fcca34b443fcb305da6fa1b3ef916e1c1)]:
+  - @lifi/perps-types@5.1.0
+
+## 6.2.1
+
+### Patch Changes
+
+- [#306](https://github.com/lifinance/perps-sdk/pull/306) [`2475f77`](https://github.com/lifinance/perps-sdk/commit/2475f77a005b04e19da5c91c19e39e859da9bf73) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix `src/version.ts` reporting a stale, hand-committed version (three majors behind `package.json`) instead of the package's real version. The generator (`scripts/version.js`) now also preserves the `name`/`version` `@public` doc comments it previously stripped, and `changeset:version` regenerates the file in lockstep with every version bump so the committed source, the shipped `src/**/*.ts` files, and the built `dist` output never drift again. The `x-lifi-perps-sdk` request header and any source-consumed build now report the correct SDK version.
+
+- Updated dependencies [[`489cca0`](https://github.com/lifinance/perps-sdk/commit/489cca07a4bc5dc5f8eded7c43075e8bed596334)]:
+  - @lifi/perps-types@5.0.0
+
+## 6.2.0
+
+### Minor Changes
+
+- [#300](https://github.com/lifinance/perps-sdk/pull/300) [`2112c11`](https://github.com/lifinance/perps-sdk/commit/2112c1115e57324f2e1589472b72354217a891ea) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Surface the venue transaction behind a submitted action: a successful `ActionResult` now carries optional `txHash` and a fully-resolved `explorerLink`, so an integrator can link to the venue explorer straight after `executeAction` instead of waiting for the fill or activity row. The backend populates `txHash` only where the venue's canonical hash is known at submit time — Lighter, whose WASM signer computes it before the network call. Explorer resolution stays provider-owned through the new optional `PerpsProviderPlugin.resolveExplorerLink(txHash)` hook, which the Lighter plugin implements against its instance's `explorerTxBaseUrl`. Hyperliquid (hash assigned at block inclusion) and Ondo (offchain) implement no hook, so their results carry neither field — no placeholder links.
+
+### Patch Changes
+
+- Updated dependencies [[`2112c11`](https://github.com/lifinance/perps-sdk/commit/2112c1115e57324f2e1589472b72354217a891ea)]:
+  - @lifi/perps-types@4.2.0
+
+## 6.1.0
+
+### Minor Changes
+
+- [#299](https://github.com/lifinance/perps-sdk/pull/299) [`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Expose `positionSupportsMarginAdjustment(position)` and `positionSupportsMarginRemoval(position)` as the stack's owned answer to whether an open position takes a margin adjustment, and in which direction. Clients gating an edit-margin affordance read these instead of inspecting `Position.marginMode` and `Position.market.positionMarginAdjustment` themselves, or calling `positionMarginConstraints` just to test its `undefined` return. `removableIsolatedMargin` and the Hyperliquid and Lighter `positionMarginConstraints` implementations now gate on the same predicates, so a client's affordance cannot diverge from what the venue accepts.
+
+### Patch Changes
+
+- Updated dependencies [[`0f015d1`](https://github.com/lifinance/perps-sdk/commit/0f015d185ca2e785146383dbed63a5fff6796beb)]:
+  - @lifi/perps-types@4.1.0
+
 ## 6.0.0
 
 ### Major Changes

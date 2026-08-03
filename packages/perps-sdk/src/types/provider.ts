@@ -25,6 +25,7 @@ import type {
   SignedActionStep,
   SigningMethod,
   TradeType,
+  TwapOrder,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import type {
@@ -33,6 +34,7 @@ import type {
   SDKRequestOptions,
 } from './config.js'
 import type { DepositFlow } from './deposit.js'
+import type { ProviderWithdrawableBalance } from './withdrawal.js'
 
 /**
  * Low-level SDK client: resolved config, the optional end-user wallet, and the
@@ -177,6 +179,15 @@ export interface ProviderGetDepositFlowParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getWithdrawableBalances}.
+ *
+ * @public
+ */
+export interface ProviderGetWithdrawableBalancesParams {
+  address: Address
+}
+
+/**
  * Read params for {@link PerpsProvider.getPositions}.
  *
  * @public
@@ -216,6 +227,17 @@ export interface ProviderGetOrdersParams {
   limit?: number
   /** Opaque pagination cursor from the previous response. */
   cursor?: string
+}
+
+/**
+ * Read params for {@link PerpsProvider.getRunningTwaps}.
+ *
+ * @public
+ */
+export interface ProviderGetRunningTwapsParams {
+  address: Address
+  /** Optional opaque `Market.id` filter (not a display symbol). */
+  marketId?: string
 }
 
 /**
@@ -377,6 +399,21 @@ export interface PerpsProviderPlugin {
     options?: SDKRequestOptions
   ): Promise<DepositFlow>
 
+  /**
+   * The `(asset, route)` pairs `params.address` currently has something to
+   * withdraw from, keyed by provider-native asset id. Only the venue knows how
+   * its balance payload splits across routes, so the split is owned here; the
+   * per-asset venue minimum is applied by `PerpsClient.getWithdrawableBalances`,
+   * which holds the core asset registry.
+   *
+   * Optional: a provider whose withdrawals are not a per-route selection omits
+   * it, and `PerpsClient.getWithdrawableBalances` then resolves `undefined`.
+   */
+  getWithdrawableBalances?(
+    params: ProviderGetWithdrawableBalancesParams,
+    options?: SDKRequestOptions
+  ): Promise<ProviderWithdrawableBalance[]>
+
   getPositions(
     params: ProviderGetPositionsParams,
     options?: SDKRequestOptions
@@ -398,6 +435,15 @@ export interface PerpsProviderPlugin {
     params: ProviderGetOrdersParams,
     options?: SDKRequestOptions
   ): Promise<OrdersResponse>
+
+  /**
+   * Fetch the account's currently running TWAP parent orders directly from the
+   * venue. Child slice orders are excluded.
+   */
+  getRunningTwaps?(
+    params: ProviderGetRunningTwapsParams,
+    options?: SDKRequestOptions
+  ): Promise<TwapOrder[]>
 
   getOrder(
     params: ProviderGetOrderParams,
@@ -573,6 +619,17 @@ export interface PerpsProviderPlugin {
    * — e.g. evicting a locally stored credential the venue no longer accepts.
    */
   onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
+
+  /**
+   * Resolve a venue transaction hash to a block-explorer URL. Core calls it for
+   * every `/executeAction` result the backend returned a `txHash` on, so the
+   * explorer target stays provider-owned.
+   *
+   * Optional: a venue with no explorer (Ondo settles offchain) omits it, and
+   * results then carry the hash alone. May also return `undefined` for an
+   * instance whose explorer is not configured.
+   */
+  resolveExplorerLink?(txHash: string): string | undefined
 }
 
 /**
