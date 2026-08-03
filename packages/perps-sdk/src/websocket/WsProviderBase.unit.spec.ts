@@ -1,5 +1,9 @@
 import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type {
+  ProviderGetQuoteParams,
+  QuoteListener,
+} from '../types/provider.js'
 import type { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 import type { SubscriptionListener, WsConnectionStatus } from './types.js'
 import {
@@ -67,6 +71,13 @@ class TestProvider extends WsProviderBase<{ id: string }> {
     super(rws as unknown as ReconnectingWebSocket, 'test')
   }
 
+  subscribeQuote(
+    _params: ProviderGetQuoteParams,
+    _onQuote: QuoteListener
+  ): Promise<() => void> {
+    return Promise.resolve(vi.fn())
+  }
+
   protected toKey(sub: Subscription): string {
     return sub.channel
   }
@@ -77,7 +88,7 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   protected sendSubscribe(state: { id: string }): void | Promise<void> {
     return this.sendSubscribeSpy(state)
   }
-  protected onClose(): void {
+  protected override onClose(): void {
     this.onCloseSpy()
   }
   protected handleMessage(): void {}
@@ -101,11 +112,11 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   }
 }
 
-const PRICES = { channel: 'prices', dex: 'test' } as Subscription
+const PRICES = { channel: 'prices', dex: 'test' } as unknown as Subscription
 const priceEvent = {
   channel: 'prices',
   data: { BTC: '1' },
-} as SubscriptionEvent
+} as unknown as SubscriptionEvent
 
 afterEach(() => {
   vi.useRealTimers()
@@ -531,7 +542,7 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
 })
 
 describe('WsProviderBase — resubscribe replay races a concurrent subscribe', () => {
-  const CHANNEL_C = { channel: 'c', dex: 'test' } as Subscription
+  const CHANNEL_C = { channel: 'c', dex: 'test' } as unknown as Subscription
 
   /** Gate every `sendSubscribe` on a resolver the test releases explicitly. */
   const gateSends = (p: TestProvider): Array<() => void> => {

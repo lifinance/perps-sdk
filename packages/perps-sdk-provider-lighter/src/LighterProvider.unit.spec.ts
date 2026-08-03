@@ -34,6 +34,7 @@ import {
   LIGHTER_RH_REST_URL,
 } from './constants.js'
 import {
+  type LighterPerpsProvider,
   type LighterProviderOptions,
   lighterProvider,
   lighterRhProvider,
@@ -990,7 +991,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getWithdrawableBalances({ address: ADDRESS })
+      provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
       { assetId: '1', route: 'spot', available: '0.00609091' },
       { assetId: '3', route: 'spot', available: '10.9886' },
@@ -2034,8 +2035,12 @@ describe('LighterProvider — normalisation', () => {
     expect(result.pagination.hasMore).toBe(true)
     expect(result.pagination.cursor).toBeTypeOf('string')
     expect(result.items).toHaveLength(1)
-    expect(result.items[0].type).toBe(ActivityType.DEPOSIT)
-    expect(result.items[0].explorerLink).toBe('https://scan.li.fi/tx/0xabc')
+    const [item] = result.items
+    expect(item.type).toBe(ActivityType.DEPOSIT)
+    if (item.type !== ActivityType.DEPOSIT) {
+      throw new Error('expected a deposit activity')
+    }
+    expect(item.explorerLink).toBe('https://scan.li.fi/tx/0xabc')
   })
 })
 
@@ -2156,12 +2161,20 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
       limit: 3,
     })
     expect(page1.items).toHaveLength(3)
-    expect(page1.items.find((item) => item.id === 'd1')?.explorerLink).toBe(
-      'https://scan.li.fi/tx/0xd1'
-    )
-    expect(page1.items.find((item) => item.id === 'w1')?.explorerLink).toBe(
-      'https://scan.li.fi/tx/0xw1'
-    )
+    expect(
+      (
+        page1.items.find((item) => item.id === 'd1') as
+          | { explorerLink?: string }
+          | undefined
+      )?.explorerLink
+    ).toBe('https://scan.li.fi/tx/0xd1')
+    expect(
+      (
+        page1.items.find((item) => item.id === 'w1') as
+          | { explorerLink?: string }
+          | undefined
+      )?.explorerLink
+    ).toBe('https://scan.li.fi/tx/0xw1')
     expect(page1.pagination.hasMore).toBe(true)
     expect(page1.pagination.cursor).toBeTypeOf('string')
   })
@@ -2388,7 +2401,7 @@ describe('LighterProvider — getDepositFlow', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({ kind: 'lifiSwap', destination: LIGHTER_USDC })
   })
 
@@ -2406,7 +2419,7 @@ describe('LighterProvider — getDepositFlow', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
       kind: 'firstDepositPipeline',
       chainId: ETHEREUM_USDC.chainId,
@@ -2420,7 +2433,7 @@ describe('LighterProvider — getDepositFlow', () => {
     const provider = lighterRhProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({ kind: 'lifiSwap', destination: ROBINHOOD_USDG })
   })
 
@@ -2438,7 +2451,7 @@ describe('LighterProvider — getDepositFlow', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).rejects.toThrow()
   })
 })

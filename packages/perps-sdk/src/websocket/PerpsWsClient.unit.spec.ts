@@ -1,5 +1,5 @@
 import { HttpResponse, http } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockProviders, server } from '../../test/handlers.js'
 import {
   createPerpsClient,
@@ -61,7 +61,10 @@ describe('PerpsWsClient', () => {
       const factory = buildHlFactory()
       const ws = makeWs(factory)
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
 
       expect(factory).toHaveBeenCalledOnce()
       expect(factory).toHaveBeenCalledWith(
@@ -80,7 +83,10 @@ describe('PerpsWsClient', () => {
       const factory = buildHlFactory()
       const ws = makeWs(factory)
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
 
       expect(factory.mock.calls[0][0].markets).toEqual(['hyperliquid', 'xyz'])
 
@@ -92,9 +98,12 @@ describe('PerpsWsClient', () => {
       const factory = buildHlFactory()
       const ws = makeWs(factory)
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
       await ws.subscribe(
-        { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      await ws.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
         vi.fn()
       )
 
@@ -107,7 +116,7 @@ describe('PerpsWsClient', () => {
       useWsUrlHandler()
       const ws = makeWs(buildHlFactory())
       const listener = vi.fn()
-      const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
+      const sub = { channel: 'marketsContext' as const, dex: 'hyperliquid' }
 
       await ws.subscribe(sub, listener)
 
@@ -120,7 +129,7 @@ describe('PerpsWsClient', () => {
       useWsUrlHandler()
       const ws = makeWs(buildHlFactory())
       const listener = vi.fn()
-      const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
+      const sub = { channel: 'marketsContext' as const, dex: 'hyperliquid' }
 
       await ws.subscribe(sub, listener)
 
@@ -137,7 +146,7 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(buildHlFactory())
       const listener = vi.fn()
       const onStatus = vi.fn()
-      const sub = { channel: 'prices' as const, dex: 'hyperliquid' }
+      const sub = { channel: 'marketsContext' as const, dex: 'hyperliquid' }
 
       await ws.subscribe(sub, listener, onStatus)
 
@@ -153,7 +162,7 @@ describe('PerpsWsClient', () => {
 
       const ws = makeWs(buildHlFactory())
       const unsub = await ws.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
 
@@ -167,7 +176,7 @@ describe('PerpsWsClient', () => {
       const ws = new PerpsWsClient(createClient())
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+        ws.subscribe({ channel: 'marketsContext', dex: 'hyperliquid' }, vi.fn())
       ).rejects.toThrow("No WS provider factory registered for 'hyperliquid'.")
 
       ws.close()
@@ -178,7 +187,7 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(buildHlFactory())
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+        ws.subscribe({ channel: 'marketsContext', dex: 'hyperliquid' }, vi.fn())
       ).rejects.toThrow('No WebSocket URL found for provider: hyperliquid')
 
       ws.close()
@@ -189,7 +198,10 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(buildHlFactory())
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'unknown-provider' }, vi.fn())
+        ws.subscribe(
+          { channel: 'marketsContext', dex: 'unknown-provider' },
+          vi.fn()
+        )
       ).rejects.toThrow(
         "No WS provider factory registered for 'unknown-provider'."
       )
@@ -206,11 +218,14 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(factory)
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+        ws.subscribe({ channel: 'marketsContext', dex: 'hyperliquid' }, vi.fn())
       ).rejects.toThrow('transient /providers failure')
       expect(factory).not.toHaveBeenCalled()
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
       expect(factory).toHaveBeenCalledOnce()
       expect(getProvidersMock).toHaveBeenCalledTimes(2)
 
@@ -224,9 +239,12 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(factory)
 
       const [_unsub1, _unsub2] = await Promise.all([
-        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn()),
         ws.subscribe(
-          { channel: 'orderbook', dex: 'hyperliquid', assetId: 'BTC' },
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          vi.fn()
+        ),
+        ws.subscribe(
+          { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
           vi.fn()
         ),
       ])
@@ -293,7 +311,10 @@ describe('PerpsWsClient', () => {
       useWsUrlHandler()
       const ws = makeWs(buildHlFactory())
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
 
       ws.close()
 
@@ -317,7 +338,7 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(factory)
 
       const subPromise = ws.subscribe(
-        { channel: 'prices', dex: 'hyperliquid' },
+        { channel: 'marketsContext', dex: 'hyperliquid' },
         vi.fn()
       )
       ws.close()
@@ -334,12 +355,15 @@ describe('PerpsWsClient', () => {
     it('rejects subscribe() issued after close()', async () => {
       useWsUrlHandler()
       const ws = makeWs(buildHlFactory())
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
 
       ws.close()
 
       await expect(
-        ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+        ws.subscribe({ channel: 'marketsContext', dex: 'hyperliquid' }, vi.fn())
       ).rejects.toThrow('PerpsWsClient is closed')
     })
 
@@ -369,7 +393,10 @@ describe('PerpsWsClient', () => {
       useWsUrlHandler()
       const ws = makeWs(buildHlFactory())
 
-      await ws.subscribe({ channel: 'prices', dex: 'hyperliquid' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
       mockReconnect.mockClear()
 
       ws.reconnect('hyperliquid')

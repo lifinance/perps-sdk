@@ -122,7 +122,7 @@ const seedFast = async (
 // --- Mock ReconnectingWebSocket ---
 
 const { MockRws, getMockRwsInstance } = vi.hoisted(() => {
-  let instance: any
+  let instance: MockRws
 
   class MockRws {
     onMessageHandlers: Array<(data: string) => void> = []

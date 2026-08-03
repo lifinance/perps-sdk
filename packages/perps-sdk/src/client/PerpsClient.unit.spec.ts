@@ -1,7 +1,11 @@
 import type {
   AccountResponse,
+  ActionResult,
+  ActionStep,
+  Asset,
   CreateActionRequest,
   CreateActionResponse,
+  Eip712SignedActionStep,
   ExecuteActionRequest,
   ExecuteActionResponse,
   HmacSignedActionStep,
@@ -47,6 +51,7 @@ describe('PerpsClient', () => {
   let agentProvider: TestAgentProvider
   const userAddress = '0x1234567890123456789012345678901234567890'
   const provider = 'hyperliquid'
+  const MARKET = { marketId: 'BTC', categoryId: provider }
 
   beforeEach(() => {
     agentProvider = createTestAgentProvider({ type: provider })
@@ -65,7 +70,7 @@ describe('PerpsClient', () => {
         client.placeOrder({
           address: userAddress,
           provider,
-          symbol: 'BTC',
+          market: MARKET,
           side: 'BUY' as any,
           type: 'MARKET' as any,
           size: '0.1',
@@ -92,7 +97,7 @@ describe('PerpsClient', () => {
         noSignClient.placeOrder({
           address: userAddress,
           provider,
-          symbol: 'BTC',
+          market: MARKET,
           side: 'BUY' as any,
           type: 'MARKET' as any,
           size: '0.1',
@@ -116,16 +121,19 @@ describe('PerpsClient', () => {
       const result = await client.placeOrder({
         address: userAddress,
         provider,
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
         price: '95000.00',
       })
 
+      const [first] = result.results
       expect(result.results).toHaveLength(1)
-      expect(result.results[0].success).toBe(true)
-      expect(result.results[0].orderId).toBe('neworder123')
+      if (!first.success) {
+        throw new Error('expected success')
+      }
+      expect(first.orderId).toBe('neworder123')
     })
   })
 
@@ -170,7 +178,9 @@ describe('PerpsClient', () => {
       expect(capturedRequest).toBeDefined()
       expect(capturedRequest!.action).toBe(ActionType.WITHDRAWAL)
       expect(capturedRequest!.signerAddress).toBe(account.address)
-      expect(capturedRequest!.actions[0].signature).toMatch(/^0x[0-9a-f]+$/i)
+      expect(
+        (capturedRequest!.actions[0] as Eip712SignedActionStep).signature
+      ).toMatch(/^0x[0-9a-f]+$/i)
     })
 
     it('throws a clear error when no user wallet is configured', async () => {
@@ -245,7 +255,7 @@ describe('PerpsClient', () => {
           address: userAddress,
           action: ActionType.PLACE_ORDER,
           params: {
-            symbol: 'BTC',
+            market: MARKET,
             side: 'BUY' as any,
             type: 'MARKET' as any,
             size: '0.1',
@@ -278,7 +288,7 @@ describe('PerpsClient', () => {
           address: userAddress,
           action: ActionType.PLACE_ORDER,
           params: {
-            symbol: 'BTC',
+            market: MARKET,
             side: 'BUY' as any,
             type: 'MARKET' as any,
             size: '0.1',
@@ -294,7 +304,7 @@ describe('PerpsClient', () => {
   describe('execute does not retry money-moving writes', () => {
     const BASE_URL = DEFAULT_API_URL
     const orderParams = {
-      symbol: 'BTC',
+      market: MARKET,
       side: 'BUY' as any,
       type: 'MARKET' as any,
       size: '0.1',
@@ -699,7 +709,9 @@ describe('PerpsClient', () => {
 
     it('invokes the plugin onExecuteResults hook with the failing results before throwing', async () => {
       const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
-      const onExecuteResults = vi.fn(async () => {})
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
       ;(hookedProvider as any).onExecuteResults = onExecuteResults
       const hookedClient = new PerpsClient({
         integrator: 'test-app',
@@ -846,7 +858,7 @@ describe('PerpsClient', () => {
       message: { x: 0 },
     }
     const ORDER = {
-      market: { symbol: 'BTC' },
+      market: { marketId: 'BTC', categoryId: 'lighter' },
       side: OrderSide.BUY,
       type: OrderType.MARKET,
       size: '0.1',
@@ -957,7 +969,9 @@ describe('PerpsClient', () => {
     })
 
     it('links setup-path results and hands the linked results to onExecuteResults', async () => {
-      const onExecuteResults = vi.fn(async () => {})
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
       const lighter = createTestAgentProvider({
         type: 'lighter',
         resolveExplorerLink: (txHash) => `${EXPLORER_BASE}${txHash}`,
@@ -1206,7 +1220,7 @@ describe('PerpsClient', () => {
   describe('getWithdrawableBalances', () => {
     // Per-asset precision and minimums as live
     // `GET https://mainnet.zklighter.elliot.ai/api/v1/assetDetails` reports them.
-    const ASSETS = [
+    const ASSETS: Asset[] = [
       {
         providerId: provider,
         id: '1',
@@ -1232,7 +1246,7 @@ describe('PerpsClient', () => {
 
     const clientWith = (
       plugin: Record<string, unknown>,
-      assets = ASSETS
+      assets: Asset[] = ASSETS
     ): PerpsClient => {
       server.use(
         http.get(`${DEFAULT_API_URL}/assets`, () =>
@@ -1441,11 +1455,13 @@ describe('PerpsClient', () => {
           providerId: provider,
           id: 'BTC',
           displaySymbol: 'BTC',
+          logoURI: 'https://example.com/btc.png',
         },
         quoteAsset: {
           providerId: provider,
           id: 'USDC',
           displaySymbol: 'USDC',
+          logoURI: 'https://example.com/usdc.png',
         },
         positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
       },
@@ -1534,7 +1550,7 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
-            actions: [{ action: body.action }],
+            actions: [{ action: body.action, session: {} } as ActionStep],
           } satisfies CreateActionResponse)
         })
       )
@@ -1710,7 +1726,7 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as CreateActionRequest
           createCalls.push(body.action)
           return HttpResponse.json({
-            actions: [{ action: body.action }],
+            actions: [{ action: body.action, session: {} } as ActionStep],
           } satisfies CreateActionResponse)
         })
       )
@@ -2273,7 +2289,7 @@ describe('PerpsClient', () => {
       const hlResult = await bothClient.placeOrder({
         address: userAddress,
         provider: 'hyperliquid',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
@@ -2282,7 +2298,7 @@ describe('PerpsClient', () => {
       const lighterResult = await bothClient.placeOrder({
         address: lighterAddress,
         provider: 'lighter',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',
@@ -2339,7 +2355,7 @@ describe('PerpsClient', () => {
     }
 
     const orderParams = {
-      symbol: 'BTC',
+      market: MARKET,
       side: 'BUY' as any,
       type: 'MARKET' as any,
       size: '0.1',
@@ -2455,7 +2471,9 @@ describe('PerpsClient', () => {
 
     it('invokes the plugin onExecuteResults hook with the backend results', async () => {
       const ondo = createHmacProvider()
-      const onExecuteResults = vi.fn(async () => {})
+      const onExecuteResults = vi.fn<
+        (address: Address, results: ActionResult[]) => Promise<void>
+      >(async () => {})
       ;(ondo as any).onExecuteResults = onExecuteResults
       useOndoHandlers()
 
@@ -2660,7 +2678,7 @@ describe('PerpsClient', () => {
       await client.placeOrder({
         address: account.address,
         provider: 'hyperliquid',
-        symbol: 'BTC',
+        market: MARKET,
         side: 'BUY' as any,
         type: 'MARKET' as any,
         size: '0.1',

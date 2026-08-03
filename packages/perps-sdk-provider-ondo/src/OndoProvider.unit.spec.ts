@@ -765,7 +765,7 @@ describe('OndoProvider — getDepositFlow', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
       kind: 'lifiSwap',
       destination: ETHEREUM_USDC,
@@ -778,7 +778,7 @@ describe('OndoProvider — getDepositFlow', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
       kind: 'setupRequired',
       setup: [ActionType.CREATE_DEPOSIT_ADDRESS],
@@ -787,7 +787,7 @@ describe('OndoProvider — getDepositFlow', () => {
 
   it('reports the login gate without a session', async () => {
     await expect(
-      loggedOutProvider().getDepositFlow({ address: ADDRESS })
+      loggedOutProvider().getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
       kind: 'setupRequired',
       setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
@@ -805,7 +805,7 @@ describe('OndoProvider — getDepositFlow', () => {
     })
 
     await expect(
-      provider.getDepositFlow({ address: ADDRESS })
+      provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
       kind: 'setupRequired',
       setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
@@ -1509,6 +1509,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     options: [],
     actions: [],
     categories: [],
+    supportedIntervals: [],
   }
 
   // Serves the LI.FI backend hops inline so `/executeAction` is observable,

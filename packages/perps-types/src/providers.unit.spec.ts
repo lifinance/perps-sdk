@@ -6,6 +6,7 @@ import type {
   AccountResponse,
   HyperliquidAccountConfig,
   LighterAccountConfig,
+  LighterProviderKey,
 } from './account.js'
 import type { Asset } from './asset.js'
 import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
@@ -273,7 +274,9 @@ const lighterConfig: LighterAccountConfig = {
   apiKeyRegistered: true,
   accountType: 0,
   accountTradingMode: 0,
+  assetCollateral: [],
   readOnlyTokenApproved: false,
+  referralPresent: false,
 }
 
 // RO-token approved state: expiry + scope populated alongside the flag.
@@ -284,9 +287,11 @@ const lighterConfigRoApproved: LighterAccountConfig = {
   apiKeyRegistered: true,
   accountType: 0,
   accountTradingMode: 0,
+  assetCollateral: [],
   readOnlyTokenApproved: true,
   readOnlyTokenExpiry: 1_999_999_999,
   readOnlyTokenScope: 'all',
+  referralPresent: false,
 }
 
 const hyperliquidAccountResponse: AccountResponse = {
@@ -460,8 +465,14 @@ type _NarrowHl = Expect<
     HyperliquidAccountConfig
   >
 >
+// `Extract` matches on assignability, so the discriminant must cover every
+// literal in `LighterProviderKey` — narrowing on just `'lighter'` would
+// (incorrectly) extract `never`.
 type _NarrowLighter = Expect<
-  Equals<Extract<AccountConfig, { provider: 'lighter' }>, LighterAccountConfig>
+  Equals<
+    Extract<AccountConfig, { provider: LighterProviderKey }>,
+    LighterAccountConfig
+  >
 >
 
 // `AccountResponse.config` is the discriminated union — NOT
@@ -752,7 +763,10 @@ describe('AccountConfig discriminated union', () => {
         case 'hyperliquid':
           return `hl:${config.abstractionMode}:${config.agents.length}`
         case 'lighter':
+        case 'lighter-rh':
           return `lt:${config.accountIndex}:${config.accountType}`
+        case 'ondo':
+          return `ondo:${config.loggedIn}`
         default: {
           const _exhaustive: never = config
           return _exhaustive

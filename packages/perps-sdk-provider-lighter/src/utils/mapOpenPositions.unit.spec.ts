@@ -33,8 +33,18 @@ const market = (id: number, symbol: string): PerpsMarketDisplay => ({
   providerId: 'lighter',
   id: String(id),
   categoryId: 'lighter',
-  baseAsset: { providerId: 'lighter', id: String(id), displaySymbol: symbol },
-  quoteAsset: { providerId: 'lighter', id: 'USDC', displaySymbol: 'USDC' },
+  baseAsset: {
+    providerId: 'lighter',
+    id: String(id),
+    displaySymbol: symbol,
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'lighter',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
 })
 

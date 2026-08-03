@@ -62,7 +62,7 @@ describe('loadLighterWasm', () => {
     vi.spyOn(WebAssembly, 'instantiate').mockResolvedValue({
       instance: {} as WebAssembly.Instance,
       module: {} as WebAssembly.Module,
-    })
+    } as unknown as WebAssembly.Instance)
   })
 
   afterEach(() => {
@@ -83,7 +83,9 @@ describe('loadLighterWasm', () => {
   })
 
   it('fetches the package-owned binary asset URL', async () => {
-    const fetchSpy = vi.fn(async () => new Response(new Uint8Array([0])))
+    const fetchSpy = vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array([0]))
+    )
     vi.stubGlobal('fetch', fetchSpy)
     const { loadLighterWasm } = await importLoaderWithFakes()
 

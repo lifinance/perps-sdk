@@ -28,11 +28,9 @@ const market = (overrides: Partial<PerpsMarket>): PerpsMarket => ({
   },
   szDecimals: 5,
   priceDecimals: 1,
-  markPrice: '61729.6',
   maxLeverage: 50,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
-  funding: { rate: '0.0001', nextFundingTime: 0 },
   ...overrides,
 })
 
@@ -41,7 +39,6 @@ const doge = market({
   id: '3',
   szDecimals: 0,
   priceDecimals: 6,
-  markPrice: '0.123456',
 })
 
 describe('formatOrderPrice (Lighter)', () => {

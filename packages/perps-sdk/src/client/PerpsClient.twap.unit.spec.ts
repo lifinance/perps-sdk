@@ -1,4 +1,5 @@
 import type {
+  ActionStep,
   CreateActionRequest,
   CreateActionResponse,
   ExecuteActionRequest,
@@ -45,7 +46,12 @@ const providersWithTwap: Provider[] = mockProviders.providers.map((provider) =>
 )
 
 const actionResponse = (action: ActionType): CreateActionResponse => ({
-  actions: mockCreateOrderResponse.actions.map((step) => ({ ...step, action })),
+  // `mockCreateOrderResponse.actions` is always a single Eip712ActionStep in
+  // this fixture; overriding just `action` keeps that shape, which the
+  // general `ActionStep` union type can't express through a bare `.map`.
+  actions: mockCreateOrderResponse.actions.map(
+    (step) => ({ ...step, action }) as ActionStep
+  ),
 })
 
 describe('PerpsClient TWAP wrappers', () => {

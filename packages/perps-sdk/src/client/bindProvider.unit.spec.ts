@@ -1,10 +1,13 @@
 import type {
   AccountResponse,
+  AccountSummary,
   ActivitiesResponse,
   FillsResponse,
   Order,
   OrdersResponse,
+  Position,
   PositionsResponse,
+  Quote,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { describe, expect, it, vi } from 'vitest'
@@ -36,6 +39,16 @@ const makePlugin = () => {
     getActivity: vi.fn(
       async (): Promise<ActivitiesResponse> => ({}) as ActivitiesResponse
     ),
+    accountExists: vi.fn(async (): Promise<boolean> => true),
+    getQuote: vi.fn(async (): Promise<Quote> => ({}) as Quote),
+    getAccountSummary: vi.fn(
+      (_account: AccountResponse, _positions: Position[]): AccountSummary =>
+        ({}) as AccountSummary
+    ),
+    formatOrderPrice: vi.fn((_market, price: number) => price.toString()),
+    formatOrderSize: vi.fn((_market, size: number) => size.toString()),
+    estimateLiquidationPrice: vi.fn(() => undefined),
+    positionMarginConstraints: vi.fn(() => undefined),
     resolveAuthToken: vi.fn(async (): Promise<string | undefined> => 'token'),
     projectConfig: vi.fn(() => []),
   }
@@ -48,6 +61,13 @@ const makePlugin = () => {
     getOrder: calls.getOrder,
     getFills: calls.getFills,
     getActivity: calls.getActivity,
+    accountExists: calls.accountExists,
+    getQuote: calls.getQuote,
+    getAccountSummary: calls.getAccountSummary,
+    formatOrderPrice: calls.formatOrderPrice,
+    formatOrderSize: calls.formatOrderSize,
+    estimateLiquidationPrice: calls.estimateLiquidationPrice,
+    positionMarginConstraints: calls.positionMarginConstraints,
     projectConfig: calls.projectConfig,
     resolveAuthToken: calls.resolveAuthToken,
   }

@@ -16,8 +16,18 @@ const MARKET: MarketDisplay = {
   providerId: 'lighter',
   id: '1',
   categoryId: 'lighter',
-  baseAsset: { providerId: 'lighter', id: '1', displaySymbol: SYMBOL },
-  quoteAsset: { providerId: 'lighter', id: 'USDC', displaySymbol: 'USDC' },
+  baseAsset: {
+    providerId: 'lighter',
+    id: '1',
+    displaySymbol: SYMBOL,
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'lighter',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
 }
 
 const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({

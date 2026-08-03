@@ -196,7 +196,7 @@ describe('LighterWsProvider', () => {
       {
         channel: 'candle',
         dex: 'lighter',
-        assetId: 'BTC',
+        marketId: 'BTC',
         interval: '1h',
       },
       listener
@@ -211,7 +211,7 @@ describe('LighterWsProvider', () => {
     const provider = makeProvider()
     const onStatus = vi.fn()
     const unsubscribe = await provider.subscribe(
-      { channel: 'candle', dex: 'lighter', assetId: 'BTC', interval: '1h' },
+      { channel: 'candle', dex: 'lighter', marketId: 'BTC', interval: '1h' },
       vi.fn(),
       onStatus
     )
@@ -302,7 +302,7 @@ describe('LighterWsProvider', () => {
     const provider = makeProvider()
     await expect(
       provider.subscribe(
-        { channel: 'orderbook', dex: 'lighter', assetId: 'UNKNOWN_COIN' },
+        { channel: 'orderbook', dex: 'lighter', marketId: 'UNKNOWN_COIN' },
         () => {}
       )
     ).rejects.toThrow(/unknown market/)

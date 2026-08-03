@@ -93,7 +93,7 @@ describe('mapPosition (Lighter)', () => {
           position_value: '67548.300000',
           initial_margin_fraction: '2.00',
         }),
-        'ETH'
+        MARKET
       )
 
       // 67548.300000 × 2.00 / 100 = 1350.966
@@ -115,7 +115,7 @@ describe('mapPosition (Lighter)', () => {
           position_value: '2367.705000',
           initial_margin_fraction: '2.00',
         }),
-        'USDJPY'
+        MARKET
       )
 
       expect(result.marginUsed).toBe('1046.077285')
