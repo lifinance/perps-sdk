@@ -1,4 +1,10 @@
-import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  MarketsContextEvent,
+  MarketsContextSubscription,
+  Subscription,
+  SubscriptionEvent,
+  TradesSubscription,
+} from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   ProviderGetQuoteParams,
@@ -112,11 +118,14 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   }
 }
 
-const PRICES = { channel: 'prices', dex: 'test' } as unknown as Subscription
-const priceEvent = {
-  channel: 'prices',
-  data: { BTC: '1' },
-} as unknown as SubscriptionEvent
+const MARKETS_CONTEXT = {
+  channel: 'marketsContext',
+  dex: 'test',
+} satisfies MarketsContextSubscription
+const marketsContextEvent: MarketsContextEvent = {
+  channel: 'marketsContext',
+  data: {},
+}
 
 afterEach(() => {
   vi.useRealTimers()
@@ -125,8 +134,8 @@ afterEach(() => {
 describe('WsProviderBase — ref-counted fan-out', () => {
   it('opens the channel once for two concurrent consumers of the same key', async () => {
     const p = new TestProvider(new MockRws())
-    await p.subscribe(PRICES, vi.fn())
-    await p.subscribe(PRICES, vi.fn())
+    await p.subscribe(MARKETS_CONTEXT, vi.fn())
+    await p.subscribe(MARKETS_CONTEXT, vi.fn())
     expect(p.openCount).toBe(1)
   })
 
@@ -138,8 +147,8 @@ describe('WsProviderBase — ref-counted fan-out', () => {
         resolveOpen = r
       })
 
-    const s1 = p.subscribe(PRICES, vi.fn())
-    const s2 = p.subscribe(PRICES, vi.fn())
+    const s1 = p.subscribe(MARKETS_CONTEXT, vi.fn())
+    const s2 = p.subscribe(MARKETS_CONTEXT, vi.fn())
     resolveOpen(vi.fn())
     await Promise.all([s1, s2])
 
@@ -150,11 +159,11 @@ describe('WsProviderBase — ref-counted fan-out', () => {
     const p = new TestProvider(new MockRws())
     const listener: SubscriptionListener = vi.fn()
 
-    const unsub1 = await p.subscribe(PRICES, listener)
-    await p.subscribe(PRICES, listener) // same reference, count → 2
+    const unsub1 = await p.subscribe(MARKETS_CONTEXT, listener)
+    await p.subscribe(MARKETS_CONTEXT, listener) // same reference, count → 2
 
     unsub1() // count → 1, still registered
-    p.deliver('prices', priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
@@ -162,12 +171,12 @@ describe('WsProviderBase — ref-counted fan-out', () => {
     const p = new TestProvider(new MockRws())
     const listener: SubscriptionListener = vi.fn()
 
-    const unsub1 = await p.subscribe(PRICES, listener)
-    await p.subscribe(PRICES, listener) // same reference, count → 2
+    const unsub1 = await p.subscribe(MARKETS_CONTEXT, listener)
+    await p.subscribe(MARKETS_CONTEXT, listener) // same reference, count → 2
 
     unsub1() // count → 1, still registered
     unsub1() // repeat invocation must be a no-op, not a second decrement
-    p.deliver('prices', priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 })
@@ -181,8 +190,8 @@ describe('WsProviderBase — open failure', () => {
         rejectOpen = reject
       })
 
-    const s1 = p.subscribe(PRICES, vi.fn())
-    const s2 = p.subscribe(PRICES, vi.fn())
+    const s1 = p.subscribe(MARKETS_CONTEXT, vi.fn())
+    const s2 = p.subscribe(MARKETS_CONTEXT, vi.fn())
     rejectOpen(new Error('WebSocket max reconnect attempts reached'))
 
     await expect(s1).rejects.toThrow('WebSocket max reconnect attempts reached')
@@ -194,15 +203,17 @@ describe('WsProviderBase — open failure', () => {
     p.openImpl = async () => {
       throw new Error('open failed')
     }
-    await expect(p.subscribe(PRICES, vi.fn())).rejects.toThrow('open failed')
+    await expect(p.subscribe(MARKETS_CONTEXT, vi.fn())).rejects.toThrow(
+      'open failed'
+    )
 
     p.openImpl = async () => vi.fn()
     const listener = vi.fn()
-    await p.subscribe(PRICES, listener)
+    await p.subscribe(MARKETS_CONTEXT, listener)
     expect(p.openCount).toBe(2)
 
-    p.deliver('prices', priceEvent)
-    expect(listener).toHaveBeenCalledWith(priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(listener).toHaveBeenCalledWith(marketsContextEvent)
   })
 })
 
@@ -213,7 +224,7 @@ describe('WsProviderBase — deferred teardown', () => {
     const teardown = vi.fn()
     p.openImpl = async () => teardown
 
-    const unsub = await p.subscribe(PRICES, vi.fn())
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn())
     unsub()
     expect(teardown).not.toHaveBeenCalled()
 
@@ -227,9 +238,9 @@ describe('WsProviderBase — deferred teardown', () => {
     const teardown = vi.fn()
     p.openImpl = async () => teardown
 
-    const unsub = await p.subscribe(PRICES, vi.fn())
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn())
     unsub() // schedule teardown
-    await p.subscribe(PRICES, vi.fn()) // re-subscribe within the window cancels it
+    await p.subscribe(MARKETS_CONTEXT, vi.fn()) // re-subscribe within the window cancels it
 
     vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
     expect(teardown).not.toHaveBeenCalled()
@@ -243,7 +254,7 @@ describe('WsProviderBase — deferred teardown', () => {
     const teardown = vi.fn()
     p.openImpl = async () => teardown
 
-    const unsub = await p.subscribe(PRICES, vi.fn())
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn())
     unsub() // schedule teardown
     p.close()
 
@@ -261,10 +272,10 @@ describe('WsProviderBase — closeChannelIfIdle', () => {
     const teardown = vi.fn()
     p.openImpl = async () => teardown
 
-    const unsub = await p.subscribe(PRICES, vi.fn())
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn())
     unsub() // teardown deferred by the linger
 
-    expect(p.expireIdle('prices')).toBe(true)
+    expect(p.expireIdle('marketsContext')).toBe(true)
     expect(teardown).toHaveBeenCalledTimes(1)
 
     vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
@@ -277,17 +288,17 @@ describe('WsProviderBase — closeChannelIfIdle', () => {
     p.openImpl = async () => teardown
     const listener: SubscriptionListener = vi.fn()
 
-    await p.subscribe(PRICES, listener)
+    await p.subscribe(MARKETS_CONTEXT, listener)
 
-    expect(p.expireIdle('prices')).toBe(false)
+    expect(p.expireIdle('marketsContext')).toBe(false)
     expect(teardown).not.toHaveBeenCalled()
-    p.deliver('prices', priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
   it('reports an unknown key as already free', () => {
     const p = new TestProvider(new MockRws())
-    expect(p.expireIdle('prices')).toBe(true)
+    expect(p.expireIdle('marketsContext')).toBe(true)
   })
 
   it('lets a re-subscribe after the expiry open the channel afresh', async () => {
@@ -296,14 +307,14 @@ describe('WsProviderBase — closeChannelIfIdle', () => {
     const teardown = vi.fn()
     p.openImpl = async () => teardown
 
-    const unsub = await p.subscribe(PRICES, vi.fn())
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn())
     unsub()
-    p.expireIdle('prices')
+    p.expireIdle('marketsContext')
 
     const listener: SubscriptionListener = vi.fn()
-    await p.subscribe(PRICES, listener)
+    await p.subscribe(MARKETS_CONTEXT, listener)
     expect(p.openCount).toBe(2)
-    p.deliver('prices', priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 })
@@ -315,7 +326,7 @@ describe('WsProviderBase — status fan-out', () => {
     const p = new TestProvider(rws)
     const onStatus = vi.fn()
 
-    const unsub = await p.subscribe(PRICES, vi.fn(), onStatus)
+    const unsub = await p.subscribe(MARKETS_CONTEXT, vi.fn(), onStatus)
     expect(onStatus).toHaveBeenLastCalledWith('connected')
 
     rws.simulateStatus('reconnecting')
@@ -339,8 +350,8 @@ describe('WsProviderBase — status fan-out', () => {
       }
     })
 
-    await p.subscribe(PRICES, vi.fn(), throwingStatus)
-    await p.subscribe(PRICES, vi.fn(), stableStatus)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), throwingStatus)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), stableStatus)
     stableStatus.mockClear()
 
     rws.simulateStatus('reconnecting')
@@ -360,17 +371,17 @@ describe('WsProviderBase — emit fan-out', () => {
     const p = new TestProvider(new MockRws())
     const stableListener = vi.fn()
 
-    await p.subscribe(PRICES, () => {
+    await p.subscribe(MARKETS_CONTEXT, () => {
       throw new Error('listener failed')
     })
-    await p.subscribe(PRICES, stableListener)
+    await p.subscribe(MARKETS_CONTEXT, stableListener)
 
-    p.deliver('prices', priceEvent)
+    p.deliver('marketsContext', marketsContextEvent)
 
-    expect(stableListener).toHaveBeenCalledWith(priceEvent)
+    expect(stableListener).toHaveBeenCalledWith(marketsContextEvent)
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringContaining(
-        "listener threw during 'subscription:prices' fan-out"
+        "listener threw during 'subscription:marketsContext' fan-out"
       ),
       expect.any(Error)
     )
@@ -399,11 +410,11 @@ describe('WsProviderBase — reconnect recovery', () => {
     const p = new TestProvider(rws)
     const onStatus = vi.fn()
     p.openImpl = async () => {
-      await p.register('prices', { id: 'prices' })
+      await p.register('marketsContext', { id: 'marketsContext' })
       return vi.fn()
     }
 
-    await p.subscribe(PRICES, vi.fn(), onStatus)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), onStatus)
 
     expect(rws.reconnectCalls).toBe(1)
     expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
@@ -421,11 +432,11 @@ describe('WsProviderBase — reconnect recovery', () => {
     const p = new TestProvider(rws)
     const onStatus = vi.fn()
     p.openImpl = async () => {
-      await p.register('prices', { id: 'prices' })
+      await p.register('marketsContext', { id: 'marketsContext' })
       return vi.fn()
     }
 
-    await p.subscribe(PRICES, vi.fn(), onStatus)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), onStatus)
     rws.simulateOpen()
     await flushAsync()
     expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
@@ -446,11 +457,11 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     const rws = new MockRws() // starts 'connected'
     const p = new TestProvider(rws)
     p.openImpl = async () => {
-      await p.register('prices', { id: 'prices' })
+      await p.register('marketsContext', { id: 'marketsContext' })
       return vi.fn()
     }
 
-    await p.subscribe(PRICES, vi.fn())
+    await p.subscribe(MARKETS_CONTEXT, vi.fn())
     expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(1)
 
     rws.simulateStatus('reconnecting')
@@ -458,7 +469,9 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     rws.simulateOpen()
     await flushAsync()
     expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(2)
-    expect(p.sendSubscribeSpy).toHaveBeenNthCalledWith(2, { id: 'prices' })
+    expect(p.sendSubscribeSpy).toHaveBeenNthCalledWith(2, {
+      id: 'marketsContext',
+    })
   })
 
   it('records but does not send while the socket is down; the open replay is the sole sender', async () => {
@@ -466,7 +479,7 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     rws.status = 'reconnecting'
     const p = new TestProvider(rws)
 
-    await p.register('prices', { id: 'prices' })
+    await p.register('marketsContext', { id: 'marketsContext' })
     expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
 
     rws.simulateStatus('connected')
@@ -480,8 +493,8 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     rws.status = 'reconnecting'
     const p = new TestProvider(rws)
 
-    await p.register('prices', { id: 'prices' })
-    p.unregister('prices')
+    await p.register('marketsContext', { id: 'marketsContext' })
+    p.unregister('marketsContext')
 
     rws.simulateStatus('connected')
     rws.simulateOpen()
@@ -520,7 +533,7 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     const p = new TestProvider(rws)
 
     p.close()
-    await p.register('prices', { id: 'prices' })
+    await p.register('marketsContext', { id: 'marketsContext' })
 
     expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
   })
@@ -542,7 +555,11 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
 })
 
 describe('WsProviderBase — resubscribe replay races a concurrent subscribe', () => {
-  const CHANNEL_C = { channel: 'c', dex: 'test' } as unknown as Subscription
+  const CHANNEL_C = {
+    channel: 'trades',
+    dex: 'test',
+    marketId: 'BTC',
+  } satisfies TradesSubscription
 
   /** Gate every `sendSubscribe` on a resolver the test releases explicitly. */
   const gateSends = (p: TestProvider): Array<() => void> => {

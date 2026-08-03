@@ -59,10 +59,14 @@ describe('loadLighterWasm', () => {
   beforeEach(() => {
     // The WASM binary bytes are never inspected by the fake Go runtime.
     vi.stubGlobal('fetch', async () => new Response(new Uint8Array([0])))
+    // The loader calls the `BufferSource` overload, which resolves to a
+    // `WebAssemblyInstantiatedSource`; `spyOn` types `mockResolvedValue` from
+    // the last overload (`Instance`), so the shape is pinned with `satisfies`
+    // and the cast only bridges the overload mismatch.
     vi.spyOn(WebAssembly, 'instantiate').mockResolvedValue({
       instance: {} as WebAssembly.Instance,
       module: {} as WebAssembly.Module,
-    } as unknown as WebAssembly.Instance)
+    } satisfies WebAssembly.WebAssemblyInstantiatedSource as unknown as WebAssembly.Instance)
   })
 
   afterEach(() => {
