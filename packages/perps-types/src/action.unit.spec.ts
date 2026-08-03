@@ -203,6 +203,28 @@ describe('ActionResult', () => {
     expect(success.action).toBe(ActionType.PLACE_ORDER)
   })
 
+  it('classifies a recoverable setup prerequisite through the existing errorCode field', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'Provider setup is incomplete.',
+      errorCode: PerpsErrorCode.SetupRequired,
+    }
+
+    if (!result.success) {
+      expect(result.errorCode).toBe(PerpsErrorCode.SetupRequired)
+    }
+
+    const secondField: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      success: false,
+      error: 'Provider setup is incomplete.',
+      // @ts-expect-error — `errorCode` is the only classification field
+      setupRequired: true,
+    }
+    expect(secondField.success).toBe(false)
+  })
+
   it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
     const results: ActionResult[] = [
       {
