@@ -377,6 +377,7 @@ export class LighterSigner {
     switch (action) {
       case ActionType.PLACE_ORDER:
       case ActionType.PLACE_TRIGGER_ORDER:
+      case ActionType.PLACE_TWAP_ORDER:
         return wasm.SignCreateOrder(
           numberField(p, 'market_index'),
           numberField(p, 'client_order_index'),
@@ -414,6 +415,7 @@ export class LighterSigner {
           ctx.accountIndex
         )
       case ActionType.CANCEL_ORDER:
+      case ActionType.CANCEL_TWAP_ORDER:
         return wasm.SignCancelOrder(
           numberField(p, 'market_index'),
           numberField(p, 'order_index'),

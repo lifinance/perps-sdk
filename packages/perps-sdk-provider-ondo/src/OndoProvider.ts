@@ -15,6 +15,7 @@ import {
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetRunningTwapsParams,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -44,6 +45,7 @@ import type {
   Quote,
   SignedActionStep,
   SigningMethod,
+  TwapOrder,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -69,6 +71,7 @@ import type {
   OndoLiquidationEvent,
   OndoOrder,
   OndoPosition,
+  OndoTwapOrder,
 } from './types/wire.js'
 import {
   decodeActivityCursor,
@@ -96,6 +99,7 @@ import {
   ondoAsset,
   positionMarginConstraints,
 } from './utils/index.js'
+import { mapRunningTwap } from './utils/mapTwap.js'
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -438,6 +442,32 @@ export const ondoProvider = (
               ...(nextCursor === undefined ? {} : { cursor: nextCursor }),
             },
           }
+        }
+      )
+    },
+
+    async getRunningTwaps(
+      params: ProviderGetRunningTwapsParams,
+      opts?: SDKRequestOptions
+    ): Promise<TwapOrder[]> {
+      return withSession<TwapOrder[]>(
+        params.address,
+        () => [],
+        async (token) => {
+          const client = apiClient(opts)
+          const queryParams: ApiParams =
+            params.marketId === undefined ? {} : { market: params.marketId }
+          const registry = marketRegistry()
+          const [orders] = await Promise.all([
+            client.get<OndoTwapOrder[]>('/v1/perps/twap/orders', {
+              params: queryParams,
+              authToken: token.token,
+            }),
+            registry.sync(),
+          ])
+          return orders.map((order) =>
+            mapRunningTwap(order, registry.require(order.market))
+          )
         }
       )
     },

@@ -238,6 +238,8 @@ export type ActionResult =
       action: ActionType
       success: true
       orderId?: string
+      /** Provider-native identifier for a placed TWAP parent order. */
+      twapId?: string
       /**
        * Venue transaction hash, present only where the venue's canonical hash is
        * known at submit time (Lighter). Hyperliquid assigns its hash at block

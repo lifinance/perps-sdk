@@ -98,6 +98,7 @@ export {
 export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
+  CancelTwapOrderParams as ClientCancelTwapOrderParams,
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
@@ -107,6 +108,7 @@ export type {
   PerpsConfig,
   PlaceOrderParams as ClientPlaceOrderParams,
   PlaceTriggerOrderParams as ClientPlaceTriggerOrderParams,
+  PlaceTwapOrderParams as ClientPlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
   WithdrawParams,
@@ -144,6 +146,7 @@ export type {
   ProviderGetOrdersParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
+  ProviderGetRunningTwapsParams,
   ProviderGetWithdrawableBalancesParams,
   QuoteListener,
   SignActionProgress,

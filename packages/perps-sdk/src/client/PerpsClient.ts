@@ -31,6 +31,7 @@ import { getProviders } from '../services/getProviders.js'
 import type {
   BuildProviderSetupParams,
   CancelOrdersParams,
+  CancelTwapOrderParams,
   ExecuteProviderSetupParams,
   ExecuteProviderSetupResult,
   GetAccountResult,
@@ -41,6 +42,7 @@ import type {
   PerpsClientOptions,
   PlaceOrderParams,
   PlaceTriggerOrderParams,
+  PlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
   WithdrawParams,
@@ -926,6 +928,36 @@ export class PerpsClient {
     return this.execute({
       ...params,
       action: ActionType.PLACE_TRIGGER_ORDER,
+      params,
+    })
+  }
+
+  /**
+   * Place a time-weighted average price order through {@link execute}.
+   *
+   * @public
+   */
+  async placeTwapOrder(
+    params: PlaceTwapOrderParams
+  ): Promise<ExecuteActionResponse> {
+    return this.execute({
+      ...params,
+      action: ActionType.PLACE_TWAP_ORDER,
+      params,
+    })
+  }
+
+  /**
+   * Cancel a running time-weighted average price order through {@link execute}.
+   *
+   * @public
+   */
+  async cancelTwapOrder(
+    params: CancelTwapOrderParams
+  ): Promise<ExecuteActionResponse> {
+    return this.execute({
+      ...params,
+      action: ActionType.CANCEL_TWAP_ORDER,
       params,
     })
   }

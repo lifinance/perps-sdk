@@ -13,6 +13,7 @@ import {
   LT_ORDER_TYPE_STOP_LOSS_LIMIT,
   LT_ORDER_TYPE_TAKE_PROFIT,
   LT_ORDER_TYPE_TAKE_PROFIT_LIMIT,
+  LT_ORDER_TYPE_TWAP,
   LT_TIME_IN_FORCE_GTC,
   LT_TIME_IN_FORCE_IOC,
   LT_TIME_IN_FORCE_POST_ONLY,
@@ -61,10 +62,9 @@ export const leverageToFraction = (leverage: number): number => {
 
 /**
  * Map a LI.FI `OrderType` value to Lighter's integer wire type.
- *
  * Supported mappings are LIMIT → 0, MARKET → 1, STOP_MARKET → 2,
- * STOP_LIMIT → 3, TAKE_PROFIT_MARKET → 4, and TAKE_PROFIT_LIMIT → 5.
- * Omitted or unknown values fall back to LIMIT.
+ * STOP_LIMIT → 3, TAKE_PROFIT_MARKET → 4, TAKE_PROFIT_LIMIT → 5, and
+ * TWAP → 6. Omitted or unknown values fall back to LIMIT.
  *
  * @param type - LI.FI order type value.
  * @returns The corresponding Lighter order-type integer.
@@ -78,6 +78,7 @@ export const mapOrderTypeToInt = (type?: string): number => {
     STOP_LIMIT: LT_ORDER_TYPE_STOP_LOSS_LIMIT,
     TAKE_PROFIT_MARKET: LT_ORDER_TYPE_TAKE_PROFIT,
     TAKE_PROFIT_LIMIT: LT_ORDER_TYPE_TAKE_PROFIT_LIMIT,
+    TWAP: LT_ORDER_TYPE_TWAP,
   }
   return map[type ?? 'LIMIT'] ?? LT_ORDER_TYPE_LIMIT
 }
