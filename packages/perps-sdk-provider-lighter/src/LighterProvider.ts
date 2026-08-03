@@ -970,7 +970,7 @@ export const createLighterProvider = (
       const marketIds =
         params.marketId === undefined
           ? deriveOrderBearingMarketIds(account)
-          : [Number(params.marketId)]
+          : [Number(registry.require(params.marketId).id)]
 
       const responses = await retryOnRevoked(opts, params.address, token, (t) =>
         Promise.all(
