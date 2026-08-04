@@ -170,7 +170,7 @@ export interface Candle {
 export interface OhlcvResponse {
   provider: string
   marketId: string
-  interval: string
+  interval: OhlcvInterval
   candles: Candle[]
 }
 
