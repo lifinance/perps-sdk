@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 6.0.0
+
+### Major Changes
+
+- [#329](https://github.com/lifinance/perps-sdk/pull/329) [`6b2d8f5`](https://github.com/lifinance/perps-sdk/commit/6b2d8f5eea6afab6adae20da836d2cb0d3d8e51e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `OhlcvResponse.interval` is now the `OhlcvInterval` union instead of a bare `string`, so a candle response's interval autocompletes and switches exhaustively; code that assigns an arbitrary string into the field no longer compiles and must narrow at its own boundary.
+
+### Minor Changes
+
+- [#331](https://github.com/lifinance/perps-sdk/pull/331) [`0a4b5eb`](https://github.com/lifinance/perps-sdk/commit/0a4b5eb0ef2cc01b1f4c30a0c6f7389227ed6c2d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add PerpsErrorCode.FeatureUnavailable (2080) for venue-side capability gates, letting clients distinguish a definitive "this venue cannot perform this action" refusal from the order-level ExchangeRejected and the recoverable SetupRequired.
+
 ## 5.3.0
 
 ### Minor Changes
