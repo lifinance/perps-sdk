@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 12.0.0
+
+### Major Changes
+
+- [#330](https://github.com/lifinance/perps-sdk/pull/330) [`e9328a6`](https://github.com/lifinance/perps-sdk/commit/e9328a6bc828ce26616ba9e718ee77ed534fed7c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `mapInterval` now takes `OhlcvInterval` instead of a bare `string` in both the Lighter and Ondo providers, so a value that is not an SDK interval is now a compile error rather than a runtime `ValidationError`. Every real caller already passed an `OhlcvInterval` (`CandleSubscription.interval`), so this only tightens the type; the runtime rejection behaviour for venue-unsupported intervals is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`6b2d8f5`](https://github.com/lifinance/perps-sdk/commit/6b2d8f5eea6afab6adae20da836d2cb0d3d8e51e), [`0a4b5eb`](https://github.com/lifinance/perps-sdk/commit/0a4b5eb0ef2cc01b1f4c30a0c6f7389227ed6c2d)]:
+  - @lifi/perps-types@6.0.0
+
 ## 11.1.0
 
 ### Minor Changes
