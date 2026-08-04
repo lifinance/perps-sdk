@@ -45,6 +45,15 @@ export enum PerpsErrorCode {
    * completed before the requested operation can be retried.
    */
   SetupRequired = 2070,
+
+  // Capability errors (2080-2089)
+  /**
+   * The venue does not offer the requested capability (e.g. a venue-side
+   * feature gate). Definitive: no user setup step clears it and no request
+   * adjustment makes it succeed, so clients should disable the entry point
+   * rather than retry.
+   */
+  FeatureUnavailable = 2080,
 }
 
 /** Side of an order or execution, using provider wire values. @public */
