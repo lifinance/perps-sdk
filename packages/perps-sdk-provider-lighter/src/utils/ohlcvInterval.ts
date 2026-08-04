@@ -1,4 +1,5 @@
 import { PerpsError } from '@lifi/perps-sdk'
+import type { OhlcvInterval } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 
 /**
@@ -8,7 +9,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * direct match (3m, 2h, 8h, 3d, 1M) raise a validation error rather than
  * silently rounding — the caller picks a supported timeframe.
  */
-const LIGHTER_SUPPORTED_INTERVALS: Record<string, string> = {
+const LIGHTER_SUPPORTED_INTERVALS: Partial<Record<OhlcvInterval, string>> = {
   '1m': '1m',
   '5m': '5m',
   '15m': '15m',
@@ -26,7 +27,7 @@ const LIGHTER_SUPPORTED_INTERVALS: Record<string, string> = {
  *
  * @public
  */
-export const mapInterval = (interval: string): string => {
+export const mapInterval = (interval: OhlcvInterval): string => {
   const resolution = LIGHTER_SUPPORTED_INTERVALS[interval]
   if (!resolution) {
     throw new PerpsError(
