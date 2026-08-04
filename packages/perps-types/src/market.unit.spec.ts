@@ -5,6 +5,8 @@ import type {
   BaseMarket,
   MarketContext,
   MarketDisplay,
+  OhlcvInterval,
+  OhlcvResponse,
   PerpsMarket,
   PerpsMarketDisplay,
   SpotMarket,
@@ -146,3 +148,41 @@ describe('BaseMarket', () => {
     expect(parsed).toEqual(perpsMarket)
   })
 })
+
+describe('OhlcvResponse', () => {
+  it('echoes the requested interval alongside the candles', () => {
+    const response: OhlcvResponse = {
+      provider: 'hyperliquid',
+      marketId: 'BTC',
+      interval: '1h',
+      candles: [
+        {
+          t: 1_700_000_000_000,
+          o: '60000',
+          h: '60500',
+          l: '59800',
+          c: '60250',
+          v: '12.5',
+        },
+      ],
+    }
+    expect(response.interval).toBe('1h')
+    expect(response.candles).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Compile-time assertions
+// ---------------------------------------------------------------------------
+
+type Expect<T extends true> = T
+type Equals<X, Y> =
+  (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2
+    ? true
+    : false
+
+// `interval` is the union, not a bare `string`: the route can only ever echo a
+// member back, so consumers switch on it exhaustively.
+type _OhlcvResponseIntervalShape = Expect<
+  Equals<OhlcvResponse['interval'], OhlcvInterval>
+>
