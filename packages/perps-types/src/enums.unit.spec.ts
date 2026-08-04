@@ -52,6 +52,66 @@ describe('PerpsErrorCode.SetupRequired', () => {
   })
 })
 
+describe('PerpsErrorCode.FeatureUnavailable', () => {
+  it('carries the capability-range value 2080', () => {
+    expect(PerpsErrorCode.FeatureUnavailable).toBe(2080)
+  })
+
+  it('is distinct from the codes a client could otherwise conflate it with', () => {
+    expect(PerpsErrorCode.FeatureUnavailable).not.toBe(
+      PerpsErrorCode.ExchangeRejected
+    )
+    expect(PerpsErrorCode.FeatureUnavailable).not.toBe(
+      PerpsErrorCode.SetupRequired
+    )
+    expect(PerpsErrorCode.FeatureUnavailable).not.toBe(
+      PerpsErrorCode.MarketNotFound
+    )
+  })
+
+  it('is the only member in the documented 2080-2089 capability range', () => {
+    const inRange = Object.entries(PerpsErrorCode).filter(
+      ([, value]) => typeof value === 'number' && value >= 2080 && value <= 2089
+    )
+
+    expect(inRange).toEqual([['FeatureUnavailable', 2080]])
+  })
+})
+
+describe('PerpsErrorCode wire compatibility', () => {
+  it('keeps every previously published code on its published value', () => {
+    const published = {
+      DefaultError: 2000,
+      ServerError: 2001,
+      ValidationError: 2002,
+      TimeoutError: 2003,
+      ThirdPartyError: 2004,
+      SDKError: 2005,
+      SignatureInvalid: 2010,
+      AgentUnauthorized: 2011,
+      TermsNotAccepted: 2012,
+      Unauthorized: 2013,
+      ExchangeRejected: 2020,
+      InsufficientMargin: 2021,
+      InsufficientBalance: 2022,
+      MarketNotFound: 2023,
+      OrderNotFound: 2024,
+      PositionNotFound: 2025,
+      AccountNotFound: 2026,
+      InvalidNonce: 2040,
+      NonceAlreadyUsed: 2041,
+      NonceExpired: 2042,
+      PayloadMismatch: 2050,
+      RouteNotFound: 2060,
+      SetupRequired: 2070,
+    } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
+
+    for (const [name, value] of Object.entries(published)) {
+      expect(PerpsErrorCode).toHaveProperty(name, value)
+    }
+  })
+})
+
 describe('SigningMethod credential members', () => {
   it('HMAC carries wire value "hmac"', () => {
     expect(SigningMethod.HMAC).toBe('hmac')
