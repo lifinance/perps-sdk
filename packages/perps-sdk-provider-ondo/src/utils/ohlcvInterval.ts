@@ -9,7 +9,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * direct match (3m, 2h, 8h, 12h, 3d) raise a validation error rather than
  * silently rounding — the caller picks a supported timeframe.
  */
-const ONDO_SUPPORTED_INTERVALS: Record<string, string> = {
+const ONDO_SUPPORTED_INTERVALS: Partial<Record<OhlcvInterval, string>> = {
   '1m': '1',
   '5m': '5',
   '15m': '15',
@@ -36,7 +36,7 @@ const MONTH_MIN_SECS = 28 * 86400
 const MONTH_MAX_SECS = 31 * 86400
 
 /** @public */
-export const mapInterval = (interval: string): string => {
+export const mapInterval = (interval: OhlcvInterval): string => {
   const resolution = ONDO_SUPPORTED_INTERVALS[interval]
   if (!resolution) {
     throw new PerpsError(
