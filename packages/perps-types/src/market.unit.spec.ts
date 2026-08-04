@@ -186,3 +186,5 @@ type Equals<X, Y> =
 type _OhlcvResponseIntervalShape = Expect<
   Equals<OhlcvResponse['interval'], OhlcvInterval>
 >
+
+export type _TypeAssertions = [_OhlcvResponseIntervalShape]
