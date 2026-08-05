@@ -45,7 +45,7 @@
     "build": "pnpm clean && pnpm build:wasm-exec && pnpm build:cjs && pnpm build:esm && pnpm build:types && pnpm build:assets && pnpm build:verify && pnpm build:clean",
     "build:cjs": "tsc --project ./tsconfig.json --module commonjs --outDir ./dist/cjs --removeComments --verbatimModuleSyntax false && mkdir -p ./dist/cjs && printf '{\"type\":\"commonjs\"}' > ./dist/cjs/package.json",
     "build:esm": "tsc --project ./tsconfig.json --module es2022 --outDir ./dist/esm && mkdir -p ./dist/esm && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./dist/esm/package.json",
-    "build:assets": "mkdir -p ./dist/wasm && cp ./wasm/lighter-signer.wasm ./dist/wasm/ && cp ./src/signers/wasmBinaryUrl.js ./dist/esm/signers/wasmBinaryUrl.js && cp ./src/signers/wasmBinaryUrl.cjs ./dist/cjs/signers/wasmBinaryUrl.js",
+    "build:assets": "mkdir -p ./dist/wasm && cp ./wasm/lighter-signer.wasm ./dist/wasm/ && cp ./src/signers/wasmBinaryUrl.js ./dist/esm/signers/wasmBinaryUrl.js && cp ./src/signers/wasmBinaryUrl.vite.js ./dist/esm/signers/wasmBinaryUrl.vite.js && cp ./src/signers/wasmBinaryUrl.cjs ./dist/cjs/signers/wasmBinaryUrl.js",
     "build:wasm-exec": "pnpm node ./scripts/generate-wasm-exec.mjs",
     "build:verify": "pnpm node ./scripts/verify-package-assets.mjs",
     "build:types": "tsc --project ./tsconfig.json --module esnext --declarationDir ./dist/types --emitDeclarationOnly --declaration --declarationMap",
@@ -57,7 +57,8 @@
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "test": "vitest --run",
     "test:cov": "vitest --run --coverage",
-    "test:unit": "vitest --run .unit.spec.ts --passWithNoTests"
+    "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
+    "test:consumers": "pnpm node --experimental-vm-modules ./scripts/verify-consumer-bundlers.mjs"
   },
   "dependencies": {
     "@lifi/perps-types": "workspace:^",

@@ -2,7 +2,10 @@
 // onto `globalThis` when `go.run(instance)` starts the main goroutine.
 
 import { WASM_EXEC_JS } from './generated/wasmExecRuntime.js'
-import { lighterWasmBinaryUrl } from './wasmBinaryUrl.js'
+import {
+  lighterWasmBinaryUrl,
+  resolveEmittedBinaryUrl,
+} from './wasmBinaryUrl.js'
 
 /**
  * Function table installed by the Lighter Go WASM runtime. Methods mirror the
@@ -173,28 +176,93 @@ async function readNodeFile(url: URL): Promise<Uint8Array> {
   return readFile(url)
 }
 
-async function readWasmBinary(url: URL): Promise<ArrayBuffer> {
-  if (url.protocol === 'file:') {
-    const bytes = await readNodeFile(url)
-    // Copy the view into a fresh ArrayBuffer — `Buffer.buffer` is a shared
-    // ArrayBuffer in Node and the wasm instantiator expects a plain one.
-    return bytes.slice().buffer as ArrayBuffer
-  }
+// A dev server or static host that misses the asset answers with its SPA
+// index.html instead of 404, so a wrong URL would otherwise reach the
+// instantiator as `<!doctype` and fail with an opaque "magic word" error.
+const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d]
+
+const isWasmModule = (bytes: ArrayBuffer): boolean => {
+  const preamble = new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength))
+  return WASM_MAGIC.every((byte, index) => preamble[index] === byte)
+}
+
+interface FetchedAsset {
+  bytes: ArrayBuffer
+  /** Content type and leading bytes, for the not-a-module diagnostic. */
+  served: string
+}
+
+async function fetchWasmBinary(url: URL): Promise<FetchedAsset> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(
       `Failed to fetch ${url.href}: ${response.status} ${response.statusText}`
     )
   }
-  return response.arrayBuffer()
+  const bytes = await response.arrayBuffer()
+  const preamble = Array.from(
+    new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength)),
+    (byte) => byte.toString(16).padStart(2, '0')
+  ).join(' ')
+  return {
+    bytes,
+    served: `served ${
+      response.headers.get('content-type') ?? 'no content type'
+    } starting with ${preamble || '(empty response)'}`,
+  }
+}
+
+async function readWasmBinary(url: URL): Promise<ArrayBuffer> {
+  if (url.protocol === 'file:') {
+    const bytes = await readNodeFile(url)
+    // Copy the view into a fresh ArrayBuffer — `Buffer.buffer` is a shared
+    // ArrayBuffer in Node and the wasm instantiator expects a plain one.
+    const buffer = bytes.slice().buffer as ArrayBuffer
+    if (!isWasmModule(buffer)) {
+      throw new Error(`${url.href} is not a WebAssembly module.`)
+    }
+    return buffer
+  }
+
+  const fetched = await fetchWasmBinary(url)
+  if (isWasmModule(fetched.bytes)) {
+    return fetched.bytes
+  }
+
+  // The static URL missed, so this consumer's bundler relocated the module away
+  // from the binary: fall back to the URL it emitted for the packaged asset.
+  // That import lives in the hand-authored resolver so the per-bundler ignore
+  // comments guarding Vite's `?url` twin survive into the published build.
+  let recovery: string
+  try {
+    const emitted = await resolveEmittedBinaryUrl()
+    if (emitted === undefined) {
+      recovery = 'unavailable (no bundler asset pipeline)'
+    } else {
+      const recovered = await fetchWasmBinary(emitted)
+      if (isWasmModule(recovered.bytes)) {
+        return recovered.bytes
+      }
+      recovery = `${emitted.href} ${recovered.served}`
+    }
+  } catch (error) {
+    recovery = `unavailable (${error instanceof Error ? error.message : String(error)})`
+  }
+
+  throw new Error(
+    'The Lighter signer binary shipped with this package was not reachable: ' +
+      `${url.href} ${fetched.served}; bundler-emitted asset ${recovery}.`
+  )
 }
 
 /**
- * Load the Lighter WASM signer from the binary shipped with this package.
- * Memoized per-process: subsequent calls return the cached exports. The Go
- * runtime keeps a long-running goroutine to service JS calls — we start it
- * once and never stop it.
- * @internal
+ * Load the Lighter WASM signer from the binary shipped with this package —
+ * resolved by the package itself, so callers need no bundler configuration and
+ * pass no URL. Memoized per-process: subsequent calls return the cached
+ * exports. The Go runtime keeps a long-running goroutine to service JS calls —
+ * we start it once and never stop it.
+ *
+ * @public
  */
 export async function loadLighterWasm(): Promise<LighterWasmExports> {
   if (!cachedExports) {

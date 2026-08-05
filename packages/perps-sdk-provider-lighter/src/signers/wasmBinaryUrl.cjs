@@ -9,3 +9,7 @@ exports.lighterWasmBinaryUrl = new URL(
   '../../wasm/lighter-signer.wasm',
   pathToFileURL(__filename)
 )
+
+// Nothing relocates the installed binary under Node, so there is no emitted
+// asset to recover; the loader reads the file URL above directly.
+exports.resolveEmittedBinaryUrl = async () => undefined

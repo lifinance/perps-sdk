@@ -22,6 +22,16 @@ const WASM_FUNCTION_NAMES = [
 
 const STUB_BINARY_URL = 'http://stub.invalid/lighter-signer.wasm'
 
+// Only the four magic bytes plus the version word matter: the loader checks the
+// preamble before instantiating and the fake Go runtime ignores the rest.
+const wasmResponse = () =>
+  new Response(
+    new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
+    {
+      headers: { 'content-type': 'application/wasm' },
+    }
+  )
+
 // A wasm_exec.js stand-in: installs a fake `globalThis.Go` whose `run()` mounts
 // the named signer functions on globalThis (mirroring how the real Go runtime
 // registers JS-bound functions during init). `installNames` lets a test omit a
@@ -37,13 +47,19 @@ const fakeWasmExecSource = (installNames: readonly string[]): string => `
   }
 `
 
+const RECOVERED_BINARY_URL =
+  'http://stub.invalid/assets/lighter-signer-hash.wasm'
+
 /**
- * Re-import the loader with the packaged runtime text and asset URL replaced.
- * The loader takes no injection options, so the module graph is the only seam:
- * a fresh import also drops the loader's memoized exports.
+ * Re-import the loader with the packaged runtime text and asset resolver
+ * replaced. The loader takes no injection options, so the module graph is the
+ * only seam: a fresh import also drops the loader's memoized exports.
+ * `emittedUrl` stands in for the URL a bundler emitted after relocating the
+ * package; the default mirrors Node and the bundlers that need no recovery.
  */
 const importLoaderWithFakes = async (
-  installNames: readonly string[] = WASM_FUNCTION_NAMES
+  installNames: readonly string[] = WASM_FUNCTION_NAMES,
+  emittedUrl: URL | undefined = undefined
 ) => {
   vi.resetModules()
   vi.doMock('./generated/wasmExecRuntime.js', () => ({
@@ -51,14 +67,14 @@ const importLoaderWithFakes = async (
   }))
   vi.doMock('./wasmBinaryUrl.js', () => ({
     lighterWasmBinaryUrl: new URL(STUB_BINARY_URL),
+    resolveEmittedBinaryUrl: async () => emittedUrl,
   }))
   return import('./wasmLoader.js')
 }
 
 describe('loadLighterWasm', () => {
   beforeEach(() => {
-    // The WASM binary bytes are never inspected by the fake Go runtime.
-    vi.stubGlobal('fetch', async () => new Response(new Uint8Array([0])))
+    vi.stubGlobal('fetch', async () => wasmResponse())
     // The loader calls the `BufferSource` overload, which resolves to a
     // `WebAssemblyInstantiatedSource`; `spyOn` types `mockResolvedValue` from
     // the last overload (`Instance`), so the shape is pinned with `satisfies`
@@ -87,9 +103,7 @@ describe('loadLighterWasm', () => {
   })
 
   it('fetches the package-owned binary asset URL', async () => {
-    const fetchSpy = vi.fn<typeof fetch>(
-      async () => new Response(new Uint8Array([0]))
-    )
+    const fetchSpy = vi.fn<typeof fetch>(async () => wasmResponse())
     vi.stubGlobal('fetch', fetchSpy)
     const { loadLighterWasm } = await importLoaderWithFakes()
 
@@ -136,6 +150,75 @@ describe('loadLighterWasm', () => {
 
     await expect(loadLighterWasm()).rejects.toThrow(
       /Lighter WASM did not export expected function: CreateClient/
+    )
+  })
+
+  it('loads the bundler-emitted asset when the static URL was relocated', async () => {
+    // What Vite's dependency optimizer does to the package: the static URL now
+    // points into its cache directory, where the dev server serves index.html.
+    const requested: string[] = []
+    vi.stubGlobal('fetch', async (input: URL) => {
+      requested.push(String(input))
+      return String(input) === STUB_BINARY_URL
+        ? new Response('<!doctype html><html></html>', {
+            headers: { 'content-type': 'text/html' },
+          })
+        : wasmResponse()
+    })
+    const { loadLighterWasm } = await importLoaderWithFakes(
+      WASM_FUNCTION_NAMES,
+      new URL(RECOVERED_BINARY_URL)
+    )
+
+    const exports = await loadLighterWasm()
+
+    expect(typeof exports.GenerateAPIKey).toBe('function')
+    expect(requested).toEqual([STUB_BINARY_URL, RECOVERED_BINARY_URL])
+  })
+
+  it('rejects an SPA HTML fallback before it reaches the instantiator', async () => {
+    vi.stubGlobal('fetch', async () => {
+      return new Response('<!doctype html><html></html>', {
+        headers: { 'content-type': 'text/html' },
+      })
+    })
+    const { loadLighterWasm } = await importLoaderWithFakes()
+
+    await expect(loadLighterWasm()).rejects.toThrow(
+      `${STUB_BINARY_URL} served text/html starting with 3c 21 64 6f; ` +
+        'bundler-emitted asset unavailable (no bundler asset pipeline)'
+    )
+    expect(WebAssembly.instantiate).not.toHaveBeenCalled()
+  })
+
+  it('reports both attempts when the emitted asset is also not a module', async () => {
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response('<!doctype html><html></html>', {
+          headers: { 'content-type': 'text/html' },
+        })
+    )
+    const { loadLighterWasm } = await importLoaderWithFakes(
+      WASM_FUNCTION_NAMES,
+      new URL(RECOVERED_BINARY_URL)
+    )
+
+    await expect(loadLighterWasm()).rejects.toThrow(
+      `bundler-emitted asset ${RECOVERED_BINARY_URL} served text/html`
+    )
+    expect(WebAssembly.instantiate).not.toHaveBeenCalled()
+  })
+
+  it('names the failing asset URL when the host answers with an error status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response('nope', { status: 404, statusText: 'Not Found' })
+    )
+    const { loadLighterWasm } = await importLoaderWithFakes()
+
+    await expect(loadLighterWasm()).rejects.toThrow(
+      `Failed to fetch ${STUB_BINARY_URL}: 404 Not Found`
     )
   })
 })
