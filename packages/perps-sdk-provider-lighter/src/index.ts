@@ -45,6 +45,8 @@ export {
   lighterProvider,
   lighterRhProvider,
 } from './LighterProvider.js'
+export type { LighterWasmExports } from './signers/wasmLoader.js'
+export { loadLighterWasm } from './signers/wasmLoader.js'
 
 export * from './types/index.js'
 export * from './utils/index.js'

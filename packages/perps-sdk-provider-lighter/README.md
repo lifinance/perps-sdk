@@ -42,7 +42,15 @@ lighterProvider({ storage: myStorageAdapter })
 
 ## WASM signer loading
 
-The Go signer binary ships as a separate asset and the package resolves it itself: the ESM build points a static `new URL('../../wasm/lighter-signer.wasm', import.meta.url)` at it, which Vite and Next.js rewrite into an emitted asset URL, while Node reads the installed binary from disk. Go's `wasm_exec.js` is packaged as generated text and evaluated as-is. Applications need no `?url`/`?raw` imports, no `public/` copy step, and no bundler configuration.
+The Go signer binary ships as a separate asset and the package resolves it itself. The ESM build points a static `new URL('../../wasm/lighter-signer.wasm', import.meta.url)` at it, which webpack, Turbopack and Vite production builds rewrite into an emitted asset URL, while Node reads the installed binary from disk. The loader checks the WASM preamble of whatever the URL serves; if a bundler relocated the module — Vite's dependency optimizer rewrites the package into `.vite/deps`, leaving the static URL pointing at the cache directory — it re-resolves through that bundler's own asset pipeline. Go's `wasm_exec.js` is packaged as generated text and evaluated as-is.
+
+Applications need no `optimizeDeps.exclude`, no `?url`/`?raw` imports, no `public/` copy step, no caller-supplied URL and no bundler configuration. `loadLighterWasm()` is exported for hosts that want to warm the signer up (and its 12.9 MB download) before the user's first trade:
+
+```ts
+import { loadLighterWasm } from '@lifi/perps-sdk-provider-lighter'
+
+await loadLighterWasm()
+```
 
 ## Documentation
 

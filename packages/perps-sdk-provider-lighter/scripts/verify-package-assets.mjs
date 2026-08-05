@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Verify the built package ships the Go signer the way consumers load it:
 // the binary as a separate asset, the Go runtime as generated text reproducing
-// wasm/wasm_exec.js exactly, and a per-module-system asset-URL resolver that a
-// bundler can analyse statically.
+// wasm/wasm_exec.js exactly, and the asset-URL resolvers — one static form per
+// module system, plus the `?url` recovery module for bundlers that relocate the
+// package — that each consumer toolchain can analyse statically.
 //
 // Usage: node scripts/verify-package-assets.mjs   (run after the build)
 
@@ -65,6 +66,25 @@ check(
   cjsResolver.includes('__filename') &&
     cjsResolver.includes('../../wasm/lighter-signer.wasm'),
   'dist/cjs/signers/wasmBinaryUrl.js does not resolve the binary relative to the installed package'
+)
+
+// Recovery path for bundlers that relocate the package away from the static URL
+// above (Vite's dependency optimizer). Only the ESM build carries it — the CJS
+// resolver reads the installed file — and the ignore comments must survive, or
+// webpack and Turbopack follow the import and fail on Vite's `?url` query.
+check(
+  /import\(\s*\/\* webpackIgnore: true \*\/ \/\* turbopackIgnore: true \*\/\s*'\.\/wasmBinaryUrl\.vite\.js'\s*\)/.test(
+    esmResolver
+  ),
+  'dist/esm/signers/wasmBinaryUrl.js lost the ignore-guarded import of its ?url recovery twin'
+)
+
+const viteResolver = read(join(dist, 'esm', 'signers', 'wasmBinaryUrl.vite.js'))
+check(
+  /import\s+\w+\s+from\s+'\.\.\/\.\.\/wasm\/lighter-signer\.wasm\?url'/.test(
+    viteResolver
+  ),
+  'dist/esm/signers/wasmBinaryUrl.vite.js lost its static ?url asset import'
 )
 
 const goSource = readFileSync(join(packageRoot, 'wasm', 'wasm_exec.js'), 'utf8')
