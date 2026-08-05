@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 12.1.0
+
+### Minor Changes
+
+- [#333](https://github.com/lifinance/perps-sdk/pull/333) [`5c21cab`](https://github.com/lifinance/perps-sdk/commit/5c21cabd26735536f9c1c708e4229038e143bab6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Load the Lighter signer binary without bundler configuration: the package now verifies the WASM preamble of the asset it resolved and re-resolves through the bundler's own asset pipeline when a dependency optimizer has relocated the module (Vite dev served its HTML fallback instead), and exports `loadLighterWasm()` for warming the signer up ahead of first use.
+
 ## 12.0.0
 
 ### Major Changes
