@@ -259,14 +259,22 @@ async function readWasmBinary(url: URL): Promise<ArrayBuffer> {
  * Load the Lighter WASM signer from the binary shipped with this package —
  * resolved by the package itself, so callers need no bundler configuration and
  * pass no URL. Memoized per-process: subsequent calls return the cached
- * exports. The Go runtime keeps a long-running goroutine to service JS calls —
- * we start it once and never stop it.
+ * exports, while a failed load is not cached — the next call retries. The Go
+ * runtime keeps a long-running goroutine to service JS calls — we start it once
+ * and never stop it.
  *
  * @public
  */
 export async function loadLighterWasm(): Promise<LighterWasmExports> {
   if (!cachedExports) {
-    cachedExports = loadWasmUncached()
+    const attempt = loadWasmUncached()
+    cachedExports = attempt
+    void attempt.catch(() => {
+      // A reset may already have installed a replacement attempt.
+      if (cachedExports === attempt) {
+        cachedExports = undefined
+      }
+    })
   }
   return cachedExports
 }
