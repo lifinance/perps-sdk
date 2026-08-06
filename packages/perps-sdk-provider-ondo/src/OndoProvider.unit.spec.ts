@@ -560,6 +560,18 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(venueCalls.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
   })
 
+  it('carries the USDC icon on the USD collateral asset, keeping its USD identity', async () => {
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances[0].asset).toEqual({
+      providerId: 'ondo',
+      id: 'USD',
+      displaySymbol: 'USD',
+      logoURI: 'https://cdn.ondoperps.xyz/symbol-icons/USDC.svg',
+    })
+  })
+
   it('exposes the canonical Ethereum USDC deposit address and leaves it absent when none exists', async () => {
     depositAddressResult = [
       { address: DEPOSIT_ADDRESS, coin: 'USDC', network: 'ethereum' },
