@@ -14,6 +14,12 @@ export interface GetOrderbookParams {
   marketId: string
   /** Optional number of price levels; venue defaults apply when omitted. */
   depth?: number
+  /**
+   * Desired price-bucket size in quote units. Venues that cap their book at
+   * a few raw levels honor it via server-side aggregation (Hyperliquid);
+   * deep-book venues ignore it.
+   */
+  priceStep?: number
 }
 
 /**
@@ -32,6 +38,7 @@ export async function getOrderbook(
     provider: params.provider,
     marketId: params.marketId,
     depth: params.depth,
+    priceStep: params.priceStep,
   })
   return request<OrderbookResponse>(client.config, url, {}, options)
 }
