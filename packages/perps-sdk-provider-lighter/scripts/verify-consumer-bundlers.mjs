@@ -24,7 +24,7 @@ import {
 } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evaluateClientGraph } from './lib/evaluate-client-graph.js'
 
@@ -167,9 +167,28 @@ const assertProbe = (probe) => {
   )
 }
 
+function buildValidatedUrl(inputUrl) {
+  // Minimal path validation
+  if (inputUrl.includes('/../') || /\/%2e%2e\//i.test(inputUrl)) {
+    throw new Error('Invalid path')
+  }
+  let url
+  try {
+    url = new URL(inputUrl)
+  } catch {
+    throw new Error('Invalid URL')
+  }
+  // Protocol check: the verifier only ever fetches from its own local servers
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('Invalid protocol')
+  }
+  return url.href
+}
+
 /** Re-fetch a served asset to check its media type and bytes. */
 const assertServedBinary = async (url) => {
-  const response = await fetch(url)
+  const validatedUrl = buildValidatedUrl(url)
+  const response = await fetch(validatedUrl)
   assert(response.ok, `${url} returned ${response.status}`)
   const contentType = response.headers.get('content-type')
   assert(
@@ -218,9 +237,18 @@ const listFiles = (dir) => {
 }
 
 const createFixture = (root, name, { manifest, sources }) => {
+  const resolvedRoot = resolve(root)
+  const resolvedDir = resolve(resolvedRoot, name)
+  const relPath = relative(resolvedRoot, resolvedDir)
+  if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    throw new Error('Invalid path')
+  }
   const dir = join(root, name)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest, null, 2))
+  writeFileSync(
+    join(resolvedDir, 'package.json'),
+    JSON.stringify(manifest, null, 2)
+  )
   cpSync(join(fixtureSources, 'probe.js'), join(dir, 'probe.js'))
   cpSync(join(fixtureSources, sources), dir, { recursive: true })
   return dir
