@@ -2,6 +2,7 @@ import {
   type DepositFlow,
   ETHEREUM_USDC,
   getMarketRegistry,
+  getProviders,
   localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
@@ -96,7 +97,6 @@ import {
   mapLiquidationActivity,
   mapOpenPositions,
   mapOrderDetail,
-  ondoAsset,
   positionMarginConstraints,
 } from './utils/index.js'
 import { mapRunningTwap } from './utils/mapTwap.js'
@@ -246,31 +246,52 @@ export const ondoProvider = (
         },
         async (token) => {
           const client = apiClient(opts)
-          const [balance, rawPositions, referral, account, depositAddress] =
-            await Promise.all([
-              client.get<OndoBalanceSummary>('/v1/perps/balance', {
-                authToken: token.token,
-              }),
-              client.get<OndoPosition[]>('/v1/perps/positions', {
-                authToken: token.token,
-              }),
-              client.get<OndoAccountReferral | null>('/v1/account/referral', {
-                authToken: token.token,
-              }),
-              client.get<OndoAccountInfo>('/v1/account', {
-                authToken: token.token,
-              }),
-              listOndoDepositAddress(client, token.token),
-              marketRegistry().sync(),
-            ])
+          const [
+            { providers },
+            balance,
+            rawPositions,
+            referral,
+            account,
+            depositAddress,
+          ] = await Promise.all([
+            getProviders(requireClient(), opts),
+            client.get<OndoBalanceSummary>('/v1/perps/balance', {
+              authToken: token.token,
+            }),
+            client.get<OndoPosition[]>('/v1/perps/positions', {
+              authToken: token.token,
+            }),
+            client.get<OndoAccountReferral | null>('/v1/account/referral', {
+              authToken: token.token,
+            }),
+            client.get<OndoAccountInfo>('/v1/account', {
+              authToken: token.token,
+            }),
+            listOndoDepositAddress(client, token.token),
+            marketRegistry().sync(),
+          ])
+
+          const collateralAsset = providers
+            .find((provider) => provider.key === ONDO_PROVIDER_KEY)
+            ?.categories.find(
+              (category) => category.id === ONDO_PROVIDER_KEY
+            )?.quoteAsset
+          if (collateralAsset === null || collateralAsset === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.SDKError,
+              'Ondo provider metadata is missing its collateral asset'
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
 
           const positions: Position[] = mapOpenPositions(
             rawPositions,
             requirePerpsMarketDisplay
           )
 
-          // Single USD collateral row: `walletBalance` is gross (locked margin
-          // included, unrealized PnL excluded — the positions carry it).
+          // The backend owns the collateral identity; the venue supplies its
+          // gross wallet balance (locked margin in, unrealized PnL out).
           return {
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
@@ -278,7 +299,7 @@ export const ondoProvider = (
             collateralBalances: [
               {
                 categoryId: ONDO_PROVIDER_KEY,
-                asset: ondoAsset('USD', 'USD'),
+                asset: collateralAsset,
                 units: balance.walletBalance,
                 valueUsd: balance.walletBalance,
               },
