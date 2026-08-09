@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 12.1.1
+
+### Patch Changes
+
+- [#340](https://github.com/lifinance/perps-sdk/pull/340) [`2b59542`](https://github.com/lifinance/perps-sdk/commit/2b59542c930d886ea537f2d340801ffa0add78ae) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `getAccount` now resolves when the venue rejects the SDK-owned auth token (stale local API key after the slot was re-registered elsewhere): the `accountLimits` and `referral/userReferrals` reads degrade to `undefined` with a logged warning, so `apiKeyRegistered: false` can render the re-register setup step instead of the whole account read failing. Caller-supplied token rejections and all other errors still propagate.
+
 ## 12.1.0
 
 ### Minor Changes
