@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 6.6.0
+
+### Minor Changes
+
+- [#338](https://github.com/lifinance/perps-sdk/pull/338) [`356835f`](https://github.com/lifinance/perps-sdk/commit/356835ff302f4700952404ccffa714b065ce95da) Thanks [@TristanNcl](https://github.com/TristanNcl)! - `getOrderbook` accepts an optional `priceStep` — the desired price-bucket size in quote units, forwarded to the backend so venues that cap their raw book at a few levels (Hyperliquid) can aggregate server-side.
+
 ## 6.5.1
 
 ### Patch Changes

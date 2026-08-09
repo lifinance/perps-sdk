@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-ondo",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "description": "Ondo Perps provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {

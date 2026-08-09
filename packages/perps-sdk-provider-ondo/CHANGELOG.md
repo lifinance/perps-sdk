@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 7.0.0
+
+### Major Changes
+
+- [#335](https://github.com/lifinance/perps-sdk/pull/335) [`0038c89`](https://github.com/lifinance/perps-sdk/commit/0038c89d4bfc956fa8e57a40f7802cbc9a8f863d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Source Ondo account collateral metadata from the backend provider category.
+
+  Breaking: `collateralBalances[0].asset` is now the backend-owned USDC asset, changing its `id` and `displaySymbol` from `USD` to `USDC` and adding the backend `displayName` and `logoURI`. `getAccount()` now reads `/providers` and throws `PerpsError(SDKError)` when the Ondo category has no quote asset.
+
 ## 6.0.0
 
 ### Major Changes
