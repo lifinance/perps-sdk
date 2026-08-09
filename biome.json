@@ -101,6 +101,29 @@
       }
     },
     {
+      "includes": ["packages/*/test/consumer/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "correctness": {
+            "useImportExtensions": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/*/src/signers/wasmBinaryUrl.vite.js"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useImportExtensions": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/perps-types/src/**/index.ts"],
       "linter": {
         "rules": {
