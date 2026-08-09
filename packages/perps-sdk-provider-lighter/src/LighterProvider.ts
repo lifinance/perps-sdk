@@ -486,6 +486,38 @@ export const createLighterProvider = (
     }
   }
 
+  /**
+   * Degrade an auth-gated `getAccount` read to `undefined` when Lighter
+   * rejects an SDK-owned token even after `retryOnRevoked` re-resolved it —
+   * the signature of a stale local API key (the venue's slot was
+   * re-registered elsewhere). `getAccount` must resolve in that state so
+   * `apiKeyRegistered: false` can render the REGISTER_API_KEY gate, which is
+   * the only recovery. A caller-supplied token stays the caller's to fix, so
+   * its rejection propagates, as does every other error class.
+   */
+  const degradeOnAuthRejection = async <T>(
+    opts: SDKRequestOptions | undefined,
+    endpoint: string,
+    read: Promise<T>
+  ): Promise<T | undefined> => {
+    try {
+      return await read
+    } catch (err) {
+      const sdkOwnsToken =
+        opts?.lighterAuthToken === undefined && authTokenSource === undefined
+      if (err instanceof LighterAuthRejectedError && sdkOwnsToken) {
+        console.warn(
+          `[lighter] ${endpoint} rejected the auth token after re-resolution; ` +
+            'degrading the read — the stored API key no longer matches the ' +
+            'registered key, and the REGISTER_API_KEY gate will surface it.',
+          err
+        )
+        return undefined
+      }
+      throw err
+    }
+  }
+
   const fetchRegisteredApiKey = async (
     client: LighterApiClient,
     accountIndex: number,
@@ -697,12 +729,18 @@ export const createLighterProvider = (
         assetRegistry.sync(),
         fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
         // No token is a legitimate unauthenticated read → undefined → zero fee
-        // tier. A fetch error is NOT: it must propagate, never be coerced to a
-        // fabricated 0%/0% fee tier.
+        // tier. A generic fetch error is NOT: it must propagate, never be
+        // coerced to a fabricated 0%/0% fee tier. One carve-out: a token the
+        // venue rejects even after re-resolution (stale local API key) degrades
+        // to undefined, so the REGISTER_API_KEY gate can render the recovery.
         token === undefined
           ? Promise.resolve(undefined)
-          : retryOnRevoked(opts, params.address, token, (t) =>
-              fetchAccountLimits(client, account.index, t)
+          : degradeOnAuthRejection(
+              opts,
+              '/api/v1/accountLimits',
+              retryOnRevoked(opts, params.address, token, (t) =>
+                fetchAccountLimits(client, account.index, t)
+              )
             ),
         keyStore.get(params.address),
         readOnlyTokenManager.get(params.address, account.index),
@@ -717,8 +755,12 @@ export const createLighterProvider = (
           : providersPromise.then((response) =>
               response.providers.find((p) => p.key === providerKey)
                 ?.referralCode
-                ? retryOnRevoked(opts, params.address, token, (t) =>
-                    fetchAppliedReferralCode(client, params.address, t)
+                ? degradeOnAuthRejection(
+                    opts,
+                    '/api/v1/referral/userReferrals',
+                    retryOnRevoked(opts, params.address, token, (t) =>
+                      fetchAppliedReferralCode(client, params.address, t)
+                    )
                   )
                 : undefined
             ),
