@@ -15,6 +15,7 @@ import {
   MarginMode,
   OrderSide,
   PerpsErrorCode,
+  PerpsSigner,
   PositionMarginAdjustment,
   SigningMethod,
   type WasmBlobActionStep,
@@ -1446,6 +1447,105 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
 
     expect(createCount).toBe(0) // never created an SDK-owned token
     expect(limitsCalls).toBe(1) // 401 surfaced, not retried
+  })
+})
+
+describe('LighterProvider — stale API key degrades authed reads', () => {
+  // The venue slot was re-registered elsewhere: a different pubkey is live,
+  // and every token the stored key signs fails verification.
+  const ROTATED_PUBKEY = `0x${'ee'.repeat(32)}`
+
+  it('resolves getAccount with degraded fields and an unsatisfied register gate when the venue rejects every SDK-owned token', async () => {
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    let limitsCalls = 0
+    let referralCalls = 0
+    overrideFetch((url) => {
+      // Carry a runtime referral code so the userReferrals read runs.
+      if (url.includes('backend.test/v1/perps/providers')) {
+        return respond({
+          providers: [
+            {
+              ...PROVIDERS_RESPONSE.providers[0],
+              key: LIGHTER_PROVIDER_KEY,
+              referralCode: 'TEST-REF-CODE',
+            },
+          ],
+        })
+      }
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({
+          code: 0,
+          api_keys: [
+            {
+              account_index: STORED_API_KEY.accountIndex,
+              api_key_index: STORED_API_KEY.apiKeyIndex,
+              nonce: 16,
+              public_key: ROTATED_PUBKEY,
+            },
+          ],
+        })
+      }
+      if (url.includes('/api/v1/tokens/create')) {
+        return new Response('unauthorized', { status: 401 })
+      }
+      if (url.includes('/api/v1/accountLimits')) {
+        limitsCalls += 1
+        return new Response('unauthorized', { status: 401 })
+      }
+      if (url.includes('/api/v1/referral/userReferrals')) {
+        referralCalls += 1
+        return new Response('unauthorized', { status: 401 })
+      }
+      return undefined
+    })
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    // Both reads ran (and retryOnRevoked re-attempted with a re-signed token).
+    expect(limitsCalls).toBeGreaterThanOrEqual(1)
+    expect(referralCalls).toBeGreaterThanOrEqual(1)
+
+    // Degraded fields: the no-token zero mapping for fees, no referral claim.
+    expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
+    expect(account.config).toMatchObject({
+      apiKeyRegistered: false,
+      referralPresent: false,
+    })
+
+    // The curative gate projects unsatisfied so the client can re-register.
+    const [gate] = provider.projectConfig(
+      account.config,
+      [
+        {
+          type: ActionType.REGISTER_API_KEY,
+          title: 'Enable Trading',
+          description: 'Register a Lighter API key.',
+          signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.WASM_BLOB,
+          params: [],
+        },
+      ],
+      []
+    )
+    expect(gate).toMatchObject({
+      type: ActionType.REGISTER_API_KEY,
+      satisfied: false,
+    })
+
+    // The suppressed rejections stay visible in diagnostics.
+    const warned = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(warned).toContain('/api/v1/accountLimits')
+    expect(warned).toContain('/api/v1/referral/userReferrals')
+    warn.mockRestore()
   })
 })
 
