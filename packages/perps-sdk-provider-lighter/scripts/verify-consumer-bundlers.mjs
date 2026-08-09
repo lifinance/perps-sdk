@@ -24,7 +24,7 @@ import {
 } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve, relative, isAbsolute } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evaluateClientGraph } from './lib/evaluate-client-graph.js'
 
@@ -218,15 +218,18 @@ const listFiles = (dir) => {
 }
 
 const createFixture = (root, name, { manifest, sources }) => {
-  const dir = join(root, name)
-  mkdirSync(dir, { recursive: true })
   const resolvedRoot = resolve(root)
   const resolvedDir = resolve(resolvedRoot, name)
   const relPath = relative(resolvedRoot, resolvedDir)
   if (relPath.startsWith('..') || isAbsolute(relPath)) {
     throw new Error('Invalid path')
   }
-  writeFileSync(join(resolvedDir, 'package.json'), JSON.stringify(manifest, null, 2))
+  const dir = join(root, name)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(
+    join(resolvedDir, 'package.json'),
+    JSON.stringify(manifest, null, 2)
+  )
   cpSync(join(fixtureSources, 'probe.js'), join(dir, 'probe.js'))
   cpSync(join(fixtureSources, sources), dir, { recursive: true })
   return dir
