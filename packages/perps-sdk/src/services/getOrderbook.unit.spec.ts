@@ -14,6 +14,7 @@ describe('getOrderbook', () => {
     let provider: string | undefined
     let marketId: string | undefined
     let depth: string | null = null
+    let priceStep: string | null = null
 
     server.use(
       http.get(`${DEFAULT_API_URL}/orderbook`, ({ request }) => {
@@ -21,6 +22,7 @@ describe('getOrderbook', () => {
         provider = url.searchParams.get('provider') ?? undefined
         marketId = url.searchParams.get('marketId') ?? undefined
         depth = url.searchParams.get('depth')
+        priceStep = url.searchParams.get('priceStep')
         return HttpResponse.json(mockOrderbook)
       })
     )
@@ -32,8 +34,9 @@ describe('getOrderbook', () => {
 
     expect(provider).toBe('hyperliquid')
     expect(marketId).toBe('BTC')
-    // depth omitted → param absent.
+    // depth and priceStep omitted → params absent.
     expect(depth).toBeNull()
+    expect(priceStep).toBeNull()
     expect(result).toEqual(mockOrderbook)
   })
 
@@ -54,6 +57,25 @@ describe('getOrderbook', () => {
     })
 
     expect(depth).toBe('20')
+  })
+
+  it('includes the priceStep query param when provided', async () => {
+    let priceStep: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/orderbook`, ({ request }) => {
+        priceStep = new URL(request.url).searchParams.get('priceStep')
+        return HttpResponse.json(mockOrderbook)
+      })
+    )
+
+    await getOrderbook(client, {
+      provider: 'hyperliquid',
+      marketId: 'BTC',
+      priceStep: 0.1,
+    })
+
+    expect(priceStep).toBe('0.1')
   })
 
   it('propagates a backend error as a PerpsError', async () => {
