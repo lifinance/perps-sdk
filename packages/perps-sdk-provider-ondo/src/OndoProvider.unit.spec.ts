@@ -61,6 +61,27 @@ const STUB_CLIENT = {
   config: { apiUrl: 'https://backend.test/v1/perps' },
 } as PerpsSDKClient
 
+const ONDO_COLLATERAL_ASSET = {
+  providerId: 'ondo',
+  id: 'USDC',
+  displaySymbol: 'USDC',
+  displayName: 'USD Coin',
+  logoURI: 'https://cdn.ondoperps.xyz/symbol-icons/USDC.svg',
+}
+
+const ACCOUNT_PROVIDER_METADATA: Provider = {
+  key: 'ondo',
+  name: 'Ondo',
+  logoURI: '',
+  signingMethod: SigningMethod.HMAC,
+  active: true,
+  setup: [],
+  options: [],
+  actions: [],
+  supportedIntervals: [],
+  categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
+}
+
 const nowSecs = () => Math.floor(Date.now() / 1000)
 
 const AUTH_TOKEN_EXPIRY = nowSecs() + 3600
@@ -104,10 +125,8 @@ const MARKETS_RESPONSE = {
         logoURI: '',
       },
       quoteAsset: {
-        providerId: 'ondo',
-        id: 'USD',
-        displaySymbol: 'USD',
-        logoURI: '',
+        ...ONDO_COLLATERAL_ASSET,
+        displayName: 'USD Coin from market metadata',
       },
       szDecimals: 2,
       priceDecimals: 2,
@@ -294,6 +313,7 @@ let referralResult: { code: string; rebate?: number } | null
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
 let depositAddressResult: unknown
+let providersResult: Provider[]
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -308,10 +328,14 @@ beforeEach(() => {
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
   accountInfoResult = { ...ACCOUNT_INFO_RESULT }
   depositAddressResult = []
+  providersResult = [ACCOUNT_PROVIDER_METADATA]
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
       return respond(MARKETS_RESPONSE)
+    }
+    if (u.includes('backend.test/v1/perps/providers')) {
+      return respond({ providers: providersResult })
     }
     recorded.push({ url: u, init })
     if (u.includes('/v1/perps/balance')) {
@@ -516,7 +540,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(account.collateralBalances).toEqual([
       {
         categoryId: 'ondo',
-        asset: expect.objectContaining({ displaySymbol: 'USD' }),
+        asset: ONDO_COLLATERAL_ASSET,
         units: '1000',
         valueUsd: '1000',
       },
@@ -560,6 +584,39 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(venueCalls.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
   })
 
+  it.each([
+    {
+      case: 'the provider is absent',
+      providers: [] as Provider[],
+    },
+    {
+      case: 'the category is absent',
+      providers: [{ ...ACCOUNT_PROVIDER_METADATA, categories: [] }],
+    },
+    {
+      case: 'the category quote asset is null',
+      providers: [
+        {
+          ...ACCOUNT_PROVIDER_METADATA,
+          categories: [{ id: 'ondo', quoteAsset: null }],
+        },
+      ],
+    },
+  ])('rejects account metadata when $case', async ({
+    providers: incompleteProviders,
+  }) => {
+    providersResult = incompleteProviders
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: 'Ondo provider metadata is missing its collateral asset',
+      tool: 'ondo',
+    })
+  })
+
   it('exposes the canonical Ethereum USDC deposit address and leaves it absent when none exists', async () => {
     depositAddressResult = [
       { address: DEPOSIT_ADDRESS, coin: 'USDC', network: 'ethereum' },
@@ -590,6 +647,9 @@ describe('OndoProvider — getAccount (logged in)', () => {
       const u = String(url)
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
       }
       if (u.includes('/v1/wallet/deposit_address/list')) {
         return respond({ success: false, error: 'token expired' }, 401)
@@ -687,6 +747,9 @@ describe('OndoProvider — getAccount (logged in)', () => {
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
+      }
       return respond({ success: false, error: 'token expired' }, 401)
     })
 
@@ -718,6 +781,9 @@ describe('OndoProvider — getAccount (logged in)', () => {
       const u = String(url)
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
       }
       return respond({ success: false, error: 'venue exploded' }, 500)
     })
@@ -1508,7 +1574,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     ],
     options: [],
     actions: [],
-    categories: [],
+    categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
     supportedIntervals: [],
   }
 
