@@ -167,9 +167,28 @@ const assertProbe = (probe) => {
   )
 }
 
+function buildValidatedUrl(inputUrl) {
+  // Minimal path validation
+  if (inputUrl.includes('/../') || /\/%2e%2e\//i.test(inputUrl)) {
+    throw new Error('Invalid path')
+  }
+  let url
+  try {
+    url = new URL(inputUrl)
+  } catch {
+    throw new Error('Invalid URL')
+  }
+  // Protocol check: the verifier only ever fetches from its own local servers
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('Invalid protocol')
+  }
+  return url.href
+}
+
 /** Re-fetch a served asset to check its media type and bytes. */
 const assertServedBinary = async (url) => {
-  const response = await fetch(url)
+  const validatedUrl = buildValidatedUrl(url)
+  const response = await fetch(validatedUrl)
   assert(response.ok, `${url} returned ${response.status}`)
   const contentType = response.headers.get('content-type')
   assert(
