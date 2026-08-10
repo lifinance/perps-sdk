@@ -130,10 +130,30 @@ export async function evaluateClientGraph(origin, timeoutMs = 120_000) {
   const link = async (specifier, referrer) =>
     loadLinked(new URL(specifier, referrer.identifier).href)
 
+  function buildValidatedUrl(baseUrl) {
+    try {
+      const url = new URL(baseUrl);
+      
+      // Only allow requests to the same origin as the development server
+      const originUrl = new URL(origin);
+      if (url.hostname !== originUrl.hostname || url.port !== originUrl.port) {
+        throw new Error('Invalid host');
+      }
+      
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('Invalid protocol');
+      }
+      
+      return url.href;
+    } catch {
+      throw new Error('Invalid URL');
+    }
+  }
+
   const loadLinked = async (url) => {
     let module = modules.get(url)
     if (!module) {
-      const response = await fetch(url)
+      const response = await fetch(buildValidatedUrl(url))
       if (!response.ok) {
         throw new Error(`fetching ${url} returned ${response.status}`)
       }
