@@ -4,5 +4,3 @@ allowBuilds:
   esbuild: true
   msw: true
   nx: true
-minimumReleaseAgeExclude:
-  - viem@2.55.18
