@@ -9,7 +9,7 @@ import { ActionType, SigningMethod } from '@lifi/perps-types'
 import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, type Mock, vi } from 'vitest'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -44,6 +44,13 @@ const APPROVE_INTEGRATOR_SIGNED = {
   messageToSign: 'lighter-approve-integrator-msg',
 }
 
+const TRANSFER_SIGNED = {
+  txType: 12,
+  txInfo: '{"ToAccountIndex":7,"L1Sig":""}',
+  txHash: 'transfer-hash',
+  messageToSign: 'lighter-transfer-msg',
+}
+
 function makeDeps(
   overrides: Partial<LighterSigner> = {},
   postFormImpl?: PostFormImpl
@@ -61,6 +68,7 @@ function makeDeps(
     })),
     signChangePubKey: vi.fn(async () => REGISTER_SIGNED),
     signApproveIntegrator: vi.fn(async () => APPROVE_INTEGRATOR_SIGNED),
+    signTransfer: vi.fn(async () => TRANSFER_SIGNED),
     embedL1Signature: vi.fn(
       (txInfo: string, l1: string) =>
         JSON.parse(txInfo) &&
@@ -316,6 +324,107 @@ describe('lighterSignActions', () => {
 
       expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
       expect(signer.sign).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('WASM_BLOB — TRANSFER hybrid flow', () => {
+    const transferStep: WasmBlobActionStep = {
+      action: ActionType.TRANSFER,
+      wasmSignParams: {
+        to_account: 7,
+        usdc_amount: 250_000,
+        fee: 100,
+        memo: `0x${'ab'.repeat(32)}`,
+        nonce: 12,
+      },
+    }
+
+    async function setStoredKey(keyStore: LighterKeyStore): Promise<void> {
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+    }
+
+    it('wasm-signs with the stored key, collects the L1 signature, and embeds it as L1Sig', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xtransfersig'),
+      }
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [transferStep],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(1)
+      expect(result[0].action).toBe(ActionType.TRANSFER)
+      // The wallet's L1 signature is injected into the signed txInfo JSON.
+      expect(JSON.parse(result[0].signedTx.txInfo)).toEqual({
+        ToAccountIndex: 7,
+        L1Sig: '0xtransfersig',
+      })
+      expect(result[0].signedTx.txType).toBe(TRANSFER_SIGNED.txType)
+      // txHash excludes L1Sig, so the injection must not change it.
+      expect(result[0].signedTx.txHash).toBe(TRANSFER_SIGNED.txHash)
+
+      // Wasm-signed with the stored API key context and the step's params.
+      expect((signer.signTransfer as Mock).mock.calls[0]).toEqual([
+        transferStep.wasmSignParams,
+        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
+      ])
+      // The wallet countersigns exactly the wasm-provided L1 message body.
+      expect(walletStub.signMessage).toHaveBeenCalledWith({
+        account: walletStub.account,
+        message: TRANSFER_SIGNED.messageToSign,
+      })
+    })
+
+    it('throws a clear error naming TRANSFER when no end-user wallet is supplied', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [transferStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/TRANSFER requires the end-user wallet/)
+      expect(signer.signTransfer).not.toHaveBeenCalled()
+    })
+
+    it('signs SEND_ASSET through the bare signer with no wallet', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+      const sendAssetStep: WasmBlobActionStep = {
+        action: ActionType.SEND_ASSET,
+        wasmSignParams: {
+          sourceDex: 'spot',
+          destinationDex: 'perps',
+          amount: 250_000,
+          nonce: 20,
+        },
+      }
+
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [sendAssetStep],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result[0].signedTx).toEqual(STD_SIGNED)
+      expect(signer.signTransfer).not.toHaveBeenCalled()
+      expect(signer.embedL1Signature).not.toHaveBeenCalled()
     })
   })
 
