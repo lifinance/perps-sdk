@@ -33,8 +33,8 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   const { providerPlugins, providerConfigs } = splitProviders(options.providers)
 
   const config: PerpsBaseConfig = {
-    integrator: options.integrator,
-    apiKey: options.apiKey,
+    integrator: options.integrator?.trim() || undefined,
+    apiKey: options.apiKey?.trim() ?? '',
     apiUrl,
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,

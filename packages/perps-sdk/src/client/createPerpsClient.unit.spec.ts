@@ -58,6 +58,29 @@ describe('createPerpsClient', () => {
     expect(typeof client.config.requestInterceptor).toBe('function')
   })
 
+  it('should normalize a whitespace-only apiKey and integrator away', () => {
+    const client = createPerpsClient({ apiKey: '   ', integrator: '  ' })
+
+    expect(client.config.apiKey).toBe('')
+    expect(client.config.integrator).toBeUndefined()
+  })
+
+  it('should trim surrounding whitespace from apiKey and integrator', () => {
+    const client = createPerpsClient({
+      apiKey: '  test-key  ',
+      integrator: '  test-app  ',
+    })
+
+    expect(client.config.apiKey).toBe('test-key')
+    expect(client.config.integrator).toBe('test-app')
+  })
+
+  it('should store an empty integrator as undefined', () => {
+    const client = createPerpsClient({ apiKey: 'test-key', integrator: '' })
+
+    expect(client.config.integrator).toBeUndefined()
+  })
+
   it('should create immutable config', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
