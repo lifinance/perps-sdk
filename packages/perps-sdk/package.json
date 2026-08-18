@@ -62,7 +62,7 @@
     "@lifi/types": "17.86.0",
     "big.js": "^7.0.1",
     "partysocket": "^1.1.19",
-    "viem": "^2.48.8"
+    "viem": "^2.55.18"
   },
   "devDependencies": {
     "@types/big.js": "^7.0.0",
