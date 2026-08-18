@@ -63,7 +63,7 @@
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
     "big.js": "^7.0.1",
-    "viem": "^2.48.8"
+    "viem": "^2.55.18"
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:^"
