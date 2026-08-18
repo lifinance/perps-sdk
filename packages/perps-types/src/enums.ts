@@ -54,6 +54,13 @@ export enum PerpsErrorCode {
    * rather than retry.
    */
   FeatureUnavailable = 2080,
+
+  // Rate-limit errors (2090-2099)
+  /**
+   * The caller spent its request budget for the current window; maps to
+   * HTTP 429. Retryable once the window resets.
+   */
+  RateLimitExceeded = 2090,
 }
 
 /** Side of an order or execution, using provider wire values. @public */
