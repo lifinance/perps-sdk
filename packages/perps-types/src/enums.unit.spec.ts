@@ -101,6 +101,12 @@ describe('PerpsErrorCode.RateLimitExceeded', () => {
     expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
       PerpsErrorCode.ThirdPartyError
     )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.FeatureUnavailable
+    )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.SetupRequired
+    )
   })
 
   it('is the only member in the documented 2090-2099 rate-limit range', () => {
@@ -138,6 +144,7 @@ describe('PerpsErrorCode wire compatibility', () => {
       PayloadMismatch: 2050,
       RouteNotFound: 2060,
       SetupRequired: 2070,
+      FeatureUnavailable: 2080,
     } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
 
     for (const [name, value] of Object.entries(published)) {
