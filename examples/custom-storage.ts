@@ -8,16 +8,14 @@ async function run() {
 
   // In-memory storage (for testing or server-side)
   const memoryPerps = new PerpsClient({
-    integrator: 'my-app',
     apiKey: 'your-api-key',
     providers: [hyperliquidProvider({ storage: createMemoryStorage() })],
   })
-  console.log('Memory client created:', memoryPerps.client.config.integrator)
+  console.log('Memory client created:', memoryPerps.client.config.apiUrl)
 
   // Custom storage adapter
   const myStore = new Map<string, string>()
   const customPerps = new PerpsClient({
-    integrator: 'my-app',
     apiKey: 'your-api-key',
     providers: [
       hyperliquidProvider({
@@ -33,7 +31,7 @@ async function run() {
       }),
     ],
   })
-  console.log('Custom client created:', customPerps.client.config.integrator)
+  console.log('Custom client created:', customPerps.client.config.apiUrl)
 }
 
 run()

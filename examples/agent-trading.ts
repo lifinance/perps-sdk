@@ -4,7 +4,6 @@ import type { Account, Chain, Transport, WalletClient } from 'viem'
 
 async function run() {
   const perps = new PerpsClient({
-    integrator: 'my-app',
     apiKey: 'your-api-key',
     providers: [hyperliquidProvider()],
   })

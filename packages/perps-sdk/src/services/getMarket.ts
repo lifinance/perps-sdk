@@ -32,7 +32,7 @@ export interface GetMarketParams {
  * @throws {PerpsError} On backend (e.g. 404 or empty match), network, or parsing errors.
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
+ * const client = createPerpsClient({ apiKey: 'your-api-key' })
  * const market = await getMarket(client, { provider: 'hyperliquid', marketId: 'BTC' })
  * console.log(market.baseAsset.displaySymbol)
  * ```

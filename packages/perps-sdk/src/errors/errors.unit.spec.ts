@@ -38,7 +38,7 @@ describe('PerpsError', () => {
   it('SDK-local errors use tool @lifi/perps-sdk', () => {
     const error = new PerpsError(
       PerpsErrorCode.SDKError,
-      'Integrator is required'
+      "Provider plugin not registered: 'hyperliquid'."
     )
     error.tool = '@lifi/perps-sdk'
 

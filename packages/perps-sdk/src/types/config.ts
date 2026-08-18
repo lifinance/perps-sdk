@@ -87,8 +87,11 @@ export interface SDKRequestOptions {
  * @public
  */
 export interface PerpsBaseConfig {
-  /** Integrator identifier sent in the `x-lifi-integrator` header. */
-  integrator: string
+  /**
+   * Optional integrator assertion sent in the `x-lifi-integrator` header. The
+   * transport sends it only when `apiKey` is also non-empty.
+   */
+  integrator?: string
   /** API key applied to backend requests when non-empty. */
   apiKey: string
   /** Resolved perps API base URL. */
