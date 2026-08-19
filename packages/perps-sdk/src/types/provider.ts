@@ -327,7 +327,6 @@ export type QuoteListener = (quote: Quote) => void
  *
  * ```ts
  * const client = createPerpsClient({
- *   integrator: 'my-app',
  *   apiKey: 'key',
  *   providers: [hyperliquidProvider(), lighterProvider()],
  * })

@@ -12,7 +12,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
  *
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
+ * const client = createPerpsClient({ apiKey: 'your-api-key' })
  * const { providers } = await getProviders(client)
  * console.log(providers) // [{ key: 'hyperliquid', name: 'Hyperliquid', ... }]
  * ```

@@ -229,6 +229,81 @@ describe('request — header handling', () => {
     expect(result.ok).toBe(true)
     expect(authorization).toBeNull()
   })
+
+  const identityCases: [
+    string,
+    { apiKey: string; integrator?: string },
+    { apiKey: string | null; integrator: string | null },
+  ][] = [
+    [
+      'an api key and an integrator',
+      { apiKey: 'test-key', integrator: 'test-app' },
+      { apiKey: 'test-key', integrator: 'test-app' },
+    ],
+    [
+      'an api key and no integrator',
+      { apiKey: 'test-key' },
+      { apiKey: 'test-key', integrator: null },
+    ],
+    [
+      'an integrator and no api key',
+      { apiKey: '', integrator: 'test-app' },
+      { apiKey: null, integrator: null },
+    ],
+    [
+      'neither an api key nor an integrator',
+      { apiKey: '' },
+      { apiKey: null, integrator: null },
+    ],
+    [
+      'an api key and an empty integrator',
+      { apiKey: 'test-key', integrator: '' },
+      { apiKey: 'test-key', integrator: null },
+    ],
+  ]
+
+  it.each(
+    identityCases
+  )('sends the identity headers for a client with %s', async (_name, options, expected) => {
+    let apiKeyHeader: string | null = 'unset'
+    let integratorHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        apiKeyHeader = req.headers.get('x-lifi-api-key')
+        integratorHeader = req.headers.get('x-lifi-integrator')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const caseClient = createPerpsClient(options)
+    const result = await request<{ ok: boolean }>(caseClient.config, url, {
+      retry: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(apiKeyHeader).toBe(expected.apiKey)
+    expect(integratorHeader).toBe(expected.integrator)
+  })
+
+  it('gives the request interceptor the conditional header set', async () => {
+    server.use(http.get(url, () => HttpResponse.json({ ok: true })))
+    const seen: Record<string, string>[] = []
+    const interceptorClient = createPerpsClient({
+      apiKey: 'test-key',
+      requestInterceptor: (_url, options) => {
+        seen.push({ ...(options.headers as Record<string, string>) })
+        return options
+      },
+    })
+
+    await request<{ ok: boolean }>(interceptorClient.config, url, {
+      retry: false,
+    })
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]['x-lifi-api-key']).toBe('test-key')
+    expect(seen[0]).not.toHaveProperty('x-lifi-integrator')
+  })
 })
 
 describe('request — retry behaviour', () => {

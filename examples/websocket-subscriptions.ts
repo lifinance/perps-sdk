@@ -4,7 +4,6 @@ import { lighterWsProvider } from '@lifi/perps-sdk-provider-lighter'
 
 async function run() {
   const client = createPerpsClient({
-    integrator: 'my-app',
     apiKey: 'your-api-key',
   })
 
