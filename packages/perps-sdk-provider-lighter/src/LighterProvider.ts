@@ -1482,7 +1482,7 @@ export const createLighterProvider = (
  * @example
  * ```ts
  * const client = createPerpsClient({
- *   integrator: 'my-app',
+ *   apiKey: 'your-api-key',
  *   providers: [lighterProvider()],
  * })
  * ```
@@ -1503,7 +1503,7 @@ export const lighterProvider = (
  * @example
  * ```ts
  * const client = createPerpsClient({
- *   integrator: 'my-app',
+ *   apiKey: 'your-api-key',
  *   providers: [lighterProvider(), lighterRhProvider()],
  * })
  * ```

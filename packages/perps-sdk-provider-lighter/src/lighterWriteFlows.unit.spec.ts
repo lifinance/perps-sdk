@@ -100,6 +100,29 @@ const createOrderStep: WasmBlobActionStep = {
   },
 }
 
+/** Fastwithdraw leg: a cross-account move whose memo carries the L1 payout address. */
+const transferStep: WasmBlobActionStep = {
+  action: ActionType.TRANSFER,
+  wasmSignParams: {
+    to_account: 7,
+    usdc_amount: 250_000,
+    fee: 100,
+    memo: `0x${'ab'.repeat(32)}`,
+    nonce: 2,
+  },
+}
+
+/** Same-account collateral move between the spot and perp routes. */
+const sendAssetStep: WasmBlobActionStep = {
+  action: ActionType.SEND_ASSET,
+  wasmSignParams: {
+    sourceDex: 'spot',
+    destinationDex: 'perps',
+    amount: 250_000,
+    nonce: 3,
+  },
+}
+
 /** Bind the plugin to a real client so registry/retry/fetch wiring is exercised. */
 const clientFor = (provider: PerpsProviderPlugin) =>
   createPerpsClient({
@@ -206,6 +229,72 @@ describe.each([
         ? `${deployment.explorerTxBaseUrl}${signedOrder.signedTx.txHash}`
         : undefined
     )
+  })
+
+  /** Register the API key so the transfer legs sign against a stored keypair. */
+  const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
+    const provider = factory({ storage: createMemoryStorage() })
+    clientFor(provider)
+    await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [registerApiKeyStep],
+      ADDRESS as Address,
+      { userWallet }
+    )
+    return provider
+  }
+
+  it('carries the user wallet L1 signature into a TRANSFER blob', async () => {
+    const provider = await registeredProvider()
+
+    const [transferred] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [transferStep],
+      ADDRESS as Address,
+      { userWallet }
+    )
+
+    expect(transferred.action).toBe(ActionType.TRANSFER)
+    const signedTransfer = transferred as {
+      signedTx: { txType: number; txInfo: string; txHash: string }
+    }
+    const txInfo = JSON.parse(signedTransfer.signedTx.txInfo)
+    expect(txInfo.FromAccountIndex).toBe(ACCOUNT_INDEX)
+    expect(txInfo.ToAccountIndex).toBe(7)
+    // A real 65-byte EIP-191 signature from the user's wallet, not a stub.
+    expect(txInfo.L1Sig).toMatch(/^0x[0-9a-f]{130}$/i)
+    expect(signedTransfer.signedTx.txHash).toMatch(/^[0-9a-f]{80}$/)
+  })
+
+  it('refuses a TRANSFER when the caller supplies no end-user wallet', async () => {
+    const provider = await registeredProvider()
+
+    await expect(
+      provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [transferStep],
+        ADDRESS as Address
+      )
+    ).rejects.toThrow(/TRANSFER requires the end-user wallet/)
+  })
+
+  it('signs SEND_ASSET without a wallet and leaves L1Sig empty', async () => {
+    const provider = await registeredProvider()
+
+    const [sent] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [sendAssetStep],
+      ADDRESS as Address
+    )
+
+    const signedSend = sent as {
+      signedTx: { txType: number; txInfo: string; txHash: string }
+    }
+    const txInfo = JSON.parse(signedSend.signedTx.txInfo)
+    // Same-account route move: no destination to bind, so no L1 signature.
+    expect(txInfo.FromAccountIndex).toBe(ACCOUNT_INDEX)
+    expect(txInfo.ToAccountIndex).toBe(ACCOUNT_INDEX)
+    expect(txInfo.L1Sig).toBe('')
   })
 })
 

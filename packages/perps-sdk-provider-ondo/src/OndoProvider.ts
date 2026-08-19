@@ -126,7 +126,7 @@ export interface OndoProviderOptions {
  * @example
  * ```ts
  * const client = createPerpsClient({
- *   integrator: 'my-app',
+ *   apiKey: 'your-api-key',
  *   providers: [ondoProvider()],
  * })
  * ```
