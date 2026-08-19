@@ -363,8 +363,14 @@ describe('loadLighterWasm', () => {
 // loader has to be imported after that reset to reach the real runtime with no
 // memoized exports.
 describe('loadLighterWasm — packaged Go runtime', () => {
-  it('revokes every signer global and still calls Go through the exports', async () => {
+  beforeEach(() => {
     vi.resetModules()
+  })
+  afterEach(() => {
+    vi.resetModules()
+  })
+
+  it('revokes every signer global and still calls Go through the exports', async () => {
     const { loadLighterWasm } = await import('./wasmLoader.js')
 
     const exports = await loadLighterWasm()
@@ -376,5 +382,22 @@ describe('loadLighterWasm — packaged Go runtime', () => {
     expect(key.error).toBeUndefined()
     expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
     expect(key.publicKey).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it('revokes the signers a fresh instance reinstalls after a cache reset', async () => {
+    const { loadLighterWasm, resetLighterWasmCache } = await import(
+      './wasmLoader.js'
+    )
+    await loadLighterWasm()
+    resetLighterWasmCache()
+
+    const exports = await loadLighterWasm()
+
+    for (const name of WASM_FUNCTION_NAMES) {
+      expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
+    }
+    const key = exports.GenerateAPIKey()
+    expect(key.error).toBeUndefined()
+    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
   })
 })
