@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 13.0.2
+
+### Patch Changes
+
+- [#355](https://github.com/lifinance/perps-sdk/pull/355) [`7d3e56e`](https://github.com/lifinance/perps-sdk/commit/7d3e56e582f9f6b5c1b4fdd6679d6a6cce27f1f8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Verify the stored Lighter API key still occupies its venue API-key slot before the first `WASM_BLOB` signature. A slot re-registered on another device now fails with the same error code as a missing registration, so the `REGISTER_API_KEY` gate renders instead of a venue rejection. A failed or inconclusive check never blocks the signature, a `REGISTER_API_KEY` batch skips the check, and a 30s freshness window keeps a burst of batches at one extra request.
+
 ## 13.0.1
 
 ### Patch Changes
