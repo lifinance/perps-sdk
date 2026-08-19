@@ -119,37 +119,61 @@ describe('PerpsErrorCode.RateLimitExceeded', () => {
 })
 
 describe('PerpsErrorCode wire compatibility', () => {
-  it('keeps every previously published code on its published value', () => {
-    const published = {
-      DefaultError: 2000,
-      ServerError: 2001,
-      ValidationError: 2002,
-      TimeoutError: 2003,
-      ThirdPartyError: 2004,
-      SDKError: 2005,
-      SignatureInvalid: 2010,
-      AgentUnauthorized: 2011,
-      TermsNotAccepted: 2012,
-      Unauthorized: 2013,
-      ExchangeRejected: 2020,
-      InsufficientMargin: 2021,
-      InsufficientBalance: 2022,
-      MarketNotFound: 2023,
-      OrderNotFound: 2024,
-      PositionNotFound: 2025,
-      AccountNotFound: 2026,
-      InvalidNonce: 2040,
-      NonceAlreadyUsed: 2041,
-      NonceExpired: 2042,
-      PayloadMismatch: 2050,
-      RouteNotFound: 2060,
-      SetupRequired: 2070,
-      FeatureUnavailable: 2080,
-    } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
+  // `Partial` checks the key names only. The coverage test below is what makes
+  // a member added to the enum fail instead of silently missing this map.
+  const published = {
+    DefaultError: 2000,
+    ServerError: 2001,
+    ValidationError: 2002,
+    TimeoutError: 2003,
+    ThirdPartyError: 2004,
+    SDKError: 2005,
+    SignatureInvalid: 2010,
+    AgentUnauthorized: 2011,
+    TermsNotAccepted: 2012,
+    Unauthorized: 2013,
+    ExchangeRejected: 2020,
+    InsufficientMargin: 2021,
+    InsufficientBalance: 2022,
+    MarketNotFound: 2023,
+    OrderNotFound: 2024,
+    PositionNotFound: 2025,
+    AccountNotFound: 2026,
+    InvalidNonce: 2040,
+    NonceAlreadyUsed: 2041,
+    NonceExpired: 2042,
+    PayloadMismatch: 2050,
+    RouteNotFound: 2060,
+    SetupRequired: 2070,
+    FeatureUnavailable: 2080,
+  } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
 
+  const unreleased = [
+    'RateLimitExceeded',
+  ] as const satisfies readonly (keyof typeof PerpsErrorCode)[]
+
+  it('keeps every previously published code on its published value', () => {
     for (const [name, value] of Object.entries(published)) {
       expect(PerpsErrorCode).toHaveProperty(name, value)
     }
+  })
+
+  it('classifies every member as published or unreleased, never both', () => {
+    const members = Object.entries(PerpsErrorCode)
+      .filter(([, value]) => typeof value === 'number')
+      .map(([name]) => name)
+    const unreleasedNames: readonly string[] = unreleased
+
+    const unclassified = members.filter(
+      (name) =>
+        !Object.hasOwn(published, name) && !unreleasedNames.includes(name)
+    )
+    const classifiedTwice = members.filter(
+      (name) => Object.hasOwn(published, name) && unreleasedNames.includes(name)
+    )
+
+    expect(unclassified).toEqual([])
+    expect(classifiedTwice).toEqual([])
   })
 })
 
