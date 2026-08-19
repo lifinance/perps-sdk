@@ -30,6 +30,13 @@ const STD_SIGNED = {
   txHash: 'std-hash',
 }
 
+// SEND_ASSET reuses Lighter's L2Transfer, so the bare signer answers txType 12.
+const SEND_ASSET_SIGNED = {
+  txType: 12,
+  txInfo: '{"send":"asset"}',
+  txHash: 'send-asset-hash',
+}
+
 const REGISTER_SIGNED = {
   txType: 11,
   txInfo: '{"L1Sig":""}',
@@ -415,6 +422,10 @@ describe('lighterSignActions', () => {
         },
       }
 
+      ;(signer.sign as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        SEND_ASSET_SIGNED
+      )
+
       const result = (await lighterSignActions(
         deps,
         SigningMethod.WASM_BLOB,
@@ -422,7 +433,7 @@ describe('lighterSignActions', () => {
         ADDRESS
       )) as WasmBlobSignedActionStep[]
 
-      expect(result[0].signedTx).toEqual(STD_SIGNED)
+      expect(result[0].signedTx).toEqual(SEND_ASSET_SIGNED)
       expect(signer.signTransfer).not.toHaveBeenCalled()
       expect(signer.embedL1Signature).not.toHaveBeenCalled()
     })
