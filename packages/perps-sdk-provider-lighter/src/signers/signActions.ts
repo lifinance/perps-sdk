@@ -224,7 +224,7 @@ async function signL1CountersignedWasmAction(
   address: Address,
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined,
-  actionLabel: string,
+  actionLabel: 'APPROVE_INTEGRATOR' | 'TRANSFER',
   signMethod: (
     wasmSignParams: Record<string, unknown>,
     context: LighterSignerContext
@@ -279,7 +279,7 @@ async function signApproveIntegrator(
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep> {
-  return signL1CountersignedWasmAction(
+  return await signL1CountersignedWasmAction(
     deps,
     address,
     step,
@@ -302,7 +302,7 @@ async function signTransfer(
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep> {
-  return signL1CountersignedWasmAction(
+  return await signL1CountersignedWasmAction(
     deps,
     address,
     step,
