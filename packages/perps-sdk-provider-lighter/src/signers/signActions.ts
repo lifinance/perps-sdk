@@ -17,7 +17,11 @@ import {
 } from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
-import type { LighterSigner } from './LighterSigner.js'
+import type {
+  LighterSignedBlob,
+  LighterSigner,
+  LighterSignerContext,
+} from './LighterSigner.js'
 
 /**
  * Per-batch dependencies the Lighter `signActions` implementation needs:
@@ -202,34 +206,41 @@ async function signRegisterApiKey(
 }
 
 /**
- * APPROVE_INTEGRATOR flow:
- *   1. Load the user's stored API key (no keypair generation).
- *   2. Wasm-sign the `L2ApproveIntegrator` blob with that key, obtaining the
- *      EIP-191 L1 message the wallet must countersign.
- *   3. Have the user's L1 Ethereum wallet sign that message.
- *   4. Inject the L1 signature into the txInfo JSON as `L1Sig`.
+ * Shared L1-countersign flow for the Lighter WASM_BLOB actions that require
+ * the end-user's Ethereum wallet:
+ *   1. Guard that the caller supplied `ctx.userWallet`.
+ *   2. Load the user's stored API key (no keypair generation).
+ *   3. Wasm-sign the blob via `signMethod`, obtaining the EIP-191 L1 message
+ *      the wallet must countersign.
+ *   4. Have the user's L1 Ethereum wallet sign that message.
+ *   5. Inject the L1 signature into the txInfo JSON as `L1Sig`.
  *
- * Requires the end-user's wallet in `ctx.userWallet`: Lighter rejects the tx
- * without the user's `L1Sig` when the integrator account belongs to a
- * different L1 address with non-zero fee caps.
+ * `actionLabel` names the caller's action in the missing-wallet error
+ * message. `signMethod` is the caller's wasm-signing call; each caller keeps
+ * its own doc comment stating why its flow needs the L1 signature.
  */
-async function signApproveIntegrator(
+async function signL1CountersignedWasmAction(
   deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep,
-  ctx: SignActionsContext | undefined
+  ctx: SignActionsContext | undefined,
+  actionLabel: 'APPROVE_INTEGRATOR' | 'TRANSFER',
+  signMethod: (
+    wasmSignParams: Record<string, unknown>,
+    context: LighterSignerContext
+  ) => Promise<LighterSignedBlob & { messageToSign: string }>
 ): Promise<WasmBlobSignedActionStep> {
   const walletSigner = ctx?.userWallet
   if (!walletSigner) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      'APPROVE_INTEGRATOR requires the end-user wallet — pass `userWallet` to ' +
+      `${actionLabel} requires the end-user wallet — pass \`userWallet\` to ` +
         'createPerpsClient or call setUserWallet(walletClient).'
     )
   }
 
   const apiKey = await requireApiKey(deps, address)
-  const signed = await deps.signer.signApproveIntegrator(step.wasmSignParams, {
+  const signed = await signMethod(step.wasmSignParams, {
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
@@ -257,16 +268,33 @@ async function signApproveIntegrator(
 }
 
 /**
- * TRANSFER flow:
- *   1. Load the user's stored API key (no keypair generation).
- *   2. Wasm-sign the `L2Transfer` blob with that key, obtaining the EIP-191
- *      L1 message the wallet must countersign.
- *   3. Have the user's L1 Ethereum wallet sign that message.
- *   4. Inject the L1 signature into the txInfo JSON as `L1Sig`.
- *
- * Requires the end-user's wallet in `ctx.userWallet`: the destination account
- * and the amount are only bound to the account owner by the user's `L1Sig`,
- * so the stored API key alone must not authorize the move.
+ * APPROVE_INTEGRATOR flow. Requires the end-user's wallet in
+ * `ctx.userWallet`: Lighter rejects the tx without the user's `L1Sig` when
+ * the integrator account belongs to a different L1 address with non-zero fee
+ * caps.
+ */
+async function signApproveIntegrator(
+  deps: LighterSignActionsDeps,
+  address: Address,
+  step: WasmBlobActionStep,
+  ctx: SignActionsContext | undefined
+): Promise<WasmBlobSignedActionStep> {
+  return await signL1CountersignedWasmAction(
+    deps,
+    address,
+    step,
+    ctx,
+    'APPROVE_INTEGRATOR',
+    (wasmSignParams, context) =>
+      deps.signer.signApproveIntegrator(wasmSignParams, context)
+  )
+}
+
+/**
+ * TRANSFER flow. Requires the end-user's wallet in `ctx.userWallet`: the
+ * destination account and the amount are only bound to the account owner by
+ * the user's `L1Sig`, so the stored API key alone must not authorize the
+ * move.
  */
 async function signTransfer(
   deps: LighterSignActionsDeps,
@@ -274,41 +302,15 @@ async function signTransfer(
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep> {
-  const walletSigner = ctx?.userWallet
-  if (!walletSigner) {
-    throw new PerpsError(
-      PerpsErrorCode.SDKError,
-      'TRANSFER requires the end-user wallet — pass `userWallet` to ' +
-        'createPerpsClient or call setUserWallet(walletClient).'
-    )
-  }
-
-  const apiKey = await requireApiKey(deps, address)
-  const signed = await deps.signer.signTransfer(step.wasmSignParams, {
-    apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
-    apiKeyIndex: apiKey.apiKeyIndex,
-    accountIndex: apiKey.accountIndex,
-  })
-
-  const l1Signature = await walletSigner.signMessage({
-    account: walletSigner.account,
-    message: signed.messageToSign,
-  })
-
-  const txInfoWithL1Sig = deps.signer.embedL1Signature(
-    signed.txInfo,
-    l1Signature
+  return await signL1CountersignedWasmAction(
+    deps,
+    address,
+    step,
+    ctx,
+    'TRANSFER',
+    (wasmSignParams, context) =>
+      deps.signer.signTransfer(wasmSignParams, context)
   )
-
-  return {
-    action: step.action,
-    wasmSignParams: step.wasmSignParams,
-    signedTx: {
-      txType: signed.txType,
-      txInfo: txInfoWithL1Sig,
-      txHash: signed.txHash,
-    },
-  }
 }
 
 /**
