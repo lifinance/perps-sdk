@@ -10,7 +10,6 @@ import {
 
 async function run() {
   const client = createPerpsClient({
-    integrator: 'my-app',
     apiKey: 'your-api-key',
   })
 

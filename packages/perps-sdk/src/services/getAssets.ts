@@ -21,7 +21,7 @@ export interface GetAssetsParams {
  * @throws {PerpsError} On backend, network, or parsing errors.
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
+ * const client = createPerpsClient({ apiKey: 'your-api-key' })
  * const { assets } = await getAssets(client, { provider: 'lighter' })
  * ```
  * @public

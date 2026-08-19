@@ -33,7 +33,9 @@ pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
 | [`@lifi/perps-sdk-provider-lighter`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-lighter) | Lighter |
 | [`@lifi/perps-sdk-provider-ondo`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-ondo) | Ondo |
 
-Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/).
+Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/). The API
+key identifies your integration to the backend. `integrator` is optional: the
+SDK sends it as an assertion only when you also set `apiKey`.
 
 ## Quick start
 
@@ -44,7 +46,6 @@ import { createPerpsClient, getMarkets } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 
 const client = createPerpsClient({
-  integrator: 'my-app',
   apiKey: 'your-api-key',
   providers: [hyperliquidProvider()],
 })
@@ -66,7 +67,6 @@ import { PerpsClient } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 
 const client = new PerpsClient({
-  integrator: 'my-app',
   apiKey: 'your-api-key',
   providers: [hyperliquidProvider()],
 })

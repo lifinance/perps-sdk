@@ -14,7 +14,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
  *
  * @example
  * ```ts
- * const client = createPerpsClient({ integrator: 'my-app' })
+ * const client = createPerpsClient({ apiKey: 'your-api-key' })
  * const terms = await getTermsAcceptance(client, '0x1234...')
  * if (!terms.accepted) {
  *   // prompt the user to accept terms.content (version terms.termsVersion)

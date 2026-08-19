@@ -41,13 +41,15 @@ export async function request<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'x-lifi-integrator': config.integrator,
     'x-lifi-perps-sdk': version,
     ...(fetchInit.headers as Record<string, string>),
   }
 
   if (config.apiKey) {
     headers['x-lifi-api-key'] = config.apiKey
+    if (config.integrator) {
+      headers['x-lifi-integrator'] = config.integrator
+    }
   }
 
   let finalOptions: RequestInit = {

@@ -30,8 +30,12 @@ import type { PerpsProviderPlugin } from './provider.js'
  * @public
  */
 export interface PerpsConfig {
-  /** Integrator identifier sent in the `x-lifi-integrator` request header. */
-  integrator: string
+  /**
+   * Optional integrator assertion. Sent as `x-lifi-integrator` only when
+   * `apiKey` is also set. The backend resolves the fee identity from `apiKey`
+   * and rejects an integrator that disagrees with it.
+   */
+  integrator?: string
   /** LI.FI API key used for authenticated backend requests. */
   apiKey: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
@@ -86,8 +90,12 @@ export interface PerpsConfig {
  * @public
  */
 export interface PerpsClientOptions {
-  /** Integrator identifier sent in the `x-lifi-integrator` request header. */
-  integrator: string
+  /**
+   * Optional integrator assertion. Sent as `x-lifi-integrator` only when
+   * `apiKey` is also set. The backend resolves the fee identity from `apiKey`
+   * and rejects an integrator that disagrees with it.
+   */
+  integrator?: string
   /** API key for authenticated requests (get one at https://portal.li.fi/). */
   apiKey: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
