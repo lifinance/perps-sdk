@@ -141,6 +141,7 @@ export interface HyperliquidPerpsProvider extends PerpsProviderPlugin {
  * @example
  * ```ts
  * const client = createPerpsClient({
+ *   apiKey: 'your-api-key',
  *   providers: [hyperliquidProvider()],
  * })
  * ```
