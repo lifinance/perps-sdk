@@ -301,6 +301,31 @@ describe('lighterSignActions', () => {
       ).rejects.toThrow(/APPROVE_INTEGRATOR requires the end-user wallet/)
     })
 
+    it('propagates a wasm signing failure and never prompts the wallet', async () => {
+      const { deps, keyStore } = makeDeps({
+        signApproveIntegrator: vi.fn(async () => {
+          throw new Error('Lighter SignApproveIntegrator failed: bad nonce')
+        }),
+      } as unknown as Partial<LighterSigner>)
+      await setStoredKey(keyStore)
+
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xapprovesig'),
+      }
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [approveStep],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).rejects.toThrow('Lighter SignApproveIntegrator failed: bad nonce')
+      expect(walletStub.signMessage).not.toHaveBeenCalled()
+    })
+
     it('throws when no API key is registered for the address', async () => {
       const { deps } = makeDeps()
       await expect(
@@ -407,6 +432,31 @@ describe('lighterSignActions', () => {
         )
       ).rejects.toThrow(/TRANSFER requires the end-user wallet/)
       expect(signer.signTransfer).not.toHaveBeenCalled()
+    })
+
+    it('propagates a wasm signing failure and never prompts the wallet', async () => {
+      const { deps, keyStore } = makeDeps({
+        signTransfer: vi.fn(async () => {
+          throw new Error('Lighter SignTransfer failed: insufficient balance')
+        }),
+      } as unknown as Partial<LighterSigner>)
+      await setStoredKey(keyStore)
+
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xtransfersig'),
+      }
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [transferStep],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).rejects.toThrow('Lighter SignTransfer failed: insufficient balance')
+      expect(walletStub.signMessage).not.toHaveBeenCalled()
     })
 
     it('signs SEND_ASSET through the bare signer with no wallet', async () => {
