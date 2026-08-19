@@ -148,7 +148,6 @@ function projectLighterDescriptor(
     case ActionType.ACCEPT_PROVIDER_TERMS:
     case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.DEPOSIT:
-    case ActionType.META_VOTE:
     case ActionType.META_ACCEPT_TERMS:
       throw new PerpsError(
         PerpsErrorCode.SDKError,

@@ -141,13 +141,6 @@ export interface Provider {
   /** Flat withdrawal fee in USD the provider charges. Absent means no fee advertised. */
   withdrawalFeeUsd?: number
   /**
-   * Aggregate up-votes for this provider. Populated only for inactive
-   * providers (those gathering demand before launch); absent once `active`.
-   */
-  upVotes?: number
-  /** Aggregate down-votes. Populated only for inactive providers; see {@link upVotes}. */
-  downVotes?: number
-  /**
    * Candle intervals this provider supports for OHLCV/chart requests, in
    * ascending order. Drives the client's chart interval selector. Empty for
    * providers that expose no candle data.
