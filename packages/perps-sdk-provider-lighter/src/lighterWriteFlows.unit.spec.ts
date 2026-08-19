@@ -8,6 +8,7 @@ import {
   ActionType,
   SigningMethod,
   type WasmBlobActionStep,
+  type WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { type Address, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -150,11 +151,27 @@ describe.each([
   deployment,
   providerKey,
 }) => {
+  /**
+   * Public key the venue reports in API-key slot 42. Each test mirrors its own
+   * registration into it; `null` leaves the slot empty.
+   */
+  let registeredPublicKey: string | null = null
+
   beforeEach(() => {
+    registeredPublicKey = null
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('/api/v1/apikeys')) {
+          return respond({
+            code: 200,
+            api_keys:
+              registeredPublicKey === null
+                ? []
+                : [{ api_key_index: 42, public_key: registeredPublicKey }],
+          })
+        }
         if (u.includes('/api/v1/account')) {
           return respond(ACCOUNT_PAYLOAD)
         }
@@ -193,6 +210,8 @@ describe.each([
     expect(signedRegistration.wasmSignParams.new_public_key).toMatch(
       /^0x[0-9a-f]+$/i
     )
+    registeredPublicKey =
+      signedRegistration.wasmSignParams.new_public_key ?? null
     expect(signedRegistration.signedTx.txHash).toMatch(/^[0-9a-f]{80}$/)
 
     // The generated keypair landed in the instance's own provider-namespaced
@@ -231,16 +250,21 @@ describe.each([
     )
   })
 
-  /** Register the API key so the transfer legs sign against a stored keypair. */
+  /**
+   * Register the API key so the transfer legs sign against a stored keypair,
+   * and mirror it into the venue slot the pre-sign freshness check reads.
+   */
   const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
     const provider = factory({ storage: createMemoryStorage() })
     clientFor(provider)
-    await provider.signActions!(
+    const [registered] = (await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [registerApiKeyStep],
       ADDRESS as Address,
       { userWallet }
-    )
+    )) as WasmBlobSignedActionStep[]
+    const newPublicKey = registered.wasmSignParams.new_public_key
+    registeredPublicKey = typeof newPublicKey === 'string' ? newPublicKey : null
     return provider
   }
 

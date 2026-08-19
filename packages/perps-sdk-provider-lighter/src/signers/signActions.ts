@@ -16,6 +16,11 @@ import {
   LIGHTER_MUTATION_SUCCESS_CODE,
 } from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
+import {
+  fetchRegisteredApiKey,
+  type LighterRegisteredApiKey,
+  normalizeLighterPublicKey,
+} from '../utils/registeredApiKey.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
 import type {
   LighterSignedBlob,
@@ -39,6 +44,11 @@ export interface LighterSignActionsDeps {
    * `changeAccountTier` / `referral/use` POSTs so their auth token never
    * transits the LI.FI backend. */
   apiClient: LighterApiClient
+  /**
+   * Pre-sign guard that the stored API key still occupies its venue slot.
+   * Created once per provider instance so its freshness window spans batches.
+   */
+  apiKeyFreshness: LighterApiKeyFreshness
   /**
    * Resolve the user's Lighter `accountIndex` for an L1 address. Required
    * by REGISTER_API_KEY so the ChangePubKey blob carries the right
@@ -64,6 +74,83 @@ const TOKEN_AUTH_MUTATION_KINDS = new Set(['changeAccountTier', 'referralUse'])
 const TOKEN_AUTH_MUTATION_DEADLINE_SECONDS = 5 * 60
 
 /**
+ * Window in which one `/apikeys` read stands for the next. 30s keeps a burst
+ * of batches — several orders submitted back to back, a close-then-reduce
+ * sequence — at one read, and still surfaces a key rotated on another device
+ * on the user's next action instead of after a venue rejection.
+ */
+const API_KEY_FRESHNESS_WINDOW_MS = 30_000
+
+/**
+ * Pre-sign guard that the stored Lighter API key is still the key registered
+ * in its venue slot. Owns the freshness window, so one instance is created per
+ * provider instance and shared by every batch that instance signs.
+ *
+ * @internal
+ */
+export interface LighterApiKeyFreshness {
+  assertStillRegistered(
+    client: LighterApiClient,
+    address: Address,
+    apiKey: LighterApiKey
+  ): Promise<void>
+}
+
+/**
+ * Build the guard {@link LighterSignActionsDeps.apiKeyFreshness} needs.
+ *
+ * @internal
+ */
+export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
+  const checkedAtMs = new Map<string, number>()
+  return {
+    async assertStillRegistered(client, address, apiKey) {
+      const storedKey = normalizeLighterPublicKey(apiKey.apiKeyPublicKey)
+      // Keyed on the stored key, so a rotation retires the entry by itself.
+      const windowKey = `${apiKey.accountIndex}:${apiKey.apiKeyIndex}:${storedKey}`
+      const checkedAt = checkedAtMs.get(windowKey)
+      if (
+        checkedAt !== undefined &&
+        Date.now() - checkedAt < API_KEY_FRESHNESS_WINDOW_MS
+      ) {
+        return
+      }
+
+      let registered: LighterRegisteredApiKey | undefined
+      try {
+        registered = await fetchRegisteredApiKey(
+          client,
+          apiKey.accountIndex,
+          apiKey.apiKeyIndex
+        )
+      } catch (err) {
+        // A transport failure or a non-success body proves nothing about the
+        // slot, so the venue decides. A failed check never blocks a signature.
+        console.warn(
+          '[lighter] could not read the registered API key before signing; ' +
+            'signing anyway and letting the venue decide.',
+          err
+        )
+        return
+      }
+      // No entry for the slot leaves nothing to compare against.
+      if (registered === undefined) {
+        return
+      }
+      if (normalizeLighterPublicKey(registered.public_key) !== storedKey) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `The Lighter API key stored for ${address} is no longer registered: ` +
+            `API-key slot ${apiKey.apiKeyIndex} now holds a different key. ` +
+            'Run prepareAccount / REGISTER_API_KEY to register a fresh key.'
+        )
+      }
+      checkedAtMs.set(windowKey, Date.now())
+    },
+  }
+}
+
+/**
  * Sign a `WASM_BLOB` batch (Lighter). Ensures the user's API keypair is
  * registered first — generating one and running the REGISTER_API_KEY
  * hybrid flow via the L1 signer if not — then feeds each subsequent step
@@ -82,6 +169,22 @@ export async function signWasmBlobActions(
   steps: WasmBlobActionStep[],
   ctx: SignActionsContext | undefined
 ): Promise<WasmBlobSignedActionStep[]> {
+  // REGISTER_API_KEY replaces the slot's key, so for such a batch the stored
+  // key is expected to differ from the registered one.
+  const replacesApiKey = steps.some(
+    (step) => step.action === ActionType.REGISTER_API_KEY
+  )
+  if (!replacesApiKey) {
+    const storedKey = await deps.keyStore.get(address)
+    if (storedKey !== null) {
+      await deps.apiKeyFreshness.assertStillRegistered(
+        deps.apiClient,
+        address,
+        storedKey
+      )
+    }
+  }
+
   const signed: WasmBlobSignedActionStep[] = []
   for (const step of steps) {
     if (step.action === ActionType.REGISTER_API_KEY) {
