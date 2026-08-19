@@ -119,6 +119,8 @@ describe('PerpsErrorCode.RateLimitExceeded', () => {
 })
 
 describe('PerpsErrorCode wire compatibility', () => {
+  // `Partial` checks the key names only. The coverage test below is what makes
+  // a member added to the enum fail instead of silently missing this map.
   const published = {
     DefaultError: 2000,
     ServerError: 2001,
@@ -163,10 +165,11 @@ describe('PerpsErrorCode wire compatibility', () => {
     const unreleasedNames: readonly string[] = unreleased
 
     const unclassified = members.filter(
-      (name) => !(name in published) && !unreleasedNames.includes(name)
+      (name) =>
+        !Object.hasOwn(published, name) && !unreleasedNames.includes(name)
     )
     const classifiedTwice = members.filter(
-      (name) => name in published && unreleasedNames.includes(name)
+      (name) => Object.hasOwn(published, name) && unreleasedNames.includes(name)
     )
 
     expect(unclassified).toEqual([])
