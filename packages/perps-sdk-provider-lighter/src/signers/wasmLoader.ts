@@ -82,9 +82,12 @@ export interface LighterWasmExports {
    * 11 args: toAccountIndex, assetIndex, fromRouteType, toRouteType, amount,
    * usdcFee, memo, skipNonce, then the trailing three. `memo` is copied into a
    * Go `[32]byte`, so its UTF-8 byte length must be exactly 32 or Go rejects it
-   * before signing.
+   * before signing. `messageToSign` is the EIP-191 `Transfer` L1 body that
+   * binds the destination account and the amount to the owner's Ethereum
+   * wallet; a cross-account transfer needs the resulting `L1Sig`, a
+   * same-account route move does not.
    */
-  SignTransfer: (...args: unknown[]) => SignResult
+  SignTransfer: (...args: unknown[]) => SignResult & { messageToSign?: string }
   /** 7 args: assetIndex, routeType, amount, skipNonce, then the trailing three. */
   SignWithdraw: (...args: unknown[]) => SignResult
   /**
