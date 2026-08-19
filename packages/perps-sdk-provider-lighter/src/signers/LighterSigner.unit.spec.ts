@@ -244,18 +244,16 @@ describe('LighterSigner', () => {
   // 32 bytes or 64 hex encoded or 66 if 0x hex encoded".
   const MEMO_32_BYTES = 'a'.repeat(32)
 
+  const TRANSFER_PARAMS = {
+    to_account: 7,
+    usdc_amount: 250_000,
+    fee: 100,
+    memo: MEMO_32_BYTES,
+    nonce: 12,
+  }
+
   it('signs TRANSFER (fastwithdraw signed-transfer flow)', async () => {
-    const signed = await signer.sign(
-      ActionType.TRANSFER,
-      {
-        to_account: 7,
-        usdc_amount: 250_000,
-        fee: 100,
-        memo: MEMO_32_BYTES,
-        nonce: 12,
-      },
-      ctx()
-    )
+    const signed = await signer.signTransfer(TRANSFER_PARAMS, ctx())
     expect(signed.txType).toBe(12)
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
@@ -272,12 +270,42 @@ describe('LighterSigner', () => {
     // Memo is serialized as a byte array — every entry should be 0x61 ('a').
     expect(parsed.Memo).toHaveLength(32)
     expect(parsed.Memo.every((b: number) => b === 0x61)).toBe(true)
+    // L1Sig is empty until the caller injects the wallet signature.
+    expect(parsed.L1Sig).toBe('')
+  })
+
+  it('signTransfer returns the type-12 blob plus the Transfer L1 message body', async () => {
+    const signed = await signer.signTransfer(TRANSFER_PARAMS, ctx())
+    // Byte-for-byte match with lighter-go `TemplateTransfer`
+    // (`types/txtypes/utils.go`) rendered by `GetL1SignatureBody(chainId)` —
+    // each numeric field is `getHex10FromUint64`: 16 zero-padded lowercase hex
+    // digits. Field order: nonce, from account(42) and route, api key index(1),
+    // to account(7) and route, asset(3), amount, fee, chainId(304, the signer
+    // default), memo.
+    const expectedMessage =
+      'Transfer\n\n' +
+      'nonce: 0x000000000000000c\n' +
+      'from: 0x000000000000002a (route 0x0000000000000000)\n' +
+      'api key: 0x0000000000000001\n' +
+      'to: 0x0000000000000007 (route 0x0000000000000000)\n' +
+      'asset: 0x0000000000000003\n' +
+      'amount: 0x000000000003d090\n' +
+      'fee: 0x0000000000000064\n' +
+      'chainId: 0x0000000000000130\n' +
+      `memo: ${'61'.repeat(32)}\n` +
+      'Only sign this message for a trusted client!'
+    expect(signed.messageToSign).toBe(expectedMessage)
+  })
+
+  it('sign() refuses TRANSFER, so no transfer blob leaves without an L1 signature', async () => {
+    await expect(
+      signer.sign(ActionType.TRANSFER, TRANSFER_PARAMS, ctx())
+    ).rejects.toThrow(/Use signTransfer\(\) for TRANSFER/)
   })
 
   it('TRANSFER rejects missing numeric param with a clear error', async () => {
     await expect(
-      signer.sign(
-        ActionType.TRANSFER,
+      signer.signTransfer(
         // missing usdc_amount
         { to_account: 7, fee: 100, memo: MEMO_32_BYTES, nonce: 12 },
         ctx()
@@ -287,8 +315,7 @@ describe('LighterSigner', () => {
 
   it('TRANSFER rejects missing memo (string field) with a clear error', async () => {
     await expect(
-      signer.sign(
-        ActionType.TRANSFER,
+      signer.signTransfer(
         // missing memo
         { to_account: 7, usdc_amount: 250_000, fee: 100, nonce: 12 },
         ctx()
@@ -769,8 +796,7 @@ describe('LighterSigner — per-instance collateral asset', () => {
     signer: LighterSigner,
     ctx: LighterSignerContext
   ) => {
-    const transfer = await signer.sign(
-      ActionType.TRANSFER,
+    const transfer = await signer.signTransfer(
       {
         to_account: 7,
         usdc_amount: 250_000,

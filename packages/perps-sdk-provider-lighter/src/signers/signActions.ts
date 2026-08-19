@@ -84,6 +84,8 @@ export async function signWasmBlobActions(
       signed.push(await signRegisterApiKey(deps, address, step, ctx))
     } else if (step.action === ActionType.APPROVE_INTEGRATOR) {
       signed.push(await signApproveIntegrator(deps, address, step, ctx))
+    } else if (step.action === ActionType.TRANSFER) {
+      signed.push(await signTransfer(deps, address, step, ctx))
     } else if (
       TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
     ) {
@@ -228,6 +230,61 @@ async function signApproveIntegrator(
 
   const apiKey = await requireApiKey(deps, address)
   const signed = await deps.signer.signApproveIntegrator(step.wasmSignParams, {
+    apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
+    apiKeyIndex: apiKey.apiKeyIndex,
+    accountIndex: apiKey.accountIndex,
+  })
+
+  const l1Signature = await walletSigner.signMessage({
+    account: walletSigner.account,
+    message: signed.messageToSign,
+  })
+
+  const txInfoWithL1Sig = deps.signer.embedL1Signature(
+    signed.txInfo,
+    l1Signature
+  )
+
+  return {
+    action: step.action,
+    wasmSignParams: step.wasmSignParams,
+    signedTx: {
+      txType: signed.txType,
+      txInfo: txInfoWithL1Sig,
+      txHash: signed.txHash,
+    },
+  }
+}
+
+/**
+ * TRANSFER flow:
+ *   1. Load the user's stored API key (no keypair generation).
+ *   2. Wasm-sign the `L2Transfer` blob with that key, obtaining the EIP-191
+ *      L1 message the wallet must countersign.
+ *   3. Have the user's L1 Ethereum wallet sign that message.
+ *   4. Inject the L1 signature into the txInfo JSON as `L1Sig`.
+ *
+ * Requires the end-user's wallet in `ctx.userWallet`: the destination account
+ * and the amount are only bound to the account owner by the user's `L1Sig`,
+ * so the stored API key alone must not authorize the move.
+ */
+async function signTransfer(
+  deps: LighterSignActionsDeps,
+  address: Address,
+  step: WasmBlobActionStep,
+  ctx: SignActionsContext | undefined
+): Promise<WasmBlobSignedActionStep> {
+  const walletSigner = ctx?.userWallet
+  if (!walletSigner) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'TRANSFER requires the end-user wallet — pass `userWallet` to ' +
+        'createPerpsClient or call setUserWallet(walletClient).'
+    )
+  }
+
+  const apiKey = await requireApiKey(deps, address)
+  const signed = await deps.signer.signTransfer(step.wasmSignParams, {
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
