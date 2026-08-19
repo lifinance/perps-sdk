@@ -6,7 +6,6 @@ import type { LighterWasmExports } from './wasmLoader.js'
 const WASM_FUNCTION_NAMES = [
   'GenerateAPIKey',
   'CreateClient',
-  'CheckClient',
   'CreateAuthToken',
   'SignChangePubKey',
   'SignCreateOrder',
@@ -128,6 +127,16 @@ describe('loadLighterWasm', () => {
     }
   })
 
+  it('revokes every signer global once the exports object holds it', async () => {
+    const { loadLighterWasm } = await importLoaderWithFakes()
+    const exports = await loadLighterWasm()
+
+    for (const name of WASM_FUNCTION_NAMES) {
+      expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
+      expect(typeof exports[name as keyof LighterWasmExports]).toBe('function')
+    }
+  })
+
   it('memoizes — repeated calls resolve to the identical exports object', async () => {
     const { loadLighterWasm } = await importLoaderWithFakes()
     const first = await loadLighterWasm()
@@ -146,6 +155,19 @@ describe('loadLighterWasm', () => {
     await loadLighterWasm()
 
     expect(WebAssembly.instantiate).toHaveBeenCalledTimes(2)
+  })
+
+  it('recaptures the signers a fresh instance reinstalls after a cache reset', async () => {
+    const { loadLighterWasm, resetLighterWasmCache } =
+      await importLoaderWithFakes()
+    await loadLighterWasm()
+    resetLighterWasmCache()
+    const exports = await loadLighterWasm()
+
+    for (const name of WASM_FUNCTION_NAMES) {
+      expect(typeof exports[name as keyof LighterWasmExports]).toBe('function')
+      expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
+    }
   })
 
   it('throws a descriptive error when an expected export is missing', async () => {
@@ -332,5 +354,27 @@ describe('loadLighterWasm', () => {
       `${notTheBinary.href} is not a WebAssembly module.`
     )
     expect(WebAssembly.instantiate).not.toHaveBeenCalled()
+  })
+})
+
+// The fake runtime above proves the loader's own bookkeeping. Only the packaged
+// Go binary proves that Go dispatch survives the deletion of the globals Go
+// installed for itself. The mocked cases reset the module registry, so the
+// loader has to be imported after that reset to reach the real runtime with no
+// memoized exports.
+describe('loadLighterWasm — packaged Go runtime', () => {
+  it('revokes every signer global and still calls Go through the exports', async () => {
+    vi.resetModules()
+    const { loadLighterWasm } = await import('./wasmLoader.js')
+
+    const exports = await loadLighterWasm()
+
+    for (const name of WASM_FUNCTION_NAMES) {
+      expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
+    }
+    const key = exports.GenerateAPIKey()
+    expect(key.error).toBeUndefined()
+    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
+    expect(key.publicKey).toMatch(/^0x[0-9a-f]+$/i)
   })
 })
