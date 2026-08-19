@@ -76,7 +76,6 @@ const wasm = vi.hoisted(() => {
         createClientCalls.push({ url, chainId, apiKeyIndex, accountIndex })
         return {}
       },
-      CheckClient: () => ({}),
       CreateAuthToken: () => {
         authTokenCalls += 1
         return { authToken: `std-${authTokenCalls}` }

@@ -10,7 +10,6 @@ import {
 export const SIGNER_FUNCTIONS = [
   'GenerateAPIKey',
   'CreateClient',
-  'CheckClient',
   'CreateAuthToken',
   'SignChangePubKey',
   'SignCreateOrder',

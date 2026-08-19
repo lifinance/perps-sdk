@@ -27,7 +27,6 @@ export interface LighterWasmExports {
     apiKeyIndex: number,
     accountIndex: number
   ) => { error?: string }
-  CheckClient: (apiKeyIndex: number, accountIndex: number) => { error?: string }
   /**
    * Returns `{authToken}` on success — note the field name is `authToken`,
    * NOT `token`. Reading the wrong field silently fails (Go sets nothing
@@ -143,7 +142,6 @@ export interface SignResult {
 const WASM_FUNCTION_NAMES = [
   'GenerateAPIKey',
   'CreateClient',
-  'CheckClient',
   'CreateAuthToken',
   'SignChangePubKey',
   'SignCreateOrder',
@@ -304,9 +302,14 @@ async function loadWasmUncached(): Promise<LighterWasmExports> {
   // Wait microtasks to let Go's init() register JS-bound functions.
   await yieldToGoRuntime()
 
+  // Go's main.go only calls `js.Global().Set(name, ...)`; it never reads those
+  // names back, so dispatch survives the deletion while the captured handle
+  // keeps working. Left installed, they let any same-origin script sign with
+  // the API key held inside the instance. Never restore them for convenience.
+  const globals = globalThis as Record<string, unknown>
   const exports: Partial<LighterWasmExports> = {}
   for (const name of WASM_FUNCTION_NAMES) {
-    const fn = (globalThis as Record<string, unknown>)[name]
+    const fn = globals[name]
     if (typeof fn !== 'function') {
       throw new Error(
         `Lighter WASM did not export expected function: ${name}. ` +
@@ -314,6 +317,7 @@ async function loadWasmUncached(): Promise<LighterWasmExports> {
       )
     }
     ;(exports as Record<string, unknown>)[name] = fn
+    delete globals[name]
   }
 
   return exports as LighterWasmExports
