@@ -1,5 +1,23 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 13.0.0
+
+### Major Changes
+
+- [#348](https://github.com/lifinance/perps-sdk/pull/348) [`6bcfc26`](https://github.com/lifinance/perps-sdk/commit/6bcfc2674c1b922f59903732681af191068eb690) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `TRANSFER` now collects the user's L1 wallet signature and embeds it as `txInfo.L1Sig`, so the stored API key alone cannot move USDC to an L1 address the account owner never approved. **Breaking:** a `TRANSFER` step now requires `userWallet`, and `LighterSigner.sign()` throws for `TRANSFER` — callers must use the new `LighterSigner.signTransfer()`. `SEND_ASSET` is unchanged: the same-account route move stays on the bare signer call, prompts no wallet, and keeps `L1Sig` empty.
+
+### Patch Changes
+
+- [#343](https://github.com/lifinance/perps-sdk/pull/343) [`d0d7ac8`](https://github.com/lifinance/perps-sdk/commit/d0d7ac8133e3fb37a8ff7f340222f132fc39f1d2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Bump viem to 2.55.18 to resolve the vulnerable ws@8.18.3 transitive dependency.
+
+- [#349](https://github.com/lifinance/perps-sdk/pull/349) [`3cff5fc`](https://github.com/lifinance/perps-sdk/commit/3cff5fccb593e7529de5e8e6423d01d9c28be9fc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The published `@example` blocks and READMEs no longer show the optional `integrator` field. The API key is the identity the backend resolves.
+
+- [#351](https://github.com/lifinance/perps-sdk/pull/351) [`074414b`](https://github.com/lifinance/perps-sdk/commit/074414b08e2ac9eff11105d2372ef2d67558fb93) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the provider-voting surface: the `ActionType.META_VOTE` action, the vote types (`VoteDirection`, `VoteType`, `VoteParams`, `VoteMessage`, `voteTypeFields`, `VoteTypedData`), and the `Provider.upVotes` and `Provider.downVotes` fields. `META_PROVIDER` and `MetaProvider` move to a new `metaProvider` module and keep the same names, values, and root export. `@lifi/perps-sdk` re-exports `@lifi/perps-types` from its root, so the removed symbols leave its published surface too.
+
+- Updated dependencies [[`106b3cd`](https://github.com/lifinance/perps-sdk/commit/106b3cdf4523c02c4add4b1342377712b9359e38), [`d0d7ac8`](https://github.com/lifinance/perps-sdk/commit/d0d7ac8133e3fb37a8ff7f340222f132fc39f1d2), [`130c9bd`](https://github.com/lifinance/perps-sdk/commit/130c9bd18f522205273ab1a8ba2565391d75ff19), [`074414b`](https://github.com/lifinance/perps-sdk/commit/074414b08e2ac9eff11105d2372ef2d67558fb93)]:
+  - @lifi/perps-sdk@7.0.0
+  - @lifi/perps-types@7.0.0
+
 ## 12.1.1
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @lifi/perps-sdk
 
+## 7.0.0
+
+### Major Changes
+
+- [#351](https://github.com/lifinance/perps-sdk/pull/351) [`074414b`](https://github.com/lifinance/perps-sdk/commit/074414b08e2ac9eff11105d2372ef2d67558fb93) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the provider-voting surface: the `ActionType.META_VOTE` action, the vote types (`VoteDirection`, `VoteType`, `VoteParams`, `VoteMessage`, `voteTypeFields`, `VoteTypedData`), and the `Provider.upVotes` and `Provider.downVotes` fields. `META_PROVIDER` and `MetaProvider` move to a new `metaProvider` module and keep the same names, values, and root export. `@lifi/perps-sdk` re-exports `@lifi/perps-types` from its root, so the removed symbols leave its published surface too.
+
+### Minor Changes
+
+- [#345](https://github.com/lifinance/perps-sdk/pull/345) [`106b3cd`](https://github.com/lifinance/perps-sdk/commit/106b3cdf4523c02c4add4b1342377712b9359e38) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `integrator` is now optional in the perps client configuration. The SDK sends `x-lifi-integrator` only when you set both `apiKey` and `integrator`, and a client without an API key sends neither identity header and receives the backend's default fee identity.
+
+  `PerpsBaseConfig.integrator`, which `client.config` exposes, is now `string | undefined`. Read it with an optional type. A strict TypeScript consumer that assigns `client.config.integrator` to a `string` must narrow the value first.
+
+  `apiKey` and `integrator` are trimmed at construction. A whitespace-only value becomes absent, so the SDK never sends a placeholder identity header.
+
+### Patch Changes
+
+- [#343](https://github.com/lifinance/perps-sdk/pull/343) [`d0d7ac8`](https://github.com/lifinance/perps-sdk/commit/d0d7ac8133e3fb37a8ff7f340222f132fc39f1d2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Bump viem to 2.55.18 to resolve the vulnerable ws@8.18.3 transitive dependency.
+
+- Updated dependencies [[`130c9bd`](https://github.com/lifinance/perps-sdk/commit/130c9bd18f522205273ab1a8ba2565391d75ff19), [`074414b`](https://github.com/lifinance/perps-sdk/commit/074414b08e2ac9eff11105d2372ef2d67558fb93)]:
+  - @lifi/perps-types@7.0.0
+
 ## 6.6.0
 
 ### Minor Changes

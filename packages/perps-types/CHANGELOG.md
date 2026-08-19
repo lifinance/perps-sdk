@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 7.0.0
+
+### Major Changes
+
+- [#351](https://github.com/lifinance/perps-sdk/pull/351) [`074414b`](https://github.com/lifinance/perps-sdk/commit/074414b08e2ac9eff11105d2372ef2d67558fb93) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the provider-voting surface: the `ActionType.META_VOTE` action, the vote types (`VoteDirection`, `VoteType`, `VoteParams`, `VoteMessage`, `voteTypeFields`, `VoteTypedData`), and the `Provider.upVotes` and `Provider.downVotes` fields. `META_PROVIDER` and `MetaProvider` move to a new `metaProvider` module and keep the same names, values, and root export. `@lifi/perps-sdk` re-exports `@lifi/perps-types` from its root, so the removed symbols leave its published surface too.
+
+### Minor Changes
+
+- [#344](https://github.com/lifinance/perps-sdk/pull/344) [`130c9bd`](https://github.com/lifinance/perps-sdk/commit/130c9bd18f522205273ab1a8ba2565391d75ff19) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add PerpsErrorCode.RateLimitExceeded (2090) for a spent request budget, so clients name the HTTP 429 refusal from the shared enum instead of comparing against a local literal.
+
 ## 6.0.0
 
 ### Major Changes
