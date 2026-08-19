@@ -1,10 +1,7 @@
 import {
   type AcceptTermsParams,
   ActionType,
-  type CreateActionResponse,
   META_PROVIDER,
-  type VoteParams,
-  voteTypeFields,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -77,63 +74,6 @@ describe('createAction', () => {
     })
 
     expect(body.signerAddress).toBe(SIGNER)
-  })
-
-  it('POSTs a META_VOTE on the generic path with the meta sentinel as provider', async () => {
-    const voteParams: VoteParams = {
-      targetProvider: 'driftv2',
-      direction: 'up',
-      voteType: 'provider',
-    }
-    const mockVoteCreateResponse: CreateActionResponse = {
-      actions: [
-        {
-          action: ActionType.META_VOTE,
-          typedData: {
-            domain: { name: 'LIFI Perps', version: '1', chainId: 1 },
-            types: { Vote: voteTypeFields },
-            primaryType: 'Vote',
-            message: {
-              targetProvider: 'driftv2',
-              direction: 'up',
-              voteType: 'provider',
-              voter: ADDRESS,
-              timestamp: 1_900_000_000_000,
-            },
-          },
-        },
-      ],
-    }
-
-    let url: string | undefined
-    let body: unknown
-    server.use(
-      http.post(`${DEFAULT_API_URL}/createAction`, async ({ request }) => {
-        url = request.url
-        body = await request.json()
-        return HttpResponse.json(mockVoteCreateResponse)
-      })
-    )
-
-    const result = await createAction(client, {
-      provider: META_PROVIDER,
-      address: ADDRESS,
-      action: ActionType.META_VOTE,
-      params: voteParams,
-    })
-
-    // The vote rides /createAction, never a bespoke /vote route.
-    expect(url?.endsWith('/createAction')).toBe(true)
-    expect(body).toEqual({
-      provider: 'meta',
-      address: ADDRESS,
-      action: ActionType.META_VOTE,
-      params: voteParams,
-    })
-    expect(result.actions[0].action).toBe(ActionType.META_VOTE)
-    expect(result.actions[0]).toMatchObject({
-      typedData: { primaryType: 'Vote' },
-    })
   })
 
   it('POSTs a META_ACCEPT_TERMS on the generic path with the meta sentinel as provider', async () => {

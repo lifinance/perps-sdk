@@ -7,8 +7,8 @@ import {
 } from './acceptTerms.js'
 import type { ActionParamsMap, CreateActionRequest } from './action.js'
 import { ActionType } from './enums.js'
+import { META_PROVIDER } from './metaProvider.js'
 import type { Address } from './primitives.js'
-import { META_PROVIDER } from './vote.js'
 
 const ACCEPTOR: Address = '0x0000000000000000000000000000000000000007'
 

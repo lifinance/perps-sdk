@@ -4,7 +4,7 @@ import type { PerpsTypedData, TypedDataParameter } from './typedData.js'
 /**
  * Params for an {@link "./enums.js".ActionType.META_ACCEPT_TERMS} action.
  *
- * Provider-independent: cast with the {@link "./vote.js".META_PROVIDER}
+ * Provider-independent: cast with the {@link "./metaProvider.js".META_PROVIDER}
  * sentinel in the transport `provider` field.
  * @public
  */

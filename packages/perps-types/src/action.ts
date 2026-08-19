@@ -13,7 +13,6 @@ import type {
 import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
 import type { PerpsTypedData } from './typedData.js'
-import type { VoteParams } from './vote.js'
 
 /**
  * Unsigned EIP-712 action step containing typed data for client signing.
@@ -617,7 +616,6 @@ export interface ActionParamsMap {
   [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
   [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
-  [ActionType.META_VOTE]: VoteParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
 }
 
