@@ -1,9 +1,8 @@
-import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { createPerpsClient, DEFAULT_API_URL } from './createPerpsClient.js'
 
 describe('createPerpsClient', () => {
-  it('should create client with required integrator', () => {
+  it('should create client with an integrator', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
       apiKey: 'test-key',
@@ -11,6 +10,13 @@ describe('createPerpsClient', () => {
 
     expect(client.config.integrator).toBe('test-app')
     expect(client.config.apiUrl).toBe(DEFAULT_API_URL)
+  })
+
+  it('should create client without an integrator', () => {
+    const client = createPerpsClient({ apiKey: 'test-key' })
+
+    expect(client.config.integrator).toBeUndefined()
+    expect(client.config.apiKey).toBe('test-key')
   })
 
   it('should use custom apiUrl when provided', () => {
@@ -32,18 +38,11 @@ describe('createPerpsClient', () => {
     expect(client.config.apiKey).toBe('secret-key')
   })
 
-  it('should throw when integrator is missing', () => {
-    expect(() =>
-      createPerpsClient({ integrator: '', apiKey: 'test-key' })
-    ).toThrow()
-  })
+  it('should create client without an api key', () => {
+    const client = createPerpsClient({ apiKey: '' })
 
-  it('should include correct error code when integrator is missing', () => {
-    try {
-      createPerpsClient({ integrator: '', apiKey: 'test-key' })
-    } catch (error: any) {
-      expect(error.code).toBe(PerpsErrorCode.SDKError)
-    }
+    expect(client.config.apiKey).toBe('')
+    expect(client.config.integrator).toBeUndefined()
   })
 
   it('should support requestInterceptor', async () => {
@@ -57,6 +56,29 @@ describe('createPerpsClient', () => {
 
     expect(client.config.requestInterceptor).toBeDefined()
     expect(typeof client.config.requestInterceptor).toBe('function')
+  })
+
+  it('should normalize a whitespace-only apiKey and integrator away', () => {
+    const client = createPerpsClient({ apiKey: '   ', integrator: '  ' })
+
+    expect(client.config.apiKey).toBe('')
+    expect(client.config.integrator).toBeUndefined()
+  })
+
+  it('should trim surrounding whitespace from apiKey and integrator', () => {
+    const client = createPerpsClient({
+      apiKey: '  test-key  ',
+      integrator: '  test-app  ',
+    })
+
+    expect(client.config.apiKey).toBe('test-key')
+    expect(client.config.integrator).toBe('test-app')
+  })
+
+  it('should store an empty integrator as undefined', () => {
+    const client = createPerpsClient({ apiKey: 'test-key', integrator: '' })
+
+    expect(client.config.integrator).toBeUndefined()
   })
 
   it('should create immutable config', () => {

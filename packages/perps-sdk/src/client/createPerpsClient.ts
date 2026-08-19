@@ -1,5 +1,3 @@
-import { PerpsErrorCode } from '@lifi/perps-types'
-import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsConfig } from '../types/api.js'
 import type { PerpsBaseConfig, ProviderConfigs } from '../types/config.js'
 import type {
@@ -21,11 +19,9 @@ export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
  * end-user wallet, and provider registry — shared by the service functions and
  * the higher-level {@link PerpsClient}.
  *
- * @throws {PerpsError} When `options.integrator` is missing.
  * @example
  * ```ts
  * const client = createPerpsClient({
- *   integrator: 'my-app',
  *   apiKey: 'key',
  *   providers: [hyperliquidProvider()],
  * })
@@ -33,21 +29,12 @@ export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
  * @public
  */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
-  if (!options.integrator) {
-    const error = new PerpsError(
-      PerpsErrorCode.SDKError,
-      'Integrator is required. Please see documentation at https://docs.li.fi'
-    )
-    error.tool = '@lifi/perps-sdk'
-    throw error
-  }
-
   const apiUrl = options.apiUrl ?? DEFAULT_API_URL
   const { providerPlugins, providerConfigs } = splitProviders(options.providers)
 
   const config: PerpsBaseConfig = {
-    integrator: options.integrator,
-    apiKey: options.apiKey,
+    integrator: options.integrator?.trim() || undefined,
+    apiKey: options.apiKey?.trim() ?? '',
     apiUrl,
     disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,

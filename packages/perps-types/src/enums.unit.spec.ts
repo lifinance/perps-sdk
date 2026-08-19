@@ -78,6 +78,46 @@ describe('PerpsErrorCode.FeatureUnavailable', () => {
   })
 })
 
+describe('PerpsErrorCode.RateLimitExceeded', () => {
+  it('carries the rate-limit-range value 2090', () => {
+    expect(PerpsErrorCode.RateLimitExceeded).toBe(2090)
+  })
+
+  it('does not collide with an existing PerpsErrorCode value', () => {
+    const namesOnValue = Object.entries(PerpsErrorCode)
+      .filter(([, value]) => value === PerpsErrorCode.RateLimitExceeded)
+      .map(([name]) => name)
+
+    expect(namesOnValue).toEqual(['RateLimitExceeded'])
+  })
+
+  it('is distinct from the codes a client could otherwise conflate it with', () => {
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.ServerError
+    )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.TimeoutError
+    )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.ThirdPartyError
+    )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.FeatureUnavailable
+    )
+    expect(PerpsErrorCode.RateLimitExceeded).not.toBe(
+      PerpsErrorCode.SetupRequired
+    )
+  })
+
+  it('is the only member in the documented 2090-2099 rate-limit range', () => {
+    const inRange = Object.entries(PerpsErrorCode).filter(
+      ([, value]) => typeof value === 'number' && value >= 2090 && value <= 2099
+    )
+
+    expect(inRange).toEqual([['RateLimitExceeded', 2090]])
+  })
+})
+
 describe('PerpsErrorCode wire compatibility', () => {
   it('keeps every previously published code on its published value', () => {
     const published = {
