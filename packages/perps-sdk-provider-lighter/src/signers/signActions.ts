@@ -126,18 +126,21 @@ export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
       } catch (err) {
         // A transport failure or a non-success body proves nothing about the
         // slot, so the venue decides. A failed check never blocks a signature.
+        // The code names the failure without the response body, which lists
+        // the account's other key slots.
         console.warn(
           '[lighter] could not read the registered API key before signing; ' +
             'signing anyway and letting the venue decide.',
-          err
+          err instanceof PerpsError ? err.code : String(err)
         )
+        checkedAtMs.set(windowKey, Date.now())
         return
       }
-      // No entry for the slot leaves nothing to compare against.
-      if (registered === undefined) {
-        return
-      }
-      if (normalizeLighterPublicKey(registered.public_key) !== storedKey) {
+      // A slot carrying no entry leaves nothing to compare against.
+      if (
+        registered !== undefined &&
+        normalizeLighterPublicKey(registered.public_key) !== storedKey
+      ) {
         throw new PerpsError(
           PerpsErrorCode.SDKError,
           `The Lighter API key stored for ${address} is no longer registered: ` +
@@ -145,6 +148,9 @@ export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
             'Run prepareAccount / REGISTER_API_KEY to register a fresh key.'
         )
       }
+      // Every read the venue answered counts against the window, so a burst
+      // costs one read whatever the verdict. A mismatch throws above, so it
+      // never records and the next batch reads again.
       checkedAtMs.set(windowKey, Date.now())
     },
   }

@@ -328,6 +328,11 @@ describe('lighterProvider() — custom generic storage', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        // This suite asserts on storage, not on registration state: an empty
+        // slot leaves the freshness guard nothing to compare and signs on.
+        if (u.includes('/api/v1/apikeys')) {
+          return respond({ code: 200, api_keys: [] })
+        }
         if (u.includes('/api/v1/account')) {
           return respond(ACCOUNT_PAYLOAD)
         }
