@@ -1,11 +1,15 @@
-import { createMemoryStorage, type SignActionProgress } from '@lifi/perps-sdk'
+import {
+  createMemoryStorage,
+  PerpsError,
+  type SignActionProgress,
+} from '@lifi/perps-sdk'
 import type {
   EvmTxActionStep,
   EvmTxSignedActionStep,
   WasmBlobActionStep,
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, SigningMethod } from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
@@ -14,13 +18,21 @@ import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
 import {
+  createLighterApiKeyFreshness,
   type LighterSignActionsDeps,
   lighterSignActions,
 } from './signActions.js'
 
 type PostFormResult = { status: number; data: unknown }
 type PostFormImpl = (path: string, params: ApiParams) => Promise<PostFormResult>
+type GetImpl = (path: string, params?: ApiParams) => Promise<unknown>
 const OK_MUTATION: PostFormResult = { status: 200, data: { code: 200 } }
+
+/** Venue slot state that matches the API key every test stores. */
+const REGISTERED_API_KEYS = {
+  code: 200,
+  api_keys: [{ api_key_index: 42, public_key: '0xdef' }],
+}
 
 const ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
@@ -60,12 +72,14 @@ const TRANSFER_SIGNED = {
 
 function makeDeps(
   overrides: Partial<LighterSigner> = {},
-  postFormImpl?: PostFormImpl
+  postFormImpl?: PostFormImpl,
+  getImpl?: GetImpl
 ): {
   deps: LighterSignActionsDeps
   signer: { [K in keyof LighterSigner]?: unknown }
   keyStore: LighterKeyStore
-  postForm: ReturnType<typeof vi.fn>
+  postForm: Mock
+  get: Mock
 } {
   const baseSigner = {
     sign: vi.fn(async () => STD_SIGNED),
@@ -86,17 +100,20 @@ function makeDeps(
   const signer = { ...baseSigner, ...overrides } as unknown as LighterSigner
   const keyStore = new LighterKeyStore(createMemoryStorage())
   const postForm = vi.fn(postFormImpl ?? (async () => OK_MUTATION))
-  const apiClient = { postForm } as unknown as LighterApiClient
+  const get = vi.fn(getImpl ?? (async () => REGISTERED_API_KEYS))
+  const apiClient = { get, postForm } as unknown as LighterApiClient
   return {
     deps: {
       signer,
       keyStore,
       apiClient,
+      apiKeyFreshness: createLighterApiKeyFreshness(),
       resolveAccountIndex: vi.fn(async () => 99),
     },
     signer: signer as unknown as { [K in keyof LighterSigner]?: unknown },
     keyStore,
     postForm,
+    get,
   }
 }
 
@@ -142,6 +159,269 @@ describe('lighterSignActions', () => {
       await expect(
         lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
       ).rejects.toThrow(/No Lighter API key registered/)
+    })
+  })
+
+  describe('WASM_BLOB — registered-key freshness', () => {
+    const orderStep: WasmBlobActionStep = {
+      action: ActionType.PLACE_ORDER,
+      wasmSignParams: { market_index: 0, nonce: 1 },
+    }
+    const registerStep: WasmBlobActionStep = {
+      action: ActionType.REGISTER_API_KEY,
+      wasmSignParams: { api_key_index: 42, nonce: 7 },
+    }
+    const ROTATED_API_KEYS = {
+      code: 200,
+      api_keys: [{ api_key_index: 42, public_key: '0xrotated' }],
+    }
+    const EMPTY_SLOT_API_KEYS = { code: 200, api_keys: [] }
+
+    async function setStoredKey(keyStore: LighterKeyStore): Promise<void> {
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+    }
+
+    it('rejects a rotated slot with the setup-gate code before any signature', async () => {
+      const { deps, signer, keyStore } = makeDeps(
+        undefined,
+        undefined,
+        async () => ROTATED_API_KEYS
+      )
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [orderStep], ADDRESS)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining('no longer registered'),
+      })
+      expect(signer.sign).not.toHaveBeenCalled()
+    })
+
+    it('signs a matching slot after a single extra request', async () => {
+      const { deps, signer, keyStore, get } = makeDeps()
+      await setStoredKey(keyStore)
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [orderStep],
+        ADDRESS
+      )
+
+      expect(result).toHaveLength(1)
+      expect(signer.sign).toHaveBeenCalledOnce()
+      expect(get.mock.calls).toEqual([
+        ['/api/v1/apikeys', { account_index: 99 }],
+      ])
+    })
+
+    it.each([
+      {
+        label: 'a transport failure',
+        getImpl: async (): Promise<unknown> => {
+          throw new Error('network unreachable')
+        },
+        logged: 'Error: network unreachable',
+      },
+      {
+        label: 'a non-success body',
+        getImpl: async (): Promise<unknown> => {
+          throw new PerpsError(
+            PerpsErrorCode.ThirdPartyError,
+            'Lighter API error for /api/v1/apikeys: code 21100 — ' +
+              '{"api_keys":[{"public_key":"0xrotated"}]}'
+          )
+        },
+        logged: PerpsErrorCode.ThirdPartyError,
+      },
+    ])('signs anyway when the freshness read ends in $label', async ({
+      getImpl,
+      logged,
+    }) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { deps, signer, keyStore } = makeDeps(
+          undefined,
+          undefined,
+          getImpl
+        )
+        await setStoredKey(keyStore)
+
+        const result = await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [orderStep],
+          ADDRESS
+        )
+
+        expect(result).toHaveLength(1)
+        expect(signer.sign).toHaveBeenCalledOnce()
+        // The response body names the account's other key slots, so only the
+        // failure category reaches the log.
+        expect(warn).toHaveBeenCalledOnce()
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('could not read the registered API key'),
+          logged
+        )
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('skips the check for a batch that registers a new key', async () => {
+      const { deps, signer, keyStore, get } = makeDeps(
+        undefined,
+        undefined,
+        async () => ROTATED_API_KEYS
+      )
+      await setStoredKey(keyStore)
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xl1sig'),
+      }
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [registerStep, orderStep],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )
+
+      expect(result).toHaveLength(2)
+      expect(get).not.toHaveBeenCalled()
+      expect(signer.sign).toHaveBeenCalledOnce()
+    })
+
+    it('reads the slot once for a burst of batches inside the window', async () => {
+      vi.useFakeTimers()
+      try {
+        const { deps, keyStore, get } = makeDeps()
+        await setStoredKey(keyStore)
+
+        for (let i = 0; i < 3; i++) {
+          await lighterSignActions(
+            deps,
+            SigningMethod.WASM_BLOB,
+            [orderStep],
+            ADDRESS
+          )
+        }
+        expect(get).toHaveBeenCalledOnce()
+
+        // Past the 30s window the next batch re-reads the slot.
+        vi.advanceTimersByTime(31_000)
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [orderStep],
+          ADDRESS
+        )
+        expect(get).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('signs a slot the venue reports no entry for', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { deps, signer, keyStore } = makeDeps(
+          undefined,
+          undefined,
+          async () => EMPTY_SLOT_API_KEYS
+        )
+        await setStoredKey(keyStore)
+
+        const result = await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [orderStep],
+          ADDRESS
+        )
+
+        expect(result).toHaveLength(1)
+        expect(signer.sign).toHaveBeenCalledOnce()
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('reads the slot once for a batch of several steps', async () => {
+      const { deps, signer, keyStore, get } = makeDeps()
+      await setStoredKey(keyStore)
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [orderStep, orderStep, orderStep],
+        ADDRESS
+      )
+
+      expect(result).toHaveLength(3)
+      expect(signer.sign).toHaveBeenCalledTimes(3)
+      expect(get).toHaveBeenCalledOnce()
+    })
+
+    it.each([
+      {
+        label: 'a read the venue never answered',
+        getImpl: async (): Promise<unknown> => {
+          throw new Error('network unreachable')
+        },
+      },
+      {
+        label: 'a slot the venue reports no entry for',
+        getImpl: async (): Promise<unknown> => EMPTY_SLOT_API_KEYS,
+      },
+    ])('holds the window after $label', async ({ getImpl }) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { deps, keyStore, get } = makeDeps(undefined, undefined, getImpl)
+        await setStoredKey(keyStore)
+
+        for (let i = 0; i < 2; i++) {
+          await lighterSignActions(
+            deps,
+            SigningMethod.WASM_BLOB,
+            [orderStep],
+            ADDRESS
+          )
+        }
+
+        expect(get).toHaveBeenCalledOnce()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('re-reads a rotated slot on the next batch', async () => {
+      const { deps, keyStore, get } = makeDeps(
+        undefined,
+        undefined,
+        async () => ROTATED_API_KEYS
+      )
+      await setStoredKey(keyStore)
+
+      for (let i = 0; i < 2; i++) {
+        await expect(
+          lighterSignActions(
+            deps,
+            SigningMethod.WASM_BLOB,
+            [orderStep],
+            ADDRESS
+          )
+        ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+      }
+
+      expect(get).toHaveBeenCalledTimes(2)
     })
   })
 

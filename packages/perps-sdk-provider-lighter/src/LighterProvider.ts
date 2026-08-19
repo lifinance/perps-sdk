@@ -76,7 +76,10 @@ import { createAuthToken } from './signers/createAuthToken.js'
 import { LighterKeyStore } from './signers/LighterKeyStore.js'
 import { LighterReadOnlyTokenManager } from './signers/LighterReadOnlyTokenManager.js'
 import { LighterSigner } from './signers/LighterSigner.js'
-import { lighterSignActions } from './signers/signActions.js'
+import {
+  createLighterApiKeyFreshness,
+  lighterSignActions,
+} from './signers/signActions.js'
 import type {
   LtAccountLimits,
   LtDepositHistoryResponse,
@@ -119,6 +122,10 @@ import {
   toRequiredBig,
 } from './utils/index.js'
 import { mapRunningTwap } from './utils/mapTwap.js'
+import {
+  fetchRegisteredApiKey,
+  normalizeLighterPublicKey,
+} from './utils/registeredApiKey.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -169,10 +176,6 @@ interface ReadOnlyCreationBackoff {
   retryAtMs: number
   attempt: number
 }
-
-/** Compare Lighter public keys irrespective of `0x` prefix / casing. */
-const normalizeLighterPublicKey = (key: string): string =>
-  key.replace(/^0x/i, '').toLowerCase()
 
 /**
  * Consumer-level overrides for a ready-made Lighter provider plugin. Every
@@ -285,6 +288,7 @@ export const createLighterProvider = (
     collateralAssetIndex: collateral.assetIndex,
   })
   const keyStore = new LighterKeyStore(storage, providerKey)
+  const apiKeyFreshness = createLighterApiKeyFreshness()
   const readOnlyTokenManager = new LighterReadOnlyTokenManager({
     storage,
     providerKey,
@@ -516,18 +520,6 @@ export const createLighterProvider = (
       }
       throw err
     }
-  }
-
-  const fetchRegisteredApiKey = async (
-    client: LighterApiClient,
-    accountIndex: number,
-    apiKeyIndex: number
-  ): Promise<{ api_key_index: number; public_key: string } | undefined> => {
-    const response = await client.get<{
-      code: number
-      api_keys: Array<{ api_key_index: number; public_key: string }>
-    }>('/api/v1/apikeys', { account_index: accountIndex })
-    return response.api_keys?.find((k) => k.api_key_index === apiKeyIndex)
   }
 
   const fetchAccountLimits = (
@@ -1449,6 +1441,7 @@ export const createLighterProvider = (
           signer,
           keyStore,
           apiClient: apiClient(),
+          apiKeyFreshness,
           resolveAccountIndex: async (addr) => {
             const apiKey = await keyStore.get(addr)
             if (apiKey !== null) {
