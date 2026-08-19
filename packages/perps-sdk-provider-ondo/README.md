@@ -26,7 +26,6 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { ondoProvider } from '@lifi/perps-sdk-provider-ondo'
 
 const client = createPerpsClient({
-  integrator: 'my-app',
   apiKey: 'your-api-key',
   providers: [ondoProvider()],
 })

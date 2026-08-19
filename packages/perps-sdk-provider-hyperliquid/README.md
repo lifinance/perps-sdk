@@ -24,7 +24,6 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 
 const client = createPerpsClient({
-  integrator: 'my-app',
   apiKey: 'your-api-key',
   providers: [hyperliquidProvider()],
 })

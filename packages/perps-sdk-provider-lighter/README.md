@@ -24,7 +24,6 @@ import { createPerpsClient } from '@lifi/perps-sdk'
 import { lighterProvider, lighterRhProvider } from '@lifi/perps-sdk-provider-lighter'
 
 const client = createPerpsClient({
-  integrator: 'my-app',
   apiKey: 'your-api-key',
   providers: [lighterProvider(), lighterRhProvider()],
 })
