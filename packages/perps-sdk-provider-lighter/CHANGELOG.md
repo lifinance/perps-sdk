@@ -1,5 +1,15 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 13.0.1
+
+### Patch Changes
+
+- [#352](https://github.com/lifinance/perps-sdk/pull/352) [`b306dfe`](https://github.com/lifinance/perps-sdk/commit/b306dfe2a7c967885daaf66563f7e7f1757bf958) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lift the shared L1-countersign flow in the Lighter signActions module so APPROVE_INTEGRATOR and TRANSFER route through one helper instead of duplicated logic.
+
+- [#353](https://github.com/lifinance/perps-sdk/pull/353) [`36f0730`](https://github.com/lifinance/perps-sdk/commit/36f0730824e75996fa66ac41a0ef35287e9df772) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove captured Lighter signer functions from the global scope after the SDK loads them.
+
+  Drop the unused `CheckClient` entry from the exported `LighterWasmExports` type. The WASM binary still exports the function; the SDK no longer captures it, and no known consumer reads it.
+
 ## 13.0.0
 
 ### Major Changes
