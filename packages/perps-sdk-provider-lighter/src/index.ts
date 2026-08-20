@@ -20,7 +20,6 @@ export type {
   LighterDeployment,
 } from './constants.js'
 export {
-  DEFAULT_API_KEY_INDEX,
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_LIGHTER_WS_URL,

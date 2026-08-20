@@ -556,18 +556,17 @@ export interface CancelAllOrdersParams {
 }
 
 /**
- * Parameters for registering a provider API key in a specific slot.
+ * Parameters for registering a provider API key. The backend selects the key
+ * slot, so a caller never names one.
  *
  * @public
  */
 export interface RegisterApiKeyParams {
-  /** The API key slot index to register (0-255). Reusing a fixed slot overwrites the old key. */
-  apiKeyIndex: number
   /**
-   * The SDK's currently-stored Lighter public key for this slot, if any. The
-   * backend returns `[]` (already satisfied) only when this equals the
-   * on-chain pubkey at the slot; otherwise it stages a ChangePubKey blob so
-   * the slot can be (re-)registered. Omit when the SDK has no local key.
+   * The SDK's currently-stored Lighter public key, if any. The backend
+   * returns `[]` (already satisfied) only when this equals the on-chain pubkey
+   * at the slot it selects; otherwise it stages a ChangePubKey blob so the
+   * slot can be (re-)registered. Omit when the SDK has no local key.
    */
   knownPublicKey?: string
 }

@@ -21,7 +21,7 @@ const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 export interface LighterApiKey {
   /** Lighter account index, looked up once via accountsByL1Address. */
   accountIndex: number
-  /** API key slot (0-255). Defaults to {@link DEFAULT_API_KEY_INDEX}. */
+  /** API key slot (0-255), as named by the backend registration payload. */
   apiKeyIndex: number
   /** Lighter-native private key (0x-prefixed hex). */
   apiKeyPrivateKey: string

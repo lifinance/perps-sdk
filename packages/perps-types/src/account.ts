@@ -449,7 +449,11 @@ export type LighterProviderKey = 'lighter' | 'lighter-rh'
 export interface LighterAccountConfig {
   provider: LighterProviderKey
   accountIndex: number
-  apiKeyIndex: number
+  /**
+   * Slot of the API key the SDK holds for this address, as named by the
+   * backend when it registered the key. Absent while the SDK holds no key.
+   */
+  apiKeyIndex?: number
   apiKeyRegistered: boolean
   accountType: number
   /** Lighter `account_trading_mode`: 0 = Classic/Simple, 1 = Unified. */

@@ -11,10 +11,7 @@ import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { parseAbi } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
-import {
-  DEFAULT_API_KEY_INDEX,
-  LIGHTER_MUTATION_SUCCESS_CODE,
-} from '../constants.js'
+import { LIGHTER_MUTATION_SUCCESS_CODE } from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import {
   fetchRegisteredApiKey,
@@ -260,7 +257,13 @@ async function signRegisterApiKey(
     nonce?: number
     skip_nonce?: 0 | 1
   }
-  const apiKeyIndex = params.api_key_index ?? DEFAULT_API_KEY_INDEX
+  const apiKeyIndex = params.api_key_index
+  if (typeof apiKeyIndex !== 'number') {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'REGISTER_API_KEY wasmSignParams is missing `api_key_index`.'
+    )
+  }
   const nonce = params.nonce
   if (typeof nonce !== 'number') {
     throw new PerpsError(
