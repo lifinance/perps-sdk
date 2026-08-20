@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 8.0.0
+
+### Major Changes
+
+- [#357](https://github.com/lifinance/perps-sdk/pull/357) [`02b7dfd`](https://github.com/lifinance/perps-sdk/commit/02b7dfdd689fcc598232ca4f28921e788234a230) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Remove the SDK's Lighter API-key slot opinion. `RegisterApiKeyParams` is now `{ knownPublicKey?: string }`, the `DEFAULT_API_KEY_INDEX` export is gone, and `LighterAccountConfig.apiKeyIndex` is optional: the SDK records the slot from the backend registration payload and reads that record for every signature, auth token, and setup check.
+
 ## 7.0.0
 
 ### Major Changes
