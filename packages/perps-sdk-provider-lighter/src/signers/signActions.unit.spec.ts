@@ -502,6 +502,60 @@ describe('lighterSignActions', () => {
         })
       ).rejects.toThrow(/missing `nonce`/)
     })
+
+    it('signs a later batch with the slot the registration payload named', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xl1sig'),
+      }
+      const registerStep: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { api_key_index: 9, nonce: 42 },
+      }
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [registerStep],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )
+
+      expect(await keyStore.get(ADDRESS)).toMatchObject({ apiKeyIndex: 9 })
+
+      const orderStep: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: { market_index: 0, nonce: 1 },
+      }
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [orderStep],
+        ADDRESS
+      )
+
+      expect((signer.sign as Mock).mock.calls[0]).toEqual([
+        ActionType.PLACE_ORDER,
+        { market_index: 0, nonce: 1 },
+        { apiKeyPrivateKey: '0xpriv', apiKeyIndex: 9, accountIndex: 99 },
+      ])
+    })
+
+    it('throws when wasmSignParams names no `api_key_index`', async () => {
+      const { deps } = makeDeps()
+      const step: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { nonce: 42 },
+      }
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS, {
+          userWallet: {
+            account: { address: ADDRESS },
+            signMessage: vi.fn(),
+          } as never,
+        })
+      ).rejects.toThrow(/missing `api_key_index`/)
+    })
   })
 
   describe('WASM_BLOB — APPROVE_INTEGRATOR hybrid flow', () => {

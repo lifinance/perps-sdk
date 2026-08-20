@@ -60,7 +60,6 @@ import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
-  DEFAULT_API_KEY_INDEX,
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_BASE_FEE_TIER,
@@ -706,6 +705,9 @@ export const createLighterProvider = (
       // Shared promise: the referral read below awaits this instance's runtime
       // metadata off the same `/providers` fetch — no second request.
       const providersPromise = getProviders(requireClient())
+      // Shared promise: the registered-key read names the slot off the local
+      // record, and the config readout reports the record — one storage read.
+      const localKeyPromise = keyStore.get(params.address)
       const [
         { providers },
         ,
@@ -719,7 +721,13 @@ export const createLighterProvider = (
         providersPromise,
         registry.sync(),
         assetRegistry.sync(),
-        fetchRegisteredApiKey(client, account.index, DEFAULT_API_KEY_INDEX),
+        // The local record names the only slot worth reading: no record means
+        // nothing to compare the registered key against, so the read is skipped.
+        localKeyPromise.then((key) =>
+          key === null
+            ? undefined
+            : fetchRegisteredApiKey(client, account.index, key.apiKeyIndex)
+        ),
         // No token is a legitimate unauthenticated read → undefined → zero fee
         // tier. A generic fetch error is NOT: it must propagate, never be
         // coerced to a fabricated 0%/0% fee tier. One carve-out: a token the
@@ -734,7 +742,7 @@ export const createLighterProvider = (
                 fetchAccountLimits(client, account.index, t)
               )
             ),
-        keyStore.get(params.address),
+        localKeyPromise,
         readOnlyTokenManager.get(params.address, account.index),
         // The expected code is backend-owned runtime metadata on this
         // instance's own provider descriptor (keyed by `providerKey`, so the
@@ -842,7 +850,7 @@ export const createLighterProvider = (
       const config: LighterAccountConfig = {
         provider: providerKey,
         accountIndex: account.index,
-        apiKeyIndex: DEFAULT_API_KEY_INDEX,
+        apiKeyIndex: localKey?.apiKeyIndex,
         apiKeyRegistered,
         accountType: account.account_type,
         accountTradingMode: account.account_trading_mode,

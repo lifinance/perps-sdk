@@ -208,17 +208,6 @@ export const LIGHTER_ALL_MARKETS_WILDCARD = 255
  */
 export const LIGHTER_HISTORY_PAGE_SIZE = 100
 
-/**
- * Default API key slot — reused per account. Lighter's docs reserve indexes
- * `{0,1,2,3}` for its own desktop/mobile interfaces; user keys start at 4
- * (max 254, with 255 reserved as `NilApiKeyIndex`). 42 is the LI.FI-wide
- * identifier so a user running both the Lighter app and the widget never
- * collides with the app's session key.
- *
- * @public
- */
-export const DEFAULT_API_KEY_INDEX = 42
-
 /** @internal */
 const LIGHTER_CODE_ACCOUNT_NOT_FOUND = 21100
 

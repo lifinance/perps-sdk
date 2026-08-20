@@ -1548,6 +1548,63 @@ describe('LighterProvider — stale API key degrades authed reads', () => {
   })
 })
 
+describe('LighterProvider — API-key slot readout', () => {
+  it('reports the slot the stored record names and compares that slot at the venue', async () => {
+    const storage = createMemoryStorage()
+    const storedKey = { ...STORED_API_KEY, apiKeyIndex: 9 }
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(storedKey)
+    )
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({
+          code: 0,
+          api_keys: [
+            {
+              account_index: storedKey.accountIndex,
+              api_key_index: 9,
+              nonce: 3,
+              public_key: storedKey.apiKeyPublicKey,
+            },
+            // A foreign key in the slot the SDK used to assume.
+            {
+              account_index: storedKey.accountIndex,
+              api_key_index: 42,
+              nonce: 1,
+              public_key: `0x${'ee'.repeat(32)}`,
+            },
+          ],
+        })
+      }
+      return undefined
+    })
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({
+      apiKeyIndex: 9,
+      apiKeyRegistered: true,
+    })
+  })
+
+  it('reports no slot and skips the venue read when no record exists', async () => {
+    const provider = lighterProvider({ storage: createMemoryStorage() })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({
+      apiKeyIndex: undefined,
+      apiKeyRegistered: false,
+    })
+    expect(recorded.some((r) => r.url.includes('/api/v1/apikeys'))).toBe(false)
+  })
+})
+
 describe('LighterProvider — read-only token creation failure recovery', () => {
   /** Storage holding the user's registered API key for the mainnet instance. */
   const seededStorage = async () => {
