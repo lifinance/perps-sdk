@@ -40,6 +40,15 @@ const client = createPerpsClient({
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
 - `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
+## Activity coverage
+
+`getActivity` reports the two movement types Ondo exposes on its authenticated
+REST API: funding fees (`/v1/perps/funding_fees`) and liquidations
+(`/v1/perps/liquidation_history`). Ondo publishes no deposit, withdrawal, or
+account-to-account transfer history endpoint, so `getActivity` never returns
+`DEPOSIT`, `WITHDRAWAL`, or `TRANSFER` items for Ondo. A request that filters
+for those types alone returns an empty page and makes no upstream call.
+
 ## Environments
 
 Production `https://api.ondoperps.xyz` is the default; the sandbox `https://api.ondoperps-sandbox.xyz` can be selected by passing its base URL.
