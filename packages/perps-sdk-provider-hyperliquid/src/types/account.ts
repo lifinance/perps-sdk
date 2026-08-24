@@ -29,6 +29,17 @@ export type HlPosition = {
     type: string
     value: number
   }
+  /**
+   * Cumulative funding over three windows, in quote-asset units. Hyperliquid
+   * reports funding the account PAID as positive — the opposite sign to the
+   * `userFunding` ledger's `usdc` delta. `sinceOpen` resets when the position
+   * returns to flat; `sinceChange` resets when its size changes.
+   */
+  cumFunding: {
+    allTime: string
+    sinceOpen: string
+    sinceChange: string
+  }
 }
 
 /**

@@ -32,6 +32,7 @@ const position: Position = {
   markPrice: '100',
   liquidationPrice: '0',
   unrealizedPnl: '0',
+  accruedFunding: '0',
   leverage: 1,
   marginUsed: '100',
   initialMarginRequirement: '100',
