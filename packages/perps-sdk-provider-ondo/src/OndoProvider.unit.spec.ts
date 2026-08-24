@@ -313,6 +313,8 @@ let referralResult: { code: string; rebate?: number } | null
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
 let depositAddressResult: unknown
+/** `GET /v1/perps/positions` result; `null` mirrors an empty venue collection. */
+let positionsResult: OndoPosition[] | null
 let providersResult: Provider[]
 
 const respond = (body: unknown, status = 200): Response =>
@@ -328,6 +330,7 @@ beforeEach(() => {
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
   accountInfoResult = { ...ACCOUNT_INFO_RESULT }
   depositAddressResult = []
+  positionsResult = [POSITION_RESULT]
   providersResult = [ACCOUNT_PROVIDER_METADATA]
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
@@ -342,7 +345,7 @@ beforeEach(() => {
       return respond(envelope(BALANCE_RESULT))
     }
     if (u.includes('/v1/perps/positions')) {
-      return respond(envelope([POSITION_RESULT]))
+      return respond(envelope(positionsResult))
     }
     if (u.includes('/v1/perps/orders/')) {
       return respond(envelope(ORDER_OPEN))
@@ -792,6 +795,28 @@ describe('OndoProvider — getAccount (logged in)', () => {
       provider.getAccount({ address: ADDRESS })
     ).rejects.toThrowError(/Ondo API request failed/)
     await expect(store.get(ADDRESS)).resolves.toEqual(AUTH_TOKEN)
+  })
+})
+
+describe('OndoProvider — null list results', () => {
+  it('reads a null positions result as no positions in getAccount', async () => {
+    positionsResult = null
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toEqual([])
+  })
+
+  it('reads a null positions result as no positions in getPositions', async () => {
+    positionsResult = null
+    const { provider } = await loggedInProvider()
+
+    await expect(provider.getPositions({ address: ADDRESS })).resolves.toEqual({
+      provider: 'ondo',
+      positions: [],
+      pagination: { limit: 0, hasMore: false },
+    })
   })
 })
 
