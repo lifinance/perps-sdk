@@ -640,6 +640,21 @@ describe('OndoProvider — getAccount (logged in)', () => {
     )
   })
 
+  it('reads a null deposit-address result as an empty list', async () => {
+    depositAddressResult = null
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ depositAddress: null })
+  })
+
+  it('rejects a deposit-address envelope that omits the result', async () => {
+    depositAddressResult = undefined
+    const { provider } = await loggedInProvider()
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /deposit-address response is malformed/
+    )
+  })
+
   it('evicts the session when the deposit-address query is unauthorized', async () => {
     const { provider, store } = await loggedInProvider()
     depositAddressResult = undefined
