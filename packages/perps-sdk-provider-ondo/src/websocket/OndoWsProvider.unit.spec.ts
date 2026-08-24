@@ -875,7 +875,8 @@ describe('OndoWsProvider', () => {
       expect(event.data.openOrders[0]).toMatchObject({
         orderId: 'ord-1',
         price: '227.50',
-        size: '10.00',
+        originalSize: '10.00',
+        remainingSize: '10',
       })
       expect(event.data.openOrders[0].market.baseAsset.displaySymbol).toBe(
         'AAPL'

@@ -46,6 +46,8 @@ export function resolveCloseSize(
  *
  * Reducing requires opposite sides (long position + SELL, short position +
  * BUY). Same-side orders add to the position and have no rPnL → `null`.
+ * Projects `remainingSize`, because an already-filled quantity has realised
+ * its PnL at the fill price rather than at this order's limit price.
  *
  * @returns Realised PnL if the order would reduce the position, otherwise
  *   `null`.
@@ -69,7 +71,7 @@ export function expectedRealizedPnlForOpenOrder(
 
   const limitPrice = Number.parseFloat(order.price)
   const entryPrice = Number.parseFloat(position.entryPrice)
-  const orderSize = Math.abs(Number.parseFloat(order.size))
+  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
   const positionSize = Math.abs(Number.parseFloat(position.size))
   if (
     !Number.isFinite(limitPrice) ||

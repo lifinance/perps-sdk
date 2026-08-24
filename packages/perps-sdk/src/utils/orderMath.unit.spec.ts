@@ -64,12 +64,14 @@ function position(
 }
 
 function openOrder(
-  overrides: Partial<OpenOrder> & Pick<OpenOrder, 'side' | 'size' | 'price'>
+  overrides: Partial<OpenOrder> &
+    Pick<OpenOrder, 'side' | 'remainingSize' | 'price'>
 ): OpenOrder {
   return {
     orderId: 'order-1',
     market: MARKET_BTC,
     type: OrderType.LIMIT,
+    originalSize: overrides.remainingSize,
     filledSize: '0',
     reduceOnly: false,
     createdAt: '2025-01-01T00:00:00Z',
@@ -121,7 +123,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
   it('computes profit for a SELL order reducing a long', () => {
     // 1 BTC long @ 100, sell limit at 150 => +50
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.SELL, size: '1', price: '150' }),
+      openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(50, 9)
@@ -129,7 +131,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
 
   it('computes loss for a SELL order reducing a long below entry', () => {
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.SELL, size: '2', price: '80' }),
+      openOrder({ side: OrderSide.SELL, remainingSize: '2', price: '80' }),
       position({ side: PositionSide.LONG, size: '2', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(-40, 9)
@@ -138,7 +140,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
   it('computes profit for a BUY order reducing a short', () => {
     // 2 BTC short @ 100, buy limit at 80 => +40
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.BUY, size: '2', price: '80' }),
+      openOrder({ side: OrderSide.BUY, remainingSize: '2', price: '80' }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(40, 9)
@@ -146,7 +148,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
 
   it('computes loss for a BUY order reducing a short above entry', () => {
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.BUY, size: '1', price: '120' }),
+      openOrder({ side: OrderSide.BUY, remainingSize: '1', price: '120' }),
       position({ side: PositionSide.SHORT, size: '1', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(-20, 9)
@@ -155,15 +157,31 @@ describe('expectedRealizedPnlForOpenOrder', () => {
   it('caps order size at the position size', () => {
     // long 1 BTC @ 100, sell 5 BTC @ 150 — only 1 BTC actually closes => +50
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.SELL, size: '5', price: '150' }),
+      openOrder({ side: OrderSide.SELL, remainingSize: '5', price: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+    )
+    expect(r).toBeCloseTo(50, 9)
+  })
+
+  it('projects only the remaining size of a partially filled order', () => {
+    // 3 BTC long @ 100; sell limit at 150 submitted for 3 BTC, 2 already
+    // filled => only the resting 1 BTC projects => +50, not +150.
+    const r = expectedRealizedPnlForOpenOrder(
+      openOrder({
+        side: OrderSide.SELL,
+        originalSize: '3',
+        remainingSize: '1',
+        filledSize: '2',
+        price: '150',
+      }),
+      position({ side: PositionSide.LONG, size: '3', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(50, 9)
   })
 
   it('returns null when the order matches no position', () => {
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.SELL, size: '1', price: '150' }),
+      openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '150' }),
       undefined
     )
     expect(r).toBeNull()
@@ -171,7 +189,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
 
   it('returns null for a same-side BUY against a long (adds to the position)', () => {
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.BUY, size: '1', price: '90' }),
+      openOrder({ side: OrderSide.BUY, remainingSize: '1', price: '90' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
     expect(r).toBeNull()
@@ -179,7 +197,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
 
   it('returns null for a same-side SELL against a short (adds to the short)', () => {
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.SELL, size: '1', price: '110' }),
+      openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '110' }),
       position({ side: PositionSide.SHORT, size: '1', entryPrice: '100' })
     )
     expect(r).toBeNull()
@@ -189,7 +207,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
     // SDK Position.size for a short can serialise as "-1"; the cap should
     // still see 1 BTC of close-able size.
     const r = expectedRealizedPnlForOpenOrder(
-      openOrder({ side: OrderSide.BUY, size: '5', price: '80' }),
+      openOrder({ side: OrderSide.BUY, remainingSize: '5', price: '80' }),
       position({ side: PositionSide.SHORT, size: '-1', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(20, 9) // (100 - 80) * 1 = +20
