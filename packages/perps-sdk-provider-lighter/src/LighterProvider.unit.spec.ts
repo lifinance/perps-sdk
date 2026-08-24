@@ -2200,6 +2200,43 @@ describe('LighterProvider — normalisation', () => {
   })
 })
 
+describe('LighterProvider — getActivity liquidation mapping', () => {
+  it('never reports the venue liquidation type as a leverage type', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/liquidations')
+        ? respond({
+            code: 0,
+            liquidations: [
+              {
+                id: 5,
+                market_id: 0,
+                type: 'full_liquidation',
+                executed_at: 1700000000000,
+              },
+            ],
+          })
+        : undefined
+    )
+
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const result = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(result.items).toHaveLength(1)
+    const [item] = result.items
+    if (item.type !== ActivityType.LIQUIDATION) {
+      throw new Error('expected a liquidation activity')
+    }
+    expect(item.leverageType).toBeUndefined()
+    expect(JSON.stringify(item)).not.toContain('full_liquidation')
+    expect(item.liquidatedPositions).toHaveLength(1)
+    expect(item.liquidatedPositions[0].market.id).toBe('0')
+  })
+})
+
 describe('LighterProvider — getActivity paging never drops rows', () => {
   const depositRow = (id: string, timestampMs: number) => ({
     id,

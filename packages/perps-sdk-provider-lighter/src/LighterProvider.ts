@@ -1279,6 +1279,8 @@ export const createLighterProvider = (
             fundingRate: f.rate,
           })
         ),
+        // A Lighter liquidation row carries no margin mode, and the account's
+        // live position rows describe the present, not the liquidated position.
         ...history.liquidations.liquidations.map(
           (l): ActivityItem => ({
             id: `liquidation-${l.id}`,
@@ -1287,7 +1289,6 @@ export const createLighterProvider = (
             type: ActivityType.LIQUIDATION,
             liquidatedNotionalPosition: '0',
             accountValue: '0',
-            leverageType: l.type,
             liquidatedPositions: [
               {
                 market: marketRegistry.require(String(l.market_id)),
