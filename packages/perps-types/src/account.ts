@@ -334,6 +334,10 @@ export interface LiquidationActivity extends BaseActivity {
 export interface FundingActivity extends BaseActivity {
   type: ActivityType.FUNDING
   market: MarketDisplay
+  /**
+   * Signed, in quote-currency units. Positive means the account received
+   * funding; negative means the account paid it.
+   */
   amount: string
   positionSize: string
   fundingRate: string
