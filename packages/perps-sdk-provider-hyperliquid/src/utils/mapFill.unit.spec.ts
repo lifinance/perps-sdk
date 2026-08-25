@@ -172,7 +172,31 @@ describe('mapFill (Hyperliquid)', () => {
     expect(fill.size).toBe('1.5')
     expect(fill.filledSize).toBe('1.5')
     expect(fill.price).toBe('2000.25')
-    expect(fill.fee).toBe('0.123')
+    expect(fill.fee?.amount).toBe('0.123')
+  })
+
+  describe('fee asset', () => {
+    it('names the wire feeToken as the fee asset', () => {
+      expect(map(baseFill({ fee: '0.2', feeToken: 'HYPE' })).fee).toEqual({
+        amount: '0.2',
+        asset: 'HYPE',
+      })
+    })
+
+    it("falls back to the market's quote asset when the row carries no feeToken", () => {
+      expect(map(baseFill({ fee: '0.2' })).fee).toEqual({
+        amount: '0.2',
+        asset: 'USDC',
+      })
+    })
+
+    it('keeps a spot fill fee in the feeToken the venue charged, not the base asset', () => {
+      const fill = mapFill(
+        baseFill({ coin: 'PURR/USDC', fee: '0.05', feeToken: 'PURR' }),
+        spotMarket('PURR/USDC')
+      )
+      expect(fill.fee).toEqual({ amount: '0.05', asset: 'PURR' })
+    })
   })
 
   it('always reports status FILLED', () => {

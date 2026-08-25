@@ -75,6 +75,9 @@ export const mapFill = (
   const entryQuoteBefore = isMaker
     ? trade.maker_entry_quote_before
     : trade.taker_entry_quote_before
+  const feeAmount = isMaker
+    ? trade.maker_fee?.toString()
+    : trade.taker_fee?.toString()
 
   return {
     id: trade.trade_id.toString(),
@@ -86,7 +89,11 @@ export const mapFill = (
     price: trade.price,
     status: FillStatus.FILLED,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
-    fee: isMaker ? trade.maker_fee?.toString() : trade.taker_fee?.toString(),
+    // Lighter charges the fill fee in the market's quote asset.
+    fee:
+      feeAmount === undefined
+        ? undefined
+        : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
     realizedPnl: deriveRealizedPnl(
       startPosition,
       entryQuoteBefore,

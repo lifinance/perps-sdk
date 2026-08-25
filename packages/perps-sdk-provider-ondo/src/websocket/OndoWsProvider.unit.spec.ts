@@ -933,7 +933,7 @@ describe('OndoWsProvider', () => {
         size: '5.00',
         price: '227.50',
         // fee netted against Ondo's rebate
-        fee: '0.4',
+        fee: { amount: '0.4', asset: 'USD' },
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
       p.close()

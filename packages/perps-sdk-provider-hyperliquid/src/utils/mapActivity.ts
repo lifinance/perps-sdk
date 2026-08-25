@@ -1,6 +1,7 @@
 import type {
   ActivityItem,
   DepositActivity,
+  Fee,
   FundingActivity,
   LiquidationActivity,
   MarketDisplay,
@@ -17,8 +18,17 @@ import {
   isWithdrawDelta,
 } from '../types/index.js'
 
-/** Hyperliquid settles every perp deposit and withdrawal in USDC. */
+/**
+ * Hyperliquid settles every perp deposit and withdrawal in USDC, and charges
+ * the `spotTransfer` fee in USDC too — that delta carries no `feeToken`.
+ */
 const HL_COLLATERAL_SYMBOL = 'USDC'
+
+/**
+ * Hyperliquid's native token. A `nativeTokenFee` names no token on the wire,
+ * so the symbol comes from the venue rather than from the delta.
+ */
+const HL_NATIVE_TOKEN_SYMBOL = 'HYPE'
 
 /**
  * Display symbol for a ledger delta's wire token (`"USDC"`, `"PURR:0x..."`).
@@ -75,14 +85,18 @@ export const mapLedgerEntry = (
     if (delta.usdcValue !== undefined) {
       meta.usdcValue = delta.usdcValue
     }
-    if (delta.fee !== undefined) {
-      meta.fee = delta.fee
-    }
-    if (delta.nativeTokenFee !== undefined) {
-      meta.nativeTokenFee = delta.nativeTokenFee
-    }
     if (delta.nonce !== undefined) {
       meta.nonce = delta.nonce
+    }
+    const fees: Fee[] = []
+    if (delta.fee !== undefined) {
+      fees.push({ amount: delta.fee, asset: HL_COLLATERAL_SYMBOL })
+    }
+    if (delta.nativeTokenFee !== undefined) {
+      fees.push({
+        amount: delta.nativeTokenFee,
+        asset: HL_NATIVE_TOKEN_SYMBOL,
+      })
     }
     return {
       ...base,
@@ -91,6 +105,7 @@ export const mapLedgerEntry = (
       counterpartyAddress,
       asset: ledgerTokenSymbol(delta.token),
       amount: delta.amount,
+      ...(fees.length === 0 ? {} : { fees }),
       meta,
       explorerLink: entry.hash
         ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
@@ -118,9 +133,6 @@ export const mapLedgerEntry = (
       sourceDex: delta.sourceDex,
       destinationDex: delta.destinationDex,
       usdcValue: delta.usdcValue,
-      fee: delta.fee,
-      nativeTokenFee: delta.nativeTokenFee,
-      feeToken: delta.feeToken,
       nonce: delta.nonce,
     }
     return {
@@ -130,6 +142,10 @@ export const mapLedgerEntry = (
       counterpartyAddress,
       asset: ledgerTokenSymbol(delta.token),
       amount: delta.amount,
+      fees: [
+        { amount: delta.fee, asset: ledgerTokenSymbol(delta.feeToken) },
+        { amount: delta.nativeTokenFee, asset: HL_NATIVE_TOKEN_SYMBOL },
+      ],
       meta,
       explorerLink: entry.hash
         ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`

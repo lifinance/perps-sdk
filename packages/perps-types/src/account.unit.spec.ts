@@ -3,13 +3,21 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  Fill,
   LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
-import { ActivityType, MarginMode } from './enums.js'
+import {
+  ActivityType,
+  FillClassification,
+  FillStatus,
+  LiquidityRole,
+  MarginMode,
+  OrderSide,
+} from './enums.js'
 import type { MarketDisplay } from './market.js'
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
@@ -421,7 +429,20 @@ describe('LiquidationActivity', () => {
   })
 })
 
-describe('WithdrawalFee', () => {
+const BASE_FILL: Fill = {
+  id: 'fill-1',
+  orderId: 'order-1',
+  market: liquidatedMarket('hyperliquid'),
+  side: OrderSide.BUY,
+  size: '1',
+  price: '2000',
+  status: FillStatus.FILLED,
+  liquidity: LiquidityRole.TAKER,
+  classification: FillClassification.OPENED_LONG,
+  createdAt: '2026-05-07T12:00:00.000Z',
+}
+
+describe('Fee', () => {
   it('accepts a fee denominated in an asset other than the withdrawn one', () => {
     const item: WithdrawalActivity = {
       id: 'withdrawal-1',
@@ -461,6 +482,66 @@ describe('WithdrawalFee', () => {
 
     expect(bareAmount.type).toBe(ActivityType.WITHDRAWAL)
     expect(missingAsset.type).toBe(ActivityType.WITHDRAWAL)
+  })
+
+  it('accepts a fill fee denominated in an asset other than the quote one', () => {
+    const fill: Fill = {
+      ...BASE_FILL,
+      fee: { amount: '0.05', asset: 'HYPE' },
+    }
+
+    expect(fill.fee).toEqual({ amount: '0.05', asset: 'HYPE' })
+  })
+
+  it('rejects a bare fill fee amount', () => {
+    const fill: Fill = {
+      ...BASE_FILL,
+      // @ts-expect-error a fill fee must name the asset it is denominated in
+      fee: '0.05',
+    }
+
+    expect(fill.id).toBe('fill-1')
+  })
+
+  it('omits the fill fee when the venue reports none', () => {
+    expect(BASE_FILL.fee).toBeUndefined()
+  })
+
+  it('accepts several transfer fees, each in its own asset', () => {
+    const item: TransferActivity = {
+      id: 'transfer-fee-1',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:03:00.000Z',
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAddress: '0xabc',
+      asset: 'PURR',
+      amount: '10',
+      fees: [
+        { amount: '1.0', asset: 'USDC' },
+        { amount: '0.25', asset: 'HYPE' },
+      ],
+    }
+
+    expect(item.fees).toHaveLength(2)
+    expect(item.fees?.[1]).toEqual({ amount: '0.25', asset: 'HYPE' })
+  })
+
+  it('rejects a transfer fee list of bare amounts', () => {
+    const item: TransferActivity = {
+      id: 'transfer-fee-2',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:04:00.000Z',
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAddress: '0xabc',
+      asset: 'USDC',
+      amount: '10',
+      // @ts-expect-error every transfer fee must name its asset
+      fees: ['1.0'],
+    }
+
+    expect(item.type).toBe(ActivityType.TRANSFER)
   })
 })
 

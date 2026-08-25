@@ -219,6 +219,25 @@ export interface OrdersResponse {
 }
 
 /**
+ * Fee a venue charged, in the asset the venue charged it in. A venue does not
+ * always charge a fee in the asset the record is otherwise denominated in, so
+ * a consumer must format the amount against `asset` and never against the
+ * fill's quote asset or the activity's own `asset`.
+ *
+ * @public
+ */
+export interface Fee {
+  /** Decimal string in `asset`'s units. */
+  amount: string
+  /**
+   * Display symbol the fee is denominated in, resolved by the provider
+   * adapter. Falls back to the venue's own asset id when the registry knows no
+   * symbol.
+   */
+  asset: string
+}
+
+/**
  * Normalized execution/fill record for an order.
  *
  * @public
@@ -239,7 +258,8 @@ export interface Fill {
   status: FillStatus
   liquidity: LiquidityRole
   filledSize?: string
-  fee?: string
+  /** Absent when the venue reports no fee for the fill. */
+  fee?: Fee
   realizedPnl?: string | null
   startPosition?: string
   classification: FillClassification
@@ -304,24 +324,6 @@ export interface DepositActivity extends BaseActivity {
 }
 
 /**
- * Fee a venue charged for a withdrawal. A venue does not always charge the fee
- * in the withdrawn asset, so the amount carries the asset it is denominated
- * in; a consumer must never assume {@link WithdrawalActivity.asset}.
- *
- * @public
- */
-export interface WithdrawalFee {
-  /** Decimal string in `asset`'s units. */
-  amount: string
-  /**
-   * Display symbol the fee is denominated in, resolved by the provider
-   * adapter. Falls back to the venue's own asset id when the registry knows no
-   * symbol.
-   */
-  asset: string
-}
-
-/**
  * Account activity representing a completed withdrawal. `amount` is a decimal
  * string in `asset`'s units.
  *
@@ -336,7 +338,7 @@ export interface WithdrawalActivity extends BaseActivity {
   asset: string
   amount: string
   /** Absent when the venue reports no fee for the withdrawal. */
-  fee?: WithdrawalFee
+  fee?: Fee
   /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
   explorerLink?: string
 }
@@ -410,6 +412,14 @@ export type TransferActivity = BaseActivity & {
   direction: 'IN' | 'OUT'
   asset: string
   amount: string
+  /**
+   * Every fee the venue charged for the transfer, in the order the venue
+   * reports them. A venue may charge several fees for one transfer, each in a
+   * different asset — a transfer fee plus a separate gas fee in the chain's
+   * native token — so this is a list and not a single amount. Absent when the
+   * venue reports no fee.
+   */
+  fees?: Fee[]
   meta?: Record<string, unknown>
   /** Fully-resolved block-explorer URL for the on-chain transfer tx. */
   explorerLink?: string
