@@ -83,30 +83,72 @@ describe('mapFundingActivity', () => {
   })
 })
 
+const SECOND_POSITION: OndoPosition = {
+  ...TRIGGERING_POSITION,
+  market: 'TSLA-USD.P',
+  netQuantity: '4',
+}
+
+const SECOND_MARKET: MarketDisplay = {
+  ...MARKET,
+  id: 'TSLA-USD.P',
+  baseAsset: { ...MARKET.baseAsset, id: 'TSLA', displaySymbol: 'TSLA' },
+}
+
+const resolveMarket = (market: string): MarketDisplay =>
+  market === 'TSLA-USD.P' ? SECOND_MARKET : MARKET
+
 describe('mapLiquidationActivity', () => {
-  it('maps a liquidation event with its triggering positions', () => {
-    expect(mapLiquidationActivity(LIQUIDATION, () => MARKET)).toEqual({
+  it('maps a single-position liquidation event', () => {
+    expect(mapLiquidationActivity(LIQUIDATION, resolveMarket)).toEqual({
       id: 'liq-1',
       provider: 'ondo',
       timestamp: '2026-07-01T14:00:00.000Z',
       type: ActivityType.LIQUIDATION,
       liquidatedNotionalPosition: '1820',
-      accountValue: '0',
       leverageType: 'cross',
       liquidatedPositions: [{ market: MARKET, size: '10' }],
     })
   })
 
-  it('tolerates events without fills or triggering positions', () => {
+  it('retains every market and size of a multi-position liquidation', () => {
     const mapped = mapLiquidationActivity(
       {
         ...LIQUIDATION,
-        triggeringPositions: undefined,
-        filledQuoteSize: undefined,
+        triggeringPositions: [TRIGGERING_POSITION, SECOND_POSITION],
       },
-      () => MARKET
+      resolveMarket
     )
-    expect(mapped.liquidatedNotionalPosition).toBe('0')
-    expect(mapped.liquidatedPositions).toEqual([])
+
+    expect(mapped?.liquidatedPositions).toEqual([
+      { market: MARKET, size: '10' },
+      { market: SECOND_MARKET, size: '4' },
+    ])
+  })
+
+  it('omits unavailable liquidation metrics instead of reporting zero', () => {
+    const mapped = mapLiquidationActivity(
+      { ...LIQUIDATION, filledQuoteSize: undefined },
+      resolveMarket
+    )
+
+    expect(mapped).not.toBeNull()
+    expect(mapped).not.toHaveProperty('liquidatedNotionalPosition')
+    expect(mapped).not.toHaveProperty('accountValue')
+  })
+
+  it('drops an event that identifies no liquidated position', () => {
+    expect(
+      mapLiquidationActivity(
+        { ...LIQUIDATION, triggeringPositions: undefined },
+        resolveMarket
+      )
+    ).toBeNull()
+    expect(
+      mapLiquidationActivity(
+        { ...LIQUIDATION, triggeringPositions: [] },
+        resolveMarket
+      )
+    ).toBeNull()
   })
 })

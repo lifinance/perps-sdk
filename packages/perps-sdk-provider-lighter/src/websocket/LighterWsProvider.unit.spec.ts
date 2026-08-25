@@ -653,6 +653,38 @@ describe('LighterWsProvider', () => {
       expect(event.data.openOrders).toHaveLength(1)
       expect(event.data.triggerOrders).toHaveLength(0)
       expect(event.data.openOrders[0].orderId).toBe('1')
+      expect(event.data.openOrders[0].originalSize).toBe('1.0')
+      expect(event.data.openOrders[0].remainingSize).toBe('1.0')
+      p.close()
+    })
+
+    it('emits both sizes for a partially filled order', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `orderUpdates:${TEST_ADDR}`, listener)
+
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: `account_all_orders:${ACCOUNT_IDX}`,
+          orders: {
+            '0': [
+              {
+                ...RAW_ORDER,
+                remaining_base_amount: '0.4',
+                filled_base_amount: '0.6',
+              },
+            ],
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders[0].originalSize).toBe('1.0')
+      expect(event.data.openOrders[0].remainingSize).toBe('0.4')
+      expect(event.data.openOrders[0].filledSize).toBe('0.6')
       p.close()
     })
 

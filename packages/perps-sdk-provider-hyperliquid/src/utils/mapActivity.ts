@@ -9,15 +9,24 @@ import type {
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
-import { isSendAssetDelta, isSpotTransferDelta } from '../types/index.js'
+import {
+  isDepositDelta,
+  isLiquidationDelta,
+  isSendAssetDelta,
+  isSpotTransferDelta,
+  isWithdrawDelta,
+} from '../types/index.js'
+
+/** Hyperliquid settles every perp deposit and withdrawal in USDC. */
+const HL_COLLATERAL_SYMBOL = 'USDC'
 
 /**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
  *
  * Direction for `spotTransfer` and `sendAsset` is derived from
  * `queriedAddress` matching the delta's `user` (OUT) or `destination` (IN).
- * Returns null for unsupported delta types and for same-user `sendAsset`
- * dex moves (where `user === destination === queriedAddress`).
+ * Returns null for unsupported delta types and for same-account moves, where
+ * `user === destination === queriedAddress`.
  * @public
  */
 export const mapLedgerEntry = (
@@ -40,6 +49,13 @@ export const mapLedgerEntry = (
     const queried = queriedAddress.toLowerCase()
     const sender = delta.user.toLowerCase()
     const recipient = delta.destination.toLowerCase()
+
+    // A transfer reports a movement between two accounts. A row whose sender
+    // and recipient are the queried account moves nothing between accounts.
+    if (sender === recipient && sender === queried) {
+      return null
+    }
+
     const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
     const counterpartyAddress = direction === 'OUT' ? recipient : sender
     const meta: Record<string, unknown> = {
@@ -110,59 +126,57 @@ export const mapLedgerEntry = (
     } satisfies TransferActivity
   }
 
-  switch (delta.type) {
-    case 'deposit':
-      return {
-        ...base,
-        type: ActivityType.DEPOSIT,
-        amount: delta.usdc ?? '0',
-        explorerLink: entry.hash
-          ? `https://scan.li.fi/tx/${entry.hash}`
-          : undefined,
-      } satisfies DepositActivity
-
-    case 'withdraw':
-      return {
-        ...base,
-        type: ActivityType.WITHDRAWAL,
-        amount: delta.usdc ?? '0',
-        fee: (delta as { fee?: string }).fee ?? '0',
-        explorerLink: entry.hash
-          ? `https://scan.li.fi/tx/${entry.hash}`
-          : undefined,
-      } satisfies WithdrawalActivity
-
-    case 'liquidation': {
-      const d = delta as unknown as {
-        type: string
-        liquidatedNtlPos: string
-        accountValue: string
-        leverageType: string
-        liquidatedPositions?: { coin: string; szi: string }[]
-      }
-      const liquidatedPositions = (d.liquidatedPositions ?? []).map((p) => ({
-        market: resolveMarket(p.coin),
-        size: p.szi,
-      }))
-      // Liquidation rows must point to at least one market. Drop entries with
-      // missing/empty positions so downstream consumers can rely on that
-      // invariant and avoid rendering a market-less liquidation card.
-      if (liquidatedPositions.length === 0) {
-        return null
-      }
-      return {
-        ...base,
-        type: ActivityType.LIQUIDATION,
-        liquidatedNotionalPosition: d.liquidatedNtlPos,
-        accountValue: d.accountValue,
-        leverageType: d.leverageType,
-        liquidatedPositions,
-      } satisfies LiquidationActivity
-    }
-
-    default:
-      return null
+  if (isDepositDelta(delta)) {
+    return {
+      ...base,
+      type: ActivityType.DEPOSIT,
+      asset: HL_COLLATERAL_SYMBOL,
+      amount: delta.usdc,
+      explorerLink: entry.hash
+        ? `https://scan.li.fi/tx/${entry.hash}`
+        : undefined,
+    } satisfies DepositActivity
   }
+
+  if (isWithdrawDelta(delta)) {
+    return {
+      ...base,
+      type: ActivityType.WITHDRAWAL,
+      asset: HL_COLLATERAL_SYMBOL,
+      amount: delta.usdc,
+      ...(delta.fee === undefined ? {} : { fee: delta.fee }),
+      explorerLink: entry.hash
+        ? `https://scan.li.fi/tx/${entry.hash}`
+        : undefined,
+    } satisfies WithdrawalActivity
+  }
+
+  if (isLiquidationDelta(delta)) {
+    const liquidatedPositions = (delta.liquidatedPositions ?? []).map((p) => ({
+      market: resolveMarket(p.coin),
+      size: p.szi,
+    }))
+    // Liquidation rows must point to at least one market. Drop entries with
+    // missing/empty positions so downstream consumers can rely on that
+    // invariant and avoid rendering a market-less liquidation card.
+    if (liquidatedPositions.length === 0) {
+      return null
+    }
+    return {
+      ...base,
+      type: ActivityType.LIQUIDATION,
+      ...(delta.liquidatedNtlPos === undefined
+        ? {}
+        : { liquidatedNotionalPosition: delta.liquidatedNtlPos }),
+      ...(delta.accountValue === undefined
+        ? {}
+        : { accountValue: delta.accountValue }),
+      leverageType: delta.leverageType,
+      liquidatedPositions,
+    } satisfies LiquidationActivity
+  }
+
+  return null
 }
 
 /**

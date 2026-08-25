@@ -2220,6 +2220,9 @@ describe('HyperliquidWsProvider', () => {
         market: { id: 'BTC' },
         side: OrderSide.BUY,
         type: OrderType.LIMIT,
+        originalSize: '0.1',
+        remainingSize: '0.05',
+        filledSize: '0.05',
       })
     })
 

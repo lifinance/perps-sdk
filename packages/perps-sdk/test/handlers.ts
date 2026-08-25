@@ -416,7 +416,8 @@ export const mockOrders: OrdersResponse = {
       market: BTC_MARKET_DISPLAY,
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
-      size: '0.05',
+      originalSize: '0.05',
+      remainingSize: '0.05',
       price: '93000.00',
       filledSize: '0',
       reduceOnly: false,
@@ -458,6 +459,7 @@ export const mockActivity: ActivitiesResponse = {
       provider: 'hyperliquid',
       timestamp: '2024-01-01T00:00:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '5000.00',
     },
     {
