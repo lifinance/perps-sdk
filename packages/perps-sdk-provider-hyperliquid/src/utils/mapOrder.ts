@@ -13,6 +13,14 @@ import {
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
 
 /**
+ * An order as seen by the REST `frontendOpenOrders` payload, or the smaller
+ * shape nested in the `orderUpdates` WebSocket frame. `mapOpenOrder` and
+ * `mapTriggerOrder` accept either so both code paths share one mapper.
+ * @public
+ */
+export type HlOrderLike = HlFrontendOpenOrder | HlOrderDetail['order']
+
+/**
  * Map a Hyperliquid orderType string to the OrderType enum.
  *
  * @public
@@ -61,9 +69,7 @@ export const isTriggerType = (type: OrderType): boolean =>
  *   5. `orderType` — final fall-back via `isTriggerType`.
  * @public
  */
-export const isTriggerOrder = (
-  o: HlFrontendOpenOrder | HlOrderDetail['order']
-): boolean => {
+export const isTriggerOrder = (o: HlOrderLike): boolean => {
   if ('isTrigger' in o && o.isTrigger === true) {
     return true
   }
@@ -89,7 +95,7 @@ export const isTriggerOrder = (
  * @public
  */
 export const mapOpenOrder = (
-  o: HlFrontendOpenOrder,
+  o: HlOrderLike,
   market: MarketDisplay
 ): OpenOrder => ({
   orderId: String(o.oid),
@@ -103,7 +109,7 @@ export const mapOpenOrder = (
     ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
     : '0',
   reduceOnly: o.reduceOnly ?? false,
-  label: o.isTrigger ? o.triggerCondition : undefined,
+  label: 'isTrigger' in o && o.isTrigger ? o.triggerCondition : undefined,
   createdAt: new Date(o.timestamp).toISOString(),
 })
 
@@ -112,7 +118,7 @@ export const mapOpenOrder = (
  * @public
  */
 export const mapTriggerOrder = (
-  o: HlFrontendOpenOrder,
+  o: HlOrderLike,
   market: MarketDisplay
 ): TriggerOrder => {
   const type = mapOrderType(o.orderType)
@@ -123,7 +129,7 @@ export const mapTriggerOrder = (
     market,
     type,
     size: o.sz,
-    triggerPrice: o.triggerPx,
+    triggerPrice: o.triggerPx ?? '0',
     ...(isLimit ? { limitPrice: o.limitPx } : {}),
     label: o.triggerCondition,
     createdAt: new Date(o.timestamp).toISOString(),

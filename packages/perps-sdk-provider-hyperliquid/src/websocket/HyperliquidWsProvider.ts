@@ -16,18 +16,16 @@ import {
   type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
-import {
-  type AccountResponse,
-  type Balance,
-  type MarketContext,
-  type OpenOrder,
-  type OrderbookLevel,
-  type OrderbookResponse,
-  OrderSide,
-  OrderType,
-  type Position,
-  type Subscription,
-  type TriggerOrder,
+import type {
+  AccountResponse,
+  Balance,
+  MarketContext,
+  OpenOrder,
+  OrderbookLevel,
+  OrderbookResponse,
+  Position,
+  Subscription,
+  TriggerOrder,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 import { isAddress } from 'viem'
@@ -69,9 +67,10 @@ import {
   isTriggerOrder,
   mapFill,
   mapMarketContext,
+  mapOpenOrder,
   mapOrderStatus,
-  mapOrderType,
   mapPosition,
+  mapTriggerOrder,
   partitionSpotBalances,
   priceStepToAggregation,
   spotAssetFromToken,
@@ -993,40 +992,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         terminated.push(orderId)
         continue
       }
-      const type = mapOrderType(o.orderType)
       // Unknown market id (absent from the synced snapshot); skip just this item.
       const market = this.registry?.get(o.coin)
       if (!market) {
         continue
       }
-      const createdAt = new Date(o.timestamp).toISOString()
       if (isTriggerOrder(o)) {
-        const isLimit =
-          type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
-        triggerOrders.push({
-          orderId,
-          market,
-          type,
-          size: o.sz,
-          triggerPrice: o.triggerPx ?? '0',
-          ...(isLimit ? { limitPrice: o.limitPx } : {}),
-          label: o.triggerCondition,
-          createdAt,
-        })
+        triggerOrders.push(mapTriggerOrder(o, market))
       } else {
-        const filled = parseFloat(o.origSz) - parseFloat(o.sz)
-        openOrders.push({
-          orderId,
-          market,
-          side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-          type,
-          originalSize: o.origSz,
-          remainingSize: o.sz,
-          price: o.limitPx,
-          filledSize: filled.toString(),
-          reduceOnly: o.reduceOnly ?? false,
-          createdAt,
-        })
+        openOrders.push(mapOpenOrder(o, market))
       }
     }
     this.emit(key, {
