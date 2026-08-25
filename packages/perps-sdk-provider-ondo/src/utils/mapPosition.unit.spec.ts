@@ -55,6 +55,7 @@ describe('mapPosition', () => {
       markPrice: '202.05',
       liquidationPrice: '182.3',
       unrealizedPnl: '15.5',
+      accruedFunding: '-0.12',
       leverage: 5,
       marginUsed: '401',
       initialMarginRequirement: '401',
@@ -69,6 +70,19 @@ describe('mapPosition', () => {
     )
     expect(mapped.side).toBe(PositionSide.SHORT)
     expect(mapped.size).toBe('2.5')
+  })
+
+  // Ondo already signs funding from the account's point of view, so
+  // `netFundingSinceNeutral` passes through unchanged.
+  it.each([
+    '-0.12',
+    '4.75',
+    '0',
+  ])('passes netFundingSinceNeutral %s through to accruedFunding', (netFundingSinceNeutral) => {
+    expect(
+      mapPosition(positionFixture({ netFundingSinceNeutral }), MARKET)
+        .accruedFunding
+    ).toBe(netFundingSinceNeutral)
   })
 
   it('parses fractional leverage', () => {

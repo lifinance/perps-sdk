@@ -1,5 +1,28 @@
 # @lifi/perps-sdk
 
+## 8.0.0
+
+### Major Changes
+
+- [#361](https://github.com/lifinance/perps-sdk/pull/361) [`54330e9`](https://github.com/lifinance/perps-sdk/commit/54330e9839acf9e805b13b14adc921c4b3287469) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Carry accrued funding on `Position`.
+
+  `Position` gains a required `accruedFunding` string. It reports the funding the
+  position accrued since it opened, in quote-currency units. A positive value means
+  the account received funding. A negative value means the account paid it. Every
+  venue resets the value when the position returns to flat.
+
+  `HlPosition` gains a required `cumFunding` object, which the Hyperliquid
+  `clearinghouseState` and `webData2` payloads always send. Hyperliquid signs
+  `cumFunding` as funding paid, so the Hyperliquid mapper negates
+  `cumFunding.sinceOpen`. Lighter `total_funding_paid_out` and Ondo
+  `netFundingSinceNeutral` already use the account point of view, so those mappers
+  pass the value through.
+
+### Patch Changes
+
+- Updated dependencies [[`54330e9`](https://github.com/lifinance/perps-sdk/commit/54330e9839acf9e805b13b14adc921c4b3287469)]:
+  - @lifi/perps-types@9.0.0
+
 ## 7.0.1
 
 ### Patch Changes

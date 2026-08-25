@@ -78,6 +78,7 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.DEPOSIT,
+        asset: 'USDC',
         amount: '100',
       },
     ]
@@ -93,8 +94,8 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.WITHDRAWAL,
+        asset: 'USDC',
         amount: '5',
-        fee: '0',
       },
     ]
     const encoded = encodeActivityCursor({ overflow })

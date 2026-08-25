@@ -153,6 +153,24 @@ const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
 
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
+/** Activity surfaces whose rows name a market, so they need the market registry. */
+const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.FUNDING,
+  ActivityType.LIQUIDATION,
+])
+
+/** Activity surfaces whose rows name an asset, so they need the asset registry. */
+const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.DEPOSIT,
+  ActivityType.WITHDRAWAL,
+  ActivityType.TRANSFER,
+])
+
+const wantsAnyType = (
+  requested: ActivityType[] | undefined,
+  wanted: ReadonlySet<ActivityType>
+): boolean => requested === undefined || requested.some((t) => wanted.has(t))
+
 /**
  * Expiry requested when the SDK lazily creates a Lighter read-only token for
  * authenticated reads. One day under Lighter's 10-year maximum: the cap is
@@ -1226,6 +1244,8 @@ export const createLighterProvider = (
       const account = await fetchDetailedAccount(client, params.address)
       const marketRegistry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
+      // Markets identify funding and liquidation rows; assets identify ledger
+      // rows. A request for one surface must not pull the other's registry.
       const [history] = await Promise.all([
         retryOnRevoked(opts, params.address, token, (t) =>
           fetchAllHistory(
@@ -1237,9 +1257,16 @@ export const createLighterProvider = (
             inputCursor
           )
         ),
-        marketRegistry.sync(),
-        assetRegistry.sync(),
+        wantsAnyType(params.type, MARKET_BEARING_TYPES)
+          ? marketRegistry.sync()
+          : Promise.resolve(),
+        wantsAnyType(params.type, ASSET_BEARING_TYPES)
+          ? assetRegistry.sync()
+          : Promise.resolve(),
       ])
+
+      const assetSymbol = (assetId: number): string =>
+        assetRegistry.get(String(assetId))?.displaySymbol ?? String(assetId)
 
       const items: ActivityItem[] = [
         ...history.deposits.deposits.map(
@@ -1248,20 +1275,23 @@ export const createLighterProvider = (
             provider: providerKey,
             timestamp: toIsoFromMs(d.timestamp),
             type: ActivityType.DEPOSIT,
+            asset: assetSymbol(d.asset_id),
             amount: d.amount,
             explorerLink: d.l1_tx_hash
               ? `https://scan.li.fi/tx/${d.l1_tx_hash}`
               : undefined,
           })
         ),
+        // `/withdraw/history` carries no fee field, so `fee` stays absent
+        // rather than claiming a zero fee the venue never reported.
         ...history.withdraws.withdraws.map(
           (w): ActivityItem => ({
             id: w.id,
             provider: providerKey,
             timestamp: toIsoFromMs(w.timestamp),
             type: ActivityType.WITHDRAWAL,
+            asset: assetSymbol(w.asset_id),
             amount: w.amount,
-            fee: '0',
             explorerLink: w.l1_tx_hash
               ? `https://scan.li.fi/tx/${w.l1_tx_hash}`
               : undefined,
@@ -1279,54 +1309,68 @@ export const createLighterProvider = (
             fundingRate: f.rate,
           })
         ),
+        // `/liquidations` reports only the market, the margin type and the
+        // execution time. Notional, account value and position size stay
+        // absent — a `'0'` would read as a real zero. The endpoint exposes no
+        // cascade identity either, so one cross-margin cascade arrives as
+        // several independent rows and each stays its own activity; grouping
+        // them by `executed_at` would invent a relationship Lighter does not
+        // report.
         ...history.liquidations.liquidations.map(
           (l): ActivityItem => ({
             id: `liquidation-${l.id}`,
             provider: providerKey,
             timestamp: toIsoFromMs(l.executed_at),
             type: ActivityType.LIQUIDATION,
-            liquidatedNotionalPosition: '0',
-            accountValue: '0',
             leverageType: l.type,
             liquidatedPositions: [
-              {
-                market: marketRegistry.require(String(l.market_id)),
-                size: '0',
-              },
+              { market: marketRegistry.require(String(l.market_id)) },
             ],
           })
         ),
-        ...history.transfers.transfers.map((t): ActivityItem => {
-          const direction: 'IN' | 'OUT' =
-            t.from_account_index === account.index ? 'OUT' : 'IN'
-          const counterpartyAccountIndex =
-            direction === 'OUT' ? t.to_account_index : t.from_account_index
-          return {
-            id: t.id,
-            provider: providerKey,
-            timestamp: toIsoFromMs(t.timestamp),
-            type: ActivityType.TRANSFER,
-            direction,
-            counterpartyAccountIndex,
-            asset:
-              assetRegistry.get(String(t.asset_id))?.displaySymbol ??
-              String(t.asset_id),
-            amount: t.amount,
-            explorerLink: explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
-            meta: {
-              transferType: t.type,
-              txHash: t.tx_hash,
-              fromRoute: t.from_route,
-              toRoute: t.to_route,
-              fee: t.fee,
-            },
-          }
-        }),
+        // `/transfer/history` also reports the account's own spot/perps route
+        // moves, where both indices are this account. Those are not transfers
+        // between accounts, so they are excluded from the ledger.
+        ...history.transfers.transfers
+          .filter((t) => t.from_account_index !== t.to_account_index)
+          .map((t): ActivityItem => {
+            const direction: 'IN' | 'OUT' =
+              t.from_account_index === account.index ? 'OUT' : 'IN'
+            const counterpartyAccountIndex =
+              direction === 'OUT' ? t.to_account_index : t.from_account_index
+            return {
+              id: t.id,
+              provider: providerKey,
+              timestamp: toIsoFromMs(t.timestamp),
+              type: ActivityType.TRANSFER,
+              direction,
+              counterpartyAccountIndex,
+              asset: assetSymbol(t.asset_id),
+              amount: t.amount,
+              explorerLink: explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
+              meta: {
+                transferType: t.type,
+                txHash: t.tx_hash,
+                fromRoute: t.from_route,
+                toRoute: t.to_route,
+                fee: t.fee,
+              },
+            }
+          }),
       ]
 
       const merged = [...(inputCursor?.overflow ?? []), ...items]
 
+      // The type filter also applies to replayed overflow rows: a cursor
+      // minted under one filter must never leak another surface's rows when
+      // the caller pages the two surfaces independently.
+      const requestedTypes =
+        params.type === undefined ? undefined : new Set(params.type)
+
       const filtered = merged.filter((it) => {
+        if (requestedTypes !== undefined && !requestedTypes.has(it.type)) {
+          return false
+        }
         const ts = new Date(it.timestamp).getTime()
         if (params.startTime !== undefined && ts < params.startTime) {
           return false

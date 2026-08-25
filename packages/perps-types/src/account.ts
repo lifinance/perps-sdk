@@ -45,6 +45,13 @@ export interface Position {
   liquidationPrice: string
   /** Unrealized PnL in quote-currency units. */
   unrealizedPnl: string
+  /**
+   * Funding this position accrued since it opened, in quote-currency units.
+   * Positive means the account received funding and negative means the account
+   * paid it, matching {@link FundingActivity} amounts. Every venue resets the
+   * value when the position returns to flat.
+   */
+  accruedFunding: string
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
@@ -83,8 +90,10 @@ export interface OpenOrder {
   market: MarketDisplay
   side: OrderSide
   type: OrderType
-  /** Remaining order quantity in base-asset units. */
-  size: string
+  /** Quantity the order was submitted for, in base-asset units. */
+  originalSize: string
+  /** Quantity still resting on the book, in base-asset units. */
+  remainingSize: string
   /** Limit/order price in quote-asset units. */
   price: string
   /** Quantity already filled in base-asset units. */
@@ -277,12 +286,18 @@ export interface BaseActivity {
 }
 
 /**
- * Account activity representing a completed deposit.
+ * Account activity representing a completed deposit. `amount` is a decimal
+ * string in `asset`'s units.
  *
  * @public
  */
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
+  /**
+   * Display symbol of the deposited asset, resolved by the provider adapter.
+   * Falls back to the venue's own asset id when the registry knows no symbol.
+   */
+  asset: string
   amount: string
   /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
@@ -290,14 +305,21 @@ export interface DepositActivity extends BaseActivity {
 
 /**
  * Account activity representing a completed withdrawal. `amount` and `fee`
- * are decimal strings in the transferred asset's units.
+ * are decimal strings in `asset`'s units — a withdrawal fee is always
+ * denominated in the withdrawn asset.
  *
  * @public
  */
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
+  /**
+   * Display symbol of the withdrawn asset, resolved by the provider adapter.
+   * Falls back to the venue's own asset id when the registry knows no symbol.
+   */
+  asset: string
   amount: string
-  fee: string
+  /** Absent when the venue reports no fee for the withdrawal. */
+  fee?: string
   /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
   explorerLink?: string
 }
@@ -309,18 +331,25 @@ export interface WithdrawalActivity extends BaseActivity {
  */
 export interface LiquidatedPosition {
   market: MarketDisplay
-  size: string
+  /** Absent when the venue reports no liquidated size for the position. */
+  size?: string
 }
 
 /**
- * Account activity representing a liquidation event.
+ * Account activity representing a liquidation event. `liquidatedPositions` is
+ * never empty: a provider adapter drops any record whose positions it cannot
+ * identify. A venue that liquidates several cross-margin positions in one
+ * cascade reports them as one activity with several entries, so consumers
+ * must never group activities by timestamp.
  *
  * @public
  */
 export interface LiquidationActivity extends BaseActivity {
   type: ActivityType.LIQUIDATION
-  liquidatedNotionalPosition: string
-  accountValue: string
+  /** Absent when the venue reports no liquidated notional. */
+  liquidatedNotionalPosition?: string
+  /** Absent when the venue reports no account value at liquidation time. */
+  accountValue?: string
   leverageType: string
   liquidatedPositions: LiquidatedPosition[]
 }
@@ -346,8 +375,10 @@ export interface FundingActivity extends BaseActivity {
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
 /**
- * Account activity representing an inbound or outbound transfer. At least one
- * counterparty identifier is required by the type-level union below.
+ * Account activity representing an inbound or outbound transfer between two
+ * distinct accounts. At least one counterparty identifier is required by the
+ * type-level union below. Same-account movements — a venue's own route or
+ * margin-location moves — are never reported as transfers.
  *
  * @public
  */

@@ -35,6 +35,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   markPrice: '5000',
   liquidationPrice: '4000',
   unrealizedPnl: '0',
+  accruedFunding: '0',
   leverage: 20,
   marginUsed: '1500',
   initialMarginRequirement: '500',

@@ -35,6 +35,7 @@ import type {
   ActivitiesResponse,
   ActivityItem,
   FillsResponse,
+  LiquidationActivity,
   MarketDisplay,
   OndoAccountConfig,
   Order,
@@ -480,13 +481,13 @@ export const ondoProvider = (
             params.marketId === undefined ? {} : { market: params.marketId }
           const registry = marketRegistry()
           const [orders] = await Promise.all([
-            client.get<OndoTwapOrder[]>('/v1/perps/twap/orders', {
-              params: queryParams,
-              authToken: token.token,
-            }),
+            client.get<OndoTwapOrder[] | null>(
+              '/v1/perps/twap/orders/running',
+              { params: queryParams, authToken: token.token }
+            ),
             registry.sync(),
           ])
-          return orders.map((order) =>
+          return (orders ?? []).map((order) =>
             mapRunningTwap(order, registry.require(order.market))
           )
         }
@@ -580,6 +581,9 @@ export const ondoProvider = (
           const inputCursor = decodeActivityCursor(params.cursor)
           const client = apiClient(opts)
 
+          // Ondo exposes funding fees and liquidations only. It publishes no
+          // deposit, withdrawal or transfer history endpoint, so those
+          // movement types never appear in an Ondo activity feed.
           const wantsType = (t: ActivityType): boolean =>
             params.type === undefined || params.type.includes(t)
           const shouldFetch = (
@@ -625,21 +629,35 @@ export const ondoProvider = (
                   }
                 )
               : Promise.resolve(emptyPage<OndoLiquidationEvent>()),
-            marketRegistry().sync(),
+            // Every Ondo activity row names a market. A request for a ledger
+            // surface alone matches no Ondo endpoint, so it must not pull the
+            // market list either.
+            wantsType(ActivityType.FUNDING) ||
+            wantsType(ActivityType.LIQUIDATION)
+              ? marketRegistry().sync()
+              : Promise.resolve(),
           ])
 
           const items: ActivityItem[] = [
             ...fundings.result.map((f) =>
               mapFundingActivity(f, requireMarketDisplay(f.market))
             ),
-            ...liquidations.result.map((l) =>
-              mapLiquidationActivity(l, requireMarketDisplay)
-            ),
+            // A liquidation event that names no position is dropped: the
+            // public contract guarantees a non-empty `liquidatedPositions`.
+            ...liquidations.result
+              .map((l) => mapLiquidationActivity(l, requireMarketDisplay))
+              .filter((a): a is LiquidationActivity => a !== null),
           ]
 
           const merged = [...(inputCursor?.overflow ?? []), ...items]
 
+          // The type filter also applies to replayed overflow rows: a cursor
+          // minted under one filter must never leak another surface's rows
+          // when the caller pages the two surfaces independently.
           const filtered = merged.filter((it) => {
+            if (!wantsType(it.type)) {
+              return false
+            }
             const ts = new Date(it.timestamp).getTime()
             if (params.startTime !== undefined && ts < params.startTime) {
               return false

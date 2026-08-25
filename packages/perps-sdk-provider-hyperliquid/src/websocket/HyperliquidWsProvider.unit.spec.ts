@@ -47,6 +47,11 @@ const assetPositionOf = (coin: string) => ({
     unrealizedPnl: '100',
     marginUsed: '940',
     leverage: { type: 'cross', value: 10 },
+    cumFunding: {
+      allTime: '-23403.892773',
+      sinceOpen: '5.788917',
+      sinceChange: '0.0',
+    },
   },
 })
 
@@ -1014,6 +1019,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '100',
                         marginUsed: '940',
                         leverage: { type: 'cross', value: 10 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                   ],
@@ -2210,6 +2220,9 @@ describe('HyperliquidWsProvider', () => {
         market: { id: 'BTC' },
         side: OrderSide.BUY,
         type: OrderType.LIMIT,
+        originalSize: '0.1',
+        remainingSize: '0.05',
+        filledSize: '0.05',
       })
     })
 
@@ -2635,6 +2648,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '100',
                         marginUsed: '940',
                         leverage: { type: 'cross', value: 10 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                   ],
@@ -2654,6 +2672,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '-2.50',
                         marginUsed: '15.86',
                         leverage: { type: 'isolated', value: 2 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                   ],
@@ -2706,6 +2729,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '100',
                         marginUsed: '940',
                         leverage: { type: 'cross', value: 10 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                     {
@@ -2718,6 +2746,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '0',
                         marginUsed: '0',
                         leverage: { type: 'cross', value: 10 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                   ],
@@ -2809,6 +2842,11 @@ describe('HyperliquidWsProvider', () => {
                         unrealizedPnl: '100',
                         marginUsed: '940',
                         leverage: { type: 'cross', value: 10 },
+                        cumFunding: {
+                          allTime: '-23403.892773',
+                          sinceOpen: '5.788917',
+                          sinceChange: '0.0',
+                        },
                       },
                     },
                   ],
