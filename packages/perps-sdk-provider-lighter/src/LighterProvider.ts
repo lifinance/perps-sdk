@@ -1309,20 +1309,20 @@ export const createLighterProvider = (
             fundingRate: f.rate,
           })
         ),
-        // `/liquidations` reports only the market, the margin type and the
-        // execution time. Notional, account value and position size stay
-        // absent — a `'0'` would read as a real zero. The endpoint exposes no
-        // cascade identity either, so one cross-margin cascade arrives as
-        // several independent rows and each stays its own activity; grouping
-        // them by `executed_at` would invent a relationship Lighter does not
-        // report.
+        // `/liquidations` reports only the market and the execution time. Its
+        // `type` field is a venue liquidation type, not a margin mode, so
+        // `leverageType` stays absent. Notional, account value and position
+        // size stay absent too — a `'0'` would read as a real zero. The
+        // endpoint exposes no cascade identity either, so one cross-margin
+        // cascade arrives as several independent rows and each stays its own
+        // activity; grouping them by `executed_at` would invent a relationship
+        // Lighter does not report.
         ...history.liquidations.liquidations.map(
           (l): ActivityItem => ({
             id: `liquidation-${l.id}`,
             provider: providerKey,
             timestamp: toIsoFromMs(l.executed_at),
             type: ActivityType.LIQUIDATION,
-            leverageType: l.type,
             liquidatedPositions: [
               { market: marketRegistry.require(String(l.market_id)) },
             ],

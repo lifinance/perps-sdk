@@ -350,7 +350,13 @@ export interface LiquidationActivity extends BaseActivity {
   liquidatedNotionalPosition?: string
   /** Absent when the venue reports no account value at liquidation time. */
   accountValue?: string
-  leverageType: string
+  /**
+   * Margin mode the liquidated account ran under, in the venue's own
+   * vocabulary — typically `cross` or `isolated`, but the venue may report
+   * any string. Absent when the venue reports no margin mode on a
+   * liquidation row.
+   */
+  leverageType?: string
   liquidatedPositions: LiquidatedPosition[]
 }
 
