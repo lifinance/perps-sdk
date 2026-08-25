@@ -1,5 +1,106 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 10.0.0
+
+### Major Changes
+
+- [#360](https://github.com/lifinance/perps-sdk/pull/360) [`16f46bd`](https://github.com/lifinance/perps-sdk/commit/16f46bdf0b18b3169563a34a39624c2cab15e5df) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - **Breaking:** `OpenOrder.size` is removed. `OpenOrder` now carries `originalSize` (the quantity the order was submitted for) and `remainingSize` (the quantity still resting on the book), matching the names `Order` already uses. The old `size` field held the remaining quantity on Hyperliquid and the original quantity on Lighter, so `filledSize / size` returned a wrong fill fraction on one of the two. Replace a read of `size` with `remainingSize` for the resting quantity, or with `originalSize` for the submitted quantity. `expectedRealizedPnlForOpenOrder` now projects `remainingSize`, which corrects its result for a partially filled Lighter order. `expectedRealizedPnlForOpenOrder` returns `null` when `remainingSize` is zero, because nothing is left to fill; the zero-means-close-the-whole-position convention stays on the trigger-order path. The Ondo provider normalizes `originalSize` through `big.js`, so an unfilled Ondo order reports the same string on both sizes.
+
+- [#362](https://github.com/lifinance/perps-sdk/pull/362) [`20acc5e`](https://github.com/lifinance/perps-sdk/commit/20acc5ef95f2343ffb13369444134c4325a80f8d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Normalize ledger and liquidation activity across providers.
+
+  Breaking changes to the public activity contract:
+
+  - `DepositActivity` and `WithdrawalActivity` gain a required `asset` field, so a
+    consumer no longer hard-codes USDC. The Lighter Robinhood deployment reports
+    USDG.
+  - `WithdrawalActivity.fee` is optional. Lighter no longer reports a fabricated
+    `'0'` fee.
+  - `LiquidationActivity.liquidatedNotionalPosition`, `accountValue`, and
+    `LiquidatedPosition.size` are optional. A provider omits a metric the venue
+    does not report instead of sending `'0'`, which reads as a real zero.
+  - `LiquidationActivity.liquidatedPositions` is never empty. A provider drops a
+    liquidation record whose positions it cannot identify.
+
+  Behaviour changes:
+
+  - `TransferActivity` covers movements between two distinct accounts only. Every
+    adapter excludes a same-account route or margin-location move.
+  - `getActivity` fetches only the reference data a requested activity type needs,
+    so a ledger-only request no longer pulls the market list.
+  - A composite activity cursor applies the request type filter to its replayed
+    rows, so paging two type filters independently never leaks or duplicates rows.
+
+- [#383](https://github.com/lifinance/perps-sdk/pull/383) [`c1f0c63`](https://github.com/lifinance/perps-sdk/commit/c1f0c6380879909094f8e05067c90005534a46b3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Express a fill fee and a transfer fee in the asset the venue charged it in.
+
+  Breaking changes to the public account and activity contract:
+
+  - `Fill.fee` changes from a decimal string to `{ amount, asset }`. A consumer
+    that read `fee` as a string reads `fee.amount` instead, and must format it
+    against `fee.asset` rather than against the market's quote asset. Hyperliquid
+    charges a fill fee in a token that is not always the quote asset.
+  - `TransferActivity` gains `fees`, a list of `{ amount, asset }` entries. A
+    venue can charge more than one fee for one transfer, each in a different
+    asset. The Hyperliquid `spotTransfer` and `sendAsset` mapper no longer puts
+    `fee`, `nativeTokenFee`, or `feeToken` in the opaque `meta` record. A consumer
+    that read `meta.fee` reads `fees` instead.
+  - The fee shape is now named `Fee` and covers a fill fee, a transfer fee, and a
+    withdrawal fee. It carries the same two members as before under the new name.
+    `WithdrawalActivity.fee` is now typed as `Fee`. The `WithdrawalFee` name is
+    gone: `import type { WithdrawalFee }` no longer compiles, so replace it with
+    `Fee` at every import site.
+  - `@lifi/perps-sdk` re-exports `@lifi/perps-types`, so it carries the same
+    breaking type change to its own consumers.
+
+  Provider behaviour:
+
+  - Hyperliquid reads `feeToken` from a `userFills` row and reports it as
+    `fee.asset`. A row without `feeToken` falls back to the market's quote asset.
+  - Hyperliquid reports the `spotTransfer` fee in `USDC` and the accompanying
+    `nativeTokenFee` in `HYPE`. It reports the `sendAsset` fee in the delta's own
+    `feeToken` and the accompanying `nativeTokenFee` in `HYPE`.
+  - Lighter and Ondo report the fill fee in the market's quote asset, which is
+    what both venues charge. The reported amount does not change.
+
+### Minor Changes
+
+- [#374](https://github.com/lifinance/perps-sdk/pull/374) [`4b98111`](https://github.com/lifinance/perps-sdk/commit/4b981114be018914973983a104f775742f6fbe6f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report Ondo deposit and withdrawal activity. `getActivity` now maps
+  `/v1/wallet/deposits` and `/v1/wallet/withdrawals`, so a `DEPOSIT` or
+  `WITHDRAWAL` request no longer returns an empty page. Both endpoints are
+  unpaged, so each is fetched on the first page only and its tail rides the
+  activity cursor. `asset` carries Ondo's `coin` symbol. A withdrawal Ondo
+  reports as failed or cancelled is dropped. Ondo publishes no account-to-account
+  transfer history, so `TRANSFER` stays unmapped.
+
+- [#381](https://github.com/lifinance/perps-sdk/pull/381) [`8b92692`](https://github.com/lifinance/perps-sdk/commit/8b92692193c1907313b12f4921954133711a4880) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Express a withdrawal fee in the asset the venue charged it in.
+
+  Breaking change to the public activity contract:
+
+  - `WithdrawalActivity.fee` changes from a decimal string to the new
+    `WithdrawalFee` shape, `{ amount, asset }`. A consumer that read `fee` as a
+    string reads `fee.amount` instead, and must format it against `fee.asset`
+    rather than against the withdrawal's own `asset`. A venue does not always
+    charge the fee in the withdrawn asset.
+  - Hyperliquid reports `fee.asset` as `USDC`, which stays the withdrawn asset,
+    so the reported amount does not change.
+
+  Behaviour change:
+
+  - Ondo now reports the withdrawal fee it charges. `getActivity` maps `usdFee`
+    from `/v1/wallet/withdrawals` onto `fee` with `asset: 'USD'`, so a BTC or ETH
+    withdrawal reports its real fee instead of dropping it.
+
+### Patch Changes
+
+- [#372](https://github.com/lifinance/perps-sdk/pull/372) [`3c20c5d`](https://github.com/lifinance/perps-sdk/commit/3c20c5d9a35f43c1986bd3c94852e3c4b2ae43cb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Route Hyperliquid WebSocket order updates and Ondo remaining-quantity derivation through the existing shared mappers instead of duplicated inline logic. Export the `HlOrderLike` order-payload union that the shared Hyperliquid mappers accept.
+
+- [#366](https://github.com/lifinance/perps-sdk/pull/366) [`51b2ebc`](https://github.com/lifinance/perps-sdk/commit/51b2ebca94cb40daef7d0190cccd41d9b7f093b4) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read a `null` Ondo position-list result as no rows instead of throwing a `TypeError`.
+
+- [#367](https://github.com/lifinance/perps-sdk/pull/367) [`e466cdc`](https://github.com/lifinance/perps-sdk/commit/e466cdc86a1aee30af49e445393d851ee0e58f0b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read a `null` Ondo deposit-address result as an empty list, so `getAccount` reports `config.depositAddress: null` instead of raising a malformed-response error.
+
+- Updated dependencies [[`16f46bd`](https://github.com/lifinance/perps-sdk/commit/16f46bdf0b18b3169563a34a39624c2cab15e5df), [`20acc5e`](https://github.com/lifinance/perps-sdk/commit/20acc5ef95f2343ffb13369444134c4325a80f8d), [`680a1c7`](https://github.com/lifinance/perps-sdk/commit/680a1c7cb652bf08a884dfcb74e4e0a3e4d7b422), [`cbbc415`](https://github.com/lifinance/perps-sdk/commit/cbbc415c35863f5ce9cd407236b1c743b9d54ac1), [`8b92692`](https://github.com/lifinance/perps-sdk/commit/8b92692193c1907313b12f4921954133711a4880), [`c1f0c63`](https://github.com/lifinance/perps-sdk/commit/c1f0c6380879909094f8e05067c90005534a46b3)]:
+  - @lifi/perps-types@10.0.0
+  - @lifi/perps-sdk@9.0.0
+
 ## 9.0.0
 
 ### Minor Changes
