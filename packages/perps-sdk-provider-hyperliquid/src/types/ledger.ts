@@ -108,6 +108,10 @@ export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
 export type HlFundingDelta = {
   type: 'funding'
   coin: string
+  /**
+   * Signed, in USDC. Positive means the account received funding; negative
+   * means the account paid it. Mapped straight onto `FundingActivity.amount`.
+   */
   usdc: string
   szi: string
   fundingRate: string
