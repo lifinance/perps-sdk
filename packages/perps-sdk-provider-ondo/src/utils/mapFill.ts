@@ -35,7 +35,11 @@ export const mapFill = (fill: OndoFill, market: MarketDisplay): Fill => ({
   price: fill.price,
   status: FillStatus.FILLED,
   liquidity: fill.isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
-  fee: new Big(fill.fee).minus(fill.feeRebate ?? '0').toFixed(),
+  // Ondo charges the fill fee in the market's quote asset.
+  fee: {
+    amount: new Big(fill.fee).minus(fill.feeRebate ?? '0').toFixed(),
+    asset: market.quoteAsset.displaySymbol,
+  },
   realizedPnl: fill.pnl,
   classification:
     fill.direction !== undefined

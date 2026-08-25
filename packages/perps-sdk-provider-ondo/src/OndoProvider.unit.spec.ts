@@ -1061,7 +1061,7 @@ describe('OndoProvider — getFills', () => {
         price: '200.5',
         status: FillStatus.FILLED,
         liquidity: LiquidityRole.TAKER,
-        fee: '0.3',
+        fee: { amount: '0.3', asset: 'USDC' },
         realizedPnl: undefined,
         classification: FillClassification.OPENED_LONG,
         createdAt: '2026-07-01T12:01:00.000Z',

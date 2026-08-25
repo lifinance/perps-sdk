@@ -2373,7 +2373,7 @@ describe('HyperliquidWsProvider', () => {
         side: OrderSide.BUY,
         price: '94000',
         size: '0.1',
-        fee: '4.70',
+        fee: { amount: '4.70', asset: 'USDC' },
         status: FillStatus.FILLED,
       })
     })

@@ -443,7 +443,7 @@ export const mockFills: FillsResponse = {
       liquidity: LiquidityRole.TAKER,
       classification: FillClassification.OPENED_LONG,
       filledSize: '0.1',
-      fee: '4.70',
+      fee: { amount: '4.70', asset: 'USDC' },
       realizedPnl: null,
       createdAt: '2024-01-01T00:00:00Z',
     },

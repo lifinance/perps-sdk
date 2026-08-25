@@ -219,10 +219,92 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.meta).toEqual({
       transferType: 'spotTransfer',
       usdcValue: '12.5',
-      fee: '0.01',
-      nativeTokenFee: '0.0001',
       nonce: 7,
     })
+  })
+
+  it('reports the spotTransfer fee in USDC and the native-token fee in HYPE', () => {
+    const entry = spotTransferUpdate({
+      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      fee: '1.0',
+      nativeTokenFee: '0.25',
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    const t = result as TransferActivity
+    expect(t.asset).toBe('PURR')
+    expect(t.fees).toEqual([
+      { amount: '1.0', asset: 'USDC' },
+      { amount: '0.25', asset: 'HYPE' },
+    ])
+    expect(t.meta).not.toHaveProperty('fee')
+    expect(t.meta).not.toHaveProperty('nativeTokenFee')
+  })
+
+  it('reports only the fees the spotTransfer delta carries', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xhash-native-only',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '1',
+        usdcValue: '1',
+        nativeTokenFee: '0.0001',
+        user: QUERIED as HlSpotTransferDelta['user'],
+        destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      },
+    }
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).fees).toEqual([
+      { amount: '0.0001', asset: 'HYPE' },
+    ])
+  })
+
+  it('reports only the USDC fee when the spotTransfer delta carries no native-token fee', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xhash-usdc-only',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '1',
+        usdcValue: '1',
+        fee: '0.01',
+        user: QUERIED as HlSpotTransferDelta['user'],
+        destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      },
+    }
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).fees).toEqual([
+      { amount: '0.01', asset: 'USDC' },
+    ])
+  })
+
+  it('omits fees when the spotTransfer delta reports none', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xhash-no-fee',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '1',
+        usdcValue: '1',
+        user: QUERIED as HlSpotTransferDelta['user'],
+        destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      },
+    }
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect(result).not.toHaveProperty('fees')
   })
 
   it('omits optional meta fields when not present on the delta', () => {
@@ -361,7 +443,7 @@ describe('mapLedgerEntry — sendAsset', () => {
     expect((result as TransferActivity).asset).toBe('PURR')
   })
 
-  it('projects sourceDex / destinationDex / fees / nonce / feeToken into meta', () => {
+  it('projects sourceDex / destinationDex / nonce into meta and fees onto the typed shape', () => {
     const entry = sendAssetUpdate({
       user: QUERIED as HlSendAssetDelta['user'],
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
@@ -382,11 +464,29 @@ describe('mapLedgerEntry — sendAsset', () => {
       sourceDex: 'xyz',
       destinationDex: '',
       usdcValue: '99.5',
-      fee: '0.03',
-      nativeTokenFee: '0.0003',
-      feeToken: 'USDC',
       nonce: 1_700_000_000_999,
     })
+    expect(t.fees).toEqual([
+      { amount: '0.03', asset: 'USDC' },
+      { amount: '0.0003', asset: 'HYPE' },
+    ])
+  })
+
+  it('names the sendAsset feeToken as the fee asset and drops its id suffix', () => {
+    const entry = sendAssetUpdate({
+      user: QUERIED as HlSendAssetDelta['user'],
+      destination: COUNTERPARTY as HlSendAssetDelta['destination'],
+      fee: '0.04',
+      nativeTokenFee: '0.0004',
+      feeToken: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).fees).toEqual([
+      { amount: '0.04', asset: 'PURR' },
+      { amount: '0.0004', asset: 'HYPE' },
+    ])
   })
 
   it('isSendAssetDelta narrows on the literal "send" wire-level type', () => {

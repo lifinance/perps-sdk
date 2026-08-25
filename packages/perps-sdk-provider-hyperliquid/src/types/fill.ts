@@ -17,6 +17,11 @@ export type HlUserFill = {
   px: string
   dir: string
   fee: string
+  /**
+   * Wire token the fee was charged in (`"USDC"`, `"HYPE"`). Absent on rows
+   * predating the field, where the fee is in the market's quote asset.
+   */
+  feeToken?: string
   closedPnl: string
   crossed: boolean
   time: number
