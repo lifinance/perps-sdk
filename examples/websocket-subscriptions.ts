@@ -7,7 +7,7 @@ async function run() {
     apiKey: 'your-api-key',
   })
 
-  // Create the realtime client. Each provider key maps to a factory that is
+  // Create the WebSocket client. Each provider key maps to a factory that is
   // invoked lazily on first subscribe. Lighter authenticated channels
   // (orderUpdates, positions) require an authProvider that returns a fresh
   // token for the given wallet address — see LighterAuthProvider in
