@@ -11,6 +11,7 @@ import {
   ActionType,
   ActivityType,
   type EvmTxActionStep,
+  type LiquidationActivity,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -40,6 +41,7 @@ import {
   lighterProvider,
   lighterRhProvider,
 } from './LighterProvider.js'
+import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
@@ -2201,39 +2203,129 @@ describe('LighterProvider — normalisation', () => {
 })
 
 describe('LighterProvider — getActivity liquidation mapping', () => {
-  it('never reports the venue liquidation type as a leverage type', async () => {
+  /** One `/api/v1/liquidations` row, shaped as Lighter's OpenAPI declares it. */
+  const liquidationRow = (overrides: {
+    type?: string
+    trade?: Record<string, unknown>
+    positions?: Record<string, unknown>[]
+    totalAccountValue?: string
+  }) => ({
+    id: 5,
+    market_id: 0,
+    type: overrides.type ?? 'partial',
+    trade: overrides.trade ?? {
+      price: '30000.5',
+      size: '0.25',
+      taker_fee: '1.5',
+      maker_fee: '0',
+      transaction_time: 1700000000000,
+    },
+    info: {
+      positions: overrides.positions ?? [
+        { market_id: 0, margin_mode: LT_MARGIN_MODE_CROSS },
+      ],
+      risk_info_before: {
+        cross_risk_parameters: {
+          total_account_value: overrides.totalAccountValue ?? '4821.75',
+        },
+      },
+    },
+    executed_at: 1700000000000,
+  })
+
+  const fetchLiquidation = async (
+    row: ReturnType<typeof liquidationRow>
+  ): Promise<LiquidationActivity> => {
     overrideFetch((u) =>
       u.includes('/api/v1/liquidations')
-        ? respond({
-            code: 0,
-            liquidations: [
-              {
-                id: 5,
-                market_id: 0,
-                type: 'full_liquidation',
-                executed_at: 1700000000000,
-              },
-            ],
-          })
+        ? respond({ code: 0, liquidations: [row] })
         : undefined
     )
-
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
     const result = await provider.getActivity({
       address: ADDRESS,
       type: [ActivityType.LIQUIDATION],
     })
-
     expect(result.items).toHaveLength(1)
     const [item] = result.items
     if (item.type !== ActivityType.LIQUIDATION) {
       throw new Error('expected a liquidation activity')
     }
-    expect(item.leverageType).toBeUndefined()
-    expect(JSON.stringify(item)).not.toContain('full_liquidation')
+    return item
+  }
+
+  it('never reports the venue liquidation type as a leverage type', async () => {
+    const item = await fetchLiquidation(liquidationRow({ type: 'deleverage' }))
+
+    expect(item.leverageType).toBe('cross')
+    expect(JSON.stringify(item)).not.toContain('deleverage')
     expect(item.liquidatedPositions).toHaveLength(1)
     expect(item.liquidatedPositions[0].market.id).toBe('0')
+  })
+
+  it('reads notional, account value, leverage type and size off the row', async () => {
+    const item = await fetchLiquidation(liquidationRow({}))
+
+    expect(item.liquidatedNotionalPosition).toBe('7500.125')
+    expect(item.accountValue).toBe('4821.75')
+    expect(item.leverageType).toBe('cross')
+    expect(item.liquidatedPositions[0].size).toBe('0.25')
+  })
+
+  it('reads an isolated leverage type off the row position margin mode', async () => {
+    const item = await fetchLiquidation(
+      liquidationRow({
+        positions: [{ market_id: 0, margin_mode: LT_MARGIN_MODE_ISOLATED }],
+      })
+    )
+
+    expect(item.leverageType).toBe('isolated')
+  })
+
+  it('omits the leverage type when the row carries no position for its market', async () => {
+    const item = await fetchLiquidation(
+      liquidationRow({
+        positions: [{ market_id: 1, margin_mode: LT_MARGIN_MODE_ISOLATED }],
+      })
+    )
+
+    expect(item).not.toHaveProperty('leverageType')
+    expect(item.accountValue).toBe('4821.75')
+  })
+
+  it('omits the notional when the forced trade carries an unparsable decimal', async () => {
+    const item = await fetchLiquidation(
+      liquidationRow({
+        trade: {
+          price: '',
+          size: '0.25',
+          taker_fee: '0',
+          maker_fee: '0',
+          transaction_time: 1700000000000,
+        },
+      })
+    )
+
+    expect(item).not.toHaveProperty('liquidatedNotionalPosition')
+    expect(item.liquidatedPositions[0].size).toBe('0.25')
+  })
+
+  it('reports the notional as a magnitude for a liquidated short', async () => {
+    const item = await fetchLiquidation(
+      liquidationRow({
+        trade: {
+          price: '30000.5',
+          size: '-0.25',
+          taker_fee: '0',
+          maker_fee: '0',
+          transaction_time: 1700000000000,
+        },
+      })
+    )
+
+    expect(item.liquidatedNotionalPosition).toBe('7500.125')
+    expect(item.liquidatedPositions[0].size).toBe('-0.25')
   })
 })
 
@@ -2520,7 +2612,20 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
   const liquidationRow = (id: number, executedAtMs: number) => ({
     id,
     market_id: 0,
-    type: 'cross',
+    type: 'partial',
+    trade: {
+      price: '30000.5',
+      size: '0.25',
+      taker_fee: '1.5',
+      maker_fee: '0',
+      transaction_time: executedAtMs,
+    },
+    info: {
+      positions: [{ market_id: 0, margin_mode: LT_MARGIN_MODE_CROSS }],
+      risk_info_before: {
+        cross_risk_parameters: { total_account_value: '4821.75' },
+      },
+    },
     executed_at: executedAtMs,
   })
 
@@ -2616,7 +2721,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     expect(items.map((i) => i.id)).toEqual(['t1'])
   })
 
-  it('omits liquidation metrics Lighter does not report', async () => {
+  it('reports the liquidation metrics Lighter carries on the row', async () => {
     stubHistory({ liquidations: [liquidationRow(7, 1700000002000)] })
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
@@ -2628,14 +2733,15 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
     expect(items).toHaveLength(1)
     const [liquidation] = items
-    expect(liquidation).not.toHaveProperty('liquidatedNotionalPosition')
-    expect(liquidation).not.toHaveProperty('accountValue')
     if (liquidation.type !== ActivityType.LIQUIDATION) {
       throw new Error('expected a liquidation activity')
     }
+    expect(liquidation.liquidatedNotionalPosition).toBe('7500.125')
+    expect(liquidation.accountValue).toBe('4821.75')
+    expect(liquidation.leverageType).toBe('cross')
     expect(liquidation.liquidatedPositions).toHaveLength(1)
     expect(liquidation.liquidatedPositions[0].market.id).toBe('0')
-    expect(liquidation.liquidatedPositions[0]).not.toHaveProperty('size')
+    expect(liquidation.liquidatedPositions[0].size).toBe('0.25')
   })
 
   it('keeps liquidation rows that share a timestamp separate', async () => {
@@ -2773,7 +2879,20 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
   const liquidationRow = (id: number, marketId: number) => ({
     id,
     market_id: marketId,
-    type: 'cross',
+    type: 'partial',
+    trade: {
+      price: '30000.5',
+      size: '0.25',
+      taker_fee: '1.5',
+      maker_fee: '0',
+      transaction_time: 1700000002000,
+    },
+    info: {
+      positions: [{ market_id: marketId, margin_mode: LT_MARGIN_MODE_CROSS }],
+      risk_info_before: {
+        cross_risk_parameters: { total_account_value: '4821.75' },
+      },
+    },
     executed_at: 1700000002000,
   })
 
