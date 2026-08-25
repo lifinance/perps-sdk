@@ -266,6 +266,28 @@ describe('mapLedgerEntry — spotTransfer', () => {
     ])
   })
 
+  it('reports only the USDC fee when the spotTransfer delta carries no native-token fee', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xhash-usdc-only',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '1',
+        usdcValue: '1',
+        fee: '0.01',
+        user: QUERIED as HlSpotTransferDelta['user'],
+        destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      },
+    }
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).fees).toEqual([
+      { amount: '0.01', asset: 'USDC' },
+    ])
+  })
+
   it('omits fees when the spotTransfer delta reports none', () => {
     const entry: HlLedgerUpdate = {
       time: 1_700_000_000_000,
