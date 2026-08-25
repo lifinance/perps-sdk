@@ -2740,6 +2740,15 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 })
 
 describe('LighterProvider — getActivity unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let client: PerpsSDKClient
+  beforeEach(() => {
+    client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+  })
+
   const DELISTED_MARKET = {
     ...MARKETS_RESPONSE.markets[0],
     id: '1',
@@ -2805,7 +2814,8 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     fundings?: unknown[]
     liquidations?: unknown[]
     markets?: unknown
-    historyStatus?: number
+    fundingStatus?: number
+    liquidationStatus?: number
   }
 
   const stubHistory = (history: HistoryStub) =>
@@ -2831,15 +2841,21 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
         return respond({ code: 0, withdraws: [withdrawRow] })
       }
       if (u.includes('/api/v1/positionFunding')) {
-        if (history.historyStatus !== undefined) {
+        if (history.fundingStatus !== undefined) {
           return respond(
             { code: 500, message: 'upstream down' },
-            history.historyStatus
+            history.fundingStatus
           )
         }
         return respond({ code: 0, position_fundings: history.fundings ?? [] })
       }
       if (u.includes('/api/v1/liquidations')) {
+        if (history.liquidationStatus !== undefined) {
+          return respond(
+            { code: 500, message: 'upstream down' },
+            history.liquidationStatus
+          )
+        }
         return respond({ code: 0, liquidations: history.liquidations ?? [] })
       }
       if (u.includes('/api/v1/transfer/history')) {
@@ -2852,7 +2868,7 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubHistory({ fundings: [fundingRow(1, 999)] })
     const provider = lighterProvider({ authToken: 'tok' })
-    provider.bind(STUB_CLIENT)
+    provider.bind(client)
 
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -2860,9 +2876,8 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     })
 
     expect(items.map((i) => i.id)).toEqual(['dep-1', 'wdr-1', 'tr-1'])
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("[lighter] unknown market id '999'")
-    )
+    expect(warn).toHaveBeenCalledWith("[lighter] unknown market id '999'")
+    expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
 
@@ -2870,7 +2885,7 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubHistory({ liquidations: [liquidationRow(7, 998)] })
     const provider = lighterProvider({ authToken: 'tok' })
-    provider.bind(STUB_CLIENT)
+    provider.bind(client)
 
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -2878,9 +2893,8 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     })
 
     expect(items.map((i) => i.id)).toEqual(['dep-1', 'wdr-1', 'tr-1'])
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("[lighter] unknown market id '998'")
-    )
+    expect(warn).toHaveBeenCalledWith("[lighter] unknown market id '998'")
+    expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
 
@@ -2891,7 +2905,7 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
       liquidations: [liquidationRow(8, 1)],
     })
     const provider = lighterProvider({ authToken: 'tok' })
-    provider.bind(STUB_CLIENT)
+    provider.bind(client)
 
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -2900,12 +2914,33 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
 
     expect(items.map((i) => i.id)).toContain('funding-2')
     expect(items.map((i) => i.id)).toContain('liquidation-8')
+
+    const funding = items.find((i) => i.id === 'funding-2')
+    expect(funding).toMatchObject({
+      type: ActivityType.FUNDING,
+      market: { id: '1', isDelisted: true },
+    })
+    const liquidation = items.find((i) => i.id === 'liquidation-8')
+    expect(liquidation).toMatchObject({
+      type: ActivityType.LIQUIDATION,
+      liquidatedPositions: [{ market: { id: '1', isDelisted: true } }],
+    })
   })
 
-  it('propagates a failed history fetch instead of returning an empty feed', async () => {
-    stubHistory({ historyStatus: 400 })
+  it('propagates a failed funding fetch instead of returning an empty feed', async () => {
+    stubHistory({ fundingStatus: 400 })
     const provider = lighterProvider({ authToken: 'tok' })
-    provider.bind(STUB_CLIENT)
+    provider.bind(client)
+
+    await expect(
+      provider.getActivity({ address: ADDRESS, limit: 50 })
+    ).rejects.toThrow(PerpsError)
+  })
+
+  it('propagates a failed liquidation fetch instead of returning an empty feed', async () => {
+    stubHistory({ liquidationStatus: 400 })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
 
     await expect(
       provider.getActivity({ address: ADDRESS, limit: 50 })
