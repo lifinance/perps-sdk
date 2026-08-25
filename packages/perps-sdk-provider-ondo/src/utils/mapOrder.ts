@@ -88,7 +88,11 @@ export const isTriggerOrder = (order: OndoOrder): boolean =>
   order.stopOrderType !== undefined ||
   order.triggerPrice !== undefined
 
-/** Map an active non-trigger Ondo order to an {@link OpenOrder}. @public */
+/**
+ * Map an active non-trigger Ondo order to an {@link OpenOrder}. Ondo reports
+ * the submitted and filled quantities only, so `remainingSize` is derived.
+ * @public
+ */
 export const mapOrder = (
   order: OndoOrder,
   market: MarketDisplay
@@ -97,7 +101,8 @@ export const mapOrder = (
   market,
   side: mapSide(order.side),
   type: mapOrderType(order.type),
-  size: order.size,
+  originalSize: new Big(order.size).toFixed(),
+  remainingSize: new Big(order.size).minus(order.filledSize).toFixed(),
   price: order.price,
   filledSize: order.filledSize,
   reduceOnly: order.reduceOnly ?? false,

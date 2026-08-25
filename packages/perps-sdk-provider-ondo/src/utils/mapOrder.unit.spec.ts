@@ -137,18 +137,42 @@ describe('isTriggerOrder', () => {
 })
 
 describe('mapOrder', () => {
-  it('maps an open limit order', () => {
+  it('maps a partially filled open limit order with both sizes', () => {
     expect(mapOrder(orderFixture(), MARKET)).toEqual({
       orderId: 'ord-1',
       market: MARKET,
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
-      size: '10',
+      originalSize: '10',
+      remainingSize: '6',
       price: '200.5',
       filledSize: '4',
       reduceOnly: false,
       createdAt: '2026-07-01T12:00:00.000Z',
     })
+  })
+
+  it('keeps remainingSize equal to originalSize while nothing is filled', () => {
+    const mapped = mapOrder(orderFixture({ filledSize: '0' }), MARKET)
+    expect(mapped.originalSize).toBe('10')
+    expect(mapped.remainingSize).toBe('10')
+    expect(mapped.filledSize).toBe('0')
+  })
+
+  it('normalizes originalSize so an unfilled order compares equal on both sizes', () => {
+    const mapped = mapOrder(
+      orderFixture({ size: '10.00', filledSize: '0.00' }),
+      MARKET
+    )
+    expect(mapped.originalSize).toBe(mapped.remainingSize)
+  })
+
+  it('derives a fractional remainingSize without float error', () => {
+    const mapped = mapOrder(
+      orderFixture({ size: '0.3', filledSize: '0.1' }),
+      MARKET
+    )
+    expect(mapped.remainingSize).toBe('0.2')
   })
 
   it('defaults an absent reduceOnly to false and maps sell side', () => {

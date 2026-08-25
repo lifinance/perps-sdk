@@ -90,8 +90,10 @@ export interface OpenOrder {
   market: MarketDisplay
   side: OrderSide
   type: OrderType
-  /** Remaining order quantity in base-asset units. */
-  size: string
+  /** Quantity the order was submitted for, in base-asset units. */
+  originalSize: string
+  /** Quantity still resting on the book, in base-asset units. */
+  remainingSize: string
   /** Limit/order price in quote-asset units. */
   price: string
   /** Quantity already filled in base-asset units. */
