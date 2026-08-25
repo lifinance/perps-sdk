@@ -21,6 +21,7 @@ export const mapPosition = (
   markPrice: pos.markPrice,
   liquidationPrice: pos.liquidationPrice,
   unrealizedPnl: pos.unrealizedPnl,
+  accruedFunding: pos.netFundingSinceNeutral,
   leverage: Number.parseFloat(pos.leverage),
   marginUsed: pos.usedMargin,
   initialMarginRequirement: pos.usedMargin,

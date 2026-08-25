@@ -26,6 +26,11 @@ export type LtAccountPosition = {
   unrealized_pnl: string
   realized_pnl: string
   liquidation_price: string
+  /**
+   * Funding accrued since the position opened, signed from the account's point
+   * of view despite the field name: negative is funding the account paid and
+   * positive is funding it received. Lighter resets it to `"0"` on close.
+   */
   total_funding_paid_out: string
   margin_mode: number
   allocated_margin: string

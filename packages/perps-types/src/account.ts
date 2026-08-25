@@ -45,6 +45,13 @@ export interface Position {
   liquidationPrice: string
   /** Unrealized PnL in quote-currency units. */
   unrealizedPnl: string
+  /**
+   * Funding this position accrued since it opened, in quote-currency units.
+   * Positive means the account received funding and negative means the account
+   * paid it, matching {@link FundingActivity} amounts. Every venue resets the
+   * value when the position returns to flat.
+   */
+  accruedFunding: string
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
