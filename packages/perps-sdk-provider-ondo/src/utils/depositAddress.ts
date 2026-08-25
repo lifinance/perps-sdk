@@ -30,6 +30,9 @@ const malformed = (message: string): OndoApiError =>
   new OndoApiError(`Ondo deposit-address response is malformed: ${message}`)
 
 const entriesFromResult = (result: unknown): unknown[] => {
+  if (result === null) {
+    return []
+  }
   if (Array.isArray(result)) {
     return result
   }
@@ -45,8 +48,9 @@ const entriesFromResult = (result: unknown): unknown[] => {
 
 /**
  * Extract the canonical Ethereum USDC address from Ondo's list response.
- * An empty list is a valid, unsatisfied setup state; malformed records are
- * errors so an API/schema failure cannot be mistaken for an absent address.
+ * A `null` result and an empty list are both valid, unsatisfied setup states;
+ * malformed records are errors so an API/schema failure cannot be mistaken for
+ * an absent address.
  */
 export const parseOndoDepositAddress = (result: unknown): Address | null => {
   const entries = entriesFromResult(result)
