@@ -138,7 +138,8 @@ export const mapWithdrawalActivity = (
     type: ActivityType.WITHDRAWAL,
     asset: withdrawal.coin,
     amount: withdrawal.size,
-    ...(withdrawal.usdFee === undefined
+    // Loose equality also drops a `null` the live API may send for "no fee".
+    ...(withdrawal.usdFee == null
       ? {}
       : {
           fee: {

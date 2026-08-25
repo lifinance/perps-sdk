@@ -58,8 +58,9 @@ page only and carries the rows past the page `limit` in the activity cursor.
 `asset` on a `DEPOSIT` or a `WITHDRAWAL` is Ondo's own `coin`, which is already
 a display symbol. Ondo charges a withdrawal fee in USD (`usdFee`) rather than
 in the withdrawn asset, so `WithdrawalActivity.fee` carries `asset: 'USD'` on
-every Ondo withdrawal. A consumer that formats the fee must read `fee.asset`
-and never reuse the withdrawal's own `asset`. A withdrawal Ondo reports as
+a withdrawal where Ondo reports a `usdFee`, and is absent otherwise. A
+consumer that formats the fee must read `fee.asset` and never reuse the
+withdrawal's own `asset`. A withdrawal Ondo reports as
 `failure` or `cancelled` moved no value and is dropped.
 
 `getActivity` never returns a `TRANSFER` item for Ondo. Ondo's transfer surface
