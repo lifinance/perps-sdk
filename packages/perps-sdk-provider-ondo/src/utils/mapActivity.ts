@@ -57,11 +57,12 @@ export const mapLiquidationActivity = (
   event: OndoLiquidationEvent,
   resolveMarket: (market: string) => MarketDisplay | undefined
 ): LiquidationActivity | null => {
-  const liquidatedPositions = (event.triggeringPositions ?? []).flatMap((p) => {
+  const resolvedPositions = (event.triggeringPositions ?? []).flatMap((p) => {
     const market = resolveMarket(p.market)
     return market === undefined ? [] : [{ market, size: p.netQuantity }]
   })
-  if (liquidatedPositions.length === 0) {
+  const [firstPosition, ...restPositions] = resolvedPositions
+  if (firstPosition === undefined) {
     return null
   }
   return {
@@ -73,7 +74,7 @@ export const mapLiquidationActivity = (
       ? {}
       : { liquidatedNotionalPosition: event.filledQuoteSize }),
     leverageType: 'cross',
-    liquidatedPositions,
+    liquidatedPositions: [firstPosition, ...restPositions],
   }
 }
 

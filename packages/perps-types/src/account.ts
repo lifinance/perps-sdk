@@ -336,11 +336,10 @@ export interface LiquidatedPosition {
 }
 
 /**
- * Account activity representing a liquidation event. `liquidatedPositions` is
- * never empty: a provider adapter drops any record whose positions it cannot
- * identify. A venue that liquidates several cross-margin positions in one
- * cascade reports them as one activity with several entries, so consumers
- * must never group activities by timestamp.
+ * Account activity representing a liquidation event. A venue that liquidates
+ * several cross-margin positions in one cascade reports them as one activity
+ * with several entries, so consumers must never group activities by
+ * timestamp.
  *
  * @public
  */
@@ -357,7 +356,7 @@ export interface LiquidationActivity extends BaseActivity {
    * liquidation row.
    */
   leverageType?: string
-  liquidatedPositions: LiquidatedPosition[]
+  liquidatedPositions: [LiquidatedPosition, ...LiquidatedPosition[]]
 }
 
 /**
