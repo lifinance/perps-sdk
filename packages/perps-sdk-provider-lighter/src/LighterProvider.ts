@@ -37,6 +37,7 @@ import type {
   ActivitiesResponse,
   ActivityItem,
   Balance,
+  Fill,
   FillsResponse,
   LighterAccountConfig,
   MarketSettings,
@@ -1211,9 +1212,17 @@ export const createLighterProvider = (
           client.getAuthed<LtTradesResponse>('/api/v1/trades', tok, queryParams)
       )
 
-      const items = response.trades.map((t) =>
-        mapFill(t, account.index, registry.require(String(t.market_id)))
-      )
+      // `get`, not `require`: a market id the backend list no longer carries
+      // drops only its own row instead of rejecting the whole page. The
+      // registry warns once per unresolved id. A delisted market still
+      // resolves, so its rows stay.
+      const items = response.trades.flatMap((t): Fill[] => {
+        const market = registry.get(String(t.market_id))
+        if (market === undefined) {
+          return []
+        }
+        return [mapFill(t, account.index, market)]
+      })
 
       return {
         provider: providerKey,

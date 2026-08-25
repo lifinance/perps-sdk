@@ -3025,6 +3025,106 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
   })
 })
 
+describe('LighterProvider — getFills unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let client: PerpsSDKClient
+  beforeEach(() => {
+    client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+  })
+
+  const DELISTED_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: '1',
+    isDelisted: true,
+    baseAsset: {
+      ...MARKETS_RESPONSE.markets[0].baseAsset,
+      id: '1',
+      displaySymbol: 'OLD',
+    },
+  }
+
+  const tradeRow = (tradeId: number, marketId: number) => ({
+    ...TRADES_RESPONSE.trades[0],
+    trade_id: tradeId,
+    market_id: marketId,
+  })
+
+  interface TradesStub {
+    trades?: unknown[]
+    markets?: unknown
+    tradesStatus?: number
+  }
+
+  const stubTrades = (stub: TradesStub) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(stub.markets ?? MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/trades')) {
+        if (stub.tradesStatus !== undefined) {
+          return respond(
+            { code: 500, message: 'upstream down' },
+            stub.tradesStatus
+          )
+        }
+        return respond({ code: 0, next_cursor: '', trades: stub.trades ?? [] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('drops a trade row whose market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubTrades({ trades: [tradeRow(7, 999), tradeRow(8, 0)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    const { items } = await provider.getFills({ address: ADDRESS })
+
+    expect(items.map((i) => i.id)).toEqual(['8'])
+    expect(warn).toHaveBeenCalledWith("[lighter] unknown market id '999'")
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps a fill on a delisted market', async () => {
+    stubTrades({
+      markets: { markets: [...MARKETS_RESPONSE.markets, DELISTED_MARKET] },
+      trades: [tradeRow(9, 1)],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    const { items } = await provider.getFills({ address: ADDRESS })
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      id: '9',
+      market: { id: '1', isDelisted: true },
+    })
+  })
+
+  it('propagates a failed trades fetch instead of returning an empty page', async () => {
+    stubTrades({ tradesStatus: 400 })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    await expect(provider.getFills({ address: ADDRESS })).rejects.toThrow(
+      PerpsError
+    )
+  })
+})
+
 describe('LighterProvider — accountExists', () => {
   it('returns true when the account resolves', async () => {
     const provider = lighterProvider()
