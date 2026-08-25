@@ -7,9 +7,10 @@ import type { ProviderGetActivityParams } from '../types/provider.js'
  * filters, sort newest-first, and slice to the page limit.
  *
  * `mintCursor` receives the rows past the slice (the new overflow tail) and
- * returns the provider's own encoded cursor, or `undefined` when nothing
- * remains to page. This keeps the helper agnostic of each provider's
- * per-endpoint cursor envelope.
+ * returns the provider's own encoded cursor, or `undefined` when no overflow
+ * rows remain and all of the provider's per-endpoint cursors are exhausted.
+ * This keeps the helper agnostic of each provider's per-endpoint cursor
+ * envelope.
  * @public
  */
 export const paginateActivity = (

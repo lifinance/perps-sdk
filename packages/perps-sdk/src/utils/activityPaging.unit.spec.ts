@@ -44,6 +44,26 @@ describe('paginateActivity', () => {
     })
   })
 
+  it('keeps a replayed overflow row ahead of a fresh row sharing its timestamp', () => {
+    // The sort is stable, so tie order observes the merge order: replayed
+    // overflow rows come before fresh rows.
+    const overflow = [deposit('overflow-tie', 2_000)]
+    const fresh = [deposit('fresh-tie', 2_000)]
+
+    const page = paginateActivity(fresh, overflow, {}, () => undefined)
+
+    expect(page.items.map((it) => it.id)).toEqual(['overflow-tie', 'fresh-tie'])
+  })
+
+  it('keeps every row kind and sizes the page to the filtered rows when type and limit are omitted', () => {
+    const fresh = [deposit('d1', 2_000), withdrawal('w1', 1_000)]
+
+    const page = paginateActivity(fresh, [], {}, () => undefined)
+
+    expect(page.items.map((it) => it.id)).toEqual(['d1', 'w1'])
+    expect(page.pagination.limit).toBe(2)
+  })
+
   it('reports no more pages and omits cursor when mintCursor returns undefined', () => {
     const page = paginateActivity(
       [deposit('d1', 1_000)],
