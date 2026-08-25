@@ -171,6 +171,11 @@ export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {
         unrealizedPnl: '100',
         marginUsed: '940',
         leverage: { type: 'cross', value: 10 },
+        cumFunding: {
+          allTime: '-23403.892773',
+          sinceOpen: '5.788917',
+          sinceChange: '0.0',
+        },
       },
     },
   ],
