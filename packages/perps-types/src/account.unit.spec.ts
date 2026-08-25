@@ -3,12 +3,14 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
 import { ActivityType, MarginMode } from './enums.js'
+import type { MarketDisplay } from './market.js'
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest
@@ -345,6 +347,75 @@ describe('OndoAccountConfig', () => {
     }
 
     expect(withToken.provider).toBe('ondo')
+  })
+})
+
+const liquidatedMarket = (providerId: string): MarketDisplay => ({
+  providerId,
+  id: 'ETH',
+  categoryId: 'perps',
+  baseAsset: { providerId, id: 'ETH', displaySymbol: 'ETH', logoURI: '' },
+  quoteAsset: { providerId, id: 'USDC', displaySymbol: 'USDC', logoURI: '' },
+})
+
+describe('LiquidationActivity', () => {
+  it('accepts a fixture that omits leverageType', () => {
+    const item: LiquidationActivity = {
+      id: 'liquidation-1',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '0',
+      accountValue: '0',
+      liquidatedPositions: [{ market: liquidatedMarket('lighter'), size: '0' }],
+    }
+
+    expect(item.leverageType).toBeUndefined()
+  })
+
+  it('accepts a fixture that carries a venue margin mode', () => {
+    const item: LiquidationActivity = {
+      id: 'liquidation-2',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:01:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+      leverageType: 'cross',
+      liquidatedPositions: [
+        { market: liquidatedMarket('hyperliquid'), size: '-1.5' },
+      ],
+    }
+
+    expect(item.leverageType).toBe('cross')
+  })
+
+  it('rejects misshaped liquidation fixtures', () => {
+    const numericLeverageType: LiquidationActivity = {
+      id: 'liquidation-3',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:02:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+      // @ts-expect-error leverageType must be a string
+      leverageType: 1,
+      liquidatedPositions: [],
+    }
+
+    // TS2741 attaches to the object literal opening brace.
+    // @ts-expect-error liquidatedPositions is required
+    const missingPositions: LiquidationActivity = {
+      id: 'liquidation-4',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:03:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+    }
+
+    expect(numericLeverageType.type).toBe(ActivityType.LIQUIDATION)
+    expect(missingPositions.type).toBe(ActivityType.LIQUIDATION)
   })
 })
 

@@ -460,6 +460,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     ) as LiquidationActivity
     expect(result.type).toBe(ActivityType.LIQUIDATION)
     expect(result.liquidatedNotionalPosition).toBe('1000')
+    expect(result.leverageType).toBe('cross')
     expect(result.liquidatedPositions[0].market.id).toBe('ETH')
   })
 
