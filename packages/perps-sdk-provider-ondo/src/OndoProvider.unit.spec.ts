@@ -1588,6 +1588,137 @@ describe('OndoProvider — getActivity unresolvable market rows', () => {
   })
 })
 
+describe('OndoProvider — getFills unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let client: PerpsSDKClient
+
+  beforeEach(() => {
+    client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+  })
+
+  const UNKNOWN_MARKET = 'GHOST-USD.P'
+
+  const DELISTED_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: 'OLD-USD.P',
+    isDelisted: true,
+  }
+
+  const boundProvider = async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, AUTH_TOKEN)
+    const provider = ondoProvider({ apiUrl: API_URL, storage })
+    provider.bind(client)
+    return provider
+  }
+
+  interface FillsStub {
+    fills?: unknown[]
+    markets?: unknown
+    fillsStatus?: number
+  }
+
+  const stubFills = (stub: FillsStub) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(stub.markets ?? MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
+      }
+      if (u.includes('/v1/perps/fills')) {
+        if (stub.fillsStatus !== undefined) {
+          return respond(
+            { success: false, error: 'upstream down' },
+            stub.fillsStatus
+          )
+        }
+        return respond({
+          success: true,
+          result: stub.fills ?? [],
+          pageInfo: { nextCursor: 'fills-cur-2' },
+        })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('drops a fill row whose market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFills({
+      fills: [
+        { ...FILL_RESULT, id: 'fill-unknown', market: UNKNOWN_MARKET },
+        FILL_RESULT,
+      ],
+    })
+    const provider = await boundProvider()
+
+    const fills = await provider.getFills({ address: ADDRESS, limit: 20 })
+
+    expect(fills.items).toHaveLength(1)
+    expect(fills.items[0]).toMatchObject({
+      id: 'fill-1',
+      market: { id: 'AAPL-USD.P' },
+    })
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] unknown market id '${UNKNOWN_MARKET}'`
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps a fill row on a delisted market while dropping an unresolvable one', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFills({
+      markets: { markets: [...MARKETS_RESPONSE.markets, DELISTED_MARKET] },
+      fills: [
+        { ...FILL_RESULT, id: 'fill-unknown', market: UNKNOWN_MARKET },
+        { ...FILL_RESULT, id: 'fill-delisted', market: DELISTED_MARKET.id },
+      ],
+    })
+    const provider = await boundProvider()
+
+    const fills = await provider.getFills({ address: ADDRESS, limit: 20 })
+
+    expect(fills.items).toHaveLength(1)
+    expect(fills.items[0]).toMatchObject({
+      id: 'fill-delisted',
+      market: { id: DELISTED_MARKET.id, isDelisted: true },
+    })
+    warn.mockRestore()
+  })
+
+  it('keeps paging on the venue cursor when a row drops', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFills({
+      fills: [{ ...FILL_RESULT, id: 'fill-unknown', market: UNKNOWN_MARKET }],
+    })
+    const provider = await boundProvider()
+
+    const fills = await provider.getFills({ address: ADDRESS, limit: 20 })
+
+    expect(fills.items).toHaveLength(0)
+    expect(fills.pagination).toEqual({
+      limit: 20,
+      hasMore: true,
+      cursor: 'fills-cur-2',
+    })
+    warn.mockRestore()
+  })
+
+  it('propagates a failed fills fetch instead of returning an empty page', async () => {
+    stubFills({ fillsStatus: 500 })
+    const provider = await boundProvider()
+
+    await expect(
+      provider.getFills({ address: ADDRESS, limit: 20 })
+    ).rejects.toThrow(PerpsError)
+  })
+})
+
 describe('OndoProvider — server-revoked session', () => {
   // A JWT the server revoked before it locally expired: `tokenStore.get`
   // returns it, but the venue answers 401 → `OndoSessionExpiredError`. Every
