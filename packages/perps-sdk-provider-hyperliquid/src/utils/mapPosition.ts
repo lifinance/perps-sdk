@@ -15,7 +15,9 @@ export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
 /**
  * Map a non-zero Hyperliquid position payload to the SDK's normalized
  * position. Signed wire size determines side; decimal strings remain strings
- * in the normalized response.
+ * in the normalized response. `cumFunding.sinceOpen` is negated because
+ * Hyperliquid signs funding paid as positive and `accruedFunding` signs it as
+ * negative.
  * @public
  */
 export const mapPosition = (
@@ -41,6 +43,7 @@ export const mapPosition = (
     markPrice: szi.eq(0) ? '0' : positionValue.div(szi.abs()).toFixed(),
     liquidationPrice: pos.liquidationPx ?? '0',
     unrealizedPnl: pos.unrealizedPnl,
+    accruedFunding: new Big(pos.cumFunding.sinceOpen).neg().toFixed(),
     leverage: ap.position.leverage.value,
     marginUsed,
     initialMarginRequirement: positionValue.div(leverage).toFixed(),

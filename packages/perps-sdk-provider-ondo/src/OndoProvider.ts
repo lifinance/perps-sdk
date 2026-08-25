@@ -480,10 +480,10 @@ export const ondoProvider = (
             params.marketId === undefined ? {} : { market: params.marketId }
           const registry = marketRegistry()
           const [orders] = await Promise.all([
-            client.get<OndoTwapOrder[] | null>('/v1/perps/twap/orders', {
-              params: queryParams,
-              authToken: token.token,
-            }),
+            client.get<OndoTwapOrder[] | null>(
+              '/v1/perps/twap/orders/running',
+              { params: queryParams, authToken: token.token }
+            ),
             registry.sync(),
           ])
           return (orders ?? []).map((order) =>
