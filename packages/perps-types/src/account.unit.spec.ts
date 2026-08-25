@@ -3,12 +3,14 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
   TransferActivity,
   WithdrawalActivity,
 } from './account.js'
 import { ActivityType, MarginMode } from './enums.js'
+import type { MarketDisplay } from './market.js'
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest
@@ -119,6 +121,7 @@ describe('TransferActivity', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:03:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '500',
     }
 
@@ -207,6 +210,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '1',
       explorerLink: 'https://etherscan.io/tx/0xabc',
     }
@@ -215,6 +219,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
       amount: '1',
       fee: '0',
       explorerLink: 'https://etherscan.io/tx/0xdef',
@@ -244,6 +249,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '1',
     }
     expect(deposit.explorerLink).toBeUndefined()
@@ -348,6 +354,73 @@ describe('OndoAccountConfig', () => {
   })
 })
 
+const liquidatedMarket = (providerId: string): MarketDisplay => ({
+  providerId,
+  id: 'ETH',
+  categoryId: 'perps',
+  baseAsset: { providerId, id: 'ETH', displaySymbol: 'ETH', logoURI: '' },
+  quoteAsset: { providerId, id: 'USDC', displaySymbol: 'USDC', logoURI: '' },
+})
+
+describe('LiquidationActivity', () => {
+  it('accepts a fixture that omits leverageType', () => {
+    const item: LiquidationActivity = {
+      id: 'liquidation-1',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedPositions: [{ market: liquidatedMarket('lighter') }],
+    }
+
+    expect(item.leverageType).toBeUndefined()
+  })
+
+  it('accepts a fixture that carries a venue margin mode', () => {
+    const item: LiquidationActivity = {
+      id: 'liquidation-2',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:01:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+      leverageType: 'cross',
+      liquidatedPositions: [
+        { market: liquidatedMarket('hyperliquid'), size: '-1.5' },
+      ],
+    }
+
+    expect(item.leverageType).toBe('cross')
+  })
+
+  it('rejects misshaped liquidation fixtures', () => {
+    const numericLeverageType: LiquidationActivity = {
+      id: 'liquidation-3',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:02:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+      // @ts-expect-error leverageType must be a string
+      leverageType: 1,
+      liquidatedPositions: [],
+    }
+
+    // TS2741 attaches to the object literal opening brace.
+    // @ts-expect-error liquidatedPositions is required
+    const missingPositions: LiquidationActivity = {
+      id: 'liquidation-4',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:03:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      liquidatedNotionalPosition: '1000',
+      accountValue: '500',
+    }
+
+    expect(numericLeverageType.type).toBe(ActivityType.LIQUIDATION)
+    expect(missingPositions.type).toBe(ActivityType.LIQUIDATION)
+  })
+})
+
 describe('exhaustive narrowing across ActivityItem', () => {
   it('forces a TRANSFER branch in switch (type-level guard)', () => {
     const route = (item: ActivityItem): string => {
@@ -388,6 +461,7 @@ describe('exhaustive narrowing across ActivityItem', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:09:00.000Z',
       type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
       amount: '50',
       fee: '0.1',
     }

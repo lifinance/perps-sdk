@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  ws@8: 8.21.1
+
 importers:
 
   .:
@@ -1688,7 +1691,7 @@ packages:
   isows@1.0.7:
     resolution: {integrity: sha512-I1fSfDCZL5P0v33sVqeTDSpcstAg/N+wF5HS033mogOVIp4B+oHC7oOCsA3axAbBSGTJ8QubbNmnIRN/h8U7hg==}
     peerDependencies:
-      ws: '*'
+      ws: 8.21.1
 
   istanbul-lib-coverage@3.2.2:
     resolution: {integrity: sha512-O8dpsF+r0WV/8MNRKfnmrtCWhuKjxrq2w+jpzBL5UZKTi2LeVWnWOmWRxFlesJONmc+wLAGvKQZEOanko0LFTg==}
@@ -2417,8 +2420,8 @@ packages:
     resolution: {integrity: sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==}
     engines: {node: '>=12'}
 
-  ws@8.21.0:
-    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
+  ws@8.21.1:
+    resolution: {integrity: sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -3894,9 +3897,9 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  isows@1.0.7(ws@8.21.0):
+  isows@1.0.7(ws@8.21.1):
     dependencies:
-      ws: 8.21.0
+      ws: 8.21.1
 
   istanbul-lib-coverage@3.2.2: {}
 
@@ -4545,9 +4548,9 @@ snapshots:
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@5.9.3)(zod@4.4.3)
-      isows: 1.0.7(ws@8.21.0)
+      isows: 1.0.7(ws@8.21.1)
       ox: 0.14.33(typescript@5.9.3)(zod@4.4.3)
-      ws: 8.21.0
+      ws: 8.21.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -4653,7 +4656,7 @@ snapshots:
       string-width: 5.1.2
       strip-ansi: 7.2.0
 
-  ws@8.21.0: {}
+  ws@8.21.1: {}
 
   y18n@5.0.8: {}
 

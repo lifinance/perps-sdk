@@ -41,6 +41,10 @@ export interface OndoPosition {
   maintenanceMargin: string
   notionalValue: string
   leverage: string
+  /**
+   * Net funding accrued since the position last left neutral. Signed like
+   * {@link OndoFundingFeeTransfer.amount}: positive = earned, negative = paid.
+   */
   netFundingSinceNeutral: string
   returnOnEquity: string
   stopLossTriggerPrice?: string
@@ -102,18 +106,35 @@ export interface OndoOrder {
   triggerPrice?: string
 }
 
-/** Running parent order from `GET /v1/perps/twap/orders`. @public */
+/**
+ * Mirrors Ondo's `TWAPOrderApiResp`, returned by
+ * `GET /v1/perps/twap/orders/running`, `GET /v1/perps/twap/orders/history` and
+ * `GET /v1/perps/twap/order/{orderID}`. @public
+ */
 export interface OndoTwapOrder {
   twapId: string
   market: string
   side: OndoOrderSide
-  size: string
-  filledSize: string
-  filledCost: string
+  startTime: string
   /** Requested execution duration in seconds. */
   runningTime: number
-  createdAt: string
-  status: 'running'
+  /** Child-order interval in seconds. */
+  frequency: number
+  /** Volume-weighted average child-fill price; `'0'` before the first fill. */
+  avgFilledPrice: string
+  filledSize: string
+  totalSize: string
+  totalFees: string
+  /** The venue declares no enum for this field; `'running'` on the running feed. */
+  orderStatus: string
+  reduceOnly: boolean
+  finishTime?: string
+  maxPrice?: string
+  minPrice?: string
+  successfulOrders?: number
+  failedOrders?: number
+  twapCancelReason?: 0 | 1 | 2
+  lastChildOrderError?: string
 }
 
 /** @public */

@@ -1,7 +1,12 @@
-import { type MarketDisplay, OrderStatus } from '@lifi/perps-types'
+import {
+  type MarketDisplay,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtOrder } from '../types/index.js'
-import { mapOrderDetail, mapStatusReason } from './mapOrder.js'
+import { mapOrder, mapOrderDetail, mapStatusReason } from './mapOrder.js'
 
 const SYMBOL = 'ETH'
 const MARKET: MarketDisplay = {
@@ -178,5 +183,61 @@ describe('mapOrderDetail (Lighter) — statusReason wiring', () => {
     const order = mapOrderDetail(baseOrder({ status: 'pending' }), MARKET)
     expect(order.status).toBe(OrderStatus.PENDING)
     expect(order.statusReason).toBeUndefined()
+  })
+})
+
+describe('mapOrder (Lighter) — OpenOrder sizes', () => {
+  it('reads both sizes straight off the payload for a partial fill', () => {
+    const order = mapOrder(
+      baseOrder({
+        status: 'open',
+        initial_base_amount: '2',
+        remaining_base_amount: '0.5',
+        filled_base_amount: '1.5',
+      }),
+      MARKET
+    )
+    expect(order.originalSize).toBe('2')
+    expect(order.remainingSize).toBe('0.5')
+    expect(order.filledSize).toBe('1.5')
+  })
+
+  it('keeps remainingSize equal to originalSize on an untouched order', () => {
+    const order = mapOrder(
+      baseOrder({
+        status: 'open',
+        initial_base_amount: '2',
+        remaining_base_amount: '2',
+        filled_base_amount: '0',
+      }),
+      MARKET
+    )
+    expect(order.originalSize).toBe('2')
+    expect(order.remainingSize).toBe('2')
+    expect(order.filledSize).toBe('0')
+  })
+
+  it('maps the remaining open-order fields', () => {
+    expect(
+      mapOrder(
+        baseOrder({
+          status: 'open',
+          remaining_base_amount: '0.5',
+          filled_base_amount: '0.5',
+        }),
+        MARKET
+      )
+    ).toEqual({
+      orderId: '1',
+      market: MARKET,
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      originalSize: '1',
+      remainingSize: '0.5',
+      price: '2000',
+      filledSize: '0.5',
+      reduceOnly: false,
+      createdAt: '2023-11-14T22:13:20.000Z',
+    })
   })
 })
