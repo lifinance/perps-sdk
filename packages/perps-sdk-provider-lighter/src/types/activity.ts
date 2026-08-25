@@ -1,6 +1,8 @@
 // Activity history shapes returned by Lighter's REST API
 // (deposits, withdrawals, funding payments, liquidations, transfers).
 
+import type { LtAccountPosition } from './account.js'
+
 /**
  * Deposit history row returned by Lighter. `amount` is a decimal asset amount,
  * `timestamp` is Unix milliseconds, and `l1_tx_hash` identifies the settlement
@@ -93,6 +95,61 @@ export interface LtPositionFundingsResponse {
 }
 
 /**
+ * Venue liquidation type Lighter reports on a liquidation row. A margin mode
+ * is a separate value carried on the row's position.
+ *
+ * @public
+ */
+export type LtLiquidationType = 'partial' | 'deleverage'
+
+/**
+ * Forced trade Lighter executed to close the liquidated position. Prices,
+ * sizes and fees are decimal strings in the market's native precision.
+ *
+ * @public
+ */
+export interface LtLiqTrade {
+  price: string
+  size: string
+  taker_fee: string
+  maker_fee: string
+  /** Unix timestamp in milliseconds. */
+  transaction_time: number
+}
+
+/**
+ * Position row inside a liquidation payload. Lighter returns the full
+ * `AccountPosition` shape here; the SDK models only the members the
+ * liquidation mapper reads.
+ *
+ * @public
+ */
+export type LtLiquidationPosition = Pick<
+  LtAccountPosition,
+  'market_id' | 'margin_mode'
+>
+
+/**
+ * Account snapshot Lighter attaches to a liquidation row. `risk_info_before`
+ * is the pre-trade state that breached maintenance margin. Lighter also
+ * reports the settled risk info, mark prices, assets and asset index prices
+ * here; the SDK models only the members the liquidation mapper reads.
+ *
+ * @public
+ */
+export interface LtLiquidationInfo {
+  positions: LtLiquidationPosition[]
+  risk_info_before: {
+    // Lighter's OpenAPI does not require this member, so an account without
+    // cross exposure may omit it.
+    cross_risk_parameters?: {
+      /** Account equity as a decimal string, in quote-currency units. */
+      total_account_value: string
+    }
+  }
+}
+
+/**
  * Liquidation event row returned by Lighter. `executed_at` is a Unix timestamp
  * in milliseconds.
  *
@@ -101,7 +158,9 @@ export interface LtPositionFundingsResponse {
 export interface LtLiquidation {
   id: number
   market_id: number
-  type: string
+  type: LtLiquidationType
+  trade: LtLiqTrade
+  info: LtLiquidationInfo
   executed_at: number
 }
 
