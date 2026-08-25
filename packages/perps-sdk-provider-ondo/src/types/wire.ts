@@ -41,6 +41,10 @@ export interface OndoPosition {
   maintenanceMargin: string
   notionalValue: string
   leverage: string
+  /**
+   * Net funding accrued since the position last left neutral. Signed like
+   * {@link OndoFundingFeeTransfer.amount}: positive = earned, negative = paid.
+   */
   netFundingSinceNeutral: string
   returnOnEquity: string
   stopLossTriggerPrice?: string

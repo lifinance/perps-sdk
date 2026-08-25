@@ -398,6 +398,7 @@ export const mockPositions: PositionsResponse = {
       markPrice: '95000.00',
       liquidationPrice: '85000.00',
       unrealizedPnl: '100.00',
+      accruedFunding: '0',
       leverage: 10,
       marginUsed: '940.00',
       initialMarginRequirement: '940.00',

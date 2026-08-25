@@ -187,6 +187,23 @@ describe('mapPosition (Lighter)', () => {
       ).toBe('0.45000045')
     })
 
+    // `total_funding_paid_out` is already signed from the account's point of
+    // view, so it passes through unchanged. Snapshots come from
+    // mainnet.zklighter.elliot.ai `/api/v1/account`: index 27927 (BTC long,
+    // paid) and a HYPE short row (received).
+    it.each([
+      ['-50428.248207', 1],
+      ['2403.643822', -1],
+      ['0', 1],
+    ])('passes total_funding_paid_out %s through to accruedFunding', (totalFundingPaidOut, sign) => {
+      const result = mapPosition(
+        basePosition({ sign, total_funding_paid_out: totalFundingPaidOut }),
+        MARKET
+      )
+
+      expect(result.accruedFunding).toBe(totalFundingPaidOut)
+    })
+
     it.each([
       '0',
       '-1',
