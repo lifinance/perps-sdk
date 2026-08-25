@@ -17,6 +17,7 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetRunningTwapsParams,
+  paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -83,7 +84,6 @@ import type {
 import {
   decodeActivityCursor,
   encodeActivityCursor,
-  type OndoActivityCursor,
 } from './utils/activityCursor.js'
 import {
   type ApiParams,
@@ -688,52 +688,22 @@ export const ondoProvider = (
               .filter((a): a is WithdrawalActivity => a !== null),
           ]
 
-          const merged = [...(inputCursor?.overflow ?? []), ...items]
-
-          // The type filter also applies to replayed overflow rows: a cursor
-          // minted under one filter must never leak another surface's rows
-          // when the caller pages the two surfaces independently.
-          const filtered = merged.filter((it) => {
-            if (!wantsType(it.type)) {
-              return false
-            }
-            const ts = new Date(it.timestamp).getTime()
-            if (params.startTime !== undefined && ts < params.startTime) {
-              return false
-            }
-            if (params.endTime !== undefined && ts > params.endTime) {
-              return false
-            }
-            return true
-          })
-
-          filtered.sort(
-            (a, b) =>
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          const page = paginateActivity(
+            items,
+            inputCursor?.overflow ?? [],
+            params,
+            (overflowTail) =>
+              encodeActivityCursor({
+                fundings: fundings.pageInfo?.nextCursor,
+                liquidations: liquidations.pageInfo?.nextCursor,
+                overflow: overflowTail,
+              })
           )
-
-          const limit = params.limit ?? filtered.length
-          const emitted = filtered.slice(0, limit)
-          const overflow = filtered.slice(limit)
-
-          const nextCursorEnvelope: OndoActivityCursor = {
-            fundings: fundings.pageInfo?.nextCursor,
-            liquidations: liquidations.pageInfo?.nextCursor,
-            overflow,
-          }
-          const responseCursor = encodeActivityCursor(nextCursorEnvelope)
-          const hasMore = responseCursor !== undefined
 
           return {
             provider: ONDO_PROVIDER_KEY,
-            items: emitted,
-            pagination: {
-              limit,
-              hasMore,
-              ...(responseCursor === undefined
-                ? {}
-                : { cursor: responseCursor }),
-            },
+            items: page.items,
+            pagination: page.pagination,
           }
         }
       )

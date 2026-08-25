@@ -21,6 +21,7 @@ import {
   type ProviderGetRunningTwapsParams,
   type ProviderGetWithdrawableBalancesParams,
   type ProviderWithdrawableBalance,
+  paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -1383,56 +1384,25 @@ export const createLighterProvider = (
           }),
       ]
 
-      const merged = [...(inputCursor?.overflow ?? []), ...items]
-
-      // The type filter also applies to replayed overflow rows: a cursor
-      // minted under one filter must never leak another surface's rows when
-      // the caller pages the two surfaces independently.
-      const requestedTypes =
-        params.type === undefined ? undefined : new Set(params.type)
-
-      const filtered = merged.filter((it) => {
-        if (requestedTypes !== undefined && !requestedTypes.has(it.type)) {
-          return false
-        }
-        const ts = new Date(it.timestamp).getTime()
-        if (params.startTime !== undefined && ts < params.startTime) {
-          return false
-        }
-        if (params.endTime !== undefined && ts > params.endTime) {
-          return false
-        }
-        return true
-      })
-
-      filtered.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      const page = paginateActivity(
+        items,
+        inputCursor?.overflow ?? [],
+        params,
+        (overflowTail) =>
+          encodeActivityCursor({
+            deposits: history.deposits.cursor,
+            withdraws: history.withdraws.cursor,
+            fundings: history.fundings.next_cursor,
+            liquidations: history.liquidations.next_cursor,
+            transfers: history.transfers.cursor,
+            overflow: overflowTail,
+          })
       )
-
-      const limit = params.limit ?? filtered.length
-      const emitted = filtered.slice(0, limit)
-      const overflow = filtered.slice(limit)
-
-      const nextCursorEnvelope: LighterActivityCursor = {
-        deposits: history.deposits.cursor,
-        withdraws: history.withdraws.cursor,
-        fundings: history.fundings.next_cursor,
-        liquidations: history.liquidations.next_cursor,
-        transfers: history.transfers.cursor,
-        overflow,
-      }
-      const responseCursor = encodeActivityCursor(nextCursorEnvelope)
-      const hasMore = responseCursor !== undefined
 
       return {
         provider: providerKey,
-        items: emitted,
-        pagination: {
-          limit,
-          hasMore,
-          ...(responseCursor === undefined ? {} : { cursor: responseCursor }),
-        },
+        items: page.items,
+        pagination: page.pagination,
       }
     },
 
