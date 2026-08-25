@@ -69,6 +69,11 @@ export interface LtPositionFunding {
   timestamp: number
   market_id: number
   funding_id: number
+  /**
+   * Signed, in quote-currency units. Positive means the account received
+   * funding; negative means the account paid it. Mapped straight onto
+   * `FundingActivity.amount`.
+   */
   change: string
   rate: string
   position_size: string

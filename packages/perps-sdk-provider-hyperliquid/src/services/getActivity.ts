@@ -43,6 +43,14 @@ export interface GetActivityParams {
   type?: ActivityType[]
 }
 
+const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.FUNDING,
+  ActivityType.LIQUIDATION,
+])
+
+const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
+  !typeFilter || typeFilter.some((t) => MARKET_BEARING_TYPES.has(t))
+
 const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
@@ -110,7 +118,11 @@ export const getActivity = async (
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
   const registry = getMarketRegistry(client, PROVIDER_KEY)
-  await registry.sync()
+  // Only funding and liquidation rows carry a market, so a Ledger-only
+  // request must not pull the market list.
+  if (needsMarkets(params.type)) {
+    await registry.sync()
+  }
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(

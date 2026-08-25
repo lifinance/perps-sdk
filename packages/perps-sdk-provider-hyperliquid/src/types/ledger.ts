@@ -51,6 +51,51 @@ export type HlSendAssetDelta = {
 }
 
 /**
+ * Hyperliquid `deposit` ledger delta. Perp-collateral deposits are always
+ * USDC-denominated, which is why the amount arrives in a field named `usdc`.
+ * @public
+ */
+export type HlDepositDelta = {
+  type: 'deposit'
+  usdc: string
+}
+
+/**
+ * Hyperliquid `withdraw` ledger delta. `fee` is denominated in the withdrawn
+ * asset (USDC) and is absent when the venue charges none.
+ * @public
+ */
+export type HlWithdrawDelta = {
+  type: 'withdraw'
+  usdc: string
+  fee?: string
+}
+
+/**
+ * One position closed by a Hyperliquid liquidation. `coin` is the venue market
+ * key and `szi` the signed position size.
+ * @public
+ */
+export type HlLiquidatedPosition = {
+  coin: string
+  szi: string
+}
+
+/**
+ * Hyperliquid `liquidation` ledger delta. A cross-margin cascade reports every
+ * closed position in `liquidatedPositions`, so the venue itself carries the
+ * grouping and no timestamp heuristic is needed.
+ * @public
+ */
+export type HlLiquidationDelta = {
+  type: 'liquidation'
+  liquidatedNtlPos?: string
+  accountValue?: string
+  leverageType: string
+  liquidatedPositions?: HlLiquidatedPosition[]
+}
+
+/**
  * Union of known Hyperliquid non-funding ledger deltas plus an open fallback
  * for endpoint variants the provider does not map.
  * @public
@@ -58,6 +103,9 @@ export type HlSendAssetDelta = {
 export type HlLedgerDelta =
   | HlSpotTransferDelta
   | HlSendAssetDelta
+  | HlDepositDelta
+  | HlWithdrawDelta
+  | HlLiquidationDelta
   | {
       type: string
       usdc?: string
@@ -85,6 +133,38 @@ export const isSendAssetDelta = (
   delta: HlLedgerDelta
 ): delta is HlSendAssetDelta => delta.type === 'send'
 
+// `usdc` is declared only on the union's catch-all arm, so reading it off the
+// union needs a widening read before the discriminant has narrowed the type.
+const hasUsdcAmount = (delta: HlLedgerDelta): boolean =>
+  typeof (delta as { usdc?: unknown }).usdc === 'string'
+
+/**
+ * Type guard for `HlDepositDelta`. The amount is part of the guard: a deposit
+ * row without one identifies no movement, and reporting it as a zero amount
+ * would read as a real zero-value deposit.
+ * @public
+ */
+export const isDepositDelta = (delta: HlLedgerDelta): delta is HlDepositDelta =>
+  delta.type === 'deposit' && hasUsdcAmount(delta)
+
+/**
+ * Type guard for `HlWithdrawDelta`. Same amount-bearing requirement as
+ * `isDepositDelta`.
+ * @public
+ */
+export const isWithdrawDelta = (
+  delta: HlLedgerDelta
+): delta is HlWithdrawDelta => delta.type === 'withdraw' && hasUsdcAmount(delta)
+
+/**
+ * Type guard for `HlLiquidationDelta`. Same catch-all-arm caveat as
+ * `isSpotTransferDelta`.
+ * @public
+ */
+export const isLiquidationDelta = (
+  delta: HlLedgerDelta
+): delta is HlLiquidationDelta => delta.type === 'liquidation'
+
 /**
  * One timestamped non-funding ledger update. `time` is milliseconds since
  * epoch and `hash` is the upstream transaction identifier.
@@ -108,6 +188,10 @@ export type HlUserNonFundingLedgerUpdates = HlLedgerUpdate[]
 export type HlFundingDelta = {
   type: 'funding'
   coin: string
+  /**
+   * Signed, in USDC. Positive means the account received funding; negative
+   * means the account paid it. Mapped straight onto `FundingActivity.amount`.
+   */
   usdc: string
   szi: string
   fundingRate: string

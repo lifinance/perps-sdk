@@ -96,7 +96,8 @@ export const mapOpenOrder = (
   market,
   side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
   type: mapOrderType(o.orderType),
-  size: o.sz,
+  originalSize: o.origSz,
+  remainingSize: o.sz,
   price: o.limitPx,
   filledSize: o.origSz
     ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
