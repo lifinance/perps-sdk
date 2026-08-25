@@ -400,6 +400,24 @@ describe('mapLedgerEntry — sendAsset', () => {
   })
 })
 
+describe('mapLedgerEntry — same-account moves', () => {
+  it('returns null for a spotTransfer whose sender and recipient are the queried account', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xself',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC',
+        amount: '10',
+        usdcValue: '10',
+        user: QUERIED,
+        destination: QUERIED,
+      },
+    }
+    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // mapLedgerEntry — non-transfer branches
 // ---------------------------------------------------------------------------
@@ -418,8 +436,18 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       resolveMarket
     ) as DepositActivity
     expect(result.type).toBe(ActivityType.DEPOSIT)
+    expect(result.asset).toBe('USDC')
     expect(result.amount).toBe('100')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
+  })
+
+  it('drops a deposit entry that carries no amount', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xdep-no-amount',
+      delta: { type: 'deposit' },
+    }
+    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
   })
 
   it('maps a withdrawal', () => {
@@ -435,9 +463,21 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       resolveMarket
     ) as WithdrawalActivity
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
+    expect(result.asset).toBe('USDC')
     expect(result.amount).toBe('50')
     expect(result.fee).toBe('0.5')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
+  })
+
+  it('omits the withdrawal fee when the venue reports none', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xwdr-no-fee',
+      delta: { type: 'withdraw', usdc: '50' },
+    }
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    expect(result?.type).toBe(ActivityType.WITHDRAWAL)
+    expect(result).not.toHaveProperty('fee')
   })
 
   it('maps a liquidation', () => {
@@ -461,6 +501,53 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.LIQUIDATION)
     expect(result.liquidatedNotionalPosition).toBe('1000')
     expect(result.liquidatedPositions[0].market.id).toBe('ETH')
+  })
+
+  it('retains every market and size of a multi-position liquidation', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-multi',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '3000',
+        accountValue: '250',
+        leverageType: 'cross',
+        liquidatedPositions: [
+          { coin: 'ETH', szi: '-1.5' },
+          { coin: 'BTC', szi: '0.25' },
+        ],
+      },
+    }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      resolveMarket
+    ) as LiquidationActivity
+
+    expect(
+      result.liquidatedPositions.map((p) => [p.market.id, p.size])
+    ).toEqual([
+      ['ETH', '-1.5'],
+      ['BTC', '0.25'],
+    ])
+  })
+
+  it('omits unavailable liquidation metrics instead of reporting zero', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-no-metrics',
+      delta: {
+        type: 'liquidation',
+        leverageType: 'isolated',
+        liquidatedPositions: [{ coin: 'ETH', szi: '-1.5' }],
+      },
+    }
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect(result).not.toBeNull()
+    expect(result).not.toHaveProperty('liquidatedNotionalPosition')
+    expect(result).not.toHaveProperty('accountValue')
   })
 
   it('returns null for liquidation entries with missing liquidatedPositions', () => {

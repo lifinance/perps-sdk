@@ -1037,6 +1037,129 @@ describe('OndoProvider — getActivity', () => {
   })
 })
 
+describe('OndoProvider — getActivity surface coverage', () => {
+  /** Records the backend reference-data routes the default mock hides. */
+  const recordAll = (
+    fundings: unknown[],
+    liquidations: unknown[]
+  ): string[] => {
+    const urls: string[] = []
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      urls.push(u)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
+      }
+      if (u.includes('/v1/perps/funding_fees')) {
+        return respond({ success: true, result: fundings })
+      }
+      if (u.includes('/v1/perps/liquidation_history')) {
+        return respond({ success: true, result: liquidations })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+    return urls
+  }
+
+  it('reports no deposit, withdrawal or transfer activity and calls nothing upstream', async () => {
+    const { provider } = await loggedInProvider()
+    const urls = recordAll([FUNDING_RESULT], [LIQUIDATION_RESULT])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [
+        ActivityType.DEPOSIT,
+        ActivityType.WITHDRAWAL,
+        ActivityType.TRANSFER,
+      ],
+    })
+
+    expect(activity.items).toEqual([])
+    expect(urls).toEqual([])
+  })
+
+  it('skips the funding call and keeps the market list for a liquidation-only request', async () => {
+    const { provider } = await loggedInProvider()
+    const urls = recordAll([FUNDING_RESULT], [LIQUIDATION_RESULT])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items.map((i) => i.type)).toEqual([
+      ActivityType.LIQUIDATION,
+    ])
+    expect(urls.some((u) => u.includes('/v1/perps/funding_fees'))).toBe(false)
+    expect(urls.some((u) => u.includes('backend.test/v1/perps/markets'))).toBe(
+      true
+    )
+  })
+
+  it('omits unavailable liquidation metrics instead of reporting zero', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll([], [{ ...LIQUIDATION_RESULT, filledQuoteSize: undefined }])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items).toHaveLength(1)
+    expect(activity.items[0]).not.toHaveProperty('liquidatedNotionalPosition')
+    expect(activity.items[0]).not.toHaveProperty('accountValue')
+  })
+
+  it('drops a liquidation event that identifies no position', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll([], [{ ...LIQUIDATION_RESULT, triggeringPositions: [] }])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items).toEqual([])
+  })
+
+  it('pages the funding and liquidation filters independently without leaking rows', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll(
+      [FUNDING_RESULT],
+      [LIQUIDATION_RESULT, { ...LIQUIDATION_RESULT, id: 'liq-2' }]
+    )
+
+    const drain = async (type: ActivityType[]): Promise<string[]> => {
+      const seen: string[] = []
+      let cursor: string | undefined
+      let pages = 0
+      do {
+        const page = await provider.getActivity({
+          address: ADDRESS,
+          type,
+          limit: 1,
+          ...(cursor === undefined ? {} : { cursor }),
+        })
+        for (const item of page.items) {
+          seen.push(item.id)
+        }
+        cursor = page.pagination.hasMore ? page.pagination.cursor : undefined
+        pages += 1
+        expect(pages).toBeLessThan(10)
+      } while (cursor !== undefined)
+      return seen
+    }
+
+    expect(await drain([ActivityType.LIQUIDATION])).toEqual(['liq-1', 'liq-2'])
+    expect(await drain([ActivityType.FUNDING])).toEqual([
+      'funding:AAPL-USD.P:2026-07-01T12:00:00.000Z',
+    ])
+  })
+})
+
 describe('OndoProvider — server-revoked session', () => {
   // A JWT the server revoked before it locally expired: `tokenStore.get`
   // returns it, but the venue answers 401 → `OndoSessionExpiredError`. Every

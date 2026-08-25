@@ -99,6 +99,32 @@ describe('getActivity', () => {
     ).toBe(false)
   })
 
+  it('skips the market list when no requested type names a market', async () => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
+
+    await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(mock.referenceRequests).toEqual([])
+  })
+
+  it('fetches the market list for a liquidation-only request', async () => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
+
+    await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(mock.referenceRequests.some((url) => url.includes('/markets'))).toBe(
+      true
+    )
+  })
+
   it('uses cursor to upper-bound results and emits a next cursor from the tail timestamp', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 

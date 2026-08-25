@@ -2431,6 +2431,277 @@ describe('LighterProvider — getActivity transfer token registry', () => {
   })
 })
 
+describe('LighterProvider — getActivity ledger and liquidation surfaces', () => {
+  const RH_ASSETS_RESPONSE = {
+    assets: [
+      {
+        providerId: 'lighter-rh',
+        id: '4',
+        displaySymbol: 'USDG',
+        logoURI: 'https://cdn.test/usdg.png',
+      },
+    ],
+  }
+
+  const depositRow = (assetId: number) => ({
+    id: 'dep-1',
+    asset_id: assetId,
+    amount: '100',
+    timestamp: 1700000005000,
+    status: 'completed',
+    l1_tx_hash: '0xdep',
+  })
+
+  const withdrawRow = (assetId: number) => ({
+    id: 'wdr-1',
+    asset_id: assetId,
+    amount: '50',
+    timestamp: 1700000004000,
+    status: 'completed',
+    type: 'standard',
+    l1_tx_hash: '0xwdr',
+  })
+
+  const transferRow = (
+    id: string,
+    fromAccountIndex: number,
+    toAccountIndex: number
+  ) => ({
+    id,
+    from_account_index: fromAccountIndex,
+    to_account_index: toAccountIndex,
+    asset_id: 3,
+    amount: '25',
+    timestamp: 1700000003000,
+    type: 'standard',
+    tx_hash: '0xtr',
+    from_route: 'spot',
+    to_route: 'perps',
+    fee: '0',
+  })
+
+  const liquidationRow = (id: number, executedAtMs: number) => ({
+    id,
+    market_id: 0,
+    type: 'cross',
+    executed_at: executedAtMs,
+  })
+
+  interface HistoryStub {
+    deposits?: unknown[]
+    withdraws?: unknown[]
+    liquidations?: unknown[]
+    transfers?: unknown[]
+    assets?: unknown
+  }
+
+  const stubHistory = (history: HistoryStub) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(history.assets ?? ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/deposit/history')) {
+        return respond({ code: 0, deposits: history.deposits ?? [] })
+      }
+      if (u.includes('/api/v1/withdraw/history')) {
+        return respond({ code: 0, withdraws: history.withdraws ?? [] })
+      }
+      if (u.includes('/api/v1/positionFunding')) {
+        return respond({ code: 0, position_fundings: [] })
+      }
+      if (u.includes('/api/v1/liquidations')) {
+        return respond({ code: 0, liquidations: history.liquidations ?? [] })
+      }
+      if (u.includes('/api/v1/transfer/history')) {
+        return respond({ code: 0, transfers: history.transfers ?? [] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('names the deposit and withdrawal asset from the token registry', async () => {
+    stubHistory({ deposits: [depositRow(3)], withdraws: [withdrawRow(3)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    const deposit = items.find((i) => i.type === ActivityType.DEPOSIT)
+    const withdrawal = items.find((i) => i.type === ActivityType.WITHDRAWAL)
+    expect(deposit).toMatchObject({ asset: 'USDC', amount: '100' })
+    expect(withdrawal).toMatchObject({ asset: 'USDC', amount: '50' })
+    // `/withdraw/history` reports no fee, so the field stays absent.
+    expect(withdrawal).not.toHaveProperty('fee')
+  })
+
+  it('names USDG as the deposit asset on the Robinhood deployment', async () => {
+    stubHistory({ deposits: [depositRow(4)], assets: RH_ASSETS_RESPONSE })
+    const provider = lighterRhProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT],
+    })
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ asset: 'USDG', amount: '100' })
+  })
+
+  it('excludes a same-account route move from the transfer feed', async () => {
+    stubHistory({
+      transfers: [
+        transferRow('own-route-move', 42, 42),
+        transferRow('t1', 42, 99),
+      ],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+
+    expect(items.map((i) => i.id)).toEqual(['t1'])
+  })
+
+  it('omits liquidation metrics Lighter does not report', async () => {
+    stubHistory({ liquidations: [liquidationRow(7, 1700000002000)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(items).toHaveLength(1)
+    const [liquidation] = items
+    expect(liquidation).not.toHaveProperty('liquidatedNotionalPosition')
+    expect(liquidation).not.toHaveProperty('accountValue')
+    if (liquidation.type !== ActivityType.LIQUIDATION) {
+      throw new Error('expected a liquidation activity')
+    }
+    expect(liquidation.liquidatedPositions).toHaveLength(1)
+    expect(liquidation.liquidatedPositions[0].market.id).toBe('0')
+    expect(liquidation.liquidatedPositions[0]).not.toHaveProperty('size')
+  })
+
+  it('keeps liquidation rows that share a timestamp separate', async () => {
+    stubHistory({
+      liquidations: [
+        liquidationRow(7, 1700000002000),
+        liquidationRow(8, 1700000002000),
+      ],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(items.map((i) => i.id)).toEqual(['liquidation-7', 'liquidation-8'])
+  })
+
+  it('skips the market list for a ledger-only request', async () => {
+    stubHistory({ deposits: [depositRow(3)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(
+      recorded.some((r) => r.url.includes('backend.test/v1/perps/markets'))
+    ).toBe(false)
+    expect(
+      recorded.some((r) => r.url.includes('backend.test/v1/perps/assets'))
+    ).toBe(true)
+    expect(recorded.some((r) => r.url.includes('/api/v1/liquidations'))).toBe(
+      false
+    )
+  })
+
+  it('skips the asset list for a liquidation-only request', async () => {
+    stubHistory({ liquidations: [liquidationRow(7, 1700000002000)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(
+      recorded.some((r) => r.url.includes('backend.test/v1/perps/assets'))
+    ).toBe(false)
+    expect(
+      recorded.some((r) => r.url.includes('backend.test/v1/perps/markets'))
+    ).toBe(true)
+    expect(
+      recorded.some((r) => r.url.includes('/api/v1/deposit/history'))
+    ).toBe(false)
+  })
+
+  it('pages the ledger and liquidation filters independently without leaking rows', async () => {
+    stubHistory({
+      deposits: [depositRow(3)],
+      withdraws: [withdrawRow(3)],
+      liquidations: [
+        liquidationRow(7, 1700000002000),
+        liquidationRow(8, 1700000001000),
+      ],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const drain = async (type: ActivityType[]): Promise<string[]> => {
+      const seen: string[] = []
+      let cursor: string | undefined
+      let pages = 0
+      do {
+        const page = await provider.getActivity({
+          address: ADDRESS,
+          type,
+          limit: 1,
+          ...(cursor === undefined ? {} : { cursor }),
+        })
+        for (const item of page.items) {
+          seen.push(item.id)
+        }
+        cursor = page.pagination.hasMore ? page.pagination.cursor : undefined
+        pages += 1
+        expect(pages).toBeLessThan(10)
+      } while (cursor !== undefined)
+      return seen
+    }
+
+    const ledger = await drain([ActivityType.DEPOSIT, ActivityType.WITHDRAWAL])
+    const liquidations = await drain([ActivityType.LIQUIDATION])
+
+    expect(ledger).toEqual(['dep-1', 'wdr-1'])
+    expect(liquidations).toEqual(['liquidation-7', 'liquidation-8'])
+  })
+})
+
 describe('LighterProvider — getOrder', () => {
   it('rejects tx-hash-shaped ids with OrderNotFound + guidance', async () => {
     const provider = lighterProvider({ authToken: 'tok' })
