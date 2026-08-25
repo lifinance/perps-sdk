@@ -356,6 +356,10 @@ export interface LiquidationActivity extends BaseActivity {
    * liquidation row.
    */
   leverageType?: string
+  /**
+   * At least one entry is guaranteed — a provider adapter drops any
+   * liquidation record whose positions it cannot resolve to a known market.
+   */
   liquidatedPositions: [LiquidatedPosition, ...LiquidatedPosition[]]
 }
 
