@@ -41,6 +41,7 @@ import {
   lighterProvider,
   lighterRhProvider,
 } from './LighterProvider.js'
+import type { LtLiqTrade, LtLiquidationInfo } from './types/index.js'
 import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
@@ -2206,9 +2207,10 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
   /** One `/api/v1/liquidations` row, shaped as Lighter's OpenAPI declares it. */
   const liquidationRow = (overrides: {
     type?: string
-    trade?: Record<string, unknown>
+    trade?: Partial<LtLiqTrade>
     positions?: Record<string, unknown>[]
     totalAccountValue?: string
+    riskInfoBefore?: LtLiquidationInfo['risk_info_before']
   }) => ({
     id: 5,
     market_id: 0,
@@ -2224,7 +2226,7 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
       positions: overrides.positions ?? [
         { market_id: 0, margin_mode: LT_MARGIN_MODE_CROSS },
       ],
-      risk_info_before: {
+      risk_info_before: overrides.riskInfoBefore ?? {
         cross_risk_parameters: {
           total_account_value: overrides.totalAccountValue ?? '4821.75',
         },
@@ -2288,6 +2290,22 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
       liquidationRow({
         positions: [{ market_id: 1, margin_mode: LT_MARGIN_MODE_ISOLATED }],
       })
+    )
+
+    expect(item).not.toHaveProperty('leverageType')
+    expect(item.accountValue).toBe('4821.75')
+  })
+
+  it('omits the account value when the snapshot carries no cross risk parameters', async () => {
+    const item = await fetchLiquidation(liquidationRow({ riskInfoBefore: {} }))
+
+    expect(item).not.toHaveProperty('accountValue')
+    expect(item.leverageType).toBe('cross')
+  })
+
+  it('omits the leverage type when the row position carries an unknown margin mode', async () => {
+    const item = await fetchLiquidation(
+      liquidationRow({ positions: [{ market_id: 0, margin_mode: 7 }] })
     )
 
     expect(item).not.toHaveProperty('leverageType')

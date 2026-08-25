@@ -40,6 +40,7 @@ import type {
   Fill,
   FillsResponse,
   LighterAccountConfig,
+  LiquidationActivity,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -92,7 +93,7 @@ import type {
   LtTransferHistoryResponse,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
-import { LT_MARGIN_MODE_ISOLATED } from './types/index.js'
+import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -1348,9 +1349,16 @@ export const createLighterProvider = (
             (p) => p.market_id === l.market_id
           )?.margin_mode
           // Lighter reports the margin mode as an integer, so the venue
-          // vocabulary the contract asks for is the SDK's own literal.
+          // vocabulary the contract asks for is the SDK's own literal. An
+          // integer outside the two documented modes maps to no claim at all.
           const leverageType =
-            marginMode === LT_MARGIN_MODE_ISOLATED ? 'isolated' : 'cross'
+            marginMode === LT_MARGIN_MODE_ISOLATED
+              ? ('isolated' as const)
+              : marginMode === LT_MARGIN_MODE_CROSS
+                ? ('cross' as const)
+                : undefined
+          const accountValue =
+            l.info.risk_info_before.cross_risk_parameters?.total_account_value
           return [
             {
               id: `liquidation-${l.id}`,
@@ -1367,12 +1375,10 @@ export const createLighterProvider = (
                   }),
               // The account value at liquidation time is the pre-trade
               // snapshot, not the settled one Lighter also reports.
-              accountValue:
-                l.info.risk_info_before.cross_risk_parameters
-                  .total_account_value,
-              ...(marginMode === undefined ? {} : { leverageType }),
+              ...(accountValue === undefined ? {} : { accountValue }),
+              ...(leverageType === undefined ? {} : { leverageType }),
               liquidatedPositions: [{ market, size: l.trade.size }],
-            },
+            } satisfies LiquidationActivity,
           ]
         }),
         // `/transfer/history` also reports the account's own spot/perps route

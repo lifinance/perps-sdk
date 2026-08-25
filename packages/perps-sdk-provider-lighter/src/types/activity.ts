@@ -140,7 +140,9 @@ export type LtLiquidationPosition = Pick<
 export interface LtLiquidationInfo {
   positions: LtLiquidationPosition[]
   risk_info_before: {
-    cross_risk_parameters: {
+    // Lighter's OpenAPI does not require this member, so an account without
+    // cross exposure may omit it.
+    cross_risk_parameters?: {
       /** Account equity as a decimal string, in quote-currency units. */
       total_account_value: string
     }
