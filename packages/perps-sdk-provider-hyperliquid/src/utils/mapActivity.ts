@@ -21,6 +21,17 @@ import {
 const HL_COLLATERAL_SYMBOL = 'USDC'
 
 /**
+ * Display symbol for a ledger delta's wire token (`"USDC"`, `"PURR:0x..."`).
+ * The colon separates the name from the token id, so the symbol is the part
+ * BEFORE it — the opposite half to a market coin's `dex:COIN`, which is why
+ * `coinAsset` cannot be reused here.
+ */
+const ledgerTokenSymbol = (token: string): string => {
+  const separator = token.indexOf(':')
+  return separator === -1 ? token : token.slice(0, separator)
+}
+
+/**
  * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
  *
  * Direction for `spotTransfer` and `sendAsset` is derived from
@@ -82,7 +93,7 @@ export const mapLedgerEntry = (
       type: ActivityType.TRANSFER,
       direction,
       counterpartyAddress,
-      asset: delta.token,
+      asset: ledgerTokenSymbol(delta.token),
       amount: delta.amount,
       meta,
       explorerLink: entry.hash
@@ -121,7 +132,7 @@ export const mapLedgerEntry = (
       type: ActivityType.TRANSFER,
       direction,
       counterpartyAddress,
-      asset: delta.token,
+      asset: ledgerTokenSymbol(delta.token),
       amount: delta.amount,
       meta,
       explorerLink: entry.hash

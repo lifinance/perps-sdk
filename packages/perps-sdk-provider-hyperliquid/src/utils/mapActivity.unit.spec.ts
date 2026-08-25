@@ -191,6 +191,18 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.asset).toBe('HYPE')
   })
 
+  it('drops the token id suffix from the asset symbol', () => {
+    const entry = spotTransferUpdate({
+      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).asset).toBe('PURR')
+  })
+
   it('preserves spotTransfer metadata fields when present', () => {
     const entry = spotTransferUpdate({
       user: QUERIED as HlSpotTransferDelta['user'],
@@ -335,6 +347,18 @@ describe('mapLedgerEntry — sendAsset', () => {
 
     const t = result as TransferActivity
     expect(t.asset).toBe('HYPE')
+  })
+
+  it('drops the token id suffix from the asset symbol', () => {
+    const entry = sendAssetUpdate({
+      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      user: QUERIED as HlSendAssetDelta['user'],
+      destination: COUNTERPARTY as HlSendAssetDelta['destination'],
+    })
+
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+
+    expect((result as TransferActivity).asset).toBe('PURR')
   })
 
   it('projects sourceDex / destinationDex / fees / nonce / feeToken into meta', () => {
