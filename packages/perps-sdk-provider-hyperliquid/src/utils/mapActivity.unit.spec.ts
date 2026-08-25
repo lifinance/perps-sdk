@@ -489,8 +489,23 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
     expect(result.asset).toBe('USDC')
     expect(result.amount).toBe('50')
-    expect(result.fee).toBe('0.5')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
+  })
+
+  it('denominates the withdrawal fee in the withdrawn asset', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xwdr-fee',
+      delta: { type: 'withdraw', usdc: '50', fee: '0.5' },
+    }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      resolveMarket
+    ) as WithdrawalActivity
+    expect(result.fee).toEqual({ amount: '0.5', asset: 'USDC' })
+    expect(result.fee?.asset).toBe(result.asset)
   })
 
   it('omits the withdrawal fee when the venue reports none', () => {

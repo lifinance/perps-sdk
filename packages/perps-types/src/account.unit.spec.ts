@@ -221,7 +221,7 @@ describe('explorerLink on on-chain item types', () => {
       type: ActivityType.WITHDRAWAL,
       asset: 'USDC',
       amount: '1',
-      fee: '0',
+      fee: { amount: '0', asset: 'USDC' },
       explorerLink: 'https://etherscan.io/tx/0xdef',
     }
     const transfer: TransferActivity = {
@@ -421,6 +421,49 @@ describe('LiquidationActivity', () => {
   })
 })
 
+describe('WithdrawalFee', () => {
+  it('accepts a fee denominated in an asset other than the withdrawn one', () => {
+    const item: WithdrawalActivity = {
+      id: 'withdrawal-1',
+      provider: 'ondo',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.WITHDRAWAL,
+      asset: 'BTC',
+      amount: '0.5',
+      fee: { amount: '2.5', asset: 'USD' },
+    }
+
+    expect(item.fee).toEqual({ amount: '2.5', asset: 'USD' })
+  })
+
+  it('rejects a bare fee amount and a fee that names no asset', () => {
+    const bareAmount: WithdrawalActivity = {
+      id: 'withdrawal-2',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:01:00.000Z',
+      type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
+      amount: '10',
+      // @ts-expect-error a fee must name the asset it is denominated in
+      fee: '0.1',
+    }
+
+    const missingAsset: WithdrawalActivity = {
+      id: 'withdrawal-3',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:02:00.000Z',
+      type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
+      amount: '10',
+      // @ts-expect-error asset is required on a fee
+      fee: { amount: '0.1' },
+    }
+
+    expect(bareAmount.type).toBe(ActivityType.WITHDRAWAL)
+    expect(missingAsset.type).toBe(ActivityType.WITHDRAWAL)
+  })
+})
+
 describe('exhaustive narrowing across ActivityItem', () => {
   it('forces a TRANSFER branch in switch (type-level guard)', () => {
     const route = (item: ActivityItem): string => {
@@ -428,7 +471,7 @@ describe('exhaustive narrowing across ActivityItem', () => {
         case ActivityType.DEPOSIT:
           return `deposit:${item.amount}`
         case ActivityType.WITHDRAWAL:
-          return `withdrawal:${item.amount}:${item.fee}`
+          return `withdrawal:${item.amount}:${item.fee?.amount}:${item.fee?.asset}`
         case ActivityType.LIQUIDATION:
           return `liquidation:${item.accountValue}`
         case ActivityType.FUNDING:
@@ -463,9 +506,9 @@ describe('exhaustive narrowing across ActivityItem', () => {
       type: ActivityType.WITHDRAWAL,
       asset: 'USDC',
       amount: '50',
-      fee: '0.1',
+      fee: { amount: '0.1', asset: 'USDC' },
     }
-    expect(route(withdrawal)).toBe('withdrawal:50:0.1')
+    expect(route(withdrawal)).toBe('withdrawal:50:0.1:USDC')
   })
 })
 
