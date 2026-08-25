@@ -40,6 +40,7 @@ import type {
   Fill,
   FillsResponse,
   LighterAccountConfig,
+  LiquidationActivity,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -1348,7 +1349,7 @@ export const createLighterProvider = (
               timestamp: toIsoFromMs(l.executed_at),
               type: ActivityType.LIQUIDATION,
               liquidatedPositions: [{ market }],
-            },
+            } satisfies LiquidationActivity,
           ]
         }),
         // `/transfer/history` also reports the account's own spot/perps route

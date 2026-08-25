@@ -167,16 +167,15 @@ export const mapLedgerEntry = (
   }
 
   if (isLiquidationDelta(delta)) {
-    const liquidatedPositions = (delta.liquidatedPositions ?? []).flatMap(
-      (p) => {
-        const market = resolveMarket(p.coin)
-        return market === undefined ? [] : [{ market, size: p.szi }]
-      }
-    )
+    const resolvedPositions = (delta.liquidatedPositions ?? []).flatMap((p) => {
+      const market = resolveMarket(p.coin)
+      return market === undefined ? [] : [{ market, size: p.szi }]
+    })
     // Liquidation rows must point to at least one market. Drop entries with
     // missing/empty positions so downstream consumers can rely on that
     // invariant and avoid rendering a market-less liquidation card.
-    if (liquidatedPositions.length === 0) {
+    const [firstPosition, ...restPositions] = resolvedPositions
+    if (firstPosition === undefined) {
       return null
     }
     return {
@@ -189,7 +188,7 @@ export const mapLedgerEntry = (
         ? {}
         : { accountValue: delta.accountValue }),
       leverageType: delta.leverageType,
-      liquidatedPositions,
+      liquidatedPositions: [firstPosition, ...restPositions],
     } satisfies LiquidationActivity
   }
 
