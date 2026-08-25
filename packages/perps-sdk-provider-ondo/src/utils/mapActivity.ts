@@ -74,6 +74,18 @@ export const mapLiquidationActivity = (
   }
 }
 
+// Ondo reports no transaction id on a deposit it has not yet matched to a
+// chain transaction, so two such deposits would share the bare `deposit:`
+// key. Fall back to the fields the venue does report.
+const depositId = (deposit: OndoWalletDeposit): string => {
+  if (deposit.txid === '') {
+    return `deposit:${deposit.time}:${deposit.coin}:${deposit.size}`
+  }
+  return deposit.logIndex === undefined
+    ? `deposit:${deposit.txid}`
+    : `deposit:${deposit.txid}:${deposit.logIndex}`
+}
+
 /**
  * Map an Ondo wallet deposit to a {@link DepositActivity}. Ondo carries no
  * deposit id on the wire and addresses a single deposit by transaction id, so
@@ -86,10 +98,7 @@ export const mapLiquidationActivity = (
 export const mapDepositActivity = (
   deposit: OndoWalletDeposit
 ): DepositActivity => ({
-  id:
-    deposit.logIndex === undefined
-      ? `deposit:${deposit.txid}`
-      : `deposit:${deposit.txid}:${deposit.logIndex}`,
+  id: depositId(deposit),
   provider: ONDO_PROVIDER_KEY,
   timestamp: new Date(deposit.time).toISOString(),
   type: ActivityType.DEPOSIT,

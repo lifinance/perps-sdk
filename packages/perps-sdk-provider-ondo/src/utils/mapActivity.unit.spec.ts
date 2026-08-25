@@ -216,6 +216,14 @@ describe('mapDepositActivity', () => {
       'explorerLink'
     )
   })
+
+  it('keeps two deposits distinct when Ondo reports no transaction id', () => {
+    const first = mapDepositActivity({ ...DEPOSIT, txid: '' })
+    const second = mapDepositActivity({ ...DEPOSIT, txid: '', size: '250.00' })
+
+    expect(first.id).toBe('deposit:2026-07-01T10:30:00Z:USDC:1000.00')
+    expect(second.id).not.toBe(first.id)
+  })
 })
 
 describe('mapWithdrawalActivity', () => {
@@ -240,6 +248,12 @@ describe('mapWithdrawalActivity', () => {
   it('keeps a pending withdrawal', () => {
     expect(
       mapWithdrawalActivity({ ...WITHDRAWAL, status: 'pending' })
+    ).not.toBe(null)
+  })
+
+  it('keeps a withdrawal whose status Ondo reports as unknown', () => {
+    expect(
+      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'unknown' })
     ).not.toBe(null)
   })
 

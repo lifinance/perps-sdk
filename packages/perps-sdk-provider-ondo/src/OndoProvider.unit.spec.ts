@@ -1142,8 +1142,8 @@ describe('OndoProvider — getActivity surface coverage', () => {
   const recordAll = (
     fundings: unknown[],
     liquidations: unknown[],
-    deposits: unknown[] = [],
-    withdrawals: unknown[] = []
+    deposits: unknown = [],
+    withdrawals: unknown = []
   ): string[] => {
     const urls: string[] = []
     fetchMock.mockImplementation(async (url: string | URL) => {
@@ -1279,6 +1279,30 @@ describe('OndoProvider — getActivity surface coverage', () => {
     expect(urls.filter((u) => u.includes('/v1/wallet/deposits'))).toHaveLength(
       1
     )
+  })
+
+  it('reads a null deposit result as no deposits', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll([], [], null, [WITHDRAWAL_RESULT])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(activity.items.map((i) => i.type)).toEqual([ActivityType.WITHDRAWAL])
+  })
+
+  it('reads a null withdrawal result as no withdrawals', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll([], [], [DEPOSIT_RESULT], null)
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(activity.items.map((i) => i.type)).toEqual([ActivityType.DEPOSIT])
   })
 
   it('skips the funding call and keeps the market list for a liquidation-only request', async () => {
