@@ -4,10 +4,12 @@ import { OrderSide, OrderStatus, OrderType } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
 import {
+  isTriggerOrder,
   mapOpenOrder,
   mapOrder,
   mapOrderStatus,
   mapStatusReason,
+  mapTriggerOrder,
 } from './mapOrder.js'
 
 const baseDetail = (
@@ -398,5 +400,103 @@ describe('mapOpenOrder (Hyperliquid)', () => {
       reduceOnly: false,
       createdAt: '2023-11-14T22:13:20.000Z',
     })
+  })
+})
+
+const baseWsOrder = (
+  overrides: Partial<HlOrderDetail['order']> = {}
+): HlOrderDetail['order'] => baseDetail({}, overrides).order
+
+describe('mapOpenOrder (Hyperliquid) — WebSocket payload', () => {
+  it('maps an order that carries no isTrigger flag', () => {
+    expect(
+      mapOpenOrder(baseWsOrder({ oid: 88, sz: '0.4', origSz: '1' }), MARKET)
+    ).toEqual({
+      orderId: '88',
+      market: MARKET,
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      originalSize: '1',
+      remainingSize: '0.4',
+      price: '1000',
+      filledSize: '0.6',
+      reduceOnly: false,
+      label: undefined,
+      createdAt: '2023-11-14T22:13:20.000Z',
+    })
+  })
+})
+
+describe('mapTriggerOrder (Hyperliquid)', () => {
+  it('maps a REST trigger order and keeps the limit price on a limit type', () => {
+    expect(
+      mapTriggerOrder(
+        baseOpenOrder({
+          orderType: 'Stop Limit',
+          isTrigger: true,
+          triggerCondition: 'Stop Loss',
+          triggerPx: '2900.0',
+        }),
+        MARKET
+      )
+    ).toEqual({
+      orderId: '77',
+      market: MARKET,
+      type: OrderType.STOP_LIMIT,
+      size: '1.5',
+      triggerPrice: '2900.0',
+      limitPrice: '3000.0',
+      label: 'Stop Loss',
+      createdAt: '2023-11-14T22:13:20.000Z',
+    })
+  })
+
+  it('maps a WebSocket trigger order and omits the limit price on a market type', () => {
+    expect(
+      mapTriggerOrder(
+        baseWsOrder({
+          oid: 99,
+          orderType: 'Stop Market',
+          triggerCondition: 'Stop Loss',
+          triggerPx: '2900.0',
+        }),
+        MARKET
+      )
+    ).toEqual({
+      orderId: '99',
+      market: MARKET,
+      type: OrderType.STOP_MARKET,
+      size: '0',
+      triggerPrice: '2900.0',
+      label: 'Stop Loss',
+      createdAt: '2023-11-14T22:13:20.000Z',
+    })
+  })
+
+  it('falls back to a zero trigger price when the WebSocket payload omits one', () => {
+    expect(
+      mapTriggerOrder(baseWsOrder({ orderType: 'Stop Market' }), MARKET)
+        .triggerPrice
+    ).toBe('0')
+  })
+})
+
+describe('isTriggerOrder (Hyperliquid)', () => {
+  it('reads the REST isTrigger flag', () => {
+    expect(isTriggerOrder(baseOpenOrder({ isTrigger: true }))).toBe(true)
+  })
+
+  it('reads a WebSocket trigger condition when no isTrigger flag exists', () => {
+    expect(
+      isTriggerOrder(baseWsOrder({ triggerCondition: 'Take Profit' }))
+    ).toBe(true)
+  })
+
+  it('reads a WebSocket trigger price when the order type still says Limit', () => {
+    expect(isTriggerOrder(baseWsOrder({ triggerPx: '2900.0' }))).toBe(true)
+  })
+
+  it('leaves a plain WebSocket limit order out of the trigger bucket', () => {
+    expect(isTriggerOrder(baseWsOrder())).toBe(false)
   })
 })

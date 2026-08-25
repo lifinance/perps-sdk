@@ -1297,18 +1297,28 @@ export const createLighterProvider = (
               : undefined,
           })
         ),
-        ...history.fundings.position_fundings.map(
-          (f): ActivityItem => ({
-            id: `funding-${f.funding_id}`,
-            provider: providerKey,
-            timestamp: toIsoFromSeconds(f.timestamp),
-            type: ActivityType.FUNDING,
-            market: marketRegistry.require(String(f.market_id)),
-            amount: f.change,
-            positionSize: f.position_size,
-            fundingRate: f.rate,
-          })
-        ),
+        // `get`, not `require`: a market id the backend list no longer carries
+        // drops only its own row instead of rejecting the whole feed. The
+        // registry warns once per unresolved id. A delisted market still
+        // resolves, so its rows stay.
+        ...history.fundings.position_fundings.flatMap((f): ActivityItem[] => {
+          const market = marketRegistry.get(String(f.market_id))
+          if (market === undefined) {
+            return []
+          }
+          return [
+            {
+              id: `funding-${f.funding_id}`,
+              provider: providerKey,
+              timestamp: toIsoFromSeconds(f.timestamp),
+              type: ActivityType.FUNDING,
+              market,
+              amount: f.change,
+              positionSize: f.position_size,
+              fundingRate: f.rate,
+            },
+          ]
+        }),
         // `/liquidations` reports only the market and the execution time. Its
         // `type` field is a venue liquidation type, not a margin mode, so
         // `leverageType` stays absent. Notional, account value and position
@@ -1317,17 +1327,21 @@ export const createLighterProvider = (
         // cascade arrives as several independent rows and each stays its own
         // activity; grouping them by `executed_at` would invent a relationship
         // Lighter does not report.
-        ...history.liquidations.liquidations.map(
-          (l): ActivityItem => ({
-            id: `liquidation-${l.id}`,
-            provider: providerKey,
-            timestamp: toIsoFromMs(l.executed_at),
-            type: ActivityType.LIQUIDATION,
-            liquidatedPositions: [
-              { market: marketRegistry.require(String(l.market_id)) },
-            ],
-          })
-        ),
+        ...history.liquidations.liquidations.flatMap((l): ActivityItem[] => {
+          const market = marketRegistry.get(String(l.market_id))
+          if (market === undefined) {
+            return []
+          }
+          return [
+            {
+              id: `liquidation-${l.id}`,
+              provider: providerKey,
+              timestamp: toIsoFromMs(l.executed_at),
+              type: ActivityType.LIQUIDATION,
+              liquidatedPositions: [{ market }],
+            },
+          ]
+        }),
         // `/transfer/history` also reports the account's own spot/perps route
         // moves, where both indices are this account. Those are not transfers
         // between accounts, so they are excluded from the ledger.
