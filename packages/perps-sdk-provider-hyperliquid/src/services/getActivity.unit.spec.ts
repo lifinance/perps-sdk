@@ -306,4 +306,15 @@ describe('getActivity — unresolvable market rows', () => {
       getActivity(ctx, { address: ADDRESS, type: [ActivityType.FUNDING] })
     ).rejects.toThrow()
   })
+
+  it('propagates a failed ledger fetch instead of returning an empty page', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { userFunding: HL_USER_FUNDING },
+      HL_MARKETS
+    ))
+
+    await expect(
+      getActivity(ctx, { address: ADDRESS, type: [ActivityType.DEPOSIT] })
+    ).rejects.toThrow()
+  })
 })

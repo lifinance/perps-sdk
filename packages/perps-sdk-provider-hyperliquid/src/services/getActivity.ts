@@ -80,11 +80,17 @@ const fetchActivityData = async (
       : Promise.resolve([] as HlUserFunding),
   ])
 
-  const ledgerItems: ActivityItem[] = ledgerUpdates
-    .map((entry) =>
-      mapLedgerEntry(entry, PROVIDER_KEY, timeParams.user, resolveMarket)
-    )
-    .filter((item): item is ActivityItem => item !== null)
+  const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
+    (entry): ActivityItem[] => {
+      const item = mapLedgerEntry(
+        entry,
+        PROVIDER_KEY,
+        timeParams.user,
+        resolveMarket
+      )
+      return item === null ? [] : [item]
+    }
+  )
 
   const fundingItems: ActivityItem[] = fundingUpdates.flatMap(
     (entry): FundingActivity[] => {

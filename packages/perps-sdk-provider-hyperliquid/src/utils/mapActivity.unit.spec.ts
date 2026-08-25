@@ -701,9 +701,11 @@ describe('mapFundingActivity', () => {
   it('keeps the id stable across repeated maps of the same entry', () => {
     const entry = fundingUpdate('BTC', 1_700_000_000_000)
 
-    expect(mapFundingActivity(entry, PROVIDER, resolveMarket)?.id).toBe(
-      mapFundingActivity(entry, PROVIDER, resolveMarket)?.id
-    )
+    const first = mapFundingActivity(entry, PROVIDER, resolveMarket)
+    const second = mapFundingActivity(entry, PROVIDER, resolveMarket)
+
+    expect(first).not.toBeNull()
+    expect(first?.id).toBe(second?.id)
   })
 
   it('returns null when the resolver cannot identify the coin', () => {
