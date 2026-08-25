@@ -1,5 +1,31 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 9.0.0
+
+### Minor Changes
+
+- [#361](https://github.com/lifinance/perps-sdk/pull/361) [`54330e9`](https://github.com/lifinance/perps-sdk/commit/54330e9839acf9e805b13b14adc921c4b3287469) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Carry accrued funding on `Position`.
+
+  `Position` gains a required `accruedFunding` string. It reports the funding the
+  position accrued since it opened, in quote-currency units. A positive value means
+  the account received funding. A negative value means the account paid it. Every
+  venue resets the value when the position returns to flat.
+
+  `HlPosition` gains a required `cumFunding` object, which the Hyperliquid
+  `clearinghouseState` and `webData2` payloads always send. Hyperliquid signs
+  `cumFunding` as funding paid, so the Hyperliquid mapper negates
+  `cumFunding.sinceOpen`. Lighter `total_funding_paid_out` and Ondo
+  `netFundingSinceNeutral` already use the account point of view, so those mappers
+  pass the value through.
+
+### Patch Changes
+
+- [#363](https://github.com/lifinance/perps-sdk/pull/363) [`6689272`](https://github.com/lifinance/perps-sdk/commit/668927269a8863398694dd4f2c1df59f0b42e5bd) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read Ondo running TWAPs from `GET /v1/perps/twap/orders/running` and map the venue's `TWAPOrderApiResp` fields. The read previously requested `GET /v1/perps/twap/orders`, a path Ondo does not serve, so every running-TWAP read failed with a 404. `OndoTwapOrder` now mirrors the documented schema (`startTime`, `totalSize`, `avgFilledPrice`, `orderStatus`, `frequency`, `totalFees`, `reduceOnly` and the optional members) in place of the `size` / `filledCost` / `createdAt` / `status` fields the venue never returned, and an empty feed marshalled as a `null` result reads as no rows.
+
+- Updated dependencies [[`54330e9`](https://github.com/lifinance/perps-sdk/commit/54330e9839acf9e805b13b14adc921c4b3287469)]:
+  - @lifi/perps-types@9.0.0
+  - @lifi/perps-sdk@8.0.0
+
 ## 8.0.1
 
 ### Patch Changes

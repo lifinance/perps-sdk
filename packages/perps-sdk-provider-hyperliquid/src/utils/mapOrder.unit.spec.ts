@@ -1,9 +1,14 @@
 import { isActiveOrderStatus } from '@lifi/perps-sdk'
 import type { MarketDisplay } from '@lifi/perps-types'
-import { OrderStatus } from '@lifi/perps-types'
+import { OrderSide, OrderStatus, OrderType } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import type { HlOrderDetail } from '../types/index.js'
-import { mapOrder, mapOrderStatus, mapStatusReason } from './mapOrder.js'
+import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
+import {
+  mapOpenOrder,
+  mapOrder,
+  mapOrderStatus,
+  mapStatusReason,
+} from './mapOrder.js'
 
 const baseDetail = (
   overrides: Partial<HlOrderDetail> = {},
@@ -338,5 +343,60 @@ describe('mapOrder (Hyperliquid) — statusReason wiring', () => {
     const order = mapOrder(baseDetail({ status: 'rejected' }), MARKET)
     expect(order.status).toBe(OrderStatus.REJECTED)
     expect(order.statusReason).toBeUndefined()
+  })
+})
+
+const baseOpenOrder = (
+  overrides: Partial<HlFrontendOpenOrder> = {}
+): HlFrontendOpenOrder => ({
+  oid: 77,
+  coin: 'ETH',
+  side: 'B',
+  sz: '1.5',
+  limitPx: '3000.0',
+  orderType: 'Limit',
+  origSz: '2.0',
+  reduceOnly: false,
+  timestamp: 1_700_000_000_000,
+  isTrigger: false,
+  isPositionTpsl: false,
+  triggerCondition: 'N/A',
+  triggerPx: '0.0',
+  tif: 'Gtc',
+  cloid: null,
+  ...overrides,
+})
+
+describe('mapOpenOrder (Hyperliquid)', () => {
+  it('carries both sizes for a partially filled order', () => {
+    const order = mapOpenOrder(baseOpenOrder(), MARKET)
+    expect(order.originalSize).toBe('2.0')
+    expect(order.remainingSize).toBe('1.5')
+    expect(order.filledSize).toBe('0.5')
+  })
+
+  it('keeps remainingSize equal to originalSize on an untouched order', () => {
+    const order = mapOpenOrder(
+      baseOpenOrder({ sz: '2.0', origSz: '2.0' }),
+      MARKET
+    )
+    expect(order.originalSize).toBe('2.0')
+    expect(order.remainingSize).toBe('2.0')
+    expect(order.filledSize).toBe('0')
+  })
+
+  it('maps the remaining open-order fields', () => {
+    expect(mapOpenOrder(baseOpenOrder(), MARKET)).toEqual({
+      orderId: '77',
+      market: MARKET,
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      originalSize: '2.0',
+      remainingSize: '1.5',
+      price: '3000.0',
+      filledSize: '0.5',
+      reduceOnly: false,
+      createdAt: '2023-11-14T22:13:20.000Z',
+    })
   })
 })

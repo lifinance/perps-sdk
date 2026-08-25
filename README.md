@@ -39,6 +39,7 @@ pnpm workspace — Node `>=24`, pnpm `11` (pinned via `packageManager`). From th
 | `pnpm check` | Biome lint/format check |
 | `pnpm check:write` | Biome auto-fix |
 | `pnpm check:types` | TypeScript type checking across packages |
+| `pnpm check:types:spec` | TypeScript type checking for `*.spec.ts` files (excluded from `check:types`) |
 | `pnpm check:circular-deps` | madge circular-dependency check |
 | `pnpm knip:check` | Report unused files, deps, and exports |
 
