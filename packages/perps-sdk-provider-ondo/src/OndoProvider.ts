@@ -259,7 +259,7 @@ export const ondoProvider = (
             client.get<OndoBalanceSummary>('/v1/perps/balance', {
               authToken: token.token,
             }),
-            client.get<OndoPosition[]>('/v1/perps/positions', {
+            client.get<OndoPosition[] | null>('/v1/perps/positions', {
               authToken: token.token,
             }),
             client.get<OndoAccountReferral | null>('/v1/account/referral', {
@@ -287,7 +287,7 @@ export const ondoProvider = (
           }
 
           const positions: Position[] = mapOpenPositions(
-            rawPositions,
+            rawPositions ?? [],
             requirePerpsMarketDisplay
           )
 
@@ -386,14 +386,14 @@ export const ondoProvider = (
         async (token) => {
           const client = apiClient(opts)
           const [rawPositions] = await Promise.all([
-            client.get<OndoPosition[]>('/v1/perps/positions', {
+            client.get<OndoPosition[] | null>('/v1/perps/positions', {
               authToken: token.token,
             }),
             marketRegistry().sync(),
           ])
 
           let positions: Position[] = mapOpenPositions(
-            rawPositions,
+            rawPositions ?? [],
             requirePerpsMarketDisplay
           )
           if (params.marketId !== undefined) {
