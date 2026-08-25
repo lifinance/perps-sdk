@@ -648,6 +648,8 @@ describe('OndoProvider — getAccount (logged in)', () => {
   })
 
   it('rejects a deposit-address envelope that omits the result', async () => {
+    // `JSON.stringify` drops undefined values, so the wire body arrives as
+    // `{ "success": true }` with no `result` key at all.
     depositAddressResult = undefined
     const { provider } = await loggedInProvider()
     await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
@@ -856,6 +858,18 @@ describe('OndoProvider — getDepositFlow', () => {
 
   it('reports the deposit-address setup gate when the venue has provisioned none', async () => {
     depositAddressResult = []
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getDepositFlow!({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.CREATE_DEPOSIT_ADDRESS],
+    })
+  })
+
+  it('reports the deposit-address setup gate on a null deposit-address result', async () => {
+    depositAddressResult = null
     const { provider } = await loggedInProvider()
 
     await expect(
