@@ -40,6 +40,7 @@ import type {
   Fill,
   FillsResponse,
   LighterAccountConfig,
+  LiquidationActivity,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -92,7 +93,7 @@ import type {
   LtTransferHistoryResponse,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
-import { LT_MARGIN_MODE_ISOLATED } from './types/index.js'
+import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -117,6 +118,7 @@ import {
   mapOpenPositions,
   mapOrderDetail,
   positionMarginConstraints,
+  toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
   toRequiredBig,
@@ -1328,27 +1330,55 @@ export const createLighterProvider = (
             },
           ]
         }),
-        // `/liquidations` reports only the market and the execution time. Its
-        // `type` field is a venue liquidation type, not a margin mode, so
-        // `leverageType` stays absent. Notional, account value and position
-        // size stay absent too — a `'0'` would read as a real zero. The
-        // endpoint exposes no cascade identity either, so one cross-margin
-        // cascade arrives as several independent rows and each stays its own
-        // activity; grouping them by `executed_at` would invent a relationship
-        // Lighter does not report.
+        // A `/liquidations` row carries the forced trade in `trade` and the
+        // account snapshot that triggered it in `info`. Its `type` field is a
+        // venue liquidation type, not a margin mode, so `leverageType` reads
+        // the row's own position in `info.positions` instead. The endpoint
+        // exposes no cascade identity, so one cross-margin cascade arrives as
+        // several independent rows and each stays its own activity; grouping
+        // them by `executed_at` would invent a relationship Lighter does not
+        // report.
         ...history.liquidations.liquidations.flatMap((l): ActivityItem[] => {
           const market = marketRegistry.get(String(l.market_id))
           if (market === undefined) {
             return []
           }
+          const price = toBigOrNull(l.trade.price)
+          const size = toBigOrNull(l.trade.size)
+          const marginMode = l.info.positions.find(
+            (p) => p.market_id === l.market_id
+          )?.margin_mode
+          // Lighter reports the margin mode as an integer, so the venue
+          // vocabulary the contract asks for is the SDK's own literal. An
+          // integer outside the two documented modes maps to no claim at all.
+          const leverageType =
+            marginMode === LT_MARGIN_MODE_ISOLATED
+              ? ('isolated' as const)
+              : marginMode === LT_MARGIN_MODE_CROSS
+                ? ('cross' as const)
+                : undefined
+          const accountValue =
+            l.info.risk_info_before.cross_risk_parameters?.total_account_value
           return [
             {
               id: `liquidation-${l.id}`,
               provider: providerKey,
               timestamp: toIsoFromMs(l.executed_at),
               type: ActivityType.LIQUIDATION,
-              liquidatedPositions: [{ market }],
-            },
+              ...(price === null || size === null
+                ? {}
+                : {
+                    liquidatedNotionalPosition: price
+                      .times(size)
+                      .abs()
+                      .toFixed(),
+                  }),
+              // The account value at liquidation time is the pre-trade
+              // snapshot, not the settled one Lighter also reports.
+              ...(accountValue === undefined ? {} : { accountValue }),
+              ...(leverageType === undefined ? {} : { leverageType }),
+              liquidatedPositions: [{ market, size: l.trade.size }],
+            } satisfies LiquidationActivity,
           ]
         }),
         // `/transfer/history` also reports the account's own spot/perps route
