@@ -1384,6 +1384,210 @@ describe('OndoProvider — getActivity surface coverage', () => {
   })
 })
 
+describe('OndoProvider — getActivity unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let client: PerpsSDKClient
+
+  beforeEach(() => {
+    client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+  })
+
+  const UNKNOWN_MARKET = 'GHOST-USD.P'
+
+  const DELISTED_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: 'OLD-USD.P',
+    isDelisted: true,
+  }
+
+  const boundProvider = async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, AUTH_TOKEN)
+    const provider = ondoProvider({ apiUrl: API_URL, storage })
+    provider.bind(client)
+    return provider
+  }
+
+  interface HistoryStub {
+    fundings?: unknown[]
+    liquidations?: unknown[]
+    markets?: unknown
+    fundingStatus?: number
+    liquidationStatus?: number
+  }
+
+  const stubHistory = (history: HistoryStub) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(history.markets ?? MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
+      }
+      if (u.includes('/v1/perps/funding_fees')) {
+        if (history.fundingStatus !== undefined) {
+          return respond(
+            { success: false, error: 'upstream down' },
+            history.fundingStatus
+          )
+        }
+        return respond({ success: true, result: history.fundings ?? [] })
+      }
+      if (u.includes('/v1/perps/liquidation_history')) {
+        if (history.liquidationStatus !== undefined) {
+          return respond(
+            { success: false, error: 'upstream down' },
+            history.liquidationStatus
+          )
+        }
+        return respond({ success: true, result: history.liquidations ?? [] })
+      }
+      if (u.includes('/v1/wallet/deposits')) {
+        return respond({ success: true, result: [DEPOSIT_RESULT] })
+      }
+      if (u.includes('/v1/wallet/withdrawals')) {
+        return respond({ success: true, result: [WITHDRAWAL_RESULT] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('drops a funding row whose market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({
+      fundings: [{ ...FUNDING_RESULT, market: UNKNOWN_MARKET }, FUNDING_RESULT],
+    })
+    const provider = await boundProvider()
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.FUNDING],
+    })
+
+    expect(activity.items).toHaveLength(1)
+    expect(activity.items[0]).toMatchObject({
+      id: 'funding:AAPL-USD.P:2026-07-01T12:00:00.000Z',
+      market: { id: 'AAPL-USD.P' },
+    })
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] unknown market id '${UNKNOWN_MARKET}'`
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('drops a liquidation row whose only market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({
+      liquidations: [
+        {
+          ...LIQUIDATION_RESULT,
+          triggeringPositions: [{ ...POSITION_RESULT, market: UNKNOWN_MARKET }],
+        },
+        { ...LIQUIDATION_RESULT, id: 'liq-known' },
+      ],
+    })
+    const provider = await boundProvider()
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items.map((i) => i.id)).toEqual(['liq-known'])
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] unknown market id '${UNKNOWN_MARKET}'`
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps the resolvable legs of a multi-market liquidation', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({
+      liquidations: [
+        {
+          ...LIQUIDATION_RESULT,
+          triggeringPositions: [
+            { ...POSITION_RESULT, market: UNKNOWN_MARKET },
+            POSITION_RESULT,
+          ],
+        },
+      ],
+    })
+    const provider = await boundProvider()
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items).toHaveLength(1)
+    expect(activity.items[0]).toMatchObject({
+      id: 'liq-1',
+      liquidatedPositions: [{ market: { id: 'AAPL-USD.P' } }],
+    })
+    warn.mockRestore()
+  })
+
+  it('keeps a funding row and a liquidation row on a delisted market', async () => {
+    stubHistory({
+      markets: { markets: [...MARKETS_RESPONSE.markets, DELISTED_MARKET] },
+      fundings: [{ ...FUNDING_RESULT, market: DELISTED_MARKET.id }],
+      liquidations: [
+        {
+          ...LIQUIDATION_RESULT,
+          triggeringPositions: [
+            { ...POSITION_RESULT, market: DELISTED_MARKET.id },
+          ],
+        },
+      ],
+    })
+    const provider = await boundProvider()
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.FUNDING, ActivityType.LIQUIDATION],
+    })
+
+    expect(activity.items).toHaveLength(2)
+    expect(
+      activity.items.find((i) => i.type === ActivityType.FUNDING)
+    ).toMatchObject({ market: { id: DELISTED_MARKET.id, isDelisted: true } })
+    expect(
+      activity.items.find((i) => i.type === ActivityType.LIQUIDATION)
+    ).toMatchObject({
+      liquidatedPositions: [
+        { market: { id: DELISTED_MARKET.id, isDelisted: true } },
+      ],
+    })
+  })
+
+  it('propagates a failed funding fetch instead of returning an empty page', async () => {
+    stubHistory({ fundingStatus: 500 })
+    const provider = await boundProvider()
+
+    await expect(
+      provider.getActivity({ address: ADDRESS, type: [ActivityType.FUNDING] })
+    ).rejects.toThrow(PerpsError)
+  })
+
+  it('propagates a failed liquidation fetch instead of returning an empty page', async () => {
+    stubHistory({ liquidationStatus: 500 })
+    const provider = await boundProvider()
+
+    await expect(
+      provider.getActivity({
+        address: ADDRESS,
+        type: [ActivityType.LIQUIDATION],
+      })
+    ).rejects.toThrow(PerpsError)
+  })
+})
+
 describe('OndoProvider — server-revoked session', () => {
   // A JWT the server revoked before it locally expired: `tokenStore.get`
   // returns it, but the venue answers 401 → `OndoSessionExpiredError`. Every

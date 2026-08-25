@@ -35,6 +35,7 @@ import type {
   ActivitiesResponse,
   ActivityItem,
   FillsResponse,
+  FundingActivity,
   LiquidationActivity,
   MarketDisplay,
   OndoAccountConfig,
@@ -179,6 +180,13 @@ export const ondoProvider = (
 
   const requireMarketDisplay = (marketId: string): MarketDisplay =>
     toMarketDisplay(marketRegistry().require(marketId))
+  // The droppable-row counterpart of `requireMarketDisplay`, for the history
+  // surfaces where an id the backend market list does not hold must cost only
+  // its own row. The registry warns once per unresolved id.
+  const marketDisplay = (marketId: string): MarketDisplay | undefined => {
+    const market = marketRegistry().get(marketId)
+    return market === undefined ? undefined : toMarketDisplay(market)
+  }
   const requirePerpsMarketDisplay = (marketId: string): PerpsMarketDisplay =>
     toPerpsMarketDisplay(marketRegistry().require(marketId))
 
@@ -449,13 +457,9 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const registry = marketRegistry()
           const { openOrders, triggerOrders } = classifyAndMapOrders(
             page.result,
-            (marketId) => {
-              const market = registry.get(marketId)
-              return market === undefined ? undefined : toMarketDisplay(market)
-            }
+            marketDisplay
           )
 
           const nextCursor = page.pageInfo?.nextCursor
@@ -665,13 +669,14 @@ export const ondoProvider = (
             ])
 
           const items: ActivityItem[] = [
-            ...fundings.result.map((f) =>
-              mapFundingActivity(f, requireMarketDisplay(f.market))
-            ),
+            ...fundings.result.flatMap((f): FundingActivity[] => {
+              const market = marketDisplay(f.market)
+              return market === undefined ? [] : [mapFundingActivity(f, market)]
+            }),
             // A liquidation event that names no position is dropped: the
             // public contract guarantees a non-empty `liquidatedPositions`.
             ...liquidations.result
-              .map((l) => mapLiquidationActivity(l, requireMarketDisplay))
+              .map((l) => mapLiquidationActivity(l, marketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
             ...(deposits ?? []).map(mapDepositActivity),
             // A withdrawal Ondo reports as failed or cancelled moved no value,

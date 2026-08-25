@@ -565,6 +565,45 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
   })
 
+  it('drops a liquidated position the resolver cannot identify', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-partial',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '3000',
+        accountValue: '250',
+        leverageType: 'cross',
+        liquidatedPositions: [
+          { coin: 'GHOST', szi: '-1.5' },
+          { coin: 'BTC', szi: '0.25' },
+        ],
+      },
+    }
+    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, (coin) =>
+      coin === 'GHOST' ? undefined : resolveMarket(coin)
+    ) as LiquidationActivity
+
+    expect(result.liquidatedPositions).toEqual([
+      { market: resolveMarket('BTC'), size: '0.25' },
+    ])
+  })
+
+  it('returns null when no liquidated position resolves to a market', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xliq-unresolvable',
+      delta: {
+        type: 'liquidation',
+        liquidatedNtlPos: '1000',
+        accountValue: '500',
+        leverageType: 'cross',
+        liquidatedPositions: [{ coin: 'GHOST', szi: '-1.5' }],
+      },
+    }
+    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, () => undefined)).toBeNull()
+  })
+
   it('returns null for liquidation entries with empty liquidatedPositions', () => {
     const entry: HlLedgerUpdate = {
       time: 1_700_000_000_000,
@@ -629,7 +668,7 @@ describe('mapFundingActivity', () => {
     ]
 
     const ids = entries.map(
-      (entry) => mapFundingActivity(entry, PROVIDER, resolveMarket).id
+      (entry) => mapFundingActivity(entry, PROVIDER, resolveMarket)?.id
     )
 
     expect(new Set(ids).size).toBe(entries.length)
@@ -638,8 +677,18 @@ describe('mapFundingActivity', () => {
   it('keeps the id stable across repeated maps of the same entry', () => {
     const entry = fundingUpdate('BTC', 1_700_000_000_000)
 
-    expect(mapFundingActivity(entry, PROVIDER, resolveMarket).id).toBe(
-      mapFundingActivity(entry, PROVIDER, resolveMarket).id
+    expect(mapFundingActivity(entry, PROVIDER, resolveMarket)?.id).toBe(
+      mapFundingActivity(entry, PROVIDER, resolveMarket)?.id
     )
+  })
+
+  it('returns null when the resolver cannot identify the coin', () => {
+    expect(
+      mapFundingActivity(
+        fundingUpdate('GHOST', 1_700_000_000_000),
+        PROVIDER,
+        () => undefined
+      )
+    ).toBeNull()
   })
 })
