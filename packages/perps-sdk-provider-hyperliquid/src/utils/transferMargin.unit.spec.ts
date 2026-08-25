@@ -35,6 +35,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   markPrice: '5000',
   liquidationPrice: '4000',
   unrealizedPnl: '0',
+  accruedFunding: '0',
   leverage: 20,
   marginUsed: '500',
   initialMarginRequirement: '500',
@@ -63,6 +64,11 @@ describe('positionMarginConstraints', () => {
           // Hyperliquid reports isolated equity here, including the PnL.
           marginUsed: '1500',
           leverage: { type: 'isolated', value: 20 },
+          cumFunding: {
+            allTime: '-23403.892773',
+            sinceOpen: '5.788917',
+            sinceChange: '0.0',
+          },
         },
       } satisfies HlAssetPosition,
       position().market

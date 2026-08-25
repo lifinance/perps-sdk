@@ -13,19 +13,18 @@ export const mapRunningTwap = (
   order: OndoTwapOrder,
   market: Market
 ): TwapOrder => {
-  const filledSize = new Big(order.filledSize)
   return {
     twapId: order.twapId,
     market: toMarketDisplay(market),
     side: order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-    totalSize: order.size,
+    totalSize: order.totalSize,
     filledSize: order.filledSize,
-    ...(filledSize.eq(0)
+    // The venue reports `avgFilledPrice: '0'` before the first child fill,
+    // where the shared model omits the field.
+    ...(new Big(order.filledSize).eq(0)
       ? {}
-      : {
-          avgFillPrice: new Big(order.filledCost).div(filledSize).toString(),
-        }),
-    startedAt: new Date(order.createdAt).toISOString(),
+      : { avgFillPrice: order.avgFilledPrice }),
+    startedAt: new Date(order.startTime).toISOString(),
     durationSeconds: order.runningTime,
     status: TwapOrderStatus.RUNNING,
   }

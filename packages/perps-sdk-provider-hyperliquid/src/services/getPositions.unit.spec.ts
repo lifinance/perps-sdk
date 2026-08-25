@@ -44,6 +44,11 @@ describe('getPositions', () => {
                 unrealizedPnl: '0',
                 marginUsed: '0',
                 leverage: { type: 'cross', value: 1 },
+                cumFunding: {
+                  allTime: '-23403.892773',
+                  sinceOpen: '5.788917',
+                  sinceChange: '0.0',
+                },
               },
             },
           ],
@@ -102,6 +107,11 @@ describe('getPositions', () => {
                 unrealizedPnl: '0',
                 marginUsed: '0.1',
                 leverage: { type: 'cross', value: 1 },
+                cumFunding: {
+                  allTime: '-23403.892773',
+                  sinceOpen: '5.788917',
+                  sinceChange: '0.0',
+                },
               },
             },
           ],

@@ -46,6 +46,7 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   markPrice: '110',
   liquidationPrice: '50',
   unrealizedPnl,
+  accruedFunding: '0',
   leverage: 10,
   marginUsed,
   initialMarginRequirement: marginUsed,

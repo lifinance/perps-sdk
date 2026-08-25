@@ -55,6 +55,7 @@ function position(
     markPrice: '0',
     liquidationPrice: '0',
     unrealizedPnl: '0',
+    accruedFunding: '0',
     leverage: 1,
     marginUsed: '0',
     initialMarginRequirement: '0',
