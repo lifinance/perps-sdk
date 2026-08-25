@@ -121,6 +121,7 @@ describe('TransferActivity', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:03:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '500',
     }
 
@@ -209,6 +210,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '1',
       explorerLink: 'https://etherscan.io/tx/0xabc',
     }
@@ -217,6 +219,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
       amount: '1',
       fee: '0',
       explorerLink: 'https://etherscan.io/tx/0xdef',
@@ -246,6 +249,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
+      asset: 'USDC',
       amount: '1',
     }
     expect(deposit.explorerLink).toBeUndefined()
@@ -365,9 +369,7 @@ describe('LiquidationActivity', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.LIQUIDATION,
-      liquidatedNotionalPosition: '0',
-      accountValue: '0',
-      liquidatedPositions: [{ market: liquidatedMarket('lighter'), size: '0' }],
+      liquidatedPositions: [{ market: liquidatedMarket('lighter') }],
     }
 
     expect(item.leverageType).toBeUndefined()
@@ -459,6 +461,7 @@ describe('exhaustive narrowing across ActivityItem', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:09:00.000Z',
       type: ActivityType.WITHDRAWAL,
+      asset: 'USDC',
       amount: '50',
       fee: '0.1',
     }
