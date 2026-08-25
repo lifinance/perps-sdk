@@ -119,11 +119,13 @@ const SETTLING_WITHDRAWAL_STATUSES = new Set<string>([
   'unknown',
 ])
 
+/** Ondo denominates a withdrawal fee in USD, whatever asset it withdraws. */
+const ONDO_WITHDRAWAL_FEE_SYMBOL = 'USD'
+
 /**
  * Map an Ondo wallet withdrawal to a {@link WithdrawalActivity}, or `null`
- * when the venue reports a status under which no value left the account.
- * Ondo reports `usdFee` in USD rather than in the withdrawn asset, so `fee`
- * stays absent instead of claiming a fee the public field cannot express.
+ * when the venue reports a status under which no value left the account. Ondo
+ * charges the fee in USD, so `fee.asset` is `USD` and not the withdrawn asset.
  *
  * @public
  */
@@ -140,6 +142,15 @@ export const mapWithdrawalActivity = (
     type: ActivityType.WITHDRAWAL,
     asset: withdrawal.coin,
     amount: withdrawal.size,
+    // Loose equality also drops a `null` the live API may send for "no fee".
+    ...(withdrawal.usdFee == null
+      ? {}
+      : {
+          fee: {
+            amount: withdrawal.usdFee,
+            asset: ONDO_WITHDRAWAL_FEE_SYMBOL,
+          },
+        }),
     ...(withdrawal.txid === ''
       ? {}
       : { explorerLink: `https://scan.li.fi/tx/${withdrawal.txid}` }),

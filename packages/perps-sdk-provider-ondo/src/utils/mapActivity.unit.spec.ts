@@ -235,13 +235,20 @@ describe('mapWithdrawalActivity', () => {
       type: ActivityType.WITHDRAWAL,
       asset: 'USDC',
       amount: '500.00',
+      fee: { amount: '1.50', asset: 'USD' },
       explorerLink: 'https://scan.li.fi/tx/0xdef456',
     })
   })
 
-  it('omits the fee because Ondo reports it in USD, not in the withdrawn asset', () => {
+  it('denominates the fee in USD when Ondo withdraws another asset', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, coin: 'BTC', usdFee: '4.20' })
+      mapWithdrawalActivity({ ...WITHDRAWAL, coin: 'BTC', usdFee: '4.20' })?.fee
+    ).toEqual({ amount: '4.20', asset: 'USD' })
+  })
+
+  it('omits the fee when Ondo reports none', () => {
+    expect(
+      mapWithdrawalActivity({ ...WITHDRAWAL, usdFee: undefined })
     ).not.toHaveProperty('fee')
   })
 

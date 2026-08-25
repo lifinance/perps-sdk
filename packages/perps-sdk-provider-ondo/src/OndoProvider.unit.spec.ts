@@ -1194,6 +1194,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         type: ActivityType.WITHDRAWAL,
         asset: 'USDC',
         amount: '500.00',
+        fee: { amount: '1.50', asset: 'USD' },
         explorerLink: 'https://scan.li.fi/tx/0xdef456',
       },
       {

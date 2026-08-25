@@ -304,9 +304,26 @@ export interface DepositActivity extends BaseActivity {
 }
 
 /**
- * Account activity representing a completed withdrawal. `amount` and `fee`
- * are decimal strings in `asset`'s units — a withdrawal fee is always
- * denominated in the withdrawn asset.
+ * Fee a venue charged for a withdrawal. A venue does not always charge the fee
+ * in the withdrawn asset, so the amount carries the asset it is denominated
+ * in; a consumer must never assume {@link WithdrawalActivity.asset}.
+ *
+ * @public
+ */
+export interface WithdrawalFee {
+  /** Decimal string in `asset`'s units. */
+  amount: string
+  /**
+   * Display symbol the fee is denominated in, resolved by the provider
+   * adapter. Falls back to the venue's own asset id when the registry knows no
+   * symbol.
+   */
+  asset: string
+}
+
+/**
+ * Account activity representing a completed withdrawal. `amount` is a decimal
+ * string in `asset`'s units.
  *
  * @public
  */
@@ -319,7 +336,7 @@ export interface WithdrawalActivity extends BaseActivity {
   asset: string
   amount: string
   /** Absent when the venue reports no fee for the withdrawal. */
-  fee?: string
+  fee?: WithdrawalFee
   /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
   explorerLink?: string
 }

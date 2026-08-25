@@ -159,7 +159,9 @@ export const mapLedgerEntry = (
       type: ActivityType.WITHDRAWAL,
       asset: HL_COLLATERAL_SYMBOL,
       amount: delta.usdc,
-      ...(delta.fee === undefined ? {} : { fee: delta.fee }),
+      ...(delta.fee === undefined
+        ? {}
+        : { fee: { amount: delta.fee, asset: HL_COLLATERAL_SYMBOL } }),
       explorerLink: entry.hash
         ? `https://scan.li.fi/tx/${entry.hash}`
         : undefined,
