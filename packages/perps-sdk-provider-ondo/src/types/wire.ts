@@ -274,3 +274,66 @@ export interface OndoAccountInfo {
   privacyUnixSecs: number
   marketingConsent: string
 }
+
+/** @public */
+export type OndoDepositStatus = 'pending' | 'confirmed'
+
+/**
+ * Mirrors Ondo's `WalletDeposit` (the `GET /v1/wallet/deposits` result).
+ * Carries no id of its own — Ondo addresses a single deposit by `txid`.
+ * @public
+ */
+export interface OndoWalletDeposit {
+  coin: string
+  size: string
+  status: OndoDepositStatus
+  txid: string
+  fromAddress: string
+  time: string
+  chainId: string
+  usdValue: string
+  currentConfirmations?: number
+  requiredConfirmations?: number
+  accountId?: string
+  /** Disambiguates two deposits carried by one transaction. */
+  logIndex?: string
+}
+
+/** @public */
+export type OndoWithdrawalStatus =
+  | 'complete'
+  | 'failure'
+  | 'pending'
+  | 'cancelled'
+  | 'unknown'
+
+/**
+ * Mirrors Ondo's `WalletWithdrawal` (the `GET /v1/wallet/withdrawals` result).
+ * @public
+ */
+export interface OndoWalletWithdrawal {
+  coin: string
+  size: string
+  status: OndoWithdrawalStatus
+  address: string
+  withdrawal_id: string
+  txid: string
+  customer_withdrawal_id: string
+  time: string
+  chainId: string
+  accountId?: string
+  usdValue?: string
+  /** Fee in USD, not in the withdrawn asset. */
+  usdFee?: string
+  from?: OndoAccountWalletKey
+}
+
+/**
+ * One side of an Ondo value movement: an account id plus which of that
+ * account's two wallets held the value.
+ * @public
+ */
+export interface OndoAccountWalletKey {
+  id: string
+  wallet: 'main' | 'margin'
+}

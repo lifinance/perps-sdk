@@ -25,7 +25,12 @@ export {
   parseOndoDepositAddress,
 } from './depositAddress.js'
 export { estimateLiquidationPrice } from './liquidation.js'
-export { mapFundingActivity, mapLiquidationActivity } from './mapActivity.js'
+export {
+  mapDepositActivity,
+  mapFundingActivity,
+  mapLiquidationActivity,
+  mapWithdrawalActivity,
+} from './mapActivity.js'
 export { mapFill } from './mapFill.js'
 export {
   classifyAndMapOrders,

@@ -48,6 +48,7 @@ import type {
   SignedActionStep,
   SigningMethod,
   TwapOrder,
+  WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -74,6 +75,8 @@ import type {
   OndoOrder,
   OndoPosition,
   OndoTwapOrder,
+  OndoWalletDeposit,
+  OndoWalletWithdrawal,
 } from './types/wire.js'
 import {
   decodeActivityCursor,
@@ -93,11 +96,13 @@ import {
   formatOrderPrice,
   formatOrderSize,
   listOndoDepositAddress,
+  mapDepositActivity,
   mapFill,
   mapFundingActivity,
   mapLiquidationActivity,
   mapOpenPositions,
   mapOrderDetail,
+  mapWithdrawalActivity,
   positionMarginConstraints,
 } from './utils/index.js'
 import { mapRunningTwap } from './utils/mapTwap.js'
@@ -581,9 +586,9 @@ export const ondoProvider = (
           const inputCursor = decodeActivityCursor(params.cursor)
           const client = apiClient(opts)
 
-          // Ondo exposes funding fees and liquidations only. It publishes no
-          // deposit, withdrawal or transfer history endpoint, so those
-          // movement types never appear in an Ondo activity feed.
+          // Ondo publishes no account-to-account transfer history. Its
+          // transfer surface moves value between the main and margin wallets
+          // of one account, which `TransferActivity` excludes.
           const wantsType = (t: ActivityType): boolean =>
             params.type === undefined || params.type.includes(t)
           const shouldFetch = (
@@ -599,6 +604,13 @@ export const ondoProvider = (
             const v = inputCursor[key]
             return typeof v === 'string' && v.length > 0
           }
+          // `/v1/wallet/deposits` and `/v1/wallet/withdrawals` accept no
+          // cursor and return the whole history in one response, so each is
+          // fetched on the first page only. Its tail rides the cursor's
+          // `overflow` list, which is what keeps a later page from either
+          // re-fetching the list or losing the rows past the limit.
+          const shouldFetchOnce = (t: ActivityType): boolean =>
+            wantsType(t) && inputCursor === undefined
           const cursorParams = (
             key: 'fundings' | 'liquidations'
           ): ApiParams => {
@@ -610,33 +622,47 @@ export const ondoProvider = (
             pageInfo: undefined,
           })
 
-          const [fundings, liquidations] = await Promise.all([
-            shouldFetch(ActivityType.FUNDING, 'fundings')
-              ? client.getPage<OndoFundingFeeTransfer>(
-                  '/v1/perps/funding_fees',
-                  {
-                    params: cursorParams('fundings'),
-                    authToken: token.token,
-                  }
-                )
-              : Promise.resolve(emptyPage<OndoFundingFeeTransfer>()),
-            shouldFetch(ActivityType.LIQUIDATION, 'liquidations')
-              ? client.getPage<OndoLiquidationEvent>(
-                  '/v1/perps/liquidation_history',
-                  {
-                    params: cursorParams('liquidations'),
-                    authToken: token.token,
-                  }
-                )
-              : Promise.resolve(emptyPage<OndoLiquidationEvent>()),
-            // Every Ondo activity row names a market. A request for a ledger
-            // surface alone matches no Ondo endpoint, so it must not pull the
-            // market list either.
-            wantsType(ActivityType.FUNDING) ||
-            wantsType(ActivityType.LIQUIDATION)
-              ? marketRegistry().sync()
-              : Promise.resolve(),
-          ])
+          const [fundings, liquidations, deposits, withdrawals] =
+            await Promise.all([
+              shouldFetch(ActivityType.FUNDING, 'fundings')
+                ? client.getPage<OndoFundingFeeTransfer>(
+                    '/v1/perps/funding_fees',
+                    {
+                      params: cursorParams('fundings'),
+                      authToken: token.token,
+                    }
+                  )
+                : Promise.resolve(emptyPage<OndoFundingFeeTransfer>()),
+              shouldFetch(ActivityType.LIQUIDATION, 'liquidations')
+                ? client.getPage<OndoLiquidationEvent>(
+                    '/v1/perps/liquidation_history',
+                    {
+                      params: cursorParams('liquidations'),
+                      authToken: token.token,
+                    }
+                  )
+                : Promise.resolve(emptyPage<OndoLiquidationEvent>()),
+              shouldFetchOnce(ActivityType.DEPOSIT)
+                ? client.get<OndoWalletDeposit[] | null>(
+                    '/v1/wallet/deposits',
+                    {
+                      authToken: token.token,
+                    }
+                  )
+                : Promise.resolve(null),
+              shouldFetchOnce(ActivityType.WITHDRAWAL)
+                ? client.get<OndoWalletWithdrawal[] | null>(
+                    '/v1/wallet/withdrawals',
+                    { authToken: token.token }
+                  )
+                : Promise.resolve(null),
+              // Only the funding and liquidation rows name a market. A ledger
+              // request alone must not pull the market list.
+              wantsType(ActivityType.FUNDING) ||
+              wantsType(ActivityType.LIQUIDATION)
+                ? marketRegistry().sync()
+                : Promise.resolve(),
+            ])
 
           const items: ActivityItem[] = [
             ...fundings.result.map((f) =>
@@ -647,6 +673,12 @@ export const ondoProvider = (
             ...liquidations.result
               .map((l) => mapLiquidationActivity(l, requireMarketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
+            ...(deposits ?? []).map(mapDepositActivity),
+            // A withdrawal Ondo reports as failed or cancelled moved no value,
+            // and `WithdrawalActivity` carries no status to say so.
+            ...(withdrawals ?? [])
+              .map(mapWithdrawalActivity)
+              .filter((a): a is WithdrawalActivity => a !== null),
           ]
 
           const merged = [...(inputCursor?.overflow ?? []), ...items]

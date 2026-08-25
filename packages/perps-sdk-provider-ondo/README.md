@@ -42,12 +42,29 @@ const client = createPerpsClient({
 
 ## Activity coverage
 
-`getActivity` reports the two movement types Ondo exposes on its authenticated
-REST API: funding fees (`/v1/perps/funding_fees`) and liquidations
-(`/v1/perps/liquidation_history`). Ondo publishes no deposit, withdrawal, or
-account-to-account transfer history endpoint, so `getActivity` never returns
-`DEPOSIT`, `WITHDRAWAL`, or `TRANSFER` items for Ondo. A request that filters
-for those types alone returns an empty page and makes no upstream call.
+`getActivity` reports four movement types from Ondo's authenticated REST API:
+
+| Activity type | Endpoint                        | Paging           |
+| ------------- | ------------------------------- | ---------------- |
+| `FUNDING`     | `/v1/perps/funding_fees`        | cursor           |
+| `LIQUIDATION` | `/v1/perps/liquidation_history` | cursor           |
+| `DEPOSIT`     | `/v1/wallet/deposits`           | none — full list |
+| `WITHDRAWAL`  | `/v1/wallet/withdrawals`        | none — full list |
+
+`/v1/wallet/deposits` and `/v1/wallet/withdrawals` accept no cursor and return
+the whole history in one response, so `getActivity` calls each on the first
+page only and carries the rows past the page `limit` in the activity cursor.
+
+`asset` on a `DEPOSIT` or a `WITHDRAWAL` is Ondo's own `coin`, which is already
+a display symbol. Ondo reports a withdrawal fee in USD (`usdFee`) rather than
+in the withdrawn asset, so `WithdrawalActivity.fee` stays absent. A withdrawal
+Ondo reports as `failure` or `cancelled` moved no value and is dropped.
+
+`getActivity` never returns a `TRANSFER` item for Ondo. Ondo's transfer surface
+moves value between the `main` and `margin` wallets of one account, and
+`TransferActivity` reports movements between two distinct accounts only. A
+request that filters for `TRANSFER` alone returns an empty page and makes no
+upstream call.
 
 ## Environments
 
