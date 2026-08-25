@@ -39,6 +39,11 @@ const makeAp = (
     unrealizedPnl: '100',
     marginUsed: '940',
     leverage: { type: 'cross', value: 10 },
+    cumFunding: {
+      allTime: '-23403.892773',
+      sinceOpen: '5.788917',
+      sinceChange: '0.0',
+    },
     ...overrides,
   },
 })
@@ -89,6 +94,66 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.leverage).toBe(5)
     expect(result.marginUsed).toBe('840')
     expect(result.initialMarginRequirement).toBe('1900')
+  })
+
+  // Hyperliquid signs `cumFunding` as funding PAID, so the normalized
+  // `accruedFunding` is its negation. Fixtures below come from
+  // `clearinghouseState` for 0xf5d81a135f756ca16544e53c20fc20643ec3ad53 (BTC)
+  // and 0xdf9ea6ec3b7109935ccb4fb267e15ac1fb077ab1 (HYPE short).
+  describe('accruedFunding', () => {
+    it('negates a paid-funding sinceOpen into a negative accruedFunding', () => {
+      const result = map(
+        makeAp({
+          cumFunding: {
+            allTime: '-23403.892773',
+            sinceOpen: '5.788917',
+            sinceChange: '0.0',
+          },
+        })
+      )
+
+      expect(result.accruedFunding).toBe('-5.788917')
+    })
+
+    it('negates a received-funding sinceOpen into a positive accruedFunding', () => {
+      const result = map(
+        makeAp({
+          szi: '-20000.01',
+          positionValue: '760000',
+          cumFunding: {
+            allTime: '-175865.377915',
+            sinceOpen: '-175855.001206',
+            sinceChange: '-29921.224787',
+          },
+        })
+      )
+
+      expect(result.accruedFunding).toBe('175855.001206')
+    })
+
+    it('reports "0" without a negative-zero sign when no funding accrued', () => {
+      const result = map(
+        makeAp({
+          cumFunding: { allTime: '0.0', sinceOpen: '0.0', sinceChange: '0.0' },
+        })
+      )
+
+      expect(result.accruedFunding).toBe('0')
+    })
+
+    it('reads sinceOpen rather than allTime or sinceChange', () => {
+      const result = map(
+        makeAp({
+          cumFunding: {
+            allTime: '111',
+            sinceOpen: '22',
+            sinceChange: '3',
+          },
+        })
+      )
+
+      expect(result.accruedFunding).toBe('-22')
+    })
   })
 
   it('defaults entryPrice and liquidationPrice to "0" when null', () => {
