@@ -34,6 +34,7 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  Fill,
   FillsResponse,
   FundingActivity,
   LiquidationActivity,
@@ -557,9 +558,10 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const items = page.result.map((fill) =>
-            mapFill(fill, requireMarketDisplay(fill.market))
-          )
+          const items = page.result.flatMap((fill): Fill[] => {
+            const market = marketDisplay(fill.market)
+            return market === undefined ? [] : [mapFill(fill, market)]
+          })
 
           const nextCursor = page.pageInfo?.nextCursor
           return {

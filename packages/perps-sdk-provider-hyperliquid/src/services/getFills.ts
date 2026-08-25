@@ -1,5 +1,5 @@
 import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
-import type { FillsResponse } from '@lifi/perps-types'
+import type { Fill, FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
   DEFAULT_HISTORY_LIMIT,
@@ -108,7 +108,13 @@ export const getFills = async (
 
   const hasMore = filtered.length > limit
   const page = filtered.slice(0, limit)
-  const items = page.map((f) => mapFill(f, registry.require(f.coin)))
+  // `get`, not `require`: a coin the backend market list does not hold drops
+  // only its own row instead of rejecting the whole page. The registry warns
+  // once per unresolved id. A delisted market still resolves, so its rows stay.
+  const items = page.flatMap((f): Fill[] => {
+    const market = registry.get(f.coin)
+    return market === undefined ? [] : [mapFill(f, market)]
+  })
   const lastPageFill: HlUserFill | undefined = page[page.length - 1]
 
   return {
