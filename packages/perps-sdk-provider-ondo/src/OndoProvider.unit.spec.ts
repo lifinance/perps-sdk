@@ -47,6 +47,8 @@ import type {
   OndoLiquidationEvent,
   OndoOrder,
   OndoPosition,
+  OndoWalletDeposit,
+  OndoWalletWithdrawal,
 } from './types/wire.js'
 
 // ---------------------------------------------------------------------------
@@ -281,6 +283,32 @@ const LIQUIDATION_RESULT: OndoLiquidationEvent = {
   filledQuantity: '10',
 }
 
+const DEPOSIT_RESULT: OndoWalletDeposit = {
+  coin: 'USDC',
+  size: '1000.00',
+  status: 'confirmed',
+  txid: '0xabc123',
+  fromAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
+  time: '2026-07-01T10:30:00Z',
+  chainId: 'eth-mainnet',
+  usdValue: '1000.00',
+}
+
+const WITHDRAWAL_RESULT: OndoWalletWithdrawal = {
+  coin: 'USDC',
+  size: '500.00',
+  status: 'complete',
+  address: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
+  withdrawal_id: 'w_1',
+  txid: '0xdef456',
+  customer_withdrawal_id: 'cw-1',
+  time: '2026-07-02T15:45:00Z',
+  chainId: 'eth-mainnet',
+  usdValue: '500.00',
+  usdFee: '1.50',
+  from: { id: 'acct-1', wallet: 'margin' },
+}
+
 const DEPOSIT_ADDRESS = '0x2222222222222222222222222222222222222222'
 
 const ACCOUNT_INFO_RESULT = {
@@ -375,6 +403,12 @@ beforeEach(() => {
         success: true,
         result: [LIQUIDATION_RESULT],
       })
+    }
+    if (u.includes('/v1/wallet/deposits')) {
+      return respond({ success: true, result: [DEPOSIT_RESULT] })
+    }
+    if (u.includes('/v1/wallet/withdrawals')) {
+      return respond({ success: true, result: [WITHDRAWAL_RESULT] })
     }
     if (u.includes('/v1/agreement')) {
       const body = JSON.parse(String(init?.body ?? '{}')) as {
@@ -1042,23 +1076,35 @@ describe('OndoProvider — getFills', () => {
 })
 
 describe('OndoProvider — getActivity', () => {
-  it('merges funding and liquidation histories newest-first', async () => {
+  it('merges every movement history newest-first', async () => {
     const { provider } = await loggedInProvider()
     const activity = await provider.getActivity({ address: ADDRESS })
 
     expect(activity.items.map((i) => i.type)).toEqual([
+      ActivityType.WITHDRAWAL,
       ActivityType.LIQUIDATION,
       ActivityType.FUNDING,
+      ActivityType.DEPOSIT,
     ])
     expect(activity.items[0]).toMatchObject({
+      id: 'w_1',
+      asset: 'USDC',
+      amount: '500.00',
+    })
+    expect(activity.items[1]).toMatchObject({
       id: 'liq-1',
       liquidatedNotionalPosition: '1820',
       liquidatedPositions: [{ market: MARKET_DISPLAY, size: '10' }],
     })
-    expect(activity.items[1]).toMatchObject({
+    expect(activity.items[2]).toMatchObject({
       id: 'funding:AAPL-USD.P:2026-07-01T12:00:00.000Z',
       amount: '-0.12',
       fundingRate: '0.0001',
+    })
+    expect(activity.items[3]).toMatchObject({
+      id: 'deposit:0xabc123',
+      asset: 'USDC',
+      amount: '1000.00',
     })
     expect(activity.pagination.hasMore).toBe(false)
   })
@@ -1068,7 +1114,7 @@ describe('OndoProvider — getActivity', () => {
     const first = await provider.getActivity({ address: ADDRESS, limit: 1 })
 
     expect(first.items).toHaveLength(1)
-    expect(first.items[0]?.type).toBe(ActivityType.LIQUIDATION)
+    expect(first.items[0]?.type).toBe(ActivityType.WITHDRAWAL)
     expect(first.pagination.hasMore).toBe(true)
     expect(first.pagination.cursor).toBeTypeOf('string')
 
@@ -1077,7 +1123,7 @@ describe('OndoProvider — getActivity', () => {
       limit: 1,
       cursor: first.pagination.cursor,
     })
-    expect(second.items[0]?.type).toBe(ActivityType.FUNDING)
+    expect(second.items[0]?.type).toBe(ActivityType.LIQUIDATION)
   })
 
   it('filters to the requested activity types', async () => {
@@ -1095,7 +1141,9 @@ describe('OndoProvider — getActivity surface coverage', () => {
   /** Records the backend reference-data routes the default mock hides. */
   const recordAll = (
     fundings: unknown[],
-    liquidations: unknown[]
+    liquidations: unknown[],
+    deposits: unknown[] = [],
+    withdrawals: unknown[] = []
   ): string[] => {
     const urls: string[] = []
     fetchMock.mockImplementation(async (url: string | URL) => {
@@ -1113,26 +1161,124 @@ describe('OndoProvider — getActivity surface coverage', () => {
       if (u.includes('/v1/perps/liquidation_history')) {
         return respond({ success: true, result: liquidations })
       }
+      if (u.includes('/v1/wallet/deposits')) {
+        return respond({ success: true, result: deposits })
+      }
+      if (u.includes('/v1/wallet/withdrawals')) {
+        return respond({ success: true, result: withdrawals })
+      }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
     return urls
   }
 
-  it('reports no deposit, withdrawal or transfer activity and calls nothing upstream', async () => {
+  it('maps deposits and withdrawals without pulling the market list', async () => {
     const { provider } = await loggedInProvider()
-    const urls = recordAll([FUNDING_RESULT], [LIQUIDATION_RESULT])
+    const urls = recordAll(
+      [FUNDING_RESULT],
+      [LIQUIDATION_RESULT],
+      [DEPOSIT_RESULT],
+      [WITHDRAWAL_RESULT]
+    )
 
     const activity = await provider.getActivity({
       address: ADDRESS,
-      type: [
-        ActivityType.DEPOSIT,
-        ActivityType.WITHDRAWAL,
-        ActivityType.TRANSFER,
-      ],
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(activity.items).toEqual([
+      {
+        id: 'w_1',
+        provider: 'ondo',
+        timestamp: '2026-07-02T15:45:00.000Z',
+        type: ActivityType.WITHDRAWAL,
+        asset: 'USDC',
+        amount: '500.00',
+        explorerLink: 'https://scan.li.fi/tx/0xdef456',
+      },
+      {
+        id: 'deposit:0xabc123',
+        provider: 'ondo',
+        timestamp: '2026-07-01T10:30:00.000Z',
+        type: ActivityType.DEPOSIT,
+        asset: 'USDC',
+        amount: '1000.00',
+        explorerLink: 'https://scan.li.fi/tx/0xabc123',
+      },
+    ])
+    expect(urls.some((u) => u.includes('backend.test/v1/perps/markets'))).toBe(
+      false
+    )
+  })
+
+  it('reports no transfer activity and calls nothing upstream', async () => {
+    const { provider } = await loggedInProvider()
+    const urls = recordAll(
+      [FUNDING_RESULT],
+      [LIQUIDATION_RESULT],
+      [DEPOSIT_RESULT],
+      [WITHDRAWAL_RESULT]
+    )
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
     })
 
     expect(activity.items).toEqual([])
     expect(urls).toEqual([])
+  })
+
+  it('drops a withdrawal Ondo reports as cancelled', async () => {
+    const { provider } = await loggedInProvider()
+    recordAll([], [], [], [{ ...WITHDRAWAL_RESULT, status: 'cancelled' }])
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.WITHDRAWAL],
+    })
+
+    expect(activity.items).toEqual([])
+  })
+
+  it('pages the unpaged deposit list once without dropping or duplicating a row', async () => {
+    const { provider } = await loggedInProvider()
+    const urls = recordAll(
+      [],
+      [],
+      [
+        DEPOSIT_RESULT,
+        { ...DEPOSIT_RESULT, txid: '0xabc124', time: '2026-07-01T11:30:00Z' },
+        { ...DEPOSIT_RESULT, txid: '0xabc125', time: '2026-07-01T12:30:00Z' },
+      ]
+    )
+
+    const seen: string[] = []
+    let cursor: string | undefined
+    let pages = 0
+    do {
+      const page = await provider.getActivity({
+        address: ADDRESS,
+        type: [ActivityType.DEPOSIT],
+        limit: 1,
+        ...(cursor === undefined ? {} : { cursor }),
+      })
+      for (const item of page.items) {
+        seen.push(item.id)
+      }
+      cursor = page.pagination.hasMore ? page.pagination.cursor : undefined
+      pages += 1
+      expect(pages).toBeLessThan(10)
+    } while (cursor !== undefined)
+
+    expect(seen).toEqual([
+      'deposit:0xabc125',
+      'deposit:0xabc124',
+      'deposit:0xabc123',
+    ])
+    expect(urls.filter((u) => u.includes('/v1/wallet/deposits'))).toHaveLength(
+      1
+    )
   })
 
   it('skips the funding call and keeps the market list for a liquidation-only request', async () => {

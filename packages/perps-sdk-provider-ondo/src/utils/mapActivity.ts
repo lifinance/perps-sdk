@@ -1,13 +1,17 @@
 import type {
+  DepositActivity,
   FundingActivity,
   LiquidationActivity,
   MarketDisplay,
+  WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type {
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
+  OndoWalletDeposit,
+  OndoWalletWithdrawal,
 } from '../types/wire.js'
 
 /**
@@ -67,5 +71,64 @@ export const mapLiquidationActivity = (
       : { liquidatedNotionalPosition: event.filledQuoteSize }),
     leverageType: 'cross',
     liquidatedPositions,
+  }
+}
+
+/**
+ * Map an Ondo wallet deposit to a {@link DepositActivity}. Ondo carries no
+ * deposit id on the wire and addresses a single deposit by transaction id, so
+ * the id is `deposit:<txid>`, suffixed with `logIndex` when one transaction
+ * carried several deposits. `coin` is already a display symbol, so it is the
+ * normalized asset identity.
+ *
+ * @public
+ */
+export const mapDepositActivity = (
+  deposit: OndoWalletDeposit
+): DepositActivity => ({
+  id:
+    deposit.logIndex === undefined
+      ? `deposit:${deposit.txid}`
+      : `deposit:${deposit.txid}:${deposit.logIndex}`,
+  provider: ONDO_PROVIDER_KEY,
+  timestamp: new Date(deposit.time).toISOString(),
+  type: ActivityType.DEPOSIT,
+  asset: deposit.coin,
+  amount: deposit.size,
+  ...(deposit.txid === ''
+    ? {}
+    : { explorerLink: `https://scan.li.fi/tx/${deposit.txid}` }),
+})
+
+const SETTLING_WITHDRAWAL_STATUSES = new Set<string>([
+  'complete',
+  'pending',
+  'unknown',
+])
+
+/**
+ * Map an Ondo wallet withdrawal to a {@link WithdrawalActivity}, or `null`
+ * when the venue reports a status under which no value left the account.
+ * Ondo reports `usdFee` in USD rather than in the withdrawn asset, so `fee`
+ * stays absent instead of claiming a fee the public field cannot express.
+ *
+ * @public
+ */
+export const mapWithdrawalActivity = (
+  withdrawal: OndoWalletWithdrawal
+): WithdrawalActivity | null => {
+  if (!SETTLING_WITHDRAWAL_STATUSES.has(withdrawal.status)) {
+    return null
+  }
+  return {
+    id: withdrawal.withdrawal_id,
+    provider: ONDO_PROVIDER_KEY,
+    timestamp: new Date(withdrawal.time).toISOString(),
+    type: ActivityType.WITHDRAWAL,
+    asset: withdrawal.coin,
+    amount: withdrawal.size,
+    ...(withdrawal.txid === ''
+      ? {}
+      : { explorerLink: `https://scan.li.fi/tx/${withdrawal.txid}` }),
   }
 }
