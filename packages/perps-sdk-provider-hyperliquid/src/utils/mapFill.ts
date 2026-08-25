@@ -40,7 +40,10 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => ({
   status: FillStatus.FILLED,
   liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
   filledSize: fill.sz,
-  fee: fill.fee,
+  fee: {
+    amount: fill.fee,
+    asset: fill.feeToken ?? market.quoteAsset.displaySymbol,
+  },
   startPosition: fill.startPosition,
   explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, fill.hash),
   classification:

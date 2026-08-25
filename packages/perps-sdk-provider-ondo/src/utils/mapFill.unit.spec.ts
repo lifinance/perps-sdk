@@ -53,7 +53,7 @@ describe('mapFill', () => {
       price: '200.5',
       status: FillStatus.FILLED,
       liquidity: LiquidityRole.TAKER,
-      fee: '0.4',
+      fee: { amount: '0.4', asset: 'USD' },
       realizedPnl: undefined,
       classification: FillClassification.OPENED_LONG,
       createdAt: '2026-07-01T12:00:00.000Z',
@@ -96,7 +96,18 @@ describe('mapFill', () => {
   })
 
   it('nets the fee against a rebate', () => {
-    expect(mapFill(fillFixture({ feeRebate: '0.1' }), MARKET).fee).toBe('0.3')
+    expect(mapFill(fillFixture({ feeRebate: '0.1' }), MARKET).fee).toEqual({
+      amount: '0.3',
+      asset: 'USD',
+    })
+  })
+
+  it("reads the fee asset from the market's quote asset", () => {
+    const mapped = mapFill(fillFixture(), {
+      ...MARKET,
+      quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDC' },
+    })
+    expect(mapped.fee).toEqual({ amount: '0.4', asset: 'USDC' })
   })
 
   it('carries realized pnl through', () => {

@@ -96,7 +96,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toBe('0.7')
+      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
     })
 
     it('viewer on bid + is_maker_ask=false → BUY maker → maker fee', () => {
@@ -112,7 +112,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toBe('0.3')
+      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=true → SELL maker → maker fee', () => {
@@ -128,7 +128,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toBe('0.3')
+      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=false → SELL taker → taker fee', () => {
@@ -144,7 +144,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toBe('0.7')
+      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
     })
   })
 
@@ -478,6 +478,14 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.fee).toBeUndefined()
+    })
+
+    it("reads the fee asset from the market's quote asset", () => {
+      const fill = mapFill(baseTrade(), ACCOUNT_INDEX, {
+        ...MARKET,
+        quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDT' },
+      })
+      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDT' })
     })
   })
 
