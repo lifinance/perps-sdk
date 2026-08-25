@@ -159,6 +159,14 @@ describe('mapOrder', () => {
     expect(mapped.filledSize).toBe('0')
   })
 
+  it('normalizes originalSize so an unfilled order compares equal on both sizes', () => {
+    const mapped = mapOrder(
+      orderFixture({ size: '10.00', filledSize: '0.00' }),
+      MARKET
+    )
+    expect(mapped.originalSize).toBe(mapped.remainingSize)
+  })
+
   it('derives a fractional remainingSize without float error', () => {
     const mapped = mapOrder(
       orderFixture({ size: '0.3', filledSize: '0.1' }),

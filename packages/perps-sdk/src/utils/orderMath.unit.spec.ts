@@ -71,6 +71,7 @@ function openOrder(
     orderId: 'order-1',
     market: MARKET_BTC,
     type: OrderType.LIMIT,
+    // Unfilled-order default; pass originalSize explicitly for a partial fill.
     originalSize: overrides.remainingSize,
     filledSize: '0',
     reduceOnly: false,
@@ -127,6 +128,20 @@ describe('expectedRealizedPnlForOpenOrder', () => {
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(50, 9)
+  })
+
+  it('returns null when nothing remains to fill', () => {
+    const r = expectedRealizedPnlForOpenOrder(
+      openOrder({
+        side: OrderSide.SELL,
+        remainingSize: '0',
+        originalSize: '1',
+        filledSize: '1',
+        price: '150',
+      }),
+      position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+    )
+    expect(r).toBeNull()
   })
 
   it('computes loss for a SELL order reducing a long below entry', () => {

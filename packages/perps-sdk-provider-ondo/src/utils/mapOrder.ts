@@ -101,7 +101,7 @@ export const mapOrder = (
   market,
   side: mapSide(order.side),
   type: mapOrderType(order.type),
-  originalSize: order.size,
+  originalSize: new Big(order.size).toFixed(),
   remainingSize: new Big(order.size).minus(order.filledSize).toFixed(),
   price: order.price,
   filledSize: order.filledSize,

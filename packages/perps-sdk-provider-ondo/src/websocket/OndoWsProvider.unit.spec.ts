@@ -875,7 +875,7 @@ describe('OndoWsProvider', () => {
       expect(event.data.openOrders[0]).toMatchObject({
         orderId: 'ord-1',
         price: '227.50',
-        originalSize: '10.00',
+        originalSize: '10',
         remainingSize: '10',
       })
       expect(event.data.openOrders[0].market.baseAsset.displaySymbol).toBe(
@@ -884,6 +884,31 @@ describe('OndoWsProvider', () => {
       expect(event.data.triggerOrders).toHaveLength(1)
       expect(event.data.triggerOrders[0].orderId).toBe('ord-2')
       expect(event.data.terminated).toEqual(['ord-3'])
+      p.close()
+    })
+
+    it('carries both sizes of a partially filled ordersPerps order', async () => {
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        listener
+      )
+      feed(p, {
+        type: 'update',
+        channel: 'ordersPerps',
+        data: [{ ...RAW_ORDER, filledSize: '4.00', status: 'partiallyFilled' }],
+      })
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders[0]).toMatchObject({
+        orderId: 'ord-1',
+        originalSize: '10',
+        remainingSize: '6',
+        filledSize: '4.00',
+      })
       p.close()
     })
 
