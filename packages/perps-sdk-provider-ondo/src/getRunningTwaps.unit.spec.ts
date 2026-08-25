@@ -137,4 +137,34 @@ describe('Ondo getRunningTwaps', () => {
       },
     ])
   })
+
+  it('reads a null running-TWAP result as no orders', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.includes('/markets')) {
+        return Response.json({ markets: [MARKET] })
+      }
+      if (url.includes('/v1/perps/twap/orders')) {
+        return Response.json({ success: true, result: null })
+      }
+      throw new Error(`Unhandled URL: ${url}`)
+    }
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, TOKEN)
+    const client = createPerpsClient({
+      integrator: 'twap-test',
+      apiKey: 'test-key',
+      retry: false,
+      fetch: fetchImpl,
+      providers: [ondoProvider({ apiUrl: API_URL, storage })],
+    })
+    const provider = client.getProvider('ondo')
+    if (provider?.getRunningTwaps === undefined) {
+      throw new Error('ondo provider does not implement getRunningTwaps')
+    }
+
+    await expect(
+      provider.getRunningTwaps({ address: ADDRESS, marketId: 'TSLA-USD' })
+    ).resolves.toEqual([])
+  })
 })
