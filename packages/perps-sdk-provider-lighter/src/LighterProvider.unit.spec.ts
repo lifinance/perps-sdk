@@ -2739,6 +2739,215 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
   })
 })
 
+describe('LighterProvider — getActivity unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let client: PerpsSDKClient
+  beforeEach(() => {
+    client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+  })
+
+  const DELISTED_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: '1',
+    isDelisted: true,
+    baseAsset: {
+      ...MARKETS_RESPONSE.markets[0].baseAsset,
+      id: '1',
+      displaySymbol: 'OLD',
+    },
+  }
+
+  const fundingRow = (fundingId: number, marketId: number) => ({
+    timestamp: 1700000006,
+    market_id: marketId,
+    funding_id: fundingId,
+    change: '-1.25',
+    rate: '0.0001',
+    position_size: '0.5',
+    position_side: 'long',
+  })
+
+  const liquidationRow = (id: number, marketId: number) => ({
+    id,
+    market_id: marketId,
+    type: 'cross',
+    executed_at: 1700000002000,
+  })
+
+  const depositRow = {
+    id: 'dep-1',
+    asset_id: 3,
+    amount: '100',
+    timestamp: 1700000005000,
+    status: 'completed',
+    l1_tx_hash: '0xdep',
+  }
+
+  const withdrawRow = {
+    id: 'wdr-1',
+    asset_id: 3,
+    amount: '50',
+    timestamp: 1700000004000,
+    status: 'completed',
+    type: 'standard',
+    l1_tx_hash: '0xwdr',
+  }
+
+  const transferRow = {
+    id: 'tr-1',
+    from_account_index: 42,
+    to_account_index: 99,
+    asset_id: 3,
+    amount: '25',
+    timestamp: 1700000003000,
+    type: 'standard',
+    tx_hash: '0xtr',
+    from_route: 'spot',
+    to_route: 'perps',
+    fee: '0',
+  }
+
+  interface HistoryStub {
+    fundings?: unknown[]
+    liquidations?: unknown[]
+    markets?: unknown
+    fundingStatus?: number
+    liquidationStatus?: number
+  }
+
+  const stubHistory = (history: HistoryStub) =>
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(history.markets ?? MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_PAYLOAD)
+      }
+      if (u.includes('/api/v1/deposit/history')) {
+        return respond({ code: 0, deposits: [depositRow] })
+      }
+      if (u.includes('/api/v1/withdraw/history')) {
+        return respond({ code: 0, withdraws: [withdrawRow] })
+      }
+      if (u.includes('/api/v1/positionFunding')) {
+        if (history.fundingStatus !== undefined) {
+          return respond(
+            { code: 500, message: 'upstream down' },
+            history.fundingStatus
+          )
+        }
+        return respond({ code: 0, position_fundings: history.fundings ?? [] })
+      }
+      if (u.includes('/api/v1/liquidations')) {
+        if (history.liquidationStatus !== undefined) {
+          return respond(
+            { code: 500, message: 'upstream down' },
+            history.liquidationStatus
+          )
+        }
+        return respond({ code: 0, liquidations: history.liquidations ?? [] })
+      }
+      if (u.includes('/api/v1/transfer/history')) {
+        return respond({ code: 0, transfers: [transferRow] })
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+
+  it('drops a funding row whose market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({ fundings: [fundingRow(1, 999)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      limit: 50,
+    })
+
+    expect(items.map((i) => i.id)).toEqual(['dep-1', 'wdr-1', 'tr-1'])
+    expect(warn).toHaveBeenCalledWith("[lighter] unknown market id '999'")
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('drops a liquidation row whose market the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({ liquidations: [liquidationRow(7, 998)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      limit: 50,
+    })
+
+    expect(items.map((i) => i.id)).toEqual(['dep-1', 'wdr-1', 'tr-1'])
+    expect(warn).toHaveBeenCalledWith("[lighter] unknown market id '998'")
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps a funding row and a liquidation row on a delisted market', async () => {
+    stubHistory({
+      markets: { markets: [...MARKETS_RESPONSE.markets, DELISTED_MARKET] },
+      fundings: [fundingRow(2, 1)],
+      liquidations: [liquidationRow(8, 1)],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      limit: 50,
+    })
+
+    expect(items.map((i) => i.id)).toContain('funding-2')
+    expect(items.map((i) => i.id)).toContain('liquidation-8')
+
+    const funding = items.find((i) => i.id === 'funding-2')
+    expect(funding).toMatchObject({
+      type: ActivityType.FUNDING,
+      market: { id: '1', isDelisted: true },
+    })
+    const liquidation = items.find((i) => i.id === 'liquidation-8')
+    expect(liquidation).toMatchObject({
+      type: ActivityType.LIQUIDATION,
+      liquidatedPositions: [{ market: { id: '1', isDelisted: true } }],
+    })
+  })
+
+  it('propagates a failed funding fetch instead of returning an empty feed', async () => {
+    stubHistory({ fundingStatus: 400 })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    await expect(
+      provider.getActivity({ address: ADDRESS, limit: 50 })
+    ).rejects.toThrow(PerpsError)
+  })
+
+  it('propagates a failed liquidation fetch instead of returning an empty feed', async () => {
+    stubHistory({ liquidationStatus: 400 })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(client)
+
+    await expect(
+      provider.getActivity({ address: ADDRESS, limit: 50 })
+    ).rejects.toThrow(PerpsError)
+  })
+})
+
 describe('LighterProvider — getOrder', () => {
   it('rejects tx-hash-shaped ids with OrderNotFound + guidance', async () => {
     const provider = lighterProvider({ authToken: 'tok' })
