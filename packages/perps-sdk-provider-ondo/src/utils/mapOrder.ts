@@ -22,6 +22,10 @@ const toIso = (time: string): string => new Date(time).toISOString()
 const mapSide = (side: OndoOrder['side']): OrderSide =>
   side === 'buy' ? OrderSide.BUY : OrderSide.SELL
 
+/** Resting quantity: submitted size minus filled size, in base-asset units. */
+const deriveRemainingSize = (size: string, filledSize: string): string =>
+  new Big(size).minus(filledSize).toFixed()
+
 /** @public */
 export const mapOrderType = (type: OndoOrderType): OrderType => {
   switch (type) {
@@ -102,7 +106,7 @@ export const mapOrder = (
   side: mapSide(order.side),
   type: mapOrderType(order.type),
   originalSize: new Big(order.size).toFixed(),
-  remainingSize: new Big(order.size).minus(order.filledSize).toFixed(),
+  remainingSize: deriveRemainingSize(order.size, order.filledSize),
   price: order.price,
   filledSize: order.filledSize,
   reduceOnly: order.reduceOnly ?? false,
@@ -182,7 +186,7 @@ export const mapOrderDetail = (
     type: mapOrderType(order.type),
     price: order.price,
     originalSize: order.size,
-    remainingSize: new Big(order.size).minus(filled).toFixed(),
+    remainingSize: deriveRemainingSize(order.size, order.filledSize),
     filledSize: order.filledSize,
     timeInForce:
       order.timeInForce === undefined

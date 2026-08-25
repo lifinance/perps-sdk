@@ -23,6 +23,7 @@ export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export { mapMarket } from './mapMarket.js'
 export { mapMarketContext } from './mapMarketContext.js'
 export {
+  type HlOrderLike,
   isTriggerOrder,
   isTriggerType,
   mapOpenOrder,

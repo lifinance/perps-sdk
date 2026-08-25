@@ -2226,6 +2226,63 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('emits an active TP/SL leg as a trigger order', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        {
+          channel: 'orderUpdates',
+          dex: 'hyperliquid',
+          address: '0xuser1',
+        },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: {
+                oid: 300,
+                coin: 'BTC',
+                side: 'A',
+                sz: '0.05',
+                limitPx: '0',
+                orderType: 'Stop Market',
+                origSz: '0.05',
+                reduceOnly: true,
+                timestamp: 1704067200000,
+                tif: null,
+                cloid: null,
+                triggerCondition: 'Stop Loss',
+                triggerPx: '90000',
+              },
+              status: 'open',
+              statusTimestamp: 1704067200000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.openOrders).toHaveLength(0)
+      expect(event.data.terminated).toEqual([])
+      expect(event.data.triggerOrders).toEqual([
+        {
+          orderId: '300',
+          market: expect.objectContaining({ id: 'BTC' }),
+          type: OrderType.STOP_MARKET,
+          size: '0.05',
+          triggerPrice: '90000',
+          label: 'Stop Loss',
+          createdAt: '2024-01-01T00:00:00.000Z',
+        },
+      ])
+    })
+
     it('evicts a siblingFilledCanceled TP/SL leg into terminated instead of re-emitting it as active', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
