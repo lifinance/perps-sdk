@@ -11,6 +11,13 @@ import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
 
 const ACCOUNT_INDEX = 42
+// Lighter's Premium base fee schedule on the 1e6 tick scale: 0.0040% maker and
+// 0.0280% taker. Charged fee = NOTIONAL * tick / 1_000_000.
+const MAKER_TICK = 40
+const TAKER_TICK = 280
+const NOTIONAL = '2000'
+const MAKER_AMOUNT = '0.08'
+const TAKER_AMOUNT = '0.56'
 const SYMBOL = 'ETH'
 const MARKET: MarketDisplay = {
   providerId: 'lighter',
@@ -37,7 +44,7 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   market_id: 1,
   size: '1',
   price: '2000',
-  usd_amount: '2000',
+  usd_amount: NOTIONAL,
   ask_id: 100,
   bid_id: 200,
   ask_account_id: 0,
@@ -45,9 +52,13 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   is_maker_ask: false,
   block_height: 1,
   timestamp: 1_700_000_000_000,
-  taker_fee: 0.7,
-  maker_fee: 0.3,
-  transaction_time: 1_700_000_000_000,
+  taker_fee: TAKER_TICK,
+  maker_fee: MAKER_TICK,
+  // Microseconds, not milliseconds: `timestamp` is ms (13 digits) and
+  // `transaction_time` is µs (16 digits). A live /api/v1/recentTrades row put
+  // the µs field 34_471 µs after the ms field, so this fixture keeps the same
+  // offset from `timestamp` above.
+  transaction_time: 1_700_000_000_034_471,
   // Default both counterparties flat — overrides set the side under test.
   taker_position_size_before: '0',
   maker_position_size_before: '0',
@@ -89,14 +100,14 @@ describe('mapFill (Lighter)', () => {
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: true,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: TAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on bid + is_maker_ask=false → BUY maker → maker fee', () => {
@@ -105,14 +116,14 @@ describe('mapFill (Lighter)', () => {
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: false,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=true → SELL maker → maker fee', () => {
@@ -121,14 +132,14 @@ describe('mapFill (Lighter)', () => {
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
           is_maker_ask: true,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=false → SELL taker → taker fee', () => {
@@ -137,14 +148,14 @@ describe('mapFill (Lighter)', () => {
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
           is_maker_ask: false,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: TAKER_AMOUNT, asset: 'USDC' })
     })
   })
 
@@ -465,18 +476,34 @@ describe('mapFill (Lighter)', () => {
   })
 
   describe('optional fee fields', () => {
-    it('returns undefined fee when the relevant fee field is missing', () => {
+    it('returns undefined fee when the taker tick is absent on a taker fill', () => {
       const fill = mapFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: true, // viewer is taker
           taker_fee: undefined,
-          maker_fee: 0.3,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
+      expect(fill.fee).toBeUndefined()
+    })
+
+    it('returns undefined fee when the maker tick is absent on a maker fill', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false, // viewer is maker
+          maker_fee: undefined,
+          taker_fee: TAKER_TICK,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
       expect(fill.fee).toBeUndefined()
     })
 
@@ -485,7 +512,179 @@ describe('mapFill (Lighter)', () => {
         ...MARKET,
         quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDT' },
       })
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDT' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDT' })
+    })
+  })
+
+  describe('fee amount derived from the fee-rate tick', () => {
+    // The tick is a rate, not an amount: the same tick on twice the notional
+    // charges twice the fee.
+    it('doubles the fee when the notional doubles at a fixed tick', () => {
+      const fill = mapFill(
+        baseTrade({ usd_amount: '4000' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.16', asset: 'USDC' })
+    })
+
+    // Verbatim row from /api/v1/recentTrades, market 1 (BTC): a 100.071936
+    // USDC notional carrying a 28-tick maker rate and a 50-tick taker rate.
+    const liveRow = {
+      market_id: 1,
+      size: '0.00127',
+      price: '78796.8',
+      usd_amount: '100.071936',
+      maker_fee: 28,
+      taker_fee: 50,
+    } satisfies Partial<LtTrade>
+
+    it('scales the maker tick by the notional on a live trade row', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveRow, is_maker_ask: false }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+      expect(fill.fee).toEqual({ amount: '0.002802014208', asset: 'USDC' })
+    })
+
+    it('scales the taker tick by the notional on a live trade row', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveRow, is_maker_ask: true }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0.0050035968', asset: 'USDC' })
+    })
+
+    it('reports a zero fee for a zero tick on a maker fill', () => {
+      const fill = mapFill(baseTrade({ maker_fee: 0 }), ACCOUNT_INDEX, MARKET)
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    it('reports a zero fee for a zero tick on a taker fill', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer is taker
+          taker_fee: 0,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    // A rate charges nothing on nothing. The mapper reports the arithmetic
+    // product rather than dropping the fee, so a consumer never has to tell a
+    // zero-notional row apart from a row that carries no tick at all.
+    it('reports a zero fee for a zero notional at a non-zero tick', () => {
+      const fill = mapFill(
+        baseTrade({ usd_amount: '0', maker_fee: MAKER_TICK }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    // The product keeps the tick's sign, so a rebate tick reports a credit
+    // instead of a charge. `Fee.amount` is a signed decimal string and the Ondo
+    // mapper already emits a negative amount when a rebate exceeds the fee.
+    it('reports a negative fee for a rebate tick', () => {
+      const fill = mapFill(
+        baseTrade({ maker_fee: -MAKER_TICK }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: `-${MAKER_AMOUNT}`, asset: 'USDC' })
+    })
+  })
+
+  describe('a side that carries a second fee tick', () => {
+    // Verbatim row from /api/v1/recentTrades, market 0 (ETH): a 24.593800 USDC
+    // notional carrying a 40-tick maker rate and a 100-tick integrator maker
+    // rate.
+    const liveMakerRow = {
+      market_id: 0,
+      size: '0.0100',
+      price: '2459.38',
+      usd_amount: '24.593800',
+      maker_fee: 40,
+      integrator_maker_fee: 100,
+      taker_fee: undefined,
+      integrator_taker_fee: undefined,
+      is_maker_ask: false,
+    } satisfies Partial<LtTrade>
+
+    // Verbatim row from /api/v1/recentTrades, market 1 (BTC): a 100.227384 USDC
+    // notional carrying a 50-tick taker rate and a 150-tick integrator taker
+    // rate.
+    const liveTakerRow = {
+      market_id: 1,
+      size: '0.00127',
+      price: '78919.2',
+      usd_amount: '100.227384',
+      taker_fee: 50,
+      integrator_taker_fee: 150,
+      maker_fee: undefined,
+      integrator_maker_fee: undefined,
+      is_maker_ask: true,
+    } satisfies Partial<LtTrade>
+
+    it('sums the maker tick and the integrator maker tick on a live trade row', () => {
+      const fill = mapFill(baseTrade(liveMakerRow), ACCOUNT_INDEX, MARKET)
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+      expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
+    })
+
+    it('sums the taker tick and the integrator taker tick on a live trade row', () => {
+      const fill = mapFill(baseTrade(liveTakerRow), ACCOUNT_INDEX, MARKET)
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0.0200454768', asset: 'USDC' })
+    })
+
+    it('reports the side tick alone when the row carries no integrator tick', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, integrator_maker_fee: undefined }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.000983752', asset: 'USDC' })
+    })
+
+    it('ignores the integrator tick of the other side', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, integrator_taker_fee: 900 }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
+    })
+
+    // An explicit zero side tick is present, so the fee guard passes and the
+    // integrator tick alone sets the amount. Contrast the absent-tick case
+    // below, which reports no fee at all.
+    it('sums an explicit zero side tick with the integrator tick', () => {
+      const fill = mapFill(
+        baseTrade({ maker_fee: 0, integrator_maker_fee: 100 }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.2', asset: 'USDC' })
+    })
+
+    // Live rows carry an integrator tick for a side whose own tick is absent.
+    it('returns undefined fee when only the integrator tick is present', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, maker_fee: undefined }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toBeUndefined()
     })
   })
 

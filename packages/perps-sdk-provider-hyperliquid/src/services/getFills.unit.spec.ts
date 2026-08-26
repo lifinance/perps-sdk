@@ -1,6 +1,5 @@
-import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
-import { PerpsErrorCode } from '@lifi/perps-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { createPerpsClient } from '@lifi/perps-sdk'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_DELISTED_MARKET,
   HL_DELISTED_USER_FILLS,
@@ -11,6 +10,7 @@ import {
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
+import type { HlUserFills } from '../types/index.js'
 import { getFills } from './getFills.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -109,20 +109,6 @@ describe('getFills', () => {
     expect(result.items[0].market.isDelisted).toBe(true)
   })
 
-  it('throws MarketNotFound for a fill on a market absent from /markets', async () => {
-    ;({ restore } = installInfoFetchMock(
-      { ...baseResponses, userFills: HL_SPOT_USER_FILLS },
-      HL_MARKETS
-    ))
-
-    const err = await getFills(ctx, {
-      address: ADDRESS,
-    }).catch((e) => e)
-
-    expect(err).toBeInstanceOf(PerpsError)
-    expect((err as PerpsError).code).toBe(PerpsErrorCode.MarketNotFound)
-  })
-
   it('paginates completely without duplicates or gaps when the upstream response is ascending-time with non-monotonic tids', async () => {
     // Ascending time order with a tid that dips mid-sequence — HL's docs
     // guarantee neither newest-first ordering nor monotonic tid.
@@ -175,5 +161,110 @@ describe('getFills', () => {
     expect(result.items).toHaveLength(2)
     expect(result.pagination.hasMore).toBe(true)
     expect(result.pagination.cursor).toBe('1704067200001:201')
+  })
+})
+
+describe('getFills — unresolvable market rows', () => {
+  // The market registry is cached per client and warns once per unresolved id,
+  // so every test needs its own client to see its own warning.
+  let unresolvedCtx: {
+    client: ReturnType<typeof createPerpsClient>
+    apiUrl: string
+  }
+  let restore: () => void
+
+  beforeEach(() => {
+    unresolvedCtx = {
+      client: createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        retry: false,
+      }),
+      apiUrl: DEFAULT_HYPERLIQUID_API_URL,
+    }
+  })
+
+  afterEach(() => {
+    restore?.()
+  })
+
+  const UNKNOWN_COIN = 'GHOST'
+
+  const unknownFill = (
+    overrides: Partial<HlUserFills[number]> = {}
+  ): HlUserFills[number] => ({
+    ...HL_USER_FILLS[0],
+    tid: 900,
+    time: 1704067100000,
+    coin: UNKNOWN_COIN,
+    ...overrides,
+  })
+
+  it('drops a fill row whose coin the registry cannot resolve', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userFills: [unknownFill(), ...HL_USER_FILLS] },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(unresolvedCtx, { address: ADDRESS })
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]).toMatchObject({ id: '100', market: { id: 'BTC' } })
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperliquid] unknown market id '${UNKNOWN_COIN}'`
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps a fill row on a delisted market while dropping an unresolvable one', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [unknownFill(), ...HL_DELISTED_USER_FILLS],
+      },
+      [...HL_MARKETS, HL_DELISTED_MARKET]
+    ))
+
+    const result = await getFills(unresolvedCtx, { address: ADDRESS })
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].market).toMatchObject({
+      id: 'DELISTED',
+      isDelisted: true,
+    })
+    warn.mockRestore()
+  })
+
+  it('keeps the page window and the cursor a dropped row sits in', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [
+          { ...HL_USER_FILLS[0], tid: 300, time: 3000 },
+          unknownFill({ tid: 200, time: 2000 }),
+          { ...HL_USER_FILLS[0], tid: 100, time: 1000 },
+        ],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(unresolvedCtx, { address: ADDRESS, limit: 2 })
+
+    expect(result.items.map((i) => i.id)).toEqual(['300'])
+    expect(result.pagination.hasMore).toBe(true)
+    expect(result.pagination.cursor).toBe('2000:200')
+    warn.mockRestore()
+  })
+
+  it('propagates a failed fills fetch instead of returning an empty page', async () => {
+    ;({ restore } = installInfoFetchMock({}, HL_MARKETS))
+
+    await expect(
+      getFills(unresolvedCtx, { address: ADDRESS })
+    ).rejects.toThrow()
   })
 })
