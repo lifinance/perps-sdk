@@ -472,7 +472,7 @@ describe('mapFill (Lighter)', () => {
   })
 
   describe('optional fee fields', () => {
-    it('returns undefined fee when the relevant fee field is missing', () => {
+    it('returns undefined fee when the taker tick is absent on a taker fill', () => {
       const fill = mapFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
@@ -484,6 +484,22 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
+      expect(fill.fee).toBeUndefined()
+    })
+
+    it('returns undefined fee when the maker tick is absent on a maker fill', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false, // viewer is maker
+          maker_fee: undefined,
+          taker_fee: TAKER_TICK,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
       expect(fill.fee).toBeUndefined()
     })
 
@@ -505,7 +521,7 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.fee?.amount).toBe('0.16')
+      expect(fill.fee).toEqual({ amount: '0.16', asset: 'USDC' })
     })
 
     // Verbatim row from /api/v1/recentTrades, market 1 (BTC): a 100.071936
@@ -539,9 +555,48 @@ describe('mapFill (Lighter)', () => {
       expect(fill.fee).toEqual({ amount: '0.0050035968', asset: 'USDC' })
     })
 
-    it('reports a zero fee for a zero tick', () => {
+    it('reports a zero fee for a zero tick on a maker fill', () => {
       const fill = mapFill(baseTrade({ maker_fee: 0 }), ACCOUNT_INDEX, MARKET)
       expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    it('reports a zero fee for a zero tick on a taker fill', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer is taker
+          taker_fee: 0,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    // A rate charges nothing on nothing. The mapper reports the arithmetic
+    // product rather than dropping the fee, so a consumer never has to tell a
+    // zero-notional row apart from a row that carries no tick at all.
+    it('reports a zero fee for a zero notional at a non-zero tick', () => {
+      const fill = mapFill(
+        baseTrade({ usd_amount: '0', maker_fee: MAKER_TICK }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
+    })
+
+    // The product keeps the tick's sign, so a rebate tick reports a credit
+    // instead of a charge. `Fee.amount` is a signed decimal string and the Ondo
+    // mapper already emits a negative amount when a rebate exceeds the fee.
+    it('reports a negative fee for a rebate tick', () => {
+      const fill = mapFill(
+        baseTrade({ maker_fee: -MAKER_TICK }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: `-${MAKER_AMOUNT}`, asset: 'USDC' })
     })
   })
 
