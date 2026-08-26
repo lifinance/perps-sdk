@@ -77,7 +77,7 @@ const order = (type: string, orderIndex: number): LtOrder => ({
   timestamp: 1_775_000_000,
   created_at: 1_775_000_000,
   updated_at: 1_775_000_100,
-  transaction_time: 1_775_000_000,
+  transaction_time: 1_775_000_000_000_000,
 })
 
 describe('Lighter getRunningTwaps', () => {
