@@ -11,7 +11,16 @@ import {
   OrderType,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
+
+/**
+ * Fee charged on a fill. Lighter publishes the side's fee *rate* as a 1e6 tick
+ * rather than the amount it charged, so the amount is the trade notional times
+ * that rate.
+ */
+const feeAmountFromTick = (notional: string, tick: number): string =>
+  new Big(notional).times(tick).div(LIGHTER_FEE_TICK_SCALE).toFixed()
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
@@ -75,9 +84,7 @@ export const mapFill = (
   const entryQuoteBefore = isMaker
     ? trade.maker_entry_quote_before
     : trade.taker_entry_quote_before
-  const feeAmount = isMaker
-    ? trade.maker_fee?.toString()
-    : trade.taker_fee?.toString()
+  const feeTick = isMaker ? trade.maker_fee : trade.taker_fee
 
   return {
     id: trade.trade_id.toString(),
@@ -91,9 +98,12 @@ export const mapFill = (
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Lighter charges the fill fee in the market's quote asset.
     fee:
-      feeAmount === undefined
+      feeTick === undefined
         ? undefined
-        : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
+        : {
+            amount: feeAmountFromTick(trade.usd_amount, feeTick),
+            asset: market.quoteAsset.displaySymbol,
+          },
     realizedPnl: deriveRealizedPnl(
       startPosition,
       entryQuoteBefore,

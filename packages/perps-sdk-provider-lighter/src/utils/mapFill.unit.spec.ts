@@ -11,6 +11,13 @@ import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
 
 const ACCOUNT_INDEX = 42
+// Lighter's Premium base fee schedule on the 1e6 tick scale: 0.0040% maker and
+// 0.0280% taker. Charged fee = NOTIONAL * tick / 1_000_000.
+const MAKER_TICK = 40
+const TAKER_TICK = 280
+const NOTIONAL = '2000'
+const MAKER_AMOUNT = '0.08'
+const TAKER_AMOUNT = '0.56'
 const SYMBOL = 'ETH'
 const MARKET: MarketDisplay = {
   providerId: 'lighter',
@@ -37,7 +44,7 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   market_id: 1,
   size: '1',
   price: '2000',
-  usd_amount: '2000',
+  usd_amount: NOTIONAL,
   ask_id: 100,
   bid_id: 200,
   ask_account_id: 0,
@@ -45,8 +52,8 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   is_maker_ask: false,
   block_height: 1,
   timestamp: 1_700_000_000_000,
-  taker_fee: 0.7,
-  maker_fee: 0.3,
+  taker_fee: TAKER_TICK,
+  maker_fee: MAKER_TICK,
   transaction_time: 1_700_000_000_000,
   // Default both counterparties flat — overrides set the side under test.
   taker_position_size_before: '0',
@@ -89,14 +96,14 @@ describe('mapFill (Lighter)', () => {
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: true,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: TAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on bid + is_maker_ask=false → BUY maker → maker fee', () => {
@@ -105,14 +112,14 @@ describe('mapFill (Lighter)', () => {
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: false,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.BUY)
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=true → SELL maker → maker fee', () => {
@@ -121,14 +128,14 @@ describe('mapFill (Lighter)', () => {
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
           is_maker_ask: true,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDC' })
     })
 
     it('viewer on ask + is_maker_ask=false → SELL taker → taker fee', () => {
@@ -137,14 +144,14 @@ describe('mapFill (Lighter)', () => {
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
           is_maker_ask: false,
-          taker_fee: 0.7,
-          maker_fee: 0.3,
+          taker_fee: TAKER_TICK,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
       )
       expect(fill.side).toBe(OrderSide.SELL)
-      expect(fill.fee).toEqual({ amount: '0.7', asset: 'USDC' })
+      expect(fill.fee).toEqual({ amount: TAKER_AMOUNT, asset: 'USDC' })
     })
   })
 
@@ -472,7 +479,7 @@ describe('mapFill (Lighter)', () => {
           ask_account_id: 0,
           is_maker_ask: true, // viewer is taker
           taker_fee: undefined,
-          maker_fee: 0.3,
+          maker_fee: MAKER_TICK,
         }),
         ACCOUNT_INDEX,
         MARKET
@@ -485,7 +492,56 @@ describe('mapFill (Lighter)', () => {
         ...MARKET,
         quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDT' },
       })
-      expect(fill.fee).toEqual({ amount: '0.3', asset: 'USDT' })
+      expect(fill.fee).toEqual({ amount: MAKER_AMOUNT, asset: 'USDT' })
+    })
+  })
+
+  describe('fee amount derived from the fee-rate tick', () => {
+    // The tick is a rate, not an amount: the same tick on twice the notional
+    // charges twice the fee.
+    it('doubles the fee when the notional doubles at a fixed tick', () => {
+      const fill = mapFill(
+        baseTrade({ usd_amount: '4000' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee?.amount).toBe('0.16')
+    })
+
+    // Verbatim row from /api/v1/recentTrades, market 1 (BTC): a 100.071936
+    // USDC notional carrying a 28-tick maker rate and a 50-tick taker rate.
+    const liveRow = {
+      market_id: 1,
+      size: '0.00127',
+      price: '78796.8',
+      usd_amount: '100.071936',
+      maker_fee: 28,
+      taker_fee: 50,
+    } satisfies Partial<LtTrade>
+
+    it('scales the maker tick by the notional on a live trade row', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveRow, is_maker_ask: false }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+      expect(fill.fee).toEqual({ amount: '0.002802014208', asset: 'USDC' })
+    })
+
+    it('scales the taker tick by the notional on a live trade row', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveRow, is_maker_ask: true }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0.0050035968', asset: 'USDC' })
+    })
+
+    it('reports a zero fee for a zero tick', () => {
+      const fill = mapFill(baseTrade({ maker_fee: 0 }), ACCOUNT_INDEX, MARKET)
+      expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
     })
   })
 
