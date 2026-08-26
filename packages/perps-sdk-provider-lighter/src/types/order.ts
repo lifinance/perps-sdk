@@ -37,6 +37,10 @@ export type LtOrder = {
   to_trigger_order_id_1: string
   to_cancel_order_id_0: string
   block_height: number
+  /**
+   * Unit unproven. Lighter documents no unit, and every endpoint that returns
+   * this row is auth-gated, so no public probe can observe a value.
+   */
   timestamp: number
   created_at: number
   updated_at: number
@@ -62,8 +66,8 @@ export interface LtOrdersResponse {
 
 /**
  * Single order-book level returned by Lighter. Amounts and prices are decimal
- * strings in the market's native precision; expiry and transaction time are
- * Unix milliseconds.
+ * strings in the market's native precision; `order_expiry` is an absolute
+ * Unix-millisecond expiry.
  *
  * @public
  */
@@ -75,6 +79,10 @@ export interface LtOrderBookOrder {
   remaining_base_amount: string
   price: string
   order_expiry: number
+  /**
+   * Unit unproven. Lighter documents no unit, and every resting order this
+   * endpoint returns reports the member as zero.
+   */
   transaction_time: number
 }
 
