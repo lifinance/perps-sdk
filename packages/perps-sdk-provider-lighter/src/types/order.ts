@@ -3,8 +3,10 @@
 /**
  * Order payload returned by Lighter's REST API. Amounts and prices are decimal
  * strings in market precision. `order_expiry` is an absolute Unix-millisecond
- * expiry; `created_at` and `updated_at` are Unix seconds. Enum-like side, type,
- * time-in-force, status, and trigger fields retain Lighter's wire strings.
+ * expiry; `created_at` and `updated_at` are Unix seconds. `timestamp` and
+ * `transaction_time` carry their unit on the member; `trigger_time` has no
+ * documented unit. Enum-like side, type, time-in-force, status, and trigger
+ * fields retain Lighter's wire strings.
  *
  * @public
  */
