@@ -1911,7 +1911,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
     timestamp: 1700000000000,
     created_at: 1700000000,
     updated_at: 1700000000,
-    transaction_time: 1700000000000,
+    transaction_time: 1_700_000_000_000_000,
   })
 
   it('returns a payload whose size, hasMore and cursor agree when the active-orders response exceeds the requested limit', async () => {
