@@ -2545,6 +2545,11 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
     expect(transfer?.asset).toBe('USDC')
+    // The mapper drops `meta.fee` on every transfer row, so the token-registry
+    // suite pins the fee surface too: a symbol lookup must not move the fee
+    // back onto `meta`.
+    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    expect(transfer?.meta).not.toHaveProperty('fee')
   })
 
   it('falls back to String(asset_id) when the token registry has no symbol', async () => {
@@ -2557,6 +2562,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
     expect(transfer?.asset).toBe('777')
+    // The transferred asset falls back to the raw id, but the fee asset comes
+    // from the deployment's settlement asset and stays `USDC`.
+    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
   })
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
@@ -2773,6 +2781,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
       throw new Error('expected a transfer activity')
     }
     expect(transfer.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
   })
 
   it('names the settlement asset as the fee asset when the row moves a spot token', async () => {
@@ -2793,6 +2802,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     }
     expect(transfer.asset).toBe('BTC')
     expect(transfer.fees).toEqual([{ amount: '0.4', asset: 'USDC' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
   })
 
   it('names USDG as the transfer fee asset on the Robinhood deployment', async () => {
@@ -2813,6 +2823,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
       throw new Error('expected a transfer activity')
     }
     expect(transfer.fees).toEqual([{ amount: '0.5', asset: 'USDG' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
   })
 
   it('reports the liquidation metrics Lighter carries on the row', async () => {
