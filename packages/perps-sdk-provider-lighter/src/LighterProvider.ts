@@ -1400,13 +1400,16 @@ export const createLighterProvider = (
               counterpartyAccountIndex,
               asset: assetSymbol(t.asset_id),
               amount: t.amount,
+              // The venue charges the transfer fee in the deployment's
+              // settlement asset, not in the asset the row moves, so a spot
+              // token transfer still reports a collateral-denominated fee.
+              fees: [{ amount: t.fee, asset: collateral.displaySymbol }],
               explorerLink: explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
               meta: {
                 transferType: t.type,
                 txHash: t.tx_hash,
                 fromRoute: t.from_route,
                 toRoute: t.to_route,
-                fee: t.fee,
               },
             }
           }),

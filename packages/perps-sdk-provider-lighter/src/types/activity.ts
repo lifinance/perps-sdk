@@ -177,8 +177,9 @@ export interface LtLiquidationsResponse {
 }
 
 /**
- * Asset transfer-history row returned by Lighter. Amounts and fees are decimal
- * strings in the asset's precision; route literals identify the source and
+ * Asset transfer-history row returned by Lighter. `amount` is a decimal string
+ * in the precision of the asset the row moves; `fee` is a decimal string in the
+ * deployment's settlement asset. Route literals identify the source and
  * destination account ledger (`spot` or `perps`).
  *
  * @public
