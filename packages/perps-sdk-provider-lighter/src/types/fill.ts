@@ -3,10 +3,10 @@
 /**
  * Public trade/fill row returned by Lighter's `/api/v1/trades` endpoint.
  * Size, price, and notional fields are decimal strings in market precision;
- * `timestamp` and `transaction_time` are Unix millisecond timestamps. The
- * optional fee fields are the side's fee *rate* as an integer tick on
- * `LIGHTER_FEE_TICK_SCALE` (1e6), not the amount charged, and may be absent on
- * older rows.
+ * `timestamp` is a Unix millisecond timestamp; `transaction_time` is a Unix
+ * microsecond timestamp. The optional fee fields are the side's fee *rate* as
+ * an integer tick on `LIGHTER_FEE_TICK_SCALE` (1e6), not the amount charged,
+ * and may be absent on older rows.
  *
  * @public
  */

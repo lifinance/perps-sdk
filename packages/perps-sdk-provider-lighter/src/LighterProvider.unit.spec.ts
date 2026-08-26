@@ -290,7 +290,8 @@ const TRADES_RESPONSE = {
       timestamp: 1700000000000,
       taker_fee: 12,
       maker_fee: 3,
-      transaction_time: 1700000000000,
+      // µs, not ms — `timestamp` above is the millisecond field.
+      transaction_time: 1_700_000_000_034_471,
       taker_position_size_before: '0',
       maker_position_size_before: '0',
     },
@@ -3216,7 +3217,8 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
     timestamp: 1_700_000_000_000,
     taker_fee: 0.5,
     maker_fee: 0.2,
-    transaction_time: 1_700_000_000_000,
+    // µs, not ms — `timestamp` above is the millisecond field.
+    transaction_time: 1_700_000_000_034_471,
     taker_position_size_before: '1',
     maker_position_size_before: '0',
     taker_entry_quote_before: '40000',

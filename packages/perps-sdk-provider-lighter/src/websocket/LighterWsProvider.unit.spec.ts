@@ -70,7 +70,10 @@ const RAW_TRADE = {
   timestamp: 1000,
   taker_fee: 0,
   maker_fee: 0,
-  transaction_time: 1000,
+  // µs, not ms. This block keeps every clock on one small synthetic scale, so
+  // the µs field stays 1000x the `timestamp` ms field above rather than
+  // jumping to a real 16-digit epoch that would contradict its own row.
+  transaction_time: 1_000_000,
 }
 
 const RAW_POSITION = {
