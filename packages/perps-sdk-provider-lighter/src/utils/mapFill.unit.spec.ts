@@ -54,7 +54,11 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   timestamp: 1_700_000_000_000,
   taker_fee: TAKER_TICK,
   maker_fee: MAKER_TICK,
-  transaction_time: 1_700_000_000_000,
+  // Microseconds, not milliseconds: `timestamp` is ms (13 digits) and
+  // `transaction_time` is µs (16 digits). A live /api/v1/recentTrades row put
+  // the µs field 34_471 µs after the ms field, so this fixture keeps the same
+  // offset from `timestamp` above.
+  transaction_time: 1_700_000_000_034_471,
   // Default both counterparties flat — overrides set the side under test.
   taker_position_size_before: '0',
   maker_position_size_before: '0',
