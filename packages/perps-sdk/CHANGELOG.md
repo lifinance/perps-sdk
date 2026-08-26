@@ -1,5 +1,18 @@
 # @lifi/perps-sdk
 
+## 10.0.0
+
+### Major Changes
+
+- [#379](https://github.com/lifinance/perps-sdk/pull/379) [`08a3b76`](https://github.com/lifinance/perps-sdk/commit/08a3b76df9726deefd8933888bcc6209f85dc9b5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LiquidationActivity.liquidatedPositions` is now a non-empty tuple type, so a producer that builds one from an empty array no longer compiles. A consumer that reads `liquidatedPositions[0]` receives a `LiquidatedPosition` without a null guard.
+
+### Patch Changes
+
+- [#380](https://github.com/lifinance/perps-sdk/pull/380) [`ea6fb8e`](https://github.com/lifinance/perps-sdk/commit/ea6fb8ec221487773744c349e8b469cdba1f9498) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Move the shared activity-paging logic (merge, filter, sort, slice, cursor mint) out of the Lighter and Ondo providers into one helper in @lifi/perps-sdk.
+
+- Updated dependencies [[`08a3b76`](https://github.com/lifinance/perps-sdk/commit/08a3b76df9726deefd8933888bcc6209f85dc9b5)]:
+  - @lifi/perps-types@11.0.0
+
 ## 9.0.0
 
 ### Major Changes

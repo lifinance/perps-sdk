@@ -1,5 +1,35 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 17.0.0
+
+### Major Changes
+
+- [#379](https://github.com/lifinance/perps-sdk/pull/379) [`08a3b76`](https://github.com/lifinance/perps-sdk/commit/08a3b76df9726deefd8933888bcc6209f85dc9b5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LiquidationActivity.liquidatedPositions` is now a non-empty tuple type, so a producer that builds one from an empty array no longer compiles. A consumer that reads `liquidatedPositions[0]` receives a `LiquidatedPosition` without a null guard.
+
+- [#384](https://github.com/lifinance/perps-sdk/pull/384) [`82308ad`](https://github.com/lifinance/perps-sdk/commit/82308ade3f766a94fb788bbc6593ce93797fbe2b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter transfer activity now reports its fee on `TransferActivity.fees`, named in the deployment's settlement asset, and no longer carries a `fee` key on `meta`.
+
+  To migrate, replace the raw string read `activity.meta?.fee` with `activity.fees?.[0]?.amount`. The fee asset is a separate field: read `activity.fees?.[0]?.asset`. That asset is the deployment's settlement asset — `USDC` on Lighter mainnet and `USDG` on the Robinhood chain — and not the asset the transfer moves. `fees` is a `Fee[]` list, so a consumer indexes into it; it is not a drop-in rename of the old string.
+
+### Patch Changes
+
+- [#380](https://github.com/lifinance/perps-sdk/pull/380) [`ea6fb8e`](https://github.com/lifinance/perps-sdk/commit/ea6fb8ec221487773744c349e8b469cdba1f9498) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Move the shared activity-paging logic (merge, filter, sort, slice, cursor mint) out of the Lighter and Ondo providers into one helper in @lifi/perps-sdk.
+
+- [#385](https://github.com/lifinance/perps-sdk/pull/385) [`3ea5caf`](https://github.com/lifinance/perps-sdk/commit/3ea5caf50aef31d3c30e1088b08f383718b9da14) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report the Lighter fill fee as the amount the venue charged. A Lighter trade row publishes each side's fee as an integer tick on `LIGHTER_FEE_TICK_SCALE` (1e6), which is a rate and not an amount, and the fill mapper copied that tick straight onto `Fill.fee.amount`. `Fill.fee.amount` is now `usd_amount * tick / LIGHTER_FEE_TICK_SCALE`, so a 2000 USDC taker fill at the 280 tick reports `0.56` instead of `280`. The value drops by up to six orders of magnitude: a consumer that stored or compared the old number must re-read it. `Fill.fee.asset` is unchanged and still reports the market's quote asset. A row that carries no tick for the viewer's side still reports no fee.
+
+- [#386](https://github.com/lifinance/perps-sdk/pull/386) [`4773c6d`](https://github.com/lifinance/perps-sdk/commit/4773c6de476be499215ccca30a49229d93f3ea9e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct the `LtTrade` doc comment: `transaction_time` is a Unix microsecond timestamp, not a millisecond one.
+
+- [#387](https://github.com/lifinance/perps-sdk/pull/387) [`117abfb`](https://github.com/lifinance/perps-sdk/commit/117abfbcb3d0b29a6b54541829bd283a72fce579) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report the total fee on a Lighter fill when the trade row carries more than one fee tick for the viewer's side. Consumers that show or add up `Fill.fee.amount` see a higher value on a trade row that carries an integrator fee tick. The higher value is the total fee that the venue charged.
+
+- [#388](https://github.com/lifinance/perps-sdk/pull/388) [`0ce89b6`](https://github.com/lifinance/perps-sdk/commit/0ce89b6ce8f13666d0a8b6981e019c8eb65c95a1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct the `LtLiqTrade.transaction_time` doc comment: Lighter reports the member in microseconds, not milliseconds. Document the unit on `LtDetailedAccount.transaction_time` and `LtSubAccount.transaction_time` as well, because Lighter reports both members in microseconds and neither carried a unit.
+
+- [#389](https://github.com/lifinance/perps-sdk/pull/389) [`87e7e81`](https://github.com/lifinance/perps-sdk/commit/87e7e815f176a36629533aeec2ae7eb0486b8370) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct the `LtOrder` doc comment: `transaction_time` is a Unix microsecond timestamp, not a second one. `created_at` and `updated_at` stay in seconds.
+
+- [#390](https://github.com/lifinance/perps-sdk/pull/390) [`8835e9d`](https://github.com/lifinance/perps-sdk/commit/8835e9da214285e978c308f827880d32e2511e46) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct the Lighter order wire-type time-unit documentation: `LtOrderBookOrder.transaction_time` no longer claims Unix milliseconds, `LtOrder.timestamp` now states that its unit is unproven, and the `LtOrder` header now points to the member comments for `timestamp` and `transaction_time` and records that `trigger_time` has no documented unit.
+
+- Updated dependencies [[`ea6fb8e`](https://github.com/lifinance/perps-sdk/commit/ea6fb8ec221487773744c349e8b469cdba1f9498), [`08a3b76`](https://github.com/lifinance/perps-sdk/commit/08a3b76df9726deefd8933888bcc6209f85dc9b5)]:
+  - @lifi/perps-sdk@10.0.0
+  - @lifi/perps-types@11.0.0
+
 ## 16.0.0
 
 ### Major Changes
