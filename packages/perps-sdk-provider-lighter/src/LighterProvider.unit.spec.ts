@@ -2220,7 +2220,7 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
       size: '0.25',
       taker_fee: '1.5',
       maker_fee: '0',
-      transaction_time: 1700000000000,
+      transaction_time: 1700000000000000,
     },
     info: {
       positions: overrides.positions ?? [
@@ -2320,7 +2320,7 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
           size: '0.25',
           taker_fee: '0',
           maker_fee: '0',
-          transaction_time: 1700000000000,
+          transaction_time: 1700000000000000,
         },
       })
     )
@@ -2337,7 +2337,7 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
           size: '-0.25',
           taker_fee: '0',
           maker_fee: '0',
-          transaction_time: 1700000000000,
+          transaction_time: 1700000000000000,
         },
       })
     )
@@ -2636,7 +2636,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
       size: '0.25',
       taker_fee: '1.5',
       maker_fee: '0',
-      transaction_time: executedAtMs,
+      transaction_time: executedAtMs * 1000,
     },
     info: {
       positions: [{ market_id: 0, margin_mode: LT_MARGIN_MODE_CROSS }],
@@ -2903,7 +2903,7 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
       size: '0.25',
       taker_fee: '1.5',
       maker_fee: '0',
-      transaction_time: 1700000002000,
+      transaction_time: 1700000002000000,
     },
     info: {
       positions: [{ market_id: marketId, margin_mode: LT_MARGIN_MODE_CROSS }],
