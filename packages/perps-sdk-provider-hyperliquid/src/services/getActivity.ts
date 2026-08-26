@@ -2,6 +2,7 @@ import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
+  FundingActivity,
   MarketDisplay,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
@@ -55,7 +56,7 @@ const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
   timeParams: { user: Address; startTime: number; endTime?: number },
-  resolveMarket: (coin: string) => MarketDisplay,
+  resolveMarket: (coin: string) => MarketDisplay | undefined,
   options?: InfoRequestOptions
 ): Promise<ActivityItem[]> => {
   const needLedger =
@@ -79,14 +80,23 @@ const fetchActivityData = async (
       : Promise.resolve([] as HlUserFunding),
   ])
 
-  const ledgerItems: ActivityItem[] = ledgerUpdates
-    .map((entry) =>
-      mapLedgerEntry(entry, PROVIDER_KEY, timeParams.user, resolveMarket)
-    )
-    .filter((item): item is ActivityItem => item !== null)
+  const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
+    (entry): ActivityItem[] => {
+      const item = mapLedgerEntry(
+        entry,
+        PROVIDER_KEY,
+        timeParams.user,
+        resolveMarket
+      )
+      return item === null ? [] : [item]
+    }
+  )
 
-  const fundingItems: ActivityItem[] = fundingUpdates.map((entry) =>
-    mapFundingActivity(entry, PROVIDER_KEY, resolveMarket)
+  const fundingItems: ActivityItem[] = fundingUpdates.flatMap(
+    (entry): FundingActivity[] => {
+      const item = mapFundingActivity(entry, PROVIDER_KEY, resolveMarket)
+      return item === null ? [] : [item]
+    }
   )
 
   const merged = [...ledgerItems, ...fundingItems].sort(
@@ -141,11 +151,14 @@ export const getActivity = async (
     ...(endTime === undefined ? {} : { endTime }),
   }
 
+  // `get`, not `require`: a coin the backend market list does not hold drops
+  // only its own row instead of rejecting the whole feed. The registry warns
+  // once per unresolved id. A delisted market still resolves, so its rows stay.
   const merged = await fetchActivityData(
     apiUrl,
     params.type,
     timeParams,
-    (coin) => registry.require(coin),
+    (coin) => registry.get(coin),
     infoOpts
   )
 
