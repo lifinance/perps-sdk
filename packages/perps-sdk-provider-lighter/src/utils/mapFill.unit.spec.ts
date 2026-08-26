@@ -545,6 +545,78 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  describe('a side that carries a second fee tick', () => {
+    // Verbatim row from /api/v1/recentTrades, market 0 (ETH): a 24.593800 USDC
+    // notional carrying a 40-tick maker rate and a 100-tick integrator maker
+    // rate.
+    const liveMakerRow = {
+      market_id: 0,
+      size: '0.0100',
+      price: '2459.38',
+      usd_amount: '24.593800',
+      maker_fee: 40,
+      integrator_maker_fee: 100,
+      taker_fee: undefined,
+      integrator_taker_fee: undefined,
+      is_maker_ask: false,
+    } satisfies Partial<LtTrade>
+
+    // Verbatim row from /api/v1/recentTrades, market 1 (BTC): a 100.227384 USDC
+    // notional carrying a 50-tick taker rate and a 150-tick integrator taker
+    // rate.
+    const liveTakerRow = {
+      market_id: 1,
+      size: '0.00127',
+      price: '78919.2',
+      usd_amount: '100.227384',
+      taker_fee: 50,
+      integrator_taker_fee: 150,
+      maker_fee: undefined,
+      integrator_maker_fee: undefined,
+      is_maker_ask: true,
+    } satisfies Partial<LtTrade>
+
+    it('sums the maker tick and the integrator maker tick on a live trade row', () => {
+      const fill = mapFill(baseTrade(liveMakerRow), ACCOUNT_INDEX, MARKET)
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+      expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
+    })
+
+    it('sums the taker tick and the integrator taker tick on a live trade row', () => {
+      const fill = mapFill(baseTrade(liveTakerRow), ACCOUNT_INDEX, MARKET)
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.fee).toEqual({ amount: '0.0200454768', asset: 'USDC' })
+    })
+
+    it('reports the side tick alone when the row carries no integrator tick', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, integrator_maker_fee: undefined }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.000983752', asset: 'USDC' })
+    })
+
+    it('ignores the integrator tick of the other side', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, integrator_taker_fee: 900 }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
+    })
+
+    // Live rows carry an integrator tick for a side whose own tick is absent.
+    it('returns undefined fee when only the integrator tick is present', () => {
+      const fill = mapFill(
+        baseTrade({ ...liveMakerRow, maker_fee: undefined }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toBeUndefined()
+    })
+  })
+
   describe('realizedPnl derivation', () => {
     it('derives PnL when a long is closed (entry 40000, exit 50000)', () => {
       const fill = mapFill(

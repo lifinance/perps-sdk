@@ -15,12 +15,20 @@ import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 
 /**
- * Fee charged on a fill. Lighter publishes the side's fee *rate* as a 1e6 tick
- * rather than the amount it charged, so the amount is the trade notional times
- * that rate.
+ * Fee charged on a fill. Lighter publishes each fee as a *rate* on a 1e6 tick
+ * rather than the amount it charged, and a row can carry more than one tick for
+ * the same side, so the amount is the trade notional times the sum of the
+ * side's ticks.
  */
-const feeAmountFromTick = (notional: string, tick: number): string =>
-  new Big(notional).times(tick).div(LIGHTER_FEE_TICK_SCALE).toFixed()
+const feeAmountFromTicks = (
+  notional: string,
+  ownTick: number,
+  integratorTick: number | undefined
+): string =>
+  new Big(notional)
+    .times(new Big(ownTick).plus(integratorTick ?? 0))
+    .div(LIGHTER_FEE_TICK_SCALE)
+    .toFixed()
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
@@ -85,6 +93,9 @@ export const mapFill = (
     ? trade.maker_entry_quote_before
     : trade.taker_entry_quote_before
   const feeTick = isMaker ? trade.maker_fee : trade.taker_fee
+  const integratorFeeTick = isMaker
+    ? trade.integrator_maker_fee
+    : trade.integrator_taker_fee
 
   return {
     id: trade.trade_id.toString(),
@@ -101,7 +112,11 @@ export const mapFill = (
       feeTick === undefined
         ? undefined
         : {
-            amount: feeAmountFromTick(trade.usd_amount, feeTick),
+            amount: feeAmountFromTicks(
+              trade.usd_amount,
+              feeTick,
+              integratorFeeTick
+            ),
             asset: market.quoteAsset.displaySymbol,
           },
     realizedPnl: deriveRealizedPnl(

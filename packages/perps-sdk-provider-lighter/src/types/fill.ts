@@ -30,6 +30,10 @@ export type LtTrade = {
   // on older trades) — keep optional and let the mapper emit `undefined`.
   taker_fee?: number
   maker_fee?: number
+  // A second fee tick that a row can carry for the same side, on the same 1e6
+  // tick scale as `taker_fee` / `maker_fee`.
+  integrator_taker_fee?: number
+  integrator_maker_fee?: number
   transaction_time: number
   // Per-counterparty position snapshot BEFORE the trade is applied. Signed
   // strings: positive = long, negative = short, "0" / "0.00000" = flat.
