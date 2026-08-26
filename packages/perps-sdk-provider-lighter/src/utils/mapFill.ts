@@ -15,12 +15,17 @@ import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 
 /**
- * Fee charged on a fill. Lighter publishes each fee as a *rate* on a 1e6 tick
- * rather than the amount it charged, and a row can carry more than one tick for
- * the same side, so the amount is the trade notional times the sum of the
- * side's ticks.
+ * Fee charged on a fill, in the market's quote asset. Lighter publishes the
+ * side's fee *rate* as an integer tick on `LIGHTER_FEE_TICK_SCALE` rather than
+ * the amount it charged. A row can carry more than one tick for the same side,
+ * so `amount = notional * sum(side ticks) / LIGHTER_FEE_TICK_SCALE`.
+ *
+ * The product keeps the sign of both inputs. A rebate tick therefore maps to a
+ * negative amount, which `Fee.amount` permits and the Ondo mapper already emits
+ * when a rebate exceeds the fee, so this helper never clamps the sign. A zero
+ * notional charges a zero fee at every tick.
  */
-const feeAmountFromTicks = (
+const tickToFeeAmount = (
   notional: string,
   ownTick: number,
   integratorTick: number | undefined
@@ -112,7 +117,7 @@ export const mapFill = (
       feeTick === undefined
         ? undefined
         : {
-            amount: feeAmountFromTicks(
+            amount: tickToFeeAmount(
               trade.usd_amount,
               feeTick,
               integratorFeeTick
