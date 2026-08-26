@@ -113,7 +113,11 @@ export interface LtLiqTrade {
   size: string
   taker_fee: string
   maker_fee: string
-  /** Unix timestamp in milliseconds. */
+  /**
+   * Unix timestamp in microseconds. The enclosing row's `executed_at` is
+   * milliseconds. Lighter documents no unit, and its public trade rows report
+   * this member in microseconds.
+   */
   transaction_time: number
 }
 

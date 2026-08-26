@@ -116,6 +116,11 @@ export interface LtDetailedAccount {
   available_balance: string
   status: number
   collateral: string
+  /**
+   * Unix timestamp in microseconds. Lighter documents no unit, and its
+   * account rows report 16-digit values. A dormant account reports `0`, so
+   * treat `0` as "no transaction" and not as the Unix epoch.
+   */
   transaction_time: number
   account_trading_mode: number
   account_index: number
@@ -183,6 +188,12 @@ export interface LtSubAccount {
   available_balance: string
   status: number
   collateral: string
+  /**
+   * Unix timestamp in microseconds, the same wire member as
+   * `LtDetailedAccount.transaction_time`. Lighter leaves it at `0` on the
+   * `accountsByL1Address` rows, so read the value from the account endpoint
+   * instead.
+   */
   transaction_time: number
   account_trading_mode: number
 }
