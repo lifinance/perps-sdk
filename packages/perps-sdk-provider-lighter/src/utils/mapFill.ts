@@ -17,16 +17,23 @@ import type { LtTrade } from '../types/index.js'
 /**
  * Fee charged on a fill, in the market's quote asset. Lighter publishes the
  * side's fee *rate* as an integer tick on `LIGHTER_FEE_TICK_SCALE` rather than
- * the amount it charged, so
- * `amount = notional * tick / LIGHTER_FEE_TICK_SCALE`.
+ * the amount it charged. A row can carry more than one tick for the same side,
+ * so `amount = notional * sum(side ticks) / LIGHTER_FEE_TICK_SCALE`.
  *
  * The product keeps the sign of both inputs. A rebate tick therefore maps to a
- * negative amount, which `Fee.amount` permits and the Ondo mapper already
- * emits when a rebate exceeds the fee, so this helper never clamps the sign. A
- * zero notional charges a zero fee at every tick.
+ * negative amount, which `Fee.amount` permits and the Ondo mapper already emits
+ * when a rebate exceeds the fee, so this helper never clamps the sign. A zero
+ * notional charges a zero fee at every tick.
  */
-const tickToFeeAmount = (notional: string, tick: number): string =>
-  new Big(notional).times(tick).div(LIGHTER_FEE_TICK_SCALE).toFixed()
+const tickToFeeAmount = (
+  notional: string,
+  ownTick: number,
+  integratorTick: number | undefined
+): string =>
+  new Big(notional)
+    .times(new Big(ownTick).plus(integratorTick ?? 0))
+    .div(LIGHTER_FEE_TICK_SCALE)
+    .toFixed()
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
@@ -91,6 +98,9 @@ export const mapFill = (
     ? trade.maker_entry_quote_before
     : trade.taker_entry_quote_before
   const feeTick = isMaker ? trade.maker_fee : trade.taker_fee
+  const integratorFeeTick = isMaker
+    ? trade.integrator_maker_fee
+    : trade.integrator_taker_fee
 
   return {
     id: trade.trade_id.toString(),
@@ -107,7 +117,11 @@ export const mapFill = (
       feeTick === undefined
         ? undefined
         : {
-            amount: tickToFeeAmount(trade.usd_amount, feeTick),
+            amount: tickToFeeAmount(
+              trade.usd_amount,
+              feeTick,
+              integratorFeeTick
+            ),
             asset: market.quoteAsset.displaySymbol,
           },
     realizedPnl: deriveRealizedPnl(
