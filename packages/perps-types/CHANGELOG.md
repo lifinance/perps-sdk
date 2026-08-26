@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 11.0.0
+
+### Major Changes
+
+- [#379](https://github.com/lifinance/perps-sdk/pull/379) [`08a3b76`](https://github.com/lifinance/perps-sdk/commit/08a3b76df9726deefd8933888bcc6209f85dc9b5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LiquidationActivity.liquidatedPositions` is now a non-empty tuple type, so a producer that builds one from an empty array no longer compiles. A consumer that reads `liquidatedPositions[0]` receives a `LiquidatedPosition` without a null guard.
+
 ## 10.0.0
 
 ### Major Changes
