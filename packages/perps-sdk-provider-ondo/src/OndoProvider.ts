@@ -17,6 +17,7 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetRunningTwapsParams,
+  paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -34,7 +35,9 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  Fill,
   FillsResponse,
+  FundingActivity,
   LiquidationActivity,
   MarketDisplay,
   OndoAccountConfig,
@@ -81,7 +84,6 @@ import type {
 import {
   decodeActivityCursor,
   encodeActivityCursor,
-  type OndoActivityCursor,
 } from './utils/activityCursor.js'
 import {
   type ApiParams,
@@ -179,6 +181,13 @@ export const ondoProvider = (
 
   const requireMarketDisplay = (marketId: string): MarketDisplay =>
     toMarketDisplay(marketRegistry().require(marketId))
+  // The droppable-row counterpart of `requireMarketDisplay`, for the history
+  // surfaces where an id the backend market list does not hold must cost only
+  // its own row. The registry warns once per unresolved id.
+  const marketDisplay = (marketId: string): MarketDisplay | undefined => {
+    const market = marketRegistry().get(marketId)
+    return market === undefined ? undefined : toMarketDisplay(market)
+  }
   const requirePerpsMarketDisplay = (marketId: string): PerpsMarketDisplay =>
     toPerpsMarketDisplay(marketRegistry().require(marketId))
 
@@ -449,13 +458,9 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const registry = marketRegistry()
           const { openOrders, triggerOrders } = classifyAndMapOrders(
             page.result,
-            (marketId) => {
-              const market = registry.get(marketId)
-              return market === undefined ? undefined : toMarketDisplay(market)
-            }
+            marketDisplay
           )
 
           const nextCursor = page.pageInfo?.nextCursor
@@ -553,9 +558,10 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const items = page.result.map((fill) =>
-            mapFill(fill, requireMarketDisplay(fill.market))
-          )
+          const items = page.result.flatMap((fill): Fill[] => {
+            const market = marketDisplay(fill.market)
+            return market === undefined ? [] : [mapFill(fill, market)]
+          })
 
           const nextCursor = page.pageInfo?.nextCursor
           return {
@@ -665,13 +671,14 @@ export const ondoProvider = (
             ])
 
           const items: ActivityItem[] = [
-            ...fundings.result.map((f) =>
-              mapFundingActivity(f, requireMarketDisplay(f.market))
-            ),
+            ...fundings.result.flatMap((f): FundingActivity[] => {
+              const market = marketDisplay(f.market)
+              return market === undefined ? [] : [mapFundingActivity(f, market)]
+            }),
             // A liquidation event that names no position is dropped: the
             // public contract guarantees a non-empty `liquidatedPositions`.
             ...liquidations.result
-              .map((l) => mapLiquidationActivity(l, requireMarketDisplay))
+              .map((l) => mapLiquidationActivity(l, marketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
             ...(deposits ?? []).map(mapDepositActivity),
             // A withdrawal Ondo reports as failed or cancelled moved no value,
@@ -681,52 +688,22 @@ export const ondoProvider = (
               .filter((a): a is WithdrawalActivity => a !== null),
           ]
 
-          const merged = [...(inputCursor?.overflow ?? []), ...items]
-
-          // The type filter also applies to replayed overflow rows: a cursor
-          // minted under one filter must never leak another surface's rows
-          // when the caller pages the two surfaces independently.
-          const filtered = merged.filter((it) => {
-            if (!wantsType(it.type)) {
-              return false
-            }
-            const ts = new Date(it.timestamp).getTime()
-            if (params.startTime !== undefined && ts < params.startTime) {
-              return false
-            }
-            if (params.endTime !== undefined && ts > params.endTime) {
-              return false
-            }
-            return true
-          })
-
-          filtered.sort(
-            (a, b) =>
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          const page = paginateActivity(
+            items,
+            inputCursor?.overflow ?? [],
+            params,
+            (overflowTail) =>
+              encodeActivityCursor({
+                fundings: fundings.pageInfo?.nextCursor,
+                liquidations: liquidations.pageInfo?.nextCursor,
+                overflow: overflowTail,
+              })
           )
-
-          const limit = params.limit ?? filtered.length
-          const emitted = filtered.slice(0, limit)
-          const overflow = filtered.slice(limit)
-
-          const nextCursorEnvelope: OndoActivityCursor = {
-            fundings: fundings.pageInfo?.nextCursor,
-            liquidations: liquidations.pageInfo?.nextCursor,
-            overflow,
-          }
-          const responseCursor = encodeActivityCursor(nextCursorEnvelope)
-          const hasMore = responseCursor !== undefined
 
           return {
             provider: ONDO_PROVIDER_KEY,
-            items: emitted,
-            pagination: {
-              limit,
-              hasMore,
-              ...(responseCursor === undefined
-                ? {}
-                : { cursor: responseCursor }),
-            },
+            items: page.items,
+            pagination: page.pagination,
           }
         }
       )

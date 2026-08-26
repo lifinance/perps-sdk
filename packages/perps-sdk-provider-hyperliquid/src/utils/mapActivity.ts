@@ -48,13 +48,17 @@ const ledgerTokenSymbol = (token: string): string => {
  * `queriedAddress` matching the delta's `user` (OUT) or `destination` (IN).
  * Returns null for unsupported delta types and for same-account moves, where
  * `user === destination === queriedAddress`.
+ *
+ * @param resolveMarket - Market identity for a venue coin, or `undefined` when
+ * the backend market list does not hold it. A liquidated position the resolver
+ * cannot identify is dropped.
  * @public
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
   providerKey: string,
   queriedAddress: string,
-  resolveMarket: (coin: string) => MarketDisplay
+  resolveMarket: (coin: string) => MarketDisplay | undefined
 ): ActivityItem | null => {
   const { delta } = entry
   const base = {
@@ -181,14 +185,15 @@ export const mapLedgerEntry = (
   }
 
   if (isLiquidationDelta(delta)) {
-    const liquidatedPositions = (delta.liquidatedPositions ?? []).map((p) => ({
-      market: resolveMarket(p.coin),
-      size: p.szi,
-    }))
+    const resolvedPositions = (delta.liquidatedPositions ?? []).flatMap((p) => {
+      const market = resolveMarket(p.coin)
+      return market === undefined ? [] : [{ market, size: p.szi }]
+    })
     // Liquidation rows must point to at least one market. Drop entries with
     // missing/empty positions so downstream consumers can rely on that
     // invariant and avoid rendering a market-less liquidation card.
-    if (liquidatedPositions.length === 0) {
+    const [firstPosition, ...restPositions] = resolvedPositions
+    if (firstPosition === undefined) {
       return null
     }
     return {
@@ -201,7 +206,7 @@ export const mapLedgerEntry = (
         ? {}
         : { accountValue: delta.accountValue }),
       leverageType: delta.leverageType,
-      liquidatedPositions,
+      liquidatedPositions: [firstPosition, ...restPositions],
     } satisfies LiquidationActivity
   }
 
@@ -209,9 +214,10 @@ export const mapLedgerEntry = (
 }
 
 /**
- * Map a Hyperliquid funding ledger update to a normalized funding activity.
- * `amount`, `positionSize`, and `fundingRate` retain the upstream decimal
- * strings; `resolveMarket` supplies the provider-agnostic market metadata.
+ * Map a Hyperliquid funding ledger update to a normalized funding activity, or
+ * `null` when `resolveMarket` cannot identify the row's coin. `amount`,
+ * `positionSize`, and `fundingRate` retain the upstream decimal strings;
+ * `resolveMarket` supplies the provider-agnostic market metadata.
  *
  * `userFunding` entries all carry the zero hash, so a deterministic
  * `funding:<coin>:<ISO time>` id is synthesized — funding accrues at most
@@ -221,15 +227,19 @@ export const mapLedgerEntry = (
 export const mapFundingActivity = (
   entry: HlFundingUpdate,
   providerKey: string,
-  resolveMarket: (coin: string) => MarketDisplay
-): FundingActivity => {
+  resolveMarket: (coin: string) => MarketDisplay | undefined
+): FundingActivity | null => {
+  const market = resolveMarket(entry.delta.coin)
+  if (market === undefined) {
+    return null
+  }
   const timestamp = new Date(entry.time).toISOString()
   return {
     id: `funding:${entry.delta.coin}:${timestamp}`,
     provider: providerKey,
     timestamp,
     type: ActivityType.FUNDING,
-    market: resolveMarket(entry.delta.coin),
+    market,
     amount: entry.delta.usdc,
     positionSize: entry.delta.szi,
     fundingRate: entry.delta.fundingRate,
