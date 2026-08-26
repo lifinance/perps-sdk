@@ -59,7 +59,7 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   timestamp: 1_700_000_000,
   created_at: 1_700_000_000,
   updated_at: 1_700_000_000,
-  transaction_time: 1_700_000_000,
+  transaction_time: 1_700_000_000_000_000,
   ...overrides,
 })
 
