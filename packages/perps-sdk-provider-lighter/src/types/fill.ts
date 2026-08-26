@@ -6,7 +6,9 @@
  * `timestamp` is a Unix millisecond timestamp; `transaction_time` is a Unix
  * microsecond timestamp. The optional fee fields are the side's fee *rate* on
  * Lighter's 1e6 tick scale, not the amount charged, and may be absent on older
- * rows.
+ * rows. A row can also carry `integrator_maker_fee` or
+ * `integrator_taker_fee`: a second optional rate for the same side, on the same
+ * 1e6 tick scale. The mapper adds that second rate to the side's own rate.
  *
  * @public
  */

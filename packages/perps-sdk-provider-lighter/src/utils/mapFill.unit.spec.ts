@@ -606,6 +606,18 @@ describe('mapFill (Lighter)', () => {
       expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
     })
 
+    // An explicit zero side tick is present, so the fee guard passes and the
+    // integrator tick alone sets the amount. Contrast the absent-tick case
+    // below, which reports no fee at all.
+    it('sums an explicit zero side tick with the integrator tick', () => {
+      const fill = mapFill(
+        baseTrade({ maker_fee: 0, integrator_maker_fee: 100 }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.fee).toEqual({ amount: '0.2', asset: 'USDC' })
+    })
+
     // Live rows carry an integrator tick for a side whose own tick is absent.
     it('returns undefined fee when only the integrator tick is present', () => {
       const fill = mapFill(
