@@ -2546,6 +2546,11 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
     expect(transfer?.asset).toBe('USDC')
+    // The mapper drops `meta.fee` on every transfer row, so the token-registry
+    // suite pins the fee surface too: a symbol lookup must not move the fee
+    // back onto `meta`.
+    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    expect(transfer?.meta).not.toHaveProperty('fee')
   })
 
   it('falls back to String(asset_id) when the token registry has no symbol', async () => {
@@ -2558,6 +2563,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
     expect(transfer?.asset).toBe('777')
+    // The transferred asset falls back to the raw id, but the fee asset comes
+    // from the deployment's settlement asset and stays `USDC`.
+    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
   })
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
@@ -2613,19 +2621,20 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
   const transferRow = (
     id: string,
     fromAccountIndex: number,
-    toAccountIndex: number
+    toAccountIndex: number,
+    overrides: { asset_id?: number; fee?: string } = {}
   ) => ({
     id,
     from_account_index: fromAccountIndex,
     to_account_index: toAccountIndex,
-    asset_id: 3,
+    asset_id: overrides.asset_id ?? 3,
     amount: '25',
     timestamp: 1700000003000,
     type: 'standard',
     tx_hash: '0xtr',
     from_route: 'spot',
     to_route: 'perps',
-    fee: '0',
+    fee: overrides.fee ?? '0',
   })
 
   const liquidationRow = (id: number, executedAtMs: number) => ({
@@ -2738,6 +2747,84 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     })
 
     expect(items.map((i) => i.id)).toEqual(['t1'])
+  })
+
+  it('reports the transfer fee on fees and no longer on meta', async () => {
+    stubHistory({ transfers: [transferRow('t1', 42, 99, { fee: '0.25' })] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+
+    const [transfer] = items
+    if (transfer.type !== ActivityType.TRANSFER) {
+      throw new Error('expected a transfer activity')
+    }
+    expect(transfer.fees).toEqual([{ amount: '0.25', asset: 'USDC' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
+  })
+
+  it('keeps a reported zero transfer fee', async () => {
+    stubHistory({ transfers: [transferRow('t1', 42, 99, { fee: '0' })] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+
+    const [transfer] = items
+    if (transfer.type !== ActivityType.TRANSFER) {
+      throw new Error('expected a transfer activity')
+    }
+    expect(transfer.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
+  })
+
+  it('names the settlement asset as the fee asset when the row moves a spot token', async () => {
+    stubHistory({
+      transfers: [transferRow('t1', 42, 99, { asset_id: 0, fee: '0.4' })],
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+
+    const [transfer] = items
+    if (transfer.type !== ActivityType.TRANSFER) {
+      throw new Error('expected a transfer activity')
+    }
+    expect(transfer.asset).toBe('BTC')
+    expect(transfer.fees).toEqual([{ amount: '0.4', asset: 'USDC' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
+  })
+
+  it('names USDG as the transfer fee asset on the Robinhood deployment', async () => {
+    stubHistory({
+      transfers: [transferRow('t1', 42, 99, { asset_id: 4, fee: '0.5' })],
+      assets: RH_ASSETS_RESPONSE,
+    })
+    const provider = lighterRhProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+
+    const [transfer] = items
+    if (transfer.type !== ActivityType.TRANSFER) {
+      throw new Error('expected a transfer activity')
+    }
+    expect(transfer.fees).toEqual([{ amount: '0.5', asset: 'USDG' }])
+    expect(transfer.meta).not.toHaveProperty('fee')
   })
 
   it('reports the liquidation metrics Lighter carries on the row', async () => {

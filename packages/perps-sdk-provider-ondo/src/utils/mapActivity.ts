@@ -46,19 +46,23 @@ export const mapFundingActivity = (
  * cross-only, so `leverageType` is always `'cross'`. Ondo reports no account
  * value at liquidation time, so `accountValue` stays absent. One Ondo event
  * carries the whole cross-margin cascade in `triggeringPositions`, so every
- * liquidated market and size reaches `liquidatedPositions`.
+ * resolvable liquidated market and size reaches `liquidatedPositions`.
  *
+ * @param resolveMarket - Market identity for an Ondo market id, or `undefined`
+ * when the backend market list does not hold it. A triggering position the
+ * resolver cannot identify is dropped.
  * @public
  */
 export const mapLiquidationActivity = (
   event: OndoLiquidationEvent,
-  resolveMarket: (market: string) => MarketDisplay
+  resolveMarket: (market: string) => MarketDisplay | undefined
 ): LiquidationActivity | null => {
-  const liquidatedPositions = (event.triggeringPositions ?? []).map((p) => ({
-    market: resolveMarket(p.market),
-    size: p.netQuantity,
-  }))
-  if (liquidatedPositions.length === 0) {
+  const resolvedPositions = (event.triggeringPositions ?? []).flatMap((p) => {
+    const market = resolveMarket(p.market)
+    return market === undefined ? [] : [{ market, size: p.netQuantity }]
+  })
+  const [firstPosition, ...restPositions] = resolvedPositions
+  if (firstPosition === undefined) {
     return null
   }
   return {
@@ -70,7 +74,7 @@ export const mapLiquidationActivity = (
       ? {}
       : { liquidatedNotionalPosition: event.filledQuoteSize }),
     leverageType: 'cross',
-    liquidatedPositions,
+    liquidatedPositions: [firstPosition, ...restPositions],
   }
 }
 

@@ -410,7 +410,7 @@ describe('LiquidationActivity', () => {
       accountValue: '500',
       // @ts-expect-error leverageType must be a string
       leverageType: 1,
-      liquidatedPositions: [],
+      liquidatedPositions: [{ market: liquidatedMarket('hyperliquid') }],
     }
 
     // TS2741 attaches to the object literal opening brace.
@@ -426,6 +426,19 @@ describe('LiquidationActivity', () => {
 
     expect(numericLeverageType.type).toBe(ActivityType.LIQUIDATION)
     expect(missingPositions.type).toBe(ActivityType.LIQUIDATION)
+  })
+
+  it('rejects an empty liquidatedPositions array', () => {
+    const emptyPositions: LiquidationActivity = {
+      id: 'liquidation-5',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:04:00.000Z',
+      type: ActivityType.LIQUIDATION,
+      // @ts-expect-error liquidatedPositions must hold at least one entry
+      liquidatedPositions: [],
+    }
+
+    expect(emptyPositions.type).toBe(ActivityType.LIQUIDATION)
   })
 })
 
