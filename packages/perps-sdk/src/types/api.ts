@@ -2,12 +2,14 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   CancelTwapOrderParams as ActionCancelTwapOrderParams,
+  CreateReferralCodeParams as ActionCreateReferralCodeParams,
   PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
   ExecuteActionResponse,
   MarginMode,
   MarketRef,
   ModifyOrderInput,
+  OnboardParams,
   OrderSide,
   OrderType,
   SignedActionStep,
@@ -343,4 +345,23 @@ export interface ExecuteProviderSetupResult {
 export interface GetAccountResult extends AccountResponse {
   /** SDK-projected current state of every setup + options descriptor. */
   settings: AccountConfigSetting[]
+}
+
+/**
+ * Parameters for {@link PerpsClient.submitOnboarding}.
+ *
+ * @public
+ */
+export interface SubmitOnboardingParams extends OnboardParams {
+  address: Address
+}
+
+/**
+ * Parameters for {@link PerpsClient.createReferralCode}.
+ *
+ * @public
+ */
+export interface CreateReferralCodeActionParams
+  extends ActionCreateReferralCodeParams {
+  address: Address
 }

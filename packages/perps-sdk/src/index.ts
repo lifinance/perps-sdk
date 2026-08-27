@@ -65,6 +65,10 @@ export { getPositions } from './services/getPositions.js'
 export { getProviders } from './services/getProviders.js'
 export type { GetQuoteParams } from './services/getQuote.js'
 export { getQuote } from './services/getQuote.js'
+export type { GetReferralActivityParams } from './services/getReferralActivity.js'
+export { getReferralActivity } from './services/getReferralActivity.js'
+export type { GetReferralStatusParams } from './services/getReferralStatus.js'
+export { getReferralStatus } from './services/getReferralStatus.js'
 export { getTermsAcceptance } from './services/getTermsAcceptance.js'
 export { resolveQuote, resolveQuoteMarket } from './services/resolveQuote.js'
 export {
@@ -99,6 +103,7 @@ export type {
   BuildProviderSetupParams,
   CancelOrdersParams,
   CancelTwapOrderParams as ClientCancelTwapOrderParams,
+  CreateReferralCodeActionParams,
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
@@ -111,6 +116,7 @@ export type {
   PlaceTwapOrderParams as ClientPlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
+  SubmitOnboardingParams,
   WithdrawParams,
 } from './types/api.js'
 export type {
