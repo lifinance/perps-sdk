@@ -91,6 +91,8 @@ function projectOndoDescriptor(
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.DEPOSIT:
     case ActionType.META_ACCEPT_TERMS:
+    case ActionType.META_ONBOARD:
+    case ActionType.META_CREATE_REFERRAL_CODE:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Ondo account-config mapper has no projection for descriptor type ` +

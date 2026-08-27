@@ -14,9 +14,13 @@ import type {
 } from '@lifi/perps-types'
 import {
   ActionType,
+  acceptTermsTypeFields,
+  createReferralCodeTypeFields,
   MarginMode,
+  META_PROVIDER,
   OrderSide,
   OrderType,
+  onboardTypeFields,
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
@@ -24,7 +28,7 @@ import {
   SigningMethod,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
-import type { Address, Hex } from 'viem'
+import type { Address, EIP1193RequestFn, Hex } from 'viem'
 import { createWalletClient, custom, http as viemHttp } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
@@ -2832,6 +2836,390 @@ describe('PerpsClient', () => {
 
       expect(hook).toHaveBeenCalledOnce()
       expect(hook).toHaveBeenCalledWith(ARBITRUM)
+    })
+  })
+  describe('meta actions — provider-independent onboarding and referral codes', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const account = privateKeyToAccount(`0x${'44'.repeat(32)}` as Hex)
+    const ARBITRUM = 42161
+
+    function newClient() {
+      return new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [createTestAgentProvider({ type: 'hyperliquid' })],
+      })
+    }
+
+    function walletClient() {
+      return createWalletClient({
+        account,
+        chain: mainnet,
+        transport: viemHttp(),
+      })
+    }
+
+    // /createAction returns `actions` verbatim; /executeAction echoes success.
+    // Both request bodies are captured so a test can assert the wire contract.
+    function stageMetaAction(actions: ActionStep[]) {
+      const createCalls: CreateActionRequest[] = []
+      const executeCalls: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          createCalls.push((await request.json()) as CreateActionRequest)
+          return HttpResponse.json({ actions } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCalls.push(body)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      return { createCalls, executeCalls }
+    }
+
+    function onboardStep(
+      termsVersion: string,
+      referralCode: string,
+      chainId = 1
+    ): ActionStep {
+      return {
+        action: ActionType.META_ONBOARD,
+        typedData: {
+          domain: { name: 'LIFI Perps', version: '1', chainId },
+          types: { Onboard: [...onboardTypeFields] },
+          primaryType: 'Onboard',
+          message: {
+            action: 'Accept LI.FI Perps Terms of Service v3',
+            account: account.address,
+            termsVersion,
+            referralCode,
+            nonce: '1',
+            deadline: 1_800_000_000_000,
+          },
+        },
+      }
+    }
+
+    function createCodeStep(code: string): ActionStep {
+      return {
+        action: ActionType.META_CREATE_REFERRAL_CODE,
+        typedData: {
+          domain: { name: 'LIFI Perps', version: '1', chainId: 1 },
+          types: { CreateReferralCode: [...createReferralCodeTypeFields] },
+          primaryType: 'CreateReferralCode',
+          message: {
+            action: `Create LI.FI Perps referral code ${code}`,
+            account: account.address,
+            code,
+            nonce: '1',
+            deadline: 1_800_000_000_000,
+          },
+        },
+      }
+    }
+
+    it('submits a Terms-only onboarding step', async () => {
+      const { createCalls, executeCalls } = stageMetaAction([
+        onboardStep('v3', ''),
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const response = await client.submitOnboarding({
+        address: account.address,
+        termsVersion: 'v3',
+      })
+
+      expect(createCalls[0].provider).toBe(META_PROVIDER)
+      expect(createCalls[0].action).toBe(ActionType.META_ONBOARD)
+      expect(createCalls[0].params).toEqual({ termsVersion: 'v3' })
+      expect(executeCalls).toHaveLength(1)
+      expect(executeCalls[0].actions).toHaveLength(1)
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.message).toMatchObject({
+        termsVersion: 'v3',
+        referralCode: '',
+      })
+      expect(signed.signature).toMatch(/^0x[0-9a-f]{130}$/)
+      expect(response.results).toEqual([
+        { action: ActionType.META_ONBOARD, success: true },
+      ])
+    })
+
+    it('submits a referral-only onboarding step for an address that already accepted', async () => {
+      const { createCalls, executeCalls } = stageMetaAction([
+        onboardStep('', 'ABC123'),
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      await client.submitOnboarding({
+        address: account.address,
+        referralCode: 'abc123',
+      })
+
+      expect(createCalls[0].params).toEqual({ referralCode: 'abc123' })
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.message).toMatchObject({
+        termsVersion: '',
+        referralCode: 'ABC123',
+      })
+    })
+
+    it('submits one combined onboarding step carrying terms and a code', async () => {
+      const { createCalls, executeCalls } = stageMetaAction([
+        onboardStep('v3', 'ABC123'),
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      await client.submitOnboarding({
+        address: account.address,
+        termsVersion: 'v3',
+        referralCode: 'ABC123',
+      })
+
+      expect(createCalls[0].params).toEqual({
+        termsVersion: 'v3',
+        referralCode: 'ABC123',
+      })
+      expect(executeCalls).toHaveLength(1)
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.primaryType).toBe('Onboard')
+      expect(signed.typedData.message).toMatchObject({
+        termsVersion: 'v3',
+        referralCode: 'ABC123',
+      })
+    })
+
+    it('submits no step and resolves empty when the backend requires no consent', async () => {
+      const { executeCalls } = stageMetaAction([])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const response = await client.submitOnboarding({
+        address: account.address,
+        termsVersion: 'v3',
+      })
+
+      expect(response).toEqual({ results: [] })
+      expect(executeCalls).toEqual([])
+    })
+
+    it('needs no wallet when the backend returns no step', async () => {
+      stageMetaAction([])
+      const client = newClient()
+
+      await expect(
+        client.submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+        })
+      ).resolves.toEqual({ results: [] })
+    })
+
+    it('submits a referral-code creation step separately from onboarding', async () => {
+      const { createCalls, executeCalls } = stageMetaAction([
+        createCodeStep('ABC123'),
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const response = await client.createReferralCode({
+        address: account.address,
+        code: 'ABC123',
+      })
+
+      expect(createCalls[0].provider).toBe(META_PROVIDER)
+      expect(createCalls[0].action).toBe(ActionType.META_CREATE_REFERRAL_CODE)
+      expect(createCalls[0].params).toEqual({ code: 'ABC123' })
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.primaryType).toBe('CreateReferralCode')
+      expect(signed.typedData.message).toMatchObject({ code: 'ABC123' })
+      expect(response.results).toEqual([
+        { action: ActionType.META_CREATE_REFERRAL_CODE, success: true },
+      ])
+    })
+
+    it('omits the code so the backend generates one', async () => {
+      const { createCalls } = stageMetaAction([createCodeStep('AB12CD')])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      await client.createReferralCode({ address: account.address })
+
+      expect(createCalls[0].params).toEqual({})
+    })
+
+    it('propagates a typed PerpsError when the backend rejects an invalid code', async () => {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json(
+            {
+              code: PerpsErrorCode.ValidationError,
+              message: 'referral code is not valid',
+              tool: 'lifi',
+            },
+            { status: 400 }
+          )
+        )
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+          referralCode: 'nope!',
+        })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.ValidationError)
+      expect(error.message).toBe('referral code is not valid')
+    })
+
+    it('propagates a typed PerpsError raised by /executeAction', async () => {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [onboardStep('v3', '')],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () =>
+          HttpResponse.json(
+            {
+              code: PerpsErrorCode.NonceAlreadyUsed,
+              message: 'nonce already used',
+              tool: 'lifi',
+            },
+            { status: 400 }
+          )
+        )
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.NonceAlreadyUsed)
+    })
+
+    it('throws an SDKError when a step must be signed and no wallet is configured', async () => {
+      stageMetaAction([onboardStep('v3', '')])
+      const client = newClient()
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.SDKError)
+      expect(error.message).toMatch(/No user wallet configured/)
+    })
+
+    it('throws an SDKError when the backend returns more than one step', async () => {
+      stageMetaAction([onboardStep('v3', ''), onboardStep('v3', 'ABC123')])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.SDKError)
+      expect(error.message).toMatch(/returned 2 steps/)
+    })
+
+    it('throws an SDKError when the step is not EIP-712 typed data', async () => {
+      stageMetaAction([
+        {
+          action: ActionType.META_ONBOARD,
+          wasmSignParams: {},
+        },
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.SDKError)
+      expect(error.message).toMatch(/without typedData/)
+    })
+
+    // Wallet whose only answered RPC is eth_chainId, so viem's real
+    // `getChainId` runs against the mock inside `switchSigningChain`.
+    function walletOnChain(chainId: number) {
+      const request = (async ({ method }: { method: string }) => {
+        if (method === 'eth_chainId') {
+          return `0x${chainId.toString(16)}`
+        }
+        throw new Error(`unexpected RPC: ${method}`)
+      }) as EIP1193RequestFn
+      return createWalletClient({ account, transport: custom({ request }) })
+    }
+
+    it('switches the wallet to the chain in the step domain before signing', async () => {
+      stageMetaAction([onboardStep('v3', '', ARBITRUM)])
+      const hook = vi.fn(async () => walletOnChain(ARBITRUM))
+      const client = newClient()
+      client.setUserWallet(walletOnChain(1))
+      client.setSwitchChain(hook)
+
+      await client.submitOnboarding({
+        address: account.address,
+        termsVersion: 'v3',
+      })
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
+    })
+
+    it('still signs and submits a META_ACCEPT_TERMS action through the meta pipeline', async () => {
+      const { createCalls, executeCalls } = stageMetaAction([
+        {
+          action: ActionType.META_ACCEPT_TERMS,
+          typedData: {
+            domain: { name: 'LIFI Perps', version: '1', chainId: 1 },
+            types: { AcceptTerms: [...acceptTermsTypeFields] },
+            primaryType: 'AcceptTerms',
+            message: {
+              action: 'Accept LI.FI Perps Terms of Service v3',
+              acceptor: account.address,
+              termsVersion: 'v3',
+              timestamp: 1_735_689_600_000,
+            },
+          },
+        },
+      ])
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const response = await client.executeMetaAction({
+        address: account.address,
+        action: ActionType.META_ACCEPT_TERMS,
+        params: { termsVersion: 'v3' },
+      })
+
+      expect(createCalls[0].provider).toBe(META_PROVIDER)
+      expect(createCalls[0].action).toBe(ActionType.META_ACCEPT_TERMS)
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.primaryType).toBe('AcceptTerms')
+      expect(signed.typedData.types.AcceptTerms).toEqual(acceptTermsTypeFields)
+      expect(response.results).toEqual([
+        { action: ActionType.META_ACCEPT_TERMS, success: true },
+      ])
     })
   })
 })
