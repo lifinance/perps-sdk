@@ -24,7 +24,8 @@ export type HlUserFill = {
   feeToken?: string
   /**
    * Builder portion of `fee`, in `feeToken`'s units. Absent when the venue
-   * charged no builder portion on the fill.
+   * charged no builder portion on the fill. Hyperliquid omits this field when
+   * its value is zero.
    */
   builderFee?: string
   /** Client order ID the order carried. Absent when the order carried none. */

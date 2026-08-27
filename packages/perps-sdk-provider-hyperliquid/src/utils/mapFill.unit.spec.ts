@@ -204,6 +204,7 @@ describe('mapFill (Hyperliquid)', () => {
       const fill = map(
         baseFill({ fee: '0.5', builderFee: '0.1', feeToken: 'HYPE' })
       )
+      expect(fill.fee).toEqual({ amount: '0.5', asset: 'HYPE' })
       expect(fill.builderFee).toEqual({ amount: '0.1', asset: 'HYPE' })
       expect(typeof fill.builderFee?.amount).toBe('string')
     })
