@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 10.1.0
+
+### Minor Changes
+
+- [#394](https://github.com/lifinance/perps-sdk/pull/394) [`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain the Hyperliquid builder-fee amount and client order ID on `Fill`. `HlUserFill` now declares the optional `builderFee` and `cloid` fields `userFills` returns, and `mapFill` projects them into the new optional `Fill.builderFee` (a `Fee`, so the builder portion carries its own token — the same token Hyperliquid charges the total fee in) and `Fill.clientOrderId`. Each stays `undefined` when the wire payload omits it, so a consumer can separate the builder portion of a fill fee from the provider portion and join a fill back to the order that produced it. Adds `ActionType.SYNC_FEE_ATTRIBUTION` with wire value `syncFeeAttribution` and an empty params contract; it is never a `Provider.setup` or `Provider.options` descriptor, and each provider account-config mapper rejects it.
+
+### Patch Changes
+
+- Updated dependencies [[`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412)]:
+  - @lifi/perps-types@11.1.0
+
 ## 10.0.0
 
 ### Major Changes
