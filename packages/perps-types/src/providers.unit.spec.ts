@@ -439,8 +439,7 @@ type _ProviderActionKeys = Expect<
   >
 >
 
-// `Param.type` is the closed three-member primitive union — TWAP extras
-// (ORD-1160) brought in the boolean toggle and numeric interval descriptors.
+// Param.type is the closed three-member primitive union.
 type _ParamTypeIsString = Expect<
   Equals<Param['type'], 'string' | 'boolean' | 'number'>
 >
