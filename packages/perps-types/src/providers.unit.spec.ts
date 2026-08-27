@@ -50,13 +50,10 @@ const approveAgentSetup: ProviderAction = {
   params: [],
 }
 
-// Hyperliquid: APPROVE_BUILDER_FEE is mandatory — buildercodes are how LI.FI
-// monetises the integration, so trading is gated until the user approves.
 const approveBuilderFeeSetup: ProviderAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
   title: 'Approve builder fee',
-  description:
-    'Authorises the builder fee that funds LI.FI infrastructure for this provider.',
+  description: 'Authorises the builder fee for this provider.',
   signers: [PerpsSigner.USER],
   signingMethod: SigningMethod.EIP712,
   params: [],
