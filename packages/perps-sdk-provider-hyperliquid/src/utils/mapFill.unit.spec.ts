@@ -199,6 +199,39 @@ describe('mapFill (Hyperliquid)', () => {
     })
   })
 
+  describe('builder fee', () => {
+    it('carries the builder portion in the same token as the total fee', () => {
+      const fill = map(
+        baseFill({ fee: '0.5', builderFee: '0.1', feeToken: 'HYPE' })
+      )
+      expect(fill.fee).toEqual({ amount: '0.5', asset: 'HYPE' })
+      expect(fill.builderFee).toEqual({ amount: '0.1', asset: 'HYPE' })
+      expect(typeof fill.builderFee?.amount).toBe('string')
+    })
+
+    it("falls back to the market's quote asset when the row carries no feeToken", () => {
+      expect(
+        map(baseFill({ fee: '0.5', builderFee: '0.1' })).builderFee
+      ).toEqual({ amount: '0.1', asset: 'USDC' })
+    })
+
+    it('leaves builderFee undefined when the row omits it', () => {
+      expect(map(baseFill({ fee: '0.5' })).builderFee).toBeUndefined()
+    })
+  })
+
+  describe('client order ID', () => {
+    it('carries the wire cloid into clientOrderId', () => {
+      expect(map(baseFill({ cloid: '0xabc123' })).clientOrderId).toBe(
+        '0xabc123'
+      )
+    })
+
+    it('leaves clientOrderId undefined when the row omits the cloid', () => {
+      expect(map(baseFill()).clientOrderId).toBeUndefined()
+    })
+  })
+
   it('always reports status FILLED', () => {
     expect(map(baseFill()).status).toBe(FillStatus.FILLED)
   })

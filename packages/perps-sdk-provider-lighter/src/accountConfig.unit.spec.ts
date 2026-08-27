@@ -180,6 +180,21 @@ describe('projectLighterConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
+  it('throws for SYNC_FEE_ATTRIBUTION — never a setup or options descriptor', () => {
+    const badDescriptor: ProviderAction = {
+      type: ActionType.SYNC_FEE_ATTRIBUTION,
+      signers: [PerpsSigner.SDK],
+      signingMethod: SigningMethod.HMAC,
+      params: [],
+    }
+    expect(() =>
+      projectLighterConfigSettings(baseConfig, [badDescriptor], [])
+    ).toThrow(/no projection for descriptor type/)
+    expect(() =>
+      projectLighterConfigSettings(baseConfig, [], [badDescriptor])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
   it('throws for UPDATE_ASSET_COLLATERAL — a runtime per-asset action, never a setup/options descriptor', () => {
     const badDescriptor: ProviderAction = {
       type: ActionType.UPDATE_ASSET_COLLATERAL,

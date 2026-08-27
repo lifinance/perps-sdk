@@ -149,6 +149,7 @@ function projectLighterDescriptor(
     case ActionType.UPDATE_ASSET_COLLATERAL:
     case ActionType.DEPOSIT:
     case ActionType.META_ACCEPT_TERMS:
+    case ActionType.SYNC_FEE_ATTRIBUTION:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +

@@ -481,6 +481,12 @@ describe('OndoProvider — `type` field', () => {
       ActionType.SET_REFERRAL
     )
   })
+
+  it('does not declare SYNC_FEE_ATTRIBUTION as an internal setup action', () => {
+    expect(ondoProvider().internalSetupActions).not.toContain(
+      ActionType.SYNC_FEE_ATTRIBUTION
+    )
+  })
 })
 
 describe('OndoProvider — order formatting and liquidation surface', () => {

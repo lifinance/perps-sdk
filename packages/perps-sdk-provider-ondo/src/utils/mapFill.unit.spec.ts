@@ -115,4 +115,15 @@ describe('mapFill', () => {
       '12.5'
     )
   })
+
+  it('carries the wire client order ID into clientOrderId', () => {
+    expect(
+      mapFill(fillFixture({ clientOrderId: 'client-order-1' }), MARKET)
+        .clientOrderId
+    ).toBe('client-order-1')
+  })
+
+  it('leaves clientOrderId undefined when the wire omits it', () => {
+    expect(mapFill(fillFixture(), MARKET).clientOrderId).toBeUndefined()
+  })
 })
