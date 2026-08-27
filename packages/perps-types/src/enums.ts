@@ -173,6 +173,8 @@ export enum ActionType {
   DEPOSIT = 'deposit',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_ACCEPT_TERMS = 'metaAcceptTerms',
+  /** Never projected on `Provider.setup` or `Provider.options`, and never offered as a user-facing trading action. */
+  SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }
 
 /** Price relation that activates a trigger order. @public */

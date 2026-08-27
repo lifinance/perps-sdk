@@ -67,6 +67,7 @@ function projectHyperliquidDescriptor(
     case ActionType.ACCEPT_PROVIDER_TERMS:
     case ActionType.DEPOSIT:
     case ActionType.META_ACCEPT_TERMS:
+    case ActionType.SYNC_FEE_ATTRIBUTION:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +

@@ -260,6 +260,16 @@ export interface Fill {
   filledSize?: string
   /** Absent when the venue reports no fee for the fill. */
   fee?: Fee
+  /**
+   * Portion of `fee` the venue reports as the builder portion, denominated in
+   * its own asset. Absent when the venue reports no builder portion.
+   */
+  builderFee?: Fee
+  /**
+   * Client order ID of the order that produced the fill, as the venue echoes
+   * it. Absent when the order carried none or the venue omits it.
+   */
+  clientOrderId?: string
   realizedPnl?: string | null
   startPosition?: string
   classification: FillClassification
