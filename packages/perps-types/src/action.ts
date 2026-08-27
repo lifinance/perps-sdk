@@ -616,6 +616,7 @@ export interface ActionParamsMap {
   [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
+  [ActionType.SYNC_FEE_ATTRIBUTION]: Record<string, never>
 }
 
 /**

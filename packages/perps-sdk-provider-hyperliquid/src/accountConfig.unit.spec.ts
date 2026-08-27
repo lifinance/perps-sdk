@@ -141,6 +141,21 @@ describe('projectHyperliquidConfigSettings', () => {
     ).toThrow(/no projection for descriptor type/)
   })
 
+  it('throws for SYNC_FEE_ATTRIBUTION — never a setup or options descriptor', () => {
+    const badDescriptor: ProviderAction = {
+      type: ActionType.SYNC_FEE_ATTRIBUTION,
+      signers: [PerpsSigner.SDK],
+      signingMethod: SigningMethod.HMAC,
+      params: [],
+    }
+    expect(() =>
+      projectHyperliquidConfigSettings(baseConfig, [badDescriptor], [])
+    ).toThrow(/no projection for descriptor type/)
+    expect(() =>
+      projectHyperliquidConfigSettings(baseConfig, [], [badDescriptor])
+    ).toThrow(/no projection for descriptor type/)
+  })
+
   it('throws for UPDATE_ASSET_COLLATERAL — Lighter-only per-asset action, no Hyperliquid projection', () => {
     const badDescriptor: ProviderAction = {
       type: ActionType.UPDATE_ASSET_COLLATERAL,

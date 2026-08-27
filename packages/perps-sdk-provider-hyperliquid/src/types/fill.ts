@@ -22,6 +22,13 @@ export type HlUserFill = {
    * predating the field, where the fee is in the market's quote asset.
    */
   feeToken?: string
+  /**
+   * Builder portion of `fee`, in `feeToken`'s units. Absent when the venue
+   * charged no builder portion on the fill.
+   */
+  builderFee?: string
+  /** Client order ID the order carried. Absent when the order carried none. */
+  cloid?: string
   closedPnl: string
   crossed: boolean
   time: number

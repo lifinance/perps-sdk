@@ -208,6 +208,10 @@ describe('ActionType.SIWE_LOGIN', () => {
     )
   })
 
+  it('SYNC_FEE_ATTRIBUTION carries wire value "syncFeeAttribution"', () => {
+    expect(ActionType.SYNC_FEE_ATTRIBUTION).toBe('syncFeeAttribution')
+  })
+
   it('does not collide with any existing ActionType value', () => {
     const values = Object.values(ActionType)
     expect(new Set(values).size).toBe(values.length)
