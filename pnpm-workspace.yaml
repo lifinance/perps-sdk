@@ -4,5 +4,7 @@ allowBuilds:
   esbuild: true
   msw: true
   nx: true
+minimumReleaseAgeExclude:
+  - '@lifi/*'
 overrides:
   ws@8: 8.21.1
