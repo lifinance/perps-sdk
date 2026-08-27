@@ -45,8 +45,8 @@ importers:
         specifier: workspace:^
         version: link:../perps-types
       '@lifi/types':
-        specifier: 17.86.0
-        version: 17.86.0
+        specifier: ^18.3.0
+        version: 18.3.0
       big.js:
         specifier: ^7.0.1
         version: 7.0.1
@@ -644,8 +644,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lifi/types@17.86.0':
-    resolution: {integrity: sha512-VkEK2c7pL2P49cVZfSW76pbMJNCrWC4ge2FmyexyZW71XA56bv+AAj9zL8zeEQVQUnMnekQVC1EHVBlx5uBwdg==}
+  '@lifi/types@18.3.0':
+    resolution: {integrity: sha512-Qe7mIQ48P38FWguor4KNd5aFxFZqQElAt3T36Ft8X/vbrJLVEfNIOXgwBlvvxX5Fe1JADpu14MrS53mNVFKUbQ==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -2948,7 +2948,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lifi/types@17.86.0': {}
+  '@lifi/types@18.3.0': {}
 
   '@manypkg/find-root@1.1.0':
     dependencies:
