@@ -1,5 +1,14 @@
 # @lifi/perps-types
 
+## 11.2.0
+
+### Minor Changes
+
+- [#400](https://github.com/lifinance/perps-sdk/pull/400) [`e5e25c8`](https://github.com/lifinance/perps-sdk/commit/e5e25c8a86e53f6e407252c9a2855a09a5901f3f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `REVOKE_AGENT` action type and its params (ORD-1510)
+
+  - `ActionType.REVOKE_AGENT` (`revokeAgent`) with an `ActionParamsMap` entry, so `CreateActionRequest` / `ExecuteActionRequest` cover the revoke action.
+  - `RevokeAgentParams` with the revoke target: the agent `address` and the `name` the venue holds for it. Both are required, because HyperCore identifies a named API wallet by name.
+
 ## 11.1.0
 
 ### Minor Changes
