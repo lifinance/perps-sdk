@@ -71,6 +71,7 @@ function projectOndoDescriptor(
       }
 
     case ActionType.APPROVE_AGENT:
+    case ActionType.REVOKE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
     case ActionType.APPROVE_INTEGRATOR:
     case ActionType.ACCOUNT_MODE:
