@@ -2,6 +2,7 @@ import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  DEFAULT_READ_ONLY_TOKEN_NAME,
   defaultLighterTokenListFetcher,
   defaultLighterTokenRevokeFetcher,
   type LighterApiToken,
@@ -84,7 +85,7 @@ const registryRow = (
   overrides: Partial<LighterApiToken> & Pick<LighterApiToken, 'token_id'>
 ): LighterApiToken => ({
   api_token: `ro:7:all:${overrides.token_id}`,
-  name: 'LI.FI Perps',
+  name: DEFAULT_READ_ONLY_TOKEN_NAME,
   account_index: 7,
   expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
   sub_account_access: true,
@@ -707,7 +708,29 @@ describe('LighterReadOnlyTokenManager', () => {
       )
     })
 
-    it('mints the new token when the list call fails', async () => {
+    it('revokes an unexpired owned row when the local store holds nothing', async () => {
+      const { manager, revokeFetcher } = makeManager({
+        registry: [registryRow({ token_id: 80 })],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 80 })
+      )
+    })
+
+    it('skips an unexpired row Lighter already marked revoked', async () => {
+      const { manager, revokeFetcher } = makeManager({
+        registry: [registryRow({ token_id: 81, revoked: true })],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).not.toHaveBeenCalled()
+    })
+
+    it('creates the new token when the list call fails', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const { manager, revokeFetcher } = makeManager({
         listFetcher: vi.fn(async () => {
@@ -722,7 +745,7 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(warn).toHaveBeenCalledTimes(1)
     })
 
-    it('mints the new token and continues the pass when a revoke call fails', async () => {
+    it('creates the new token and continues the pass when a revoke call fails', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const { manager } = makeManager({
         registry: [
@@ -742,7 +765,33 @@ describe('LighterReadOnlyTokenManager', () => {
   })
 
   describe('records persisted without a tokenId', () => {
-    it('validates an old-shape stored record and returns it instead of re-minting', async () => {
+    it('persists a usable record when Lighter returns a non-numeric token_id', async () => {
+      const storage = createMemoryStorage()
+      const { manager } = makeManager({
+        storage,
+        fetcher: vi.fn(async () => ({
+          api_token: 'ro:7:all:no-id',
+          account_index: 7,
+          expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
+          scopes: 'all',
+          token_id: null,
+        })) as unknown as LighterTokenFetcher,
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      const stored = JSON.parse((await storage.get(STORAGE_KEY_A7)) as string)
+      expect(stored.tokenId).toBeUndefined()
+
+      // A fresh manager re-validates from storage, so an unusable `tokenId`
+      // would discard the whole record and re-create on the next read.
+      const { manager: reloaded } = makeManager({ storage })
+      expect(await reloaded.get(ADDRESS_A, 7)).toMatchObject({
+        token: 'ro:7:all:no-id',
+      })
+    })
+
+    it('validates an old-shape stored record and returns it instead of replacing it', async () => {
       const storage = createMemoryStorage()
       await seedStoredToken(storage, OLD_SHAPE_RECORD)
       const { manager, fetcher } = makeManager({ storage })

@@ -17,7 +17,7 @@ import { DEFAULT_LIGHTER_REST_URL, LIGHTER_PROVIDER_KEY } from '../constants.js'
  * Default token name persisted alongside Lighter's `tokens/create` row.
  * Lighter requires a non-empty `name` form field; the literal here is what
  * surfaces in Lighter's UI listing under `app.lighter.xyz/read-only-tokens`.
- * @public
+ * @internal
  */
 export const DEFAULT_READ_ONLY_TOKEN_NAME = 'LI.FI Perps'
 
@@ -26,7 +26,7 @@ export const DEFAULT_READ_ONLY_TOKEN_NAME = 'LI.FI Perps'
  * Lighter's opaque `ro:{accountIndex}:{scope}:{expiry}:{rand}` bearer; the
  * SDK never parses it — `expiry`/`scope`/`accountIndex` are create-time inputs
  * we keep alongside so consumers can render expiry UX without re-fetching.
- * @public
+ * @internal
  */
 export interface LighterReadOnlyToken {
   /** Opaque bearer string — never parse client-side. */
@@ -49,7 +49,7 @@ export interface LighterReadOnlyToken {
  * Lighter `POST /api/v1/tokens/create` response shape — the subset of
  * Lighter's `RespPostApiToken` the SDK consumes. Lighter documents further
  * fields (`name`, `revoked`, `sub_account_access`) the SDK does not need.
- * @public
+ * @internal
  */
 export interface LighterCreateTokenResponse {
   api_token: string
@@ -65,7 +65,7 @@ export interface LighterCreateTokenResponse {
  * endpoint. Returning a parsed {@link LighterCreateTokenResponse} keeps the
  * create code free of fetch/multipart plumbing and lets tests drop a fixture
  * in without spinning a mock server.
- * @public
+ * @internal
  */
 export type LighterTokenFetcher = (params: {
   url: string
@@ -81,7 +81,7 @@ export type LighterTokenFetcher = (params: {
  * One row of Lighter's read-only token registry, matching Lighter's
  * `ApiToken`. `name` carries the label supplied at create time, which is how
  * the SDK recognises a row it owns.
- * @public
+ * @internal
  */
 export interface LighterApiToken {
   token_id: number
@@ -96,7 +96,7 @@ export interface LighterApiToken {
 
 /**
  * Lighter `GET /api/v1/tokens` response shape, matching `RespGetApiTokens`.
- * @public
+ * @internal
  */
 export interface LighterListTokensResponse {
   code: number
@@ -107,7 +107,7 @@ export interface LighterListTokensResponse {
 /**
  * Lighter `POST /api/v1/tokens/revoke` response shape, matching Lighter's
  * `RespRevokeApiToken`.
- * @public
+ * @internal
  */
 export interface LighterRevokeTokenResponse {
   code: number
@@ -121,7 +121,7 @@ export interface LighterRevokeTokenResponse {
  * `GET /api/v1/tokens` endpoint. Injected for the same reason as
  * {@link LighterTokenFetcher}: a unit spec supplies a registry fixture
  * without a mock server.
- * @public
+ * @internal
  */
 export type LighterTokenListFetcher = (params: {
   url: string
@@ -132,7 +132,7 @@ export type LighterTokenListFetcher = (params: {
 /**
  * Function injected for the HTTP boundary against Lighter's
  * `POST /api/v1/tokens/revoke` endpoint.
- * @public
+ * @internal
  */
 export type LighterTokenRevokeFetcher = (params: {
   url: string
@@ -146,7 +146,7 @@ export type LighterTokenRevokeFetcher = (params: {
  * Storage and token-fetching defaults target the browser's local storage and
  * Lighter's mainnet REST API.
  *
- * @public
+ * @internal
  */
 export interface LighterReadOnlyTokenManagerOptions {
   storage?: StorageAdapter
@@ -173,7 +173,7 @@ export interface LighterReadOnlyTokenManagerOptions {
  * Input to the read-only-token approval flow. Extends the shared approval
  * parameters with the L1 address whose wallet authorizes token creation.
  *
- * @public
+ * @internal
  */
 export interface ApproveReadOnlyTokenInputs extends ApproveReadOnlyTokenParams {
   /** L1 wallet address that signs the create message. */
@@ -184,7 +184,7 @@ export interface ApproveReadOnlyTokenInputs extends ApproveReadOnlyTokenParams {
  * Result of approving or creating a Lighter read-only token. `config` is the
  * account-state projection callers can persist alongside the token.
  *
- * @public
+ * @internal
  */
 export interface ApproveReadOnlyTokenResult {
   token: LighterReadOnlyToken
@@ -212,7 +212,7 @@ const isLighterReadOnlyToken = (
     unknown
   >
   // Accept a record that carries no `tokenId`: rejecting one would discard a
-  // usable token and force an unnecessary re-mint.
+  // usable token and force an unnecessary replacement.
   return (
     typeof token === 'string' &&
     token.length > 0 &&
@@ -250,7 +250,7 @@ const isLiveRow = (
  * a fully compromised page — a same-origin script can still drive this manager
  * to decrypt. Blast radius is limited to reads: the token cannot sign orders
  * or move funds.
- * @public
+ * @internal
  */
 export class LighterReadOnlyTokenManager {
   private readonly storage: StorageAdapter
@@ -374,8 +374,8 @@ export class LighterReadOnlyTokenManager {
    * and persists the returned `ro:` bearer alongside its
    * `expiry`/`scope`/`accountIndex`.
    *
-   * Before the mint, the flow revokes this SDK's own stale registry rows. That
-   * pass is best-effort: a failure is logged and the mint proceeds.
+   * Before the create call, the flow revokes this SDK's own stale registry
+   * rows. That pass is best-effort: a failure is logged and the create runs.
    *
    * `authorization` MUST be a **standard** Lighter auth token — one created by
    * the account's API key (`createAuthToken` / the WASM signer), NOT an L1
@@ -420,7 +420,12 @@ export class LighterReadOnlyTokenManager {
       // `get()` looks up by, else a divergent echo orphans the token and re-creates every read.
       scope,
       accountIndex,
-      tokenId: response.token_id,
+      // Lighter declares `token_id` required but the response is unvalidated.
+      // A non-numeric id must degrade to the bearer-string match: persisting it
+      // would fail record validation and re-create the token on every read.
+      tokenId: Number.isFinite(response.token_id)
+        ? response.token_id
+        : undefined,
     }
     await this.set(address, token.accountIndex, token)
 
@@ -455,12 +460,12 @@ export class LighterReadOnlyTokenManager {
       })
       const nowSeconds = Math.floor(this.now() / 1000)
       const stale = rows
-        // A row is ours only when its name matches the name we mint under. Any
-        // other name belongs to the user or a third party and must survive.
+        // A row is ours only when its name matches the name we create rows
+        // under. Any other name belongs to the user and must survive.
         .filter((row) => row.name === DEFAULT_READ_ONLY_TOKEN_NAME)
         .filter((row) => !row.revoked)
-        // Keep the row the local store still holds: revoking it would break
-        // the reads already running against it.
+        // Keep the row the local store holds; with no stored record every owned
+        // row is stale, and a peer client's row self-heals via `retryOnRevoked`.
         .filter((row) => row.expiry <= nowSeconds || !isLiveRow(row, live))
         .sort((a, b) => a.token_id - b.token_id)
 
@@ -481,7 +486,7 @@ export class LighterReadOnlyTokenManager {
       }
     } catch (err) {
       console.warn(
-        '[lighter] could not clean up stale read-only tokens; minting anyway.',
+        '[lighter] could not clean up stale read-only tokens; creating the new one anyway.',
         err
       )
     }
@@ -493,7 +498,7 @@ export class LighterReadOnlyTokenManager {
  * `tokens/create` endpoint and returns the parsed response. Throws a
  * {@link PerpsError} with the Lighter-side body when the response is
  * non-2xx.
- * @public
+ * @internal
  */
 export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
   url,
@@ -533,7 +538,7 @@ export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
  * parameter. Lighter's OpenAPI defines no request body for this route. Throws
  * a {@link PerpsError} with the Lighter-side body when the response is
  * non-2xx.
- * @public
+ * @internal
  */
 export const defaultLighterTokenListFetcher: LighterTokenListFetcher = async ({
   url,
@@ -562,7 +567,7 @@ export const defaultLighterTokenListFetcher: LighterTokenListFetcher = async ({
  * Lighter's `tokens/revoke` endpoint, which is the content type Lighter's
  * OpenAPI declares for that route. Throws a {@link PerpsError} with the
  * Lighter-side body when the response is non-2xx.
- * @public
+ * @internal
  */
 export const defaultLighterTokenRevokeFetcher: LighterTokenRevokeFetcher =
   async ({ url, authorization, tokenId, accountIndex }) => {
