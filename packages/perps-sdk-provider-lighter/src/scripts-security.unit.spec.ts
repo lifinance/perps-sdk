@@ -15,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { buildValidatedUrl } from '../scripts/lib/validate-url.js'
 
 /**
  * Extracted createFixture function with security fix applied.
@@ -40,46 +41,17 @@ function createFixture(
   )
   return dir
 }
-/**
- * Extracted buildValidatedUrl function with the fixed implementation.
- * This mirrors the actual implementation in scripts/verify-consumer-bundlers.mjs.
- */
-function buildValidatedUrl(inputUrl: string) {
-  // Minimal path validation (Do this before new URL(inputUrl), as URL() resolves dot-segments.)
-  if (inputUrl.includes('/../') || /\/%2e%2e\//i.test(inputUrl)) {
-    throw new Error('Invalid path')
-  }
-
-  let url: URL
-  try {
-    url = new URL(inputUrl)
-  } catch {
-    throw new Error('Invalid URL')
-  }
-
-  // Protocol + host checks: the verifier only ever fetches from its own local servers
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new Error('Invalid protocol')
-  }
-
-  // Only allow localhost/127.0.0.1 since this is for local test servers
-  if (!['127.0.0.1', 'localhost'].includes(url.hostname)) {
-    throw new Error('Invalid host')
-  }
-
-  return url.href
-}
 
 describe('buildValidatedUrl - SSRF hostname validation', () => {
   it('allows 127.0.0.1 URLs', () => {
-    expect(buildValidatedUrl('http://127.0.0.1:3000/foo')).toContain(
-      '127.0.0.1'
+    expect(buildValidatedUrl('http://127.0.0.1:3000/foo')).toBe(
+      'http://127.0.0.1:3000/foo'
     )
   })
 
   it('allows localhost URLs', () => {
-    expect(buildValidatedUrl('http://localhost:3000/bar')).toContain(
-      'localhost'
+    expect(buildValidatedUrl('http://localhost:3000/bar')).toBe(
+      'http://localhost:3000/bar'
     )
   })
 
