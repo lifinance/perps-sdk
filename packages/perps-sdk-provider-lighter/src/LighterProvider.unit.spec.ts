@@ -346,6 +346,7 @@ const readOnlyTokenResponse = (apiToken: string) => ({
   account_index: STORED_API_KEY.accountIndex,
   expiry: FAR_EXPIRY_SECONDS,
   scopes: 'all',
+  token_id: 1,
 })
 
 beforeEach(() => {
@@ -374,6 +375,9 @@ beforeEach(() => {
     recorded.push({ url: u, init })
     if (u.includes('/api/v1/tokens/create')) {
       return respond(readOnlyTokenResponse('ro-readonly-lighter'))
+    }
+    if (u.includes('/api/v1/tokens?')) {
+      return respond({ code: 200, api_tokens: [] })
     }
     if (u.includes('/api/v1/account?')) {
       return respond(ACCOUNT_PAYLOAD)

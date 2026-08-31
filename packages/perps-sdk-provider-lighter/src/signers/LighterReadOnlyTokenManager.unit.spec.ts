@@ -2,9 +2,14 @@ import { createMemoryStorage, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  defaultLighterTokenListFetcher,
+  defaultLighterTokenRevokeFetcher,
+  type LighterApiToken,
   type LighterCreateTokenResponse,
   LighterReadOnlyTokenManager,
   type LighterTokenFetcher,
+  type LighterTokenListFetcher,
+  type LighterTokenRevokeFetcher,
 } from './LighterReadOnlyTokenManager.js'
 
 const ADDRESS_A: Address = '0x1111111111111111111111111111111111111111'
@@ -21,6 +26,10 @@ interface MakeManagerOptions {
   fetcherResponse?: Partial<LighterCreateTokenResponse>
   /** Override the fetcher with a Vitest-friendly mock for assertion. */
   fetcher?: LighterTokenFetcher
+  /** Rows the default list fetcher mock returns. Defaults to an empty registry. */
+  registry?: LighterApiToken[]
+  listFetcher?: LighterTokenListFetcher
+  revokeFetcher?: LighterTokenRevokeFetcher
 }
 
 const ANCHOR_NOW_MS = 1_700_000_000 * 1000
@@ -35,15 +44,68 @@ function makeManager(options: MakeManagerOptions = {}) {
       account_index: 7,
       expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
       scopes: 'all',
+      token_id: 900,
       ...options.fetcherResponse,
+    }))
+  const listFetcher: LighterTokenListFetcher =
+    options.listFetcher ??
+    vi.fn(async () => ({ code: 200, api_tokens: options.registry ?? [] }))
+  const revokeFetcher: LighterTokenRevokeFetcher =
+    options.revokeFetcher ??
+    vi.fn(async ({ tokenId }) => ({
+      code: 200,
+      token_id: tokenId,
+      revoked: true,
     }))
   const manager = new LighterReadOnlyTokenManager({
     storage,
     providerKey: options.providerKey,
     fetcher,
+    listFetcher,
+    revokeFetcher,
     now: () => options.nowMs ?? ANCHOR_NOW_MS,
   })
-  return { manager, storage, fetcher: fetcher as ReturnType<typeof vi.fn> }
+  return { manager, storage, fetcher, listFetcher, revokeFetcher }
+}
+
+const STORAGE_KEY_A7 = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`
+
+const REST_URL = 'https://mainnet.zklighter.elliot.ai'
+
+const APPROVE_INPUTS = {
+  address: ADDRESS_A,
+  accountIndex: 7,
+  expirySeconds: ANCHOR_NOW_SECONDS + 365 * 86_400,
+  scope: 'all' as const,
+}
+
+/** A LI.FI-owned, live, unrevoked registry row unless the overrides say otherwise. */
+const registryRow = (
+  overrides: Partial<LighterApiToken> & Pick<LighterApiToken, 'token_id'>
+): LighterApiToken => ({
+  api_token: `ro:7:all:${overrides.token_id}`,
+  name: 'LI.FI Perps',
+  account_index: 7,
+  expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
+  sub_account_access: true,
+  revoked: false,
+  scopes: 'read.*',
+  ...overrides,
+})
+
+/** Record shape a client persisted while the SDK still discarded `token_id`. */
+const OLD_SHAPE_RECORD = {
+  token: 'ro:7:all:no-token-id',
+  expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
+  scope: 'all',
+  accountIndex: 7,
+}
+
+const seedStoredToken = async (
+  storage: StorageAdapter,
+  record: Record<string, unknown>
+): Promise<void> => {
+  await storage.set(STORAGE_KEY_A7, JSON.stringify(record))
 }
 
 describe('LighterReadOnlyTokenManager', () => {
@@ -89,6 +151,7 @@ describe('LighterReadOnlyTokenManager', () => {
         expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
         scope: 'all',
         accountIndex: 7,
+        tokenId: 900,
       })
     })
 
@@ -186,6 +249,7 @@ describe('LighterReadOnlyTokenManager', () => {
       try {
         const manager = new LighterReadOnlyTokenManager({
           storage: createMemoryStorage(),
+          listFetcher: async () => ({ code: 200, api_tokens: [] }),
           now: () => ANCHOR_NOW_MS,
         })
         await expect(
@@ -521,6 +585,293 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(
         await storage.get(`lifi:perps:lighter:rotoken:${ADDRESS_A}:7`)
       ).toBeNull()
+    })
+  })
+
+  describe('stale-token cleanup in approve()', () => {
+    it('lists the registry with the account index and the standard auth token', async () => {
+      const { manager, listFetcher } = makeManager()
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(listFetcher).toHaveBeenCalledWith({
+        url: `${REST_URL}/api/v1/tokens`,
+        authorization: STD_TOKEN,
+        accountIndex: 7,
+      })
+    })
+
+    it('persists the token_id Lighter assigns to the new row', async () => {
+      const { manager, storage } = makeManager({
+        fetcherResponse: { token_id: 4321 },
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      const stored = JSON.parse((await storage.get(STORAGE_KEY_A7)) as string)
+      expect(stored.tokenId).toBe(4321)
+    })
+
+    it('revokes nothing when the registry holds no LI.FI rows', async () => {
+      const { manager, revokeFetcher } = makeManager({ registry: [] })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).not.toHaveBeenCalled()
+    })
+
+    it('revokes expired LI.FI rows in token_id order', async () => {
+      const { manager, revokeFetcher } = makeManager({
+        registry: [
+          registryRow({ token_id: 12, expiry: ANCHOR_NOW_SECONDS - 1 }),
+          registryRow({ token_id: 11, expiry: ANCHOR_NOW_SECONDS - 60 }),
+        ],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).toHaveBeenCalledTimes(2)
+      expect(revokeFetcher).toHaveBeenNthCalledWith(1, {
+        url: `${REST_URL}/api/v1/tokens/revoke`,
+        authorization: STD_TOKEN,
+        tokenId: 11,
+        accountIndex: 7,
+      })
+      expect(revokeFetcher).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ tokenId: 12 })
+      )
+    })
+
+    it('never revokes the row the local store currently holds', async () => {
+      const storage = createMemoryStorage()
+      await seedStoredToken(storage, {
+        ...OLD_SHAPE_RECORD,
+        token: 'ro:7:all:live',
+        tokenId: 42,
+      })
+      const { manager, revokeFetcher } = makeManager({
+        storage,
+        registry: [
+          registryRow({ token_id: 40 }),
+          registryRow({ token_id: 41 }),
+          registryRow({ token_id: 42, api_token: 'ro:7:all:live' }),
+        ],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).toHaveBeenCalledTimes(2)
+      expect(revokeFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 40 })
+      )
+      expect(revokeFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 41 })
+      )
+      expect(revokeFetcher).not.toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 42 })
+      )
+    })
+
+    it('never revokes a row whose name is not the LI.FI token name', async () => {
+      const { manager, revokeFetcher } = makeManager({
+        registry: [
+          registryRow({ token_id: 50, name: 'My own script' }),
+          registryRow({ token_id: 51, name: 'Third-party terminal' }),
+          registryRow({ token_id: 52, name: '' }),
+        ],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).not.toHaveBeenCalled()
+    })
+
+    it('skips a row Lighter already marked revoked', async () => {
+      const { manager, revokeFetcher } = makeManager({
+        registry: [
+          registryRow({
+            token_id: 60,
+            revoked: true,
+            expiry: ANCHOR_NOW_SECONDS - 60,
+          }),
+          registryRow({ token_id: 61, expiry: ANCHOR_NOW_SECONDS - 60 }),
+        ],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).toHaveBeenCalledTimes(1)
+      expect(revokeFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 61 })
+      )
+    })
+
+    it('mints the new token when the list call fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { manager, revokeFetcher } = makeManager({
+        listFetcher: vi.fn(async () => {
+          throw new Error('tokens list unavailable')
+        }),
+      })
+
+      const result = await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(result.token.token).toBe('ro:7:all:1731536000:abc')
+      expect(revokeFetcher).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
+
+    it('mints the new token and continues the pass when a revoke call fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { manager } = makeManager({
+        registry: [
+          registryRow({ token_id: 70, expiry: ANCHOR_NOW_SECONDS - 60 }),
+          registryRow({ token_id: 71, expiry: ANCHOR_NOW_SECONDS - 60 }),
+        ],
+        revokeFetcher: vi.fn(async () => {
+          throw new Error('revoke rejected')
+        }),
+      })
+
+      const result = await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(result.token.token).toBe('ro:7:all:1731536000:abc')
+      expect(warn).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('records persisted without a tokenId', () => {
+    it('validates an old-shape stored record and returns it instead of re-minting', async () => {
+      const storage = createMemoryStorage()
+      await seedStoredToken(storage, OLD_SHAPE_RECORD)
+      const { manager, fetcher } = makeManager({ storage })
+
+      const found = await manager.get(ADDRESS_A, 7)
+
+      expect(found?.token).toBe('ro:7:all:no-token-id')
+      expect(found?.tokenId).toBeUndefined()
+      expect(fetcher).not.toHaveBeenCalled()
+      // `readValidatedRecord` deletes any record it rejects, so a surviving
+      // row is the proof that the validator accepted the old shape.
+      expect(await storage.get(STORAGE_KEY_A7)).not.toBeNull()
+    })
+
+    it('rejects a stored record whose tokenId is not a finite number', async () => {
+      const storage = createMemoryStorage()
+      await seedStoredToken(storage, {
+        ...OLD_SHAPE_RECORD,
+        tokenId: 'not-a-number',
+      })
+      const { manager } = makeManager({ storage })
+
+      expect(await manager.get(ADDRESS_A, 7)).toBeUndefined()
+    })
+
+    it('identifies the live row by its bearer string when the record has no tokenId', async () => {
+      const storage = createMemoryStorage()
+      await seedStoredToken(storage, OLD_SHAPE_RECORD)
+      const { manager, revokeFetcher } = makeManager({
+        storage,
+        registry: [
+          registryRow({ token_id: 80 }),
+          registryRow({ token_id: 81, api_token: 'ro:7:all:no-token-id' }),
+        ],
+      })
+
+      await manager.approve(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(revokeFetcher).toHaveBeenCalledTimes(1)
+      expect(revokeFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenId: 80 })
+      )
+    })
+  })
+
+  describe('default list and revoke fetchers', () => {
+    it('sends the account index as a query parameter and no body on the list GET', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ code: 200, api_tokens: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+      )
+
+      const result = await defaultLighterTokenListFetcher({
+        url: 'https://lighter.test/api/v1/tokens',
+        authorization: STD_TOKEN,
+        accountIndex: 7,
+      })
+
+      expect(result.api_tokens).toEqual([])
+      const call = fetchSpy.mock.calls[0]
+      expect(String(call?.[0])).toBe(
+        'https://lighter.test/api/v1/tokens?account_index=7'
+      )
+      expect(call?.[1]?.body).toBeUndefined()
+      expect(new Headers(call?.[1]?.headers).get('authorization')).toBe(
+        STD_TOKEN
+      )
+    })
+
+    it('posts the revoke body as application/x-www-form-urlencoded', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(
+          async () =>
+            new Response(
+              JSON.stringify({ code: 200, token_id: 11, revoked: true }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            )
+        )
+
+      const result = await defaultLighterTokenRevokeFetcher({
+        url: 'https://lighter.test/api/v1/tokens/revoke',
+        authorization: STD_TOKEN,
+        tokenId: 11,
+        accountIndex: 7,
+      })
+
+      expect(result.revoked).toBe(true)
+      const init = fetchSpy.mock.calls[0]?.[1]
+      expect(init?.method).toBe('POST')
+      const headers = new Headers(init?.headers)
+      expect(headers.get('authorization')).toBe(STD_TOKEN)
+      expect(headers.get('content-type')).toBe(
+        'application/x-www-form-urlencoded'
+      )
+      expect(init?.body).toBeInstanceOf(URLSearchParams)
+      expect(String(init?.body)).toBe('token_id=11&account_index=7')
+    })
+
+    it('throws a PerpsError when the list call returns a non-2xx response', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () => new Response('bad account', { status: 400 })
+      )
+
+      await expect(
+        defaultLighterTokenListFetcher({
+          url: 'https://lighter.test/api/v1/tokens',
+          authorization: STD_TOKEN,
+          accountIndex: 7,
+        })
+      ).rejects.toThrow(/Lighter tokens returned 400/)
+    })
+
+    it('throws a PerpsError when the revoke call returns a non-2xx response', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () => new Response('unknown token', { status: 400 })
+      )
+
+      await expect(
+        defaultLighterTokenRevokeFetcher({
+          url: 'https://lighter.test/api/v1/tokens/revoke',
+          authorization: STD_TOKEN,
+          tokenId: 11,
+          accountIndex: 7,
+        })
+      ).rejects.toThrow(/Lighter tokens\/revoke returned 400/)
     })
   })
 })
