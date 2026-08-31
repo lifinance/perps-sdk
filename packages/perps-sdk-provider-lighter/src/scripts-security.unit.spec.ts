@@ -1,8 +1,7 @@
 /**
- * Security tests for path traversal vulnerability mitigation in scripts/verify-consumer-bundlers.mjs
+ * Security tests for scripts/verify-consumer-bundlers.mjs.
  *
- * These tests verify that the createFixture function properly validates paths
- * to prevent path traversal attacks that could write files outside the intended directory.
+ * These tests verify path and URL validation against traversal and SSRF attacks.
  */
 
 import {
@@ -16,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { buildValidatedUrl } from '../scripts/lib/validate-url.js'
 
 /**
  * Extracted createFixture function with security fix applied.
@@ -41,6 +41,40 @@ function createFixture(
   )
   return dir
 }
+
+describe('buildValidatedUrl - SSRF hostname validation', () => {
+  it('allows 127.0.0.1 URLs', () => {
+    expect(buildValidatedUrl('http://127.0.0.1:3000/foo')).toBe(
+      'http://127.0.0.1:3000/foo'
+    )
+  })
+
+  it('allows localhost URLs', () => {
+    expect(buildValidatedUrl('http://localhost:3000/bar')).toBe(
+      'http://localhost:3000/bar'
+    )
+  })
+
+  it('rejects external hostnames', () => {
+    expect(() => buildValidatedUrl('http://evil.com/x')).toThrow('Invalid host')
+  })
+
+  it('rejects file protocol', () => {
+    expect(() => buildValidatedUrl('file:///etc/passwd')).toThrow(
+      'Invalid protocol'
+    )
+  })
+
+  it('rejects path traversal', () => {
+    expect(() => buildValidatedUrl('http://127.0.0.1/foo/../bar')).toThrow(
+      'Invalid path'
+    )
+  })
+
+  it('rejects malformed URLs', () => {
+    expect(() => buildValidatedUrl('not-a-url')).toThrow('Invalid URL')
+  })
+})
 
 describe('createFixture - Path Traversal Security Tests', () => {
   let testRoot: string
