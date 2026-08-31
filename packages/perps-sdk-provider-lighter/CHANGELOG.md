@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 17.1.0
+
+### Minor Changes
+
+- [#402](https://github.com/lifinance/perps-sdk/pull/402) [`03b0343`](https://github.com/lifinance/perps-sdk/commit/03b03436a319b9473354a0c96b748b7060f53ad2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter read-only token approval now revokes the SDK's own stale registry rows before it creates a replacement, and persists the `token_id` Lighter assigns to each new row.
+
 ## 17.0.1
 
 ### Patch Changes
