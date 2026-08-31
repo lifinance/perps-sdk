@@ -146,6 +146,8 @@ export enum LiquidityRole {
  */
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
+  /** Deregisters an agent (API wallet) to free one of the account's agent slots. HyperCore performs it through the approve-agent typed data with a matching name, so it carries no distinct primary type. */
+  REVOKE_AGENT = 'revokeAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
   APPROVE_INTEGRATOR = 'approveIntegrator',
   SET_REFERRAL = 'setReferrer',
