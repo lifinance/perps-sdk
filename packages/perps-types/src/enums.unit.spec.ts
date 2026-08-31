@@ -212,6 +212,11 @@ describe('ActionType.SIWE_LOGIN', () => {
     expect(ActionType.SYNC_FEE_ATTRIBUTION).toBe('syncFeeAttribution')
   })
 
+  it('REVOKE_AGENT carries wire value "revokeAgent", distinct from APPROVE_AGENT', () => {
+    expect(ActionType.REVOKE_AGENT).toBe('revokeAgent')
+    expect(ActionType.REVOKE_AGENT).not.toBe(ActionType.APPROVE_AGENT)
+  })
+
   it('does not collide with any existing ActionType value', () => {
     const values = Object.values(ActionType)
     expect(new Set(values).size).toBe(values.length)
