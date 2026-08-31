@@ -1,8 +1,7 @@
 /**
- * Security tests for path traversal vulnerability mitigation in scripts/verify-consumer-bundlers.mjs
+ * Security tests for scripts/verify-consumer-bundlers.mjs.
  *
- * These tests verify that the createFixture function properly validates paths
- * to prevent path traversal attacks that could write files outside the intended directory.
+ * These tests verify path and URL validation against traversal and SSRF attacks.
  */
 
 import {
@@ -41,6 +40,69 @@ function createFixture(
   )
   return dir
 }
+/**
+ * Extracted buildValidatedUrl function with the fixed implementation.
+ * This mirrors the actual implementation in scripts/verify-consumer-bundlers.mjs.
+ */
+function buildValidatedUrl(inputUrl: string) {
+  // Minimal path validation (Do this before new URL(inputUrl), as URL() resolves dot-segments.)
+  if (inputUrl.includes('/../') || /\/%2e%2e\//i.test(inputUrl)) {
+    throw new Error('Invalid path')
+  }
+
+  let url: URL
+  try {
+    url = new URL(inputUrl)
+  } catch {
+    throw new Error('Invalid URL')
+  }
+
+  // Protocol + host checks: the verifier only ever fetches from its own local servers
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('Invalid protocol')
+  }
+
+  // Only allow localhost/127.0.0.1 since this is for local test servers
+  if (!['127.0.0.1', 'localhost'].includes(url.hostname)) {
+    throw new Error('Invalid host')
+  }
+
+  return url.href
+}
+
+describe('buildValidatedUrl - SSRF hostname validation', () => {
+  it('allows 127.0.0.1 URLs', () => {
+    expect(buildValidatedUrl('http://127.0.0.1:3000/foo')).toContain(
+      '127.0.0.1'
+    )
+  })
+
+  it('allows localhost URLs', () => {
+    expect(buildValidatedUrl('http://localhost:3000/bar')).toContain(
+      'localhost'
+    )
+  })
+
+  it('rejects external hostnames', () => {
+    expect(() => buildValidatedUrl('http://evil.com/x')).toThrow('Invalid host')
+  })
+
+  it('rejects file protocol', () => {
+    expect(() => buildValidatedUrl('file:///etc/passwd')).toThrow(
+      'Invalid protocol'
+    )
+  })
+
+  it('rejects path traversal', () => {
+    expect(() => buildValidatedUrl('http://127.0.0.1/foo/../bar')).toThrow(
+      'Invalid path'
+    )
+  })
+
+  it('rejects malformed URLs', () => {
+    expect(() => buildValidatedUrl('not-a-url')).toThrow('Invalid URL')
+  })
+})
 
 describe('createFixture - Path Traversal Security Tests', () => {
   let testRoot: string
