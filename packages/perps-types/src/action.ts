@@ -512,6 +512,19 @@ export interface ApproveAgentParams {
 }
 
 /**
+ * Parameters for deregistering an account agent.
+ *
+ * @public
+ */
+export interface RevokeAgentParams {
+  address: Address
+  /** The name the venue holds for the agent. HyperCore identifies a named API
+   * wallet by name, not by address, so a revoke that omits the exact stored
+   * name leaves the slot occupied. */
+  name: string
+}
+
+/**
  * Parameters for selecting a provider account mode by its wire value.
  *
  * @public
@@ -592,6 +605,7 @@ export interface ApproveReadOnlyTokenParams {
  */
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
+  [ActionType.REVOKE_AGENT]: RevokeAgentParams
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
   [ActionType.APPROVE_INTEGRATOR]: Record<string, never>
   [ActionType.SET_REFERRAL]: Record<string, never>
@@ -619,6 +633,7 @@ export interface ActionParamsMap {
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
   [ActionType.META_ONBOARD]: OnboardParams
   [ActionType.META_CREATE_REFERRAL_CODE]: CreateReferralCodeParams
+  [ActionType.SYNC_FEE_ATTRIBUTION]: Record<string, never>
 }
 
 /**

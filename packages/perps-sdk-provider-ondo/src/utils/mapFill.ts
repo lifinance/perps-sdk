@@ -29,6 +29,7 @@ const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
 export const mapFill = (fill: OndoFill, market: MarketDisplay): Fill => ({
   id: fill.id,
   orderId: fill.orderId,
+  clientOrderId: fill.clientOrderId,
   market,
   side: fill.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
   size: fill.size,

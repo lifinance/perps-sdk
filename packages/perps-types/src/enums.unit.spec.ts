@@ -196,7 +196,7 @@ describe('SigningMethod credential members', () => {
   })
 })
 
-describe('ActionType.SIWE_LOGIN', () => {
+describe('ActionType wire values', () => {
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
   })
@@ -206,6 +206,15 @@ describe('ActionType.SIWE_LOGIN', () => {
     expect(ActionType.ACCEPT_PROVIDER_TERMS).not.toBe(
       ActionType.META_ACCEPT_TERMS
     )
+  })
+
+  it('SYNC_FEE_ATTRIBUTION carries wire value "syncFeeAttribution"', () => {
+    expect(ActionType.SYNC_FEE_ATTRIBUTION).toBe('syncFeeAttribution')
+  })
+
+  it('REVOKE_AGENT carries wire value "revokeAgent", distinct from APPROVE_AGENT', () => {
+    expect(ActionType.REVOKE_AGENT).toBe('revokeAgent')
+    expect(ActionType.REVOKE_AGENT).not.toBe(ActionType.APPROVE_AGENT)
   })
 
   it('does not collide with any existing ActionType value', () => {

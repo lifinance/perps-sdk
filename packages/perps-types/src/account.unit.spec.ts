@@ -264,6 +264,35 @@ describe('explorerLink on on-chain item types', () => {
   })
 })
 
+describe('counterpartyAddress on DepositActivity', () => {
+  it('accepts a source address the venue reports', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'ondo',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: 'USDC',
+      amount: '1',
+      counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
+    }
+    expect(deposit.counterpartyAddress).toBe(
+      '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF'
+    )
+  })
+
+  it('treats counterpartyAddress as optional (absent ⇒ venue names no source)', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: 'USDC',
+      amount: '1',
+    }
+    expect(deposit.counterpartyAddress).toBeUndefined()
+  })
+})
+
 describe('ActivityType.TRANSFER enum member', () => {
   it('has wire value "TRANSFER"', () => {
     expect(ActivityType.TRANSFER).toBe('TRANSFER')
@@ -454,6 +483,28 @@ const BASE_FILL: Fill = {
   classification: FillClassification.OPENED_LONG,
   createdAt: '2026-05-07T12:00:00.000Z',
 }
+
+describe('Fill leverage', () => {
+  it('accepts a numeric multiple', () => {
+    const fill: Fill = { ...BASE_FILL, leverage: 10 }
+
+    expect(fill.leverage).toBe(10)
+  })
+
+  it('rejects a leverage the venue reports as a string', () => {
+    const fill: Fill = {
+      ...BASE_FILL,
+      // @ts-expect-error leverage is a numeric multiple, not a decimal string
+      leverage: '10',
+    }
+
+    expect(fill.id).toBe('fill-1')
+  })
+
+  it('omits leverage when the venue reports none on the fill', () => {
+    expect(BASE_FILL.leverage).toBeUndefined()
+  })
+})
 
 describe('Fee', () => {
   it('accepts a fee denominated in an asset other than the withdrawn one', () => {

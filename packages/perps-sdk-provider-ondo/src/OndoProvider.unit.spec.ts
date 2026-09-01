@@ -481,6 +481,12 @@ describe('OndoProvider — `type` field', () => {
       ActionType.SET_REFERRAL
     )
   })
+
+  it('does not declare SYNC_FEE_ATTRIBUTION as an internal setup action', () => {
+    expect(ondoProvider().internalSetupActions).not.toContain(
+      ActionType.SYNC_FEE_ATTRIBUTION
+    )
+  })
 })
 
 describe('OndoProvider — order formatting and liquidation surface', () => {
@@ -1204,6 +1210,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         type: ActivityType.DEPOSIT,
         asset: 'USDC',
         amount: '1000.00',
+        counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
         explorerLink: 'https://scan.li.fi/tx/0xabc123',
       },
     ])

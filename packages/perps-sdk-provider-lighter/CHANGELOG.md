@@ -1,5 +1,41 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 17.2.0
+
+### Minor Changes
+
+- [#408](https://github.com/lifinance/perps-sdk/pull/408) [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `leverage` multiple to `Fill`, and populate it in the Lighter fill mapper from the venue's pre-trade initial margin fraction.
+
+### Patch Changes
+
+- [#405](https://github.com/lifinance/perps-sdk/pull/405) [`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve the Lighter account tier from the `/accountLimits` tier string, so a `plus` account reports its tier instead of `null`. `LighterAccountConfig` gains the optional `userTierName`.
+
+- [#409](https://github.com/lifinance/perps-sdk/pull/409) [`b0c8225`](https://github.com/lifinance/perps-sdk/commit/b0c8225bed5a67297e210048a503fbc106ef522b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Scope stored Lighter API-key records to the instance that wrote them. Every
+  record now names its provider instance, and a record any other instance reads
+  is discarded and evicted, so the default `lighter` instance never signs with
+  `lighter-rh` key material left in the un-namespaced storage slot. Records
+  written before this change name no instance, so the affected browsers register
+  a fresh API key on the next `prepareAccount` call. The registered-key freshness
+  guard also rejects a signature when the venue reports no key in the stored
+  slot.
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
+## 17.1.0
+
+### Minor Changes
+
+- [#402](https://github.com/lifinance/perps-sdk/pull/402) [`03b0343`](https://github.com/lifinance/perps-sdk/commit/03b03436a319b9473354a0c96b748b7060f53ad2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter read-only token approval now revokes the SDK's own stale registry rows before it creates a replacement, and persists the `token_id` Lighter assigns to each new row.
+
+## 17.0.1
+
+### Patch Changes
+
+- [#394](https://github.com/lifinance/perps-sdk/pull/394) [`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain the Hyperliquid builder-fee amount and client order ID on `Fill`. `HlUserFill` now declares the optional `builderFee` and `cloid` fields `userFills` returns, and `mapFill` projects them into the new optional `Fill.builderFee` (a `Fee`, so the builder portion carries its own token — the same token Hyperliquid charges the total fee in) and `Fill.clientOrderId`. Each stays `undefined` when the wire payload omits it, so a consumer can separate the builder portion of a fill fee from the provider portion and join a fill back to the order that produced it. Adds `ActionType.SYNC_FEE_ATTRIBUTION` with wire value `syncFeeAttribution` and an empty params contract; it is never a `Provider.setup` or `Provider.options` descriptor, and each provider account-config mapper rejects it.
+
+- Updated dependencies [[`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412)]:
+  - @lifi/perps-types@11.1.0
+
 ## 17.0.0
 
 ### Major Changes

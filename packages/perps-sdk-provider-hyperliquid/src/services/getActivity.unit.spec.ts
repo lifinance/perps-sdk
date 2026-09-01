@@ -55,6 +55,93 @@ describe('getActivity', () => {
     }
   })
 
+  it('omits time bounds by default and returns older ledger and funding history', async () => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
+
+    const result = await getActivity(ctx, { address: ADDRESS })
+
+    expect(mock.requests.map(({ body }) => body)).toEqual([
+      { type: 'userNonFundingLedgerUpdates', user: ADDRESS },
+      { type: 'userFunding', user: ADDRESS },
+    ])
+    expect(result.items.map(({ id }) => id)).toEqual([
+      '0xdep1',
+      'funding:BTC:2024-01-01T00:00:00.000Z',
+    ])
+  })
+
+  it('returns the newest page when unbounded history exceeds the venue row cap', async () => {
+    const firstTime = 1_700_000_000_000
+    const fundingRows: HlUserFunding = Array.from(
+      { length: 501 },
+      (_, index) => ({
+        ...HL_USER_FUNDING[0],
+        time: firstTime + index,
+        hash: `0xfund${index}`,
+      })
+    )
+    const mock = installInfoFetchMock(
+      { ...baseResponses, userFunding: fundingRows },
+      HL_MARKETS
+    )
+    restore = mock.restore
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.FUNDING],
+      limit: 200,
+    })
+
+    expect(mock.requests[0]?.body).toEqual({
+      type: 'userFunding',
+      user: ADDRESS,
+    })
+    expect(result.items[0]?.timestamp).toBe(
+      new Date(firstTime + 500).toISOString()
+    )
+    expect(result.items.at(-1)?.timestamp).toBe(
+      new Date(firstTime + 301).toISOString()
+    )
+    expect(result.pagination.hasMore).toBe(true)
+  })
+
+  it.each([
+    {
+      label: 'startTime',
+      params: { startTime: 123 },
+      expected: { startTime: 123 },
+    },
+    {
+      label: 'startTime and endTime',
+      params: { startTime: 123, endTime: 456 },
+      expected: { startTime: 123, endTime: 456 },
+    },
+    {
+      label: 'endTime',
+      params: { endTime: 456 },
+      expected: { startTime: 0, endTime: 456 },
+    },
+  ])('forwards caller-supplied $label unchanged', async ({
+    params,
+    expected,
+  }) => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
+
+    await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.FUNDING],
+      ...params,
+    })
+
+    expect(mock.requests[0]?.body).toEqual({
+      type: 'userFunding',
+      user: ADDRESS,
+      ...expected,
+    })
+  })
+
   it('maps funding activity for a known delisted market', async () => {
     ;({ restore } = installInfoFetchMock(
       {
@@ -129,8 +216,9 @@ describe('getActivity', () => {
     )
   })
 
-  it('uses cursor to upper-bound results and emits a next cursor from the tail timestamp', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
+  it('uses the cursor only to filter results and emits a next cursor from the tail timestamp', async () => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
 
     const cursor = '1900000000000' // far future, includes both items
     const result = await getActivity(ctx, {
@@ -138,6 +226,10 @@ describe('getActivity', () => {
       cursor,
     })
 
+    expect(mock.requests.map(({ body }) => body)).toEqual([
+      { type: 'userNonFundingLedgerUpdates', user: ADDRESS },
+      { type: 'userFunding', user: ADDRESS },
+    ])
     expect(result.items).toHaveLength(2)
     expect(result.pagination.cursor).toBe(
       String(new Date(result.items[1].timestamp).getTime())

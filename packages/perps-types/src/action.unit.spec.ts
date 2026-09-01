@@ -10,6 +10,7 @@ import type {
   HmacActionStep,
   HmacSignedActionStep,
   PlaceOrderParams,
+  RevokeAgentParams,
   SessionActionStep,
   SignedActionStep,
   SiweActionStep,
@@ -146,6 +147,36 @@ describe('ApproveReadOnlyTokenParams', () => {
     }
 
     expect(params.accountIndex).toBe(1)
+  })
+})
+
+describe('RevokeAgentParams', () => {
+  it('carries the agent address and the name the venue holds for it', () => {
+    const params: RevokeAgentParams = {
+      address: '0x1234567890123456789012345678901234567890',
+      name: 'third-party-terminal',
+    }
+
+    expect(params.name).toBe('third-party-terminal')
+  })
+
+  it('requires the name — an address alone does not identify a named API wallet', () => {
+    // @ts-expect-error — name is required; HyperCore revokes by name
+    const params: RevokeAgentParams = {
+      address: '0x1234567890123456789012345678901234567890',
+    }
+
+    expect(params.address).toBe('0x1234567890123456789012345678901234567890')
+  })
+
+  it('is wired through ActionParamsMap on REVOKE_AGENT', () => {
+    type Resolved = ActionParamsMap[ActionType.REVOKE_AGENT]
+    const params: Resolved = {
+      address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+      name: 'lifi-agent valid_until 1800000000000',
+    }
+
+    expect(params.address).toBe('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd')
   })
 })
 

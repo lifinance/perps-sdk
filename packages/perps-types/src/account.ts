@@ -260,6 +260,24 @@ export interface Fill {
   filledSize?: string
   /** Absent when the venue reports no fee for the fill. */
   fee?: Fee
+  /**
+   * Portion of `fee` the venue reports as the builder portion, denominated in
+   * its own asset. Absent when the venue reports no builder portion.
+   */
+  builderFee?: Fee
+  /**
+   * Client order ID of the order that produced the fill, as the venue echoes
+   * it. Absent when the order carried none or the venue omits it.
+   */
+  clientOrderId?: string
+  /**
+   * Leverage the account had set on the fill's market at the moment the venue
+   * executed the fill, as a numeric multiple (`10` means 10x). Absent when the
+   * venue reports no leverage on its fill payload. Unlike `Position.leverage`
+   * this field carries no fallback: a provider omits it rather than substitute
+   * a sentinel value.
+   */
+  leverage?: number
   realizedPnl?: string | null
   startPosition?: string
   classification: FillClassification
@@ -319,6 +337,11 @@ export interface DepositActivity extends BaseActivity {
    */
   asset: string
   amount: string
+  /**
+   * Address the deposited funds came from, as the venue reports it. Absent
+   * when the venue's deposit payload names no source address.
+   */
+  counterpartyAddress?: string
   /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
 }
@@ -526,7 +549,14 @@ export interface LighterAccountConfig {
    */
   apiKeyIndex?: number
   apiKeyRegistered: boolean
+  /** Lighter `account_type`. Upstream documents no integer for any tier. */
   accountType: number
+  /**
+   * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
+   * `changeAccountTier` accepts. Absent on an unauthenticated read, which
+   * fetches no limits.
+   */
+  userTierName?: string
   /** Lighter `account_trading_mode`: 0 = Classic/Simple, 1 = Unified. */
   accountTradingMode: number
   /**

@@ -11,8 +11,12 @@ import {
   OrderType,
 } from '@lifi/perps-types'
 import Big from 'big.js'
-import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
+import {
+  LIGHTER_FEE_TICK_SCALE,
+  LIGHTER_IMF_PERCENT_SCALE,
+} from '../constants.js'
 import type { LtTrade } from '../types/index.js'
+import { leverageFromImf } from './mapPosition.js'
 
 /**
  * Fee charged on a fill, in the market's quote asset. Lighter publishes the
@@ -34,6 +38,18 @@ const tickToFeeAmount = (
     .times(new Big(ownTick).plus(integratorTick ?? 0))
     .div(LIGHTER_FEE_TICK_SCALE)
     .toFixed()
+
+/**
+ * Display leverage the viewer had set on the market when the trade executed.
+ * Lighter reports it as the pre-trade initial margin fraction, an integer
+ * percent on `LIGHTER_IMF_PERCENT_SCALE`: `500` is 5.00%, so 20x. Returns
+ * `undefined` when the row omits the fraction. Lighter declares the fraction a
+ * `StrictInt`, so the scale division is exact and `toFixed()` loses nothing.
+ */
+const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
+  imf === undefined
+    ? undefined
+    : leverageFromImf(new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed())
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
@@ -101,6 +117,9 @@ export const mapFill = (
   const integratorFeeTick = isMaker
     ? trade.integrator_maker_fee
     : trade.integrator_taker_fee
+  const imfBefore = isMaker
+    ? trade.maker_initial_margin_fraction_before
+    : trade.taker_initial_margin_fraction_before
 
   return {
     id: trade.trade_id.toString(),
@@ -124,6 +143,7 @@ export const mapFill = (
             ),
             asset: market.quoteAsset.displaySymbol,
           },
+    leverage: leverageFromTradeImf(imfBefore),
     realizedPnl: deriveRealizedPnl(
       startPosition,
       entryQuoteBefore,

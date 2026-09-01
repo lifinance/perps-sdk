@@ -146,6 +146,8 @@ export enum LiquidityRole {
  */
 export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
+  /** Deregisters an agent (API wallet) to free one of the account's agent slots. HyperCore performs it through the approve-agent typed data with a matching name, so it carries no distinct primary type. */
+  REVOKE_AGENT = 'revokeAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
   APPROVE_INTEGRATOR = 'approveIntegrator',
   SET_REFERRAL = 'setReferrer',
@@ -177,6 +179,8 @@ export enum ActionType {
   META_ONBOARD = 'metaOnboard',
   /** Provider-independent: reserves the shareable internal referral code an address owns. */
   META_CREATE_REFERRAL_CODE = 'metaCreateReferralCode',
+  /** Never projected on `Provider.setup` or `Provider.options`, and never offered as a user-facing trading action. */
+  SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }
 
 /** Price relation that activates a trigger order. @public */

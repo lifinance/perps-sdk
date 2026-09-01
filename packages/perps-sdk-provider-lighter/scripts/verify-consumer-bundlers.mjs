@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evaluateClientGraph } from './lib/evaluate-client-graph.js'
+import { buildValidatedUrl } from './lib/validate-url.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const fixtureSources = join(packageRoot, 'test', 'consumer')
@@ -165,24 +166,6 @@ const assertProbe = (probe) => {
     probe.generateApiKeyError === undefined,
     `GenerateAPIKey reported ${probe.generateApiKeyError}`
   )
-}
-
-function buildValidatedUrl(inputUrl) {
-  // Minimal path validation
-  if (inputUrl.includes('/../') || /\/%2e%2e\//i.test(inputUrl)) {
-    throw new Error('Invalid path')
-  }
-  let url
-  try {
-    url = new URL(inputUrl)
-  } catch {
-    throw new Error('Invalid URL')
-  }
-  // Protocol check: the verifier only ever fetches from its own local servers
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new Error('Invalid protocol')
-  }
-  return url.href
 }
 
 /** Re-fetch a served asset to check its media type and bytes. */

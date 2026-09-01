@@ -71,6 +71,7 @@ function projectOndoDescriptor(
       }
 
     case ActionType.APPROVE_AGENT:
+    case ActionType.REVOKE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
     case ActionType.APPROVE_INTEGRATOR:
     case ActionType.ACCOUNT_MODE:
@@ -93,6 +94,7 @@ function projectOndoDescriptor(
     case ActionType.META_ACCEPT_TERMS:
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
+    case ActionType.SYNC_FEE_ATTRIBUTION:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Ondo account-config mapper has no projection for descriptor type ` +

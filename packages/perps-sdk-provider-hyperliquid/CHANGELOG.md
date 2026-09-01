@@ -1,5 +1,31 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 10.1.2
+
+### Patch Changes
+
+- [#411](https://github.com/lifinance/perps-sdk/pull/411) [`87328f4`](https://github.com/lifinance/perps-sdk/commit/87328f4a5acd6f4b035bd6a7d848eebc6b8deee0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Return complete Hyperliquid funding and ledger history when callers omit time bounds.
+
+## 10.1.1
+
+### Patch Changes
+
+- [#406](https://github.com/lifinance/perps-sdk/pull/406) [`96cc05e`](https://github.com/lifinance/perps-sdk/commit/96cc05ef4ee6bceec72c5abb94ff79d896e45b07) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Project a `REVOKE_AGENT` setup descriptor to `values: []` instead of throwing.
+
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
+## 10.1.0
+
+### Minor Changes
+
+- [#394](https://github.com/lifinance/perps-sdk/pull/394) [`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain the Hyperliquid builder-fee amount and client order ID on `Fill`. `HlUserFill` now declares the optional `builderFee` and `cloid` fields `userFills` returns, and `mapFill` projects them into the new optional `Fill.builderFee` (a `Fee`, so the builder portion carries its own token — the same token Hyperliquid charges the total fee in) and `Fill.clientOrderId`. Each stays `undefined` when the wire payload omits it, so a consumer can separate the builder portion of a fill fee from the provider portion and join a fill back to the order that produced it. Adds `ActionType.SYNC_FEE_ATTRIBUTION` with wire value `syncFeeAttribution` and an empty params contract; it is never a `Provider.setup` or `Provider.options` descriptor, and each provider account-config mapper rejects it.
+
+### Patch Changes
+
+- Updated dependencies [[`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412)]:
+  - @lifi/perps-types@11.1.0
+
 ## 10.0.0
 
 ### Major Changes

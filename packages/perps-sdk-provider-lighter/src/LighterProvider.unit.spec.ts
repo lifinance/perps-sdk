@@ -8,9 +8,11 @@ import {
   ROBINHOOD_USDG,
 } from '@lifi/perps-sdk'
 import {
+  type AccountConfig,
   ActionType,
   ActivityType,
   type EvmTxActionStep,
+  type LighterAccountConfig,
   type LiquidationActivity,
   LiquidityRole,
   MarginMode,
@@ -46,7 +48,7 @@ import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
-// initializes its signer with and mints deterministic auth tokens.
+// initializes its signer with and issues deterministic auth tokens.
 const wasm = vi.hoisted(() => {
   const createClientCalls: {
     url: string
@@ -98,6 +100,13 @@ const STORED_API_KEY = {
   apiKeyIndex: 42,
   apiKeyPrivateKey: `0x${'cc'.repeat(32)}`,
   apiKeyPublicKey: `0x${'dd'.repeat(32)}`,
+  providerKey: LIGHTER_PROVIDER_KEY,
+}
+
+/** The same material as the Robinhood instance persists it. */
+const RH_STORED_API_KEY = {
+  ...STORED_API_KEY,
+  providerKey: LIGHTER_RH_PROVIDER_KEY,
 }
 
 /**
@@ -346,6 +355,7 @@ const readOnlyTokenResponse = (apiToken: string) => ({
   account_index: STORED_API_KEY.accountIndex,
   expiry: FAR_EXPIRY_SECONDS,
   scopes: 'all',
+  token_id: 1,
 })
 
 beforeEach(() => {
@@ -374,6 +384,9 @@ beforeEach(() => {
     recorded.push({ url: u, init })
     if (u.includes('/api/v1/tokens/create')) {
       return respond(readOnlyTokenResponse('ro-readonly-lighter'))
+    }
+    if (u.includes('/api/v1/tokens?')) {
+      return respond({ code: 200, api_tokens: [] })
     }
     if (u.includes('/api/v1/account?')) {
       return respond(ACCOUNT_PAYLOAD)
@@ -500,11 +513,38 @@ describe('LighterProvider — provider-owned credential stores', () => {
     )
   })
 
+  it('discards a Robinhood record left in the legacy mainnet slot', async () => {
+    const storage = createMemoryStorage()
+    // What a build from between the RH instance and the storage namespace
+    // wrote: Robinhood key material under the slot mainnet reads.
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify({ ...RH_STORED_API_KEY, accountIndex: 4242 })
+    )
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).resolves.toBeDefined()
+
+    // No token is created off foreign key material, and the foreign account
+    // index never reaches the venue.
+    expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
+      false
+    )
+    expect(recorded.some((r) => r.url.includes('4242'))).toBe(false)
+    // The poisoned slot is evicted, so the next prepareAccount registers fresh.
+    await expect(
+      storage.get(apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS))
+    ).resolves.toBeNull()
+  })
+
   it('namespaces the RH instance key store away from mainnet on a shared adapter', async () => {
     const storage = createMemoryStorage()
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     const mainnet = lighterProvider({ storage })
     mainnet.bind(STUB_CLIENT)
@@ -692,6 +732,78 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
       false
     )
+  })
+})
+
+describe('LighterProvider — account tier', () => {
+  /** The Lighter arm of the account config, narrowed by its discriminant. */
+  const lighterConfigOf = (config: AccountConfig): LighterAccountConfig => {
+    if (config.provider !== 'lighter') {
+      throw new Error(`expected the lighter config arm, got ${config.provider}`)
+    }
+    return config
+  }
+
+  const USER_TIER_CODE: Readonly<Record<string, string>> = {
+    standard: 'STD',
+    plus: 'PLS',
+    premium: 'PRM',
+  }
+
+  const limitsWith = (userTierName: string): Response =>
+    respond({
+      code: 0,
+      max_llp_percentage: 0,
+      max_llp_amount: '0',
+      user_tier: USER_TIER_CODE[userTierName] ?? userTierName,
+      user_tier_name: userTierName,
+      can_create_public_pool: false,
+      current_maker_fee_tick: 50,
+      current_taker_fee_tick: 50,
+      leased_lit: '0',
+      effective_lit_stakes: '0',
+    })
+
+  it.each([
+    'plus',
+    'standard',
+  ])('carries the accountLimits tier string "%s" into the account config', async (tier) => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'per-call-token' }
+    )
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
+    expect(lighterConfigOf(account.config).userTierName).toBe(tier)
+  })
+
+  it('leaves the tier string absent when accountLimits omits it', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'per-call-token' }
+    )
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
+    expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
+  })
+
+  it('leaves the tier string absent on the unauthenticated read', async () => {
+    const provider = lighterProvider({ storage: createMemoryStorage() })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeUndefined()
+    expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
   })
 })
 
@@ -3498,7 +3610,7 @@ describe('LighterProvider — two deployments on one client', () => {
     )
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     const main = lighterProvider({ storage })
     const rh = lighterRhProvider({ storage })
@@ -3532,7 +3644,7 @@ describe('LighterProvider — two deployments on one client', () => {
     )
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     overrideFetch((url) =>
       url.includes('/api/v1/tokens/create')

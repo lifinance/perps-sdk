@@ -21,6 +21,7 @@ function assertNever(value: never): never {
  * | descriptor.type       | projected values
  * |-----------------------|----------------------------------------------
  * | APPROVE_AGENT         | []                  (no parameters)
+ * | REVOKE_AGENT          | []                  (no parameters)
  * | APPROVE_BUILDER_FEE   | []                  (no parameters)
  * | SET_REFERRAL          | []                  (no parameters)
  * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }]
@@ -35,6 +36,7 @@ function projectHyperliquidDescriptor(
 ): AccountConfigSetting {
   switch (descriptor.type) {
     case ActionType.APPROVE_AGENT:
+    case ActionType.REVOKE_AGENT:
     case ActionType.APPROVE_BUILDER_FEE:
     case ActionType.SET_REFERRAL:
       return { type: descriptor.type, values: [] }
@@ -69,6 +71,7 @@ function projectHyperliquidDescriptor(
     case ActionType.META_ACCEPT_TERMS:
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
+    case ActionType.SYNC_FEE_ATTRIBUTION:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +

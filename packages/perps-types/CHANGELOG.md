@@ -1,5 +1,30 @@
 # @lifi/perps-types
 
+## 11.3.0
+
+### Minor Changes
+
+- [#405](https://github.com/lifinance/perps-sdk/pull/405) [`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve the Lighter account tier from the `/accountLimits` tier string, so a `plus` account reports its tier instead of `null`. `LighterAccountConfig` gains the optional `userTierName`.
+
+- [#408](https://github.com/lifinance/perps-sdk/pull/408) [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `leverage` multiple to `Fill`, and populate it in the Lighter fill mapper from the venue's pre-trade initial margin fraction.
+
+- [#407](https://github.com/lifinance/perps-sdk/pull/407) [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `counterpartyAddress` to `DepositActivity`. The Ondo activity mapper populates it from the deposit's `fromAddress`.
+
+## 11.2.0
+
+### Minor Changes
+
+- [#400](https://github.com/lifinance/perps-sdk/pull/400) [`e5e25c8`](https://github.com/lifinance/perps-sdk/commit/e5e25c8a86e53f6e407252c9a2855a09a5901f3f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `REVOKE_AGENT` action type and its params (ORD-1510)
+
+  - `ActionType.REVOKE_AGENT` (`revokeAgent`) with an `ActionParamsMap` entry, so `CreateActionRequest` / `ExecuteActionRequest` cover the revoke action.
+  - `RevokeAgentParams` with the revoke target: the agent `address` and the `name` the venue holds for it. Both are required, because HyperCore identifies a named API wallet by name.
+
+## 11.1.0
+
+### Minor Changes
+
+- [#394](https://github.com/lifinance/perps-sdk/pull/394) [`41e447f`](https://github.com/lifinance/perps-sdk/commit/41e447f1acf0cd44ee03b6d92059dbfa2e8e4412) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Retain the Hyperliquid builder-fee amount and client order ID on `Fill`. `HlUserFill` now declares the optional `builderFee` and `cloid` fields `userFills` returns, and `mapFill` projects them into the new optional `Fill.builderFee` (a `Fee`, so the builder portion carries its own token — the same token Hyperliquid charges the total fee in) and `Fill.clientOrderId`. Each stays `undefined` when the wire payload omits it, so a consumer can separate the builder portion of a fill fee from the provider portion and join a fill back to the order that produced it. Adds `ActionType.SYNC_FEE_ATTRIBUTION` with wire value `syncFeeAttribution` and an empty params contract; it is never a `Provider.setup` or `Provider.options` descriptor, and each provider account-config mapper rejects it.
+
 ## 11.0.0
 
 ### Major Changes
