@@ -126,4 +126,14 @@ describe('mapFill', () => {
   it('leaves clientOrderId undefined when the wire omits it', () => {
     expect(mapFill(fillFixture(), MARKET).clientOrderId).toBeUndefined()
   })
+
+  // An Ondo fill carries no leverage and no margin fraction; the venue reports
+  // leverage on the position and the balance summary only.
+  it('leaves leverage undefined on every fill', () => {
+    expect(mapFill(fillFixture(), MARKET).leverage).toBeUndefined()
+    expect(
+      mapFill(fillFixture({ side: 'sell', direction: 'closeLong' }), MARKET)
+        .leverage
+    ).toBeUndefined()
+  })
 })

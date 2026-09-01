@@ -184,6 +184,16 @@ export const DEFAULT_TRADES_LIMIT = 50
 export const LIGHTER_FEE_TICK_SCALE = 1_000_000
 
 /**
+ * Scale of the integer `initial_margin_fraction` values Lighter publishes on
+ * trade rows and order-book details: the integer is a percent times 100, so
+ * `500` is 5.00% and `200` is 2.00%. Account positions publish the same
+ * fraction as a plain percent string ("5.00") instead.
+ *
+ * @internal
+ */
+export const LIGHTER_IMF_PERCENT_SCALE = 100
+
+/**
  * Lighter's public base fee tier (Standard Account): 0% maker / 0% taker on all
  * perps markets. Per-account Premium tiers exist but require auth to resolve;
  * unauthenticated quotes use this public base. Fractions, not basis points.

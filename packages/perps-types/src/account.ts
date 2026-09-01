@@ -270,6 +270,12 @@ export interface Fill {
    * it. Absent when the order carried none or the venue omits it.
    */
   clientOrderId?: string
+  /**
+   * Leverage the account had set on the fill's market at the moment the venue
+   * executed the fill, as a numeric multiple (`10` means 10x). Absent when the
+   * venue reports no leverage on its fill payload.
+   */
+  leverage?: number
   realizedPnl?: string | null
   startPosition?: string
   classification: FillClassification

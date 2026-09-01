@@ -455,6 +455,28 @@ const BASE_FILL: Fill = {
   createdAt: '2026-05-07T12:00:00.000Z',
 }
 
+describe('Fill leverage', () => {
+  it('accepts a numeric multiple', () => {
+    const fill: Fill = { ...BASE_FILL, leverage: 10 }
+
+    expect(fill.leverage).toBe(10)
+  })
+
+  it('rejects a leverage the venue reports as a string', () => {
+    const fill: Fill = {
+      ...BASE_FILL,
+      // @ts-expect-error leverage is a numeric multiple, not a decimal string
+      leverage: '10',
+    }
+
+    expect(fill.id).toBe('fill-1')
+  })
+
+  it('omits leverage when the venue reports none on the fill', () => {
+    expect(BASE_FILL.leverage).toBeUndefined()
+  })
+})
+
 describe('Fee', () => {
   it('accepts a fee denominated in an asset other than the withdrawn one', () => {
     const item: WithdrawalActivity = {
