@@ -64,7 +64,7 @@ export interface LighterSignActionsDeps {
 const TOKEN_AUTH_MUTATION_KINDS = new Set(['changeAccountTier', 'referralUse'])
 
 /**
- * Lifetime of the per-call auth token minted for a token-authenticated venue
+ * Lifetime of the per-call auth token issued for a token-authenticated venue
  * mutation. Minutes, not the read endpoints' hours: it authenticates one POST
  * that completes immediately, so it never lingers usable.
  */
@@ -133,11 +133,19 @@ export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
         checkedAtMs.set(windowKey, Date.now())
         return
       }
-      // A slot carrying no entry leaves nothing to compare against.
-      if (
-        registered !== undefined &&
-        normalizeLighterPublicKey(registered.public_key) !== storedKey
-      ) {
+      // An answered read that names no entry is a verdict, not a gap: the slot
+      // holds no key the stored one can match, so a signature it produces
+      // cannot verify.
+      if (registered === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `The Lighter API key stored for ${address} is not registered: ` +
+            `account ${apiKey.accountIndex} holds no key in API-key slot ` +
+            `${apiKey.apiKeyIndex}. Run prepareAccount / REGISTER_API_KEY to ` +
+            'register a fresh key.'
+        )
+      }
+      if (normalizeLighterPublicKey(registered.public_key) !== storedKey) {
         throw new PerpsError(
           PerpsErrorCode.SDKError,
           `The Lighter API key stored for ${address} is no longer registered: ` +
@@ -146,7 +154,7 @@ export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
         )
       }
       // Every read the venue answered counts against the window, so a burst
-      // costs one read whatever the verdict. A mismatch throws above, so it
+      // costs one read whatever the verdict. A rejection throws above, so it
       // never records and the next batch reads again.
       checkedAtMs.set(windowKey, Date.now())
     },
@@ -295,13 +303,12 @@ async function signRegisterApiKey(
     l1Signature
   )
 
-  const apiKey: LighterApiKey = {
+  await deps.keyStore.set(address, {
     accountIndex,
     apiKeyIndex,
     apiKeyPrivateKey: keypair.privateKey,
     apiKeyPublicKey: keypair.publicKey,
-  }
-  await deps.keyStore.set(address, apiKey)
+  })
 
   return {
     action: step.action,
@@ -431,7 +438,7 @@ async function signTransfer(
  *
  * Neither endpoint consumes a wasm-signed transaction — both authenticate with
  * a Lighter auth token and enforce their business rules (open positions,
- * pending orders, 24h tier cooldown) server-side. We mint a fresh short-lived
+ * pending orders, 24h tier cooldown) server-side. We create a fresh short-lived
  * token per call (never the stored read-only token, never persisted) and POST
  * the mirror of the backend's form body directly to Lighter, so no auth token
  * ever transits the LI.FI backend. A non-success verdict surfaces Lighter's
