@@ -10,6 +10,15 @@ export interface OndoPageInfo {
   nextCursor?: string
 }
 
+/** `GET /v1/api_keys` result row. The venue does not return the HMAC secret. */
+export interface OndoApiKeyInfo {
+  keyId: string
+  name: string
+  createdAt: string
+  scopes: string[]
+  whitelistedIPs?: string[]
+}
+
 /**
  * `POST /v1/api_keys` result. The HMAC key is revealed only at creation and
  * arrives as `secretKey`; the boundary maps it to the stored `OndoApiKey`

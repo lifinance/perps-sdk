@@ -277,19 +277,22 @@ describe('OndoApiClient', () => {
     })
   })
 
-  it('supports DELETE via send and never retries non-GET methods', async () => {
+  it('supports JWT-authorized DELETE via send and never retries it', async () => {
     const { client, fetchImpl } = createClient([
       jsonResponse({ success: false, error: 'unavailable' }, 503),
       jsonResponse(envelope(null)),
     ])
 
     await expect(
-      client.send('DELETE', '/v1/perps/orders/ord-1', {
-        headers: { Authorization: 'Bearer prebuilt-jwt' },
+      client.send('DELETE', '/v1/api_keys/key-1', {
+        authToken: 'session-jwt',
       })
     ).rejects.toBeInstanceOf(OndoApiError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe('DELETE')
+    expect(requestHeaders(fetchImpl).get('authorization')).toBe(
+      'Bearer session-jwt'
+    )
   })
 
   it('retries GET on 503 per the injected policy', async () => {

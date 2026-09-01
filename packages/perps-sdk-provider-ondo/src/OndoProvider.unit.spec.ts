@@ -2134,12 +2134,25 @@ describe('OndoProvider — write-action surface', () => {
     expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('signActions(HMAC) creates a key on first use, JWT-authorized', async () => {
+  it('signActions(HMAC) lists keys before it creates a JWT-authorized key', async () => {
     const { provider } = await loggedInProvider()
-    fetchMock.mockImplementationOnce(async (url: string | URL) => {
-      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
-      return respond(envelope(CREATED_API_KEY))
-    })
+    fetchMock
+      .mockImplementationOnce(async (url: string | URL, init?: RequestInit) => {
+        expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+        expect(init?.method).toBe('GET')
+        expect(new Headers(init?.headers).get('authorization')).toBe(
+          'Bearer ondo-jwt-token'
+        )
+        return respond(envelope([]))
+      })
+      .mockImplementationOnce(async (url: string | URL, init?: RequestInit) => {
+        expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+        expect(init?.method).toBe('POST')
+        expect(new Headers(init?.headers).get('authorization')).toBe(
+          'Bearer ondo-jwt-token'
+        )
+        return respond(envelope(CREATED_API_KEY))
+      })
 
     const signed = (await provider.signActions?.(
       SigningMethod.HMAC,
@@ -2156,10 +2169,17 @@ describe('OndoProvider — write-action surface', () => {
     const before = await provider.getAccount({ address: ADDRESS })
     expect(before.config).toMatchObject({ apiKeyRegistered: false })
 
-    fetchMock.mockImplementationOnce(async (url: string | URL) => {
-      expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
-      return respond(envelope(CREATED_API_KEY))
-    })
+    fetchMock
+      .mockImplementationOnce(async (url: string | URL, init?: RequestInit) => {
+        expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+        expect(init?.method).toBe('GET')
+        return respond(envelope([]))
+      })
+      .mockImplementationOnce(async (url: string | URL, init?: RequestInit) => {
+        expect(String(url)).toBe(`${API_URL}/v1/api_keys`)
+        expect(init?.method).toBe('POST')
+        return respond(envelope(CREATED_API_KEY))
+      })
     await provider.signActions?.(
       SigningMethod.SESSION,
       [{ action: ActionType.REGISTER_API_KEY, session: {} }],

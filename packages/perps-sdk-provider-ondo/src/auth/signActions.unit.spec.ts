@@ -13,7 +13,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import type { OndoApiKey, OndoAuthToken } from '../types/auth.js'
-import type { OndoCreatedApiKey } from '../types/wire.js'
+import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
 import {
   OndoApiClient,
   OndoApiError,
@@ -66,6 +66,17 @@ const createdApiKeyFixture = (
   createdAt: '2026-07-15T12:31:55.781433839Z',
   scopes: ['trade'],
   secretKey: 'ondoApiSecret_xyz',
+  ...overrides,
+})
+
+const listedApiKeyFixture = (
+  index: number,
+  overrides?: Partial<OndoApiKeyInfo>
+): OndoApiKeyInfo => ({
+  keyId: `listed-key-${index}`,
+  name: `third-party-${index}`,
+  createdAt: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+  scopes: ['trade'],
   ...overrides,
 })
 
@@ -273,10 +284,11 @@ describe('ondoSignActions — HMAC', () => {
     expect(step.hmac.signature).toBe(expected)
   })
 
-  it('creates an API key on first use, JWT-authorized, and stores it immediately', async () => {
+  it('lists an empty registry before it creates and stores a JWT-authorized API key', async () => {
     const created = createdApiKeyFixture({ keyId: 'created-key' })
     const fetchImpl = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
@@ -288,19 +300,28 @@ describe('ondoSignActions — HMAC', () => {
       account.address
     )) as HmacSignedActionStep[]
 
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/v1/api_keys`)
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({
+    const [listUrl, listInit] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(listUrl).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(listInit.method).toBe('GET')
+    expect(new Headers(listInit.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+
+    const [createUrl, createInit] = fetchImpl.mock.calls[1] as [
+      string,
+      RequestInit,
+    ]
+    expect(createUrl).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(createInit.method).toBe('POST')
+    expect(JSON.parse(createInit.body as string)).toEqual({
       name: 'lifi-perps',
       scopes: ['trade'],
     })
-    expect(new Headers(init.headers).get('authorization')).toBe(
+    expect(new Headers(createInit.headers).get('authorization')).toBe(
       'Bearer ondo-jwt-token'
     )
 
     expect(signed[0].hmac.keyId).toBe('created-key')
-    // The secret returned only at creation is mapped and persisted immediately.
     await expect(deps.apiKeyStore.get(account.address)).resolves.toEqual({
       keyId: 'created-key',
       apiSecret: created.secretKey,
@@ -348,11 +369,276 @@ describe('ondoSignActions — HMAC', () => {
   })
 })
 
+describe('ondoSignActions — API key capacity', () => {
+  it('creates without a revoke when the registry contains nine keys', async () => {
+    const created = createdApiKeyFixture()
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: Array.from({ length: 9 }, (_, index) =>
+            listedApiKeyFixture(index)
+          ),
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe('GET')
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).method).toBe('POST')
+  })
+
+  it('revokes the LI.FI-owned key at the ten-key cap before it creates a replacement', async () => {
+    const stale = listedApiKeyFixture(9, {
+      keyId: 'lifi-stale-key',
+      name: 'lifi-perps',
+    })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            ...Array.from({ length: 9 }, (_, index) =>
+              listedApiKeyFixture(index)
+            ),
+            stale,
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    const [listUrl, listInit] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    const [revokeUrl, revokeInit] = fetchImpl.mock.calls[1] as [
+      string,
+      RequestInit,
+    ]
+    const [createUrl, createInit] = fetchImpl.mock.calls[2] as [
+      string,
+      RequestInit,
+    ]
+    expect(listUrl).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(listInit.method).toBe('GET')
+    expect(revokeUrl).toBe(`${BASE_URL}/v1/api_keys/lifi-stale-key`)
+    expect(revokeInit.method).toBe('DELETE')
+    expect(createUrl).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(createInit.method).toBe('POST')
+    expect(new Headers(listInit.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    expect(new Headers(revokeInit.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+  })
+
+  it('reclaims a LI.FI-owned key when the registry contains more than ten keys', async () => {
+    const keys = Array.from({ length: 11 }, (_, index) =>
+      listedApiKeyFixture(index)
+    )
+    keys[10] = listedApiKeyFixture(10, {
+      keyId: 'over-cap-lifi-key',
+      name: 'lifi-perps',
+    })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: keys }))
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      `${BASE_URL}/v1/api_keys/over-cap-lifi-key`
+    )
+    expect((fetchImpl.mock.calls[2]?.[1] as RequestInit).method).toBe('POST')
+  })
+
+  it('uses creation time and the stable key ID for deterministic oldest selection', async () => {
+    const newest = listedApiKeyFixture(7, {
+      keyId: 'newest-lifi-key',
+      name: 'lifi-perps',
+      createdAt: '2026-07-20T00:00:00.000Z',
+    })
+    const tiedOldestLast = listedApiKeyFixture(8, {
+      keyId: 'z-oldest-lifi-key',
+      name: 'lifi-perps',
+      createdAt: '2026-06-01T00:00:00.000Z',
+    })
+    const tiedOldestFirst = listedApiKeyFixture(9, {
+      keyId: 'a-oldest-lifi-key',
+      name: 'lifi-perps',
+      createdAt: '2026-06-01T00:00:00.000Z',
+    })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            newest,
+            tiedOldestLast,
+            ...Array.from({ length: 7 }, (_, index) =>
+              listedApiKeyFixture(index)
+            ),
+            tiedOldestFirst,
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      `${BASE_URL}/v1/api_keys/a-oldest-lifi-key`
+    )
+  })
+
+  it('returns an SDK error without a revoke or create when all ten keys belong to other tools', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        result: Array.from({ length: 10 }, (_, index) =>
+          listedApiKeyFixture(index)
+        ),
+      })
+    )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('10 API-key limit'),
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves a list failure and does not create a key', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: false,
+          error: 'registry unavailable',
+          error_code: 'REGISTRY_UNAVAILABLE',
+        },
+        500
+      )
+    )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toMatchObject({
+      errorCode: 'REGISTRY_UNAVAILABLE',
+      message: expect.stringContaining('registry unavailable'),
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves a required revoke failure and does not create a key', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            ...Array.from({ length: 9 }, (_, index) =>
+              listedApiKeyFixture(index)
+            ),
+            listedApiKeyFixture(9, {
+              keyId: 'failed-revoke-key',
+              name: 'lifi-perps',
+            }),
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            success: false,
+            error: 'revoke rejected',
+            error_code: 'REVOKE_REJECTED',
+          },
+          500
+        )
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toMatchObject({
+      errorCode: 'REVOKE_REJECTED',
+      message: expect.stringContaining('revoke rejected'),
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('ondoSignActions — API key wire mapping', () => {
   it('maps the venue secretKey wire field into a usable stored apiSecret that round-trips into HMAC signing', async () => {
     const created = createdApiKeyFixture()
     const fetchImpl = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
@@ -381,6 +667,7 @@ describe('ondoSignActions — API key wire mapping', () => {
     const created = createdApiKeyFixture()
     const fetchImpl = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
@@ -403,12 +690,20 @@ describe('ondoSignActions — API key wire mapping', () => {
   })
 
   it('throws loudly and persists nothing when the api_keys result carries no usable secret (future wire drift)', async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        result: { keyId: 'k', name: 'lifi-perps', createdAt: 'x', scopes: [] },
-      })
-    )
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: {
+            keyId: 'k',
+            name: 'lifi-perps',
+            createdAt: 'x',
+            scopes: [],
+          },
+        })
+      )
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
@@ -474,6 +769,7 @@ describe('ondoSignActions — SESSION', () => {
     const created = createdApiKeyFixture({ keyId: 'created-key' })
     const fetchImpl = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
       .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
@@ -486,8 +782,9 @@ describe('ondoSignActions — SESSION', () => {
     )
 
     expect(signed).toEqual([])
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/v1/api_keys`)
+    expect(init.method).toBe('POST')
     expect(new Headers(init.headers).get('authorization')).toBe(
       'Bearer ondo-jwt-token'
     )
