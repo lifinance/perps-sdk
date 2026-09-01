@@ -337,6 +337,11 @@ export interface DepositActivity extends BaseActivity {
    */
   asset: string
   amount: string
+  /**
+   * Address the deposited funds came from, as the venue reports it. Absent
+   * when the venue's deposit payload names no source address.
+   */
+  counterpartyAddress?: string
   /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
 }

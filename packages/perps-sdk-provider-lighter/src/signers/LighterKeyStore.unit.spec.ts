@@ -8,12 +8,15 @@ const ADDRESS = '0xAbCdEf0000000000000000000000000000000001' as Address
 const STORAGE_KEY =
   'lifi-perps-lighter-key:0xabcdef0000000000000000000000000000000001'
 
-const apiKey: LighterApiKey = {
+const apiKey: Omit<LighterApiKey, 'providerKey'> = {
   accountIndex: 42,
   apiKeyIndex: 1,
   apiKeyPrivateKey: `0x${'11'.repeat(32)}`,
   apiKeyPublicKey: `0x${'22'.repeat(32)}`,
 }
+
+/** The record `store.set` writes for the default `lighter` instance. */
+const storedApiKey: LighterApiKey = { ...apiKey, providerKey: 'lighter' }
 
 const spyStorage = (inner: StorageAdapter) => ({
   get: vi.fn(inner.get),
@@ -35,14 +38,14 @@ describe('LighterKeyStore', () => {
 
     expect(storage.set).toHaveBeenCalledWith(
       STORAGE_KEY,
-      JSON.stringify(apiKey)
+      JSON.stringify(storedApiKey)
     )
   })
 
   it('round-trips a stored key through JSON', async () => {
     const store = new LighterKeyStore(createMemoryStorage())
     await store.set(ADDRESS, apiKey)
-    await expect(store.get(ADDRESS)).resolves.toEqual(apiKey)
+    await expect(store.get(ADDRESS)).resolves.toEqual(storedApiKey)
   })
 
   it('serves a freshly-set key from cache without re-reading storage', async () => {
@@ -58,11 +61,11 @@ describe('LighterKeyStore', () => {
 
   it('reads from storage on a cache miss, then caches for subsequent gets', async () => {
     const backing = createMemoryStorage()
-    await backing.set(STORAGE_KEY, JSON.stringify(apiKey))
+    await backing.set(STORAGE_KEY, JSON.stringify(storedApiKey))
     const storage = spyStorage(backing)
     const store = new LighterKeyStore(storage)
 
-    await expect(store.get(ADDRESS)).resolves.toEqual(apiKey)
+    await expect(store.get(ADDRESS)).resolves.toEqual(storedApiKey)
     await store.get(ADDRESS)
 
     // Only the first (cache-miss) get hits storage.
@@ -98,6 +101,7 @@ describe('LighterKeyStore', () => {
     await backing.set(
       STORAGE_KEY,
       JSON.stringify({
+        providerKey: 'lighter',
         accountIndex: 42,
         apiKeyIndex: 1,
         apiKeyPublicKey: apiKey.apiKeyPublicKey,
@@ -111,7 +115,7 @@ describe('LighterKeyStore', () => {
     const backing = createMemoryStorage()
     await backing.set(
       STORAGE_KEY,
-      JSON.stringify({ ...apiKey, accountIndex: 'oops' })
+      JSON.stringify({ ...storedApiKey, accountIndex: 'oops' })
     )
     const store = new LighterKeyStore(backing)
     await expect(store.get(ADDRESS)).resolves.toBeNull()
@@ -123,15 +127,16 @@ describe('LighterKeyStore', () => {
 
     await store.set(ADDRESS.toLowerCase() as Address, apiKey)
     await expect(store.get(ADDRESS.toUpperCase() as Address)).resolves.toEqual(
-      apiKey
+      storedApiKey
     )
   })
 
   describe('provider-instance scoping', () => {
-    const rhKey: LighterApiKey = {
+    const rhKey: Omit<LighterApiKey, 'providerKey'> = {
       ...apiKey,
       apiKeyPrivateKey: `0x${'33'.repeat(32)}`,
     }
+    const storedRhKey: LighterApiKey = { ...rhKey, providerKey: 'lighter-rh' }
     const NAMESPACED_KEY =
       'lifi-perps-lighter-key:lighter-rh:0xabcdef0000000000000000000000000000000001'
 
@@ -140,16 +145,16 @@ describe('LighterKeyStore', () => {
       await new LighterKeyStore(storage, 'lighter').set(ADDRESS, apiKey)
       expect(storage.set).toHaveBeenCalledWith(
         STORAGE_KEY,
-        JSON.stringify(apiKey)
+        JSON.stringify(storedApiKey)
       )
     })
 
     it('namespaces the storage key for a non-default instance', async () => {
       const storage = spyStorage(createMemoryStorage())
-      await new LighterKeyStore(storage, 'lighter-rh').set(ADDRESS, apiKey)
+      await new LighterKeyStore(storage, 'lighter-rh').set(ADDRESS, rhKey)
       expect(storage.set).toHaveBeenCalledWith(
         NAMESPACED_KEY,
-        JSON.stringify(apiKey)
+        JSON.stringify(storedRhKey)
       )
     })
 
@@ -163,10 +168,10 @@ describe('LighterKeyStore', () => {
       // on the pre-fix code both writes share one slot and the second clobbers the first.
       await expect(
         new LighterKeyStore(shared, 'lighter').get(ADDRESS)
-      ).resolves.toEqual(apiKey)
+      ).resolves.toEqual(storedApiKey)
       await expect(
         new LighterKeyStore(shared, 'lighter-rh').get(ADDRESS)
-      ).resolves.toEqual(rhKey)
+      ).resolves.toEqual(storedRhKey)
     })
 
     it('bindProviderKey overrides the ctor default and re-scopes the storage key', async () => {
@@ -178,8 +183,52 @@ describe('LighterKeyStore', () => {
 
       expect(storage.set).toHaveBeenCalledWith(
         NAMESPACED_KEY,
-        JSON.stringify(apiKey)
+        JSON.stringify({ ...apiKey, providerKey: 'lighter-rh' })
       )
+    })
+
+    it('stamps the writing instance onto the persisted record', async () => {
+      const storage = spyStorage(createMemoryStorage())
+
+      await new LighterKeyStore(storage, 'lighter').set(ADDRESS, apiKey)
+
+      expect(storage.set).toHaveBeenCalledWith(
+        STORAGE_KEY,
+        JSON.stringify({ ...apiKey, providerKey: 'lighter' })
+      )
+    })
+
+    it('discards a record another instance wrote into the legacy slot', async () => {
+      const backing = createMemoryStorage()
+      await backing.set(STORAGE_KEY, JSON.stringify(storedRhKey))
+      const storage = spyStorage(backing)
+
+      const store = new LighterKeyStore(storage, 'lighter')
+
+      await expect(store.get(ADDRESS)).resolves.toBeNull()
+      expect(storage.remove).toHaveBeenCalledWith(STORAGE_KEY)
+      await expect(backing.get(STORAGE_KEY)).resolves.toBeNull()
+    })
+
+    it('discards a legacy record that names no instance', async () => {
+      const backing = createMemoryStorage()
+      await backing.set(STORAGE_KEY, JSON.stringify(apiKey))
+      const storage = spyStorage(backing)
+
+      const store = new LighterKeyStore(storage, 'lighter')
+
+      await expect(store.get(ADDRESS)).resolves.toBeNull()
+      expect(storage.remove).toHaveBeenCalledWith(STORAGE_KEY)
+      await expect(backing.get(STORAGE_KEY)).resolves.toBeNull()
+    })
+
+    it('discards a record the default instance wrote into a namespaced slot', async () => {
+      const backing = createMemoryStorage()
+      await backing.set(NAMESPACED_KEY, JSON.stringify(storedApiKey))
+
+      const store = new LighterKeyStore(backing, 'lighter-rh')
+
+      await expect(store.get(ADDRESS)).resolves.toBeNull()
     })
   })
 })

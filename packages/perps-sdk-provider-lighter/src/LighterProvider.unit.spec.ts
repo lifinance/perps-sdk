@@ -46,7 +46,7 @@ import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
-// initializes its signer with and mints deterministic auth tokens.
+// initializes its signer with and issues deterministic auth tokens.
 const wasm = vi.hoisted(() => {
   const createClientCalls: {
     url: string
@@ -98,6 +98,13 @@ const STORED_API_KEY = {
   apiKeyIndex: 42,
   apiKeyPrivateKey: `0x${'cc'.repeat(32)}`,
   apiKeyPublicKey: `0x${'dd'.repeat(32)}`,
+  providerKey: LIGHTER_PROVIDER_KEY,
+}
+
+/** The same material as the Robinhood instance persists it. */
+const RH_STORED_API_KEY = {
+  ...STORED_API_KEY,
+  providerKey: LIGHTER_RH_PROVIDER_KEY,
 }
 
 /**
@@ -504,11 +511,38 @@ describe('LighterProvider — provider-owned credential stores', () => {
     )
   })
 
+  it('discards a Robinhood record left in the legacy mainnet slot', async () => {
+    const storage = createMemoryStorage()
+    // What a build from between the RH instance and the storage namespace
+    // wrote: Robinhood key material under the slot mainnet reads.
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify({ ...RH_STORED_API_KEY, accountIndex: 4242 })
+    )
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).resolves.toBeDefined()
+
+    // No token is created off foreign key material, and the foreign account
+    // index never reaches the venue.
+    expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
+      false
+    )
+    expect(recorded.some((r) => r.url.includes('4242'))).toBe(false)
+    // The poisoned slot is evicted, so the next prepareAccount registers fresh.
+    await expect(
+      storage.get(apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS))
+    ).resolves.toBeNull()
+  })
+
   it('namespaces the RH instance key store away from mainnet on a shared adapter', async () => {
     const storage = createMemoryStorage()
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     const mainnet = lighterProvider({ storage })
     mainnet.bind(STUB_CLIENT)
@@ -3502,7 +3536,7 @@ describe('LighterProvider — two deployments on one client', () => {
     )
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     const main = lighterProvider({ storage })
     const rh = lighterRhProvider({ storage })
@@ -3536,7 +3570,7 @@ describe('LighterProvider — two deployments on one client', () => {
     )
     await storage.set(
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
+      JSON.stringify(RH_STORED_API_KEY)
     )
     overrideFetch((url) =>
       url.includes('/api/v1/tokens/create')

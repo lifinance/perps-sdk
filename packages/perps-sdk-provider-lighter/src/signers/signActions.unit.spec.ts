@@ -329,7 +329,7 @@ describe('lighterSignActions', () => {
       }
     })
 
-    it('signs a slot the venue reports no entry for', async () => {
+    it('rejects a slot the venue reports no entry for, before any signature', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       try {
         const { deps, signer, keyStore } = makeDeps(
@@ -339,15 +339,18 @@ describe('lighterSignActions', () => {
         )
         await setStoredKey(keyStore)
 
-        const result = await lighterSignActions(
-          deps,
-          SigningMethod.WASM_BLOB,
-          [orderStep],
-          ADDRESS
-        )
-
-        expect(result).toHaveLength(1)
-        expect(signer.sign).toHaveBeenCalledOnce()
+        await expect(
+          lighterSignActions(
+            deps,
+            SigningMethod.WASM_BLOB,
+            [orderStep],
+            ADDRESS
+          )
+        ).rejects.toMatchObject({
+          code: PerpsErrorCode.SDKError,
+          message: expect.stringContaining('holds no key'),
+        })
+        expect(signer.sign).not.toHaveBeenCalled()
         expect(warn).not.toHaveBeenCalled()
       } finally {
         warn.mockRestore()
@@ -370,21 +373,12 @@ describe('lighterSignActions', () => {
       expect(get).toHaveBeenCalledOnce()
     })
 
-    it.each([
-      {
-        label: 'a read the venue never answered',
-        getImpl: async (): Promise<unknown> => {
-          throw new Error('network unreachable')
-        },
-      },
-      {
-        label: 'a slot the venue reports no entry for',
-        getImpl: async (): Promise<unknown> => EMPTY_SLOT_API_KEYS,
-      },
-    ])('holds the window after $label', async ({ getImpl }) => {
+    it('holds the window after a read the venue never answered', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       try {
-        const { deps, keyStore, get } = makeDeps(undefined, undefined, getImpl)
+        const { deps, keyStore, get } = makeDeps(undefined, undefined, () => {
+          throw new Error('network unreachable')
+        })
         await setStoredKey(keyStore)
 
         for (let i = 0; i < 2; i++) {
@@ -402,12 +396,11 @@ describe('lighterSignActions', () => {
       }
     })
 
-    it('re-reads a rotated slot on the next batch', async () => {
-      const { deps, keyStore, get } = makeDeps(
-        undefined,
-        undefined,
-        async () => ROTATED_API_KEYS
-      )
+    it.each([
+      ['a rotated slot', async (): Promise<unknown> => ROTATED_API_KEYS],
+      ['an empty slot', async (): Promise<unknown> => EMPTY_SLOT_API_KEYS],
+    ] as const)('re-reads %s on the next batch', async (_label, getImpl) => {
+      const { deps, keyStore, get } = makeDeps(undefined, undefined, getImpl)
       await setStoredKey(keyStore)
 
       for (let i = 0; i < 2; i++) {
@@ -422,6 +415,72 @@ describe('lighterSignActions', () => {
       }
 
       expect(get).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('WASM_BLOB — foreign instance record in the legacy slot', () => {
+    const LEGACY_STORAGE_KEY = `lifi-perps-lighter-key:${ADDRESS.toLowerCase()}`
+    const placeOrder: WasmBlobActionStep = {
+      action: ActionType.PLACE_ORDER,
+      wasmSignParams: { market_index: 0, nonce: 1 },
+    }
+    const register: WasmBlobActionStep = {
+      action: ActionType.REGISTER_API_KEY,
+      wasmSignParams: { api_key_index: 42, nonce: 7 },
+    }
+
+    /** Robinhood key material a pre-namespace build wrote to the legacy slot. */
+    const RH_RECORD = {
+      providerKey: 'lighter-rh',
+      accountIndex: 1234,
+      apiKeyIndex: 42,
+      apiKeyPrivateKey: '0xrh-priv',
+      apiKeyPublicKey: '0xrh-pub',
+    }
+
+    it('never signs with a record another instance wrote', async () => {
+      const storage = createMemoryStorage()
+      await storage.set(LEGACY_STORAGE_KEY, JSON.stringify(RH_RECORD))
+      const { deps, signer, get } = makeDeps()
+      deps.keyStore = new LighterKeyStore(storage, 'lighter')
+
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [placeOrder], ADDRESS)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining('No Lighter API key registered'),
+      })
+      expect(signer.sign).not.toHaveBeenCalled()
+      // The foreign accountIndex never reaches the venue.
+      expect(get).not.toHaveBeenCalled()
+    })
+
+    it('lets REGISTER_API_KEY overwrite the slot with this instance record', async () => {
+      const storage = createMemoryStorage()
+      await storage.set(LEGACY_STORAGE_KEY, JSON.stringify(RH_RECORD))
+      const { deps } = makeDeps()
+      const keyStore = new LighterKeyStore(storage, 'lighter')
+      deps.keyStore = keyStore
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xl1sig'),
+      }
+
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [register],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )
+
+      await expect(keyStore.get(ADDRESS)).resolves.toEqual({
+        providerKey: 'lighter',
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xpriv',
+        apiKeyPublicKey: '0xpub',
+      })
     })
   })
 
@@ -504,7 +563,15 @@ describe('lighterSignActions', () => {
     })
 
     it('signs a later batch with the slot the registration payload named', async () => {
-      const { deps, signer, keyStore } = makeDeps()
+      // Venue state once the registration lands: the fresh key in slot 9.
+      const { deps, signer, keyStore } = makeDeps(
+        undefined,
+        undefined,
+        async () => ({
+          code: 200,
+          api_keys: [{ api_key_index: 9, public_key: '0xpub' }],
+        })
+      )
       const walletStub = {
         account: { address: ADDRESS },
         signMessage: vi.fn(async () => '0xl1sig'),
@@ -870,7 +937,7 @@ describe('lighterSignActions', () => {
       expect(createAuthCalls).toHaveLength(1)
       const [deadline, ctx] = createAuthCalls[0]
       const now = Math.floor(Date.now() / 1000)
-      // Minted per-call with a short (minutes) deadline, not the 1h default.
+      // Issued per-call with a short (minutes) deadline, not the 1h default.
       expect(deadline).toBeGreaterThan(now)
       expect(deadline).toBeLessThanOrEqual(now + 5 * 60 + 2)
       expect(ctx).toEqual({
@@ -880,7 +947,7 @@ describe('lighterSignActions', () => {
       })
     })
 
-    it('never routes the minted auth token through a backend-bound step', async () => {
+    it('never routes the issued auth token through a backend-bound step', async () => {
       const { deps, keyStore } = makeDeps()
       await setStoredKey(keyStore)
 
