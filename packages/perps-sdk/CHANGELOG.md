@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 10.0.2
+
+### Patch Changes
+
+- [#405](https://github.com/lifinance/perps-sdk/pull/405) [`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve the Lighter account tier from the `/accountLimits` tier string, so a `plus` account reports its tier instead of `null`. `LighterAccountConfig` gains the optional `userTierName`.
+
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
 ## 10.0.1
 
 ### Patch Changes

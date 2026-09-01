@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 11.3.0
+
+### Minor Changes
+
+- [#405](https://github.com/lifinance/perps-sdk/pull/405) [`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve the Lighter account tier from the `/accountLimits` tier string, so a `plus` account reports its tier instead of `null`. `LighterAccountConfig` gains the optional `userTierName`.
+
+- [#408](https://github.com/lifinance/perps-sdk/pull/408) [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `leverage` multiple to `Fill`, and populate it in the Lighter fill mapper from the venue's pre-trade initial margin fraction.
+
+- [#407](https://github.com/lifinance/perps-sdk/pull/407) [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `counterpartyAddress` to `DepositActivity`. The Ondo activity mapper populates it from the deposit's `fromAddress`.
+
 ## 11.2.0
 
 ### Minor Changes

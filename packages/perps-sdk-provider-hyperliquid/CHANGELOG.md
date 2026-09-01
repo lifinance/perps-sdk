@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 10.1.1
+
+### Patch Changes
+
+- [#406](https://github.com/lifinance/perps-sdk/pull/406) [`96cc05e`](https://github.com/lifinance/perps-sdk/commit/96cc05ef4ee6bceec72c5abb94ff79d896e45b07) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Project a `REVOKE_AGENT` setup descriptor to `values: []` instead of throwing.
+
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
 ## 10.1.0
 
 ### Minor Changes
