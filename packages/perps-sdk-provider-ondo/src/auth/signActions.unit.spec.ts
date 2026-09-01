@@ -534,6 +534,105 @@ describe('ondoSignActions — API key capacity', () => {
     )
   })
 
+  it('revokes the older LI.FI key on creation time alone when no tie-break applies', async () => {
+    const younger = listedApiKeyFixture(8, {
+      keyId: 'a-younger-lifi-key',
+      name: 'lifi-perps',
+      createdAt: '2026-07-10T00:00:00.000Z',
+    })
+    const older = listedApiKeyFixture(9, {
+      keyId: 'z-older-lifi-key',
+      name: 'lifi-perps',
+      createdAt: '2026-06-15T00:00:00.000Z',
+    })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            younger,
+            ...Array.from({ length: 8 }, (_, index) =>
+              listedApiKeyFixture(index)
+            ),
+            older,
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      `${BASE_URL}/v1/api_keys/z-older-lifi-key`
+    )
+  })
+
+  it('does not select a LI.FI row without a usable keyId as the revoke target', async () => {
+    const drifted = {
+      ...listedApiKeyFixture(9, { name: 'lifi-perps' }),
+      keyId: undefined,
+    } as unknown as OndoApiKeyInfo
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        result: [
+          ...Array.from({ length: 9 }, (_, index) =>
+            listedApiKeyFixture(index)
+          ),
+          drifted,
+        ],
+      })
+    )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('10 API-key limit'),
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a null key-list result as an empty registry and creates a key', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: null }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe('GET')
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).method).toBe('POST')
+  })
+
   it('returns an SDK error without a revoke or create when all ten keys belong to other tools', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       jsonResponse({

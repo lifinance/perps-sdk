@@ -10,7 +10,7 @@ export interface OndoPageInfo {
   nextCursor?: string
 }
 
-/** `GET /v1/api_keys` result row. The venue does not return the HMAC secret. */
+/** `GET /v1/api_keys` result row. The venue does not return the HMAC secret. @public */
 export interface OndoApiKeyInfo {
   keyId: string
   name: string

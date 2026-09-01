@@ -66,7 +66,7 @@ function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
   }
   if (!isOndoApiKey(record)) {
     throw new OndoApiError(
-      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify(created).slice(0, 200)}`
+      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify({ ...created, secretKey: '[REDACTED]' }).slice(0, 200)}`
     )
   }
   return record
@@ -91,15 +91,20 @@ async function ensureApiKey(
       `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
     )
   }
-  const configuredKeys = await deps.client.get<OndoApiKeyInfo[]>(
-    '/v1/api_keys',
-    { authToken: token.token }
-  )
+  const configuredKeys =
+    (await deps.client.get<OndoApiKeyInfo[] | null>('/v1/api_keys', {
+      authToken: token.token,
+    })) ?? []
   if (configuredKeys.length >= ONDO_API_KEY_LIMIT) {
     let staleKey: OndoApiKeyInfo | undefined
     let staleKeyCreatedAtMs = Number.POSITIVE_INFINITY
     for (const key of configuredKeys) {
-      if (key.name !== ONDO_API_KEY_NAME) {
+      // A drifted list row without a usable keyId is not a revoke target.
+      if (
+        key.name !== ONDO_API_KEY_NAME ||
+        typeof key.keyId !== 'string' ||
+        key.keyId === ''
+      ) {
         continue
       }
       const createdAtMs = Date.parse(key.createdAt)
