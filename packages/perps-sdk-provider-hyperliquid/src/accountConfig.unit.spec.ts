@@ -19,6 +19,15 @@ const approveAgentSetup: ProviderAction = {
   params: [],
 }
 
+const revokeAgentSetup: ProviderAction = {
+  type: ActionType.REVOKE_AGENT,
+  title: 'Revoke agent wallet',
+  description: 'Remove the SDK session signer.',
+  signers: [PerpsSigner.USER],
+  signingMethod: SigningMethod.EIP712,
+  params: [],
+}
+
 const approveBuilderFeeSetup: ProviderAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
   title: 'Approve builder fee',
@@ -75,6 +84,15 @@ describe('projectHyperliquidConfigSettings', () => {
       { type: ActionType.APPROVE_AGENT, values: [] },
       { type: ActionType.APPROVE_BUILDER_FEE, values: [] },
     ])
+  })
+
+  it('projects a REVOKE_AGENT setup descriptor with empty values', () => {
+    const result = projectHyperliquidConfigSettings(
+      baseConfig,
+      [revokeAgentSetup],
+      []
+    )
+    expect(result).toEqual([{ type: ActionType.REVOKE_AGENT, values: [] }])
   })
 
   it('projects ACCOUNT_MODE with value from config.abstractionMode', () => {
