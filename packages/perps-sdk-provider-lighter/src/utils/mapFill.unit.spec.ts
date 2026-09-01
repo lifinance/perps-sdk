@@ -516,6 +516,80 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  // Live /api/v1/recentTrades rows put the pre-trade initial margin fraction on
+  // both counterparties as an integer percent times 100: 500 = 5.00% = 20x,
+  // 200 = 2.00% = 50x, matching the market's own
+  // default/min_initial_margin_fraction integers.
+  describe('leverage from the pre-trade initial margin fraction', () => {
+    it("reads the maker fraction on a maker fill and ignores the taker's", () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false, // viewer is maker
+          maker_initial_margin_fraction_before: 500,
+          taker_initial_margin_fraction_before: 200,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+      expect(fill.leverage).toBe(20)
+    })
+
+    it("reads the taker fraction on a taker fill and ignores the maker's", () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true, // viewer is taker
+          maker_initial_margin_fraction_before: 500,
+          taker_initial_margin_fraction_before: 200,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+      expect(fill.leverage).toBe(50)
+    })
+
+    it('reports a fractional multiple when the reciprocal does not divide', () => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false,
+          maker_initial_margin_fraction_before: 300,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.leverage).toBeCloseTo(33.333_333, 5)
+    })
+
+    it('leaves leverage unset on older rows missing the fraction', () => {
+      expect(
+        mapFill(baseTrade(), ACCOUNT_INDEX, MARKET).leverage
+      ).toBeUndefined()
+    })
+
+    it.each([
+      0, -100,
+    ])('leaves leverage unset when the venue reports the fraction %i', (fraction) => {
+      const fill = mapFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: false,
+          maker_initial_margin_fraction_before: fraction,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.leverage).toBeUndefined()
+    })
+  })
+
   describe('fee amount derived from the fee-rate tick', () => {
     // The tick is a rate, not an amount: the same tick on twice the notional
     // charges twice the fee.

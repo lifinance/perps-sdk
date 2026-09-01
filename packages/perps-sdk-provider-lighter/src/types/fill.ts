@@ -48,6 +48,12 @@ export type LtTrade = {
   // trade rows that predate the field.
   taker_entry_quote_before?: string
   maker_entry_quote_before?: string
+  // Per-counterparty initial-margin-fraction snapshot BEFORE the trade: the
+  // leverage that counterparty had set on the market, as an integer percent on
+  // `LIGHTER_IMF_PERCENT_SCALE` (`500` = 5.00% = 20x). Optional: absent on
+  // older trade rows that predate the field.
+  taker_initial_margin_fraction_before?: number
+  maker_initial_margin_fraction_before?: number
 }
 
 /**

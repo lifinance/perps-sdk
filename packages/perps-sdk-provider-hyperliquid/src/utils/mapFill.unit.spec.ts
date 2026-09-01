@@ -236,6 +236,15 @@ describe('mapFill (Hyperliquid)', () => {
     expect(map(baseFill()).status).toBe(FillStatus.FILLED)
   })
 
+  // `userFills` carries no leverage and no margin fraction, so the mapper never
+  // populates the field.
+  it('omits the leverage key on every fill', () => {
+    expect(Object.keys(map(baseFill()))).not.toContain('leverage')
+    expect(
+      Object.keys(map(baseFill({ crossed: false, startPosition: '3' })))
+    ).not.toContain('leverage')
+  })
+
   it('normalises closedPnl "0" to null', () => {
     expect(map(baseFill({ closedPnl: '0' })).realizedPnl).toBeNull()
   })
