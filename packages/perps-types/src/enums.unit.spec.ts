@@ -196,7 +196,7 @@ describe('SigningMethod credential members', () => {
   })
 })
 
-describe('ActionType.SIWE_LOGIN', () => {
+describe('ActionType wire values', () => {
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
   })
