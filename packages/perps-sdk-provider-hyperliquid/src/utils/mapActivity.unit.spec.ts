@@ -565,6 +565,21 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
   })
 
+  it('omits the counterparty address on a deposit', () => {
+    const entry: HlLedgerUpdate = {
+      time: 1_700_000_000_000,
+      hash: '0xdep-no-counterparty',
+      delta: { type: 'deposit', usdc: '100' },
+    }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      resolveMarket
+    ) as DepositActivity
+    expect(result).not.toHaveProperty('counterpartyAddress')
+  })
+
   it('drops a deposit entry that carries no amount', () => {
     const entry: HlLedgerUpdate = {
       time: 1_700_000_000_000,

@@ -197,8 +197,15 @@ describe('mapDepositActivity', () => {
       type: ActivityType.DEPOSIT,
       asset: 'USDC',
       amount: '1000.00',
+      counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
       explorerLink: 'https://scan.li.fi/tx/0xabc123',
     })
+  })
+
+  it('omits the counterparty address when Ondo names no sending address', () => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, fromAddress: '' })
+    ).not.toHaveProperty('counterpartyAddress')
   })
 
   it('reports the venue coin as the asset for a non-USDC deposit', () => {

@@ -4,10 +4,7 @@ import type { Address } from 'viem'
 import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 // The private key here is a Lighter custom keypair — generated via WASM
-// GenerateAPIKey — not an Ethereum private key. The storage key is namespaced
-// by the resolved provider instance key so two Lighter instances sharing a
-// storage adapter (e.g. `lighter` and `lighter-rh`) never clobber each other's
-// API key.
+// GenerateAPIKey — not an Ethereum private key.
 
 const STORAGE_PREFIX = 'lifi-perps-lighter-key'
 
@@ -19,6 +16,12 @@ const STORAGE_PREFIX = 'lifi-perps-lighter-key'
  * @public
  */
 export interface LighterApiKey {
+  /**
+   * Lighter instance the record belongs to. A record read by any other
+   * instance is discarded, so its key material never signs on a chain that
+   * does not hold it.
+   */
+  providerKey: LighterProviderKey
   /** Lighter account index, looked up once via accountsByL1Address. */
   accountIndex: number
   /** API key slot (0-255), as named by the backend registration payload. */
@@ -29,28 +32,37 @@ export interface LighterApiKey {
   apiKeyPublicKey: string
 }
 
-const isLighterApiKey = (value: unknown): value is LighterApiKey => {
-  if (typeof value !== 'object' || value === null) {
-    return false
+const isLighterApiKeyOf =
+  (owner: LighterProviderKey) =>
+  (value: unknown): value is LighterApiKey => {
+    if (typeof value !== 'object' || value === null) {
+      return false
+    }
+    const {
+      providerKey,
+      accountIndex,
+      apiKeyIndex,
+      apiKeyPrivateKey,
+      apiKeyPublicKey,
+    } = value as Record<string, unknown>
+    return (
+      providerKey === owner &&
+      typeof accountIndex === 'number' &&
+      Number.isFinite(accountIndex) &&
+      typeof apiKeyIndex === 'number' &&
+      Number.isFinite(apiKeyIndex) &&
+      typeof apiKeyPrivateKey === 'string' &&
+      apiKeyPrivateKey.length > 0 &&
+      typeof apiKeyPublicKey === 'string' &&
+      apiKeyPublicKey.length > 0
+    )
   }
-  const { accountIndex, apiKeyIndex, apiKeyPrivateKey, apiKeyPublicKey } =
-    value as Record<string, unknown>
-  return (
-    typeof accountIndex === 'number' &&
-    Number.isFinite(accountIndex) &&
-    typeof apiKeyIndex === 'number' &&
-    Number.isFinite(apiKeyIndex) &&
-    typeof apiKeyPrivateKey === 'string' &&
-    apiKeyPrivateKey.length > 0 &&
-    typeof apiKeyPublicKey === 'string' &&
-    apiKeyPublicKey.length > 0
-  )
-}
 
 /**
  * Storage-backed cache for Lighter API keys. Records are namespaced by L1
- * address and provider instance so multiple Lighter deployments can share one
- * {@link StorageAdapter} without collisions.
+ * address and provider instance, and each record names its own instance, so
+ * multiple Lighter deployments can share one {@link StorageAdapter} and no
+ * instance ever reads another instance's key material.
  *
  * @public
  */
@@ -82,8 +94,8 @@ export class LighterKeyStore {
     this.providerKey = providerKey
   }
 
-  // The default instance keeps the legacy, un-namespaced key so existing
-  // `lighter` users are not orphaned; only additional instances get a segment.
+  // The default instance keeps the legacy, un-namespaced slot name; only
+  // additional instances get a segment.
   private storageKey(address: Address): string {
     const lower = address.toLowerCase()
     return this.providerKey === LIGHTER_PROVIDER_KEY
@@ -101,7 +113,11 @@ export class LighterKeyStore {
     if (cached) {
       return cached
     }
-    const parsed = await readValidatedRecord(this.storage, key, isLighterApiKey)
+    const parsed = await readValidatedRecord(
+      this.storage,
+      key,
+      isLighterApiKeyOf(this.providerKey)
+    )
     if (!parsed) {
       return null
     }
@@ -111,12 +127,17 @@ export class LighterKeyStore {
 
   /**
    * Persist an API key for an L1 address, replacing any existing record under
-   * that provider namespace.
+   * that provider namespace. The store stamps the record with its own instance
+   * key, so callers never name the instance themselves.
    */
-  async set(address: Address, value: LighterApiKey): Promise<void> {
+  async set(
+    address: Address,
+    value: Omit<LighterApiKey, 'providerKey'>
+  ): Promise<void> {
     const key = this.storageKey(address)
-    this.cache.set(key, value)
-    await this.storage.set(key, JSON.stringify(value))
+    const record: LighterApiKey = { ...value, providerKey: this.providerKey }
+    this.cache.set(key, record)
+    await this.storage.set(key, JSON.stringify(record))
   }
 
   /**
