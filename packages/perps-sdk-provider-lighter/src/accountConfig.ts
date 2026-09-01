@@ -12,16 +12,16 @@ function assertNever(value: never): never {
   )
 }
 
-/**
- * `account_type` on Lighter's `DetailedAccount` is a `StrictInt` with no
- * documented integer ↔ name mapping in the public SDKs. Empirical ordering:
- * 0 = standard, 1 = premium (from `AccountTier` enum + `/changeAccountTier`
- * wire strings). Plus tier (likely `2`) is omitted — an unmapped int projects
- * to null and surfaces as "tier not detected", so drift is observable.
- */
 const LIGHTER_ACCOUNT_TYPE_STANDARD = 0
 const LIGHTER_ACCOUNT_TYPE_PREMIUM = 1
 
+/**
+ * Tier decode for the unauthenticated read, where `/accountLimits` — and with
+ * it the tier string — is out of reach. Neither official Lighter client
+ * documents an integer for any tier, so `0` (the `account_type` every sampled
+ * public account reports) reads as the default tier `standard`, and `1` as
+ * `premium`. No integer is known for `plus`: that account projects `null` here.
+ */
 const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LIGHTER_ACCOUNT_TYPE_STANDARD]: 'standard',
   [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
@@ -39,6 +39,28 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
 }
 
 /**
+ * Resolve the account tier to the wire string `changeAccountTier` accepts.
+ * `userTierName` decides it, but only when the descriptor enumerates the
+ * string: Lighter owns that vocabulary, so an unrecognised value projects
+ * `null` instead of a mis-reported tier. A descriptor whose parameter carries
+ * no `values` array enumerates nothing, so it also projects `null`. With no
+ * tier string in hand the integer map decides.
+ */
+function resolveAccountTier(
+  descriptor: ProviderAction,
+  config: LighterAccountConfig
+): string | null {
+  const { userTierName } = config
+  if (userTierName === undefined) {
+    return ACCOUNT_TYPE_INT_TO_WIRE[config.accountType] ?? null
+  }
+  const enumerated = descriptor.params?.[0]?.values ?? []
+  return enumerated.some((option) => option.value === userTierName)
+    ? userTierName
+    : null
+}
+
+/**
  * Project a single Lighter descriptor against the typed
  * `LighterAccountConfig` into an `AccountConfigSetting`.
  *
@@ -51,7 +73,7 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
  * | SET_REFERRAL              | []                  (no parameters)
  * | APPROVE_INTEGRATOR        | []                  (no parameters)
  * | ACCOUNT_MODE              | [{ name: 'mode', value: config.accountTradingMode }]
- * | ACCOUNT_TYPE              | [{ name: 'tier', value: config.accountType }]
+ * | ACCOUNT_TYPE              | [{ name: 'tier', value: resolveAccountTier(…) }]
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
@@ -113,19 +135,13 @@ function projectLighterDescriptor(
         ],
       }
 
-    // `tier` is the wire string `/changeAccountTier` accepts; we decode the
-    // raw integer `config.accountType` Lighter publishes via the mapping
-    // above so the projection matches the descriptor's enumerated values.
-    // Unrecognised integers project to `null` (surfaces as "tier not
+    // An unresolved `tier` projects to `null` (surfaces as "tier not
     // detected" — the widget still lets the user pick a value).
     case ActionType.ACCOUNT_TYPE:
       return {
         type: descriptor.type,
         values: [
-          {
-            name: 'tier',
-            value: ACCOUNT_TYPE_INT_TO_WIRE[config.accountType] ?? null,
-          },
+          { name: 'tier', value: resolveAccountTier(descriptor, config) },
         ],
       }
 

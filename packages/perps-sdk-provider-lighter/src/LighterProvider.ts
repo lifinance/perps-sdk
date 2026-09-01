@@ -875,6 +875,7 @@ export const createLighterProvider = (
         apiKeyIndex: localKey?.apiKeyIndex,
         apiKeyRegistered,
         accountType: account.account_type,
+        userTierName: limitsResult?.user_tier_name,
         accountTradingMode: account.account_trading_mode,
         assetCollateral,
         // Satisfied when a non-expired read-only token is stored locally
