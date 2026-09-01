@@ -16,10 +16,11 @@ const registerApiKeySetup: ProviderAction = {
   params: [],
 }
 
+// The descriptor as the backend emits it today: `plus` is not yet enumerated.
 const accountTypeOption: ProviderAction = {
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',
-  description: 'Premium tier reduces fees.',
+  description: 'Select the account tier.',
   signers: [PerpsSigner.USER],
   signingMethod: SigningMethod.WASM_BLOB,
   params: [
@@ -28,6 +29,23 @@ const accountTypeOption: ProviderAction = {
       type: 'string',
       values: [
         { value: 'standard', label: 'Standard' },
+        { value: 'premium', label: 'Premium' },
+      ],
+      default: { value: 'standard', label: 'Standard' },
+    },
+  ],
+}
+
+// The descriptor once it enumerates all three settable tiers.
+const accountTypeOptionWithPlus: ProviderAction = {
+  ...accountTypeOption,
+  params: [
+    {
+      name: 'tier',
+      type: 'string',
+      values: [
+        { value: 'standard', label: 'Standard' },
+        { value: 'plus', label: 'Plus' },
         { value: 'premium', label: 'Premium' },
       ],
       default: { value: 'standard', label: 'Standard' },
@@ -84,18 +102,70 @@ describe('projectLighterConfigSettings', () => {
     ])
   })
 
-  it('projects ACCOUNT_TYPE = 1 as the wire string "premium"', () => {
+  it('projects the "plus" tier string once the descriptor enumerates it', () => {
     const result = projectLighterConfigSettings(
-      { ...baseConfig, accountType: 1 },
+      { ...baseConfig, userTierName: 'plus' },
       [],
-      [accountTypeOption]
+      [accountTypeOptionWithPlus]
     )
     expect(result).toEqual([
       {
         type: ActionType.ACCOUNT_TYPE,
-        values: [{ name: 'tier', value: 'premium' }],
+        values: [{ name: 'tier', value: 'plus' }],
       },
     ])
+  })
+
+  it('projects the "premium" tier string over the account_type integer', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, accountType: 0, userTierName: 'premium' },
+      [],
+      [accountTypeOptionWithPlus]
+    )
+    expect(result[0].values[0].value).toBe('premium')
+  })
+
+  it('projects the "standard" tier string', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, accountType: 1, userTierName: 'standard' },
+      [],
+      [accountTypeOptionWithPlus]
+    )
+    expect(result[0].values[0].value).toBe('standard')
+  })
+
+  it('projects a tier string the descriptor does not enumerate to null', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, userTierName: 'plus' },
+      [],
+      [accountTypeOption]
+    )
+    expect(result[0].values[0].value).toBeNull()
+  })
+
+  it('projects an unknown tier string to null rather than guessing a tier', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, userTierName: 'diamond' },
+      [],
+      [accountTypeOptionWithPlus]
+    )
+    expect(result[0].values[0].value).toBeNull()
+  })
+
+  it('falls back to the account_type integer when the account-limits read supplies no tier string', () => {
+    const standard = projectLighterConfigSettings(
+      { ...baseConfig, accountType: 0 },
+      [],
+      [accountTypeOptionWithPlus]
+    )
+    expect(standard[0].values[0].value).toBe('standard')
+
+    const premium = projectLighterConfigSettings(
+      { ...baseConfig, accountType: 1 },
+      [],
+      [accountTypeOptionWithPlus]
+    )
+    expect(premium[0].values[0].value).toBe('premium')
   })
 
   it('projects an unmapped account_type integer to null (drift surfaces in the widget rather than silently)', () => {
@@ -138,15 +208,6 @@ describe('projectLighterConfigSettings', () => {
       [accountModeOption]
     )
     expect(result[0].values[0].value).toBeNull()
-  })
-
-  it('projects accountType = 0 (Lighter\'s default tier integer) as the wire string "standard"', () => {
-    const result = projectLighterConfigSettings(
-      baseConfig,
-      [],
-      [accountTypeOption]
-    )
-    expect(result[0].values[0].value).toBe('standard')
   })
 
   it('preserves setup-then-options ordering of descriptors', () => {

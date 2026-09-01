@@ -536,7 +536,14 @@ export interface LighterAccountConfig {
    */
   apiKeyIndex?: number
   apiKeyRegistered: boolean
+  /** Lighter `account_type`. Upstream documents no integer for any tier. */
   accountType: number
+  /**
+   * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
+   * `changeAccountTier` accepts. Absent on an unauthenticated read, which
+   * fetches no limits.
+   */
+  userTierName?: string
   /** Lighter `account_trading_mode`: 0 = Classic/Simple, 1 = Unified. */
   accountTradingMode: number
   /**
