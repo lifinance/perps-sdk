@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 11.1.0
+
+### Minor Changes
+
+- [#407](https://github.com/lifinance/perps-sdk/pull/407) [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `counterpartyAddress` to `DepositActivity`. The Ondo activity mapper populates it from the deposit's `fromAddress`.
+
+### Patch Changes
+
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
 ## 11.0.1
 
 ### Patch Changes

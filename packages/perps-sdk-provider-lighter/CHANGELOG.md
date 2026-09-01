@@ -1,5 +1,26 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 17.2.0
+
+### Minor Changes
+
+- [#408](https://github.com/lifinance/perps-sdk/pull/408) [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `leverage` multiple to `Fill`, and populate it in the Lighter fill mapper from the venue's pre-trade initial margin fraction.
+
+### Patch Changes
+
+- [#405](https://github.com/lifinance/perps-sdk/pull/405) [`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve the Lighter account tier from the `/accountLimits` tier string, so a `plus` account reports its tier instead of `null`. `LighterAccountConfig` gains the optional `userTierName`.
+
+- [#409](https://github.com/lifinance/perps-sdk/pull/409) [`b0c8225`](https://github.com/lifinance/perps-sdk/commit/b0c8225bed5a67297e210048a503fbc106ef522b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Scope stored Lighter API-key records to the instance that wrote them. Every
+  record now names its provider instance, and a record any other instance reads
+  is discarded and evicted, so the default `lighter` instance never signs with
+  `lighter-rh` key material left in the un-namespaced storage slot. Records
+  written before this change name no instance, so the affected browsers register
+  a fresh API key on the next `prepareAccount` call. The registered-key freshness
+  guard also rejects a signature when the venue reports no key in the stored
+  slot.
+- Updated dependencies [[`a29315c`](https://github.com/lifinance/perps-sdk/commit/a29315c27d7419246f9d7d7939314edb63cffef0), [`ff5f2bd`](https://github.com/lifinance/perps-sdk/commit/ff5f2bdb23d4ad92ea31c821baa3d6f585661b9b), [`ad734ee`](https://github.com/lifinance/perps-sdk/commit/ad734ee904a50c7c99abd489d25e819e7d9bc957)]:
+  - @lifi/perps-types@11.3.0
+
 ## 17.1.0
 
 ### Minor Changes
