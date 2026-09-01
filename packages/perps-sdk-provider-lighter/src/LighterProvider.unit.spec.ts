@@ -8,9 +8,11 @@ import {
   ROBINHOOD_USDG,
 } from '@lifi/perps-sdk'
 import {
+  type AccountConfig,
   ActionType,
   ActivityType,
   type EvmTxActionStep,
+  type LighterAccountConfig,
   type LiquidationActivity,
   LiquidityRole,
   MarginMode,
@@ -730,6 +732,78 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
       false
     )
+  })
+})
+
+describe('LighterProvider — account tier', () => {
+  /** The Lighter arm of the account config, narrowed by its discriminant. */
+  const lighterConfigOf = (config: AccountConfig): LighterAccountConfig => {
+    if (config.provider !== 'lighter') {
+      throw new Error(`expected the lighter config arm, got ${config.provider}`)
+    }
+    return config
+  }
+
+  const USER_TIER_CODE: Readonly<Record<string, string>> = {
+    standard: 'STD',
+    plus: 'PLS',
+    premium: 'PRM',
+  }
+
+  const limitsWith = (userTierName: string): Response =>
+    respond({
+      code: 0,
+      max_llp_percentage: 0,
+      max_llp_amount: '0',
+      user_tier: USER_TIER_CODE[userTierName] ?? userTierName,
+      user_tier_name: userTierName,
+      can_create_public_pool: false,
+      current_maker_fee_tick: 50,
+      current_taker_fee_tick: 50,
+      leased_lit: '0',
+      effective_lit_stakes: '0',
+    })
+
+  it.each([
+    'plus',
+    'standard',
+  ])('carries the accountLimits tier string "%s" into the account config', async (tier) => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'per-call-token' }
+    )
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
+    expect(lighterConfigOf(account.config).userTierName).toBe(tier)
+  })
+
+  it('leaves the tier string absent when accountLimits omits it', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'per-call-token' }
+    )
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
+    expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
+  })
+
+  it('leaves the tier string absent on the unauthenticated read', async () => {
+    const provider = lighterProvider({ storage: createMemoryStorage() })
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeUndefined()
+    expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
   })
 })
 
