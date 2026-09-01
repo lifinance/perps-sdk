@@ -710,12 +710,18 @@ describe('LighterProvider — account tier', () => {
     return config
   }
 
+  const USER_TIER_CODE: Readonly<Record<string, string>> = {
+    standard: 'STD',
+    plus: 'PLS',
+    premium: 'PRM',
+  }
+
   const limitsWith = (userTierName: string): Response =>
     respond({
       code: 0,
       max_llp_percentage: 0,
       max_llp_amount: '0',
-      user_tier: 'PLS',
+      user_tier: USER_TIER_CODE[userTierName] ?? userTierName,
       user_tier_name: userTierName,
       can_create_public_pool: false,
       current_maker_fee_tick: 50,
@@ -724,9 +730,12 @@ describe('LighterProvider — account tier', () => {
       effective_lit_stakes: '0',
     })
 
-  it('carries the accountLimits tier string into the account config', async () => {
+  it.each([
+    'plus',
+    'standard',
+  ])('carries the accountLimits tier string "%s" into the account config', async (tier) => {
     overrideFetch((url) =>
-      url.includes('/api/v1/accountLimits') ? limitsWith('plus') : undefined
+      url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
     )
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
@@ -734,7 +743,10 @@ describe('LighterProvider — account tier', () => {
       { address: ADDRESS },
       { lighterAuthToken: 'per-call-token' }
     )
-    expect(lighterConfigOf(account.config).userTierName).toBe('plus')
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
+    expect(lighterConfigOf(account.config).userTierName).toBe(tier)
   })
 
   it('leaves the tier string absent when accountLimits omits it', async () => {
@@ -744,6 +756,9 @@ describe('LighterProvider — account tier', () => {
       { address: ADDRESS },
       { lighterAuthToken: 'per-call-token' }
     )
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
+    ).toBeDefined()
     expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
   })
 

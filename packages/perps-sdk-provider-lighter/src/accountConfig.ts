@@ -12,6 +12,9 @@ function assertNever(value: never): never {
   )
 }
 
+const LIGHTER_ACCOUNT_TYPE_STANDARD = 0
+const LIGHTER_ACCOUNT_TYPE_PREMIUM = 1
+
 /**
  * Tier decode for the unauthenticated read, where `/accountLimits` — and with
  * it the tier string — is out of reach. Neither official Lighter client
@@ -19,9 +22,6 @@ function assertNever(value: never): never {
  * public account reports) reads as the default tier `standard`, and `1` as
  * `premium`. No integer is known for `plus`: that account projects `null` here.
  */
-const LIGHTER_ACCOUNT_TYPE_STANDARD = 0
-const LIGHTER_ACCOUNT_TYPE_PREMIUM = 1
-
 const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LIGHTER_ACCOUNT_TYPE_STANDARD]: 'standard',
   [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
@@ -42,8 +42,9 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
  * Resolve the account tier to the wire string `changeAccountTier` accepts.
  * `userTierName` decides it, but only when the descriptor enumerates the
  * string: Lighter owns that vocabulary, so an unrecognised value projects
- * `null` instead of a mis-reported tier. With no tier string in hand the
- * integer map decides.
+ * `null` instead of a mis-reported tier. A descriptor whose parameter carries
+ * no `values` array enumerates nothing, so it also projects `null`. With no
+ * tier string in hand the integer map decides.
  */
 function resolveAccountTier(
   descriptor: ProviderAction,

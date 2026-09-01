@@ -16,7 +16,7 @@ const registerApiKeySetup: ProviderAction = {
   params: [],
 }
 
-// The descriptor as the backend emits it today: `plus` is not yet enumerated.
+// Descriptor with only standard and premium enumerated (plus absent from params).
 const accountTypeOption: ProviderAction = {
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',
@@ -36,7 +36,7 @@ const accountTypeOption: ProviderAction = {
   ],
 }
 
-// The descriptor once it enumerates all three settable tiers.
+// Descriptor with all three tiers enumerated: standard, plus, premium.
 const accountTypeOptionWithPlus: ProviderAction = {
   ...accountTypeOption,
   params: [
@@ -51,6 +51,11 @@ const accountTypeOptionWithPlus: ProviderAction = {
       default: { value: 'standard', label: 'Standard' },
     },
   ],
+}
+
+const accountTypeOptionWithoutValues: ProviderAction = {
+  ...accountTypeOption,
+  params: [{ name: 'tier', type: 'string' }],
 }
 
 const accountModeOption: ProviderAction = {
@@ -139,6 +144,15 @@ describe('projectLighterConfigSettings', () => {
       { ...baseConfig, userTierName: 'plus' },
       [],
       [accountTypeOption]
+    )
+    expect(result[0].values[0].value).toBeNull()
+  })
+
+  it('projects a tier string to null when the descriptor parameter carries no values array', () => {
+    const result = projectLighterConfigSettings(
+      { ...baseConfig, userTierName: 'plus' },
+      [],
+      [accountTypeOptionWithoutValues]
     )
     expect(result[0].values[0].value).toBeNull()
   })
