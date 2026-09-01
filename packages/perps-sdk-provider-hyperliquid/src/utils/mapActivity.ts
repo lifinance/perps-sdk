@@ -158,6 +158,8 @@ export const mapLedgerEntry = (
   }
 
   if (isDepositDelta(delta)) {
+    // The `deposit` delta names no sending address, so the activity carries no
+    // `counterpartyAddress`.
     return {
       ...base,
       type: ActivityType.DEPOSIT,

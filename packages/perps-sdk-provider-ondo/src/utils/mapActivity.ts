@@ -95,7 +95,9 @@ const depositId = (deposit: OndoWalletDeposit): string => {
  * deposit id on the wire and addresses a single deposit by transaction id, so
  * the id is `deposit:<txid>`, suffixed with `logIndex` when one transaction
  * carried several deposits. `coin` is already a display symbol, so it is the
- * normalized asset identity.
+ * normalized asset identity. `fromAddress` is the sending address and becomes
+ * `counterpartyAddress`; an empty string names no address, so the field stays
+ * absent.
  *
  * @public
  */
@@ -108,6 +110,9 @@ export const mapDepositActivity = (
   type: ActivityType.DEPOSIT,
   asset: deposit.coin,
   amount: deposit.size,
+  ...(deposit.fromAddress === ''
+    ? {}
+    : { counterpartyAddress: deposit.fromAddress }),
   ...(deposit.txid === ''
     ? {}
     : { explorerLink: `https://scan.li.fi/tx/${deposit.txid}` }),

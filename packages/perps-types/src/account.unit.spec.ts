@@ -264,6 +264,35 @@ describe('explorerLink on on-chain item types', () => {
   })
 })
 
+describe('counterpartyAddress on DepositActivity', () => {
+  it('accepts a source address the venue reports', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'ondo',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: 'USDC',
+      amount: '1',
+      counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
+    }
+    expect(deposit.counterpartyAddress).toBe(
+      '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF'
+    )
+  })
+
+  it('treats counterpartyAddress as optional (absent ⇒ venue names no source)', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: 'USDC',
+      amount: '1',
+    }
+    expect(deposit.counterpartyAddress).toBeUndefined()
+  })
+})
+
 describe('ActivityType.TRANSFER enum member', () => {
   it('has wire value "TRANSFER"', () => {
     expect(ActivityType.TRANSFER).toBe('TRANSFER')
