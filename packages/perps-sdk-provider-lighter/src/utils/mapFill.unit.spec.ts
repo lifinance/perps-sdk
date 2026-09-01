@@ -573,13 +573,15 @@ describe('mapFill (Lighter)', () => {
       ).toBeUndefined()
     })
 
-    it('leaves leverage unset when the venue reports a zero fraction', () => {
+    it.each([
+      0, -100,
+    ])('leaves leverage unset when the venue reports the fraction %i', (fraction) => {
       const fill = mapFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
           is_maker_ask: false,
-          maker_initial_margin_fraction_before: 0,
+          maker_initial_margin_fraction_before: fraction,
         }),
         ACCOUNT_INDEX,
         MARKET

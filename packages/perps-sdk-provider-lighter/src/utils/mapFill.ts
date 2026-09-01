@@ -43,7 +43,8 @@ const tickToFeeAmount = (
  * Display leverage the viewer had set on the market when the trade executed.
  * Lighter reports it as the pre-trade initial margin fraction, an integer
  * percent on `LIGHTER_IMF_PERCENT_SCALE`: `500` is 5.00%, so 20x. Returns
- * `undefined` when the row omits the fraction.
+ * `undefined` when the row omits the fraction. Lighter declares the fraction a
+ * `StrictInt`, so the scale division is exact and `toFixed()` loses nothing.
  */
 const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
   imf === undefined
