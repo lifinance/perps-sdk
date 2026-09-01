@@ -31,8 +31,6 @@ export const HYPERLIQUID_FEE_TIER_FALLBACK: FeeTier = {
 export const DEFAULT_HISTORY_LIMIT = 50
 /** @internal */
 export const MAX_HISTORY_LIMIT = 200
-/** @internal */
-export const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
 
 /**
  * Main perps DEX uses an empty sub-dex name on the wire; surfaced as
