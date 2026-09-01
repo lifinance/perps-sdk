@@ -10,7 +10,6 @@ import type { Address } from 'viem'
 import {
   DEFAULT_HISTORY_LIMIT,
   MAX_HISTORY_LIMIT,
-  NINETY_DAYS_MS,
   PROVIDER_KEY,
 } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
@@ -36,7 +35,7 @@ export interface GetActivityParams {
   limit?: number
   /** Millisecond timestamp cursor; rows strictly older than it are returned. */
   cursor?: string
-  /** Inclusive lower bound in milliseconds since epoch; defaults to 90 days ago. */
+  /** Inclusive lower bound in milliseconds since epoch. */
   startTime?: number
   /** Inclusive upper bound in milliseconds since epoch. */
   endTime?: number
@@ -55,7 +54,7 @@ const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
 const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
-  timeParams: { user: Address; startTime: number; endTime?: number },
+  timeParams: { user: Address; startTime?: number; endTime?: number },
   resolveMarket: (coin: string) => MarketDisplay | undefined,
   options?: InfoRequestOptions
 ): Promise<ActivityItem[]> => {
@@ -116,9 +115,8 @@ const fetchActivityData = async (
  * `userNonFundingLedgerUpdates` and `userFunding` endpoints, sorted
  * newest-first.
  *
- * Cursor-based pagination uses the ms-since-epoch timestamp of the last
- * item on the current page. `startTime` defaults to 90 days ago to keep
- * unbounded queries cheap.
+ * Cursor-based pagination uses the ms-since-epoch timestamp of the last item
+ * on the current page.
  * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
  * @public
  */
@@ -139,16 +137,12 @@ export const getActivity = async (
     params.limit ?? DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT
   )
-  const startTime = params.startTime ?? Date.now() - NINETY_DAYS_MS
-  const endTime =
-    params.cursor === undefined
-      ? params.endTime
-      : Number.parseInt(params.cursor, 10)
-
   const timeParams = {
     user: params.address,
-    startTime,
-    ...(endTime === undefined ? {} : { endTime }),
+    ...(params.startTime !== undefined || params.endTime !== undefined
+      ? { startTime: params.startTime ?? 0 }
+      : {}),
+    ...(params.endTime === undefined ? {} : { endTime: params.endTime }),
   }
 
   // `get`, not `require`: a coin the backend market list does not hold drops
@@ -162,8 +156,7 @@ export const getActivity = async (
     infoOpts
   )
 
-  // Hyperliquid's endTime is inclusive — drop boundary items so we don't
-  // return the cursor row twice on the next page.
+  // Drop boundary items so the next page does not return the cursor row twice.
   const filtered =
     params.cursor === undefined
       ? merged
