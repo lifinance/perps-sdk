@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 10.1.2
+
+### Patch Changes
+
+- [#411](https://github.com/lifinance/perps-sdk/pull/411) [`87328f4`](https://github.com/lifinance/perps-sdk/commit/87328f4a5acd6f4b035bd6a7d848eebc6b8deee0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Return complete Hyperliquid funding and ledger history when callers omit time bounds.
+
 ## 10.1.1
 
 ### Patch Changes
