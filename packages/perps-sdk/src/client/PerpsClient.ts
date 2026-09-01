@@ -35,6 +35,7 @@ import type {
   CancelOrdersParams,
   CancelTwapOrderParams,
   CreateReferralCodeActionParams,
+  ExecuteMetaActionParams,
   ExecuteProviderSetupParams,
   ExecuteProviderSetupResult,
   GetAccountResult,
@@ -1210,14 +1211,14 @@ export class PerpsClient {
    * returns none, meaning no consent is outstanding for this address.
    *
    * @throws {PerpsError} When no user wallet is configured, the backend returns
-   *   more than one step or a non-EIP-712 step, or submission fails.
+   *   more than one step or a non-EIP-712 step, or the submitted step reports a
+   *   failed result. A signature refusal from the wallet client propagates as
+   *   the wallet's own error.
    * @public
    */
-  async executeMetaAction<T extends MetaActionType>(params: {
-    address: Address
-    action: T
-    params: ActionParamsMap[T]
-  }): Promise<ExecuteActionResponse> {
+  async executeMetaAction<T extends MetaActionType>(
+    params: ExecuteMetaActionParams<T>
+  ): Promise<ExecuteActionResponse> {
     const { address, action } = params
     const { actions } = await createAction(this.sdkClient, {
       provider: META_PROVIDER,
@@ -1247,11 +1248,21 @@ export class PerpsClient {
     const wallet = await this.resolveMetaSigningWallet(actions)
     const signature = await signTypedDataWithSigner(wallet, step.typedData)
 
-    return executeAction(this.sdkClient, {
+    const response = await executeAction(this.sdkClient, {
       provider: META_PROVIDER,
       address,
       action,
       actions: [{ ...step, signature }],
     })
+
+    const failure = response.results.find((r) => !r.success)
+    if (failure) {
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
+    }
+
+    return response
   }
 }

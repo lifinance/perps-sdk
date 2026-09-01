@@ -3,11 +3,13 @@ import type {
   AccountResponse,
   CancelTwapOrderParams as ActionCancelTwapOrderParams,
   CreateReferralCodeParams as ActionCreateReferralCodeParams,
+  ActionParamsMap,
   PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
   ExecuteActionResponse,
   MarginMode,
   MarketRef,
+  MetaActionType,
   ModifyOrderInput,
   OnboardParams,
   OrderSide,
@@ -364,4 +366,15 @@ export interface SubmitOnboardingParams extends OnboardParams {
 export interface CreateReferralCodeActionParams
   extends ActionCreateReferralCodeParams {
   address: Address
+}
+
+/**
+ * Parameters for {@link PerpsClient.executeMetaAction}.
+ *
+ * @public
+ */
+export interface ExecuteMetaActionParams<T extends MetaActionType> {
+  address: Address
+  action: T
+  params: ActionParamsMap[T]
 }

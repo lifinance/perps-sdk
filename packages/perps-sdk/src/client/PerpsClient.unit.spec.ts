@@ -3045,13 +3045,18 @@ describe('PerpsClient', () => {
     })
 
     it('omits the code so the backend generates one', async () => {
-      const { createCalls } = stageMetaAction([createCodeStep('AB12CD')])
+      const { createCalls, executeCalls } = stageMetaAction([
+        createCodeStep('AB12CD'),
+      ])
       const client = newClient()
       client.setUserWallet(walletClient())
 
       await client.createReferralCode({ address: account.address })
 
       expect(createCalls[0].params).toEqual({})
+      expect(executeCalls).toHaveLength(1)
+      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
+      expect(signed.typedData.message).toMatchObject({ code: 'AB12CD' })
     })
 
     it('propagates a typed PerpsError when the backend rejects an invalid code', async () => {
@@ -3110,6 +3115,124 @@ describe('PerpsClient', () => {
 
       expect(error).toBeInstanceOf(PerpsError)
       expect(error.code).toBe(PerpsErrorCode.NonceAlreadyUsed)
+    })
+
+    it('throws a typed PerpsError when the submitted step reports a failed result', async () => {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [onboardStep('v3', '')],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () =>
+          HttpResponse.json({
+            results: [
+              {
+                action: ActionType.META_ONBOARD,
+                success: false,
+                error: 'nonce already used',
+                errorCode: PerpsErrorCode.NonceAlreadyUsed,
+              },
+            ],
+          } satisfies ExecuteActionResponse)
+        )
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.NonceAlreadyUsed)
+      expect(error.message).toBe('nonce already used')
+    })
+
+    it('falls back to ExchangeRejected when a failed result carries no errorCode', async () => {
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [onboardStep('v3', '')],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () =>
+          HttpResponse.json({
+            results: [
+              {
+                action: ActionType.META_ONBOARD,
+                success: false,
+                error: 'rejected',
+              },
+            ],
+          } satisfies ExecuteActionResponse)
+        )
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      const error = await client
+        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
+        .catch((e) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error.code).toBe(PerpsErrorCode.ExchangeRejected)
+      expect(error.message).toBe('rejected')
+    })
+
+    it('submits executeAction exactly once on a 503 — outcome-unknown writes must not retry', async () => {
+      let executeCallCount = 0
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [onboardStep('v3', '')],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCallCount++
+          return HttpResponse.json(
+            { code: PerpsErrorCode.ServerError, message: 'upstream 503' },
+            { status: 503 }
+          )
+        })
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      await expect(
+        client.submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+        })
+      ).rejects.toBeInstanceOf(PerpsError)
+
+      expect(executeCallCount).toBe(1)
+    })
+
+    it('submits executeAction exactly once on a dropped connection (no retry-network)', async () => {
+      let executeCallCount = 0
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [onboardStep('v3', '')],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCallCount++
+          return HttpResponse.error()
+        })
+      )
+      const client = newClient()
+      client.setUserWallet(walletClient())
+
+      await expect(
+        client.submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+        })
+      ).rejects.toBeInstanceOf(PerpsError)
+
+      expect(executeCallCount).toBe(1)
     })
 
     it('throws an SDKError when a step must be signed and no wallet is configured', async () => {

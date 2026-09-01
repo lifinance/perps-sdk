@@ -104,6 +104,7 @@ export type {
   CancelOrdersParams,
   CancelTwapOrderParams as ClientCancelTwapOrderParams,
   CreateReferralCodeActionParams,
+  ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
   GetSetupParams,
