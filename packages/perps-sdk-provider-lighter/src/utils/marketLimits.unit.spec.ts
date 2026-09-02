@@ -13,6 +13,13 @@ describe('mapMarketOrderLimits', () => {
     })
   })
 
+  it('passes a zero cap through unchanged', () => {
+    expect(mapMarketOrderLimits({ order_quote_limit: '0' })).toEqual({
+      maxMarketOrderUsd: '0',
+      maxLimitOrderUsd: '0',
+    })
+  })
+
   it('leaves both caps unset for the Lighter no-cap sentinel', () => {
     expect(
       mapMarketOrderLimits({ order_quote_limit: '281474976.710655' })

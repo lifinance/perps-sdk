@@ -38,7 +38,7 @@ describe('mapMarket (Hyperliquid)', () => {
   it('maps the matching market-order tier and documented limit-order multiple', () => {
     const result = mapMarket(universe, 'hyperliquid', maxMarketOrderNtls)
 
-    expect(result.maxMarketOrderUsd).toBe('30000000.0')
+    expect(result.maxMarketOrderUsd).toBe('30000000')
     expect(result.maxLimitOrderUsd).toBe('300000000')
   })
 
@@ -49,8 +49,37 @@ describe('mapMarket (Hyperliquid)', () => {
       maxMarketOrderNtls
     )
 
-    expect(result.maxMarketOrderUsd).toBe('500000.0')
+    expect(result.maxMarketOrderUsd).toBe('500000')
     expect(result.maxLimitOrderUsd).toBe('5000000')
+  })
+
+  it('selects the same tier when the API returns tiers in ascending order', () => {
+    const ascending: HlMaxMarketOrderNtls = [...maxMarketOrderNtls].reverse()
+    const result = mapMarket(universe, 'hyperliquid', ascending)
+
+    expect(result.maxMarketOrderUsd).toBe('30000000')
+    expect(result.maxLimitOrderUsd).toBe('300000000')
+  })
+
+  it('selects the tier whose threshold equals the market maxLeverage', () => {
+    const result = mapMarket(
+      { ...universe, maxLeverage: 20 },
+      'hyperliquid',
+      maxMarketOrderNtls
+    )
+
+    expect(result.maxMarketOrderUsd).toBe('5000000')
+    expect(result.maxLimitOrderUsd).toBe('50000000')
+  })
+
+  it('leaves order caps unset when every tier threshold is above maxLeverage', () => {
+    const result = mapMarket({ ...universe, maxLeverage: 3 }, 'hyperliquid', [
+      [25, '30000000.0'],
+      [10, '2000000.0'],
+    ])
+
+    expect(result.maxMarketOrderUsd).toBeUndefined()
+    expect(result.maxLimitOrderUsd).toBeUndefined()
   })
 
   it('leaves order caps unset when the info response is unavailable', () => {

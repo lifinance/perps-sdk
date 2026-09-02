@@ -9,6 +9,7 @@ import { getMaxPriceDecimals } from './orderFormatting.js'
 
 /** Hyperliquid quotes every perp market in USDC. */
 const QUOTE_SYMBOL = 'USDC'
+/** Hyperliquid documents the limit-order notional cap as 10x the market-order cap. */
 const LIMIT_ORDER_VALUE_MULTIPLIER = 10
 
 type MarketOrderLimits = Pick<
@@ -20,15 +21,17 @@ const mapMarketOrderLimits = (
   maxLeverage: number,
   tiers?: HlMaxMarketOrderNtls
 ): MarketOrderLimits => {
-  const selected = tiers?.find(
-    ([minMaxLeverage]) => minMaxLeverage <= maxLeverage
-  )
+  const selected = tiers
+    ?.slice()
+    .sort(([a], [b]) => b - a)
+    .find(([minMaxLeverage]) => minMaxLeverage <= maxLeverage)
   if (selected === undefined) {
     return {}
   }
+  const maxMarketOrderUsd = new Big(selected[1])
   return {
-    maxMarketOrderUsd: selected[1],
-    maxLimitOrderUsd: new Big(selected[1])
+    maxMarketOrderUsd: maxMarketOrderUsd.toFixed(),
+    maxLimitOrderUsd: maxMarketOrderUsd
       .times(LIMIT_ORDER_VALUE_MULTIPLIER)
       .toFixed(),
   }
