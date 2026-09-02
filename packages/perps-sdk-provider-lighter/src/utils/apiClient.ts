@@ -56,9 +56,6 @@ export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   maxDelayMs: 60_000,
   respectRetryAfter: true,
   classify: ({ response }) => {
-    if (response.status === 429 || response.status === 405) {
-      return 'retry-rate-limit'
-    }
     if (
       response.status === 502 ||
       response.status === 503 ||
@@ -71,6 +68,10 @@ export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
 }
 
 const LIGHTER_RATE_LIMIT_HOLD_MS = 60_000
+const LIGHTER_RATE_LIMIT_HOLD_MAX_MS = 300_000
+
+const isLighterRateLimit = (status: number): boolean =>
+  status === 429 || status === 405
 
 const retryAfterMs = (header: string | null, nowMs: number): number => {
   if (header === null) {
@@ -78,11 +79,11 @@ const retryAfterMs = (header: string | null, nowMs: number): number => {
   }
   const seconds = Number(header)
   if (Number.isFinite(seconds) && seconds >= 0) {
-    return seconds * 1000
+    return Math.min(seconds * 1000, LIGHTER_RATE_LIMIT_HOLD_MAX_MS)
   }
   const dateMs = Date.parse(header)
   return Number.isFinite(dateMs)
-    ? Math.max(0, dateMs - nowMs)
+    ? Math.min(Math.max(0, dateMs - nowMs), LIGHTER_RATE_LIMIT_HOLD_MAX_MS)
     : LIGHTER_RATE_LIMIT_HOLD_MS
 }
 
@@ -118,9 +119,10 @@ export interface LighterApiClientOptions {
  * `Authorization` header. This matches Lighter's OpenAPI spec and lets the
  * same call work browser-direct and from server-side proxies.
  *
- * Lighter signals rate limits through HTTP 429 or HTTP 405. This client holds
- * all network dispatch until `Retry-After` expires, or for 60 seconds when the
- * response has no valid header.
+ * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
+ * retries such a response. It throws `RateLimitExceeded` and holds all network
+ * dispatch until `Retry-After` expires (capped at five minutes), or for 60
+ * seconds when the response has no valid header.
  * @public
  */
 export class LighterApiClient {
@@ -140,7 +142,7 @@ export class LighterApiClient {
     this.fetchWithHold = async (input, init) => {
       this.assertRequestAllowed()
       const response = await (this.fetchImpl ?? fetch)(input, init)
-      if (response.status === 429 || response.status === 405) {
+      if (isLighterRateLimit(response.status)) {
         const responseNowMs = Date.now()
         this.rateLimitHold.untilMs = Math.max(
           this.rateLimitHold.untilMs,
@@ -161,12 +163,22 @@ export class LighterApiClient {
     return this.fetchWithHold(input, init)
   }
 
+  private rateLimitError(): PerpsError {
+    return new PerpsError(
+      PerpsErrorCode.RateLimitExceeded,
+      `Lighter API requests are held until ${new Date(this.rateLimitHold.untilMs).toISOString()}`
+    )
+  }
+
   private assertRequestAllowed(): void {
     if (Date.now() < this.rateLimitHold.untilMs) {
-      throw new PerpsError(
-        PerpsErrorCode.RateLimitExceeded,
-        `Lighter API requests are held until ${new Date(this.rateLimitHold.untilMs).toISOString()}`
-      )
+      throw this.rateLimitError()
+    }
+  }
+
+  private assertNotRateLimited(response: Response): void {
+    if (isLighterRateLimit(response.status)) {
+      throw this.rateLimitError()
     }
   }
   private buildUrl(path: string, params?: ApiParams): string {
@@ -236,6 +248,7 @@ export class LighterApiClient {
         signal: this.signal,
       }
     )
+    this.assertNotRateLimited(response)
     const data = (await response.json().catch(() => undefined)) as T
     return { status: response.status, data }
   }
@@ -260,6 +273,7 @@ export class LighterApiClient {
       body: body.toString(),
       signal: this.signal,
     })
+    this.assertNotRateLimited(response)
     const data = (await response.json().catch(() => undefined)) as T
     return { status: response.status, data }
   }

@@ -2,6 +2,7 @@ import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  LIGHTER_RETRY_DEFAULTS,
   LighterApiClient,
   LighterAuthRejectedError,
   LighterTokenRevokedError,
@@ -99,6 +100,13 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     ).rejects.toBeInstanceOf(LighterAuthRejectedError)
   })
 
+  it('throws LighterAuthRejectedError on a 403 HTTP status', async () => {
+    const client = clientWith(stubFetch(403, { message: 'forbidden' }))
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toBeInstanceOf(LighterAuthRejectedError)
+  })
+
   it.each([
     { status: 400, body: { code: 61006, message: 'revoked' } },
     { status: 200, body: { code: 61006, message: 'revoked' } },
@@ -156,11 +164,64 @@ describe('LighterApiClient rate-limit hold', () => {
       .mockResolvedValueOnce(stubResponse(200, { code: 0 }))
     const client = clientWith(fetchImpl)
 
-    await expect(client.get('/first')).rejects.toBeInstanceOf(PerpsError)
+    await expect(client.get('/first')).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+    })
     now += 59_999
     await expect(client.postForm('/held', { value: 1 })).rejects.toBeInstanceOf(
       PerpsError
     )
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+
+    now += 1
+    await expect(client.get('/released')).resolves.toEqual({ code: 0 })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails a 429 at once under the default retry policy', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99)
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(stubResponse(429, { code: 23000 }))
+      .mockResolvedValueOnce(stubResponse(200, { code: 0 }))
+    const client = new LighterApiClient(BASE_URL, {
+      fetchImpl,
+      policy: LIGHTER_RETRY_DEFAULTS,
+    })
+
+    await expect(client.get('/first')).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a rate-limited POST with RateLimitExceeded', async () => {
+    const client = clientWith(stubFetch(429, { code: 23000 }))
+    await expect(
+      client.postForm('/mutate', { value: 1 })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+  })
+
+  it('caps a Retry-After hold at five minutes', async () => {
+    let now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 23000 }), {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'Retry-After': '3600',
+          },
+        })
+      )
+      .mockResolvedValueOnce(stubResponse(200, { code: 0 }))
+    const client = clientWith(fetchImpl)
+
+    await expect(client.get('/first')).rejects.toBeInstanceOf(PerpsError)
+    now += 299_999
+    await expect(client.get('/held')).rejects.toBeInstanceOf(PerpsError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
 
     now += 1

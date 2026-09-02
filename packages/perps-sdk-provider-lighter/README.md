@@ -41,11 +41,11 @@ lighterProvider({ storage: myStorageAdapter })
 
 ## Referral and read authentication
 
-The `SET_REFERRAL` action uses a short-lived standard token. After the action confirms the code, the provider stores the code with the local API key. `getAccount` compares this marker with the current provider code to set `referralPresent`. It does not send a read-only token to a referral endpoint.
+The `SET_REFERRAL` action uses a short-lived standard token. After the action confirms the code, the provider stores the code with the local API key. `getAccount` compares this marker with the current provider code to set `referralPresent`. It does not send a read-only token to a referral endpoint. A key record from an earlier package version has no marker, so `getAccount` reports `referralPresent: false` until the `SET_REFERRAL` action runs again. When Lighter already reports the code for the address, that action stores the marker and does not send a second `referral/use` request. A `REGISTER_API_KEY` action keeps the marker on the new key record.
 
 Before `getAccount` starts an authenticated read, it compares the local public key with the registered Lighter public key. A missing or different key prevents token creation and authenticated reads. If Lighter returns code `61006` for a read-only token, the provider creates one replacement and retries the read once. Responses with HTTP `401`, HTTP `403`, or code `20013` do not remove or replace the token.
 
-Each provider instance shares one request hold across its Lighter API clients, polls, and token-management requests. An HTTP `429` or HTTP `405` response starts the hold. The provider uses `Retry-After` when Lighter supplies it. Otherwise, the hold lasts 60 seconds. All Lighter requests from that provider fail before network dispatch until the hold expires. Separate provider instances do not share a hold.
+Each provider instance shares one request hold across its Lighter API clients, polls, and token-management requests. An HTTP `429` or HTTP `405` response starts the hold and fails at once with `RateLimitExceeded`. The provider does not retry that request. The provider uses `Retry-After` when Lighter supplies it, up to a maximum of five minutes. Otherwise, the hold lasts 60 seconds. All Lighter requests from that provider fail before network dispatch until the hold expires. Separate provider instances do not share a hold.
 
 ## WASM signer loading
 

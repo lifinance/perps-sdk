@@ -304,11 +304,14 @@ async function signRegisterApiKey(
     l1Signature
   )
 
+  // The referral marker belongs to the L1 address, not to the key slot.
+  const previousKey = await deps.keyStore.get(address)
   await deps.keyStore.set(address, {
     accountIndex,
     apiKeyIndex,
     apiKeyPrivateKey: keypair.privateKey,
     apiKeyPublicKey: keypair.publicKey,
+    appliedReferralCode: previousKey?.appliedReferralCode,
   })
 
   return {

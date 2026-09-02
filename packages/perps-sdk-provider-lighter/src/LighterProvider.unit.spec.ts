@@ -732,6 +732,34 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(limitsCall?.url).toContain('auth=ro-readonly-lighter')
   })
 
+  it('reports the stored read-only token under the stored key account index', async () => {
+    const storage = createMemoryStorage()
+    const storedKey = { ...STORED_API_KEY, accountIndex: 4242 }
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(storedKey)
+    )
+    await storage.set(
+      `lifi:perps:lighter:rotoken:${ADDRESS}:${storedKey.accountIndex}`,
+      JSON.stringify({
+        token: 'ro-seeded',
+        expiry: Math.floor(Date.now() / 1000) + 30 * 86_400,
+        scope: 'all',
+        accountIndex: storedKey.accountIndex,
+        tokenId: 7,
+      })
+    )
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
+      false
+    )
+    expect(account.config).toMatchObject({ readOnlyTokenApproved: true })
+  })
+
   it('creates the read-only token at most once and reuses it across reads', async () => {
     const storage = createMemoryStorage()
     await storage.set(

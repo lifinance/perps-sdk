@@ -746,7 +746,7 @@ export const createLighterProvider = (
                 fetchAccountLimits(client, account.index, resolvedToken)
               ),
           apiKeyRegistered
-            ? readOnlyTokenManager.get(params.address, account.index)
+            ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
             : Promise.resolve(undefined),
         ])
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
