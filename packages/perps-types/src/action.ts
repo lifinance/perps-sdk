@@ -12,6 +12,7 @@ import type {
 } from './enums.js'
 import type { MarketDisplay, MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
+import type { CreateReferralCodeParams, OnboardParams } from './referral.js'
 import type { PerpsTypedData } from './typedData.js'
 
 /**
@@ -630,6 +631,8 @@ export interface ActionParamsMap {
   [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams
+  [ActionType.META_ONBOARD]: OnboardParams
+  [ActionType.META_CREATE_REFERRAL_CODE]: CreateReferralCodeParams
   [ActionType.SYNC_FEE_ATTRIBUTION]: Record<string, never>
 }
 

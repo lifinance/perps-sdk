@@ -222,3 +222,27 @@ describe('ActionType wire values', () => {
     expect(new Set(values).size).toBe(values.length)
   })
 })
+
+describe('provider-independent onboarding ActionType members', () => {
+  it('META_ONBOARD carries wire value "metaOnboard"', () => {
+    expect(ActionType.META_ONBOARD).toBe('metaOnboard')
+  })
+
+  it('META_CREATE_REFERRAL_CODE carries wire value "metaCreateReferralCode"', () => {
+    expect(ActionType.META_CREATE_REFERRAL_CODE).toBe('metaCreateReferralCode')
+  })
+
+  it('leaves META_ACCEPT_TERMS on its published wire value', () => {
+    expect(ActionType.META_ACCEPT_TERMS).toBe('metaAcceptTerms')
+  })
+
+  it('keeps the onboarding members distinct from META_ACCEPT_TERMS', () => {
+    expect(ActionType.META_ONBOARD).not.toBe(ActionType.META_ACCEPT_TERMS)
+    expect(ActionType.META_CREATE_REFERRAL_CODE).not.toBe(
+      ActionType.META_ACCEPT_TERMS
+    )
+    expect(ActionType.META_ONBOARD).not.toBe(
+      ActionType.META_CREATE_REFERRAL_CODE
+    )
+  })
+})
