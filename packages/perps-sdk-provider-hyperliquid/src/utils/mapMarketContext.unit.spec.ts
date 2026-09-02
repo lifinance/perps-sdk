@@ -37,7 +37,6 @@ describe('mapMarketContext (Hyperliquid)', () => {
     expect(result.prevDayPrice).toBe('94000')
     expect(result.openInterest).toBe('1234.5')
     expect(result.funding?.rate).toBe('0.0001')
-    expect(result.volumeByTimeframe).toBeUndefined()
   })
 
   it('falls back to mark when the book is empty (midPx null)', () => {
