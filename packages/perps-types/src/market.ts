@@ -60,6 +60,10 @@ export interface BaseMarket {
  */
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
+  /** Maximum market-order notional in USD, as a plain decimal string. */
+  maxMarketOrderUsd?: string
+  /** Maximum limit-order notional in USD, as a plain decimal string. */
+  maxLimitOrderUsd?: string
   onlyIsolated: boolean
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment
@@ -122,6 +126,18 @@ export interface MarketsResponse {
 }
 
 /**
+ * Buyer- and seller-initiated quote notional for one market timeframe.
+ *
+ * @public
+ */
+export interface MarketVolumeBreakdown {
+  /** Buyer-initiated quote notional, as a plain decimal string. */
+  buy: string
+  /** Seller-initiated quote notional, as a plain decimal string. */
+  sell: string
+}
+
+/**
  * Live per-market context: `midPrice` is the order-book mid, `markPrice` the
  * venue mark, `oraclePrice` the venue oracle/index price where the venue
  * publishes one. `prevDayPrice`, `priceChange24h` and `volume24h` apply to
@@ -141,6 +157,11 @@ export interface MarketContext {
   prevDayPrice?: string
   priceChange24h?: string
   volume24h?: string
+  /**
+   * Quote-notional volume split by aggressor side and canonical OHLCV interval.
+   * Missing intervals were not supplied by the venue.
+   */
+  volumeByTimeframe?: Partial<Record<OhlcvInterval, MarketVolumeBreakdown>>
   marketCap?: string
   openInterest?: string
   funding?: FundingInfo

@@ -38,6 +38,8 @@ const perpsMarket: PerpsMarket = {
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   maintenanceMarginRate: 0.01,
+  maxMarketOrderUsd: '1000000',
+  maxLimitOrderUsd: '281474976.710655',
 }
 
 const spotMarket: SpotMarket = {
@@ -58,6 +60,8 @@ describe('PerpsMarket', () => {
     expect(perpsMarket.positionMarginAdjustment).toBe(
       PositionMarginAdjustment.ADD_AND_REMOVE
     )
+    expect(perpsMarket.maxMarketOrderUsd).toBe('1000000')
+    expect(perpsMarket.maxLimitOrderUsd).toBe('281474976.710655')
   })
 
   it('optionally carries venue tick and margin metadata', () => {
@@ -116,6 +120,10 @@ describe('MarketContext', () => {
       prevDayPrice: '59000',
       priceChange24h: '1.71',
       volume24h: '123456',
+      volumeByTimeframe: {
+        '1h': { buy: '32000', sell: '28000' },
+        '1d': { buy: '70000', sell: '53456' },
+      },
       marketCap: '1200000000000',
       openInterest: '1000',
       funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
@@ -127,6 +135,10 @@ describe('MarketContext', () => {
     expect(ctx.priceChange24h).toBe('1.71')
     expect(ctx.marketCap).toBe('1200000000000')
     expect(ctx.funding?.rate).toBe('0.0001')
+    expect(ctx.volumeByTimeframe?.['1h']).toEqual({
+      buy: '32000',
+      sell: '28000',
+    })
   })
 
   it('omits oracle and the perp-only fields for a spot market', () => {
@@ -138,6 +150,7 @@ describe('MarketContext', () => {
     expect(ctx.oraclePrice).toBeUndefined()
     expect(ctx.openInterest).toBeUndefined()
     expect(ctx.funding).toBeUndefined()
+    expect(ctx.volumeByTimeframe).toBeUndefined()
   })
 })
 
