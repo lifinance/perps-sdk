@@ -464,7 +464,7 @@ async function executeTokenAuthMutation(
   if (step.wasmSignParams.kind === 'referralUse') {
     const { referral_code } = step.wasmSignParams as { referral_code?: string }
     if (
-      referral_code != null &&
+      typeof referral_code === 'string' &&
       (await isReferralAlreadyApplied(deps, address, authToken, referral_code))
     ) {
       return

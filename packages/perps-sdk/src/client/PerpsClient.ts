@@ -722,8 +722,10 @@ export class PerpsClient {
     const sequenceOf = (descriptor: ProviderAction): number =>
       descriptor.sequence ?? Number.MAX_SAFE_INTEGER
     for (const descriptor of internalPending) {
+      // A tie (equal sequences, or both absent) declares no order, so the
+      // internal step defers to the next checkSetup rather than racing.
       const blocked = stagedVisible.some(
-        (staged) => sequenceOf(staged) < sequenceOf(descriptor)
+        (staged) => sequenceOf(staged) <= sequenceOf(descriptor)
       )
       if (blocked) {
         continue
