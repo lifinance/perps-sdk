@@ -16,6 +16,15 @@ export type HlUniverseItem = {
 }
 
 /**
+ * Descending leverage thresholds and USD market-order caps from the
+ * `maxMarketOrderNtls` info query.
+ * @public
+ */
+export type HlMaxMarketOrderNtls = Array<
+  [minMaxLeverage: number, maxMarketOrderUsd: string]
+>
+
+/**
  * Perpetual metadata envelope returned by the Hyperliquid `meta` info query.
  * @public
  */

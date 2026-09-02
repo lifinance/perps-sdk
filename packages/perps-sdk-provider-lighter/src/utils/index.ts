@@ -26,6 +26,7 @@ export {
   mapTriggerOrder,
 } from './mapOrder.js'
 export { leverageFromImf, mapPosition } from './mapPosition.js'
+export { mapMarketOrderLimits } from './marketLimits.js'
 export { mapInterval } from './ohlcvInterval.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'

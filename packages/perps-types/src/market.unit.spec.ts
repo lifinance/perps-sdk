@@ -38,6 +38,8 @@ const perpsMarket: PerpsMarket = {
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
   maintenanceMarginRate: 0.01,
+  maxMarketOrderUsd: '1000000',
+  maxLimitOrderUsd: '281474976.710655',
 }
 
 const spotMarket: SpotMarket = {
@@ -58,6 +60,8 @@ describe('PerpsMarket', () => {
     expect(perpsMarket.positionMarginAdjustment).toBe(
       PositionMarginAdjustment.ADD_AND_REMOVE
     )
+    expect(perpsMarket.maxMarketOrderUsd).toBe('1000000')
+    expect(perpsMarket.maxLimitOrderUsd).toBe('281474976.710655')
   })
 
   it('optionally carries venue tick and margin metadata', () => {

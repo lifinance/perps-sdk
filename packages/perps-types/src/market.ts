@@ -60,6 +60,10 @@ export interface BaseMarket {
  */
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
+  /** Maximum market-order notional in USD, as a plain decimal string. */
+  maxMarketOrderUsd?: string
+  /** Maximum limit-order notional in USD, as a plain decimal string. */
+  maxLimitOrderUsd?: string
   onlyIsolated: boolean
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment

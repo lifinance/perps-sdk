@@ -1,25 +1,53 @@
 import type { PerpsMarket } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
+import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
-import type { HlUniverseItem } from '../types/index.js'
+import type { HlMaxMarketOrderNtls, HlUniverseItem } from '../types/index.js'
 import { calculateMaintenanceMarginRate } from './liquidation.js'
 import { coinAsset } from './marketDisplay.js'
 import { getMaxPriceDecimals } from './orderFormatting.js'
 
 /** Hyperliquid quotes every perp market in USDC. */
 const QUOTE_SYMBOL = 'USDC'
+/** Hyperliquid documents the limit-order notional cap as 10x the market-order cap. */
+const LIMIT_ORDER_VALUE_MULTIPLIER = 10
+
+type MarketOrderLimits = Pick<
+  PerpsMarket,
+  'maxMarketOrderUsd' | 'maxLimitOrderUsd'
+>
+
+const mapMarketOrderLimits = (
+  maxLeverage: number,
+  tiers?: HlMaxMarketOrderNtls
+): MarketOrderLimits => {
+  const selected = tiers
+    ?.slice()
+    .sort(([a], [b]) => b - a)
+    .find(([minMaxLeverage]) => minMaxLeverage <= maxLeverage)
+  if (selected === undefined) {
+    return {}
+  }
+  const maxMarketOrderUsd = new Big(selected[1])
+  return {
+    maxMarketOrderUsd: maxMarketOrderUsd.toFixed(),
+    maxLimitOrderUsd: maxMarketOrderUsd
+      .times(LIMIT_ORDER_VALUE_MULTIPLIER)
+      .toFixed(),
+  }
+}
 
 /**
- * Map a Hyperliquid universe entry to a {@link PerpsMarket}'s static instrument
- * metadata. Live mark/stats fields live on the {@link MarketContext} — see
- * {@link mapMarketContext}. `categoryId` is the `Provider.categories[].id` of the
- * dex the entry was fetched from — known to the caller at fetch time, never
- * re-derived from the coin string.
+ * Map Hyperliquid universe metadata and optional `maxMarketOrderNtls` tiers to
+ * a {@link PerpsMarket}. Missing tiers leave both order caps unset. Live stats
+ * stay on {@link MarketContext}; callers supply the provider category id
+ * because the coin string does not contain it.
  * @public
  */
 export const mapMarket = (
   universe: HlUniverseItem,
-  categoryId: string
+  categoryId: string,
+  maxMarketOrderNtls?: HlMaxMarketOrderNtls
 ): PerpsMarket => ({
   providerId: PROVIDER_KEY,
   id: universe.name,
@@ -32,6 +60,7 @@ export const mapMarket = (
   szDecimals: universe.szDecimals,
   priceDecimals: getMaxPriceDecimals(universe.szDecimals),
   maxLeverage: universe.maxLeverage,
+  ...mapMarketOrderLimits(universe.maxLeverage, maxMarketOrderNtls),
   onlyIsolated:
     universe.marginMode !== undefined || universe.onlyIsolated === true,
   // Deprecated `onlyIsolated` cannot distinguish strict-isolated from
