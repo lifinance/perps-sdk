@@ -146,18 +146,22 @@ export class OndoApiClient {
   }
 
   /**
-   * Arbitrary-method request with caller-prebuilt headers. Only GET is ever
-   * retried; writes are not idempotent.
+   * Arbitrary-method request. Only GET is retried; writes are not idempotent.
    */
   async send<T>(
     method: OndoHttpMethod,
     path: string,
-    options?: { body?: unknown; headers?: Record<string, string> }
+    options?: {
+      body?: unknown
+      headers?: Record<string, string>
+      authToken?: string
+    }
   ): Promise<T> {
     const { status, data } = await this.perform(path, {
       method,
       body: options?.body,
       headers: options?.headers,
+      authToken: options?.authToken,
       policy: method === 'GET' ? this.policy : DISABLED_RETRY,
     })
     return this.unwrap<T>(path, status, data)

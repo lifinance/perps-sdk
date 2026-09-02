@@ -16,7 +16,7 @@ import {
   ONDO_TERMS_VERSION,
 } from '../constants.js'
 import type { OndoApiKey } from '../types/auth.js'
-import type { OndoCreatedApiKey } from '../types/wire.js'
+import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
 import {
   type OndoApiClient,
   OndoApiError,
@@ -37,6 +37,8 @@ export interface OndoSignActionsDeps {
   tokenStore: OndoTokenStore
   apiKeyStore: OndoApiKeyStore
 }
+
+const ONDO_API_KEY_LIMIT = 10
 
 const isSiweStep = (step: ActionStep): step is SiweActionStep => 'siwe' in step
 
@@ -64,18 +66,16 @@ function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
   }
   if (!isOndoApiKey(record)) {
     throw new OndoApiError(
-      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify(created).slice(0, 200)}`
+      `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify({ ...created, secretKey: '[REDACTED]' }).slice(0, 200)}`
     )
   }
   return record
 }
 
 /**
- * Fetch the stored trading API key, creating one on first use. Creation is
- * JWT-authorized (`POST /v1/api_keys`); the returned record — including the
- * secret the venue reveals only once — is mapped to the domain shape and
- * stored immediately. An absent session throws {@link OndoSessionExpiredError}
- * so callers re-run SIWE login.
+ * Fetch the stored trading API key. When no valid key exists, list the venue
+ * registry and reclaim the oldest LI.FI-owned slot if the account is at
+ * capacity. The replacement secret is stored immediately after creation.
  */
 async function ensureApiKey(
   deps: OndoSignActionsDeps,
@@ -89,6 +89,44 @@ async function ensureApiKey(
   if (token === null) {
     throw new OndoSessionExpiredError(
       `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+    )
+  }
+  const configuredKeys =
+    (await deps.client.get<OndoApiKeyInfo[] | null>('/v1/api_keys', {
+      authToken: token.token,
+    })) ?? []
+  if (configuredKeys.length >= ONDO_API_KEY_LIMIT) {
+    let staleKey: OndoApiKeyInfo | undefined
+    let staleKeyCreatedAtMs = Number.POSITIVE_INFINITY
+    for (const key of configuredKeys) {
+      // A drifted list row without a usable keyId is not a revoke target.
+      if (
+        key.name !== ONDO_API_KEY_NAME ||
+        typeof key.keyId !== 'string' ||
+        key.keyId === ''
+      ) {
+        continue
+      }
+      const createdAtMs = Date.parse(key.createdAt)
+      if (
+        staleKey === undefined ||
+        createdAtMs < staleKeyCreatedAtMs ||
+        (createdAtMs === staleKeyCreatedAtMs && key.keyId < staleKey.keyId)
+      ) {
+        staleKey = key
+        staleKeyCreatedAtMs = createdAtMs
+      }
+    }
+    if (staleKey === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Ondo account reached the ${ONDO_API_KEY_LIMIT} API-key limit, but no stale LI.FI-owned key named '${ONDO_API_KEY_NAME}' is available to revoke.`
+      )
+    }
+    await deps.client.send(
+      'DELETE',
+      `/v1/api_keys/${encodeURIComponent(staleKey.keyId)}`,
+      { authToken: token.token }
     )
   }
   const created = await deps.client.post<OndoCreatedApiKey>(
@@ -120,7 +158,7 @@ async function executeSessionRequest(
   }
   await deps.client.send(request.method, request.path, {
     body: request.body === undefined ? undefined : JSON.parse(request.body),
-    headers: { Authorization: `Bearer ${token.token}` },
+    authToken: token.token,
   })
 }
 
