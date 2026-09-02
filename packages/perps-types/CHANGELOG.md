@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 11.5.0
+
+### Minor Changes
+
+- [#419](https://github.com/lifinance/perps-sdk/pull/419) [`1058573`](https://github.com/lifinance/perps-sdk/commit/1058573783b315c9a63482311c7692cb9c19cf77) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Expose canonical per-market order caps and provider adapter mappings.
+
 ## 11.4.0
 
 ### Minor Changes
