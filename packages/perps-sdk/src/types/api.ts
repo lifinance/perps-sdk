@@ -14,6 +14,7 @@ import type {
   OnboardParams,
   OrderSide,
   OrderType,
+  ProviderAction,
   SignedActionStep,
   TimeInForce,
   TriggerOrderInput,
@@ -288,6 +289,19 @@ export interface GetWithdrawableBalancesParams {
 }
 
 /**
+ * One entry on {@link ProviderSetup.checklist}: a user-facing setup
+ * descriptor plus its satisfied state for the queried account.
+ *
+ * @public
+ */
+export interface SetupChecklistItem {
+  /** The `Provider.setup` descriptor for this step. */
+  descriptor: ProviderAction
+  /** Whether the step is already satisfied for this account. */
+  satisfied: boolean
+}
+
+/**
  * Result from {@link PerpsClient.checkSetup}.
  *
  * Reports the unsatisfied entries on `Provider.setup` for the queried account
@@ -312,6 +326,15 @@ export interface ProviderSetup {
   setup: ActionStep[]
   /** Whether all setup items are already satisfied (ready to trade) */
   isReady: boolean
+  /**
+   * The renderable onboarding list: every USER-signed setup descriptor with
+   * its satisfied state, ordered by `sequence`. SDK-internal steps and
+   * conditional steps that staged no work for this account (see
+   * `PerpsProviderPlugin.conditionalSetupActions`) are omitted. Consumers
+   * render this list directly instead of joining `Provider.setup` metadata
+   * with the staged `setup` steps.
+   */
+  checklist: SetupChecklistItem[]
 }
 
 /**

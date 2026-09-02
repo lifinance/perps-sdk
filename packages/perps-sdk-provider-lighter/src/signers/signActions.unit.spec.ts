@@ -26,6 +26,11 @@ import {
 type PostFormResult = { status: number; data: unknown }
 type PostFormImpl = (path: string, params: ApiParams) => Promise<PostFormResult>
 type GetImpl = (path: string, params?: ApiParams) => Promise<unknown>
+type GetAuthedImpl = (
+  path: string,
+  authToken: string,
+  params?: ApiParams
+) => Promise<unknown>
 const OK_MUTATION: PostFormResult = { status: 200, data: { code: 200 } }
 
 /** Venue slot state that matches the API key every test stores. */
@@ -73,13 +78,15 @@ const TRANSFER_SIGNED = {
 function makeDeps(
   overrides: Partial<LighterSigner> = {},
   postFormImpl?: PostFormImpl,
-  getImpl?: GetImpl
+  getImpl?: GetImpl,
+  getAuthedImpl?: GetAuthedImpl
 ): {
   deps: LighterSignActionsDeps
   signer: { [K in keyof LighterSigner]?: unknown }
   keyStore: LighterKeyStore
   postForm: Mock
   get: Mock
+  getAuthed: Mock
 } {
   const baseSigner = {
     sign: vi.fn(async () => STD_SIGNED),
@@ -101,7 +108,8 @@ function makeDeps(
   const keyStore = new LighterKeyStore(createMemoryStorage())
   const postForm = vi.fn(postFormImpl ?? (async () => OK_MUTATION))
   const get = vi.fn(getImpl ?? (async () => REGISTERED_API_KEYS))
-  const apiClient = { get, postForm } as unknown as LighterApiClient
+  const getAuthed = vi.fn(getAuthedImpl ?? (async () => ({ used_code: '' })))
+  const apiClient = { get, postForm, getAuthed } as unknown as LighterApiClient
   return {
     deps: {
       signer,
@@ -114,6 +122,7 @@ function makeDeps(
     keyStore,
     postForm,
     get,
+    getAuthed,
   }
 }
 
@@ -1068,6 +1077,92 @@ describe('lighterSignActions', () => {
           ADDRESS
         )
       ).rejects.toThrow(/referral code already applied/)
+    })
+
+    it('reads the applied code first and skips the POST when it already matches', async () => {
+      const { deps, keyStore, postForm, getAuthed } = makeDeps(
+        {},
+        undefined,
+        undefined,
+        async () => ({ used_code: 'LIFI' })
+      )
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(0)
+      expect(getAuthed).toHaveBeenCalledWith(
+        '/api/v1/referral/userReferrals',
+        'auth-token-xyz',
+        { l1_address: ADDRESS.toLowerCase() }
+      )
+      expect(postForm).not.toHaveBeenCalled()
+    })
+
+    it('overwrites a foreign applied referral code via the POST', async () => {
+      const { deps, keyStore, postForm } = makeDeps(
+        {},
+        undefined,
+        undefined,
+        async () => ({ used_code: 'SOMEONE_ELSE' })
+      )
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+
+      expect(postForm).toHaveBeenCalledWith(
+        '/api/v1/referral/use',
+        expect.objectContaining({ referral_code: 'LIFI' })
+      )
+    })
+
+    it('still POSTs when the applied-code read fails', async () => {
+      const { deps, keyStore, postForm } = makeDeps(
+        {},
+        undefined,
+        undefined,
+        async () => {
+          throw new Error('userReferrals unavailable')
+        }
+      )
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+
+      expect(postForm).toHaveBeenCalledWith(
+        '/api/v1/referral/use',
+        expect.objectContaining({ referral_code: 'LIFI' })
+      )
     })
   })
 

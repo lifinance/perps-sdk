@@ -117,6 +117,7 @@ export type {
   PlaceTwapOrderParams as ClientPlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
+  SetupChecklistItem,
   SubmitOnboardingParams,
   WithdrawParams,
 } from './types/api.js'

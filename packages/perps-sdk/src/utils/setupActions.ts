@@ -8,9 +8,10 @@ import { PerpsSigner } from '@lifi/perps-types'
  * them inline, so surfacing them would render inert cards the user can't act on.
  *
  * Membership is a property of the descriptor's `signers` alone, independent of
- * any account: use this to build the onboarding list, then layer each entry's
- * satisfied/unsatisfied state on top from a live `checkSetup` so the tick never
- * goes stale.
+ * any account. When an account is available, prefer `ProviderSetup.checklist`
+ * from `checkSetup` for the onboarding list — it applies this filter, omits
+ * not-required conditional steps, and carries each entry's satisfied state.
+ * This function remains the static, account-free projection.
  *
  * @param setup The provider's `setup` descriptors, in their declared order.
  * @public
