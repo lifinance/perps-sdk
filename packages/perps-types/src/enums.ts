@@ -175,6 +175,10 @@ export enum ActionType {
   DEPOSIT = 'deposit',
   /** Provider-independent: sent with the `META_PROVIDER` sentinel, not a real provider key. */
   META_ACCEPT_TERMS = 'metaAcceptTerms',
+  /** Provider-independent composite onboarding consent: the current app-wide terms plus an optional internal referral code, in one signature. */
+  META_ONBOARD = 'metaOnboard',
+  /** Provider-independent: reserves the shareable internal referral code an address owns. */
+  META_CREATE_REFERRAL_CODE = 'metaCreateReferralCode',
   /** Never projected on `Provider.setup` or `Provider.options`, and never offered as a user-facing trading action. */
   SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }

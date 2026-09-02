@@ -8,6 +8,7 @@ import type {
   ExecuteActionResponse,
   MarketRef,
   MarketSettings,
+  MetaActionType,
   Position,
   PositionMarginConstraints,
   Provider,
@@ -16,6 +17,7 @@ import type {
 } from '@lifi/perps-types'
 import {
   ActionType,
+  META_PROVIDER,
   PerpsErrorCode,
   PerpsSigner,
   SigningMethod,
@@ -32,6 +34,8 @@ import type {
   BuildProviderSetupParams,
   CancelOrdersParams,
   CancelTwapOrderParams,
+  CreateReferralCodeActionParams,
+  ExecuteMetaActionParams,
   ExecuteProviderSetupParams,
   ExecuteProviderSetupResult,
   GetAccountResult,
@@ -45,6 +49,7 @@ import type {
   PlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
+  SubmitOnboardingParams,
   WithdrawParams,
 } from '../types/api.js'
 import type { PerpsClientSigner, SwitchChainHook } from '../types/config.js'
@@ -57,7 +62,9 @@ import type {
   SignActionsContext,
 } from '../types/provider.js'
 import type { WithdrawableBalance } from '../types/withdrawal.js'
+import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
+  eip712DomainChainId,
   switchSigningChain,
   userEip712TargetChainId,
 } from '../utils/switchChain.js'
@@ -286,6 +293,28 @@ export class PerpsClient {
       return undefined
     }
     const targetChainId = userEip712TargetChainId(descriptor, actions)
+    if (targetChainId === undefined) {
+      return wallet
+    }
+    return switchSigningChain(wallet, targetChainId, this._switchChain)
+  }
+
+  /**
+   * Resolve the wallet that signs a meta action's steps. Meta actions carry no
+   * provider descriptor, so the target chain comes from the step's EIP-712
+   * domain. The switch is transient — `sdkClient.userWallet` is never mutated.
+   */
+  private async resolveMetaSigningWallet(
+    actions: ActionStep[]
+  ): Promise<PerpsClientSigner> {
+    const wallet = this.sdkClient.userWallet
+    if (!wallet) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'No user wallet configured; call setUserWallet() before signing a meta action.'
+      )
+    }
+    const targetChainId = eip712DomainChainId(actions)
     if (targetChainId === undefined) {
       return wallet
     }
@@ -1125,5 +1154,115 @@ export class PerpsClient {
     await this.notifyExecuteResults(provider, address, results)
 
     return { results }
+  }
+
+  /**
+   * Accept the current terms and, when a code is supplied and the backend
+   * accepts it, attach that internal referral code — in one signature.
+   * Convenience wrapper over {@link executeMetaAction} with
+   * `ActionType.META_ONBOARD`.
+   *
+   * Resolves to `{ results: [] }` when the backend requires no consent from
+   * this address.
+   *
+   * @throws {PerpsError} When no user wallet is configured, or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
+  async submitOnboarding(
+    params: SubmitOnboardingParams
+  ): Promise<ExecuteActionResponse> {
+    const { address, ...onboard } = params
+    return this.executeMetaAction({
+      address,
+      action: ActionType.META_ONBOARD,
+      params: onboard,
+    })
+  }
+
+  /**
+   * Reserve the shareable internal referral code `address` owns. Convenience
+   * wrapper over {@link executeMetaAction} with
+   * `ActionType.META_CREATE_REFERRAL_CODE`.
+   *
+   * @throws {PerpsError} When no user wallet is configured, or the action
+   *   cannot be signed/submitted.
+   * @public
+   */
+  async createReferralCode(
+    params: CreateReferralCodeActionParams
+  ): Promise<ExecuteActionResponse> {
+    const { address, ...createCode } = params
+    return this.executeMetaAction({
+      address,
+      action: ActionType.META_CREATE_REFERRAL_CODE,
+      params: createCode,
+    })
+  }
+
+  /**
+   * Execute a provider-independent action through the same
+   * createAction/executeAction pipeline {@link execute} uses. Meta actions are
+   * dispatched with the {@link META_PROVIDER} sentinel: they have no venue
+   * plugin and no `ProviderAction` descriptor, so the step is signed as EIP-712
+   * typed data with the configured user wallet.
+   *
+   * The backend returns at most one step. Resolves to `{ results: [] }` when it
+   * returns none, meaning no consent is outstanding for this address.
+   *
+   * @throws {PerpsError} When no user wallet is configured, the backend returns
+   *   more than one step or a non-EIP-712 step, or the submitted step reports a
+   *   failed result. A signature refusal from the wallet client propagates as
+   *   the wallet's own error.
+   * @public
+   */
+  async executeMetaAction<T extends MetaActionType>(
+    params: ExecuteMetaActionParams<T>
+  ): Promise<ExecuteActionResponse> {
+    const { address, action } = params
+    const { actions } = await createAction(this.sdkClient, {
+      provider: META_PROVIDER,
+      address,
+      action,
+      params: params.params,
+    })
+
+    if (actions.length === 0) {
+      return { results: [] }
+    }
+    if (actions.length > 1) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Action '${action}' returned ${actions.length} steps; a meta action carries at most one.`
+      )
+    }
+
+    const [step] = actions
+    if (!('typedData' in step)) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Action '${action}' returned a step without typedData; meta actions are signed as EIP-712 typed data.`
+      )
+    }
+
+    const wallet = await this.resolveMetaSigningWallet(actions)
+    const signature = await signTypedDataWithSigner(wallet, step.typedData)
+
+    const response = await executeAction(this.sdkClient, {
+      provider: META_PROVIDER,
+      address,
+      action,
+      actions: [{ ...step, signature }],
+    })
+
+    const failure = response.results.find((r) => !r.success)
+    if (failure) {
+      throw new PerpsError(
+        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+        failure.error
+      )
+    }
+
+    return response
   }
 }

@@ -9,11 +9,25 @@ import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsClientSigner, SwitchChainHook } from '../types/config.js'
 
 /**
+ * The chain `actions` are signed on: the first numeric
+ * `typedData.domain.chainId` across the batch, or `undefined` when no step
+ * carries one.
+ */
+export function eip712DomainChainId(actions: ActionStep[]): number | undefined {
+  for (const step of actions) {
+    const chainId = (step as Eip712ActionStep).typedData?.domain?.chainId
+    if (typeof chainId === 'number') {
+      return chainId
+    }
+  }
+  return undefined
+}
+
+/**
  * The chain a batch of `actions` must be signed on, or `undefined` when no
  * wallet chain switch applies. Only USER-signed EIP-712 batches carry a target
  * (agent-signed batches sign with a chain-bound keypair; other schemes are not
- * EIP-712). Reads the first numeric `typedData.domain.chainId`; a batch whose
- * steps omit `chainId` yields `undefined`.
+ * EIP-712).
  */
 export function userEip712TargetChainId(
   descriptor: ProviderAction,
@@ -25,13 +39,7 @@ export function userEip712TargetChainId(
   ) {
     return undefined
   }
-  for (const step of actions) {
-    const chainId = (step as Eip712ActionStep).typedData?.domain?.chainId
-    if (typeof chainId === 'number') {
-      return chainId
-    }
-  }
-  return undefined
+  return eip712DomainChainId(actions)
 }
 
 /**
