@@ -18,7 +18,6 @@ import {
   MarginMode,
   OrderSide,
   PerpsErrorCode,
-  PerpsSigner,
   PositionMarginAdjustment,
   SigningMethod,
   type WasmBlobActionStep,
@@ -117,6 +116,19 @@ const apiKeyStorageKey = (providerKey: string, address: string): string =>
   providerKey === LIGHTER_PROVIDER_KEY
     ? `lifi-perps-lighter-key:${address.toLowerCase()}`
     : `lifi-perps-lighter-key:${providerKey}:${address.toLowerCase()}`
+
+const storageWithApiKey = async (
+  record: typeof STORED_API_KEY & {
+    appliedReferralCode?: string
+  } = STORED_API_KEY
+) => {
+  const storage = createMemoryStorage()
+  await storage.set(
+    apiKeyStorageKey(record.providerKey, ADDRESS),
+    JSON.stringify(record)
+  )
+  return storage
+}
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -275,6 +287,17 @@ const ORDER_BOOK_DETAILS_PAYLOAD = {
 }
 
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
+const APIKEYS_MATCHING_STORED_KEY = {
+  code: 0,
+  api_keys: [
+    {
+      account_index: STORED_API_KEY.accountIndex,
+      api_key_index: STORED_API_KEY.apiKeyIndex,
+      nonce: 1,
+      public_key: STORED_API_KEY.apiKeyPublicKey,
+    },
+  ],
+}
 
 // `ACCOUNT_PAYLOAD.accounts[0].index` is 42 — this trade has the viewer as the
 // bidder, so the mapped fill is a BUY taker on the BTC market.
@@ -318,10 +341,6 @@ interface Recorded {
 
 let recorded: Recorded[] = []
 let fetchMock: ReturnType<typeof vi.fn>
-// `used_code` the default `/referral/userReferrals` handler returns — the
-// referral code currently applied to the account ('' = none). Mutable so a
-// test can drive the applied/not-applied branches of `referralPresent`.
-let userReferralsUsedCode = ''
 
 /**
  * Per-test handler consulted before the shared defaults. Returning `undefined`
@@ -360,7 +379,6 @@ const readOnlyTokenResponse = (apiToken: string) => ({
 
 beforeEach(() => {
   recorded = []
-  userReferralsUsedCode = ''
   fetchOverride = undefined
   wasm.reset()
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -395,7 +413,7 @@ beforeEach(() => {
       return respond(ORDER_BOOK_DETAILS_PAYLOAD)
     }
     if (u.includes('/api/v1/apikeys')) {
-      return respond(APIKEYS_EMPTY)
+      return respond(APIKEYS_MATCHING_STORED_KEY)
     }
     if (u.includes('/api/v1/accountLimits')) {
       return respond({
@@ -409,9 +427,6 @@ beforeEach(() => {
         leased_lit: '0',
         effective_lit_stakes: '0',
       })
-    }
-    if (u.includes('/api/v1/referral/userReferrals')) {
-      return respond({ code: 0, used_code: userReferralsUsedCode })
     }
     if (u.includes('/api/v1/accountActiveOrders')) {
       return respond({ code: 0, next_cursor: '', orders: [] })
@@ -604,7 +619,12 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
 
 describe('LighterProvider — auth token plumbing', () => {
   it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
-    const provider = lighterProvider()
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
     await provider.getAccount(
       { address: ADDRESS },
@@ -627,7 +647,12 @@ describe('LighterProvider — auth token plumbing', () => {
         ? new Response('boom', { status: 500 })
         : undefined
     )
-    const provider = lighterProvider()
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getAccount(
@@ -638,7 +663,15 @@ describe('LighterProvider — auth token plumbing', () => {
   })
 
   it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
-    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    const provider = lighterProvider({
+      storage,
+      authToken: 'pre-created-token',
+    })
     provider.bind(STUB_CLIENT)
     await provider.getAccount({ address: ADDRESS })
     const limitsCall = recorded.find((r) =>
@@ -649,7 +682,13 @@ describe('LighterProvider — auth token plumbing', () => {
 
   it('accepts an async `authToken` source function', async () => {
     let calls = 0
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
     const provider = lighterProvider({
+      storage,
       authToken: async () => {
         calls++
         return `dynamic-token-${calls}`
@@ -771,7 +810,7 @@ describe('LighterProvider — account tier', () => {
     overrideFetch((url) =>
       url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
     )
-    const provider = lighterProvider()
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -784,7 +823,7 @@ describe('LighterProvider — account tier', () => {
   })
 
   it('leaves the tier string absent when accountLimits omits it', async () => {
-    const provider = lighterProvider()
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount(
       { address: ADDRESS },
@@ -808,161 +847,88 @@ describe('LighterProvider — account tier', () => {
 })
 
 describe('LighterProvider — referralPresent', () => {
-  // Deliberately not a real attribution code — the expected value is
-  // backend-owned runtime metadata, so tests only ever use a synthetic one.
   const RUNTIME_CODE = 'TEST-REF-CODE'
 
-  /**
-   * Serve `/providers` metadata whose entries carry the given `referralCode`
-   * per provider key (`undefined` = descriptor without a code). Other backend
-   * endpoints fall through to the shared defaults.
-   */
   const stubProvidersMetadata = (
-    codeByProviderKey: Record<string, string | undefined>,
-    onBackendRequest?: (url: string, init: RequestInit | undefined) => void
+    codeByProviderKey: Record<string, string | undefined>
   ): void => {
-    overrideFetch((url, init) => {
-      if (url.includes('backend.test/')) {
-        onBackendRequest?.(url, init)
-      }
-      if (url.includes('backend.test/v1/perps/providers')) {
-        return respond({
-          providers: Object.entries(codeByProviderKey).map(
-            ([key, referralCode]) => ({
-              ...PROVIDERS_RESPONSE.providers[0],
-              key,
-              ...(referralCode === undefined ? {} : { referralCode }),
-            })
-          ),
-        })
-      }
-      return undefined
-    })
+    overrideFetch((url) =>
+      url.includes('backend.test/v1/perps/providers')
+        ? respond({
+            providers: Object.entries(codeByProviderKey).map(
+              ([key, referralCode]) => ({
+                ...PROVIDERS_RESPONSE.providers[0],
+                key,
+                ...(referralCode === undefined ? {} : { referralCode }),
+              })
+            ),
+          })
+        : undefined
+    )
   }
 
-  it('is true and reads the applied referral authenticated by L1 address when the runtime code is applied', async () => {
+  it('uses the referral marker persisted by SET_REFERRAL without an authenticated referral read', async () => {
     stubProvidersMetadata({ lighter: RUNTIME_CODE })
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterProvider()
+    const storage = await storageWithApiKey({
+      ...STORED_API_KEY,
+      appliedReferralCode: RUNTIME_CODE,
+    })
+    const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
+
     const account = await provider.getAccount(
       { address: ADDRESS },
       { lighterAuthToken: 'ref-token' }
     )
+
     expect(account.config).toMatchObject({ referralPresent: true })
-    const call = recorded.find((r) =>
-      r.url.includes('/api/v1/referral/userReferrals')
-    )
-    expect(call).toBeDefined()
-    expect(call?.url).toContain('auth=ref-token')
-    expect(call?.url).toContain(`l1_address=${ADDRESS.toLowerCase()}`)
-  })
-
-  it('never sends the Lighter auth token to the LI.FI backend', async () => {
-    const backendRequests: Recorded[] = []
-    stubProvidersMetadata({ lighter: RUNTIME_CODE }, (url, init) => {
-      backendRequests.push({ url, init })
-    })
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(backendRequests.length).toBeGreaterThan(0)
-    for (const req of backendRequests) {
-      expect(req.url).not.toContain('ref-token')
-      const headers = JSON.stringify([
-        ...new Headers(req.init?.headers).entries(),
-      ])
-      expect(headers).not.toContain('ref-token')
-      expect(String(req.init?.body ?? '')).not.toContain('ref-token')
-    }
-  })
-
-  it('is false when a different referral code is applied', async () => {
-    stubProvidersMetadata({ lighter: RUNTIME_CODE })
-    userReferralsUsedCode = 'SOMEONE-ELSE'
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(account.config).toMatchObject({ referralPresent: false })
-  })
-
-  it('is false when no referral is applied', async () => {
-    stubProvidersMetadata({ lighter: RUNTIME_CODE })
-    userReferralsUsedCode = ''
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(account.config).toMatchObject({ referralPresent: false })
-  })
-
-  it('skips the read and reports false when runtime metadata carries no referralCode', async () => {
-    // Shared default `/providers` fixture — descriptor without a referralCode.
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
-    expect(account.config).toMatchObject({ referralPresent: false })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
     ).toBeUndefined()
   })
 
-  it('skips the read and reports false when no auth token is available', async () => {
+  it('is false when the persisted marker names a different referral code', async () => {
     stubProvidersMetadata({ lighter: RUNTIME_CODE })
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterProvider({ storage: createMemoryStorage() })
+    const storage = await storageWithApiKey({
+      ...STORED_API_KEY,
+      appliedReferralCode: 'SOMEONE-ELSE',
+    })
+    const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
+
     const account = await provider.getAccount({ address: ADDRESS })
+
     expect(account.config).toMatchObject({ referralPresent: false })
-    expect(
-      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
-    ).toBeUndefined()
   })
 
-  it("selects metadata by instance key — RH never compares against mainnet's code", async () => {
-    stubProvidersMetadata({
-      lighter: RUNTIME_CODE,
-      [LIGHTER_RH_PROVIDER_KEY]: undefined,
-    })
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterRhProvider()
+  it('is false when the key record has no persisted referral marker', async () => {
+    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
     expect(account.config).toMatchObject({ referralPresent: false })
-    expect(
-      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
-    ).toBeUndefined()
   })
 
-  it('resolves the RH code from the RH descriptor', async () => {
+  it('selects the persisted referral marker and metadata by provider instance', async () => {
     stubProvidersMetadata({
       lighter: 'MAINNET-ONLY-CODE',
       [LIGHTER_RH_PROVIDER_KEY]: RUNTIME_CODE,
     })
-    userReferralsUsedCode = RUNTIME_CODE
-    const provider = lighterRhProvider()
+    const storage = await storageWithApiKey({
+      ...RH_STORED_API_KEY,
+      appliedReferralCode: RUNTIME_CODE,
+    })
+    const provider = lighterRhProvider({ storage })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
     expect(account.config).toMatchObject({ referralPresent: true })
+    expect(
+      recorded.find((r) => r.url.includes('/api/v1/referral/userReferrals'))
+    ).toBeUndefined()
   })
 })
 
@@ -1475,27 +1441,10 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     effective_lit_stakes: '0',
   }
 
-  // Lighter signals a rejected token on EITHER channel — pin both.
-  it.each([
-    {
-      label: 'HTTP 401',
-      staleLimits: () => new Response('unauthorized', { status: 401 }),
-    },
-    {
-      label: 'HTTP 200 body code 20013',
-      staleLimits: () =>
-        respond({ code: 20013, message: 'invalid auth string' }),
-    },
-  ])('evicts the revoked read-only token and retries with a fresh one ($label)', async ({
-    staleLimits,
-  }) => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-
+  it('replaces a 61006-revoked read-only token without stale-token cleanup and retries once', async () => {
+    const storage = await storageWithApiKey()
     let createCount = 0
+    let listCount = 0
     let limitsCalls = 0
     overrideFetch((url) => {
       if (url.includes('/api/v1/tokens/create')) {
@@ -1504,27 +1453,194 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
           readOnlyTokenResponse(createCount === 1 ? 'ro-stale' : 'ro-fresh')
         )
       }
+      if (url.includes('/api/v1/tokens?')) {
+        listCount += 1
+        return respond({ code: 200, api_tokens: [] })
+      }
       if (url.includes('/api/v1/accountLimits')) {
         limitsCalls += 1
         return url.includes('auth=ro-stale')
-          ? staleLimits()
+          ? respond(
+              { code: 61006, message: 'api token has already been revoked' },
+              400
+            )
           : respond(LIMITS_OK)
       }
       return undefined
     })
-
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    expect(createCount).toBe(2) // stale, then fresh after eviction
-    expect(limitsCalls).toBe(2) // rejected once, retried once
-    expect(account.feeTier.maker).not.toBe('0') // recovered read populated fees
+    expect(createCount).toBe(2)
+    expect(listCount).toBe(1)
+    expect(limitsCalls).toBe(2)
+    expect(account.feeTier.maker).not.toBe('0')
     const stored = await storage.get(
       `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
     )
     expect(JSON.parse(stored as string).token).toBe('ro-fresh')
+  })
+
+  it('coalesces replacement when concurrent reads receive the revoked-token code', async () => {
+    const storage = await storageWithApiKey()
+    let createCount = 0
+    let listCount = 0
+    let limitsCalls = 0
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        createCount += 1
+        return respond(
+          readOnlyTokenResponse(createCount === 1 ? 'ro-stale' : 'ro-fresh')
+        )
+      }
+      if (url.includes('/api/v1/tokens?')) {
+        listCount += 1
+        return respond({ code: 200, api_tokens: [] })
+      }
+      if (url.includes('/api/v1/accountLimits')) {
+        limitsCalls += 1
+        return url.includes('auth=ro-stale')
+          ? respond(
+              { code: 61006, message: 'api token has already been revoked' },
+              400
+            )
+          : respond(LIMITS_OK)
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const accounts = await Promise.all([
+      provider.getAccount({ address: ADDRESS }),
+      provider.getAccount({ address: ADDRESS }),
+    ])
+
+    expect(createCount).toBe(2)
+    expect(listCount).toBe(1)
+    expect(limitsCalls).toBe(4)
+    expect(accounts.every((account) => account.feeTier.maker !== '0')).toBe(
+      true
+    )
+  })
+
+  it('reuses the first replacement after a delayed revoked-token response', async () => {
+    const storage = await storageWithApiKey()
+    let createCount = 0
+    let limitsCalls = 0
+    let resolveDelayedRevocation!: () => void
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        createCount += 1
+        return respond(
+          readOnlyTokenResponse(createCount === 1 ? 'ro-stale' : 'ro-fresh')
+        )
+      }
+      if (url.includes('/api/v1/tokens?')) {
+        return respond({ code: 200, api_tokens: [] })
+      }
+      if (url.includes('/api/v1/accountLimits')) {
+        limitsCalls += 1
+        if (!url.includes('auth=ro-stale')) {
+          return respond(LIMITS_OK)
+        }
+        if (limitsCalls === 1) {
+          return respond(
+            { code: 61006, message: 'api token has already been revoked' },
+            400
+          )
+        }
+        return new Promise<Response>((resolve) => {
+          resolveDelayedRevocation = () =>
+            resolve(
+              respond(
+                { code: 61006, message: 'api token has already been revoked' },
+                400
+              )
+            )
+        })
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const first = provider.getAccount({ address: ADDRESS })
+    const delayed = provider.getAccount({ address: ADDRESS })
+    await expect(first).resolves.toMatchObject({
+      feeTier: { maker: expect.not.stringMatching(/^0(?:\.0+)?$/) },
+    })
+    resolveDelayedRevocation()
+    await expect(delayed).resolves.toMatchObject({
+      feeTier: { maker: expect.not.stringMatching(/^0(?:\.0+)?$/) },
+    })
+
+    expect(createCount).toBe(2)
+    expect(limitsCalls).toBe(4)
+  })
+
+  it('holds the next provider poll after tokens/create returns 429', async () => {
+    const storage = await storageWithApiKey()
+    overrideFetch((url) =>
+      url.includes('/api/v1/tokens/create')
+        ? respond({ code: 23000, message: 'rate limit exceeded' }, 429)
+        : undefined
+    )
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+    const callsAfterFirstPoll = fetchMock.mock.calls.length
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirstPoll)
+  })
+
+  it.each([
+    {
+      label: 'HTTP 401',
+      rejection: () => new Response('unauthorized', { status: 401 }),
+    },
+    {
+      label: 'body code 20013',
+      rejection: () => respond({ code: 20013, message: 'invalid auth string' }),
+    },
+  ])('does not evict or recreate an SDK-owned token rejected by $label', async ({
+    rejection,
+  }) => {
+    const storage = await storageWithApiKey()
+    let createCount = 0
+    let limitsCalls = 0
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        createCount += 1
+        return respond(readOnlyTokenResponse('ro-rejected'))
+      }
+      if (url.includes('/api/v1/accountLimits')) {
+        limitsCalls += 1
+        return rejection()
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toBeInstanceOf(PerpsError)
+
+    expect(createCount).toBe(1)
+    expect(limitsCalls).toBe(1)
+    const stored = await storage.get(
+      `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
+    )
+    expect(JSON.parse(stored as string).token).toBe('ro-rejected')
   })
 
   it('does NOT evict or retry when the caller supplied the auth token', async () => {
@@ -1565,34 +1681,11 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
   })
 })
 
-describe('LighterProvider — stale API key degrades authed reads', () => {
-  // The venue slot was re-registered elsewhere: a different pubkey is live,
-  // and every token the stored key signs fails verification.
-  const ROTATED_PUBKEY = `0x${'ee'.repeat(32)}`
-
-  it('resolves getAccount with degraded fields and an unsatisfied register gate when the venue rejects every SDK-owned token', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    let limitsCalls = 0
-    let referralCalls = 0
+describe('LighterProvider — registered-key auth gate', () => {
+  it('skips token resolution and authenticated reads when the registered key differs', async () => {
+    const storage = await storageWithApiKey()
+    const rotatedPublicKey = `0x${'ee'.repeat(32)}`
     overrideFetch((url) => {
-      // Carry a runtime referral code so the userReferrals read runs.
-      if (url.includes('backend.test/v1/perps/providers')) {
-        return respond({
-          providers: [
-            {
-              ...PROVIDERS_RESPONSE.providers[0],
-              key: LIGHTER_PROVIDER_KEY,
-              referralCode: 'TEST-REF-CODE',
-            },
-          ],
-        })
-      }
       if (url.includes('/api/v1/apikeys')) {
         return respond({
           code: 0,
@@ -1601,66 +1694,30 @@ describe('LighterProvider — stale API key degrades authed reads', () => {
               account_index: STORED_API_KEY.accountIndex,
               api_key_index: STORED_API_KEY.apiKeyIndex,
               nonce: 16,
-              public_key: ROTATED_PUBKEY,
+              public_key: rotatedPublicKey,
             },
           ],
         })
       }
-      if (url.includes('/api/v1/tokens/create')) {
-        return new Response('unauthorized', { status: 401 })
-      }
-      if (url.includes('/api/v1/accountLimits')) {
-        limitsCalls += 1
-        return new Response('unauthorized', { status: 401 })
-      }
-      if (url.includes('/api/v1/referral/userReferrals')) {
-        referralCalls += 1
-        return new Response('unauthorized', { status: 401 })
-      }
       return undefined
     })
-
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    // Both reads ran (and retryOnRevoked re-attempted with a re-signed token).
-    expect(limitsCalls).toBeGreaterThanOrEqual(1)
-    expect(referralCalls).toBeGreaterThanOrEqual(1)
-
-    // Degraded fields: the no-token zero mapping for fees, no referral claim.
-    expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
     expect(account.config).toMatchObject({
       apiKeyRegistered: false,
       referralPresent: false,
     })
-
-    // The curative gate projects unsatisfied so the client can re-register.
-    const [gate] = provider.projectConfig(
-      account.config,
-      [
-        {
-          type: ActionType.REGISTER_API_KEY,
-          title: 'Enable Trading',
-          description: 'Register a Lighter API key.',
-          signers: [PerpsSigner.USER],
-          signingMethod: SigningMethod.WASM_BLOB,
-          params: [],
-        },
-      ],
-      []
+    expect(account.feeTier).toEqual({ maker: '0', taker: '0' })
+    expect(wasm.authTokenCalls).toBe(0)
+    expect(
+      recorded.some((request) => request.url.includes('/api/v1/tokens/create'))
+    ).toBe(false)
+    expect(recorded.some((request) => request.url.includes('auth='))).toBe(
+      false
     )
-    expect(gate).toMatchObject({
-      type: ActionType.REGISTER_API_KEY,
-      satisfied: false,
-    })
-
-    // The suppressed rejections stay visible in diagnostics.
-    const warned = warn.mock.calls.map((c) => String(c[0])).join('\n')
-    expect(warned).toContain('/api/v1/accountLimits')
-    expect(warned).toContain('/api/v1/referral/userReferrals')
-    warn.mockRestore()
   })
 })
 
@@ -1707,8 +1764,40 @@ describe('LighterProvider — API-key slot readout', () => {
     })
   })
 
-  it('reports no slot and skips the venue read when no record exists', async () => {
-    const provider = lighterProvider({ storage: createMemoryStorage() })
+  it('starts the registered-key read while the detailed-account read is pending', async () => {
+    const storage = await storageWithApiKey()
+    let releaseAccount: ((response: Response) => void) | undefined
+    let registeredKeyStarted = false
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        return new Promise<Response>((resolve) => {
+          releaseAccount = resolve
+        })
+      }
+      if (url.includes('/api/v1/apikeys')) {
+        registeredKeyStarted = true
+        return respond(APIKEYS_MATCHING_STORED_KEY)
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const accountPromise = provider.getAccount({ address: ADDRESS })
+    await vi.waitFor(() => {
+      expect(registeredKeyStarted).toBe(true)
+    })
+    releaseAccount?.(respond(ACCOUNT_PAYLOAD))
+
+    await expect(accountPromise).resolves.toBeDefined()
+  })
+
+  it('reports no slot and does not resolve a token when no record exists', async () => {
+    const authToken = vi.fn(async () => 'must-not-resolve')
+    const provider = lighterProvider({
+      storage: createMemoryStorage(),
+      authToken,
+    })
     provider.bind(STUB_CLIENT)
 
     const account = await provider.getAccount({ address: ADDRESS })
@@ -1718,6 +1807,10 @@ describe('LighterProvider — API-key slot readout', () => {
       apiKeyRegistered: false,
     })
     expect(recorded.some((r) => r.url.includes('/api/v1/apikeys'))).toBe(false)
+    expect(authToken).not.toHaveBeenCalled()
+    expect(recorded.some((r) => r.url.includes('/api/v1/accountLimits'))).toBe(
+      false
+    )
   })
 })
 
@@ -1811,53 +1904,6 @@ describe('LighterProvider — read-only token creation failure recovery', () => 
   })
 })
 
-describe('LighterProvider — standard token revocation self-heal', () => {
-  const LIMITS_OK = {
-    code: 0,
-    max_llp_percentage: 0,
-    max_llp_amount: '0',
-    user_tier: 'STANDARD',
-    can_create_public_pool: false,
-    current_maker_fee_tick: 100,
-    current_taker_fee_tick: 280,
-    leased_lit: '0',
-    effective_lit_stakes: '0',
-  }
-
-  it('re-signs a fresh standard token when the server rejects the cached one', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    let limitsCalls = 0
-    // Read-only creation is unavailable throughout, so reads ride the
-    // standard-token fallback — and the fallback token gets revoked.
-    overrideFetch((url) => {
-      if (url.includes('/api/v1/tokens/create')) {
-        return new Response('tokens/create unavailable', { status: 503 })
-      }
-      if (url.includes('/api/v1/accountLimits')) {
-        limitsCalls += 1
-        // std-1 is revoked server-side; only a re-signed token passes.
-        return url.includes('auth=std-1')
-          ? new Response('unauthorized', { status: 401 })
-          : respond(LIMITS_OK)
-      }
-      return undefined
-    })
-
-    const provider = lighterProvider({ storage })
-    provider.bind(STUB_CLIENT)
-
-    const account = await provider.getAccount({ address: ADDRESS })
-
-    expect(limitsCalls).toBe(2) // rejected once, retried with the fresh token
-    expect(wasm.authTokenCalls).toBe(2) // the revoked token was re-signed, not reused
-    expect(account.feeTier.maker).not.toBe('0')
-  })
-})
-
 describe('LighterProvider — authed read body-error handling (getOrders)', () => {
   const accountWithOpenOrder = {
     ...ACCOUNT_PAYLOAD,
@@ -1922,7 +1968,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
     expect(err.code).toBe(PerpsErrorCode.ThirdPartyError)
   })
 
-  it('routes a 200-with-invalid-auth-code authed response through the evict/retry flow', async () => {
+  it('routes a revoked-token response through the replace-and-retry flow', async () => {
     const storage = createMemoryStorage()
     await storage.set(
       apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
@@ -1944,7 +1990,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
       if (url.includes('/api/v1/accountActiveOrders')) {
         activeOrderCalls += 1
         return url.includes('auth=ro-stale')
-          ? respond({ code: 20013, message: 'invalid auth string' })
+          ? respond({ code: 61006, message: 'revoked' }, 400)
           : respond({ code: 0, next_cursor: '', orders: [] })
       }
       return undefined
@@ -3574,8 +3620,17 @@ describe('LighterProvider — two deployments on one client', () => {
   })
 
   it('reads each from its own REST base with its own auth token', async () => {
-    const main = lighterProvider()
-    const rh = lighterRhProvider()
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(RH_STORED_API_KEY)
+    )
+    const main = lighterProvider({ storage })
+    const rh = lighterRhProvider({ storage })
     main.bind(STUB_CLIENT)
     rh.bind(STUB_CLIENT)
 

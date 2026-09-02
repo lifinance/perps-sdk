@@ -75,6 +75,7 @@ export type LighterTokenFetcher = (params: {
   expiry: number
   subAccountAccess: boolean
   scopes: string
+  fetchImpl?: typeof fetch
 }) => Promise<LighterCreateTokenResponse>
 
 /**
@@ -127,6 +128,7 @@ export type LighterTokenListFetcher = (params: {
   url: string
   authorization: string
   accountIndex: number
+  fetchImpl?: typeof fetch
 }) => Promise<LighterListTokensResponse>
 
 /**
@@ -139,6 +141,7 @@ export type LighterTokenRevokeFetcher = (params: {
   authorization: string
   tokenId: number
   accountIndex: number
+  fetchImpl?: typeof fetch
 }) => Promise<LighterRevokeTokenResponse>
 
 /**
@@ -165,6 +168,8 @@ export interface LighterReadOnlyTokenManagerOptions {
   listFetcher?: LighterTokenListFetcher
   /** Override the revoke POST. Defaults to a `fetch`-based implementation. */
   revokeFetcher?: LighterTokenRevokeFetcher
+  /** Transport used by the default endpoint fetchers. Defaults to `fetch`. */
+  fetchImpl?: typeof fetch
   /** Clock injection for testing expiry logic. Defaults to `Date.now`. */
   now?: () => number
 }
@@ -259,6 +264,7 @@ export class LighterReadOnlyTokenManager {
   private readonly fetcher: LighterTokenFetcher
   private readonly listFetcher: LighterTokenListFetcher
   private readonly revokeFetcher: LighterTokenRevokeFetcher
+  private readonly fetchImpl: typeof fetch | undefined
   private readonly now: () => number
   private readonly cache = new Map<string, LighterReadOnlyToken>()
 
@@ -270,6 +276,7 @@ export class LighterReadOnlyTokenManager {
     this.listFetcher = options.listFetcher ?? defaultLighterTokenListFetcher
     this.revokeFetcher =
       options.revokeFetcher ?? defaultLighterTokenRevokeFetcher
+    this.fetchImpl = options.fetchImpl
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -398,10 +405,31 @@ export class LighterReadOnlyTokenManager {
     authorization: string,
     inputs: ApproveReadOnlyTokenInputs
   ): Promise<ApproveReadOnlyTokenResult> {
+    await this.revokeStaleOwnTokens(
+      authorization,
+      inputs.address,
+      inputs.accountIndex
+    )
+    return this.createAndPersist(authorization, inputs)
+  }
+
+  /**
+   * Replace a token that Lighter explicitly reports as revoked.
+   * The venue already revoked the row, so this path skips registry cleanup.
+   */
+  async replaceRevoked(
+    authorization: string,
+    inputs: ApproveReadOnlyTokenInputs
+  ): Promise<ApproveReadOnlyTokenResult> {
+    await this.remove(inputs.address, inputs.accountIndex)
+    return this.createAndPersist(authorization, inputs)
+  }
+
+  private async createAndPersist(
+    authorization: string,
+    inputs: ApproveReadOnlyTokenInputs
+  ): Promise<ApproveReadOnlyTokenResult> {
     const { address, accountIndex, expirySeconds, scope } = inputs
-
-    await this.revokeStaleOwnTokens(authorization, address, accountIndex)
-
     const response = await this.fetcher({
       url: `${this.lighterApiUrl}/api/v1/tokens/create`,
       authorization,
@@ -410,6 +438,7 @@ export class LighterReadOnlyTokenManager {
       expiry: expirySeconds,
       subAccountAccess: scope === 'all',
       scopes: 'read.*',
+      fetchImpl: this.fetchImpl,
     })
 
     const token: LighterReadOnlyToken = {
@@ -457,6 +486,7 @@ export class LighterReadOnlyTokenManager {
         url: `${this.lighterApiUrl}/api/v1/tokens`,
         authorization,
         accountIndex,
+        fetchImpl: this.fetchImpl,
       })
       const nowSeconds = Math.floor(this.now() / 1000)
       const stale = rows
@@ -476,6 +506,7 @@ export class LighterReadOnlyTokenManager {
             authorization,
             tokenId: row.token_id,
             accountIndex,
+            fetchImpl: this.fetchImpl,
           })
         } catch (err) {
           console.warn(
@@ -508,6 +539,7 @@ export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
   expiry,
   subAccountAccess,
   scopes,
+  fetchImpl,
 }) => {
   const form = new FormData()
   form.set('name', name)
@@ -516,7 +548,7 @@ export const defaultLighterTokenFetcher: LighterTokenFetcher = async ({
   form.set('sub_account_access', String(subAccountAccess))
   form.set('scopes', scopes)
 
-  const response = await fetch(url, {
+  const response = await (fetchImpl ?? fetch)(url, {
     method: 'POST',
     headers: { authorization },
     body: form,
@@ -544,10 +576,11 @@ export const defaultLighterTokenListFetcher: LighterTokenListFetcher = async ({
   url,
   authorization,
   accountIndex,
+  fetchImpl,
 }) => {
   const query = new URLSearchParams({ account_index: String(accountIndex) })
 
-  const response = await fetch(`${url}?${query.toString()}`, {
+  const response = await (fetchImpl ?? fetch)(`${url}?${query.toString()}`, {
     headers: { authorization },
   })
 
@@ -570,13 +603,13 @@ export const defaultLighterTokenListFetcher: LighterTokenListFetcher = async ({
  * @internal
  */
 export const defaultLighterTokenRevokeFetcher: LighterTokenRevokeFetcher =
-  async ({ url, authorization, tokenId, accountIndex }) => {
+  async ({ url, authorization, tokenId, accountIndex, fetchImpl }) => {
     const form = new URLSearchParams({
       token_id: String(tokenId),
       account_index: String(accountIndex),
     })
 
-    const response = await fetch(url, {
+    const response = await (fetchImpl ?? fetch)(url, {
       method: 'POST',
       headers: {
         authorization,

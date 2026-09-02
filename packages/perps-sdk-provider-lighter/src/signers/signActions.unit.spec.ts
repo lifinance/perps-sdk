@@ -1055,6 +1055,9 @@ describe('lighterSignActions', () => {
         referral_code: 'LIFI',
         x: 'lifi_x',
       })
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'LIFI',
+      })
     })
 
     it('surfaces a venue rejection verbatim as an ExchangeRejected error', async () => {
@@ -1107,6 +1110,9 @@ describe('lighterSignActions', () => {
         { l1_address: ADDRESS.toLowerCase() }
       )
       expect(postForm).not.toHaveBeenCalled()
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'LIFI',
+      })
     })
 
     it('overwrites a foreign applied referral code via the POST', async () => {

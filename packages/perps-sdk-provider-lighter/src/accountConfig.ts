@@ -104,10 +104,8 @@ function projectLighterDescriptor(
         satisfied: config.readOnlyTokenApproved,
       }
 
-    // `SET_REFERRAL` is satisfied when LI.FI's referral code is the one applied
-    // to the account — an SDK-direct read (`getAccount` → `referralPresent`),
-    // since the applied referral is a per-user, auth-gated read. Lighter referral
-    // is mutable, so an account on another integrator's code stays gateable.
+    // `SET_REFERRAL` persists its confirmed code beside the local API key.
+    // The account read compares that marker with this instance's runtime code.
     case ActionType.SET_REFERRAL:
       return {
         type: descriptor.type,

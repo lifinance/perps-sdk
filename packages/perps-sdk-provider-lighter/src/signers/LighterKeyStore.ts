@@ -1,5 +1,9 @@
-import { readValidatedRecord, type StorageAdapter } from '@lifi/perps-sdk'
-import type { LighterProviderKey } from '@lifi/perps-types'
+import {
+  PerpsError,
+  readValidatedRecord,
+  type StorageAdapter,
+} from '@lifi/perps-sdk'
+import { type LighterProviderKey, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
@@ -30,6 +34,8 @@ export interface LighterApiKey {
   apiKeyPrivateKey: string
   /** Corresponding public key, registered via ChangePubKey. */
   apiKeyPublicKey: string
+  /** Referral code confirmed by the standard-token SET_REFERRAL action. */
+  appliedReferralCode?: string
 }
 
 const isLighterApiKeyOf =
@@ -44,6 +50,7 @@ const isLighterApiKeyOf =
       apiKeyIndex,
       apiKeyPrivateKey,
       apiKeyPublicKey,
+      appliedReferralCode,
     } = value as Record<string, unknown>
     return (
       providerKey === owner &&
@@ -54,7 +61,10 @@ const isLighterApiKeyOf =
       typeof apiKeyPrivateKey === 'string' &&
       apiKeyPrivateKey.length > 0 &&
       typeof apiKeyPublicKey === 'string' &&
-      apiKeyPublicKey.length > 0
+      apiKeyPublicKey.length > 0 &&
+      (appliedReferralCode === undefined ||
+        (typeof appliedReferralCode === 'string' &&
+          appliedReferralCode.length > 0))
     )
   }
 
@@ -138,6 +148,21 @@ export class LighterKeyStore {
     const record: LighterApiKey = { ...value, providerKey: this.providerKey }
     this.cache.set(key, record)
     await this.storage.set(key, JSON.stringify(record))
+  }
+
+  async markReferralApplied(
+    address: Address,
+    appliedReferralCode: string
+  ): Promise<void> {
+    const current = await this.get(address)
+    if (current === null) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Cannot persist the Lighter referral marker without an API key for ${address}`
+      )
+    }
+    const { providerKey: _providerKey, ...value } = current
+    await this.set(address, { ...value, appliedReferralCode })
   }
 
   /**
