@@ -13,6 +13,7 @@ import { parseAbi } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
 import { LIGHTER_MUTATION_SUCCESS_CODE } from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
+import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
 import {
   fetchRegisteredApiKey,
   type LighterRegisteredApiKey,
@@ -441,7 +442,9 @@ async function signTransfer(
  * pending orders, 24h tier cooldown) server-side. We create a fresh short-lived
  * token per call (never the stored read-only token, never persisted) and POST
  * the mirror of the backend's form body directly to Lighter, so no auth token
- * ever transits the LI.FI backend. A non-success verdict surfaces Lighter's
+ * ever transits the LI.FI backend. `SET_REFERRAL` first reads the account's
+ * applied code and skips the POST when it already equals the target code; a
+ * foreign code is still overwritten. A non-success verdict surfaces Lighter's
  * `code`/`message` verbatim as an {@link PerpsErrorCode.ExchangeRejected}.
  */
 async function executeTokenAuthMutation(
@@ -458,6 +461,16 @@ async function executeTokenAuthMutation(
     accountIndex: apiKey.accountIndex,
   })
 
+  if (step.wasmSignParams.kind === 'referralUse') {
+    const { referral_code } = step.wasmSignParams as { referral_code?: string }
+    if (
+      referral_code != null &&
+      (await isReferralAlreadyApplied(deps, address, authToken, referral_code))
+    ) {
+      return
+    }
+  }
+
   const { path, params } = buildTokenAuthMutationRequest(step, authToken)
   const { status, data } = await deps.apiClient.postForm<{
     code?: number
@@ -471,6 +484,29 @@ async function executeTokenAuthMutation(
       PerpsErrorCode.ExchangeRejected,
       `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`
     )
+  }
+}
+
+/**
+ * Whether the account's applied referral code already equals `referralCode`.
+ * A failed read returns `false` so the `/referral/use` POST still runs — the
+ * read is only an optimization to avoid redundant writes.
+ */
+async function isReferralAlreadyApplied(
+  deps: LighterSignActionsDeps,
+  address: Address,
+  authToken: string,
+  referralCode: string
+): Promise<boolean> {
+  try {
+    const applied = await fetchAppliedReferralCode(
+      deps.apiClient,
+      address,
+      authToken
+    )
+    return applied === referralCode
+  } catch {
+    return false
   }
 }
 
