@@ -582,6 +582,9 @@ export class PerpsClient {
   /**
    * Return the unsatisfied entries on `Provider.setup` for this account as a
    * flat, self-describing list. Trading is gated on `isReady === true`.
+   * `checklist` carries the renderable onboarding list: every USER-signed
+   * descriptor with its satisfied state, with not-required conditional steps
+   * omitted.
    *
    * `Provider.options` descriptors are NEVER returned here — options are
    * post-setup tunables and never gate trading. Option state is surfaced
@@ -603,7 +606,12 @@ export class PerpsClient {
     // SIWE-first providers (Ondo) are the exception: they cannot reliably probe
     // account existence before the user signs in, so setup must still stage.
     if (!hasSiweSetup && !(await this.accountExists(provider, address))) {
-      return { accountExists: false, setup: [], isReady: false }
+      return {
+        accountExists: false,
+        setup: [],
+        isReady: false,
+        checklist: [],
+      }
     }
 
     const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
@@ -611,13 +619,13 @@ export class PerpsClient {
       (descriptor) => !satisfiedSetup.has(descriptor.type)
     )
 
-    const hiddenSetup = await this.resolveInternalSetup(
-      provider,
-      address,
-      pendingSetup
-    )
+    const plugin = this.sdkClient.getProvider(provider)
+    const internalTypes = new Set(plugin?.internalSetupActions ?? [])
+    const isInternal = (descriptor: ProviderAction): boolean =>
+      internalTypes.has(descriptor.type) &&
+      !descriptor.signers.includes(PerpsSigner.USER)
     const visibleSetup = pendingSetup.filter(
-      (descriptor) => !hiddenSetup.has(descriptor.type)
+      (descriptor) => !isInternal(descriptor)
     )
 
     // The backend filters already-satisfied setup actions and returns typed
@@ -629,10 +637,38 @@ export class PerpsClient {
       visibleSetup
     )
 
+    // A staged step is one the build produced actions for — a pending
+    // descriptor the backend staged nothing for is either satisfied
+    // (backend-gated) or not applicable to this account.
+    const stagedTypes = new Set(actions.map((step) => step.action))
+    const conditionalTypes = new Set(plugin?.conditionalSetupActions ?? [])
+    const sequenceOf = (descriptor: ProviderAction): number =>
+      descriptor.sequence ?? Number.MAX_SAFE_INTEGER
+    const checklist = metadata.setup
+      .filter((descriptor) => descriptor.signers.includes(PerpsSigner.USER))
+      .filter(
+        (descriptor) =>
+          !conditionalTypes.has(descriptor.type) ||
+          stagedTypes.has(descriptor.type)
+      )
+      .sort((a, b) => sequenceOf(a) - sequenceOf(b))
+      .map((descriptor) => ({
+        descriptor,
+        satisfied: !stagedTypes.has(descriptor.type),
+      }))
+
+    await this.drainInternalSetup(
+      provider,
+      address,
+      pendingSetup.filter(isInternal),
+      visibleSetup.filter((descriptor) => stagedTypes.has(descriptor.type))
+    )
+
     return {
       accountExists: true,
       setup: actions,
       isReady: actions.length === 0,
+      checklist,
     }
   }
 
@@ -668,33 +704,32 @@ export class PerpsClient {
 
   /**
    * Drain the pending setup steps the provider declares as internal via
-   * `PerpsProviderPlugin.internalSetupActions`, returning the set of action
-   * types to omit from the caller-facing setup list. Each such step is built,
-   * signed, and executed in place with the provider's own credentials. A
-   * descriptor whose `signers` include {@link PerpsSigner.USER} is left to
-   * render as a normal step. A drain failure is swallowed so it never blocks
-   * setup — the step stays unsatisfied and is retried on a later `checkSetup`.
+   * `PerpsProviderPlugin.internalSetupActions`. Each step is built, signed,
+   * and executed in place with the provider's own credentials. A step is
+   * deferred while any staged user-facing step with a lower `sequence` is
+   * outstanding — it cannot succeed before its prerequisite (e.g. SET_REFERRAL
+   * authenticates with the credential REGISTER_API_KEY installs) and each
+   * doomed attempt is venue traffic. A drain failure is swallowed so it never
+   * blocks setup — the step stays unsatisfied and is retried on a later
+   * `checkSetup`.
    */
-  private async resolveInternalSetup(
+  private async drainInternalSetup(
     provider: string,
     address: Address,
-    pending: ProviderAction[]
-  ): Promise<Set<ActionType>> {
-    const plugin = this.sdkClient.getProvider(provider)
-    const internal = plugin?.internalSetupActions
-    if (!internal || internal.length === 0) {
-      return new Set()
-    }
-    const internalTypes = new Set(internal)
-    const hidden = new Set<ActionType>()
-    for (const descriptor of pending) {
-      if (
-        !internalTypes.has(descriptor.type) ||
-        descriptor.signers.includes(PerpsSigner.USER)
-      ) {
+    internalPending: ProviderAction[],
+    stagedVisible: ProviderAction[]
+  ): Promise<void> {
+    const sequenceOf = (descriptor: ProviderAction): number =>
+      descriptor.sequence ?? Number.MAX_SAFE_INTEGER
+    for (const descriptor of internalPending) {
+      // A tie (equal sequences, or both absent) declares no order, so the
+      // internal step defers to the next checkSetup rather than racing.
+      const blocked = stagedVisible.some(
+        (staged) => sequenceOf(staged) <= sequenceOf(descriptor)
+      )
+      if (blocked) {
         continue
       }
-      hidden.add(descriptor.type)
       try {
         const steps = await this.buildProviderSetupActions(provider, address, [
           descriptor,
@@ -721,7 +756,6 @@ export class PerpsClient {
         )
       }
     }
-    return hidden
   }
 
   /**

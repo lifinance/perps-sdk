@@ -225,6 +225,11 @@ export function hyperliquidProvider(
 
     internalSetupActions: [ActionType.SET_REFERRAL],
 
+    // REVOKE_AGENT stages a step only when every named agent slot is taken,
+    // so `checkSetup` omits it from `ProviderSetup.checklist` instead of
+    // rendering it as a satisfied step.
+    conditionalSetupActions: [ActionType.REVOKE_AGENT],
+
     bind: (client: PerpsSDKClient): void => contextRef.bind(client),
 
     getAgentAddress: async (address: Address): Promise<Address> =>

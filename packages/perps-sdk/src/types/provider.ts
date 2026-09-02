@@ -359,6 +359,16 @@ export interface PerpsProviderPlugin {
   readonly internalSetupActions?: readonly ActionType[]
 
   /**
+   * Setup actions that stage work only when the account needs remediation
+   * (e.g. Hyperliquid's REVOKE_AGENT frees an agent slot only when every
+   * named slot is taken). When such a step stages no actions,
+   * `PerpsClient.checkSetup` omits it from `ProviderSetup.checklist` instead
+   * of rendering it as satisfied. Omit when every setup step is
+   * unconditional.
+   */
+  readonly conditionalSetupActions?: readonly ActionType[]
+
+  /**
    * Inject the runtime {@link PerpsSDKClient} into the plugin once, during
    * {@link createPerpsClient}. The plugin captures it (config, fetch, retry,
    * provider registry) in its factory closure so the clientless read methods
