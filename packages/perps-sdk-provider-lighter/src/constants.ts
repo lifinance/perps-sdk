@@ -229,6 +229,13 @@ const LIGHTER_CODE_ACCOUNT_NOT_FOUND = 21100
 const LIGHTER_INVALID_AUTH_CODE = 20013
 
 /**
+ * Lighter body `code` for a read-only auth token revoked at the venue.
+ *
+ * @internal
+ */
+const LIGHTER_TOKEN_REVOKED_CODE = 61006
+
+/**
  * Lighter body `code` values that mean success. Lighter is inconsistent per
  * endpoint: `/api/v1/account` returns `code: 200`, most others return `code: 0`.
  * A body with no `code` field is also success (no error channel present).
@@ -251,4 +258,5 @@ export {
   LIGHTER_INVALID_AUTH_CODE,
   LIGHTER_MUTATION_SUCCESS_CODE,
   LIGHTER_SUCCESS_CODES,
+  LIGHTER_TOKEN_REVOKED_CODE,
 }

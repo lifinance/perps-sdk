@@ -1,5 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import { PositionMarginAdjustment } from '@lifi/perps-types'
+import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
@@ -1380,7 +1380,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('recovers the account-index lookup within one subscribe on a transient 405 (rate-limit retry)', async () => {
+    it('fails the subscribe at once on a 405 and recovers the account-index lookup on the next subscribe', async () => {
       const accountFetch = vi
         .fn()
         .mockResolvedValueOnce(
@@ -1404,6 +1404,14 @@ describe('LighterWsProvider', () => {
         ;(provider as any).rws.getStatus = () => 'connected'
         const send = vi.fn()
         ;(provider as any).rws.send = send
+
+        await expect(
+          provider.subscribe(
+            { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+            vi.fn()
+          )
+        ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+        expect(accountFetch).toHaveBeenCalledTimes(1)
 
         await provider.subscribe(
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },

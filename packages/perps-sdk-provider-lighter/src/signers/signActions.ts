@@ -304,11 +304,14 @@ async function signRegisterApiKey(
     l1Signature
   )
 
+  // The referral marker belongs to the L1 address, not to the key slot.
+  const previousKey = await deps.keyStore.get(address)
   await deps.keyStore.set(address, {
     accountIndex,
     apiKeyIndex,
     apiKeyPrivateKey: keypair.privateKey,
     apiKeyPublicKey: keypair.publicKey,
+    appliedReferralCode: previousKey?.appliedReferralCode,
   })
 
   return {
@@ -461,12 +464,15 @@ async function executeTokenAuthMutation(
     accountIndex: apiKey.accountIndex,
   })
 
+  let appliedReferralCode: string | undefined
   if (step.wasmSignParams.kind === 'referralUse') {
     const { referral_code } = step.wasmSignParams as { referral_code?: string }
+    appliedReferralCode = referral_code
     if (
       typeof referral_code === 'string' &&
       (await isReferralAlreadyApplied(deps, address, authToken, referral_code))
     ) {
+      await deps.keyStore.markReferralApplied(address, referral_code)
       return
     }
   }
@@ -484,6 +490,10 @@ async function executeTokenAuthMutation(
       PerpsErrorCode.ExchangeRejected,
       `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`
     )
+  }
+
+  if (appliedReferralCode !== undefined) {
+    await deps.keyStore.markReferralApplied(address, appliedReferralCode)
   }
 }
 

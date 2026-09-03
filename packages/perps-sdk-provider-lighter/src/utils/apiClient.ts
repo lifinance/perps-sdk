@@ -7,6 +7,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import {
   LIGHTER_INVALID_AUTH_CODE,
   LIGHTER_SUCCESS_CODES,
+  LIGHTER_TOKEN_REVOKED_CODE,
 } from '../constants.js'
 
 /** @internal */
@@ -26,18 +27,26 @@ const lighterBodyErrorCode = (data: unknown): number | undefined => {
 }
 
 /**
- * Auth-gated read whose token Lighter rejected. Distinct from a generic
- * {@link PerpsError} so callers can evict the stored read-only token and retry
- * with a freshly-created one. Lighter signals this on either channel: an HTTP
- * 401/403, or an HTTP 200 carrying an error `code` in the body.
+ * Auth-gated read whose token format Lighter rejected.
+ *
  * @internal
  */
 export class LighterAuthRejectedError extends PerpsError {}
+
+/**
+ * Auth-gated read whose read-only token Lighter reports as revoked.
+ *
+ * @internal
+ */
+export class LighterTokenRevokedError extends PerpsError {}
 
 const isLighterAuthRejection = (status: number, data: unknown): boolean =>
   status === 401 ||
   status === 403 ||
   lighterBodyErrorCode(data) === LIGHTER_INVALID_AUTH_CODE
+
+const isLighterTokenRevoked = (data: unknown): boolean =>
+  lighterBodyErrorCode(data) === LIGHTER_TOKEN_REVOKED_CODE
 
 /** @internal */
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
@@ -47,9 +56,6 @@ export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   maxDelayMs: 60_000,
   respectRetryAfter: true,
   classify: ({ response }) => {
-    if (response.status === 429 || response.status === 405) {
-      return 'retry-rate-limit'
-    }
     if (
       response.status === 502 ||
       response.status === 503 ||
@@ -61,11 +67,42 @@ export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   },
 }
 
+const LIGHTER_RATE_LIMIT_HOLD_MS = 60_000
+const LIGHTER_RATE_LIMIT_HOLD_MAX_MS = 300_000
+
+const isLighterRateLimit = (status: number): boolean =>
+  status === 429 || status === 405
+
+const retryAfterMs = (header: string | null, nowMs: number): number => {
+  if (header === null) {
+    return LIGHTER_RATE_LIMIT_HOLD_MS
+  }
+  const seconds = Number(header)
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, LIGHTER_RATE_LIMIT_HOLD_MAX_MS)
+  }
+  const dateMs = Date.parse(header)
+  return Number.isFinite(dateMs)
+    ? Math.min(Math.max(0, dateMs - nowMs), LIGHTER_RATE_LIMIT_HOLD_MAX_MS)
+    : LIGHTER_RATE_LIMIT_HOLD_MS
+}
+
+/**
+ * Mutable rate-limit deadline shared by the request clients for one provider
+ * instance. A client creates an isolated hold when the caller omits this.
+ *
+ * @internal
+ */
+export interface LighterRateLimitHold {
+  untilMs: number
+}
+
 /** @internal */
 export interface LighterApiClientOptions {
   signal?: AbortSignal
   policy?: ResolvedRetryPolicy
   fetchImpl?: typeof fetch
+  rateLimitHold?: LighterRateLimitHold
 }
 
 /**
@@ -82,9 +119,10 @@ export interface LighterApiClientOptions {
  * `Authorization` header. This matches Lighter's OpenAPI spec and lets the
  * same call work browser-direct and from server-side proxies.
  *
- * Lighter signals rate limiting via 429 OR 405 (documented behaviour) with a
- * documented 60s firewall cooldown. The default {@link ResolvedRetryPolicy}
- * waits long enough to avoid hammering through the cooldown.
+ * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
+ * retries such a response. It throws `RateLimitExceeded` and holds all network
+ * dispatch until `Retry-After` expires (capped at five minutes), or for 60
+ * seconds when the response has no valid header.
  * @public
  */
 export class LighterApiClient {
@@ -92,14 +130,57 @@ export class LighterApiClient {
   private readonly signal: AbortSignal | undefined
   private readonly policy: ResolvedRetryPolicy
   private readonly fetchImpl: typeof fetch | undefined
+  private readonly rateLimitHold: LighterRateLimitHold
+  private readonly fetchWithHold: typeof fetch
 
   constructor(baseUrl: string, options?: LighterApiClientOptions) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
     this.signal = options?.signal
     this.policy = options?.policy ?? LIGHTER_RETRY_DEFAULTS
     this.fetchImpl = options?.fetchImpl
+    this.rateLimitHold = options?.rateLimitHold ?? { untilMs: 0 }
+    this.fetchWithHold = async (input, init) => {
+      this.assertRequestAllowed()
+      const response = await (this.fetchImpl ?? fetch)(input, init)
+      if (isLighterRateLimit(response.status)) {
+        const responseNowMs = Date.now()
+        this.rateLimitHold.untilMs = Math.max(
+          this.rateLimitHold.untilMs,
+          responseNowMs +
+            retryAfterMs(response.headers.get('Retry-After'), responseNowMs)
+        )
+      }
+      return response
+    }
   }
 
+  /**
+   * Send a single request through this client's rate-limit hold.
+   *
+   * @internal
+   */
+  request(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.fetchWithHold(input, init)
+  }
+
+  private rateLimitError(): PerpsError {
+    return new PerpsError(
+      PerpsErrorCode.RateLimitExceeded,
+      `Lighter API requests are held until ${new Date(this.rateLimitHold.untilMs).toISOString()}`
+    )
+  }
+
+  private assertRequestAllowed(): void {
+    if (Date.now() < this.rateLimitHold.untilMs) {
+      throw this.rateLimitError()
+    }
+  }
+
+  private assertNotRateLimited(response: Response): void {
+    if (isLighterRateLimit(response.status)) {
+      throw this.rateLimitError()
+    }
+  }
   private buildUrl(path: string, params?: ApiParams): string {
     const url = `${this.baseUrl}${path}`
     if (!params || Object.keys(params).length === 0) {
@@ -131,6 +212,12 @@ export class LighterApiClient {
       ...params,
       auth: authToken,
     })
+    if (isLighterTokenRevoked(data)) {
+      throw new LighterTokenRevokedError(
+        PerpsErrorCode.ThirdPartyError,
+        `Lighter reports a revoked auth token for ${path}`
+      )
+    }
     if (isLighterAuthRejection(status, data)) {
       throw new LighterAuthRejectedError(
         PerpsErrorCode.ThirdPartyError,
@@ -150,12 +237,18 @@ export class LighterApiClient {
     path: string,
     params?: ApiParams
   ): Promise<{ status: number; data: T }> {
+    this.assertRequestAllowed()
     const url = this.buildUrl(path, params)
     const response = await fetchWithRetry(
       url,
       {},
-      { policy: this.policy, fetchImpl: this.fetchImpl, signal: this.signal }
+      {
+        policy: this.policy,
+        fetchImpl: this.fetchWithHold,
+        signal: this.signal,
+      }
     )
+    this.assertNotRateLimited(response)
     const data = (await response.json().catch(() => undefined)) as T
     return { status: response.status, data }
   }
@@ -174,13 +267,13 @@ export class LighterApiClient {
     for (const [k, v] of Object.entries(params)) {
       body.set(k, String(v))
     }
-    const fetchImpl = this.fetchImpl ?? fetch
-    const response = await fetchImpl(`${this.baseUrl}${path}`, {
+    const response = await this.fetchWithHold(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
       signal: this.signal,
     })
+    this.assertNotRateLimited(response)
     const data = (await response.json().catch(() => undefined)) as T
     return { status: response.status, data }
   }

@@ -267,6 +267,27 @@ describe('LighterReadOnlyTokenManager', () => {
     })
   })
 
+  describe('replaceRevoked()', () => {
+    it('removes the revoked token and creates one replacement without registry cleanup', async () => {
+      const { manager, storage, fetcher, listFetcher, revokeFetcher } =
+        makeManager()
+      await seedStoredToken(storage, {
+        ...OLD_SHAPE_RECORD,
+        token: 'ro:revoked',
+      })
+
+      const result = await manager.replaceRevoked(STD_TOKEN, APPROVE_INPUTS)
+
+      expect(result.token.token).toBe('ro:7:all:1731536000:abc')
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(listFetcher).not.toHaveBeenCalled()
+      expect(revokeFetcher).not.toHaveBeenCalled()
+      expect((await manager.get(ADDRESS_A, 7))?.token).toBe(
+        'ro:7:all:1731536000:abc'
+      )
+    })
+  })
+
   describe('get()', () => {
     it('returns the stored token when not expired', async () => {
       const { manager } = makeManager()

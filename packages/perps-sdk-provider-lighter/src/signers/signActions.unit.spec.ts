@@ -544,6 +544,34 @@ describe('lighterSignActions', () => {
       })
     })
 
+    it('keeps the applied referral marker when it replaces the key', async () => {
+      const { deps, keyStore } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 3,
+        apiKeyPrivateKey: '0xold',
+        apiKeyPublicKey: '0xoldpub',
+        appliedReferralCode: 'LIFI',
+      })
+      const step: WasmBlobActionStep = {
+        action: ActionType.REGISTER_API_KEY,
+        wasmSignParams: { api_key_index: 7, nonce: 42 },
+      }
+
+      await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS, {
+        userWallet: {
+          account: { address: ADDRESS },
+          signMessage: vi.fn(async () => '0xl1sig'),
+        } as never,
+      })
+
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        apiKeyIndex: 7,
+        apiKeyPublicKey: '0xpub',
+        appliedReferralCode: 'LIFI',
+      })
+    })
+
     it('throws a clear error when no end-user wallet is supplied', async () => {
       const { deps } = makeDeps()
       const step: WasmBlobActionStep = {
@@ -1055,6 +1083,9 @@ describe('lighterSignActions', () => {
         referral_code: 'LIFI',
         x: 'lifi_x',
       })
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'LIFI',
+      })
     })
 
     it('surfaces a venue rejection verbatim as an ExchangeRejected error', async () => {
@@ -1107,6 +1138,9 @@ describe('lighterSignActions', () => {
         { l1_address: ADDRESS.toLowerCase() }
       )
       expect(postForm).not.toHaveBeenCalled()
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'LIFI',
+      })
     })
 
     it('overwrites a foreign applied referral code via the POST', async () => {

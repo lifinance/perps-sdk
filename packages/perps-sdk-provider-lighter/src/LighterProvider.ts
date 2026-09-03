@@ -75,7 +75,10 @@ import {
 } from './constants.js'
 import { lighterDepositFlow } from './depositFlow.js'
 import { createAuthToken } from './signers/createAuthToken.js'
-import { LighterKeyStore } from './signers/LighterKeyStore.js'
+import {
+  type LighterApiKey,
+  LighterKeyStore,
+} from './signers/LighterKeyStore.js'
 import { LighterReadOnlyTokenManager } from './signers/LighterReadOnlyTokenManager.js'
 import { LighterSigner } from './signers/LighterSigner.js'
 import {
@@ -103,9 +106,8 @@ import {
 import {
   LIGHTER_RETRY_DEFAULTS,
   LighterApiClient,
-  LighterAuthRejectedError,
+  LighterTokenRevokedError,
 } from './utils/apiClient.js'
-import { fetchAppliedReferralCode } from './utils/appliedReferralCode.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
   classifyAndMapOrders,
@@ -311,11 +313,6 @@ export const createLighterProvider = (
   })
   const keyStore = new LighterKeyStore(storage, providerKey)
   const apiKeyFreshness = createLighterApiKeyFreshness()
-  const readOnlyTokenManager = new LighterReadOnlyTokenManager({
-    storage,
-    providerKey,
-    lighterApiUrl: restUrl,
-  })
   const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
@@ -326,6 +323,7 @@ export const createLighterProvider = (
   const readOnlyCreationInFlight: Map<string, Promise<string>> = new Map()
   const readOnlyCreationBackoff: Map<string, ReadOnlyCreationBackoff> =
     new Map()
+  const rateLimitHold = { untilMs: 0 }
 
   const apiClient = (opts?: SDKRequestOptions): LighterApiClient => {
     const client = requireClient()
@@ -337,8 +335,16 @@ export const createLighterProvider = (
         providerKey
       ),
       fetchImpl: client.config.fetch,
+      rateLimitHold,
     })
   }
+
+  const readOnlyTokenManager = new LighterReadOnlyTokenManager({
+    storage,
+    providerKey,
+    lighterApiUrl: restUrl,
+    fetchImpl: (input, init) => apiClient().request(input, init),
+  })
 
   const getStandardAuthToken = async (
     address: Address,
@@ -385,7 +391,8 @@ export const createLighterProvider = (
    */
   const resolveAuthToken = async (
     opts: SDKRequestOptions | undefined,
-    address?: Address
+    address?: Address,
+    knownApiKey?: LighterApiKey
   ): Promise<string | undefined> => {
     if (opts?.lighterAuthToken !== undefined) {
       return opts.lighterAuthToken
@@ -396,7 +403,7 @@ export const createLighterProvider = (
     if (address === undefined) {
       return undefined
     }
-    const apiKey = await keyStore.get(address)
+    const apiKey = knownApiKey ?? (await keyStore.get(address))
     if (apiKey === null) {
       return undefined
     }
@@ -468,27 +475,60 @@ export const createLighterProvider = (
     return attempt
   }
 
-  const evictResolvedTokens = async (address: Address): Promise<void> => {
-    const cacheKey = address.toLowerCase()
-    readOnlyCreationBackoff.delete(cacheKey)
-    // The cached standard token may itself be the revoked credential — it
-    // rides reads during the creation-failure fallback and authorises
-    // read-only token creation — so a revocation must re-sign it too.
-    standardTokenByAddress.delete(cacheKey)
+  const replaceRevokedReadOnlyToken = async (
+    address: Address,
+    revokedToken: string
+  ): Promise<string | undefined> => {
     const apiKey = await keyStore.get(address)
-    if (apiKey !== null) {
-      await readOnlyTokenManager.remove(address, apiKey.accountIndex)
+    if (apiKey === null) {
+      return undefined
+    }
+    const flightKey = address.toLowerCase()
+    const activeFlight = readOnlyCreationInFlight.get(flightKey)
+    if (activeFlight !== undefined) {
+      return activeFlight
+    }
+    const current = await readOnlyTokenManager.get(address, apiKey.accountIndex)
+    if (current !== undefined && current.token !== revokedToken) {
+      return current.token
+    }
+    const inFlightAfterRead = readOnlyCreationInFlight.get(flightKey)
+    if (inFlightAfterRead !== undefined) {
+      return inFlightAfterRead
+    }
+    const attempt = (async (): Promise<string> => {
+      const standardToken = await getStandardAuthToken(
+        address,
+        apiKey.apiKeyPrivateKey,
+        {
+          apiKeyIndex: apiKey.apiKeyIndex,
+          accountIndex: apiKey.accountIndex,
+        }
+      )
+      const { token } = await readOnlyTokenManager.replaceRevoked(
+        standardToken,
+        {
+          address,
+          accountIndex: apiKey.accountIndex,
+          expirySeconds:
+            Math.floor(Date.now() / 1000) +
+            DEFAULT_READ_ONLY_TOKEN_LIFETIME_SECONDS,
+          scope: 'all',
+        }
+      )
+      readOnlyCreationBackoff.delete(flightKey)
+      return token.token
+    })()
+    readOnlyCreationInFlight.set(flightKey, attempt)
+    try {
+      return await attempt
+    } finally {
+      if (readOnlyCreationInFlight.get(flightKey) === attempt) {
+        readOnlyCreationInFlight.delete(flightKey)
+      }
     }
   }
 
-  /**
-   * Run an auth-gated read; if Lighter rejects the token (revoked server-side —
-   * invisible to `checkSetup`, since the read-only token is a client-only
-   * concern), evict the SDK-resolved credentials (stored read-only token and
-   * cached standard token) and retry once with freshly resolved ones. Only
-   * self-heals tokens the SDK itself resolved — a caller-supplied
-   * `lighterAuthToken`/`authToken` source is the caller's to fix.
-   */
   const retryOnRevoked = async <T>(
     opts: SDKRequestOptions | undefined,
     address: Address,
@@ -500,47 +540,14 @@ export const createLighterProvider = (
     } catch (err) {
       const sdkOwnsToken =
         opts?.lighterAuthToken === undefined && authTokenSource === undefined
-      if (!(err instanceof LighterAuthRejectedError) || !sdkOwnsToken) {
+      if (!(err instanceof LighterTokenRevokedError) || !sdkOwnsToken) {
         throw err
       }
-      await evictResolvedTokens(address)
-      const fresh = await resolveAuthToken(opts, address)
+      const fresh = await replaceRevokedReadOnlyToken(address, token)
       if (fresh === undefined || fresh === token) {
         throw err
       }
       return await run(fresh)
-    }
-  }
-
-  /**
-   * Degrade an auth-gated `getAccount` read to `undefined` when Lighter
-   * rejects an SDK-owned token even after `retryOnRevoked` re-resolved it —
-   * the signature of a stale local API key (the venue's slot was
-   * re-registered elsewhere). `getAccount` must resolve in that state so
-   * `apiKeyRegistered: false` can render the REGISTER_API_KEY gate, which is
-   * the only recovery. A caller-supplied token stays the caller's to fix, so
-   * its rejection propagates, as does every other error class.
-   */
-  const degradeOnAuthRejection = async <T>(
-    opts: SDKRequestOptions | undefined,
-    endpoint: string,
-    read: Promise<T>
-  ): Promise<T | undefined> => {
-    try {
-      return await read
-    } catch (err) {
-      const sdkOwnsToken =
-        opts?.lighterAuthToken === undefined && authTokenSource === undefined
-      if (err instanceof LighterAuthRejectedError && sdkOwnsToken) {
-        console.warn(
-          `[lighter] ${endpoint} rejected the auth token after re-resolution; ` +
-            'degrading the read — the stored API key no longer matches the ' +
-            'registered key, and the REGISTER_API_KEY gate will surface it.',
-          err
-        )
-        return undefined
-      }
-      throw err
     }
   }
 
@@ -702,86 +709,46 @@ export const createLighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
       const client = apiClient(opts)
-      const [account, token] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
-        resolveAuthToken(opts, params.address),
+      const accountPromise = fetchDetailedAccount(client, params.address)
+      const localKey = await keyStore.get(params.address)
+      const registeredKeyPromise =
+        localKey === null
+          ? Promise.resolve(undefined)
+          : fetchRegisteredApiKey(
+              client,
+              localKey.accountIndex,
+              localKey.apiKeyIndex
+            )
+      const [account, registeredKey] = await Promise.all([
+        accountPromise,
+        registeredKeyPromise,
       ])
 
-      const registry = getMarketRegistry(requireClient(), providerKey)
-      const assetRegistry = getAssetRegistry(requireClient(), providerKey)
-      // Shared promise: the referral read below awaits this instance's runtime
-      // metadata off the same `/providers` fetch — no second request.
-      const providersPromise = getProviders(requireClient())
-      // Shared promise: the registered-key read names the slot off the local
-      // record, and the config readout reports the record — one storage read.
-      const localKeyPromise = keyStore.get(params.address)
-      const [
-        { providers },
-        ,
-        ,
-        registeredKey,
-        limitsResult,
-        localKey,
-        storedReadOnlyToken,
-        appliedReferralCode,
-      ] = await Promise.all([
-        providersPromise,
-        registry.sync(),
-        assetRegistry.sync(),
-        // The local record names the only slot worth reading: no record means
-        // nothing to compare the registered key against, so the read is skipped.
-        localKeyPromise.then((key) =>
-          key === null
-            ? undefined
-            : fetchRegisteredApiKey(client, account.index, key.apiKeyIndex)
-        ),
-        // No token is a legitimate unauthenticated read → undefined → zero fee
-        // tier. A generic fetch error is NOT: it must propagate, never be
-        // coerced to a fabricated 0%/0% fee tier. One carve-out: a token the
-        // venue rejects even after re-resolution (stale local API key) degrades
-        // to undefined, so the REGISTER_API_KEY gate can render the recovery.
-        token === undefined
-          ? Promise.resolve(undefined)
-          : degradeOnAuthRejection(
-              opts,
-              '/api/v1/accountLimits',
-              retryOnRevoked(opts, params.address, token, (t) =>
-                fetchAccountLimits(client, account.index, t)
-              )
-            ),
-        localKeyPromise,
-        readOnlyTokenManager.get(params.address, account.index),
-        // The expected code is backend-owned runtime metadata on this
-        // instance's own provider descriptor (keyed by `providerKey`, so the
-        // RH instance never compares against mainnet attribution). Metadata
-        // without a code, or no token to authenticate the read → undefined →
-        // `referralPresent: false`. The read stays SDK-direct: the token only
-        // ever goes to Lighter, never to the LI.FI backend.
-        token === undefined
-          ? Promise.resolve(undefined)
-          : providersPromise.then((response) =>
-              response.providers.find((p) => p.key === providerKey)
-                ?.referralCode
-                ? degradeOnAuthRejection(
-                    opts,
-                    '/api/v1/referral/userReferrals',
-                    retryOnRevoked(opts, params.address, token, (t) =>
-                      fetchAppliedReferralCode(client, params.address, t)
-                    )
-                  )
-                : undefined
-            ),
-      ])
-
-      // REGISTER_API_KEY is satisfied only when the locally-held keypair
-      // matches the key registered on-chain at this slot — existence alone is
-      // insufficient (a stale/rotated local key can't sign valid auth tokens).
       const apiKeyRegistered =
         registeredKey !== undefined &&
         localKey !== null &&
         normalizeLighterPublicKey(localKey.apiKeyPublicKey) ===
           normalizeLighterPublicKey(registeredKey.public_key)
+      const token = apiKeyRegistered
+        ? await resolveAuthToken(opts, params.address, localKey)
+        : undefined
 
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      const assetRegistry = getAssetRegistry(requireClient(), providerKey)
+      const [{ providers }, , , limitsResult, storedReadOnlyToken] =
+        await Promise.all([
+          getProviders(requireClient()),
+          registry.sync(),
+          assetRegistry.sync(),
+          token === undefined
+            ? Promise.resolve(undefined)
+            : retryOnRevoked(opts, params.address, token, (resolvedToken) =>
+                fetchAccountLimits(client, account.index, resolvedToken)
+              ),
+          apiKeyRegistered
+            ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
+            : Promise.resolve(undefined),
+        ])
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
         toPerpsMarketDisplay(registry.require(String(id)))
       )
@@ -868,12 +835,10 @@ export const createLighterProvider = (
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
         readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
         readOnlyTokenScope: storedReadOnlyToken?.scope,
-        // True only when the authenticated `used_code` equals the backend-owned
-        // code for this instance; `appliedReferralCode` is only ever fetched
-        // when that code exists.
         referralPresent:
-          appliedReferralCode !== undefined &&
-          appliedReferralCode === instanceMeta?.referralCode,
+          apiKeyRegistered &&
+          instanceMeta?.referralCode !== undefined &&
+          localKey?.appliedReferralCode === instanceMeta.referralCode,
       }
 
       return {
