@@ -1131,9 +1131,9 @@ describe('LighterWsProvider', () => {
               current_funding_rate: '0.0001',
               funding_rate: '0.00009',
               funding_timestamp: 1704067200000,
-              daily_base_token_volume: '10',
-              daily_quote_token_volume: '500000',
-              daily_price_change: '1.2',
+              daily_base_token_volume: 10,
+              daily_quote_token_volume: 500000,
+              daily_price_change: 1.2,
             },
           },
         })
@@ -1220,9 +1220,9 @@ describe('LighterWsProvider', () => {
             current_funding_rate: '0.0001',
             funding_rate: '0.00009',
             funding_timestamp: 1704067200000,
-            daily_base_token_volume: '10',
-            daily_quote_token_volume: '500000',
-            daily_price_change: '1.2',
+            daily_base_token_volume: 10,
+            daily_quote_token_volume: 500000,
+            daily_price_change: 1.2,
           },
         })
       )
