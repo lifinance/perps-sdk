@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 import { mapMarketContext } from './mapMarketContext.js'
 
+// Wire shape from the live market_stats channel: prices, funding rates, and
+// open interest arrive as decimal strings, the daily volume and change
+// figures as JSON numbers.
 const perpStats: LtWsMarketStats = {
   market_id: 1,
   index_price: '94998',
@@ -12,9 +15,9 @@ const perpStats: LtWsMarketStats = {
   current_funding_rate: '0.0001',
   funding_rate: '0.00009',
   funding_timestamp: 1704067200000,
-  daily_base_token_volume: '10',
-  daily_quote_token_volume: '987654',
-  daily_price_change: '1.5',
+  daily_base_token_volume: 89302.6339,
+  daily_quote_token_volume: 213600918.580087,
+  daily_price_change: 0.6447412634408602,
 }
 
 const spotStats: LtWsSpotMarketStats = {
@@ -40,8 +43,8 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.midPrice).toBe('95001')
     expect(result.markPrice).toBe('95000')
     expect(result.oraclePrice).toBe('94998')
-    expect(result.priceChange24h).toBe('1.5')
-    expect(result.volume24h).toBe('987654')
+    expect(result.priceChange24h).toBe('0.6447412634408602')
+    expect(result.volume24h).toBe('213600918.580087')
     expect(result.openInterest).toBe('1234.5')
     expect(result.funding).toEqual({
       rate: '0.0001',

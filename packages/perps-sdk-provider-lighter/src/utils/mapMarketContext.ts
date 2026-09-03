@@ -22,8 +22,8 @@ export const mapMarketContext = (
       midPrice: stats.mid_price,
       markPrice: stats.mark_price,
       oraclePrice: stats.index_price,
-      priceChange24h: stats.daily_price_change,
-      volume24h: stats.daily_quote_token_volume,
+      priceChange24h: String(stats.daily_price_change),
+      volume24h: String(stats.daily_quote_token_volume),
       openInterest: stats.open_interest,
       funding: {
         rate: stats.current_funding_rate,
