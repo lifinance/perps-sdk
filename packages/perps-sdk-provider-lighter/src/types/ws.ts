@@ -32,8 +32,9 @@ export type LtWsPingMessage = LtWsMessage & { type: 'ping' }
 
 /**
  * Perpetual-market statistics pushed by Lighter's `market_stats` channels.
- * Price, interest, volume, and funding values are decimal strings; the funding
- * timestamp is a Unix timestamp in milliseconds.
+ * Price, interest, and funding values are decimal strings; the daily volume
+ * and change figures are JSON numbers and the funding timestamp is a Unix
+ * timestamp in milliseconds.
  *
  * @public
  */
@@ -47,9 +48,9 @@ export type LtWsMarketStats = {
   current_funding_rate: string
   funding_rate: string
   funding_timestamp: number
-  daily_base_token_volume: string
-  daily_quote_token_volume: string
-  daily_price_change: string
+  daily_base_token_volume: number
+  daily_quote_token_volume: number
+  daily_price_change: number
 }
 
 /**
