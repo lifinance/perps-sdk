@@ -1,5 +1,15 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 18.0.0
+
+### Major Changes
+
+- [#421](https://github.com/lifinance/perps-sdk/pull/421) [`c0676a8`](https://github.com/lifinance/perps-sdk/commit/c0676a86876ba7ff2edc0a0a5b70de47026168a9) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - **Breaking:** `LighterAccountConfig.referralPresent` no longer comes from an authenticated `/api/v1/referral/userReferrals` read on every `getAccount`. The provider stores the referral code on the local API-key record when the `SET_REFERRAL` action confirms it, and `getAccount` compares that marker with the runtime provider `referralCode`. A key record written by an earlier version has no marker and reports `referralPresent: false` until the `SET_REFERRAL` action runs again; when Lighter already reports the code, that action stores the marker without a second `referral/use` POST. A `REGISTER_API_KEY` action keeps the marker on the new key record.
+
+  `getAccount` no longer starts an authenticated read, creates a token, or revokes a token when the local API key is missing or differs from the registered Lighter public key. An HTTP `401`, HTTP `403`, or code `20013` response no longer removes or replaces the read-only token. Only Lighter code `61006` (token revoked) triggers one replacement and one retry.
+
+  An HTTP `429` or HTTP `405` response now fails at once with `PerpsErrorCode.RateLimitExceeded` instead of a retried `ThirdPartyError`, and it holds every Lighter request from that provider instance until `Retry-After` expires (capped at five minutes) or for 60 seconds without a header. Consumers that matched on `ThirdPartyError` for rate limits must match on `RateLimitExceeded`.
+
 ## 17.3.0
 
 ### Minor Changes
