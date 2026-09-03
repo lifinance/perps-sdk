@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 18.0.1
+
+### Patch Changes
+
+- [#423](https://github.com/lifinance/perps-sdk/pull/423) [`3425819`](https://github.com/lifinance/perps-sdk/commit/34258197c7091ba4841f27bfbef59bbf4f480289) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map Lighter's numeric perp market-stats fields to the decimal strings that `MarketContext` declares. The `market_stats` channel sends `daily_price_change`, `daily_quote_token_volume`, and `daily_base_token_volume` as JSON numbers, and the perp branch of `mapMarketContext` passed the raw numbers into the string-typed `priceChange24h` and `volume24h` fields. The spot branch already converts the same fields. `LtWsMarketStats` now declares the three fields as `number`, which matches the live wire shape and the existing `LtWsSpotMarketStats` declaration.
+
 ## 18.0.0
 
 ### Major Changes
