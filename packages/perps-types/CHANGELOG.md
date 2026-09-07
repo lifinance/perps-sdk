@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 11.5.1
+
+### Patch Changes
+
+- [#428](https://github.com/lifinance/perps-sdk/pull/428) [`29cfb9e`](https://github.com/lifinance/perps-sdk/commit/29cfb9e93adc2fc897458fcdcfb188b1dfc3dab6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Settle the Lighter `SET_REFERRAL` setup step when the account already carries a referral code. Lighter applies a referral code permanently at sign-up, so the executor now skips the `referral/use` request for any applied code and treats venue code `41003` as settled, and `referralPresent` reports `true` for any stored referral marker.
+
 ## 11.5.0
 
 ### Minor Changes
