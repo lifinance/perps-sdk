@@ -56,6 +56,14 @@ export interface ProviderAction {
    * a step may depend on every lower-sequenced step already being satisfied.
    */
   sequence?: number
+  /**
+   * `true` marks the step whose satisfaction lets the venue authenticate
+   * account reads and account streams for the address. While a step that
+   * carries the flag stays unsatisfied, those reads and streams cannot start.
+   * Only `true` is a gate marker: `false` and absent both mean the step gates
+   * nothing, so a consumer tests `=== true` rather than truthiness.
+   */
+  gatesAccountReads?: boolean
 }
 
 /**

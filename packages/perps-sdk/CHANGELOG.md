@@ -1,5 +1,18 @@
 # @lifi/perps-sdk
 
+## 10.3.0
+
+### Minor Changes
+
+- [#426](https://github.com/lifinance/perps-sdk/pull/426) [`d0c0a79`](https://github.com/lifinance/perps-sdk/commit/d0c0a798e57ec43e613925a10551d7e6c7cf1154) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `apiKey` is now optional on `PerpsConfig` and `PerpsClientOptions`, and `DEFAULT_API_URL` points at the production host `https://li.quest/v1/perps`, which accepts anonymous requests.
+
+  If your integration relied on `DEFAULT_API_URL` resolving to the development host, pass `apiUrl: 'https://develop.li.quest/v1/perps'` explicitly. Without it, requests that previously reached `develop.li.quest` now reach production.
+
+### Patch Changes
+
+- Updated dependencies [[`29cfb9e`](https://github.com/lifinance/perps-sdk/commit/29cfb9e93adc2fc897458fcdcfb188b1dfc3dab6)]:
+  - @lifi/perps-types@11.5.1
+
 ## 10.2.0
 
 ### Minor Changes
