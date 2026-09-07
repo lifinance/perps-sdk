@@ -571,12 +571,10 @@ export interface LighterAccountConfig {
   /** Present if and only if `readOnlyTokenApproved === true`. */
   readOnlyTokenScope?: 'single' | 'all'
   /**
-   * `true` if and only if LI.FI's referral code is the code currently applied
-   * to the account, resolved by an SDK-direct read of the applied referral.
-   * `false` when a different integrator's code (or none) is applied, or when the
-   * SDK holds no referral code to compare against. Lighter referral is mutable,
-   * so a `false` keeps `SET_REFERRAL` gateable — a user already on another code
-   * can still switch to ours.
+   * `true` if and only if a referral code is applied to the account, recorded
+   * by a confirmed `SET_REFERRAL` action. Lighter applies a referral code
+   * permanently at sign-up, so any applied code — whichever integrator owns it
+   * — satisfies `SET_REFERRAL`. A `false` keeps the step gateable.
    */
   referralPresent: boolean
 }

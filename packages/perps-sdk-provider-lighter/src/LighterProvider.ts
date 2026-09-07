@@ -835,10 +835,10 @@ export const createLighterProvider = (
         readOnlyTokenApproved: storedReadOnlyToken !== undefined,
         readOnlyTokenExpiry: storedReadOnlyToken?.expiry,
         readOnlyTokenScope: storedReadOnlyToken?.scope,
+        // Lighter applies a referral code permanently at sign-up, so any
+        // marker on the key record satisfies SET_REFERRAL.
         referralPresent:
-          apiKeyRegistered &&
-          instanceMeta?.referralCode !== undefined &&
-          localKey?.appliedReferralCode === instanceMeta.referralCode,
+          apiKeyRegistered && (localKey?.appliedReferralCode ?? '').length > 0,
       }
 
       return {

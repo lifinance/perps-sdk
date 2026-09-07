@@ -253,10 +253,21 @@ const LIGHTER_SUCCESS_CODES = new Set([0, 200])
  */
 const LIGHTER_MUTATION_SUCCESS_CODE = 200
 
+/**
+ * Lighter body `code` from `/referral/use` meaning a referral code is already
+ * applied to the account. Lighter applies a referral code permanently at
+ * sign-up, so this verdict reports the account's settled state rather than a
+ * failure the caller can act on.
+ *
+ * @internal
+ */
+const LIGHTER_REFERRAL_ALREADY_USED_CODE = 41003
+
 export {
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_INVALID_AUTH_CODE,
   LIGHTER_MUTATION_SUCCESS_CODE,
+  LIGHTER_REFERRAL_ALREADY_USED_CODE,
   LIGHTER_SUCCESS_CODES,
   LIGHTER_TOKEN_REVOKED_CODE,
 }
