@@ -33,8 +33,10 @@ pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
 | [`@lifi/perps-sdk-provider-lighter`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-lighter) | Lighter |
 | [`@lifi/perps-sdk-provider-ondo`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-ondo) | Ondo |
 
-Get an API key from the [LI.FI Partner Portal](https://portal.li.fi/). The API
-key identifies your integration to the backend. `integrator` is optional: the
+`apiKey` is optional. The default host `https://li.quest/v1/perps` accepts
+anonymous requests. The `develop.li.quest` and `staging.li.quest` hosts require
+a key. Get a key from the [LI.FI Partner Portal](https://portal.li.fi/); it
+identifies your integration to the backend. `integrator` is optional too: the
 SDK sends it as an assertion only when you also set `apiKey`.
 
 ## Quick start
@@ -46,11 +48,20 @@ import { createPerpsClient, getMarkets } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 
 const client = createPerpsClient({
-  apiKey: 'your-api-key',
   providers: [hyperliquidProvider()],
 })
 
 const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+```
+
+Pass your key when you have one, or when you target `develop.li.quest` or
+`staging.li.quest`:
+
+```ts
+const client = createPerpsClient({
+  apiKey: 'your-api-key',
+  providers: [hyperliquidProvider()],
+})
 ```
 
 ## High-level client

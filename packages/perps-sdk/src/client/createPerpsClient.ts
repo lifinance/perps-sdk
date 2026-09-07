@@ -12,7 +12,7 @@ import { bindProvider } from './bindProvider.js'
  *
  * @public
  */
-export const DEFAULT_API_URL = 'https://develop.li.quest/v1/perps'
+export const DEFAULT_API_URL = 'https://li.quest/v1/perps'
 
 /**
  * Construct the low-level {@link PerpsSDKClient} — config, the optional

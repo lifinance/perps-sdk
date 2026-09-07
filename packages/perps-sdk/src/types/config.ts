@@ -92,7 +92,12 @@ export interface PerpsBaseConfig {
    * transport sends it only when `apiKey` is also non-empty.
    */
   integrator?: string
-  /** API key applied to backend requests when non-empty. */
+  /**
+   * Resolved API key, or `''` when the client was built without one. The
+   * transport sends `x-lifi-api-key` only when it is non-empty. The production
+   * host `https://li.quest/v1/perps` accepts anonymous requests; the
+   * `develop.li.quest` and `staging.li.quest` hosts require a key.
+   */
   apiKey: string
   /** Resolved perps API base URL. */
   apiUrl: string
