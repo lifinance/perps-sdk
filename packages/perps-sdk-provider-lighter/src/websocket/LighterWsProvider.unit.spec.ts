@@ -1691,12 +1691,28 @@ describe('LighterWsProvider', () => {
       return provider
     }
 
+    /**
+     * As {@link bareProviderFor}, but leaving the real `getStatus` — the
+     * socket is still connecting, so `registerSub` records without sending
+     * and the open replay is the sole sender.
+     */
+    const connectingProviderFor = (
+      client: ReturnType<typeof createPerpsClient>
+    ) => {
+      const provider = bareProviderFor(client)
+      ;(provider as any).rws.getStatus = () => 'reconnecting'
+      return provider
+    }
+
     it('authenticates a bare-constructed account subscribe and rotates the token on reconnect', async () => {
-      let issued = 0
+      // Rotation driven by the test, not by a per-call counter: the token in
+      // flight is whatever the venue's credential is at resolve time.
+      let issued = 'token-1'
+      const authToken = vi.fn(() => issued)
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [lighterProvider({ authToken: () => `token-${++issued}` })],
+        providers: [lighterProvider({ authToken })],
       })
       const provider = bareProviderFor(client)
       const send = vi.fn()
@@ -1714,10 +1730,14 @@ describe('LighterWsProvider', () => {
           auth: 'token-1',
         })
       )
+      // The pre-registration guard and the send resolve the token separately,
+      // so neither can be dropped in favour of a value the other cached.
+      expect(authToken).toHaveBeenCalledTimes(2)
 
       // Simulated reconnect: the base replays every registered sub, and each
       // replay must re-resolve the token so a rotated credential is used.
       send.mockClear()
+      issued = 'token-2'
       await (provider as any).replaySubs()
 
       expect(send).toHaveBeenCalledWith(
@@ -1727,6 +1747,7 @@ describe('LighterWsProvider', () => {
           auth: 'token-2',
         })
       )
+      expect(authToken).toHaveBeenCalledTimes(3)
       provider.close()
     })
 
@@ -1744,6 +1765,89 @@ describe('LighterWsProvider', () => {
           vi.fn()
         )
       ).rejects.toThrow(/no auth-token resolver was available/)
+      provider.close()
+    })
+
+    it('rejects a gated subscribe with no token while the socket is still connecting, leaving nothing to replay', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider()],
+      })
+      const provider = connectingProviderFor(client)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await expect(
+        provider.subscribe(
+          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow(/no token was available for/)
+
+      expect((provider as any).wireSubs.size).toBe(0)
+
+      // The open replay has no entry to retry, so nothing fails forever.
+      await (provider as any).replaySubs()
+      expect(send).not.toHaveBeenCalled()
+      expect(errSpy).not.toHaveBeenCalled()
+      errSpy.mockRestore()
+      provider.close()
+    })
+
+    it('registers the gated wire sub while connecting when a token resolves, and sends it on the open replay', async () => {
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider({ authToken: () => 'token-1' })],
+      })
+      const provider = connectingProviderFor(client)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(send).not.toHaveBeenCalled()
+      expect([...(provider as any).wireSubs.keys()]).toEqual([
+        `account_all_positions/${ACCOUNT_IDX}`,
+      ])
+
+      await (provider as any).replaySubs()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          auth: 'token-1',
+        })
+      )
+      provider.close()
+    })
+
+    it('subscribes fills with no resolver at all — the channel is publicly readable', async () => {
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      const provider = connectingProviderFor(client)
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      await (provider as any).replaySubs()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: `account_all_trades/${ACCOUNT_IDX}`,
+        })
+      )
       provider.close()
     })
 
