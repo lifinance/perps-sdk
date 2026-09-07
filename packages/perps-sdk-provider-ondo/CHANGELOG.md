@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 11.3.0
+
+### Minor Changes
+
+- [#430](https://github.com/lifinance/perps-sdk/pull/430) [`f9b81ab`](https://github.com/lifinance/perps-sdk/commit/f9b81ab1dee6dea4a43f66ca1603e5d6a4ce229c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Reject an account WebSocket subscription with no auth token on the first call, before it registers a wire subscription that fails on every reconnect.
+
+  `subscribe()` on an auth-gated account channel now returns a rejected promise when no token is available, where it previously resolved and failed silently on every replay. Lighter rejects with a `PerpsError` carrying `PerpsErrorCode.Unauthorized`; Ondo rejects with `OndoSessionExpiredError`. Await the call with a `catch`, or gate the call on the venue setup step that carries `gatesAccountReads`.
+
+### Patch Changes
+
+- Updated dependencies [[`3a40a77`](https://github.com/lifinance/perps-sdk/commit/3a40a7778b1cc721f6b531438dca657c3b5147b2), [`aad278e`](https://github.com/lifinance/perps-sdk/commit/aad278ebd3f8c69ead3bae5336aac703262ea4a3)]:
+  - @lifi/perps-types@11.6.0
+
 ## 11.2.0
 
 ### Minor Changes

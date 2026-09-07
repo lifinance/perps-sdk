@@ -56,6 +56,14 @@ export interface ProviderAction {
    * a step may depend on every lower-sequenced step already being satisfied.
    */
   sequence?: number
+  /**
+   * `true` marks the step whose satisfaction lets the venue authenticate
+   * account reads and account streams for the address. While a step that
+   * carries the flag stays unsatisfied, those reads and streams cannot start.
+   * Only `true` is a gate marker: `false` and absent both mean the step gates
+   * nothing, so a consumer tests `=== true` rather than truthiness.
+   */
+  gatesAccountReads?: boolean
 }
 
 /**
@@ -102,8 +110,9 @@ export interface Provider {
   name: string
   logoURI: string
   /**
-   * Public attribution code supplied by the backend for authenticated
-   * referral-state comparison. Absent when the provider has no referral setup.
+   * Public attribution code that `lifi-perps-backend` advertises on
+   * `/providers` for a venue with a `SET_REFERRAL` setup gate. `getProviders`
+   * passes it to SDK callers.
    */
   referralCode?: string
   signingMethod: SigningMethod

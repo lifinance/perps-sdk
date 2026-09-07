@@ -34,7 +34,7 @@ export interface LighterApiKey {
   apiKeyPrivateKey: string
   /** Corresponding public key, registered via ChangePubKey. */
   apiKeyPublicKey: string
-  /** Referral code confirmed by the standard-token SET_REFERRAL action. */
+  /** Referral code applied to the account, recorded when SET_REFERRAL settles. */
   appliedReferralCode?: string
 }
 

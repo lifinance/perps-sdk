@@ -37,12 +37,17 @@ import type { PerpsProviderPlugin } from './provider.js'
 export interface PerpsConfig {
   /**
    * Optional integrator assertion. Sent as `x-lifi-integrator` only when
-   * `apiKey` is also set. The backend resolves the fee identity from `apiKey`
-   * and rejects an integrator that disagrees with it.
+   * `apiKey` is non-empty. The backend rejects an integrator that disagrees
+   * with the key.
    */
   integrator?: string
-  /** LI.FI API key used for authenticated backend requests. */
-  apiKey: string
+  /**
+   * Optional LI.FI API key. The production host `https://li.quest/v1/perps`
+   * accepts anonymous requests, so a key is not required there. The
+   * `develop.li.quest` and `staging.li.quest` hosts require a key. Get one at
+   * https://portal.li.fi/.
+   */
+  apiKey?: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
   /** Skip the SDK-version compatibility check when set. */
@@ -97,12 +102,17 @@ export interface PerpsConfig {
 export interface PerpsClientOptions {
   /**
    * Optional integrator assertion. Sent as `x-lifi-integrator` only when
-   * `apiKey` is also set. The backend resolves the fee identity from `apiKey`
-   * and rejects an integrator that disagrees with it.
+   * `apiKey` is non-empty. The backend rejects an integrator that disagrees
+   * with the key.
    */
   integrator?: string
-  /** API key for authenticated requests (get one at https://portal.li.fi/). */
-  apiKey: string
+  /**
+   * Optional LI.FI API key. The production host `https://li.quest/v1/perps`
+   * accepts anonymous requests, so a key is not required there. The
+   * `develop.li.quest` and `staging.li.quest` hosts require a key. Get one at
+   * https://portal.li.fi/.
+   */
+  apiKey?: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
   /**

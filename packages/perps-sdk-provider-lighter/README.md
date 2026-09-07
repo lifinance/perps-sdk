@@ -41,7 +41,11 @@ lighterProvider({ storage: myStorageAdapter })
 
 ## Referral and read authentication
 
-The `SET_REFERRAL` action uses a short-lived standard token. After the action confirms the code, the provider stores the code with the local API key. `getAccount` compares this marker with the current provider code to set `referralPresent`. It does not send a read-only token to a referral endpoint. A key record from an earlier package version has no marker, so `getAccount` reports `referralPresent: false` until the `SET_REFERRAL` action runs again. When Lighter already reports the code for the address, that action stores the marker and does not send a second `referral/use` request. A `REGISTER_API_KEY` action keeps the marker on the new key record.
+Lighter applies a referral code permanently at sign-up. Any code on the account therefore satisfies `SET_REFERRAL`, whichever integrator owns it.
+
+The `SET_REFERRAL` action uses a short-lived standard token. It first reads the referral code Lighter reports for the address. When Lighter reports a code, the action stores that code with the local API key and sends no `referral/use` request. When Lighter reports no code, the action sends the request and stores the code it sent. Lighter code `41003` answers that the account already carries a code, so the action stores the marker and reports success. Every other rejection code raises `ExchangeRejected` with the venue `code` and `message`. A failed read of the applied code sends the request and lets Lighter decide.
+
+`getAccount` reports `referralPresent: true` when the local key record carries a marker. It does not send a read-only token to a referral endpoint. A key record from an earlier package version has no marker, so `getAccount` reports `referralPresent: false` until the `SET_REFERRAL` action runs again. A `REGISTER_API_KEY` action keeps the marker on the new key record.
 
 Before `getAccount` starts an authenticated read, it compares the local public key with the registered Lighter public key. A missing or different key prevents token creation and authenticated reads. If Lighter returns code `61006` for a read-only token, the provider creates one replacement and retries the read once. Responses with HTTP `401`, HTTP `403`, or code `20013` do not remove or replace the token.
 
