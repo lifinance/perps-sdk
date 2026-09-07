@@ -425,7 +425,8 @@ type _ReferralCodeIsOptional = Expect<
 >
 
 // `ProviderAction` keys: the three core fields plus the optional
-// presentation / ordering hints. Catches an accidental rename / addition.
+// presentation, ordering, and gating hints. Catches an accidental
+// rename / addition.
 type _ProviderActionKeys = Expect<
   Equals<
     keyof ProviderAction,
@@ -436,7 +437,15 @@ type _ProviderActionKeys = Expect<
     | 'description'
     | 'params'
     | 'sequence'
+    | 'gatesAccountReads'
   >
+>
+
+type _GatesAccountReadsShape = Expect<
+  Equals<ProviderAction['gatesAccountReads'], boolean | undefined>
+>
+type _GatesAccountReadsIsOptional = Expect<
+  Equals<Extract<RequiredKeys<ProviderAction>, 'gatesAccountReads'>, never>
 >
 
 // Param.type is the closed three-member primitive union.
