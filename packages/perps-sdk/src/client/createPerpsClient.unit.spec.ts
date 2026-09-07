@@ -45,6 +45,14 @@ describe('createPerpsClient', () => {
     expect(client.config.integrator).toBeUndefined()
   })
 
+  it('should default the api url and empty the key when apiKey is omitted', () => {
+    const client = createPerpsClient({ providers: [] })
+
+    expect(client.config.apiKey).toBe('')
+    expect(client.config.integrator).toBeUndefined()
+    expect(client.config.apiUrl).toBe(DEFAULT_API_URL)
+  })
+
   it('should support requestInterceptor', async () => {
     const client = createPerpsClient({
       integrator: 'test-app',

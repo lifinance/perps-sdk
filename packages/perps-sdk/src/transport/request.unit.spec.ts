@@ -2,7 +2,10 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/handlers.js'
-import { createPerpsClient } from '../client/createPerpsClient.js'
+import {
+  createPerpsClient,
+  DEFAULT_API_URL,
+} from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { request } from './request.js'
 
@@ -232,7 +235,7 @@ describe('request — header handling', () => {
 
   const identityCases: [
     string,
-    { apiKey: string; integrator?: string },
+    { apiKey?: string; integrator?: string },
     { apiKey: string | null; integrator: string | null },
   ][] = [
     [
@@ -248,6 +251,11 @@ describe('request — header handling', () => {
     [
       'an integrator and no api key',
       { apiKey: '', integrator: 'test-app' },
+      { apiKey: null, integrator: null },
+    ],
+    [
+      'an integrator and an omitted api key',
+      { integrator: 'test-app' },
       { apiKey: null, integrator: null },
     ],
     [
@@ -283,6 +291,32 @@ describe('request — header handling', () => {
     expect(result.ok).toBe(true)
     expect(apiKeyHeader).toBe(expected.apiKey)
     expect(integratorHeader).toBe(expected.integrator)
+  })
+
+  it('sends no identity headers for a client built without an apiKey', async () => {
+    const anonymousClient = createPerpsClient({ providers: [] })
+    expect(anonymousClient.config.apiUrl).toBe(DEFAULT_API_URL)
+    const anonymousUrl = `${anonymousClient.config.apiUrl}/test`
+
+    let apiKeyHeader: string | null = 'unset'
+    let integratorHeader: string | null = 'unset'
+    server.use(
+      http.get(anonymousUrl, ({ request: req }) => {
+        apiKeyHeader = req.headers.get('x-lifi-api-key')
+        integratorHeader = req.headers.get('x-lifi-integrator')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(
+      anonymousClient.config,
+      anonymousUrl,
+      { retry: false }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(apiKeyHeader).toBeNull()
+    expect(integratorHeader).toBeNull()
   })
 
   it('gives the request interceptor the conditional header set', async () => {
