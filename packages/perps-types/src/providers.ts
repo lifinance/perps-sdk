@@ -110,8 +110,9 @@ export interface Provider {
   name: string
   logoURI: string
   /**
-   * Public attribution code supplied by the backend for authenticated
-   * referral-state comparison. Absent when the provider has no referral setup.
+   * Public attribution code that `lifi-perps-backend` advertises on
+   * `/providers` for a venue with a `SET_REFERRAL` setup gate. `getProviders`
+   * passes it to SDK callers.
    */
   referralCode?: string
   signingMethod: SigningMethod
