@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 11.6.0
+
+### Minor Changes
+
+- [#429](https://github.com/lifinance/perps-sdk/pull/429) [`3a40a77`](https://github.com/lifinance/perps-sdk/commit/3a40a7778b1cc721f6b531438dca657c3b5147b2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `gatesAccountReads` flag to `ProviderAction`. It marks the step whose satisfaction lets a venue authenticate account reads and account streams for the address.
+
+### Patch Changes
+
+- [#432](https://github.com/lifinance/perps-sdk/pull/432) [`aad278e`](https://github.com/lifinance/perps-sdk/commit/aad278ebd3f8c69ead3bae5336aac703262ea4a3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct the `Provider.referralCode` doc-comment. The field records the attribution code that the backend advertises on `/providers` for a venue with a `SET_REFERRAL` setup gate; it no longer claims an authenticated referral-state comparison.
+
 ## 11.5.1
 
 ### Patch Changes
