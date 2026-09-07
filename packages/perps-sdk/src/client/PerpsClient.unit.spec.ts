@@ -3656,7 +3656,8 @@ describe('PerpsClient', () => {
               action: 'Accept LI.FI Perps Terms of Service v3',
               acceptor: account.address,
               termsVersion: 'v3',
-              timestamp: 1_735_689_600_000,
+              nonce: '4',
+              deadline: 1_735_689_600_000,
             },
           },
         },
@@ -3675,6 +3676,13 @@ describe('PerpsClient', () => {
       const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
       expect(signed.typedData.primaryType).toBe('AcceptTerms')
       expect(signed.typedData.types.AcceptTerms).toEqual(acceptTermsTypeFields)
+      expect(signed.typedData.message).toMatchObject({
+        action: 'Accept LI.FI Perps Terms of Service v3',
+        acceptor: account.address,
+        termsVersion: 'v3',
+        nonce: '4',
+        deadline: 1_735_689_600_000,
+      })
       expect(response.results).toEqual([
         { action: ActionType.META_ACCEPT_TERMS, success: true },
       ])

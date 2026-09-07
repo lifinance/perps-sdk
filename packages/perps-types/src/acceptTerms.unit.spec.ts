@@ -24,7 +24,8 @@ const acceptTermsTypedData: AcceptTermsTypedData = {
     action: 'Accept LI.FI Perps Terms of Service v3',
     acceptor: ACCEPTOR,
     termsVersion: '3',
-    timestamp: 1_900_000_000_000,
+    nonce: '9',
+    deadline: 1_900_000_000_000,
   },
 }
 
@@ -87,19 +88,39 @@ describe('AcceptTerms EIP-712 typed data', () => {
   })
 
   it('declares the AcceptTerms field list in signing order', () => {
-    expect(acceptTermsTypedData.types.AcceptTerms.map((f) => f.name)).toEqual([
-      'action',
-      'acceptor',
-      'termsVersion',
-      'timestamp',
+    expect(acceptTermsTypedData.types.AcceptTerms).toEqual([
+      { name: 'action', type: 'string' },
+      { name: 'acceptor', type: 'address' },
+      { name: 'termsVersion', type: 'string' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
     ])
   })
 
-  it('conveys the acceptor, accepted version, action string, and unix-ms timestamp', () => {
+  // The encoded type string is the type-hash preimage. Any rename, reorder, or
+  // Solidity-type change alters the digest and invalidates issued signatures.
+  it('pins the EIP-712 encoded type string', () => {
+    const members = acceptTermsTypeFields
+      .map((field) => `${field.type} ${field.name}`)
+      .join(',')
+
+    expect(`AcceptTerms(${members})`).toBe(
+      'AcceptTerms(string action,address acceptor,string termsVersion,uint256 nonce,uint256 deadline)'
+    )
+  })
+
+  it('conveys the acceptor, accepted version, action string, and replay bounds', () => {
     const message: AcceptTermsMessage = acceptTermsTypedData.message
     expect(message.action).toBe('Accept LI.FI Perps Terms of Service v3')
     expect(message.acceptor).toBe(ACCEPTOR)
     expect(message.termsVersion).toBe('3')
-    expect(message.timestamp).toBe(1_900_000_000_000)
+    expect(message.nonce).toBe('9')
+    expect(message.deadline).toBe(1_900_000_000_000)
+  })
+
+  it('names one field per AcceptTermsMessage member, in declaration order', () => {
+    expect(acceptTermsTypeFields.map((field) => field.name)).toEqual(
+      Object.keys(acceptTermsTypedData.message)
+    )
   })
 })

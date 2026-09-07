@@ -41,12 +41,13 @@ describe('onboardTypeFields', () => {
     )
   })
 
-  it('leaves the AcceptTerms field list unchanged', () => {
+  it('stays distinct from the AcceptTerms field list', () => {
     expect(acceptTermsTypeFields).toEqual([
       { name: 'action', type: 'string' },
       { name: 'acceptor', type: 'address' },
       { name: 'termsVersion', type: 'string' },
-      { name: 'timestamp', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
     ])
   })
 })
