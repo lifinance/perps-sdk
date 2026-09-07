@@ -2,6 +2,7 @@ import {
   cachePromise,
   getMarketRegistry,
   type MarketRegistry,
+  PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
@@ -14,11 +15,12 @@ import {
   type WsProviderFactory,
   wsLog,
 } from '@lifi/perps-sdk'
-import type {
-  Fill,
-  MarketContext,
-  Position,
-  Subscription,
+import {
+  type Fill,
+  type MarketContext,
+  PerpsErrorCode,
+  type Position,
+  type Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
@@ -332,6 +334,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    * The auth token a gated channel's subscribe frame carries, or a throw when
    * no resolver is wired or the resolver yields none. Shared by the
    * subscribe-time guard and the per-send resolve so both report one message.
+   * Throws {@link PerpsError} with `Unauthorized` so a caller branches on the
+   * code, as it does for the Ondo and Lighter REST auth failures.
    */
   private async requireAuthToken(
     channel: string,
@@ -339,14 +343,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   ): Promise<string> {
     const resolve = this.authTokenResolver()
     if (!resolve || !address) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.Unauthorized,
         `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
           'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
       )
     }
     const token = await resolve(address)
     if (!token) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.Unauthorized,
         `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
       )
     }

@@ -256,8 +256,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       }
       await this.rws.ready()
     } catch (err) {
-      // Login/seed failed before the binding took hold on the wire: release a
-      // binding this call newly reserved so a later subscribe can rebind.
+      // Registry sync, summary seed, or wire acquire failed after the address
+      // bound: release a binding this call newly reserved so a later
+      // subscribe can rebind. A `requireSession` throw never reaches here.
       if (boundHere) {
         this.accountAddress = undefined
       }

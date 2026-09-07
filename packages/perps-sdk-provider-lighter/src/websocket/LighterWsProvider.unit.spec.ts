@@ -1708,10 +1708,11 @@ describe('LighterWsProvider', () => {
       // Rotation driven by the test, not by a per-call counter: the token in
       // flight is whatever the venue's credential is at resolve time.
       let issued = 'token-1'
+      const authToken = vi.fn(() => issued)
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [lighterProvider({ authToken: () => issued })],
+        providers: [lighterProvider({ authToken })],
       })
       const provider = bareProviderFor(client)
       const send = vi.fn()
@@ -1729,6 +1730,9 @@ describe('LighterWsProvider', () => {
           auth: 'token-1',
         })
       )
+      // The pre-registration guard and the send resolve the token separately,
+      // so neither can be dropped in favour of a value the other cached.
+      expect(authToken).toHaveBeenCalledTimes(2)
 
       // Simulated reconnect: the base replays every registered sub, and each
       // replay must re-resolve the token so a rotated credential is used.
@@ -1743,6 +1747,7 @@ describe('LighterWsProvider', () => {
           auth: 'token-2',
         })
       )
+      expect(authToken).toHaveBeenCalledTimes(3)
       provider.close()
     })
 

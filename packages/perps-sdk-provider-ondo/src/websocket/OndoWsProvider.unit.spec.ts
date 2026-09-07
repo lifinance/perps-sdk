@@ -828,6 +828,38 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('logs a resubscribe failure when the session expires after the sub registered', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        vi.fn()
+      )
+      expect([...(p as any).wireSubs.keys()]).toEqual(['ordersPerps'])
+
+      // The session goes away while the sub is registered, and the drop that
+      // triggers the replay clears the connection's login (the `close`
+      // handler's job on a live socket).
+      await storage.remove(SESSION_KEY)
+      ;(p as any).loginPromise = undefined
+      send.mockClear()
+
+      await (p as any).replaySubs()
+
+      expect(send).not.toHaveBeenCalled()
+      expect(errSpy).toHaveBeenCalledWith(
+        expect.stringContaining("resubscribe failed for channel 'ordersPerps'"),
+        expect.objectContaining({
+          message: expect.stringMatching(/No Ondo session/),
+        })
+      )
+      errSpy.mockRestore()
+      p.close()
+    })
+
     it('rejects a second authenticated address on the same connection', async () => {
       // Both addresses hold a session, so the one-address guard — not the
       // session guard ahead of it — is what rejects the second subscribe.
