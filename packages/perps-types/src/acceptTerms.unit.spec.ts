@@ -88,13 +88,25 @@ describe('AcceptTerms EIP-712 typed data', () => {
   })
 
   it('declares the AcceptTerms field list in signing order', () => {
-    expect(acceptTermsTypedData.types.AcceptTerms.map((f) => f.name)).toEqual([
-      'action',
-      'acceptor',
-      'termsVersion',
-      'nonce',
-      'deadline',
+    expect(acceptTermsTypedData.types.AcceptTerms).toEqual([
+      { name: 'action', type: 'string' },
+      { name: 'acceptor', type: 'address' },
+      { name: 'termsVersion', type: 'string' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
     ])
+  })
+
+  // The encoded type string is the type-hash preimage. Any rename, reorder, or
+  // Solidity-type change alters the digest and invalidates issued signatures.
+  it('pins the EIP-712 encoded type string', () => {
+    const members = acceptTermsTypeFields
+      .map((field) => `${field.type} ${field.name}`)
+      .join(',')
+
+    expect(`AcceptTerms(${members})`).toBe(
+      'AcceptTerms(string action,address acceptor,string termsVersion,uint256 nonce,uint256 deadline)'
+    )
   })
 
   it('conveys the acceptor, accepted version, action string, and replay bounds', () => {
