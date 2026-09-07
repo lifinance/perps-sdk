@@ -235,7 +235,7 @@ describe('request — header handling', () => {
 
   const identityCases: [
     string,
-    { apiKey: string; integrator?: string },
+    { apiKey?: string; integrator?: string },
     { apiKey: string | null; integrator: string | null },
   ][] = [
     [
@@ -251,6 +251,11 @@ describe('request — header handling', () => {
     [
       'an integrator and no api key',
       { apiKey: '', integrator: 'test-app' },
+      { apiKey: null, integrator: null },
+    ],
+    [
+      'an integrator and an omitted api key',
+      { integrator: 'test-app' },
       { apiKey: null, integrator: null },
     ],
     [
@@ -289,22 +294,23 @@ describe('request — header handling', () => {
   })
 
   it('sends no identity headers for a client built without an apiKey', async () => {
+    const anonymousClient = createPerpsClient({ providers: [] })
+    expect(anonymousClient.config.apiUrl).toBe(DEFAULT_API_URL)
+    const anonymousUrl = `${anonymousClient.config.apiUrl}/test`
+
     let apiKeyHeader: string | null = 'unset'
     let integratorHeader: string | null = 'unset'
     server.use(
-      http.get(url, ({ request: req }) => {
+      http.get(anonymousUrl, ({ request: req }) => {
         apiKeyHeader = req.headers.get('x-lifi-api-key')
         integratorHeader = req.headers.get('x-lifi-integrator')
         return HttpResponse.json({ ok: true })
       })
     )
 
-    const anonymousClient = createPerpsClient({ providers: [] })
-    expect(anonymousClient.config.apiUrl).toBe(DEFAULT_API_URL)
-
     const result = await request<{ ok: boolean }>(
       anonymousClient.config,
-      `${anonymousClient.config.apiUrl}/test`,
+      anonymousUrl,
       { retry: false }
     )
 

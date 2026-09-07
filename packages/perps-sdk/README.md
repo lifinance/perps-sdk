@@ -37,7 +37,7 @@ pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
 anonymous requests. The `develop.li.quest` and `staging.li.quest` hosts require
 a key. Get a key from the [LI.FI Partner Portal](https://portal.li.fi/); it
 identifies your integration to the backend. `integrator` is optional too: the
-SDK sends it as an assertion only when you also set `apiKey`.
+SDK sends it as an assertion only when your `apiKey` is non-empty.
 
 ## Quick start
 

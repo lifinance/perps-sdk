@@ -37,7 +37,7 @@ import type { PerpsProviderPlugin } from './provider.js'
 export interface PerpsConfig {
   /**
    * Optional integrator assertion. Sent as `x-lifi-integrator` only when
-   * `apiKey` is also set. The backend rejects an integrator that disagrees
+   * `apiKey` is non-empty. The backend rejects an integrator that disagrees
    * with the key.
    */
   integrator?: string
@@ -102,7 +102,7 @@ export interface PerpsConfig {
 export interface PerpsClientOptions {
   /**
    * Optional integrator assertion. Sent as `x-lifi-integrator` only when
-   * `apiKey` is also set. The backend rejects an integrator that disagrees
+   * `apiKey` is non-empty. The backend rejects an integrator that disagrees
    * with the key.
    */
   integrator?: string
