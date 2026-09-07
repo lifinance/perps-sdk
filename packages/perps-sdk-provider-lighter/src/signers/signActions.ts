@@ -11,7 +11,10 @@ import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { parseAbi } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
-import { LIGHTER_MUTATION_SUCCESS_CODE } from '../constants.js'
+import {
+  LIGHTER_MUTATION_SUCCESS_CODE,
+  LIGHTER_REFERRAL_ALREADY_USED_CODE,
+} from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
 import {
@@ -445,9 +448,13 @@ async function signTransfer(
  * pending orders, 24h tier cooldown) server-side. We create a fresh short-lived
  * token per call (never the stored read-only token, never persisted) and POST
  * the mirror of the backend's form body directly to Lighter, so no auth token
- * ever transits the LI.FI backend. `SET_REFERRAL` first reads the account's
- * applied code and skips the POST when it already equals the target code; a
- * foreign code is still overwritten. A non-success verdict surfaces Lighter's
+ * ever transits the LI.FI backend.
+ *
+ * Lighter applies a referral code permanently at sign-up, so any code on the
+ * account settles `SET_REFERRAL`: the executor reads the applied code first and
+ * skips the POST when the account carries one, and a
+ * {@link LIGHTER_REFERRAL_ALREADY_USED_CODE} verdict from the POST settles the
+ * step the same way. Every other non-success verdict surfaces Lighter's
  * `code`/`message` verbatim as an {@link PerpsErrorCode.ExchangeRejected}.
  */
 async function executeTokenAuthMutation(
@@ -468,12 +475,12 @@ async function executeTokenAuthMutation(
   if (step.wasmSignParams.kind === 'referralUse') {
     const { referral_code } = step.wasmSignParams as { referral_code?: string }
     appliedReferralCode = referral_code
-    if (
-      typeof referral_code === 'string' &&
-      (await isReferralAlreadyApplied(deps, address, authToken, referral_code))
-    ) {
-      await deps.keyStore.markReferralApplied(address, referral_code)
-      return
+    if (typeof referral_code === 'string') {
+      const venueCode = await readAppliedReferralCode(deps, address, authToken)
+      if (venueCode.length > 0) {
+        await deps.keyStore.markReferralApplied(address, venueCode)
+        return
+      }
     }
   }
 
@@ -484,7 +491,13 @@ async function executeTokenAuthMutation(
   }>(path, params)
 
   const code = data?.code
-  if (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE) {
+  const referralAlreadyApplied =
+    step.wasmSignParams.kind === 'referralUse' &&
+    code === LIGHTER_REFERRAL_ALREADY_USED_CODE
+  if (
+    !referralAlreadyApplied &&
+    (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE)
+  ) {
     const suffix = data?.message ? `: ${data.message}` : ''
     throw new PerpsError(
       PerpsErrorCode.ExchangeRejected,
@@ -498,25 +511,24 @@ async function executeTokenAuthMutation(
 }
 
 /**
- * Whether the account's applied referral code already equals `referralCode`.
- * A failed read returns `false` so the `/referral/use` POST still runs — the
- * read is only an optimization to avoid redundant writes.
+ * The referral code Lighter reports for the account, or the empty string when
+ * the account carries none. A failed read also yields the empty string, so the
+ * `/referral/use` POST still runs and Lighter decides.
  */
-async function isReferralAlreadyApplied(
+async function readAppliedReferralCode(
   deps: LighterSignActionsDeps,
   address: Address,
-  authToken: string,
-  referralCode: string
-): Promise<boolean> {
+  authToken: string
+): Promise<string> {
   try {
-    const applied = await fetchAppliedReferralCode(
-      deps.apiClient,
-      address,
-      authToken
+    return await fetchAppliedReferralCode(deps.apiClient, address, authToken)
+  } catch (err) {
+    console.debug(
+      `[lighter] could not read the referral code applied to ${address} from ` +
+        '/api/v1/referral/userReferrals; sending the referral/use request.',
+      err
     )
-    return applied === referralCode
-  } catch {
-    return false
+    return ''
   }
 }
 

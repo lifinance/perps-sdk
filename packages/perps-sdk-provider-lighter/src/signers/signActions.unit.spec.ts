@@ -1017,6 +1017,23 @@ describe('lighterSignActions', () => {
       ).rejects.toThrow(/account has open positions/)
     })
 
+    it('rejects code 41003 — the referral settle rule is not shared', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 41003, message: 'Referral code already used' },
+      }))
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [accountTypeStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/code 41003/)
+    })
+
     it('throws when no API key is registered for the address', async () => {
       const { deps } = makeDeps()
       const step: WasmBlobActionStep = {
@@ -1110,7 +1127,7 @@ describe('lighterSignActions', () => {
       ).rejects.toThrow(/referral code already applied/)
     })
 
-    it('reads the applied code first and skips the POST when it already matches', async () => {
+    it('reads the applied code first and skips the POST when the account carries one', async () => {
       const { deps, keyStore, postForm, getAuthed } = makeDeps(
         {},
         undefined,
@@ -1143,7 +1160,7 @@ describe('lighterSignActions', () => {
       })
     })
 
-    it('overwrites a foreign applied referral code via the POST', async () => {
+    it('skips the POST and stores a foreign applied referral code', async () => {
       const { deps, keyStore, postForm } = makeDeps(
         {},
         undefined,
@@ -1164,19 +1181,71 @@ describe('lighterSignActions', () => {
         ADDRESS
       )
 
-      expect(postForm).toHaveBeenCalledWith(
-        '/api/v1/referral/use',
-        expect.objectContaining({ referral_code: 'LIFI' })
+      expect(postForm).not.toHaveBeenCalled()
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'SOMEONE_ELSE',
+      })
+    })
+
+    it('stores the marker when the POST reports code 41003', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 41003, message: 'Referral code already used' },
+      }))
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result).toHaveLength(0)
+      expect(await keyStore.get(ADDRESS)).toMatchObject({
+        appliedReferralCode: 'LIFI',
+      })
+    })
+
+    it('still throws for a rejection code other than 41003', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 41004, message: 'Referral code does not exist' },
+      }))
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [referralStep],
+          ADDRESS
+        )
+      ).rejects.toThrow(/rejected \(code 41004\): Referral code does not exist/)
+      expect(await keyStore.get(ADDRESS)).not.toHaveProperty(
+        'appliedReferralCode'
       )
     })
 
-    it('still POSTs when the applied-code read fails', async () => {
+    it('logs the read failure at debug level and still POSTs', async () => {
+      const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+      const readError = new Error('userReferrals unavailable')
       const { deps, keyStore, postForm } = makeDeps(
         {},
         undefined,
         undefined,
         async () => {
-          throw new Error('userReferrals unavailable')
+          throw readError
         }
       )
       await keyStore.set(ADDRESS, {
@@ -1197,6 +1266,12 @@ describe('lighterSignActions', () => {
         '/api/v1/referral/use',
         expect.objectContaining({ referral_code: 'LIFI' })
       )
+      expect(debug).toHaveBeenCalledTimes(1)
+      const [message, loggedError] = debug.mock.calls[0]
+      expect(message).toContain(ADDRESS)
+      expect(message).toContain('/api/v1/referral/userReferrals')
+      expect(loggedError).toBe(readError)
+      debug.mockRestore()
     })
   })
 
