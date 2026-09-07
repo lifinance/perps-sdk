@@ -29,6 +29,7 @@ import {
   ONDO_PROVIDER_KEY,
 } from '../constants.js'
 import type {
+  OndoAuthToken,
   OndoBalanceSummary,
   OndoBookSnapshot,
   OndoFill,
@@ -230,9 +231,14 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
 
     let boundHere = false
     if (needsLogin) {
-      const address = (sub as { address: Address }).address.toLowerCase()
-      boundHere = this.accountAddress !== address
-      this.bindAddress(address)
+      const { address } = sub as { address: Address }
+      // Reject before the address binds and before any wire sub registers: a
+      // registered sub whose login can never succeed is retried on every
+      // reopen without the caller ever seeing the failure.
+      await this.requireSession(address)
+      const bound = address.toLowerCase()
+      boundHere = this.accountAddress !== bound
+      this.bindAddress(bound)
     }
 
     try {
@@ -481,6 +487,21 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   /**
+   * The stored SIWE session for `address`, or {@link OndoSessionExpiredError}
+   * when it is absent or expired. Shared by the subscribe-time guard, the
+   * login op and the account-summary seed so all three report one message.
+   */
+  private async requireSession(address: Address): Promise<OndoAuthToken> {
+    const token = await this.tokenStore.get(address)
+    if (token === null) {
+      throw new OndoSessionExpiredError(
+        `No Ondo session for ${address}. Run the SIWE login before subscribing to account channels.`
+      )
+    }
+    return token
+  }
+
+  /**
    * Send the login op once per connection, before the first authenticated
    * subscribe. Concurrent callers share one in-flight login; a failure
    * clears the guard so a later subscribe (after a fresh SIWE login) retries.
@@ -488,12 +509,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   private ensureLogin(address: Address): Promise<void> {
     if (this.loginPromise === undefined) {
       this.loginPromise = (async () => {
-        const token = await this.tokenStore.get(address)
-        if (token === null) {
-          throw new OndoSessionExpiredError(
-            `No Ondo session for ${address}. Run the SIWE login before subscribing to account channels.`
-          )
-        }
+        const token = await this.requireSession(address)
         this.rws.send(
           JSON.stringify({ op: 'login', args: { token: token.token } })
         )
@@ -518,12 +534,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * other authenticated channels.
    */
   private async seedAccountSummary(address: Address): Promise<void> {
-    const token = await this.tokenStore.get(address)
-    if (token === null) {
-      throw new OndoSessionExpiredError(
-        `No Ondo session for ${address}. Run the SIWE login before subscribing to account channels.`
-      )
-    }
+    const token = await this.requireSession(address)
     const balance = await this.restClient().get<OndoBalanceSummary>(
       '/v1/perps/balance',
       { authToken: token.token }

@@ -194,6 +194,17 @@ describe('OndoWsProvider', () => {
     return send
   }
 
+  /**
+   * As {@link stubSocket}, but reporting a socket that is still connecting:
+   * `registerSub` records without sending and the open replay is the sole
+   * sender.
+   */
+  const stubConnectingSocket = (p: OndoWsProvider) => {
+    const send = stubSocket(p)
+    ;(p as any).rws.getStatus = () => 'reconnecting'
+    return send
+  }
+
   /** Inject a listener directly, bypassing the subscribe WS path. */
   const inject = (p: OndoWsProvider, key: string, fn: (e: any) => void) => {
     ;(p as any).channels.set(key, { listeners: new Map([[fn, 1]]) })
@@ -252,6 +263,25 @@ describe('OndoWsProvider', () => {
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
           op: 'unsubscribe',
+          channel: 'depthBooksPerps',
+          markets: ['AAPL-USD.P'],
+        })
+      )
+      p.close()
+    })
+
+    it('subscribes with no stored session — public channels need no token', async () => {
+      const p = makeProvider(createMemoryStorage())
+      const send = stubSocket(p)
+
+      await p.subscribe(
+        { channel: 'orderbook', dex: 'ondo', marketId: 'AAPL-USD.P' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          op: 'subscribe',
           channel: 'depthBooksPerps',
           markets: ['AAPL-USD.P'],
         })
@@ -753,8 +783,55 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('rejects a second authenticated address on the same connection', async () => {
+    it('rejects an account subscribe with no session while the socket is still connecting, leaving nothing to replay', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const p = makeProvider(createMemoryStorage())
+      const send = stubConnectingSocket(p)
+
+      await expect(
+        p.subscribe(
+          { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toThrow(/session/i)
+
+      expect((p as any).wireSubs.size).toBe(0)
+      expect((p as any).accountAddress).toBeUndefined()
+
+      // The open replay has no entry to retry, so nothing fails forever.
+      await (p as any).replaySubs()
+      expect(send).not.toHaveBeenCalled()
+      expect(errSpy).not.toHaveBeenCalled()
+      errSpy.mockRestore()
+      p.close()
+    })
+
+    it('registers the account wire sub while connecting when a session exists, and sends it on the open replay', async () => {
       const p = makeProvider()
+      const send = stubConnectingSocket(p)
+
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        vi.fn()
+      )
+
+      expect(send).not.toHaveBeenCalled()
+      expect([...(p as any).wireSubs.keys()]).toEqual(['ordersPerps'])
+
+      await (p as any).replaySubs()
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ op: 'login', args: { token: 'jwt-abc' } })
+      )
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ op: 'subscribe', channel: 'ordersPerps' })
+      )
+      p.close()
+    })
+
+    it('rejects a second authenticated address on the same connection', async () => {
+      // Both addresses hold a session, so the one-address guard — not the
+      // session guard ahead of it — is what rejects the second subscribe.
+      const p = makeProvider(seededBothStorage())
       stubSocket(p)
 
       await p.subscribe(

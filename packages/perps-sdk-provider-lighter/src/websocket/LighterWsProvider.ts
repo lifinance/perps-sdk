@@ -273,6 +273,15 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     const wireChannels = await this.resolveChannel(sub)
 
+    // Reject before any wire sub registers: a registered sub whose token can
+    // never be resolved is retried on every reopen without the caller ever
+    // seeing the failure.
+    for (const { channel, needsAuth, address } of wireChannels) {
+      if (needsAuth) {
+        await this.requireAuthToken(channel, address)
+      }
+    }
+
     // Registry keyed by the wire channel (unique per sub), so replay-failure
     // logs name the channel the venue knows. A logical sub may fan out to
     // several wire channels (e.g. `marketsContext`), each registered independently.
@@ -314,22 +323,34 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       channel,
     }
     if (needsAuth) {
-      const resolve = this.authTokenResolver()
-      if (!resolve || !address) {
-        throw new Error(
-          `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
-            'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
-        )
-      }
-      const token = await resolve(address)
-      if (!token) {
-        throw new Error(
-          `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
-        )
-      }
-      payload.auth = token
+      payload.auth = await this.requireAuthToken(channel, address)
     }
     this.rws.send(JSON.stringify(payload))
+  }
+
+  /**
+   * The auth token a gated channel's subscribe frame carries, or a throw when
+   * no resolver is wired or the resolver yields none. Shared by the
+   * subscribe-time guard and the per-send resolve so both report one message.
+   */
+  private async requireAuthToken(
+    channel: string,
+    address: Address | undefined
+  ): Promise<string> {
+    const resolve = this.authTokenResolver()
+    if (!resolve || !address) {
+      throw new Error(
+        `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
+          'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
+      )
+    }
+    const token = await resolve(address)
+    if (!token) {
+      throw new Error(
+        `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
+      )
+    }
+    return token
   }
 
   protected toKey(sub: Subscription): string {
