@@ -1,5 +1,22 @@
 # @lifi/perps-types
 
+## 12.0.0
+
+### Major Changes
+
+- [#425](https://github.com/lifinance/perps-sdk/pull/425) [`28b4a84`](https://github.com/lifinance/perps-sdk/commit/28b4a841b4c54e7f35a313c8a1726391d3fafaa3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Bind the `AcceptTerms` EIP-712 message to an explicit `nonce` and `deadline`.
+
+  `AcceptTermsMessage` now declares `nonce` (a decimal string, `uint256`) and
+  `deadline` (unix milliseconds), and drops `timestamp`. `acceptTermsTypeFields`
+  lists the members in the same order, so `AcceptTerms` states its own replay
+  protection in the digest exactly as `Onboard` and `CreateReferralCode` already
+  do.
+
+  This is a breaking contract change. The `AcceptTerms` type hash changes, so
+  every outstanding `AcceptTerms` signature stops verifying and every client that
+  builds the message must supply the two new fields. `@lifi/perps-sdk`
+  re-exports the type, so the break reaches that package too.
+
 ## 11.6.0
 
 ### Minor Changes
