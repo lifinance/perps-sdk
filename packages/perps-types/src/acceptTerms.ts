@@ -16,6 +16,11 @@ export interface AcceptTermsParams {
 /**
  * EIP-712 message body for an `AcceptTerms`. Field order matches
  * {@link acceptTermsTypeFields}.
+ *
+ * `nonce` and `deadline` carry the whole replay protection — the nonce binds
+ * the signature to one use and the deadline bounds its lifetime — so the
+ * message states no separate acceptance timestamp; the backend records the
+ * moment it accepts the signature.
  * @public
  */
 export interface AcceptTermsMessage {
@@ -23,8 +28,10 @@ export interface AcceptTermsMessage {
   action: string
   acceptor: Address
   termsVersion: string
-  /** Unix timestamp in milliseconds. */
-  timestamp: number
+  /** Replay-protection nonce as a decimal string (uint256). */
+  nonce: string
+  /** Unix timestamp in milliseconds after which the signature is stale. */
+  deadline: number
 }
 
 /**
@@ -36,7 +43,8 @@ export const acceptTermsTypeFields: readonly TypedDataParameter[] = [
   { name: 'action', type: 'string' },
   { name: 'acceptor', type: 'address' },
   { name: 'termsVersion', type: 'string' },
-  { name: 'timestamp', type: 'uint256' },
+  { name: 'nonce', type: 'uint256' },
+  { name: 'deadline', type: 'uint256' },
 ]
 
 /**

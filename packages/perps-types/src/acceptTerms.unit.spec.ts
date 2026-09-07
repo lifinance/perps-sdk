@@ -24,7 +24,8 @@ const acceptTermsTypedData: AcceptTermsTypedData = {
     action: 'Accept LI.FI Perps Terms of Service v3',
     acceptor: ACCEPTOR,
     termsVersion: '3',
-    timestamp: 1_900_000_000_000,
+    nonce: '9',
+    deadline: 1_900_000_000_000,
   },
 }
 
@@ -91,15 +92,23 @@ describe('AcceptTerms EIP-712 typed data', () => {
       'action',
       'acceptor',
       'termsVersion',
-      'timestamp',
+      'nonce',
+      'deadline',
     ])
   })
 
-  it('conveys the acceptor, accepted version, action string, and unix-ms timestamp', () => {
+  it('conveys the acceptor, accepted version, action string, and replay bounds', () => {
     const message: AcceptTermsMessage = acceptTermsTypedData.message
     expect(message.action).toBe('Accept LI.FI Perps Terms of Service v3')
     expect(message.acceptor).toBe(ACCEPTOR)
     expect(message.termsVersion).toBe('3')
-    expect(message.timestamp).toBe(1_900_000_000_000)
+    expect(message.nonce).toBe('9')
+    expect(message.deadline).toBe(1_900_000_000_000)
+  })
+
+  it('names one field per AcceptTermsMessage member, in declaration order', () => {
+    expect(acceptTermsTypeFields.map((field) => field.name)).toEqual(
+      Object.keys(acceptTermsTypedData.message)
+    )
   })
 })
