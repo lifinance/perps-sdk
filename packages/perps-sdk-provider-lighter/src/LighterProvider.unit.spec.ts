@@ -875,31 +875,26 @@ describe('LighterProvider — account tier', () => {
 })
 
 describe('LighterProvider — referralPresent', () => {
-  const RUNTIME_CODE = 'TEST-REF-CODE'
+  const APPLIED_CODE = 'TEST-REF-CODE'
 
-  const stubProvidersMetadata = (
-    codeByProviderKey: Record<string, string | undefined>
-  ): void => {
+  const stubProvidersMetadata = (providerKeys: string[]): void => {
     overrideFetch((url) =>
       url.includes('backend.test/v1/perps/providers')
         ? respond({
-            providers: Object.entries(codeByProviderKey).map(
-              ([key, referralCode]) => ({
-                ...PROVIDERS_RESPONSE.providers[0],
-                key,
-                ...(referralCode === undefined ? {} : { referralCode }),
-              })
-            ),
+            providers: providerKeys.map((key) => ({
+              ...PROVIDERS_RESPONSE.providers[0],
+              key,
+            })),
           })
         : undefined
     )
   }
 
   it('uses the referral marker persisted by SET_REFERRAL without an authenticated referral read', async () => {
-    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+    stubProvidersMetadata(['lighter'])
     const storage = await storageWithApiKey({
       ...STORED_API_KEY,
-      appliedReferralCode: RUNTIME_CODE,
+      appliedReferralCode: APPLIED_CODE,
     })
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
@@ -915,8 +910,8 @@ describe('LighterProvider — referralPresent', () => {
     ).toBeUndefined()
   })
 
-  it('is false when the persisted marker names a different referral code', async () => {
-    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+  it('is true when the persisted marker names a foreign referral code', async () => {
+    stubProvidersMetadata(['lighter'])
     const storage = await storageWithApiKey({
       ...STORED_API_KEY,
       appliedReferralCode: 'SOMEONE-ELSE',
@@ -926,11 +921,11 @@ describe('LighterProvider — referralPresent', () => {
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    expect(account.config).toMatchObject({ referralPresent: false })
+    expect(account.config).toMatchObject({ referralPresent: true })
   })
 
   it('is false when the key record has no persisted referral marker', async () => {
-    stubProvidersMetadata({ lighter: RUNTIME_CODE })
+    stubProvidersMetadata(['lighter'])
     const provider = lighterProvider({ storage: await storageWithApiKey() })
     provider.bind(STUB_CLIENT)
 
@@ -939,14 +934,11 @@ describe('LighterProvider — referralPresent', () => {
     expect(account.config).toMatchObject({ referralPresent: false })
   })
 
-  it('selects the persisted referral marker and metadata by provider instance', async () => {
-    stubProvidersMetadata({
-      lighter: 'MAINNET-ONLY-CODE',
-      [LIGHTER_RH_PROVIDER_KEY]: RUNTIME_CODE,
-    })
+  it('selects the persisted referral marker by provider instance', async () => {
+    stubProvidersMetadata(['lighter', LIGHTER_RH_PROVIDER_KEY])
     const storage = await storageWithApiKey({
       ...RH_STORED_API_KEY,
-      appliedReferralCode: RUNTIME_CODE,
+      appliedReferralCode: APPLIED_CODE,
     })
     const provider = lighterRhProvider({ storage })
     provider.bind(STUB_CLIENT)
