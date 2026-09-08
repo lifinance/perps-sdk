@@ -8,6 +8,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OndoGenericResponse } from '../types/auth.js'
 import type { OndoPageInfo } from '../types/wire.js'
+import { ondoErrorCodeFromBody } from './ondoErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -238,10 +239,21 @@ export class OndoApiClient {
   }
 
   private unwrap<T>(path: string, status: number, data: unknown): T {
+    // A 401 outranks any body code: only this branch evicts the stale JWT.
     if (status === 401) {
       throw new OndoSessionExpiredError(
         `Ondo rejected the session token for ${path}`
       )
+    }
+    if (isGenericResponse(data) && !data.success) {
+      const bodyCode = ondoErrorCodeFromBody(data.error_code)
+      if (bodyCode !== undefined) {
+        throw new OndoApiError(
+          `Ondo API error for ${path}: ${data.error_code} — ${data.error ?? 'no error message'}`,
+          data.error_code,
+          bodyCode
+        )
+      }
     }
     if (status < 200 || status >= 300) {
       throw new OndoApiError(

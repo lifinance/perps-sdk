@@ -9,6 +9,7 @@ import {
   LIGHTER_SUCCESS_CODES,
   LIGHTER_TOKEN_REVOKED_CODE,
 } from '../constants.js'
+import { lighterErrorCodeFromBody } from './lighterErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -324,20 +325,24 @@ export class LighterApiClient {
 
   /**
    * Post-parse validation shared by every checked read: rejects a non-2xx HTTP
-   * status and a 200 body carrying a non-success `code`. Callers that surface a
-   * distinct auth-rejection error must run that check before this one.
+   * status and a 200 body carrying a non-success `code`. A body `code` that
+   * names a nonce, margin, or balance rejection sets the matching
+   * `PerpsErrorCode`; every other rejection is `ThirdPartyError`. Callers that
+   * surface a distinct auth-rejection error must run that check before this one.
    */
   private assertOk(path: string, status: number, data: unknown): void {
+    const errorCode = lighterBodyErrorCode(data)
+    const code =
+      lighterErrorCodeFromBody(errorCode) ?? PerpsErrorCode.ThirdPartyError
     if (status < 200 || status >= 300) {
       throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
+        code,
         `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }
-    const errorCode = lighterBodyErrorCode(data)
     if (errorCode !== undefined) {
       throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
+        code,
         `Lighter API error for ${path}: code ${errorCode} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }

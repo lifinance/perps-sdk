@@ -186,6 +186,77 @@ describe('OndoApiClient', () => {
     })
   })
 
+  it('maps the insufficient_margin error_code to InsufficientMargin', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'reducing leverage with insufficient margin',
+          error_code: 'insufficient_margin',
+        },
+        400
+      ),
+    ])
+
+    const promise = client.post('/v1/perps/leverage', {})
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.InsufficientMargin,
+      errorCode: 'insufficient_margin',
+    })
+  })
+
+  it('maps the clientOrderID_collision error_code to NonceAlreadyUsed', async () => {
+    const { client } = createClient([
+      jsonResponse({
+        success: false,
+        error: 'client order id already used',
+        error_code: 'clientOrderID_collision',
+      }),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.NonceAlreadyUsed,
+      errorCode: 'clientOrderID_collision',
+    })
+  })
+
+  it('maps the clientOrderID_collision error_code on a non-2xx status too', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'client order id already used',
+          error_code: 'clientOrderID_collision',
+        },
+        409
+      ),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.NonceAlreadyUsed,
+      errorCode: 'clientOrderID_collision',
+    })
+  })
+
+  it('keeps the status-resolved code for an unrecognised error_code on a non-2xx status', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'post only order has a match',
+          error_code: 'post_only_has_match',
+        },
+        400
+      ),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      errorCode: 'post_only_has_match',
+    })
+  })
+
   it('throws OndoApiError on a non-2xx HTTP status', async () => {
     const { client } = createClient([
       jsonResponse({ success: false, error: 'internal' }, 500),
@@ -242,6 +313,27 @@ describe('OndoApiClient', () => {
   it('throws OndoSessionExpiredError on HTTP 401', async () => {
     const { client } = createClient([
       jsonResponse({ success: false, error: 'token expired' }, 401),
+    ])
+
+    const promise = client.get('/v1/perps/positions', {
+      authToken: 'stale-jwt',
+    })
+    await expect(promise).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.Unauthorized,
+    })
+  })
+
+  it('throws OndoSessionExpiredError on HTTP 401 carrying a recognised error_code', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'reducing leverage with insufficient margin',
+          error_code: 'insufficient_margin',
+        },
+        401
+      ),
     ])
 
     const promise = client.get('/v1/perps/positions', {

@@ -83,6 +83,47 @@ describe('LighterApiClient.get (dual-channel error detection)', () => {
   })
 })
 
+describe('LighterApiClient body error codes', () => {
+  it('maps a 200 body with the margin code to InsufficientMargin', async () => {
+    const client = clientWith(
+      stubFetch(200, {
+        code: 21739,
+        message: 'not enough margin to create the order',
+      })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.InsufficientMargin,
+    })
+  })
+
+  it('maps a non-2xx body with the nonce code to InvalidNonce', async () => {
+    const client = clientWith(
+      stubFetch(400, { code: 21104, message: 'invalid nonce' })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.InvalidNonce,
+    })
+  })
+
+  it('maps a 200 body with a collateral code to InsufficientBalance', async () => {
+    const client = clientWith(
+      stubFetch(200, { code: 21301, message: 'not enough collateral' })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.InsufficientBalance,
+    })
+  })
+
+  it('keeps ThirdPartyError for a non-2xx body with an unrecognised code', async () => {
+    const client = clientWith(
+      stubFetch(400, { code: 21702, message: 'invalid order type' })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+  })
+})
+
 describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
   it('throws LighterAuthRejectedError on a 200 body with the invalid-auth code', async () => {
     const client = clientWith(
