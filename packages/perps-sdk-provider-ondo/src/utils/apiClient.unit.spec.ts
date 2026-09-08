@@ -190,6 +190,29 @@ describe('OndoApiClient', () => {
     })
   })
 
+  it('throws RateLimitExceeded on HTTP 429', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: false, error: 'too many requests' }, 429),
+    ])
+
+    const promise = client.get('/v1/perps/markets')
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+      message: expect.stringContaining('429'),
+    })
+  })
+
+  it('keeps ThirdPartyError on a non-429 client error status', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: false, error: 'bad request' }, 400),
+    ])
+
+    await expect(client.get('/v1/perps/markets')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+  })
+
   it('throws OndoSessionExpiredError on HTTP 401', async () => {
     const { client } = createClient([
       jsonResponse({ success: false, error: 'token expired' }, 401),
