@@ -197,6 +197,19 @@ describe('LighterApiClient.getAuthed (auth channel)', () => {
     await clientWith(fetchImpl).get('/api/v1/orderBookDetails')
     expect(new Headers(calls[0].init?.headers).has('Authorization')).toBe(false)
   })
+
+  it.each([
+    ['carriage return', 'tok-abc\rX-Injected: 1'],
+    ['line feed', 'tok-abc\nX-Injected: 1'],
+  ])('rejects a token carrying a %s before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).getAuthed('/api/v1/accountActiveOrders', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
 })
 
 describe('LighterApiClient rate-limit hold', () => {
