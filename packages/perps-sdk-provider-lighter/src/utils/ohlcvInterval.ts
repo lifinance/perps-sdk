@@ -6,7 +6,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
  * Map our `OhlcvInterval` literal to Lighter's `resolution` enum.
  *
  * Lighter exposes only the timeframes listed below. SDK intervals without a
- * direct match (3m, 2h, 8h, 3d, 1M) raise a validation error rather than
+ * direct match (3m, 2h, 8h, 3d, 1w, 1M) raise a validation error rather than
  * silently rounding — the caller picks a supported timeframe.
  */
 const LIGHTER_SUPPORTED_INTERVALS: Partial<Record<OhlcvInterval, string>> = {
@@ -18,7 +18,6 @@ const LIGHTER_SUPPORTED_INTERVALS: Partial<Record<OhlcvInterval, string>> = {
   '4h': '4h',
   '12h': '12h',
   '1d': '1d',
-  '1w': '1w',
 }
 
 /**

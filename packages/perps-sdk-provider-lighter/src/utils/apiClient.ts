@@ -48,6 +48,20 @@ const isLighterAuthRejection = (status: number, data: unknown): boolean =>
 const isLighterTokenRevoked = (data: unknown): boolean =>
   lighterBodyErrorCode(data) === LIGHTER_TOKEN_REVOKED_CODE
 
+/**
+ * A CR or LF in a token would split the request when it reaches a
+ * `fetchImpl` that does not validate header values itself.
+ */
+const assertHeaderSafe = (authToken: string): string => {
+  if (/[\r\n]/.test(authToken)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token carries a line break and cannot go in a header'
+    )
+  }
+  return authToken
+}
+
 /** @internal */
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
@@ -115,9 +129,12 @@ export interface LighterApiClientOptions {
  *
  * Auth-gated endpoints (accountLimits, accountActiveOrders, deposit/history,
  * withdraw/history, positionFunding, liquidations, transfer/history) take the
- * Lighter read-only token as the `auth` query parameter — NOT as an
- * `Authorization` header. This matches Lighter's OpenAPI spec and lets the
- * same call work browser-direct and from server-side proxies.
+ * Lighter read-only token in the `Authorization` header, which is the only
+ * auth channel Lighter's OpenAPI spec declares. The header makes such a read
+ * CORS-preflighted; both Lighter hosts answer the `OPTIONS` probe with
+ * `Authorization` in `Access-Control-Allow-Headers` and
+ * `Access-Control-Max-Age: 86400`, so a browser sends one preflight per day
+ * per origin.
  *
  * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
  * retries such a response. It throws `RateLimitExceeded` and holds all network
@@ -198,19 +215,14 @@ export class LighterApiClient {
     return this.getChecked<T>(path, params)
   }
 
-  /**
-   * Auth-gated GET. The token is appended as the `auth` query parameter (per
-   * Lighter's OpenAPI spec); the `Authorization` header is intentionally NOT
-   * used — Lighter rejects it.
-   */
+  /** Auth-gated GET carrying the Lighter token in the `Authorization` header. */
   async getAuthed<T>(
     path: string,
     authToken: string,
     params: ApiParams = {}
   ): Promise<T> {
-    const { status, data } = await this.getWithStatus<unknown>(path, {
-      ...params,
-      auth: authToken,
+    const { status, data } = await this.sendGet<unknown>(path, params, {
+      Authorization: assertHeaderSafe(authToken),
     })
     if (isLighterTokenRevoked(data)) {
       throw new LighterTokenRevokedError(
@@ -237,11 +249,19 @@ export class LighterApiClient {
     path: string,
     params?: ApiParams
   ): Promise<{ status: number; data: T }> {
+    return this.sendGet<T>(path, params)
+  }
+
+  private async sendGet<T>(
+    path: string,
+    params?: ApiParams,
+    headers?: Record<string, string>
+  ): Promise<{ status: number; data: T }> {
     this.assertRequestAllowed()
     const url = this.buildUrl(path, params)
     const response = await fetchWithRetry(
       url,
-      {},
+      headers === undefined ? {} : { headers },
       {
         policy: this.policy,
         fetchImpl: this.fetchWithHold,
@@ -279,7 +299,7 @@ export class LighterApiClient {
   }
 
   private async getChecked<T>(path: string, params?: ApiParams): Promise<T> {
-    const { status, data } = await this.getWithStatus<unknown>(path, params)
+    const { status, data } = await this.sendGet<unknown>(path, params)
     this.assertOk(path, status, data)
     return data as T
   }

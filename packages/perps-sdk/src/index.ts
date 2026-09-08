@@ -20,7 +20,10 @@ export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 // Registries
 export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
+export type { DefaultMarketProvider } from './registry/marketRegistry.js'
 export {
+  DEFAULT_MARKET_ID,
+  getDefaultMarketId,
   getMarketRegistry,
   isActiveMarket,
   MarketRegistry,

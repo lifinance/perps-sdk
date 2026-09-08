@@ -218,9 +218,12 @@ const isLighterReadOnlyToken = (
   >
   // Accept a record that carries no `tokenId`: rejecting one would discard a
   // usable token and force an unnecessary replacement.
+  // A token carrying a line break cannot go in the `Authorization` header, so
+  // reject the record and let the manager create a replacement.
   return (
     typeof token === 'string' &&
     token.length > 0 &&
+    !/[\r\n]/.test(token) &&
     typeof expiry === 'number' &&
     Number.isFinite(expiry) &&
     (scope === 'single' || scope === 'all') &&

@@ -1,4 +1,5 @@
 // Trade (fill) shapes returned by Lighter's `/api/v1/trades` endpoint.
+// Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 /**
  * Public trade/fill row returned by Lighter's `/api/v1/trades` endpoint.
@@ -54,6 +55,10 @@ export type LtTrade = {
   // older trade rows that predate the field.
   taker_initial_margin_fraction_before?: number
   maker_initial_margin_fraction_before?: number
+  /** Version of the resting ask order the trade matched against. */
+  ask_order_version?: number
+  /** Version of the resting bid order the trade matched against. */
+  bid_order_version?: number
 }
 
 /**
@@ -65,5 +70,5 @@ export type LtTrade = {
 export interface LtTradesResponse {
   code: number
   next_cursor: string
-  trades: LtTrade[]
+  trades: LtTrade[] | null
 }
