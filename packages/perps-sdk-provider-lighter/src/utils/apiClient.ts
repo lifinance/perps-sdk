@@ -226,13 +226,13 @@ export class LighterApiClient {
     })
     if (isLighterTokenRevoked(data)) {
       throw new LighterTokenRevokedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter reports a revoked auth token for ${path}`
       )
     }
     if (isLighterAuthRejection(status, data)) {
       throw new LighterAuthRejectedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter rejected the auth token for ${path}`
       )
     }
