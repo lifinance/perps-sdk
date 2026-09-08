@@ -5,7 +5,7 @@ import type {
   PerpsMarket,
   SpotMarket,
 } from '@lifi/perps-types'
-import { PositionMarginAdjustment } from '@lifi/perps-types'
+import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../test/handlers.js'
@@ -13,7 +13,7 @@ import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
-import { resolveQuote } from './resolveQuote.js'
+import { resolveQuote, resolveQuotePrice } from './resolveQuote.js'
 
 const client = createPerpsClient({ integrator: 'test-app', apiKey: 'test-key' })
 
@@ -169,8 +169,39 @@ describe('resolveQuote', () => {
         { symbol: 'DOGE', side: 'buy', size: 100, type: 'perps' },
         FEE
       )
-    ).rejects.toThrow(
-      /No perps market found on 'hyperliquid' for symbol 'DOGE'/
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+      message: expect.stringMatching(
+        /No perps market found on 'hyperliquid' for symbol 'DOGE'/
+      ),
+    })
+  })
+})
+
+describe('resolveQuotePrice', () => {
+  it('throws MarketNotFound when the provider returns no price for the market', async () => {
+    server.use(
+      http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
+        HttpResponse.json({ prices: [] })
+      )
     )
+
+    await expect(
+      resolveQuotePrice(client, 'hyperliquid', 'BTC')
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+    })
+  })
+
+  it('returns the market context when the provider prices the market', async () => {
+    server.use(
+      http.get(`${DEFAULT_API_URL}/marketsContext`, () =>
+        HttpResponse.json({ prices: PRICES })
+      )
+    )
+
+    await expect(
+      resolveQuotePrice(client, 'hyperliquid', 'BTC')
+    ).resolves.toEqual(PRICES[0])
   })
 })

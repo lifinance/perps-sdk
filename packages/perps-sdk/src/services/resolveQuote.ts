@@ -96,8 +96,8 @@ const isMarketOfType = (
  * of the `markPrice` and `funding` a {@link Quote} carries. Shared by the
  * one-shot {@link resolveQuote} and the streaming quote subscription.
  *
- * @throws {PerpsError} `ServerError` when the provider returns no price for the
- * market.
+ * @throws {PerpsError} `MarketNotFound` when the provider returns no price for
+ * the market.
  * @internal
  */
 export async function resolveQuotePrice(
@@ -114,7 +114,7 @@ export async function resolveQuotePrice(
   const price = prices.find((p) => p.marketId === marketId)
   if (price === undefined) {
     throw new PerpsError(
-      PerpsErrorCode.ServerError,
+      PerpsErrorCode.MarketNotFound,
       `No price returned by '${provider}' for marketId '${marketId}'.`
     )
   }
