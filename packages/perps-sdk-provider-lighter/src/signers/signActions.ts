@@ -230,11 +230,28 @@ async function signStandardWasmAction(
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
   })
+  const clientOrderIndex = clientOrderIndexOf(step.wasmSignParams)
   return {
     action: step.action,
     wasmSignParams: step.wasmSignParams,
     signedTx,
+    ...(clientOrderIndex === undefined ? {} : { clientOrderIndex }),
   }
+}
+
+/**
+ * Project the signed order's `client_order_index` so the caller can resolve it
+ * through `getOrder` before the venue assigns an `order_index`. Only the
+ * order-placing actions carry one, and the value is read back off the params
+ * that were signed rather than generated a second time.
+ */
+function clientOrderIndexOf(
+  wasmSignParams: Record<string, unknown>
+): string | undefined {
+  const value = wasmSignParams.client_order_index
+  return typeof value === 'number' && Number.isInteger(value)
+    ? String(value)
+    : undefined
 }
 
 /**
