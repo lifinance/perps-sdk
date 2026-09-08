@@ -7,6 +7,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OndoGenericResponse } from '../types/auth.js'
 import type { OndoPageInfo } from '../types/wire.js'
+import { ondoErrorCodeFromBody } from './ondoErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -30,8 +31,12 @@ export type OndoHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 export class OndoApiError extends PerpsError {
   readonly errorCode: string | undefined
 
-  constructor(message: string, errorCode?: string) {
-    super(PerpsErrorCode.ThirdPartyError, message)
+  constructor(
+    message: string,
+    errorCode?: string,
+    code: PerpsErrorCode = PerpsErrorCode.ThirdPartyError
+  ) {
+    super(code, message)
     this.errorCode = errorCode
   }
 }
@@ -232,6 +237,16 @@ export class OndoApiClient {
   }
 
   private unwrap<T>(path: string, status: number, data: unknown): T {
+    if (isGenericResponse(data) && !data.success) {
+      const bodyCode = ondoErrorCodeFromBody(data.error_code)
+      if (bodyCode !== undefined) {
+        throw new OndoApiError(
+          `Ondo API error for ${path}: ${data.error_code} — ${data.error ?? 'no error message'}`,
+          data.error_code,
+          bodyCode
+        )
+      }
+    }
     if (status === 401) {
       throw new OndoSessionExpiredError(
         `Ondo rejected the session token for ${path}`

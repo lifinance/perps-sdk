@@ -95,6 +95,29 @@ describe('infoRequest', () => {
     ).rejects.toMatchObject({ code, tool: 'hyperliquid' })
   })
 
+  it('keeps the status-resolved code when a non-ok body carries exchange rejection text', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'err',
+          response: 'Insufficient margin to place order.',
+        }),
+        { status: 422 }
+      )
+    )
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      tool: 'hyperliquid',
+    })
+  })
+
   it('wraps network errors as a ServerError', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('refused'))
 
