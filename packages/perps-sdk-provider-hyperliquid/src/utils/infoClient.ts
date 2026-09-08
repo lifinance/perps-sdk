@@ -1,4 +1,5 @@
 import {
+  errorCodeFromStatus,
   fetchWithRetry,
   PerpsError,
   type PerpsSDKClient,
@@ -27,6 +28,11 @@ const normalizeInfoValue = (value: unknown): unknown => {
   }
   return value
 }
+
+const HYPERLIQUID_STATUS_ERROR_CODES = {
+  401: PerpsErrorCode.Unauthorized,
+  403: PerpsErrorCode.AgentUnauthorized,
+} as const
 
 /** @internal */
 export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
@@ -88,7 +94,10 @@ export const hlInfoOptions = (
  * upstream-controlled and normalise into `@lifi/perps-types` shapes before
  * surfacing.
  *
- * Non-2xx responses raise a {@link PerpsError} with the Hyperliquid provider key.
+ * Non-2xx responses raise a {@link PerpsError} tagged with the Hyperliquid
+ * provider key, carrying the code the status resolves to: `RateLimitExceeded`
+ * for a 429, `Unauthorized` for a 401, `AgentUnauthorized` for a 403, and
+ * `ThirdPartyError` for every other status.
  * @public
  */
 export async function infoRequest<T>(
@@ -124,7 +133,11 @@ export async function infoRequest<T>(
 
   if (!response.ok) {
     const err = new PerpsError(
-      PerpsErrorCode.ThirdPartyError,
+      errorCodeFromStatus(
+        response.status,
+        PerpsErrorCode.ThirdPartyError,
+        HYPERLIQUID_STATUS_ERROR_CODES
+      ),
       `Hyperliquid info request failed: ${response.status}`
     )
     err.tool = PROVIDER_KEY

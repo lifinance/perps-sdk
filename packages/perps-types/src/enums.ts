@@ -6,9 +6,14 @@
 export enum PerpsErrorCode {
   // Base errors (2000-2009)
   DefaultError = 2000,
+  /** No answer arrived: the request itself failed before any response. */
   ServerError = 2001,
   ValidationError = 2002,
   TimeoutError = 2003,
+  /**
+   * The venue answered with a failure that no other code describes, so the
+   * outcome of the request stays open.
+   */
   ThirdPartyError = 2004,
   SDKError = 2005,
 
