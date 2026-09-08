@@ -3,6 +3,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { OndoAuthToken, OndoGenericResponse } from '../types/auth.js'
 import {
+  ONDO_RETRY_DEFAULTS,
   OndoApiClient,
   OndoApiError,
   OndoSessionExpiredError,
@@ -39,6 +40,14 @@ const zeroDelayRetry: ResolvedRetryPolicy = {
   classify: ({ response }) =>
     response.status === 503 ? 'retry-server' : 'fail',
 }
+
+/** Keeps a policy's own `classify` and `maxAttempts` while removing the wall-clock backoff. */
+const withoutBackoff = (policy: ResolvedRetryPolicy): ResolvedRetryPolicy => ({
+  ...policy,
+  baseDelayMs: 0,
+  maxDelayMs: 0,
+  respectRetryAfter: false,
+})
 
 const createClient = (
   responses: Response[],
@@ -201,6 +210,23 @@ describe('OndoApiClient', () => {
       code: PerpsErrorCode.RateLimitExceeded,
       message: expect.stringContaining('429'),
     })
+  })
+
+  it('reports RateLimitExceeded after the 429 retry budget is exhausted', async () => {
+    const { client, fetchImpl } = createClient(
+      [
+        jsonResponse({ success: false, error: 'too many requests' }, 429),
+        jsonResponse({ success: false, error: 'too many requests' }, 429),
+      ],
+      { policy: withoutBackoff(ONDO_RETRY_DEFAULTS) }
+    )
+
+    const promise = client.get('/v1/perps/markets')
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
   it('keeps ThirdPartyError on a non-429 client error status', async () => {
