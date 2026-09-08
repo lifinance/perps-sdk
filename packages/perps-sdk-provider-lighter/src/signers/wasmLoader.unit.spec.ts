@@ -33,20 +33,19 @@ const wasmResponse = () =>
     }
   )
 
-// A wasm_exec.js stand-in: installs a fake `globalThis.Go` whose `run()` mounts
-// the named signer functions on globalThis (mirroring how the real Go runtime
-// registers JS-bound functions during init). `installNames` lets a test omit a
-// function to exercise the missing-export error path.
-const fakeWasmExecSource = (installNames: readonly string[]): string => `
-  globalThis.Go = class {
-    constructor() { this.importObject = {} }
-    async run() {
-      ${installNames
-        .map((name) => `globalThis[${JSON.stringify(name)}] = () => ({});`)
-        .join('\n')}
+// A wasm_exec.js stand-in: a fake `Go` whose `run()` mounts the named signer
+// functions on globalThis (mirroring how the real Go runtime registers JS-bound
+// functions during init). `installNames` lets a test omit a function to
+// exercise the missing-export error path.
+const fakeGoRuntime = (installNames: readonly string[]) =>
+  class {
+    importObject: WebAssembly.Imports = {}
+    async run(): Promise<void> {
+      for (const name of installNames) {
+        ;(globalThis as Record<string, unknown>)[name] = () => ({})
+      }
     }
   }
-`
 
 const RECOVERED_BINARY_URL =
   'http://stub.invalid/assets/lighter-signer-hash.wasm'
@@ -54,7 +53,7 @@ const RECOVERED_BINARY_URL =
 const packageRoot = join(import.meta.dirname, '..', '..')
 
 /**
- * Re-import the loader with the packaged runtime text and asset resolver
+ * Re-import the loader with the packaged Go runtime module and asset resolver
  * replaced. The loader takes no injection options, so the module graph is the
  * only seam: a fresh import also drops the loader's memoized exports.
  * `resolveEmitted` stands in for the bundler asset pipeline the loader falls
@@ -68,7 +67,7 @@ const importLoaderWithFakes = async (
 ) => {
   vi.resetModules()
   vi.doMock('./generated/wasmExecRuntime.js', () => ({
-    WASM_EXEC_JS: fakeWasmExecSource(installNames),
+    Go: fakeGoRuntime(installNames),
   }))
   vi.doMock('./wasmBinaryUrl.js', () => ({
     lighterWasmBinaryUrl: binaryUrl,
@@ -99,7 +98,6 @@ describe('loadLighterWasm', () => {
     for (const name of WASM_FUNCTION_NAMES) {
       delete (globalThis as Record<string, unknown>)[name]
     }
-    delete (globalThis as { Go?: unknown }).Go
   })
 
   it('takes no arguments — no caller-supplied WASM URL or runtime source', async () => {
@@ -399,5 +397,27 @@ describe('loadLighterWasm — packaged Go runtime', () => {
     const key = exports.GenerateAPIKey()
     expect(key.error).toBeUndefined()
     expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it('loads under a CSP that forbids unsafe-eval', async () => {
+    const { loadLighterWasm } = await import('./wasmLoader.js')
+    // A `script-src` without 'unsafe-eval' makes every `Function` call throw.
+    vi.stubGlobal('Function', function blockedByCsp(): never {
+      throw new EvalError(
+        "Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not an allowed source of script: script-src 'self'"
+      )
+    })
+    try {
+      const exports = await loadLighterWasm()
+
+      for (const name of WASM_FUNCTION_NAMES) {
+        expect(typeof exports[name as keyof LighterWasmExports]).toBe(
+          'function'
+        )
+      }
+      expect(exports.GenerateAPIKey().privateKey).toMatch(/^0x[0-9a-f]+$/i)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

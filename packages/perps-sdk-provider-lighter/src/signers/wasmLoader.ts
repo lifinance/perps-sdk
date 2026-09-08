@@ -1,7 +1,7 @@
 // The Go runtime installs functions (SignCreateOrder, SignCancelOrder, etc.)
 // onto `globalThis` when `go.run(instance)` starts the main goroutine.
 
-import { WASM_EXEC_JS } from './generated/wasmExecRuntime.js'
+import { Go } from './generated/wasmExecRuntime.js'
 import {
   lighterWasmBinaryUrl,
   resolveEmittedBinaryUrl,
@@ -157,11 +157,6 @@ const WASM_FUNCTION_NAMES = [
   'SignUpdateAccountAssetConfig',
 ] as const
 
-type GoClass = new () => {
-  importObject: WebAssembly.Imports
-  run(instance: WebAssembly.Instance): Promise<void>
-}
-
 let cachedExports: Promise<LighterWasmExports> | undefined
 
 // `node:fs/promises` is Node-only and reached solely for a `file://` asset URL,
@@ -282,16 +277,6 @@ export async function loadLighterWasm(): Promise<LighterWasmExports> {
 
 async function loadWasmUncached(): Promise<LighterWasmExports> {
   const wasmBytes = await readWasmBinary(lighterWasmBinaryUrl)
-
-  // wasm_exec.js is an IIFE that installs `globalThis.Go = class { ... }` plus
-  // fs/process/crypto polyfills. Evaluating the packaged text keeps Go's runtime
-  // opaque to consumer bundlers — it references require/process/fs/crypto, which
-  // Vite/webpack choke on if they try to parse it as a module. The text is
-  // generated from this package's vendored wasm_exec.js at build time and is
-  // never caller-supplied.
-  // nosec
-  const installGo = new Function(`${WASM_EXEC_JS}; return globalThis.Go`)
-  const Go = installGo() as GoClass
 
   const go = new Go()
   const { instance } = await WebAssembly.instantiate(wasmBytes, go.importObject)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify the built package ships the Go signer the way consumers load it:
-// the binary as a separate asset, the Go runtime as generated text reproducing
-// wasm/wasm_exec.js exactly, and the asset-URL resolvers — one static form per
+// the binary as a separate asset, the Go runtime as a generated module that
+// exports the `Go` class, and the asset-URL resolvers — one static form per
 // module system, plus the `?url` recovery module for bundlers that relocate the
 // package — that each consumer toolchain can analyse statically.
 //
@@ -87,7 +87,6 @@ check(
   'dist/esm/signers/wasmBinaryUrl.vite.js lost its static ?url asset import'
 )
 
-const goSource = readFileSync(join(packageRoot, 'wasm', 'wasm_exec.js'), 'utf8')
 for (const format of ['esm', 'cjs']) {
   const module = join(
     dist,
@@ -96,16 +95,19 @@ for (const format of ['esm', 'cjs']) {
     'generated',
     'wasmExecRuntime.js'
   )
-  const { WASM_EXEC_JS } = await import(pathToFileURL(module).href).catch(
-    () => ({})
-  )
+  const { Go } = await import(pathToFileURL(module).href).catch(() => ({}))
   check(
-    WASM_EXEC_JS === goSource,
-    `dist/${format}/signers/generated/wasmExecRuntime.js does not reproduce wasm/wasm_exec.js exactly`
+    typeof Go === 'function' && typeof Go.prototype?.run === 'function',
+    `dist/${format}/signers/generated/wasmExecRuntime.js does not export Go's runtime class`
   )
 }
 
+// A host CSP without 'unsafe-eval' throws on any script-text evaluation, so no
+// emitted JavaScript may evaluate a string.
+const SCRIPT_TEXT_EVALUATION = /new Function\(|\beval\(/
+
 const oversizedJs = []
+const evaluatingJs = []
 const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name)
@@ -116,6 +118,9 @@ const walk = (dir) => {
       if (size > MAX_JS_BYTES) {
         oversizedJs.push(`${relative(packageRoot, path)} (${size} bytes)`)
       }
+      if (SCRIPT_TEXT_EVALUATION.test(readFileSync(path, 'utf8'))) {
+        evaluatingJs.push(relative(packageRoot, path))
+      }
     }
   }
 }
@@ -123,6 +128,10 @@ walk(dist)
 check(
   oversizedJs.length === 0,
   `emitted JavaScript exceeds ${MAX_JS_BYTES} bytes — is the WASM binary inlined? ${oversizedJs.join(', ')}`
+)
+check(
+  evaluatingJs.length === 0,
+  `emitted JavaScript evaluates script text, which a CSP without 'unsafe-eval' blocks: ${evaluatingJs.join(', ')}`
 )
 
 if (failures.length > 0) {
@@ -134,5 +143,5 @@ if (failures.length > 0) {
 }
 
 console.error(
-  'verify-package-assets: binary asset, generated Go runtime and both asset-URL resolvers verified'
+  'verify-package-assets: binary asset, generated Go runtime module and both asset-URL resolvers verified'
 )
