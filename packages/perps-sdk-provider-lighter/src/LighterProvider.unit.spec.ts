@@ -17,6 +17,7 @@ import {
   LiquidityRole,
   MarginMode,
   OrderSide,
+  OrderStatus,
   PerpsErrorCode,
   PositionMarginAdjustment,
   SigningMethod,
@@ -30,6 +31,7 @@ import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_ALL_MARKETS_WILDCARD,
+  LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX,
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_PROVIDER_KEY,
@@ -3368,6 +3370,294 @@ describe('LighterProvider — getOrder', () => {
     await expect(
       provider.getOrder({ address: ADDRESS, id: txHashShape })
     ).rejects.toThrow(/looks like a tx hash/)
+  })
+})
+
+describe('LighterProvider — one-call order reads', () => {
+  const TWO_MARKETS_RESPONSE = {
+    markets: [
+      MARKETS_RESPONSE.markets[0],
+      {
+        ...MARKETS_RESPONSE.markets[0],
+        id: '1',
+        baseAsset: {
+          providerId: 'lighter',
+          id: '1',
+          displaySymbol: 'ETH',
+          logoURI: '',
+        },
+      },
+    ],
+  }
+
+  const makePosition = (marketId: number) => ({
+    market_id: marketId,
+    symbol: marketId === 0 ? 'BTC' : 'ETH',
+    initial_margin_fraction: '5.00',
+    open_order_count: 1,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '1.0',
+    avg_entry_price: '50000',
+    position_value: '50000',
+    unrealized_pnl: '10',
+    realized_pnl: '0',
+    liquidation_price: '40000',
+    total_funding_paid_out: '0',
+    margin_mode: 0,
+    allocated_margin: '2500',
+    total_discount: '0',
+  })
+
+  const ACCOUNT_IN_TWO_MARKETS = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [makePosition(0), makePosition(1)],
+      },
+    ],
+  }
+
+  const makeOrder = (overrides: Record<string, unknown>) => ({
+    order_index: 900,
+    client_order_index: 7,
+    order_id: '900',
+    client_order_id: '7',
+    market_index: 0,
+    owner_account_index: 42,
+    initial_base_amount: '0.1',
+    price: '50000',
+    nonce: 1,
+    remaining_base_amount: '0.1',
+    is_ask: false,
+    filled_base_amount: '0',
+    filled_quote_amount: '0',
+    side: 'buy',
+    type: 'limit',
+    time_in_force: 'good_till_time',
+    reduce_only: false,
+    trigger_price: '',
+    order_expiry: 0,
+    status: 'open',
+    trigger_status: 'na',
+    trigger_time: 0,
+    parent_order_index: 0,
+    parent_order_id: '',
+    to_trigger_order_id_0: '',
+    to_trigger_order_id_1: '',
+    to_cancel_order_id_0: '',
+    block_height: 1,
+    timestamp: 1700000000000,
+    created_at: 1700000000,
+    updated_at: 1700000000,
+    transaction_time: 1_700_000_000_000_000,
+    ...overrides,
+  })
+
+  const requestsTo = (path: string): Recorded[] =>
+    recorded.filter((r) => r.url.includes(path))
+
+  const boundProvider = (): LighterPerpsProvider => {
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    return provider
+  }
+
+  it('reads every market through a single wildcard accountActiveOrders request', async () => {
+    overrideFetch((u) => {
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(TWO_MARKETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_IN_TWO_MARKETS)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({
+          code: 0,
+          next_cursor: '',
+          orders: [
+            makeOrder({ order_index: 900, market_index: 0 }),
+            makeOrder({ order_index: 901, market_index: 1 }),
+          ],
+        })
+      }
+      return undefined
+    })
+
+    const orders = await boundProvider().getOrders({ address: ADDRESS })
+
+    const active = requestsTo('/api/v1/accountActiveOrders')
+    expect(active).toHaveLength(1)
+    expect(active[0].url).toContain(`market_id=${LIGHTER_ALL_MARKETS_WILDCARD}`)
+    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['900', '901'])
+    expect(
+      orders.openOrders.map((o) => o.market.baseAsset.displaySymbol)
+    ).toEqual(['BTC', 'ETH'])
+  })
+
+  it('keeps a single filtered request when a marketId is given', async () => {
+    overrideFetch((u) => {
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(TWO_MARKETS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_IN_TWO_MARKETS)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({
+          code: 0,
+          next_cursor: '',
+          orders: [makeOrder({ order_index: 901, market_index: 1 })],
+        })
+      }
+      return undefined
+    })
+
+    const orders = await boundProvider().getOrders({
+      address: ADDRESS,
+      marketId: '1',
+    })
+
+    const active = requestsTo('/api/v1/accountActiveOrders')
+    expect(active).toHaveLength(1)
+    expect(active[0].url).toContain('market_id=1')
+    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['901'])
+  })
+
+  it('resolves an active order by client order index through one accountOrders request', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({ code: 200, orders: [makeOrder({ client_order_index: 7 })] })
+        : undefined
+    )
+
+    const order = await boundProvider().getOrder({
+      address: ADDRESS,
+      id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
+    })
+
+    expect(order.orderId).toBe('900')
+    expect(order.status).toBe(OrderStatus.OPEN)
+    const lookups = requestsTo('/api/v1/accountOrders')
+    expect(lookups).toHaveLength(1)
+    expect(lookups[0].url).toContain('client_order_indexes=7')
+    expect(requestsTo('/api/v1/accountActiveOrders')).toEqual([])
+    expect(requestsTo('/api/v1/accountInactiveOrders')).toEqual([])
+  })
+
+  it('resolves a filled order by client order index through one accountOrders request', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({
+            code: 200,
+            orders: [
+              makeOrder({
+                client_order_index: 8,
+                status: 'filled',
+                remaining_base_amount: '0',
+                filled_base_amount: '0.1',
+                filled_quote_amount: '5000',
+              }),
+            ],
+          })
+        : undefined
+    )
+
+    const order = await boundProvider().getOrder({
+      address: ADDRESS,
+      id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}8`,
+    })
+
+    expect(order.status).toBe(OrderStatus.FILLED)
+    expect(order.filledSize).toBe('0.1')
+    expect(requestsTo('/api/v1/accountOrders')).toHaveLength(1)
+    expect(requestsTo('/api/v1/accountActiveOrders')).toEqual([])
+    expect(requestsTo('/api/v1/accountInactiveOrders')).toEqual([])
+  })
+
+  it('ignores an accountOrders row whose client order index differs', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({ code: 200, orders: [makeOrder({ client_order_index: 9 })] })
+        : undefined
+    )
+
+    await expect(
+      boundProvider().getOrder({
+        address: ADDRESS,
+        id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+  })
+
+  it('reports OrderNotFound when the accountOrders list is null', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({ code: 200, orders: null })
+        : undefined
+    )
+
+    await expect(
+      boundProvider().getOrder({
+        address: ADDRESS,
+        id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+    expect(requestsTo('/api/v1/accountOrders')).toHaveLength(1)
+  })
+
+  it('rejects a client-order-index id whose suffix is not a decimal integer', async () => {
+    await expect(
+      boundProvider().getOrder({
+        address: ADDRESS,
+        id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}abc`,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requestsTo('/api/v1/accountOrders')).toEqual([])
+  })
+
+  it('resolves a bare order_index off the active orders without an accountOrders request', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountActiveOrders')
+        ? respond({ code: 0, next_cursor: '', orders: [makeOrder({})] })
+        : undefined
+    )
+
+    const order = await boundProvider().getOrder({
+      address: ADDRESS,
+      id: '900',
+    })
+
+    expect(order.orderId).toBe('900')
+    expect(requestsTo('/api/v1/accountActiveOrders')).toHaveLength(1)
+    expect(requestsTo('/api/v1/accountOrders')).toEqual([])
+  })
+
+  it('falls back to the inactive orders for an order_index that no longer rests', async () => {
+    overrideFetch((u) => {
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({ code: 0, next_cursor: '', orders: [] })
+      }
+      if (u.includes('/api/v1/accountInactiveOrders')) {
+        return respond({
+          code: 0,
+          next_cursor: '',
+          orders: [makeOrder({ status: 'filled' })],
+        })
+      }
+      return undefined
+    })
+
+    const order = await boundProvider().getOrder({
+      address: ADDRESS,
+      id: '900',
+    })
+
+    expect(order.status).toBe(OrderStatus.FILLED)
+    expect(requestsTo('/api/v1/accountInactiveOrders')).toHaveLength(1)
+    expect(requestsTo('/api/v1/accountOrders')).toEqual([])
   })
 })
 

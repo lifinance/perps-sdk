@@ -66,6 +66,7 @@ import {
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_BASE_FEE_TIER,
+  LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_MAINNET_DEPLOYMENT,
@@ -88,6 +89,7 @@ import {
 import type {
   LtAccount,
   LtAccountLimits,
+  LtAccountOrdersResponse,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
   LtDetailedAccountPosition,
@@ -164,6 +166,13 @@ const orderCountFor = (p: LtDetailedAccountPosition): number =>
  * submitted IDs to the tx-hash branch without false positives.
  */
 const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
+
+/**
+ * Lighter's `client_order_index` is an int64 and `accountOrders` takes it as a
+ * decimal string, so a prefixed id's suffix goes to the venue verbatim rather
+ * than through a lossy JS number.
+ */
+const CLIENT_ORDER_INDEX_PATTERN = /^\d+$/
 
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
@@ -567,7 +576,7 @@ export const createLighterProvider = (
       account_index: accountIndex,
     })
 
-  const fetchActiveOrdersForMarket = async (
+  const fetchActiveOrders = async (
     client: LighterApiClient,
     authToken: string,
     accountIndex: number,
@@ -579,6 +588,20 @@ export const createLighterProvider = (
       { account_index: accountIndex, market_id: marketId }
     )
     return { ...response, orders: wireList(response.orders) }
+  }
+
+  const fetchOrdersByClientOrderIndex = async (
+    client: LighterApiClient,
+    authToken: string,
+    accountIndex: number,
+    clientOrderIndex: string
+  ): Promise<LtOrder[]> => {
+    const response = await client.getAuthed<LtAccountOrdersResponse>(
+      '/api/v1/accountOrders',
+      authToken,
+      { account_index: accountIndex, client_order_indexes: clientOrderIndex }
+    )
+    return wireList(response.orders)
   }
 
   const deriveOrderBearingMarketIds = (account: LtAccount): number[] =>
@@ -1017,21 +1040,17 @@ export const createLighterProvider = (
         registry.sync(),
       ])
 
-      const marketIds =
+      const marketId =
         params.marketId === undefined
-          ? deriveOrderBearingMarketIds(account)
-          : [Number(registry.require(params.marketId).id)]
+          ? LIGHTER_ALL_MARKETS_WILDCARD
+          : Number(registry.require(params.marketId).id)
 
-      const responses = await retryOnRevoked(opts, params.address, token, (t) =>
-        Promise.all(
-          marketIds.map((id) =>
-            fetchActiveOrdersForMarket(client, t, account.index, id)
-          )
-        )
+      const response = await retryOnRevoked(opts, params.address, token, (t) =>
+        fetchActiveOrders(client, t, account.index, marketId)
       )
 
       const { openOrders, triggerOrders } = classifyAndMapOrders(
-        responses.flatMap((r) => r.orders),
+        response.orders,
         (marketIndex) => registry.require(String(marketIndex))
       )
 
@@ -1065,9 +1084,7 @@ export const createLighterProvider = (
           : [Number(registry.require(params.marketId).id)]
       const responses = await retryOnRevoked(opts, params.address, token, (t) =>
         Promise.all(
-          marketIds.map((id) =>
-            fetchActiveOrdersForMarket(client, t, account.index, id)
-          )
+          marketIds.map((id) => fetchActiveOrders(client, t, account.index, id))
         )
       )
 
@@ -1087,6 +1104,14 @@ export const createLighterProvider = (
       return twaps
     },
 
+    /**
+     * Resolves either reference Lighter hands out for an order: a bare
+     * `order_index` — the value `Order.orderId` carries, as streamed by
+     * `orderUpdates` / `fills` — or a `client_order_index` prefixed with
+     * {@link LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}, which a signed placement
+     * step returns and which resolves before the venue has assigned an
+     * `order_index`.
+     */
     async getOrder(
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
@@ -1108,41 +1133,71 @@ export const createLighterProvider = (
         registry.sync(),
       ])
 
-      // Native `order_index` route only. The cross-provider `Order.orderId`
-      // for Lighter is `String(order_index)` — see `mapOrder`. A tx-hash route
-      // would require mapping the caller's executeAction tx hash → wasm nonce
-      // → matching order, which the LI.FI backend did via its `UserAction`
-      // table; the SDK has no equivalent persistence, so we refuse rather
-      // than mis-resolve.
+      const notFound = (): PerpsError =>
+        new PerpsError(
+          PerpsErrorCode.OrderNotFound,
+          `Lighter order ${params.id} not found for ${params.address}`
+        )
+      const detail = (order: LtOrder): Order =>
+        mapOrderDetail(order, registry.require(String(order.market_index)))
+
+      // A tx-hash route would require mapping the caller's executeAction tx
+      // hash → wasm nonce → matching order, which the LI.FI backend did via
+      // its `UserAction` table; the SDK has no equivalent persistence, so we
+      // refuse rather than mis-resolve.
       if (TX_HASH_PATTERN.test(params.id)) {
         throw new PerpsError(
           PerpsErrorCode.OrderNotFound,
           `Lighter order id "${params.id}" looks like a tx hash. The SDK ` +
-            `resolves orders by Lighter \`order_index\` only — surface the orderId ` +
-            `from the orderUpdates / fills WS stream and pass it here.`
+            `resolves orders by Lighter \`order_index\` or by a ` +
+            `\`${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}<index>\` id — surface the ` +
+            `orderId from the orderUpdates / fills WS stream, or the ` +
+            `clientOrderIndex from the signed placement step, and pass it here.`
         )
       }
-      const predicate: (o: { order_index: number }) => boolean = (o) =>
+
+      if (params.id.startsWith(LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX)) {
+        const clientOrderIndex = params.id.slice(
+          LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX.length
+        )
+        if (!CLIENT_ORDER_INDEX_PATTERN.test(clientOrderIndex)) {
+          throw new PerpsError(
+            PerpsErrorCode.SDKError,
+            `Lighter order id "${params.id}" names a client order index, but ` +
+              `"${clientOrderIndex}" is not a decimal integer.`
+          )
+        }
+        const orders = await retryOnRevoked(opts, params.address, token, (t) =>
+          fetchOrdersByClientOrderIndex(
+            client,
+            t,
+            account.index,
+            clientOrderIndex
+          )
+        )
+        const hit = orders.find(
+          (o) => String(o.client_order_index) === clientOrderIndex
+        )
+        if (hit === undefined) {
+          throw notFound()
+        }
+        return detail(hit)
+      }
+
+      const byOrderIndex = (o: LtOrder): boolean =>
         String(o.order_index) === params.id
 
-      const marketIds = deriveOrderBearingMarketIds(account)
-      const activeResponses = await retryOnRevoked(
-        opts,
-        params.address,
-        token,
-        (t) =>
-          Promise.all(
-            marketIds.map((id) =>
-              fetchActiveOrdersForMarket(client, t, account.index, id)
-            )
-          )
+      const active = await retryOnRevoked(opts, params.address, token, (t) =>
+        fetchActiveOrders(
+          client,
+          t,
+          account.index,
+          LIGHTER_ALL_MARKETS_WILDCARD
+        )
       )
-
-      for (const response of activeResponses) {
-        const hit = response.orders.find(predicate as (o: unknown) => boolean)
-        if (hit !== undefined) {
-          return mapOrderDetail(hit, registry.require(String(hit.market_index)))
-        }
+      const activeHit = active.orders.find(byOrderIndex)
+      if (activeHit !== undefined) {
+        return detail(activeHit)
       }
 
       const inactive = await retryOnRevoked(opts, params.address, token, (t) =>
@@ -1152,17 +1207,11 @@ export const createLighterProvider = (
           limit: INACTIVE_ORDERS_LOOKUP_LIMIT,
         })
       )
-      const hit = wireList(inactive.orders).find(
-        predicate as (o: unknown) => boolean
-      )
-      if (hit !== undefined) {
-        return mapOrderDetail(hit, registry.require(String(hit.market_index)))
+      const inactiveHit = wireList(inactive.orders).find(byOrderIndex)
+      if (inactiveHit === undefined) {
+        throw notFound()
       }
-
-      throw new PerpsError(
-        PerpsErrorCode.OrderNotFound,
-        `Lighter order ${params.id} not found for ${params.address}`
-      )
+      return detail(inactiveHit)
     },
 
     async getFills(

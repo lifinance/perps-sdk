@@ -70,6 +70,19 @@ export interface LtOrdersResponse {
 }
 
 /**
+ * Order-lookup response from Lighter's `accountOrders` path. The lookup takes
+ * up to 20 `client_order_indexes` rather than a page, so it carries no cursor.
+ * It reaches the last 10K active orders with no time bound, and the last 1K
+ * inactive orders from the past 24 hours.
+ *
+ * @public
+ */
+export interface LtAccountOrdersResponse {
+  code: number
+  orders: LtOrder[] | null
+}
+
+/**
  * Single order-book level returned by Lighter. Amounts and prices are decimal
  * strings in the market's native precision; `order_expiry` is an absolute
  * Unix-millisecond expiry.
