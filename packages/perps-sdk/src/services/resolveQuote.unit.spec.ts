@@ -169,9 +169,12 @@ describe('resolveQuote', () => {
         { symbol: 'DOGE', side: 'buy', size: 100, type: 'perps' },
         FEE
       )
-    ).rejects.toThrow(
-      /No perps market found on 'hyperliquid' for symbol 'DOGE'/
-    )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+      message: expect.stringMatching(
+        /No perps market found on 'hyperliquid' for symbol 'DOGE'/
+      ),
+    })
   })
 })
 

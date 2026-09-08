@@ -33,4 +33,12 @@ describe('errorCodeFromStatus', () => {
       errorCodeFromStatus(500, PerpsErrorCode.ThirdPartyError, statusCodes)
     ).toBe(PerpsErrorCode.ThirdPartyError)
   })
+
+  it('keeps RateLimitExceeded when a boundary claims the 429', () => {
+    expect(
+      errorCodeFromStatus(429, PerpsErrorCode.DefaultError, {
+        429: PerpsErrorCode.ThirdPartyError,
+      })
+    ).toBe(PerpsErrorCode.RateLimitExceeded)
+  })
 })
