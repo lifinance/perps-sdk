@@ -484,11 +484,11 @@ async function executeTokenAuthMutation(
     }
   }
 
-  const { path, params } = buildTokenAuthMutationRequest(step, authToken)
+  const { path, params } = buildTokenAuthMutationRequest(step)
   const { status, data } = await deps.apiClient.postForm<{
     code?: number
     message?: string
-  }>(path, params)
+  }>(path, authToken, params)
 
   const code = data?.code
   const referralAlreadyApplied =
@@ -533,14 +533,14 @@ async function readAppliedReferralCode(
 }
 
 /**
- * Map a token-authenticated mutation step to its Lighter endpoint and
- * form body, mirroring the backend's request contract. The auth token is the
- * `auth` field; the remaining fields come from `wasmSignParams`.
+ * Map a token-authenticated mutation step to its Lighter endpoint and form
+ * body. The fields come from `wasmSignParams`; the auth token travels in the
+ * `Authorization` header, not the body.
  */
-function buildTokenAuthMutationRequest(
-  step: WasmBlobActionStep,
-  authToken: string
-): { path: string; params: ApiParams } {
+function buildTokenAuthMutationRequest(step: WasmBlobActionStep): {
+  path: string
+  params: ApiParams
+} {
   const kind = step.wasmSignParams.kind
   if (kind === 'changeAccountTier') {
     const { account_index, new_tier } = step.wasmSignParams as {
@@ -555,7 +555,7 @@ function buildTokenAuthMutationRequest(
     }
     return {
       path: '/api/v1/changeAccountTier',
-      params: { auth: authToken, account_index, new_tier },
+      params: { account_index, new_tier },
     }
   }
   if (kind === 'referralUse') {
@@ -572,7 +572,7 @@ function buildTokenAuthMutationRequest(
     }
     return {
       path: '/api/v1/referral/use',
-      params: { auth: authToken, l1_address, referral_code, x },
+      params: { l1_address, referral_code, x },
     }
   }
   throw new PerpsError(

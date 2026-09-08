@@ -212,6 +212,62 @@ describe('LighterApiClient.getAuthed (auth channel)', () => {
   })
 })
 
+describe('LighterApiClient.postForm (auth channel)', () => {
+  const recordingFetch = (): {
+    calls: { url: string; init?: RequestInit }[]
+    fetchImpl: typeof fetch
+  } => {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init })
+      return stubResponse(200, { code: 200 })
+    }) as unknown as typeof fetch
+    return { calls, fetchImpl }
+  }
+
+  it('sends the token in the Authorization header', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).postForm(
+      '/api/v1/changeAccountTier',
+      'tok-abc',
+      {
+        account_index: 42,
+      }
+    )
+    expect(calls).toHaveLength(1)
+    expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe(
+      'tok-abc'
+    )
+  })
+
+  it('keeps the token out of the form body and the URL', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).postForm(
+      '/api/v1/changeAccountTier',
+      'tok-abc',
+      {
+        account_index: 42,
+      }
+    )
+    expect(calls[0].init?.body).toBe('account_index=42')
+    expect(String(calls[0].init?.body)).not.toContain('tok-abc')
+    expect(calls[0].url).not.toContain('tok-abc')
+  })
+
+  it.each([
+    ['carriage return', 'tok-abc\rX-Injected: 1'],
+    ['line feed', 'tok-abc\nX-Injected: 1'],
+  ])('rejects a token carrying a %s before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).postForm('/api/v1/changeAccountTier', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
+})
+
 describe('LighterApiClient rate-limit hold', () => {
   it('holds all requests for 60 seconds after a 429 without Retry-After', async () => {
     let now = 1_700_000_000_000
@@ -226,9 +282,9 @@ describe('LighterApiClient rate-limit hold', () => {
       code: PerpsErrorCode.RateLimitExceeded,
     })
     now += 59_999
-    await expect(client.postForm('/held', { value: 1 })).rejects.toBeInstanceOf(
-      PerpsError
-    )
+    await expect(
+      client.postForm('/held', 'tok-abc', { value: 1 })
+    ).rejects.toBeInstanceOf(PerpsError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
 
     now += 1
@@ -256,7 +312,7 @@ describe('LighterApiClient rate-limit hold', () => {
   it('rejects a rate-limited POST with RateLimitExceeded', async () => {
     const client = clientWith(stubFetch(429, { code: 23000 }))
     await expect(
-      client.postForm('/mutate', { value: 1 })
+      client.postForm('/mutate', 'tok-abc', { value: 1 })
     ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
   })
 

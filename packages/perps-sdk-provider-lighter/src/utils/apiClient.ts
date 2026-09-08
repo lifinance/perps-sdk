@@ -274,13 +274,15 @@ export class LighterApiClient {
   }
 
   /**
-   * Form-encoded POST to a Lighter mutation endpoint. Single-shot — never
-   * retried, since these are money/state writes whose outcome is unknown on a
-   * transport failure. Surfaces the raw `{status, body}` pair so the caller can
-   * map Lighter's per-endpoint business-rule `code` to a domain error verbatim.
+   * Form-encoded POST to a Lighter mutation endpoint, carrying the Lighter
+   * token in the `Authorization` header. Single-shot — never retried, since
+   * these are money/state writes whose outcome is unknown on a transport
+   * failure. Surfaces the raw `{status, body}` pair so the caller can map
+   * Lighter's per-endpoint business-rule `code` to a domain error verbatim.
    */
   async postForm<T>(
     path: string,
+    authToken: string,
     params: ApiParams
   ): Promise<{ status: number; data: T }> {
     const body = new URLSearchParams()
@@ -289,7 +291,10 @@ export class LighterApiClient {
     }
     const response = await this.fetchWithHold(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        Authorization: assertHeaderSafe(authToken),
+      },
       body: body.toString(),
       signal: this.signal,
     })
