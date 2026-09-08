@@ -70,9 +70,20 @@ describe('infoRequest', () => {
     )
   })
 
-  it('raises a tagged ThirdPartyError on non-2xx', async () => {
+  const statusCases: [number, PerpsErrorCode][] = [
+    [429, PerpsErrorCode.RateLimitExceeded],
+    [401, PerpsErrorCode.Unauthorized],
+    [403, PerpsErrorCode.AgentUnauthorized],
+    [500, PerpsErrorCode.ThirdPartyError],
+    [502, PerpsErrorCode.ThirdPartyError],
+    [418, PerpsErrorCode.ThirdPartyError],
+  ]
+
+  it.each(
+    statusCases
+  )('raises a tagged error for status %i with code %i', async (status, code) => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('boom', { status: 500 })
+      new Response('boom', { status })
     )
 
     await expect(
@@ -81,10 +92,7 @@ describe('infoRequest', () => {
         { type: 'allMids' },
         { policy: DISABLED_RETRY }
       )
-    ).rejects.toMatchObject({
-      code: PerpsErrorCode.ThirdPartyError,
-      tool: 'hyperliquid',
-    })
+    ).rejects.toMatchObject({ code, tool: 'hyperliquid' })
   })
 
   it('wraps network errors as a ServerError', async () => {
