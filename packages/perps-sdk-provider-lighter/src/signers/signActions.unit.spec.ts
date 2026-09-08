@@ -14,7 +14,7 @@ import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, it, type Mock, vi } from 'vitest'
-import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
+import { type ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
 import {
@@ -24,7 +24,11 @@ import {
 } from './signActions.js'
 
 type PostFormResult = { status: number; data: unknown }
-type PostFormImpl = (path: string, params: ApiParams) => Promise<PostFormResult>
+type PostFormImpl = (
+  path: string,
+  authToken: string,
+  params: ApiParams
+) => Promise<PostFormResult>
 type GetImpl = (path: string, params?: ApiParams) => Promise<unknown>
 type GetAuthedImpl = (
   path: string,
@@ -126,6 +130,53 @@ function makeDeps(
   }
 }
 
+const WIRE_BASE_URL = 'https://lighter.test'
+
+/**
+ * Deps whose `apiClient` is a real {@link LighterApiClient} over a recording
+ * `fetch`, so a spec asserts the wire request instead of a stubbed method call.
+ * Every response answers `used_code: ''`, so a referral step reads no applied
+ * code and still POSTs.
+ */
+function makeWireDeps(): {
+  deps: LighterSignActionsDeps
+  keyStore: LighterKeyStore
+  requests: { url: string; init?: RequestInit }[]
+} {
+  const requests: { url: string; init?: RequestInit }[] = []
+  const fetchImpl = (async (url: string, init?: RequestInit) => {
+    requests.push({ url, init })
+    return new Response(
+      JSON.stringify({ ...REGISTERED_API_KEYS, used_code: '' }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    )
+  }) as unknown as typeof fetch
+  const keyStore = new LighterKeyStore(createMemoryStorage())
+  return {
+    deps: {
+      signer: {
+        createAuthToken: vi.fn(async () => 'auth-token-xyz'),
+      } as unknown as LighterSigner,
+      keyStore,
+      apiClient: new LighterApiClient(WIRE_BASE_URL, { fetchImpl }),
+      apiKeyFreshness: createLighterApiKeyFreshness(),
+      resolveAccountIndex: vi.fn(async () => 99),
+    },
+    keyStore,
+    requests,
+  }
+}
+
+/** The single form POST the recording `fetch` observed. */
+function wirePost(requests: { url: string; init?: RequestInit }[]): {
+  url: string
+  init?: RequestInit
+} {
+  const posts = requests.filter((request) => request.init?.method === 'POST')
+  expect(posts).toHaveLength(1)
+  return posts[0]
+}
+
 describe('lighterSignActions', () => {
   describe('WASM_BLOB — standard wasm action', () => {
     it('uses the stored API key to sign and returns the signedTx envelope', async () => {
@@ -157,6 +208,46 @@ describe('lighterSignActions', () => {
         { market_index: 0, nonce: 1 },
         { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
       ])
+    })
+
+    it('projects the signed client_order_index onto the step', async () => {
+      const { deps, keyStore } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const steps: WasmBlobActionStep[] = [
+        {
+          action: ActionType.PLACE_ORDER,
+          wasmSignParams: { market_index: 0, client_order_index: 7, nonce: 1 },
+        },
+        {
+          action: ActionType.PLACE_TWAP_ORDER,
+          wasmSignParams: { market_index: 0, client_order_index: 8, nonce: 2 },
+        },
+        {
+          action: ActionType.PLACE_TRIGGER_ORDER,
+          wasmSignParams: { market_index: 0, client_order_index: 9, nonce: 3 },
+        },
+        {
+          action: ActionType.CANCEL_ORDER,
+          wasmSignParams: { market_index: 0, order_index: 900, nonce: 4 },
+        },
+      ]
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        steps,
+        ADDRESS
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result[0].clientOrderIndex).toBe('7')
+      expect(result[1].clientOrderIndex).toBe('8')
+      expect(result[2].clientOrderIndex).toBe('9')
+      expect(result[3]).not.toHaveProperty('clientOrderIndex')
     })
 
     it('throws when no Lighter API key is registered for the address', async () => {
@@ -962,11 +1053,11 @@ describe('lighterSignActions', () => {
       expect(result).toHaveLength(0)
 
       expect(postForm).toHaveBeenCalledTimes(1)
-      expect(postForm).toHaveBeenCalledWith('/api/v1/changeAccountTier', {
-        auth: 'auth-token-xyz',
-        account_index: 99,
-        new_tier: 'premium',
-      })
+      expect(postForm).toHaveBeenCalledWith(
+        '/api/v1/changeAccountTier',
+        'auth-token-xyz',
+        { account_index: 99, new_tier: 'premium' }
+      )
 
       const createAuthCalls = (
         signer.createAuthToken as ReturnType<typeof vi.fn>
@@ -982,6 +1073,45 @@ describe('lighterSignActions', () => {
         apiKeyIndex: 42,
         accountIndex: 99,
       })
+    })
+
+    it('carries the auth token in the Authorization header, not the form body', async () => {
+      const { deps, keyStore, requests } = makeWireDeps()
+      await setStoredKey(keyStore)
+
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep],
+        ADDRESS
+      )
+
+      const post = wirePost(requests)
+      expect(post.url).toBe(`${WIRE_BASE_URL}/api/v1/changeAccountTier`)
+      expect(new Headers(post.init?.headers).get('Authorization')).toBe(
+        'auth-token-xyz'
+      )
+      expect(post.init?.body).toBe('account_index=99&new_tier=premium')
+      expect(String(post.init?.body)).not.toContain('auth-token-xyz')
+    })
+
+    it('never POSTs when the auth token cannot be created', async () => {
+      const { deps, keyStore, postForm } = makeDeps({
+        createAuthToken: vi.fn(async () => {
+          throw new Error('Lighter CreateAuthToken failed: wasm trap')
+        }),
+      } as unknown as Partial<LighterSigner>)
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [accountTypeStep],
+          ADDRESS
+        )
+      ).rejects.toThrow('Lighter CreateAuthToken failed')
+      expect(postForm).not.toHaveBeenCalled()
     })
 
     it('never routes the issued auth token through a backend-bound step', async () => {
@@ -1094,15 +1224,45 @@ describe('lighterSignActions', () => {
 
       expect(result).toHaveLength(0)
       expect(postForm).toHaveBeenCalledTimes(1)
-      expect(postForm).toHaveBeenCalledWith('/api/v1/referral/use', {
-        auth: 'auth-token-xyz',
-        l1_address: ADDRESS.toLowerCase(),
-        referral_code: 'LIFI',
-        x: 'lifi_x',
-      })
+      expect(postForm).toHaveBeenCalledWith(
+        '/api/v1/referral/use',
+        'auth-token-xyz',
+        {
+          l1_address: ADDRESS.toLowerCase(),
+          referral_code: 'LIFI',
+          x: 'lifi_x',
+        }
+      )
       expect(await keyStore.get(ADDRESS)).toMatchObject({
         appliedReferralCode: 'LIFI',
       })
+    })
+
+    it('carries the auth token in the Authorization header, not the form body', async () => {
+      const { deps, keyStore, requests } = makeWireDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+
+      const post = wirePost(requests)
+      expect(post.url).toBe(`${WIRE_BASE_URL}/api/v1/referral/use`)
+      expect(new Headers(post.init?.headers).get('Authorization')).toBe(
+        'auth-token-xyz'
+      )
+      expect(post.init?.body).toBe(
+        `l1_address=${ADDRESS.toLowerCase()}&referral_code=LIFI&x=lifi_x`
+      )
+      expect(String(post.init?.body)).not.toContain('auth-token-xyz')
     })
 
     it('surfaces a venue rejection verbatim as an ExchangeRejected error', async () => {
@@ -1264,6 +1424,7 @@ describe('lighterSignActions', () => {
 
       expect(postForm).toHaveBeenCalledWith(
         '/api/v1/referral/use',
+        'auth-token-xyz',
         expect.objectContaining({ referral_code: 'LIFI' })
       )
       expect(debug).toHaveBeenCalledTimes(1)

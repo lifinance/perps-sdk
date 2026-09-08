@@ -148,9 +148,12 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     ).rejects.toBeInstanceOf(LighterAuthRejectedError)
   })
 
+  // 401 with body code 61006 fires both auth guards; the revoked-token guard
+  // runs first, so the more specific class wins.
   it.each([
     { status: 400, body: { code: 61006, message: 'revoked' } },
     { status: 200, body: { code: 61006, message: 'revoked' } },
+    { status: 401, body: { code: 61006, message: 'revoked' } },
   ])('throws LighterTokenRevokedError for $status with body code 61006', async ({
     status,
     body,
@@ -192,6 +195,41 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     await expect(
       client.getAuthed('/api/v1/accountActiveOrders', 'tok')
     ).resolves.toEqual(payload)
+  })
+})
+
+describe('LighterApiClient.getAuthed (authentication error code)', () => {
+  it.each([
+    {
+      channel: 'a 200 body carrying the invalid-auth code',
+      status: 200,
+      body: { code: 20013, message: 'invalid auth string' },
+    },
+    {
+      channel: 'a 401 HTTP status',
+      status: 401,
+      body: { message: 'unauthorized' },
+    },
+    {
+      channel: 'a 403 HTTP status',
+      status: 403,
+      body: { message: 'forbidden' },
+    },
+    {
+      channel: 'a 200 body carrying the revoked-token code',
+      status: 200,
+      body: { code: 61006, message: 'revoked' },
+    },
+    {
+      channel: 'a 400 body carrying the revoked-token code',
+      status: 400,
+      body: { code: 61006, message: 'revoked' },
+    },
+  ])('reports $channel as Unauthorized', async ({ status, body }) => {
+    const client = clientWith(stubFetch(status, body))
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
   })
 })
 
@@ -251,6 +289,88 @@ describe('LighterApiClient.getAuthed (auth channel)', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     expect(calls).toHaveLength(0)
   })
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('rejects a %s token before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).getAuthed('/api/v1/accountActiveOrders', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('LighterApiClient.postForm (auth channel)', () => {
+  const recordingFetch = (): {
+    calls: { url: string; init?: RequestInit }[]
+    fetchImpl: typeof fetch
+  } => {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init })
+      return stubResponse(200, { code: 200 })
+    }) as unknown as typeof fetch
+    return { calls, fetchImpl }
+  }
+
+  it('sends the token in the Authorization header', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).postForm(
+      '/api/v1/changeAccountTier',
+      'tok-abc',
+      {
+        account_index: 42,
+      }
+    )
+    expect(calls).toHaveLength(1)
+    expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe(
+      'tok-abc'
+    )
+  })
+
+  it('keeps the token out of the form body and the URL', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).postForm(
+      '/api/v1/changeAccountTier',
+      'tok-abc',
+      {
+        account_index: 42,
+      }
+    )
+    expect(calls[0].init?.body).toBe('account_index=42')
+    expect(String(calls[0].init?.body)).not.toContain('tok-abc')
+    expect(calls[0].url).not.toContain('tok-abc')
+  })
+
+  it.each([
+    ['carriage return', 'tok-abc\rX-Injected: 1'],
+    ['line feed', 'tok-abc\nX-Injected: 1'],
+  ])('rejects a token carrying a %s before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).postForm('/api/v1/changeAccountTier', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('rejects a %s token before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).postForm('/api/v1/changeAccountTier', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
 })
 
 describe('LighterApiClient rate-limit hold', () => {
@@ -267,9 +387,9 @@ describe('LighterApiClient rate-limit hold', () => {
       code: PerpsErrorCode.RateLimitExceeded,
     })
     now += 59_999
-    await expect(client.postForm('/held', { value: 1 })).rejects.toBeInstanceOf(
-      PerpsError
-    )
+    await expect(
+      client.postForm('/held', 'tok-abc', { value: 1 })
+    ).rejects.toBeInstanceOf(PerpsError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
 
     now += 1
@@ -297,7 +417,7 @@ describe('LighterApiClient rate-limit hold', () => {
   it('rejects a rate-limited POST with RateLimitExceeded', async () => {
     const client = clientWith(stubFetch(429, { code: 23000 }))
     await expect(
-      client.postForm('/mutate', { value: 1 })
+      client.postForm('/mutate', 'tok-abc', { value: 1 })
     ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
   })
 

@@ -51,9 +51,17 @@ const isLighterTokenRevoked = (data: unknown): boolean =>
 
 /**
  * A CR or LF in a token would split the request when it reaches a
- * `fetchImpl` that does not validate header values itself.
+ * `fetchImpl` that does not validate header values itself. A blank token
+ * would dispatch an `Authorization` header that carries no credential at
+ * all, which Lighter answers as a generic rejection.
  */
 const assertHeaderSafe = (authToken: string): string => {
+  if (authToken.trim().length === 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token is blank and cannot go in a header'
+    )
+  }
   if (/[\r\n]/.test(authToken)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
@@ -136,6 +144,11 @@ export interface LighterApiClientOptions {
  * `Authorization` in `Access-Control-Allow-Headers` and
  * `Access-Control-Max-Age: 86400`, so a browser sends one preflight per day
  * per origin.
+ *
+ * The `/api/v1/changeAccountTier` and `/api/v1/referral/use` mutations send
+ * the same header with a fresh per-call token. Their `OPTIONS` response is
+ * not yet probed against a live host, so a browser may reject the preflight
+ * even though the GET paths pass.
  *
  * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
  * retries such a response. It throws `RateLimitExceeded` and holds all network
@@ -227,13 +240,13 @@ export class LighterApiClient {
     })
     if (isLighterTokenRevoked(data)) {
       throw new LighterTokenRevokedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter reports a revoked auth token for ${path}`
       )
     }
     if (isLighterAuthRejection(status, data)) {
       throw new LighterAuthRejectedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter rejected the auth token for ${path}`
       )
     }
@@ -275,13 +288,15 @@ export class LighterApiClient {
   }
 
   /**
-   * Form-encoded POST to a Lighter mutation endpoint. Single-shot — never
-   * retried, since these are money/state writes whose outcome is unknown on a
-   * transport failure. Surfaces the raw `{status, body}` pair so the caller can
-   * map Lighter's per-endpoint business-rule `code` to a domain error verbatim.
+   * Form-encoded POST to a Lighter mutation endpoint, carrying the Lighter
+   * token in the `Authorization` header. Single-shot — never retried, since
+   * these are money/state writes whose outcome is unknown on a transport
+   * failure. Surfaces the raw `{status, body}` pair so the caller can map
+   * Lighter's per-endpoint business-rule `code` to a domain error verbatim.
    */
   async postForm<T>(
     path: string,
+    authToken: string,
     params: ApiParams
   ): Promise<{ status: number; data: T }> {
     const body = new URLSearchParams()
@@ -290,7 +305,10 @@ export class LighterApiClient {
     }
     const response = await this.fetchWithHold(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        Authorization: assertHeaderSafe(authToken),
+      },
       body: body.toString(),
       signal: this.signal,
     })
