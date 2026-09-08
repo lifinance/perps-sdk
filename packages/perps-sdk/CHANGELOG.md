@@ -1,5 +1,16 @@
 # @lifi/perps-sdk
 
+## 12.0.0
+
+### Major Changes
+
+- [#436](https://github.com/lifinance/perps-sdk/pull/436) [`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The provider error boundaries now derive `PerpsErrorCode` from the HTTP status. A Hyperliquid `/info` failure carries `RateLimitExceeded` for a 429, `Unauthorized` for a 401 and `AgentUnauthorized` for a 403, and keeps `ThirdPartyError` for every other status. A LI.FI request with an unparseable body carries `RateLimitExceeded` for a 429 and keeps `DefaultError` for every other status. `resolveQuotePrice` throws `MarketNotFound` in place of `ServerError` when the provider returns no price. Consumers that branch on the code, or that match the status inside the message string, must update. `@lifi/perps-sdk` also exports `errorCodeFromStatus`, the helper each boundary shares, and `@lifi/perps-types` documents the contract of `ServerError` and `ThirdPartyError`.
+
+### Patch Changes
+
+- Updated dependencies [[`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb)]:
+  - @lifi/perps-types@12.0.1
+
 ## 11.0.0
 
 ### Major Changes

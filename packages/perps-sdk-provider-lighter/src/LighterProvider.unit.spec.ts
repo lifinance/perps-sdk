@@ -231,8 +231,10 @@ const ACCOUNT_PAYLOAD = {
       account_index: 42,
       name: 'test',
       description: '',
-      positions: [],
-      assets: [],
+      // Lighter puts `null` on the wire for an empty list, so the base account
+      // fixture travels the `wireList` normalization path.
+      positions: null,
+      assets: null,
       total_asset_value: '500',
       cross_asset_value: '500',
     },

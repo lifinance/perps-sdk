@@ -48,6 +48,20 @@ const isLighterAuthRejection = (status: number, data: unknown): boolean =>
 const isLighterTokenRevoked = (data: unknown): boolean =>
   lighterBodyErrorCode(data) === LIGHTER_TOKEN_REVOKED_CODE
 
+/**
+ * A CR or LF in a token would split the request when it reaches a
+ * `fetchImpl` that does not validate header values itself.
+ */
+const assertHeaderSafe = (authToken: string): string => {
+  if (/[\r\n]/.test(authToken)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token carries a line break and cannot go in a header'
+    )
+  }
+  return authToken
+}
+
 /** @internal */
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
   enabled: true,
@@ -116,7 +130,11 @@ export interface LighterApiClientOptions {
  * Auth-gated endpoints (accountLimits, accountActiveOrders, deposit/history,
  * withdraw/history, positionFunding, liquidations, transfer/history) take the
  * Lighter read-only token in the `Authorization` header, which is the only
- * auth channel Lighter's OpenAPI spec declares.
+ * auth channel Lighter's OpenAPI spec declares. The header makes such a read
+ * CORS-preflighted; both Lighter hosts answer the `OPTIONS` probe with
+ * `Authorization` in `Access-Control-Allow-Headers` and
+ * `Access-Control-Max-Age: 86400`, so a browser sends one preflight per day
+ * per origin.
  *
  * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
  * retries such a response. It throws `RateLimitExceeded` and holds all network
@@ -204,7 +222,7 @@ export class LighterApiClient {
     params: ApiParams = {}
   ): Promise<T> {
     const { status, data } = await this.sendGet<unknown>(path, params, {
-      Authorization: authToken,
+      Authorization: assertHeaderSafe(authToken),
     })
     if (isLighterTokenRevoked(data)) {
       throw new LighterTokenRevokedError(
