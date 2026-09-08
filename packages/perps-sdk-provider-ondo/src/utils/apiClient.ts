@@ -1,5 +1,6 @@
 import {
   DISABLED_RETRY,
+  errorCodeFromStatus,
   fetchWithRetry,
   PerpsError,
   type ResolvedRetryPolicy,
@@ -30,8 +31,12 @@ export type OndoHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 export class OndoApiError extends PerpsError {
   readonly errorCode: string | undefined
 
-  constructor(message: string, errorCode?: string) {
-    super(PerpsErrorCode.ThirdPartyError, message)
+  constructor(
+    message: string,
+    errorCode?: string,
+    code: PerpsErrorCode = PerpsErrorCode.ThirdPartyError
+  ) {
+    super(code, message)
     this.errorCode = errorCode
   }
 }
@@ -100,7 +105,8 @@ const isGenericResponse = (
  * the LI.FI backend. Every response is an `OndoGenericResponse` envelope; the
  * client unwraps `result` on success and throws {@link OndoApiError} (carrying
  * the wire `error_code`) otherwise. An HTTP 401 throws
- * {@link OndoSessionExpiredError} so callers can re-run the SIWE login.
+ * {@link OndoSessionExpiredError} so callers can re-run the SIWE login, and an
+ * HTTP 429 carries `RateLimitExceeded`.
  * @public
  */
 export class OndoApiClient {
@@ -240,7 +246,8 @@ export class OndoApiClient {
     if (status < 200 || status >= 300) {
       throw new OndoApiError(
         `Ondo API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`,
-        isGenericResponse(data) ? data.error_code : undefined
+        isGenericResponse(data) ? data.error_code : undefined,
+        errorCodeFromStatus(status, PerpsErrorCode.ThirdPartyError)
       )
     }
     if (!isGenericResponse(data)) {
