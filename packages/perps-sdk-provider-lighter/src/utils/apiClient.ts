@@ -50,9 +50,17 @@ const isLighterTokenRevoked = (data: unknown): boolean =>
 
 /**
  * A CR or LF in a token would split the request when it reaches a
- * `fetchImpl` that does not validate header values itself.
+ * `fetchImpl` that does not validate header values itself. A blank token
+ * would dispatch an `Authorization` header that carries no credential at
+ * all, which Lighter answers as a generic rejection.
  */
 const assertHeaderSafe = (authToken: string): string => {
+  if (authToken.trim().length === 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token is blank and cannot go in a header'
+    )
+  }
   if (/[\r\n]/.test(authToken)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
@@ -135,6 +143,11 @@ export interface LighterApiClientOptions {
  * `Authorization` in `Access-Control-Allow-Headers` and
  * `Access-Control-Max-Age: 86400`, so a browser sends one preflight per day
  * per origin.
+ *
+ * The `/api/v1/changeAccountTier` and `/api/v1/referral/use` mutations send
+ * the same header with a fresh per-call token. Their `OPTIONS` response is
+ * not yet probed against a live host, so a browser may reject the preflight
+ * even though the GET paths pass.
  *
  * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
  * retries such a response. It throws `RateLimitExceeded` and holds all network

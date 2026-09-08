@@ -1055,6 +1055,25 @@ describe('lighterSignActions', () => {
       expect(String(post.init?.body)).not.toContain('auth-token-xyz')
     })
 
+    it('never POSTs when the auth token cannot be created', async () => {
+      const { deps, keyStore, postForm } = makeDeps({
+        createAuthToken: vi.fn(async () => {
+          throw new Error('Lighter CreateAuthToken failed: wasm trap')
+        }),
+      } as unknown as Partial<LighterSigner>)
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [accountTypeStep],
+          ADDRESS
+        )
+      ).rejects.toThrow('Lighter CreateAuthToken failed')
+      expect(postForm).not.toHaveBeenCalled()
+    })
+
     it('never routes the issued auth token through a backend-bound step', async () => {
       const { deps, keyStore } = makeDeps()
       await setStoredKey(keyStore)

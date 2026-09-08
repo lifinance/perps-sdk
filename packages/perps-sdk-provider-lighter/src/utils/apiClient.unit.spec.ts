@@ -210,6 +210,19 @@ describe('LighterApiClient.getAuthed (auth channel)', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     expect(calls).toHaveLength(0)
   })
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('rejects a %s token before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).getAuthed('/api/v1/accountActiveOrders', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
 })
 
 describe('LighterApiClient.postForm (auth channel)', () => {
@@ -258,6 +271,19 @@ describe('LighterApiClient.postForm (auth channel)', () => {
     ['carriage return', 'tok-abc\rX-Injected: 1'],
     ['line feed', 'tok-abc\nX-Injected: 1'],
   ])('rejects a token carrying a %s before it dispatches', async (_, token) => {
+    const { calls, fetchImpl } = recordingFetch()
+    await expect(
+      clientWith(fetchImpl).postForm('/api/v1/changeAccountTier', token, {
+        account_index: 42,
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(calls).toHaveLength(0)
+  })
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('rejects a %s token before it dispatches', async (_, token) => {
     const { calls, fetchImpl } = recordingFetch()
     await expect(
       clientWith(fetchImpl).postForm('/api/v1/changeAccountTier', token, {
