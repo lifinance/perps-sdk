@@ -154,6 +154,51 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
   })
 })
 
+describe('LighterApiClient.getAuthed (auth channel)', () => {
+  const recordingFetch = (): {
+    calls: { url: string; init?: RequestInit }[]
+    fetchImpl: typeof fetch
+  } => {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init })
+      return stubResponse(200, { code: 200, orders: [] })
+    }) as unknown as typeof fetch
+    return { calls, fetchImpl }
+  }
+
+  it('sends the token in the Authorization header', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).getAuthed(
+      '/api/v1/accountActiveOrders',
+      'tok-abc',
+      { account_index: 42 }
+    )
+    expect(calls).toHaveLength(1)
+    expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe(
+      'tok-abc'
+    )
+  })
+
+  it('keeps the token out of the request URL', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).getAuthed(
+      '/api/v1/accountActiveOrders',
+      'tok-abc',
+      { account_index: 42 }
+    )
+    expect(calls[0].url).not.toContain('tok-abc')
+    expect(calls[0].url).not.toContain('auth=')
+    expect(calls[0].url).toContain('account_index=42')
+  })
+
+  it('sends no Authorization header on an unauthenticated GET', async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    await clientWith(fetchImpl).get('/api/v1/orderBookDetails')
+    expect(new Headers(calls[0].init?.headers).has('Authorization')).toBe(false)
+  })
+})
+
 describe('LighterApiClient rate-limit hold', () => {
   it('holds all requests for 60 seconds after a 429 without Retry-After', async () => {
     let now = 1_700_000_000_000

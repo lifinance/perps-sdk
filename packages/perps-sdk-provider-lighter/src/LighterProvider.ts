@@ -86,15 +86,21 @@ import {
   lighterSignActions,
 } from './signers/signActions.js'
 import type {
+  LtAccount,
   LtAccountLimits,
+  LtDepositHistoryItem,
   LtDepositHistoryResponse,
-  LtDetailedAccount,
   LtDetailedAccountPosition,
+  LtLiquidation,
   LtLiquidationsResponse,
+  LtOrder,
   LtOrdersResponse,
+  LtPositionFunding,
   LtPositionFundingsResponse,
   LtTradesResponse,
+  LtTransfer,
   LtTransferHistoryResponse,
+  LtWithdrawHistoryItem,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
 import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
@@ -132,6 +138,7 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
+import { wireList } from './utils/wireList.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -560,19 +567,21 @@ export const createLighterProvider = (
       account_index: accountIndex,
     })
 
-  const fetchActiveOrdersForMarket = (
+  const fetchActiveOrdersForMarket = async (
     client: LighterApiClient,
     authToken: string,
     accountIndex: number,
     marketId: number
-  ): Promise<LtOrdersResponse> =>
-    client.getAuthed<LtOrdersResponse>(
+  ): Promise<LtOrdersResponse & { orders: LtOrder[] }> => {
+    const response = await client.getAuthed<LtOrdersResponse>(
       '/api/v1/accountActiveOrders',
       authToken,
       { account_index: accountIndex, market_id: marketId }
     )
+    return { ...response, orders: wireList(response.orders) }
+  }
 
-  const deriveOrderBearingMarketIds = (account: LtDetailedAccount): number[] =>
+  const deriveOrderBearingMarketIds = (account: LtAccount): number[] =>
     account.positions
       .filter((p) => orderCountFor(p) > 0)
       .map((p) => p.market_id)
@@ -585,11 +594,15 @@ export const createLighterProvider = (
     requested: ActivityType[] | undefined,
     inputCursor: LighterActivityCursor | undefined
   ): Promise<{
-    deposits: LtDepositHistoryResponse
-    withdraws: LtWithdrawHistoryResponse
-    fundings: LtPositionFundingsResponse
-    liquidations: LtLiquidationsResponse
-    transfers: LtTransferHistoryResponse
+    deposits: LtDepositHistoryResponse & { deposits: LtDepositHistoryItem[] }
+    withdraws: LtWithdrawHistoryResponse & {
+      withdraws: LtWithdrawHistoryItem[]
+    }
+    fundings: LtPositionFundingsResponse & {
+      position_fundings: LtPositionFunding[]
+    }
+    liquidations: LtLiquidationsResponse & { liquidations: LtLiquidation[] }
+    transfers: LtTransferHistoryResponse & { transfers: LtTransfer[] }
   }> => {
     const wantsType = (t: ActivityType): boolean =>
       requested === undefined || requested.includes(t)
@@ -643,7 +656,6 @@ export const createLighterProvider = (
               token,
               {
                 account_index: accountIndex,
-                market_id: LIGHTER_ALL_MARKETS_WILDCARD,
                 limit: LIGHTER_HISTORY_PAGE_SIZE,
                 ...cursorParam('fundings'),
               }
@@ -670,7 +682,30 @@ export const createLighterProvider = (
           : Promise.resolve(empty({ code: 0, transfers: [] })),
       ])
 
-    return { deposits, withdraws, fundings, liquidations, transfers }
+    return {
+      deposits: {
+        ...deposits,
+        deposits: wireList<LtDepositHistoryItem>(deposits.deposits),
+      },
+      withdraws: {
+        ...withdraws,
+        withdraws: wireList<LtWithdrawHistoryItem>(withdraws.withdraws),
+      },
+      fundings: {
+        ...fundings,
+        position_fundings: wireList<LtPositionFunding>(
+          fundings.position_fundings
+        ),
+      },
+      liquidations: {
+        ...liquidations,
+        liquidations: wireList<LtLiquidation>(liquidations.liquidations),
+      },
+      transfers: {
+        ...transfers,
+        transfers: wireList<LtTransfer>(transfers.transfers),
+      },
+    }
   }
 
   const resolveAccountExists = async (
@@ -924,7 +959,7 @@ export const createLighterProvider = (
       if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
         return undefined
       }
-      let account: LtDetailedAccount
+      let account: LtAccount
       try {
         account = await fetchDetailedAccount(apiClient(opts), params.address)
       } catch (err) {
@@ -1117,7 +1152,9 @@ export const createLighterProvider = (
           limit: INACTIVE_ORDERS_LOOKUP_LIMIT,
         })
       )
-      const hit = inactive.orders.find(predicate as (o: unknown) => boolean)
+      const hit = wireList(inactive.orders).find(
+        predicate as (o: unknown) => boolean
+      )
       if (hit !== undefined) {
         return mapOrderDetail(hit, registry.require(String(hit.market_index)))
       }
@@ -1170,7 +1207,7 @@ export const createLighterProvider = (
       // drops only its own row instead of rejecting the whole page. The
       // registry warns once per unresolved id. A delisted market still
       // resolves, so its rows stay.
-      const items = response.trades.flatMap((t): Fill[] => {
+      const items = wireList(response.trades).flatMap((t): Fill[] => {
         const market = registry.get(String(t.market_id))
         if (market === undefined) {
           return []
@@ -1297,7 +1334,7 @@ export const createLighterProvider = (
           }
           const price = toBigOrNull(l.trade.price)
           const size = toBigOrNull(l.trade.size)
-          const marginMode = l.info.positions.find(
+          const marginMode = wireList(l.info.positions).find(
             (p) => p.market_id === l.market_id
           )?.margin_mode
           // Lighter reports the margin mode as an integer, so the venue

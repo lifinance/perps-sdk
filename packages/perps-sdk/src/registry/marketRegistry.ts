@@ -110,6 +110,34 @@ export const isActiveMarket = (market: Market): boolean =>
   market.isDelisted !== true
 
 /**
+ * A provider key the SDK ships a default market id for.
+ *
+ * @public
+ */
+export type DefaultMarketProvider = 'hyperliquid' | 'lighter' | 'ondo'
+
+/**
+ * The market a caller lands on when it names no market, keyed by provider and
+ * given as the venue's own `Market.id`. Each value is a fixed deployment fact,
+ * so it needs no runtime lookup.
+ *
+ * @public
+ */
+export const DEFAULT_MARKET_ID: Record<DefaultMarketProvider, string> = {
+  hyperliquid: 'BTC',
+  lighter: '1',
+  ondo: 'BTC-USD.P',
+}
+
+/**
+ * Read the default market id for a provider.
+ *
+ * @public
+ */
+export const getDefaultMarketId = (provider: DefaultMarketProvider): string =>
+  DEFAULT_MARKET_ID[provider]
+
+/**
  * The stable {@link MarketRegistry} for `(client, provider)`.
  *
  * @public

@@ -13,6 +13,8 @@ import {
 } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
+  DEFAULT_MARKET_ID,
+  getDefaultMarketId,
   getMarketRegistry,
   toMarketDisplay,
   toPerpsMarketDisplay,
@@ -203,5 +205,23 @@ describe('toPerpsMarketDisplay', () => {
         szDecimals: 2,
       })
     ).toThrow(PerpsError)
+  })
+})
+
+describe('DEFAULT_MARKET_ID', () => {
+  it('names one default market id per provider', () => {
+    expect(DEFAULT_MARKET_ID).toEqual({
+      hyperliquid: 'BTC',
+      lighter: '1',
+      ondo: 'BTC-USD.P',
+    })
+  })
+
+  it.each([
+    ['hyperliquid', 'BTC'],
+    ['lighter', '1'],
+    ['ondo', 'BTC-USD.P'],
+  ] as const)('reads %s → %s', (provider, expected) => {
+    expect(getDefaultMarketId(provider)).toBe(expected)
   })
 })

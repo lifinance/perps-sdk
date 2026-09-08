@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
+  LIGHTER_ALL_MARKETS_WILDCARD,
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_PROVIDER_KEY,
@@ -342,6 +343,14 @@ interface Recorded {
 let recorded: Recorded[] = []
 let fetchMock: ReturnType<typeof vi.fn>
 
+/** The Lighter auth token a recorded request carried, or `null` if it had none. */
+const authHeader = (request: Recorded | undefined): string | null =>
+  new Headers(request?.init?.headers).get('Authorization')
+
+/** The Lighter auth token an outbound request carries. */
+const sentToken = (init: RequestInit | undefined): string | null =>
+  new Headers(init?.headers).get('Authorization')
+
 /**
  * Per-test handler consulted before the shared defaults. Returning `undefined`
  * falls through, so a test overrides only the endpoints it cares about while
@@ -636,7 +645,7 @@ describe('LighterProvider — auth token plumbing', () => {
       r.url.includes('/api/v1/accountLimits')
     )
     expect(limitsCall).toBeDefined()
-    expect(limitsCall?.url).toContain('auth=per-call-token')
+    expect(authHeader(limitsCall)).toBe('per-call-token')
   })
 
   // A fee-tier fetch failure must NOT be coerced into a fabricated 0%/0% fee
@@ -677,7 +686,7 @@ describe('LighterProvider — auth token plumbing', () => {
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain('auth=pre-created-token')
+    expect(authHeader(limitsCall)).toBe('pre-created-token')
   })
 
   it('accepts an async `authToken` source function', async () => {
@@ -700,7 +709,7 @@ describe('LighterProvider — auth token plumbing', () => {
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain('auth=dynamic-token-1')
+    expect(authHeader(limitsCall)).toBe('dynamic-token-1')
   })
 
   it('creates a read-only token on first use and forwards it (never the read-write token) on auth-gated reads', async () => {
@@ -729,7 +738,7 @@ describe('LighterProvider — auth token plumbing', () => {
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain('auth=ro-readonly-lighter')
+    expect(authHeader(limitsCall)).toBe('ro-readonly-lighter')
   })
 
   it('reports the stored read-only token under the stored key account index', async () => {
@@ -783,7 +792,7 @@ describe('LighterProvider — auth token plumbing', () => {
     )
     expect(limitsCalls).toHaveLength(2)
     for (const call of limitsCalls) {
-      expect(call.url).toContain('auth=ro-readonly-lighter')
+      expect(authHeader(call)).toBe('ro-readonly-lighter')
     }
   })
 
@@ -1466,7 +1475,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     let createCount = 0
     let listCount = 0
     let limitsCalls = 0
-    overrideFetch((url) => {
+    overrideFetch((url, init) => {
       if (url.includes('/api/v1/tokens/create')) {
         createCount += 1
         return respond(
@@ -1479,7 +1488,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       }
       if (url.includes('/api/v1/accountLimits')) {
         limitsCalls += 1
-        return url.includes('auth=ro-stale')
+        return sentToken(init) === 'ro-stale'
           ? respond(
               { code: 61006, message: 'api token has already been revoked' },
               400
@@ -1508,7 +1517,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     let createCount = 0
     let listCount = 0
     let limitsCalls = 0
-    overrideFetch((url) => {
+    overrideFetch((url, init) => {
       if (url.includes('/api/v1/tokens/create')) {
         createCount += 1
         return respond(
@@ -1521,7 +1530,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       }
       if (url.includes('/api/v1/accountLimits')) {
         limitsCalls += 1
-        return url.includes('auth=ro-stale')
+        return sentToken(init) === 'ro-stale'
           ? respond(
               { code: 61006, message: 'api token has already been revoked' },
               400
@@ -1551,7 +1560,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     let createCount = 0
     let limitsCalls = 0
     let resolveDelayedRevocation!: () => void
-    overrideFetch((url) => {
+    overrideFetch((url, init) => {
       if (url.includes('/api/v1/tokens/create')) {
         createCount += 1
         return respond(
@@ -1563,7 +1572,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       }
       if (url.includes('/api/v1/accountLimits')) {
         limitsCalls += 1
-        if (!url.includes('auth=ro-stale')) {
+        if (sentToken(init) !== 'ro-stale') {
           return respond(LIMITS_OK)
         }
         if (limitsCalls === 1) {
@@ -1735,9 +1744,7 @@ describe('LighterProvider — registered-key auth gate', () => {
     expect(
       recorded.some((request) => request.url.includes('/api/v1/tokens/create'))
     ).toBe(false)
-    expect(recorded.some((request) => request.url.includes('auth='))).toBe(
-      false
-    )
+    expect(recorded.some((request) => authHeader(request) !== null)).toBe(false)
   })
 })
 
@@ -1879,7 +1886,7 @@ describe('LighterProvider — read-only token creation failure recovery', () => 
     expect(limitsDuringBackoff).toHaveLength(2)
     // Both reads ride the same cached standard token — no re-sign.
     for (const call of limitsDuringBackoff) {
-      expect(call.url).toContain('auth=std-1')
+      expect(authHeader(call)).toBe('std-1')
     }
 
     nowMs += 31_000 // past the 30s backoff window
@@ -1889,7 +1896,7 @@ describe('LighterProvider — read-only token creation failure recovery', () => 
       r.url.includes('/api/v1/accountLimits')
     )
     expect(limitsAfterBackoff).toHaveLength(3)
-    expect(limitsAfterBackoff[2].url).toContain('auth=ro-recovered')
+    expect(authHeader(limitsAfterBackoff[2])).toBe('ro-recovered')
   })
 
   it('keeps the requested expiry under the 10-year cap when the client clock runs ahead of the server', async () => {
@@ -1920,7 +1927,7 @@ describe('LighterProvider — read-only token creation failure recovery', () => 
     const limitsCall = recorded.find((r) =>
       r.url.includes('/api/v1/accountLimits')
     )
-    expect(limitsCall?.url).toContain('auth=ro-margin')
+    expect(authHeader(limitsCall)).toBe('ro-margin')
   })
 })
 
@@ -1997,7 +2004,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
 
     let createCount = 0
     let activeOrderCalls = 0
-    overrideFetch((url) => {
+    overrideFetch((url, init) => {
       if (url.includes('/api/v1/account?')) {
         return respond(accountWithOpenOrder)
       }
@@ -2009,7 +2016,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
       }
       if (url.includes('/api/v1/accountActiveOrders')) {
         activeOrderCalls += 1
-        return url.includes('auth=ro-stale')
+        return sentToken(init) === 'ro-stale'
           ? respond({ code: 61006, message: 'revoked' }, 400)
           : respond({ code: 0, next_cursor: '', orders: [] })
       }
@@ -2228,26 +2235,28 @@ describe('LighterProvider — getAccount carries positions', () => {
   }
 
   beforeEach(() => {
-    fetchMock.mockImplementation(async (url: string | URL) => {
-      const u = String(url)
-      if (u.includes('backend.test/v1/perps/markets')) {
-        return respond(MARKETS_RESPONSE)
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
+        recorded.push({ url: u, init })
+        if (u.includes('/api/v1/account?')) {
+          return respond(accountWithPosition)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
       }
-      if (u.includes('backend.test/v1/perps/assets')) {
-        return respond(ASSETS_RESPONSE)
-      }
-      if (u.includes('backend.test/v1/perps/providers')) {
-        return respond(PROVIDERS_RESPONSE)
-      }
-      recorded.push({ url: u })
-      if (u.includes('/api/v1/account?')) {
-        return respond(accountWithPosition)
-      }
-      if (u.includes('/api/v1/apikeys')) {
-        return respond(APIKEYS_EMPTY)
-      }
-      throw new Error(`Unhandled URL in test: ${u}`)
-    })
+    )
   })
 
   it('exposes positions deep-equal to getPositions for identical fixtures', async () => {
@@ -2271,7 +2280,7 @@ describe('LighterProvider — getFills authed path', () => {
 
     const tradesCall = recorded.find((r) => r.url.includes('/api/v1/trades'))
     expect(tradesCall).toBeDefined()
-    expect(tradesCall?.url).toContain('auth=pre-created-token')
+    expect(authHeader(tradesCall)).toBe('pre-created-token')
 
     expect(fills.items).toHaveLength(1)
     expect(fills.items[0]).toMatchObject({
@@ -3670,11 +3679,11 @@ describe('LighterProvider — two deployments on one client', () => {
       r.url.startsWith(LIGHTER_RH_REST_URL)
     )
 
-    expect(mainCall?.url).toContain('auth=main-tok')
-    expect(rhCall?.url).toContain('auth=rh-tok')
+    expect(authHeader(mainCall)).toBe('main-tok')
+    expect(authHeader(rhCall)).toBe('rh-tok')
     // No token leak: the RH host never sees the mainnet token and vice versa.
-    expect(mainCall?.url).not.toContain('rh-tok')
-    expect(rhCall?.url).not.toContain('main-tok')
+    expect(authHeader(mainCall)).not.toBe('rh-tok')
+    expect(authHeader(rhCall)).not.toBe('main-tok')
   })
 
   it('signs each deployment with its own zkLighter chain id and endpoint', async () => {
@@ -3749,11 +3758,13 @@ describe('LighterProvider — two deployments on one client', () => {
       r.url.includes('/api/v1/accountLimits')
     )
     expect(
-      limitsCalls.find((r) => r.url.startsWith(DEFAULT_LIGHTER_REST_URL))?.url
-    ).toContain('auth=ro-main')
+      authHeader(
+        limitsCalls.find((r) => r.url.startsWith(DEFAULT_LIGHTER_REST_URL))
+      )
+    ).toBe('ro-main')
     expect(
-      limitsCalls.find((r) => r.url.startsWith(LIGHTER_RH_REST_URL))?.url
-    ).toContain('auth=ro-rh')
+      authHeader(limitsCalls.find((r) => r.url.startsWith(LIGHTER_RH_REST_URL)))
+    ).toBe('ro-rh')
   })
 
   it('namespaces the backend markets fetch by provider key per deployment', async () => {
@@ -4059,6 +4070,311 @@ describe('LighterProvider — signActions arms', () => {
       provider.signActions?.(SigningMethod.WASM_BLOB, [orderStep], ADDRESS)
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
+    })
+  })
+})
+
+describe('LighterProvider — null wire lists', () => {
+  const ACCOUNT_WITH_NULL_LISTS = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      { ...ACCOUNT_PAYLOAD.accounts[0], positions: null, assets: null },
+    ],
+  }
+
+  const ACCOUNT_WITH_OPEN_ORDER = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '5.00',
+            open_order_count: 1,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '1.0',
+            avg_entry_price: '50000',
+            position_value: '50000',
+            unrealized_pnl: '10',
+            realized_pnl: '0',
+            liquidation_price: '40000',
+            total_funding_paid_out: '0',
+            margin_mode: 0,
+            allocated_margin: '2500',
+            total_discount: '0',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('getPositions returns no positions when the account lists are null', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/account?')
+        ? respond(ACCOUNT_WITH_NULL_LISTS)
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getPositions({ address: ADDRESS })).resolves.toEqual(
+      expect.objectContaining({ positions: [] })
+    )
+  })
+
+  it('getAccount reports a zero balance when the account assets are null', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/account?')
+        ? respond(ACCOUNT_WITH_NULL_LISTS)
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.positions).toEqual([])
+  })
+
+  it('getOrders returns no orders when the active-orders list is null', async () => {
+    overrideFetch((u) => {
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_WITH_OPEN_ORDER)
+      }
+      if (u.includes('/api/v1/accountActiveOrders')) {
+        return respond({ code: 0, next_cursor: '', orders: null })
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const orders = await provider.getOrders({ address: ADDRESS })
+    expect(orders.openOrders).toEqual([])
+    expect(orders.triggerOrders).toEqual([])
+  })
+
+  it('getOrder reports OrderNotFound when both order lists are null', async () => {
+    overrideFetch((u) => {
+      if (u.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_WITH_OPEN_ORDER)
+      }
+      if (
+        u.includes('/api/v1/accountActiveOrders') ||
+        u.includes('/api/v1/accountInactiveOrders')
+      ) {
+        return respond({ code: 0, next_cursor: '', orders: null })
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getOrder({ address: ADDRESS, id: '404' })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+  })
+
+  it('getFills returns no fills when the trades list is null', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/trades')
+        ? respond({ code: 0, next_cursor: '', trades: null })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const fills = await provider.getFills({ address: ADDRESS })
+    expect(fills.items).toEqual([])
+    expect(fills.pagination.hasMore).toBe(false)
+  })
+
+  it('getActivity returns no items when every history list is null', async () => {
+    overrideFetch((u) => {
+      if (u.includes('/api/v1/deposit/history')) {
+        return respond({ code: 0, deposits: null })
+      }
+      if (u.includes('/api/v1/withdraw/history')) {
+        return respond({ code: 0, withdraws: null })
+      }
+      if (u.includes('/api/v1/positionFunding')) {
+        return respond({ code: 0, position_fundings: null })
+      }
+      if (u.includes('/api/v1/liquidations')) {
+        return respond({ code: 0, liquidations: null })
+      }
+      if (u.includes('/api/v1/transfer/history')) {
+        return respond({ code: 0, transfers: null })
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const activity = await provider.getActivity({ address: ADDRESS })
+    expect(activity.items).toEqual([])
+    expect(activity.pagination.hasMore).toBe(false)
+  })
+
+  it.each([
+    [ActivityType.DEPOSIT, '/api/v1/deposit/history', { deposits: null }],
+    [ActivityType.WITHDRAWAL, '/api/v1/withdraw/history', { withdraws: null }],
+    [
+      ActivityType.FUNDING,
+      '/api/v1/positionFunding',
+      { position_fundings: null },
+    ],
+    [ActivityType.LIQUIDATION, '/api/v1/liquidations', { liquidations: null }],
+    [ActivityType.TRANSFER, '/api/v1/transfer/history', { transfers: null }],
+  ])('getActivity tolerates a null list on %s', async (type, path, body) => {
+    overrideFetch((u) =>
+      u.includes(path) ? respond({ code: 0, ...body }) : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const activity = await provider.getActivity({
+      address: ADDRESS,
+      type: [type],
+    })
+    expect(activity.items).toEqual([])
+  })
+
+  it('maps a liquidation row whose nested position list is null', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/liquidations')
+        ? respond({
+            code: 0,
+            liquidations: [
+              {
+                id: 5,
+                market_id: 0,
+                type: 'partial',
+                trade: {
+                  price: '30000.5',
+                  size: '0.25',
+                  taker_fee: '1.5',
+                  maker_fee: '0',
+                  transaction_time: 1700000000000000,
+                },
+                info: {
+                  positions: null,
+                  risk_info_before: {
+                    cross_risk_parameters: {
+                      total_account_value: '4821.75',
+                    },
+                  },
+                },
+                executed_at: 1700000000000,
+              },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+    expect(items).toHaveLength(1)
+    const [item] = items
+    if (item.type !== ActivityType.LIQUIDATION) {
+      throw new Error('expected a liquidation activity')
+    }
+    expect(item.leverageType).toBeUndefined()
+  })
+})
+
+describe('LighterProvider — history market filters', () => {
+  it('sends no market filter on positionFunding and keeps the wildcard on liquidations', async () => {
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.FUNDING, ActivityType.LIQUIDATION],
+    })
+
+    const funding = recorded.find((r) =>
+      r.url.includes('/api/v1/positionFunding')
+    )
+    expect(funding).toBeDefined()
+    expect(funding?.url).not.toContain('market_id')
+
+    const liquidations = recorded.find((r) =>
+      r.url.includes('/api/v1/liquidations')
+    )
+    expect(liquidations?.url).toContain(
+      `market_id=${LIGHTER_ALL_MARKETS_WILDCARD}`
+    )
+  })
+
+  it('keeps the wildcard market filter on accountInactiveOrders', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountInactiveOrders')
+        ? respond({ code: 0, next_cursor: '', orders: [] })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getOrder({ address: ADDRESS, id: '404' })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+
+    const inactive = recorded.find((r) =>
+      r.url.includes('/api/v1/accountInactiveOrders')
+    )
+    expect(inactive?.url).toContain(`market_id=${LIGHTER_ALL_MARKETS_WILDCARD}`)
+  })
+})
+
+describe('LighterProvider — transfer type variants', () => {
+  it.each([
+    'L2CreatePublicPool',
+    'L2CreateStakingPool',
+    'L1BurnShares',
+    'L1UnstakeAssets',
+    'ReferralProgramPayout',
+  ])('maps a %s transfer row without dropping it', async (transferType) => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/transfer/history')
+        ? respond({
+            code: 0,
+            transfers: [
+              {
+                id: `tr-${transferType}`,
+                from_account_index: 42,
+                to_account_index: 99,
+                asset_id: 3,
+                amount: '25',
+                timestamp: 1700000000000,
+                type: transferType,
+                tx_hash: '0xfeed',
+                from_route: 'r1',
+                to_route: 'r2',
+                fee: '0',
+              },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      type: ActivityType.TRANSFER,
+      meta: expect.objectContaining({ transferType }),
     })
   })
 })

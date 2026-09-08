@@ -204,7 +204,7 @@ export const LIGHTER_BASE_FEE_TIER: FeeTier = { maker: '0', taker: '0' }
 
 /**
  * Wildcard `market_id` accepted by Lighter's per-market account endpoints to
- * indicate "every market". Used on `accountInactiveOrders`, `positionFunding`,
+ * indicate "every market". Used on `accountInactiveOrders` and
  * `liquidations`.
  *
  * @internal
