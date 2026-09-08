@@ -778,6 +778,28 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('defaults accruedFunding to "0" when the frame omits total_funding_paid_out', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      const { total_funding_paid_out, ...positionWithoutFunding } = RAW_POSITION
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': positionWithoutFunding },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0].accruedFunding).toBe('0')
+      p.close()
+    })
+
     it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)
