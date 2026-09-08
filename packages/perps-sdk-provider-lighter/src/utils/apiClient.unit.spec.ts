@@ -107,9 +107,12 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     ).rejects.toBeInstanceOf(LighterAuthRejectedError)
   })
 
+  // 401 with body code 61006 fires both auth guards; the revoked-token guard
+  // runs first, so the more specific class wins.
   it.each([
     { status: 400, body: { code: 61006, message: 'revoked' } },
     { status: 200, body: { code: 61006, message: 'revoked' } },
+    { status: 401, body: { code: 61006, message: 'revoked' } },
   ])('throws LighterTokenRevokedError for $status with body code 61006', async ({
     status,
     body,
