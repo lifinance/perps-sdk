@@ -3,6 +3,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
 import { version } from '../version.js'
+import { errorCodeFromStatus } from './errorCodeFromStatus.js'
 import { fetchWithRetry, isAbortError } from './fetchWithRetry.js'
 import {
   LIFI_REQUEST_KEY,
@@ -85,7 +86,10 @@ export async function request<T>(
         error.tool = body.tool ?? 'unknown'
         throw error
       }
-      const error = new PerpsError(PerpsErrorCode.DefaultError, fallbackMessage)
+      const error = new PerpsError(
+        errorCodeFromStatus(response.status, PerpsErrorCode.DefaultError),
+        fallbackMessage
+      )
       error.tool = 'unknown'
       throw error
     }
