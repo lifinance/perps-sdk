@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 20.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb)]:
+  - @lifi/perps-sdk@12.0.0
+  - @lifi/perps-types@12.0.1
+
 ## 19.0.0
 
 ### Patch Changes
