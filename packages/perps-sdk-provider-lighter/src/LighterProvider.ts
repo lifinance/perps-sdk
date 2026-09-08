@@ -4,6 +4,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isActiveOrderStatus,
   localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
@@ -1175,13 +1176,17 @@ export const createLighterProvider = (
             clientOrderIndex
           )
         )
-        const hit = orders.find(
-          (o) => String(o.client_order_index) === clientOrderIndex
-        )
+        // `accountOrders` reaches active and inactive rows alike, so a reused
+        // client order index can match more than one row. Prefer the live one.
+        const matches = orders
+          .filter((o) => String(o.client_order_index) === clientOrderIndex)
+          .map(detail)
+        const hit =
+          matches.find((o) => isActiveOrderStatus(o.status)) ?? matches[0]
         if (hit === undefined) {
           throw notFound()
         }
-        return detail(hit)
+        return hit
       }
 
       const byOrderIndex = (o: LtOrder): boolean =>

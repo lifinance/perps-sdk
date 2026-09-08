@@ -3579,6 +3579,33 @@ describe('LighterProvider — one-call order reads', () => {
     expect(requestsTo('/api/v1/accountInactiveOrders')).toEqual([])
   })
 
+  it('prefers the live row when a client order index matches more than one', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({
+            code: 200,
+            orders: [
+              makeOrder({
+                client_order_index: 7,
+                order_index: 800,
+                status: 'canceled',
+              }),
+              makeOrder({ client_order_index: 7, order_index: 901 }),
+            ],
+          })
+        : undefined
+    )
+
+    const order = await boundProvider().getOrder({
+      address: ADDRESS,
+      id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
+    })
+
+    expect(order.orderId).toBe('901')
+    expect(order.status).toBe(OrderStatus.OPEN)
+    expect(requestsTo('/api/v1/accountOrders')).toHaveLength(1)
+  })
+
   it('ignores an accountOrders row whose client order index differs', async () => {
     overrideFetch((u) =>
       u.includes('/api/v1/accountOrders')

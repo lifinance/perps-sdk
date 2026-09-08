@@ -174,8 +174,16 @@ describe('lighterSignActions', () => {
           wasmSignParams: { market_index: 0, client_order_index: 7, nonce: 1 },
         },
         {
+          action: ActionType.PLACE_TWAP_ORDER,
+          wasmSignParams: { market_index: 0, client_order_index: 8, nonce: 2 },
+        },
+        {
+          action: ActionType.PLACE_TRIGGER_ORDER,
+          wasmSignParams: { market_index: 0, client_order_index: 9, nonce: 3 },
+        },
+        {
           action: ActionType.CANCEL_ORDER,
-          wasmSignParams: { market_index: 0, order_index: 900, nonce: 2 },
+          wasmSignParams: { market_index: 0, order_index: 900, nonce: 4 },
         },
       ]
       const result = (await lighterSignActions(
@@ -186,7 +194,9 @@ describe('lighterSignActions', () => {
       )) as WasmBlobSignedActionStep[]
 
       expect(result[0].clientOrderIndex).toBe('7')
-      expect(result[1]).not.toHaveProperty('clientOrderIndex')
+      expect(result[1].clientOrderIndex).toBe('8')
+      expect(result[2].clientOrderIndex).toBe('9')
+      expect(result[3]).not.toHaveProperty('clientOrderIndex')
     })
 
     it('throws when no Lighter API key is registered for the address', async () => {
