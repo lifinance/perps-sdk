@@ -109,6 +109,51 @@ describe('request — error rehydration', () => {
     }
   })
 
+  it('resolves an unparseable 429 body to RateLimitExceeded', async () => {
+    mockNonJsonResponse(429, 'Too Many Requests')
+
+    try {
+      await request(client.config, url, { retry: false })
+      expect.fail('Should have thrown')
+    } catch (error) {
+      const e = error as PerpsError
+      expect(e.code).toBe(PerpsErrorCode.RateLimitExceeded)
+      expect(e.message).toBe('Request failed with status code 429')
+      expect(e.tool).toBe('unknown')
+    }
+  })
+
+  it('keeps the body code on a 429 that carries a valid PerpsErrorBody', async () => {
+    mockErrorResponse(429, {
+      code: PerpsErrorCode.ThirdPartyError,
+      message: 'Venue rate limit',
+      tool: 'hyperliquid',
+    })
+
+    try {
+      await request(client.config, url, { retry: false })
+      expect.fail('Should have thrown')
+    } catch (error) {
+      const e = error as PerpsError
+      expect(e.code).toBe(PerpsErrorCode.ThirdPartyError)
+      expect(e.message).toBe('Venue rate limit')
+      expect(e.tool).toBe('hyperliquid')
+    }
+  })
+
+  it('keeps DefaultError for an unparseable 401 body', async () => {
+    mockNonJsonResponse(401, 'Unauthorized')
+
+    try {
+      await request(client.config, url, { retry: false })
+      expect.fail('Should have thrown')
+    } catch (error) {
+      const e = error as PerpsError
+      expect(e.code).toBe(PerpsErrorCode.DefaultError)
+      expect(e.message).toBe('Request failed with status code 401')
+    }
+  })
+
   it('falls back when response body is JSON but missing code field', async () => {
     mockErrorResponse(422, { message: 'some message', extra: true })
 
