@@ -237,6 +237,12 @@ export class OndoApiClient {
   }
 
   private unwrap<T>(path: string, status: number, data: unknown): T {
+    // A 401 outranks any body code: only this branch evicts the stale JWT.
+    if (status === 401) {
+      throw new OndoSessionExpiredError(
+        `Ondo rejected the session token for ${path}`
+      )
+    }
     if (isGenericResponse(data) && !data.success) {
       const bodyCode = ondoErrorCodeFromBody(data.error_code)
       if (bodyCode !== undefined) {
@@ -246,11 +252,6 @@ export class OndoApiClient {
           bodyCode
         )
       }
-    }
-    if (status === 401) {
-      throw new OndoSessionExpiredError(
-        `Ondo rejected the session token for ${path}`
-      )
     }
     if (status < 200 || status >= 300) {
       throw new OndoApiError(

@@ -105,6 +105,15 @@ describe('LighterApiClient body error codes', () => {
     })
   })
 
+  it('maps a 200 body with a collateral code to InsufficientBalance', async () => {
+    const client = clientWith(
+      stubFetch(200, { code: 21301, message: 'not enough collateral' })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.InsufficientBalance,
+    })
+  })
+
   it('keeps ThirdPartyError for a non-2xx body with an unrecognised code', async () => {
     const client = clientWith(
       stubFetch(400, { code: 21702, message: 'invalid order type' })
