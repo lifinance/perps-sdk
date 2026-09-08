@@ -7,6 +7,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const sourcePath = join(packageRoot, 'wasm', 'wasm_exec.js')
@@ -19,6 +20,16 @@ const outputPath = join(
 )
 
 const source = readFileSync(sourcePath, 'utf8')
+
+// The source ships verbatim, so a Go toolchain that reintroduces script-text
+// evaluation must stop here rather than reach the emitted module.
+const evaluation = SCRIPT_TEXT_EVALUATION.exec(source)
+if (evaluation) {
+  console.error(
+    `generate-wasm-exec: ${sourcePath} evaluates script text (${evaluation[0]}), which a CSP without 'unsafe-eval' blocks`
+  )
+  process.exit(1)
+}
 
 // The source is Go-authored JavaScript that the TypeScript checker cannot type;
 // it stays verbatim, so the whole file opts out of checking.

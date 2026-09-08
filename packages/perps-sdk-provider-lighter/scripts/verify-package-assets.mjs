@@ -10,6 +10,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const dist = join(packageRoot, 'dist')
@@ -101,10 +102,6 @@ for (const format of ['esm', 'cjs']) {
     `dist/${format}/signers/generated/wasmExecRuntime.js does not export Go's runtime class`
   )
 }
-
-// A host CSP without 'unsafe-eval' throws on any script-text evaluation, so no
-// emitted JavaScript may evaluate a string.
-const SCRIPT_TEXT_EVALUATION = /new Function\(|\beval\(/
 
 const oversizedJs = []
 const evaluatingJs = []
