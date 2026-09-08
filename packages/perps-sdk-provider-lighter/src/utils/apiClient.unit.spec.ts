@@ -154,6 +154,41 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
   })
 })
 
+describe('LighterApiClient.getAuthed (authentication error code)', () => {
+  it.each([
+    {
+      channel: 'a 200 body carrying the invalid-auth code',
+      status: 200,
+      body: { code: 20013, message: 'invalid auth string' },
+    },
+    {
+      channel: 'a 401 HTTP status',
+      status: 401,
+      body: { message: 'unauthorized' },
+    },
+    {
+      channel: 'a 403 HTTP status',
+      status: 403,
+      body: { message: 'forbidden' },
+    },
+    {
+      channel: 'a 200 body carrying the revoked-token code',
+      status: 200,
+      body: { code: 61006, message: 'revoked' },
+    },
+    {
+      channel: 'a 400 body carrying the revoked-token code',
+      status: 400,
+      body: { code: 61006, message: 'revoked' },
+    },
+  ])('reports $channel as Unauthorized', async ({ status, body }) => {
+    const client = clientWith(stubFetch(status, body))
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+  })
+})
+
 describe('LighterApiClient.getAuthed (auth channel)', () => {
   const recordingFetch = (): {
     calls: { url: string; init?: RequestInit }[]
