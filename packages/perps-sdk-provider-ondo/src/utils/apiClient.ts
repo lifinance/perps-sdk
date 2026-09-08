@@ -1,5 +1,6 @@
 import {
   DISABLED_RETRY,
+  errorCodeFromStatus,
   fetchWithRetry,
   PerpsError,
   type ResolvedRetryPolicy,
@@ -7,6 +8,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OndoGenericResponse } from '../types/auth.js'
 import type { OndoPageInfo } from '../types/wire.js'
+import { ondoErrorCodeFromBody } from './ondoErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -30,8 +32,12 @@ export type OndoHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 export class OndoApiError extends PerpsError {
   readonly errorCode: string | undefined
 
-  constructor(message: string, errorCode?: string) {
-    super(PerpsErrorCode.ThirdPartyError, message)
+  constructor(
+    message: string,
+    errorCode?: string,
+    code: PerpsErrorCode = PerpsErrorCode.ThirdPartyError
+  ) {
+    super(code, message)
     this.errorCode = errorCode
   }
 }
@@ -100,7 +106,8 @@ const isGenericResponse = (
  * the LI.FI backend. Every response is an `OndoGenericResponse` envelope; the
  * client unwraps `result` on success and throws {@link OndoApiError} (carrying
  * the wire `error_code`) otherwise. An HTTP 401 throws
- * {@link OndoSessionExpiredError} so callers can re-run the SIWE login.
+ * {@link OndoSessionExpiredError} so callers can re-run the SIWE login, and an
+ * HTTP 429 carries `RateLimitExceeded`.
  * @public
  */
 export class OndoApiClient {
@@ -232,15 +239,27 @@ export class OndoApiClient {
   }
 
   private unwrap<T>(path: string, status: number, data: unknown): T {
+    // A 401 outranks any body code: only this branch evicts the stale JWT.
     if (status === 401) {
       throw new OndoSessionExpiredError(
         `Ondo rejected the session token for ${path}`
       )
     }
+    if (isGenericResponse(data) && !data.success) {
+      const bodyCode = ondoErrorCodeFromBody(data.error_code)
+      if (bodyCode !== undefined) {
+        throw new OndoApiError(
+          `Ondo API error for ${path}: ${data.error_code} — ${data.error ?? 'no error message'}`,
+          data.error_code,
+          bodyCode
+        )
+      }
+    }
     if (status < 200 || status >= 300) {
       throw new OndoApiError(
         `Ondo API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`,
-        isGenericResponse(data) ? data.error_code : undefined
+        isGenericResponse(data) ? data.error_code : undefined,
+        errorCodeFromStatus(status, PerpsErrorCode.ThirdPartyError)
       )
     }
     if (!isGenericResponse(data)) {

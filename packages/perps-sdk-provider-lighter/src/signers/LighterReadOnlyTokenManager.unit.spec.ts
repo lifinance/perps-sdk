@@ -353,6 +353,27 @@ describe('LighterReadOnlyTokenManager', () => {
       expect(await storage.get(key)).toBeNull()
     })
 
+    it('treats a stored token carrying a line break as absent', async () => {
+      const storage = createMemoryStorage()
+      const key = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`
+      await storage.set(
+        key,
+        JSON.stringify({
+          token: 'ro:7:all:1731536000:abc\r\nX-Injected: 1',
+          expiry: ANCHOR_NOW_SECONDS + 365 * 86_400,
+          scope: 'all',
+          accountIndex: 7,
+        })
+      )
+      const manager = new LighterReadOnlyTokenManager({
+        storage,
+        now: () => ANCHOR_NOW_MS,
+      })
+
+      expect(await manager.get(ADDRESS_A, 7)).toBeUndefined()
+      expect(await storage.get(key)).toBeNull()
+    })
+
     it('treats unparseable stored JSON as absent', async () => {
       const storage = createMemoryStorage()
       const key = `lifi:perps:lighter:rotoken:${ADDRESS_A}:7`

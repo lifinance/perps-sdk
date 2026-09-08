@@ -20,9 +20,9 @@ const clientWith = (fetchImpl: typeof fetch): LighterApiClient =>
 
 describe('fetchAppliedReferralCode', () => {
   it('queries userReferrals with the lowercased address and the auth token', async () => {
-    const urls: string[] = []
-    const client = clientWith(async (input) => {
-      urls.push(String(input))
+    const requests: { url: string; init?: RequestInit }[] = []
+    const client = clientWith(async (input, init) => {
+      requests.push({ url: String(input), init })
       return new Response(JSON.stringify({ code: 200, used_code: 'LIFI' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -33,11 +33,14 @@ describe('fetchAppliedReferralCode', () => {
       fetchAppliedReferralCode(client, ADDRESS, AUTH_TOKEN)
     ).resolves.toBe('LIFI')
 
-    expect(urls).toHaveLength(1)
-    const url = new URL(urls[0])
+    expect(requests).toHaveLength(1)
+    const url = new URL(requests[0].url)
     expect(url.pathname).toBe('/api/v1/referral/userReferrals')
     expect(url.searchParams.get('l1_address')).toBe(ADDRESS.toLowerCase())
-    expect(url.searchParams.get('auth')).toBe(AUTH_TOKEN)
+    expect(url.searchParams.get('auth')).toBeNull()
+    expect(new Headers(requests[0].init?.headers).get('Authorization')).toBe(
+      AUTH_TOKEN
+    )
   })
 
   it('returns the empty used_code verbatim when no referral is applied', async () => {

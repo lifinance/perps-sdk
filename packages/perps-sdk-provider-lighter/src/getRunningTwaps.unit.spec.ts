@@ -82,10 +82,10 @@ const order = (type: string, orderIndex: number): LtOrder => ({
 
 describe('Lighter getRunningTwaps', () => {
   it('queries active account orders and excludes twap-sub children', async () => {
-    const requests: string[] = []
-    const fetchImpl: typeof fetch = async (input) => {
+    const requests: { url: string; init?: RequestInit }[] = []
+    const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input)
-      requests.push(url)
+      requests.push({ url, init })
       if (url.includes('/markets')) {
         return Response.json({ markets: [MARKET] })
       }
@@ -134,9 +134,14 @@ describe('Lighter getRunningTwaps', () => {
       marketId: '1',
     })
 
-    expect(
-      requests.find((url) => url.includes('/api/v1/accountActiveOrders'))
-    ).toContain('account_index=42&market_id=1&auth=read-token')
+    const ordersRequest = requests.find((request) =>
+      request.url.includes('/api/v1/accountActiveOrders')
+    )
+    expect(ordersRequest?.url).toContain('account_index=42&market_id=1')
+    expect(ordersRequest?.url).not.toContain('auth=')
+    expect(new Headers(ordersRequest?.init?.headers).get('Authorization')).toBe(
+      'read-token'
+    )
     expect(result).toEqual([
       {
         twapId: '88',
@@ -163,10 +168,10 @@ describe('Lighter getRunningTwaps', () => {
   })
 
   it('accumulates twaps across every order-bearing market when no market is given', async () => {
-    const requests: string[] = []
-    const fetchImpl: typeof fetch = async (input) => {
+    const requests: { url: string; init?: RequestInit }[] = []
+    const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input)
-      requests.push(url)
+      requests.push({ url, init })
       if (url.includes('/markets')) {
         return Response.json({ markets: [MARKET, MARKET_TWO] })
       }
@@ -216,14 +221,16 @@ describe('Lighter getRunningTwaps', () => {
 
     const result = await provider.getRunningTwaps({ address: ADDRESS })
 
-    const orderRequests = requests.filter((url) =>
-      url.includes('/api/v1/accountActiveOrders')
+    const orderRequests = requests.filter((request) =>
+      request.url.includes('/api/v1/accountActiveOrders')
     )
     expect(orderRequests).toHaveLength(2)
-    expect(orderRequests[0]).toContain('market_id=1')
-    expect(orderRequests[1]).toContain('market_id=2')
-    for (const url of orderRequests) {
-      expect(url).toContain('auth=read-token')
+    expect(orderRequests[0].url).toContain('market_id=1')
+    expect(orderRequests[1].url).toContain('market_id=2')
+    for (const request of orderRequests) {
+      expect(new Headers(request.init?.headers).get('Authorization')).toBe(
+        'read-token'
+      )
     }
     expect(result.map((twap) => [twap.twapId, twap.market.id])).toEqual([
       ['88', '1'],

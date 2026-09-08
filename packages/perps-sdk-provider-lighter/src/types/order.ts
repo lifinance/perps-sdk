@@ -1,4 +1,5 @@
 // Order shapes returned by Lighter's REST API.
+// Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 /**
  * Order payload returned by Lighter's REST API. Amounts and prices are decimal
@@ -46,6 +47,8 @@ export type LtOrder = {
   timestamp: number
   created_at: number
   updated_at: number
+  /** Lighter bit flags recording the order's wire options. */
+  order_flags?: number
   /**
    * Unix timestamp in microseconds. Lighter documents no unit, and its public
    * trade rows report this member in microseconds while the sibling
@@ -63,7 +66,20 @@ export type LtOrder = {
 export interface LtOrdersResponse {
   code: number
   next_cursor: string
-  orders: LtOrder[]
+  orders: LtOrder[] | null
+}
+
+/**
+ * Order-lookup response from Lighter's `accountOrders` path. The lookup takes
+ * up to 20 `client_order_indexes` rather than a page, so it carries no cursor.
+ * It reaches the last 10K active orders with no time bound, and the last 1K
+ * inactive orders from the past 24 hours.
+ *
+ * @public
+ */
+export interface LtAccountOrdersResponse {
+  code: number
+  orders: LtOrder[] | null
 }
 
 /**

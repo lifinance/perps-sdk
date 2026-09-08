@@ -70,9 +70,40 @@ describe('infoRequest', () => {
     )
   })
 
-  it('raises a tagged ThirdPartyError on non-2xx', async () => {
+  const statusCases: [number, PerpsErrorCode][] = [
+    [429, PerpsErrorCode.RateLimitExceeded],
+    [401, PerpsErrorCode.Unauthorized],
+    [403, PerpsErrorCode.AgentUnauthorized],
+    [500, PerpsErrorCode.ThirdPartyError],
+    [502, PerpsErrorCode.ThirdPartyError],
+    [418, PerpsErrorCode.ThirdPartyError],
+  ]
+
+  it.each(
+    statusCases
+  )('raises a tagged error for status %i with code %i', async (status, code) => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('boom', { status: 500 })
+      new Response('boom', { status })
+    )
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
+    ).rejects.toMatchObject({ code, tool: 'hyperliquid' })
+  })
+
+  it('keeps the status-resolved code when a non-ok body carries exchange rejection text', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'err',
+          response: 'Insufficient margin to place order.',
+        }),
+        { status: 422 }
+      )
     )
 
     await expect(

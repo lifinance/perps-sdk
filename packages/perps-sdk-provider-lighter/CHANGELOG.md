@@ -1,5 +1,60 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 22.0.0
+
+### Major Changes
+
+- [#444](https://github.com/lifinance/perps-sdk/pull/444) [`76a9f3f`](https://github.com/lifinance/perps-sdk/commit/76a9f3f69bf24b1801492f64f560e24a05e72a3c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter authentication rejections now carry `Unauthorized` instead of `ThirdPartyError`, so a consumer can detect a rejected or revoked token from the error code.
+
+  Both a rejected token and a revoked token report the same `Unauthorized` code. The error classes stay internal, so a consumer cannot tell the two apart. Treat every `Unauthorized` from a Lighter read as "re-provision the token".
+
+- [#446](https://github.com/lifinance/perps-sdk/pull/446) [`050dcd3`](https://github.com/lifinance/perps-sdk/commit/050dcd3960c8e1bbd616a6ec3f8f5049023954ef) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parse the venue error body at the Lighter and Ondo provider boundaries and map a recognised rejection to the matching `PerpsErrorCode`. A Lighter body `code` for a nonce, margin, or balance rejection now produces `InvalidNonce`, `InsufficientMargin`, or `InsufficientBalance`; an Ondo `error_code` of `insufficient_margin` or `clientOrderID_collision` now produces `InsufficientMargin` or `NonceAlreadyUsed`. A body that no rule recognises keeps the code the status resolves to. An HTTP 401 outranks every Ondo body code, so a rejected session still throws `OndoSessionExpiredError` and the caller still evicts the stored JWT. `OndoApiError` accepts an optional `PerpsErrorCode` as its third constructor argument.
+
+- [#445](https://github.com/lifinance/perps-sdk/pull/445) [`00d7ae9`](https://github.com/lifinance/perps-sdk/commit/00d7ae9dbfe9bfdbb158e06d75c42a54d9d76d07) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Send the Lighter auth token in the `Authorization` header on the `changeAccountTier` and `referral/use` POSTs instead of the form body.
+
+  **Breaking:** `LighterApiClient.postForm(path, params)` becomes `postForm(path, authToken, params)`. A caller that reaches the method directly must pass the token as the second argument.
+
+  `LighterApiClient` also rejects a blank auth token with `PerpsError(ValidationError)` before it dispatches, on both `getAuthed` and `postForm`.
+
+### Minor Changes
+
+- [#441](https://github.com/lifinance/perps-sdk/pull/441) [`fa4ba25`](https://github.com/lifinance/perps-sdk/commit/fa4ba25135cd5fd1e54ee6d970fb9ee6d3ea060b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read Lighter orders through a single request and resolve an order by its client order index.
+
+  `getOrders` with no `marketId` now issues one `accountActiveOrders` request with the venue's all-markets `market_id`, instead of one request per market that holds an order. `getOrders` with a `marketId` keeps its single filtered request.
+
+  `getOrder` resolves an id prefixed with `LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX` through one `/api/v1/accountOrders` request, for an active and for a filled order. A bare id keeps its `order_index` meaning, so an `orderId` from the `orderUpdates` or `fills` stream resolves as before. When more than one row carries the same client order index, `getOrder` returns the active row.
+
+  `WasmBlobSignedActionStep` gains an optional `clientOrderIndex`. The Lighter signer projects it from the params it signed, so a caller can resolve a placed order before the venue assigns an `order_index`.
+
+### Patch Changes
+
+- Updated dependencies [[`fa4ba25`](https://github.com/lifinance/perps-sdk/commit/fa4ba25135cd5fd1e54ee6d970fb9ee6d3ea060b)]:
+  - @lifi/perps-types@12.1.0
+
+## 21.0.0
+
+### Major Changes
+
+- [#439](https://github.com/lifinance/perps-sdk/pull/439) [`80791fb`](https://github.com/lifinance/perps-sdk/commit/80791fb4fcdbda4de757ad46eab5e2303d5529f6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Guard null wire lists in the Lighter provider, adopt the 2026-08-18 Lighter OpenAPI spec, and export a default market id per provider.
+
+  Lighter serializes an empty REST list as JSON `null`. Every list the provider reads is now typed `T[] | null` and normalized to an array at the response boundary, so an account with no trades, deposits, withdrawals, funding rows, liquidations, transfers, orders, positions, or assets returns an empty result instead of throwing.
+
+  The provider also sends the Lighter auth token in the `Authorization` header, drops the removed `market_id` wildcard from `/api/v1/positionFunding`, and no longer advertises the `1w` OHLCV interval that the spec removed.
+
+  **Breaking:** `mapInterval('1w')` throws `PerpsError(ValidationError)` where it previously returned `'1w'`. Lighter's 2026-08-18 spec removed the weekly resolution, so a caller that charts weekly Lighter candles must pick `'1d'` or another supported interval.
+
+  **Breaking:** `LtDetailedAccount.positions`, `LtDetailedAccount.assets`, and `LtDetailedAccountsResponse.accounts` are typed `T[] | null`, which is the shape Lighter puts on the wire. A consumer that reads those fields off the raw wire type must handle `null`, or read the new `LtAccount` type, whose `positions` and `assets` are always arrays.
+
+  `@lifi/perps-sdk` exports `DEFAULT_MARKET_ID` and `getDefaultMarketId` for the market a caller lands on when it names none.
+
+## 20.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb)]:
+  - @lifi/perps-sdk@12.0.0
+  - @lifi/perps-types@12.0.1
+
 ## 19.0.0
 
 ### Patch Changes

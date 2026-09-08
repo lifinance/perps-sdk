@@ -1,5 +1,32 @@
 # @lifi/perps-sdk
 
+## 12.1.0
+
+### Minor Changes
+
+- [#439](https://github.com/lifinance/perps-sdk/pull/439) [`80791fb`](https://github.com/lifinance/perps-sdk/commit/80791fb4fcdbda4de757ad46eab5e2303d5529f6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Guard null wire lists in the Lighter provider, adopt the 2026-08-18 Lighter OpenAPI spec, and export a default market id per provider.
+
+  Lighter serializes an empty REST list as JSON `null`. Every list the provider reads is now typed `T[] | null` and normalized to an array at the response boundary, so an account with no trades, deposits, withdrawals, funding rows, liquidations, transfers, orders, positions, or assets returns an empty result instead of throwing.
+
+  The provider also sends the Lighter auth token in the `Authorization` header, drops the removed `market_id` wildcard from `/api/v1/positionFunding`, and no longer advertises the `1w` OHLCV interval that the spec removed.
+
+  **Breaking:** `mapInterval('1w')` throws `PerpsError(ValidationError)` where it previously returned `'1w'`. Lighter's 2026-08-18 spec removed the weekly resolution, so a caller that charts weekly Lighter candles must pick `'1d'` or another supported interval.
+
+  **Breaking:** `LtDetailedAccount.positions`, `LtDetailedAccount.assets`, and `LtDetailedAccountsResponse.accounts` are typed `T[] | null`, which is the shape Lighter puts on the wire. A consumer that reads those fields off the raw wire type must handle `null`, or read the new `LtAccount` type, whose `positions` and `assets` are always arrays.
+
+  `@lifi/perps-sdk` exports `DEFAULT_MARKET_ID` and `getDefaultMarketId` for the market a caller lands on when it names none.
+
+## 12.0.0
+
+### Major Changes
+
+- [#436](https://github.com/lifinance/perps-sdk/pull/436) [`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The provider error boundaries now derive `PerpsErrorCode` from the HTTP status. A Hyperliquid `/info` failure carries `RateLimitExceeded` for a 429, `Unauthorized` for a 401 and `AgentUnauthorized` for a 403, and keeps `ThirdPartyError` for every other status. A LI.FI request with an unparseable body carries `RateLimitExceeded` for a 429 and keeps `DefaultError` for every other status. `resolveQuotePrice` throws `MarketNotFound` in place of `ServerError` when the provider returns no price. Consumers that branch on the code, or that match the status inside the message string, must update. `@lifi/perps-sdk` also exports `errorCodeFromStatus`, the helper each boundary shares, and `@lifi/perps-types` documents the contract of `ServerError` and `ThirdPartyError`.
+
+### Patch Changes
+
+- Updated dependencies [[`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb)]:
+  - @lifi/perps-types@12.0.1
+
 ## 11.0.0
 
 ### Major Changes

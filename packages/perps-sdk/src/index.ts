@@ -20,7 +20,10 @@ export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 // Registries
 export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
+export type { DefaultMarketProvider } from './registry/marketRegistry.js'
 export {
+  DEFAULT_MARKET_ID,
+  getDefaultMarketId,
   getMarketRegistry,
   isActiveMarket,
   MarketRegistry,
@@ -82,6 +85,7 @@ export {
 } from './storage/parseStoredRecord.js'
 export { createMemoryStorage } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
+export { errorCodeFromStatus } from './transport/errorCodeFromStatus.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
 export { fetchWithRetry } from './transport/fetchWithRetry.js'
 export type {

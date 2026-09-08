@@ -9,6 +9,7 @@ import {
   LIGHTER_SUCCESS_CODES,
   LIGHTER_TOKEN_REVOKED_CODE,
 } from '../constants.js'
+import { lighterErrorCodeFromBody } from './lighterErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -47,6 +48,28 @@ const isLighterAuthRejection = (status: number, data: unknown): boolean =>
 
 const isLighterTokenRevoked = (data: unknown): boolean =>
   lighterBodyErrorCode(data) === LIGHTER_TOKEN_REVOKED_CODE
+
+/**
+ * A CR or LF in a token would split the request when it reaches a
+ * `fetchImpl` that does not validate header values itself. A blank token
+ * would dispatch an `Authorization` header that carries no credential at
+ * all, which Lighter answers as a generic rejection.
+ */
+const assertHeaderSafe = (authToken: string): string => {
+  if (authToken.trim().length === 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token is blank and cannot go in a header'
+    )
+  }
+  if (/[\r\n]/.test(authToken)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Lighter auth token carries a line break and cannot go in a header'
+    )
+  }
+  return authToken
+}
 
 /** @internal */
 export const LIGHTER_RETRY_DEFAULTS: ResolvedRetryPolicy = {
@@ -115,9 +138,17 @@ export interface LighterApiClientOptions {
  *
  * Auth-gated endpoints (accountLimits, accountActiveOrders, deposit/history,
  * withdraw/history, positionFunding, liquidations, transfer/history) take the
- * Lighter read-only token as the `auth` query parameter — NOT as an
- * `Authorization` header. This matches Lighter's OpenAPI spec and lets the
- * same call work browser-direct and from server-side proxies.
+ * Lighter read-only token in the `Authorization` header, which is the only
+ * auth channel Lighter's OpenAPI spec declares. The header makes such a read
+ * CORS-preflighted; both Lighter hosts answer the `OPTIONS` probe with
+ * `Authorization` in `Access-Control-Allow-Headers` and
+ * `Access-Control-Max-Age: 86400`, so a browser sends one preflight per day
+ * per origin.
+ *
+ * The `/api/v1/changeAccountTier` and `/api/v1/referral/use` mutations send
+ * the same header with a fresh per-call token. Their `OPTIONS` response is
+ * not yet probed against a live host, so a browser may reject the preflight
+ * even though the GET paths pass.
  *
  * Lighter signals rate limits through HTTP 429 or HTTP 405. This client never
  * retries such a response. It throws `RateLimitExceeded` and holds all network
@@ -198,29 +229,24 @@ export class LighterApiClient {
     return this.getChecked<T>(path, params)
   }
 
-  /**
-   * Auth-gated GET. The token is appended as the `auth` query parameter (per
-   * Lighter's OpenAPI spec); the `Authorization` header is intentionally NOT
-   * used — Lighter rejects it.
-   */
+  /** Auth-gated GET carrying the Lighter token in the `Authorization` header. */
   async getAuthed<T>(
     path: string,
     authToken: string,
     params: ApiParams = {}
   ): Promise<T> {
-    const { status, data } = await this.getWithStatus<unknown>(path, {
-      ...params,
-      auth: authToken,
+    const { status, data } = await this.sendGet<unknown>(path, params, {
+      Authorization: assertHeaderSafe(authToken),
     })
     if (isLighterTokenRevoked(data)) {
       throw new LighterTokenRevokedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter reports a revoked auth token for ${path}`
       )
     }
     if (isLighterAuthRejection(status, data)) {
       throw new LighterAuthRejectedError(
-        PerpsErrorCode.ThirdPartyError,
+        PerpsErrorCode.Unauthorized,
         `Lighter rejected the auth token for ${path}`
       )
     }
@@ -237,11 +263,19 @@ export class LighterApiClient {
     path: string,
     params?: ApiParams
   ): Promise<{ status: number; data: T }> {
+    return this.sendGet<T>(path, params)
+  }
+
+  private async sendGet<T>(
+    path: string,
+    params?: ApiParams,
+    headers?: Record<string, string>
+  ): Promise<{ status: number; data: T }> {
     this.assertRequestAllowed()
     const url = this.buildUrl(path, params)
     const response = await fetchWithRetry(
       url,
-      {},
+      headers === undefined ? {} : { headers },
       {
         policy: this.policy,
         fetchImpl: this.fetchWithHold,
@@ -254,13 +288,15 @@ export class LighterApiClient {
   }
 
   /**
-   * Form-encoded POST to a Lighter mutation endpoint. Single-shot — never
-   * retried, since these are money/state writes whose outcome is unknown on a
-   * transport failure. Surfaces the raw `{status, body}` pair so the caller can
-   * map Lighter's per-endpoint business-rule `code` to a domain error verbatim.
+   * Form-encoded POST to a Lighter mutation endpoint, carrying the Lighter
+   * token in the `Authorization` header. Single-shot — never retried, since
+   * these are money/state writes whose outcome is unknown on a transport
+   * failure. Surfaces the raw `{status, body}` pair so the caller can map
+   * Lighter's per-endpoint business-rule `code` to a domain error verbatim.
    */
   async postForm<T>(
     path: string,
+    authToken: string,
     params: ApiParams
   ): Promise<{ status: number; data: T }> {
     const body = new URLSearchParams()
@@ -269,7 +305,10 @@ export class LighterApiClient {
     }
     const response = await this.fetchWithHold(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        Authorization: assertHeaderSafe(authToken),
+      },
       body: body.toString(),
       signal: this.signal,
     })
@@ -279,27 +318,31 @@ export class LighterApiClient {
   }
 
   private async getChecked<T>(path: string, params?: ApiParams): Promise<T> {
-    const { status, data } = await this.getWithStatus<unknown>(path, params)
+    const { status, data } = await this.sendGet<unknown>(path, params)
     this.assertOk(path, status, data)
     return data as T
   }
 
   /**
    * Post-parse validation shared by every checked read: rejects a non-2xx HTTP
-   * status and a 200 body carrying a non-success `code`. Callers that surface a
-   * distinct auth-rejection error must run that check before this one.
+   * status and a 200 body carrying a non-success `code`. A body `code` that
+   * names a nonce, margin, or balance rejection sets the matching
+   * `PerpsErrorCode`; every other rejection is `ThirdPartyError`. Callers that
+   * surface a distinct auth-rejection error must run that check before this one.
    */
   private assertOk(path: string, status: number, data: unknown): void {
+    const errorCode = lighterBodyErrorCode(data)
+    const code =
+      lighterErrorCodeFromBody(errorCode) ?? PerpsErrorCode.ThirdPartyError
     if (status < 200 || status >= 300) {
       throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
+        code,
         `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }
-    const errorCode = lighterBodyErrorCode(data)
     if (errorCode !== undefined) {
       throw new PerpsError(
-        PerpsErrorCode.ThirdPartyError,
+        code,
         `Lighter API error for ${path}: code ${errorCode} — ${JSON.stringify(data).slice(0, 200)}`
       )
     }

@@ -1,5 +1,6 @@
 // Activity history shapes returned by Lighter's REST API
 // (deposits, withdrawals, funding payments, liquidations, transfers).
+// Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 import type { LtAccountPosition } from './account.js'
 
@@ -27,7 +28,7 @@ export interface LtDepositHistoryItem {
  */
 export interface LtDepositHistoryResponse {
   code: number
-  deposits: LtDepositHistoryItem[]
+  deposits: LtDepositHistoryItem[] | null
   cursor?: string
 }
 
@@ -56,7 +57,7 @@ export interface LtWithdrawHistoryItem {
  */
 export interface LtWithdrawHistoryResponse {
   code: number
-  withdraws: LtWithdrawHistoryItem[]
+  withdraws: LtWithdrawHistoryItem[] | null
   cursor?: string
 }
 
@@ -80,6 +81,8 @@ export interface LtPositionFunding {
   rate: string
   position_size: string
   position_side: string
+  /** Funding-fee discount Lighter applied to `change`, as a decimal string. */
+  discount?: string
 }
 
 /**
@@ -90,7 +93,7 @@ export interface LtPositionFunding {
  */
 export interface LtPositionFundingsResponse {
   code: number
-  position_fundings: LtPositionFunding[]
+  position_fundings: LtPositionFunding[] | null
   next_cursor?: string
 }
 
@@ -142,7 +145,7 @@ export type LtLiquidationPosition = Pick<
  * @public
  */
 export interface LtLiquidationInfo {
-  positions: LtLiquidationPosition[]
+  positions: LtLiquidationPosition[] | null
   risk_info_before: {
     // Lighter's OpenAPI does not require this member, so an account without
     // cross exposure may omit it.
@@ -176,7 +179,7 @@ export interface LtLiquidation {
  */
 export interface LtLiquidationsResponse {
   code: number
-  liquidations: LtLiquidation[]
+  liquidations: LtLiquidation[] | null
   next_cursor?: string
 }
 
@@ -212,6 +215,6 @@ export interface LtTransfer {
  */
 export interface LtTransferHistoryResponse {
   code: number
-  transfers: LtTransfer[]
+  transfers: LtTransfer[] | null
   cursor?: string
 }

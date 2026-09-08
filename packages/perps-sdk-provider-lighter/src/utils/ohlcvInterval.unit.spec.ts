@@ -11,10 +11,16 @@ const SUPPORTED_CASES: [OhlcvInterval, string][] = [
   ['4h', '4h'],
   ['12h', '12h'],
   ['1d', '1d'],
-  ['1w', '1w'],
 ]
 
-const UNSUPPORTED_INTERVALS: OhlcvInterval[] = ['3m', '2h', '8h', '3d', '1M']
+const UNSUPPORTED_INTERVALS: OhlcvInterval[] = [
+  '3m',
+  '2h',
+  '8h',
+  '3d',
+  '1w',
+  '1M',
+]
 
 describe('mapInterval', () => {
   it.each(SUPPORTED_CASES)('maps %s → %s', (input, expected) => {

@@ -3,6 +3,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { OndoAuthToken, OndoGenericResponse } from '../types/auth.js'
 import {
+  ONDO_RETRY_DEFAULTS,
   OndoApiClient,
   OndoApiError,
   OndoSessionExpiredError,
@@ -39,6 +40,14 @@ const zeroDelayRetry: ResolvedRetryPolicy = {
   classify: ({ response }) =>
     response.status === 503 ? 'retry-server' : 'fail',
 }
+
+/** Keeps a policy's own `classify` and `maxAttempts` while removing the wall-clock backoff. */
+const withoutBackoff = (policy: ResolvedRetryPolicy): ResolvedRetryPolicy => ({
+  ...policy,
+  baseDelayMs: 0,
+  maxDelayMs: 0,
+  respectRetryAfter: false,
+})
 
 const createClient = (
   responses: Response[],
@@ -177,6 +186,77 @@ describe('OndoApiClient', () => {
     })
   })
 
+  it('maps the insufficient_margin error_code to InsufficientMargin', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'reducing leverage with insufficient margin',
+          error_code: 'insufficient_margin',
+        },
+        400
+      ),
+    ])
+
+    const promise = client.post('/v1/perps/leverage', {})
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.InsufficientMargin,
+      errorCode: 'insufficient_margin',
+    })
+  })
+
+  it('maps the clientOrderID_collision error_code to NonceAlreadyUsed', async () => {
+    const { client } = createClient([
+      jsonResponse({
+        success: false,
+        error: 'client order id already used',
+        error_code: 'clientOrderID_collision',
+      }),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.NonceAlreadyUsed,
+      errorCode: 'clientOrderID_collision',
+    })
+  })
+
+  it('maps the clientOrderID_collision error_code on a non-2xx status too', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'client order id already used',
+          error_code: 'clientOrderID_collision',
+        },
+        409
+      ),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.NonceAlreadyUsed,
+      errorCode: 'clientOrderID_collision',
+    })
+  })
+
+  it('keeps the status-resolved code for an unrecognised error_code on a non-2xx status', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'post only order has a match',
+          error_code: 'post_only_has_match',
+        },
+        400
+      ),
+    ])
+
+    await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      errorCode: 'post_only_has_match',
+    })
+  })
+
   it('throws OndoApiError on a non-2xx HTTP status', async () => {
     const { client } = createClient([
       jsonResponse({ success: false, error: 'internal' }, 500),
@@ -190,9 +270,70 @@ describe('OndoApiClient', () => {
     })
   })
 
+  it('throws RateLimitExceeded on HTTP 429', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: false, error: 'too many requests' }, 429),
+    ])
+
+    const promise = client.get('/v1/perps/markets')
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+      message: expect.stringContaining('429'),
+    })
+  })
+
+  it('reports RateLimitExceeded after the 429 retry budget is exhausted', async () => {
+    const { client, fetchImpl } = createClient(
+      [
+        jsonResponse({ success: false, error: 'too many requests' }, 429),
+        jsonResponse({ success: false, error: 'too many requests' }, 429),
+      ],
+      { policy: withoutBackoff(ONDO_RETRY_DEFAULTS) }
+    )
+
+    const promise = client.get('/v1/perps/markets')
+    await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps ThirdPartyError on a non-429 client error status', async () => {
+    const { client } = createClient([
+      jsonResponse({ success: false, error: 'bad request' }, 400),
+    ])
+
+    await expect(client.get('/v1/perps/markets')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+  })
+
   it('throws OndoSessionExpiredError on HTTP 401', async () => {
     const { client } = createClient([
       jsonResponse({ success: false, error: 'token expired' }, 401),
+    ])
+
+    const promise = client.get('/v1/perps/positions', {
+      authToken: 'stale-jwt',
+    })
+    await expect(promise).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    await expect(promise).rejects.toMatchObject({
+      code: PerpsErrorCode.Unauthorized,
+    })
+  })
+
+  it('throws OndoSessionExpiredError on HTTP 401 carrying a recognised error_code', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'reducing leverage with insufficient margin',
+          error_code: 'insufficient_margin',
+        },
+        401
+      ),
     ])
 
     const promise = client.get('/v1/perps/positions', {

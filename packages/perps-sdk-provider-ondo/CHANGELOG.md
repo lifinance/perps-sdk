@@ -1,5 +1,28 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 14.0.0
+
+### Major Changes
+
+- [#446](https://github.com/lifinance/perps-sdk/pull/446) [`050dcd3`](https://github.com/lifinance/perps-sdk/commit/050dcd3960c8e1bbd616a6ec3f8f5049023954ef) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Parse the venue error body at the Lighter and Ondo provider boundaries and map a recognised rejection to the matching `PerpsErrorCode`. A Lighter body `code` for a nonce, margin, or balance rejection now produces `InvalidNonce`, `InsufficientMargin`, or `InsufficientBalance`; an Ondo `error_code` of `insufficient_margin` or `clientOrderID_collision` now produces `InsufficientMargin` or `NonceAlreadyUsed`. A body that no rule recognises keeps the code the status resolves to. An HTTP 401 outranks every Ondo body code, so a rejected session still throws `OndoSessionExpiredError` and the caller still evicts the stored JWT. `OndoApiError` accepts an optional `PerpsErrorCode` as its third constructor argument.
+
+### Minor Changes
+
+- [#443](https://github.com/lifinance/perps-sdk/pull/443) [`340d079`](https://github.com/lifinance/perps-sdk/commit/340d0796fd9ec99f3edc409d5925994dbb173597) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - An Ondo HTTP 429 now raises `PerpsErrorCode.RateLimitExceeded` instead of `ThirdPartyError`. `OndoApiError` takes an optional trailing `code` parameter, defaulting to `ThirdPartyError`, so a caller that constructs the error itself keeps the code it had.
+
+### Patch Changes
+
+- Updated dependencies [[`fa4ba25`](https://github.com/lifinance/perps-sdk/commit/fa4ba25135cd5fd1e54ee6d970fb9ee6d3ea060b)]:
+  - @lifi/perps-types@12.1.0
+
+## 13.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb)]:
+  - @lifi/perps-sdk@12.0.0
+  - @lifi/perps-types@12.0.1
+
 ## 12.0.0
 
 ### Patch Changes

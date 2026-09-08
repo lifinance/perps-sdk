@@ -1,5 +1,23 @@
 # @lifi/perps-types
 
+## 12.1.0
+
+### Minor Changes
+
+- [#441](https://github.com/lifinance/perps-sdk/pull/441) [`fa4ba25`](https://github.com/lifinance/perps-sdk/commit/fa4ba25135cd5fd1e54ee6d970fb9ee6d3ea060b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read Lighter orders through a single request and resolve an order by its client order index.
+
+  `getOrders` with no `marketId` now issues one `accountActiveOrders` request with the venue's all-markets `market_id`, instead of one request per market that holds an order. `getOrders` with a `marketId` keeps its single filtered request.
+
+  `getOrder` resolves an id prefixed with `LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX` through one `/api/v1/accountOrders` request, for an active and for a filled order. A bare id keeps its `order_index` meaning, so an `orderId` from the `orderUpdates` or `fills` stream resolves as before. When more than one row carries the same client order index, `getOrder` returns the active row.
+
+  `WasmBlobSignedActionStep` gains an optional `clientOrderIndex`. The Lighter signer projects it from the params it signed, so a caller can resolve a placed order before the venue assigns an `order_index`.
+
+## 12.0.1
+
+### Patch Changes
+
+- [#436](https://github.com/lifinance/perps-sdk/pull/436) [`f87ed41`](https://github.com/lifinance/perps-sdk/commit/f87ed417bac338be005a6cea31d0a528a49ecacb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The provider error boundaries now derive `PerpsErrorCode` from the HTTP status. A Hyperliquid `/info` failure carries `RateLimitExceeded` for a 429, `Unauthorized` for a 401 and `AgentUnauthorized` for a 403, and keeps `ThirdPartyError` for every other status. A LI.FI request with an unparseable body carries `RateLimitExceeded` for a 429 and keeps `DefaultError` for every other status. `resolveQuotePrice` throws `MarketNotFound` in place of `ServerError` when the provider returns no price. Consumers that branch on the code, or that match the status inside the message string, must update. `@lifi/perps-sdk` also exports `errorCodeFromStatus`, the helper each boundary shares, and `@lifi/perps-types` documents the contract of `ServerError` and `ThirdPartyError`.
+
 ## 12.0.0
 
 ### Major Changes

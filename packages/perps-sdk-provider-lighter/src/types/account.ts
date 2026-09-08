@@ -1,5 +1,6 @@
 // Account / balance shapes returned by Lighter's `/api/v1/account` and
 // `/api/v1/accountLimits` endpoints.
+// Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 /**
  * Per-market position row returned by Lighter's account endpoints.
@@ -35,6 +36,8 @@ export type LtAccountPosition = {
   margin_mode: number
   allocated_margin: string
   total_discount: string
+  /** Lighter bit flags recording which margin settings the account set itself. */
+  margin_set_flag?: number
 }
 
 /**
@@ -126,14 +129,25 @@ export interface LtDetailedAccount {
   account_index: number
   name: string
   description: string
-  positions: LtDetailedAccountPosition[]
-  assets: LtAccountAsset[]
+  positions: LtDetailedAccountPosition[] | null
+  assets: LtAccountAsset[] | null
   total_asset_value: string
   cross_asset_value: string
   /** Initial margin locked by cross positions; isolated positions carry
    * their own `allocated_margin` instead. */
   cross_initial_margin_requirement: string
   approved_integrators?: LtApprovedIntegrator[]
+}
+
+/**
+ * A detailed account whose wire lists `fetchDetailedAccount` has normalized to
+ * real arrays. Every SDK read of an account works on this shape.
+ *
+ * @public
+ */
+export type LtAccount = LtDetailedAccount & {
+  positions: LtDetailedAccountPosition[]
+  assets: LtAccountAsset[]
 }
 
 /**
@@ -145,7 +159,7 @@ export interface LtDetailedAccount {
 export interface LtDetailedAccountsResponse {
   code: number
   total: number
-  accounts: LtDetailedAccount[]
+  accounts: LtDetailedAccount[] | null
 }
 
 /**

@@ -204,12 +204,25 @@ export const LIGHTER_BASE_FEE_TIER: FeeTier = { maker: '0', taker: '0' }
 
 /**
  * Wildcard `market_id` accepted by Lighter's per-market account endpoints to
- * indicate "every market". Used on `accountInactiveOrders`, `positionFunding`,
- * `liquidations`.
+ * indicate "every market". Used on `accountActiveOrders`,
+ * `accountInactiveOrders` and `liquidations`. It is also the venue's own
+ * documented default for `accountActiveOrders.market_id`.
  *
  * @internal
  */
 export const LIGHTER_ALL_MARKETS_WILDCARD = 255
+
+/**
+ * Prefix that marks a `getOrder` id as a Lighter `client_order_index` rather
+ * than an `order_index`. Compose the id as
+ * `` `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}${clientOrderIndex}` `` from the
+ * `clientOrderIndex` a signed placement step returns. Both references are
+ * decimal integers, so without the prefix `getOrder` could resolve one as the
+ * other and return an unrelated order.
+ *
+ * @public
+ */
+export const LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX = 'client_order_index:'
 
 /**
  * Lighter caps `limit` at 100 on positionFunding/liquidations endpoints.
