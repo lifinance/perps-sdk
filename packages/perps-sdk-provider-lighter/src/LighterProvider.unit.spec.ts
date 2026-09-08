@@ -6,6 +6,7 @@ import {
   PerpsError,
   type PerpsSDKClient,
   ROBINHOOD_USDG,
+  type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
@@ -22,6 +23,7 @@ import {
   PositionMarginAdjustment,
   SigningMethod,
   type WasmBlobActionStep,
+  type WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
 import { createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -59,33 +61,69 @@ const wasm = vi.hoisted(() => {
     accountIndex: number
   }[] = []
   let authTokenCalls = 0
+  let generatedKeys = 0
+  // The Go signer signs with whichever key `CreateClient` last bound to the
+  // slot, so the fake keeps that binding and records the key per issued token.
+  const keyBySlot = new Map<string, string>()
+  const keyByToken = new Map<string, string>()
+  const slotOf = (apiKeyIndex: number, accountIndex: number): string =>
+    `${apiKeyIndex}:${accountIndex}`
   return {
     createClientCalls,
     get authTokenCalls() {
       return authTokenCalls
     },
+    /** Private key that signed `token`, per the slot binding at issue time. */
+    signingKeyOf(token: string | null | undefined): string | undefined {
+      return token === null || token === undefined
+        ? undefined
+        : keyByToken.get(token)
+    },
     reset() {
       createClientCalls.length = 0
       authTokenCalls = 0
+      generatedKeys = 0
+      keyBySlot.clear()
+      keyByToken.clear()
     },
     exports: {
-      GenerateAPIKey: () => ({
-        publicKey: `0x${'aa'.repeat(32)}`,
-        privateKey: `0x${'bb'.repeat(32)}`,
-      }),
+      GenerateAPIKey: () => {
+        generatedKeys += 1
+        const suffix = generatedKeys.toString(16).padStart(2, '0')
+        return {
+          publicKey: `0x${'aa'.repeat(31)}${suffix}`,
+          privateKey: `0x${'bb'.repeat(31)}${suffix}`,
+        }
+      },
       CreateClient: (
         url: string,
-        _privateKey: string,
+        privateKey: string,
         chainId: number,
         apiKeyIndex: number,
         accountIndex: number
       ) => {
         createClientCalls.push({ url, chainId, apiKeyIndex, accountIndex })
+        keyBySlot.set(slotOf(apiKeyIndex, accountIndex), privateKey)
         return {}
       },
-      CreateAuthToken: () => {
+      SignChangePubKey: () => ({
+        txType: 8,
+        txInfo: '{"AccountIndex":42}',
+        txHash: `0x${'ee'.repeat(32)}`,
+        messageToSign: 'lighter-change-pub-key',
+      }),
+      CreateAuthToken: (
+        _deadline: number,
+        apiKeyIndex: number,
+        accountIndex: number
+      ) => {
         authTokenCalls += 1
-        return { authToken: `std-${authTokenCalls}` }
+        const authToken = `std-${authTokenCalls}`
+        const boundKey = keyBySlot.get(slotOf(apiKeyIndex, accountIndex))
+        if (boundKey !== undefined) {
+          keyByToken.set(authToken, boundKey)
+        }
+        return { authToken }
       },
     },
   }
@@ -1932,6 +1970,122 @@ describe('LighterProvider — read-only token creation failure recovery', () => 
       r.url.includes('/api/v1/accountLimits')
     )
     expect(authHeader(limitsCall)).toBe('ro-margin')
+  })
+})
+
+describe('LighterProvider — standard auth token after a key rotation', () => {
+  const registerApiKeyStep: WasmBlobActionStep = {
+    action: ActionType.REGISTER_API_KEY,
+    wasmSignParams: {
+      kind: 'changePubKey',
+      nonce: 0,
+      api_key_index: STORED_API_KEY.apiKeyIndex,
+    },
+  }
+
+  /** Countersigns the EIP-191 message REGISTER_API_KEY requires. */
+  const userWallet = createWalletClient({
+    account: privateKeyToAccount(`0x${'7f'.repeat(32)}`),
+    chain: arbitrum,
+    transport: custom({
+      async request() {
+        return null
+      },
+    }),
+  })
+
+  const storedKeyOf = async (storage: StorageAdapter) =>
+    JSON.parse(
+      (await storage.get(
+        apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS)
+      )) as string
+    ) as typeof STORED_API_KEY
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('signs the next auth-gated read with the registered key, never the cached token', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const storage = await storageWithApiKey()
+    // The 503 keeps read-only creation unavailable, so the reads use the
+    // standard token — the credential a key rotation invalidates.
+    let registeredPublicKey: string = STORED_API_KEY.apiKeyPublicKey
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        return new Response('tokens/create unavailable', { status: 503 })
+      }
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({
+          code: 0,
+          api_keys: [
+            {
+              account_index: STORED_API_KEY.accountIndex,
+              api_key_index: STORED_API_KEY.apiKeyIndex,
+              nonce: 1,
+              public_key: registeredPublicKey,
+            },
+          ],
+        })
+      }
+      return undefined
+    })
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getAccount({ address: ADDRESS })
+    const beforeRotation = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    expect(beforeRotation).toHaveLength(1)
+    const staleToken = authHeader(beforeRotation[0])
+    expect(wasm.signingKeyOf(staleToken)).toBe(STORED_API_KEY.apiKeyPrivateKey)
+
+    const [registered] = (await provider.signActions?.(
+      SigningMethod.WASM_BLOB,
+      [registerApiKeyStep],
+      ADDRESS,
+      { userWallet }
+    )) as WasmBlobSignedActionStep[]
+    expect(registered.action).toBe(ActionType.REGISTER_API_KEY)
+    const rotatedKey = await storedKeyOf(storage)
+    expect(rotatedKey.apiKeyPrivateKey).not.toBe(
+      STORED_API_KEY.apiKeyPrivateKey
+    )
+    registeredPublicKey = rotatedKey.apiKeyPublicKey
+
+    await provider.getAccount({ address: ADDRESS })
+    const afterRotation = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    expect(afterRotation).toHaveLength(2)
+    const rotatedToken = authHeader(afterRotation[1])
+    expect(rotatedToken).not.toBe(staleToken)
+    expect(wasm.signingKeyOf(rotatedToken)).toBe(rotatedKey.apiKeyPrivateKey)
+  })
+
+  it('keeps serving the cached standard token while the stored key is unchanged', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const storage = await storageWithApiKey()
+    overrideFetch((url) =>
+      url.includes('/api/v1/tokens/create')
+        ? new Response('tokens/create unavailable', { status: 503 })
+        : undefined
+    )
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getAccount({ address: ADDRESS })
+    await provider.getAccount({ address: ADDRESS })
+
+    expect(wasm.authTokenCalls).toBe(1)
+    const limitsCalls = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    expect(limitsCalls).toHaveLength(2)
+    expect(authHeader(limitsCalls[0])).toBe(authHeader(limitsCalls[1]))
   })
 })
 

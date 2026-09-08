@@ -265,6 +265,12 @@ interface CachedStandardToken {
   token: string
   /** Unix seconds — re-create when `Date.now()/1000 + renewBuffer >= expiresAt`. */
   expiresAt: number
+  /**
+   * Slot and key material that signed `token`, as
+   * `apiKeyIndex:accountIndex:apiKeyPrivateKey`. `REGISTER_API_KEY` rotates the
+   * stored key, and Lighter rejects a token the superseded key signed.
+   */
+  signingKey: string
 }
 
 /**
@@ -369,10 +375,12 @@ export const createLighterProvider = (
     indices: { apiKeyIndex: number; accountIndex: number }
   ): Promise<string> => {
     const cacheKey = address.toLowerCase()
+    const signingKey = `${indices.apiKeyIndex}:${indices.accountIndex}:${apiKeyPrivateKey}`
     const nowSec = Math.floor(Date.now() / 1000)
     const cached = standardTokenByAddress.get(cacheKey)
     if (
       cached !== undefined &&
+      cached.signingKey === signingKey &&
       cached.expiresAt - nowSec > tokenRenewBufferSeconds
     ) {
       return cached.token
@@ -387,7 +395,7 @@ export const createLighterProvider = (
       lifetimeSeconds: tokenLifetimeSeconds,
     })
     const expiresAt = nowSec + tokenLifetimeSeconds
-    standardTokenByAddress.set(cacheKey, { token, expiresAt })
+    standardTokenByAddress.set(cacheKey, { token, expiresAt, signingKey })
     return token
   }
 
