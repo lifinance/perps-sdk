@@ -170,6 +170,15 @@ export interface WasmBlobSignedActionStep {
     txInfo: string
     txHash: string
   }
+  /**
+   * Provider-native client-side order reference the signed step carries, as a
+   * decimal string; present only on the steps whose action places an order.
+   * It is an additional reference, not an `Order.orderId` — the venue assigns
+   * that separately. The Lighter provider resolves it through `getOrder`; see
+   * `LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX` in
+   * `@lifi/perps-sdk-provider-lighter` for the id form `getOrder` accepts.
+   */
+  clientOrderIndex?: string
 }
 
 /**
