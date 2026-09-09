@@ -355,6 +355,7 @@ export interface OndoAccountWalletKey {
 export interface OndoPortfolioGraphPoint {
   time: string
   marginBalance: string
+  /** Cumulative PnL from the start of the requested `range`. */
   totalPnL: string
   realizedPnl: string
   netInvested: string

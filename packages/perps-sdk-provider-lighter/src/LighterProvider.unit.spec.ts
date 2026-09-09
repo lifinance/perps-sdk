@@ -2654,7 +2654,7 @@ describe('LighterProvider — getPortfolioHistory', () => {
   }
   const EXPECTED_HISTORY = {
     points: [
-      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '543', pnl: '12.5' },
+      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '541.75', pnl: '12.5' },
       { timestamp: NOW_MS - HOUR_MS, accountValue: '500', pnl: '10.75' },
     ],
     volume: '2500',
@@ -2735,6 +2735,50 @@ describe('LighterProvider — getPortfolioHistory', () => {
     expect(calls).toHaveLength(2)
     expect(authHeader(calls[0])).toBe('ro-readonly-lighter')
     expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('falls back to the standard token when /api/v1/pnl answers 200 with code 20013', async () => {
+    overrideFetch((url, init) => {
+      if (!url.includes('/api/v1/pnl')) {
+        return undefined
+      }
+      return sentToken(init)?.startsWith('ro-')
+        ? respond({ code: 20013, message: 'invalid auth string' })
+        : respond(PNL_PAYLOAD)
+    })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+
+    expect(history).toEqual({ range: '24h', ...EXPECTED_HISTORY })
+    const calls = pnlCalls()
+    expect(calls).toHaveLength(2)
+    expect(authHeader(calls[0])).toBe('ro-readonly-lighter')
+    expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('returns no points when Lighter answers a null pnl list', async () => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/pnl')
+        ? respond({ code: 200, resolution: '1h', pnl: null })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getPortfolioHistory!({ address: ADDRESS, range: '24h' })
+    ).resolves.toEqual({
+      range: '24h',
+      points: [],
+      volume: '0',
+      totalPnl: undefined,
+    })
+    expect(pnlCalls()).toHaveLength(1)
   })
 
   it('does not swap a caller-owned token after a rejection', async () => {

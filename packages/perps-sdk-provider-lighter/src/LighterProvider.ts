@@ -1366,32 +1366,26 @@ export const createLighterProvider = (
 
       // The read-only token may not be accepted on `/pnl`; the standard token
       // is, so a read signed from the SDK's own key retries once with it. The
-      // key is re-read at retry time because `REGISTER_API_KEY` can rotate it.
+      // fallback sits outside `retryOnRevoked`, so a revocation the standard
+      // token reports never replaces the read-only one. The key is re-read at
+      // retry time because `REGISTER_API_KEY` can rotate it.
       const response = await retryOnRevoked(
         opts,
         params.address,
         token,
-        async (tok) => {
-          try {
-            return await read(tok)
-          } catch (err) {
-            if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
-              throw err
-            }
-            const current = (await keyStore.get(params.address)) ?? apiKey
-            return read(
-              await getStandardAuthToken(
-                params.address,
-                current.apiKeyPrivateKey,
-                {
-                  apiKeyIndex: current.apiKeyIndex,
-                  accountIndex: current.accountIndex,
-                }
-              )
-            )
-          }
+        read
+      ).catch(async (err: unknown) => {
+        if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
+          throw err
         }
-      )
+        const current = (await keyStore.get(params.address)) ?? apiKey
+        return read(
+          await getStandardAuthToken(params.address, current.apiKeyPrivateKey, {
+            apiKeyIndex: current.apiKeyIndex,
+            accountIndex: current.accountIndex,
+          })
+        )
+      })
 
       return mapPortfolioHistory(
         params.range,

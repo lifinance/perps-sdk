@@ -41,13 +41,27 @@ describe('mapPortfolioHistory', () => {
     expect(result).toEqual({
       range: '7d',
       points: [
-        { timestamp: 1_000, accountValue: '610.5', pnl: '10.5' },
-        { timestamp: 2_000, accountValue: '558.25', pnl: '8.25' },
+        { timestamp: 1_000, accountValue: '609.75', pnl: '10.5' },
+        { timestamp: 2_000, accountValue: '557.5', pnl: '8.25' },
         { timestamp: 3_000, accountValue: '562.25', pnl: '13' },
       ],
       volume: '1750.5',
       totalPnl: '13',
     })
+  })
+
+  it('unwinds the spot PnL the running pnl adds', () => {
+    const entries = [
+      bucket({ timestamp: 1_000, trade_pnl: 1, trade_spot_pnl: 2 }),
+      bucket({ timestamp: 2_000, trade_pnl: 3, trade_spot_pnl: 4 }),
+    ]
+
+    const result = mapPortfolioHistory('30d', entries, new Big('110'))
+
+    expect(result.points).toEqual([
+      { timestamp: 1_000, accountValue: '103', pnl: '3' },
+      { timestamp: 2_000, accountValue: '110', pnl: '10' },
+    ])
   })
 
   it('orders buckets by timestamp before the walk', () => {

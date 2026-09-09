@@ -9,8 +9,8 @@ import type { LtPnLEntry } from '../types/pnl.js'
  * Build the portfolio series from Lighter PnL buckets and the account's
  * current value. Lighter reports no historical account value, so each
  * point's `accountValue` is `currentValue` with every later bucket's
- * `trade_pnl + inflow - outflow` removed. `pnl` is the running
- * `trade_pnl + trade_spot_pnl`.
+ * `trade_pnl + trade_spot_pnl + inflow - outflow` removed. `pnl` is the
+ * running `trade_pnl + trade_spot_pnl`, so both series unwind the same PnL.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
@@ -26,6 +26,7 @@ export const mapPortfolioHistory = (
     const entry = ordered[i]
     value = value
       .minus(new Big(entry.trade_pnl))
+      .minus(new Big(entry.trade_spot_pnl))
       .minus(new Big(entry.inflow))
       .plus(new Big(entry.outflow))
   }
