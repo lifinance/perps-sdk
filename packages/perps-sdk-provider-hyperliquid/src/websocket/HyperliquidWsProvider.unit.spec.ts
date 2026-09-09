@@ -2568,7 +2568,7 @@ describe('HyperliquidWsProvider', () => {
       expect(ordersListener).toHaveBeenCalledOnce()
     })
 
-    it('emits typed spot Balances keyed on the wire token index', async () => {
+    it('emits typed non-zero spot Balances keyed on the wire token index', async () => {
       const PURR_SPOT: Market = {
         providerId: 'hyperliquid',
         id: 'PURR/USDC',
@@ -2620,6 +2620,7 @@ describe('HyperliquidWsProvider', () => {
                 { coin: 'PURR', token: 5, total: '100', hold: '10' },
                 { coin: 'USDC', token: 0, total: '500', hold: '0' },
                 { coin: 'GHOST', token: 9, total: '1', hold: '0' },
+                { coin: 'ZERO', token: 10, total: '0', hold: '0' },
               ],
             },
           },

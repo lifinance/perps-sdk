@@ -345,6 +345,8 @@ let depositAddressResult: unknown
 /** `GET /v1/perps/positions` result; `null` mirrors an empty venue collection. */
 let positionsResult: OndoPosition[] | null
 let providersResult: Provider[]
+/** `GET /v1/perps/balance` result. */
+let balanceResult: OndoBalanceSummary
 
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -361,6 +363,7 @@ beforeEach(() => {
   depositAddressResult = []
   positionsResult = [POSITION_RESULT]
   providersResult = [ACCOUNT_PROVIDER_METADATA]
+  balanceResult = BALANCE_RESULT
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -371,7 +374,7 @@ beforeEach(() => {
     }
     recorded.push({ url: u, init })
     if (u.includes('/v1/perps/balance')) {
-      return respond(envelope(BALANCE_RESULT))
+      return respond(envelope(balanceResult))
     }
     if (u.includes('/v1/perps/positions')) {
       return respond(envelope(positionsResult))
@@ -579,6 +582,15 @@ describe('OndoProvider — logged-out degrade paths', () => {
 })
 
 describe('OndoProvider — getAccount (logged in)', () => {
+  it('omits the collateral row when the wallet balance is zero', async () => {
+    balanceResult = { ...BALANCE_RESULT, walletBalance: '0' }
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toEqual([])
+  })
+
   it('maps the balance summary and positions, exposing the session expiry in config', async () => {
     const { provider } = await loggedInProvider()
     const account = await provider.getAccount({ address: ADDRESS })

@@ -58,6 +58,7 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import { HlAbstractionMode } from '../types/index.js'
+import { toWireBig } from '../utils/decimal.js'
 import {
   decodeCompressedJson,
   decodeFastAssetCtxs,
@@ -1254,10 +1255,18 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const user = data.user.toLowerCase()
     const markets = this.registry?.activeMarkets ?? []
     const priceById = spotPriceById(markets, this.mergedMids())
-    const rows = data.spotState.balances.map((b) => ({
-      balance: spotBalance(spotAssetFromToken(b), b.total, priceById),
-      hold: b.hold,
-    }))
+    const rows = data.spotState.balances
+      .filter((balance) =>
+        toWireBig(balance.total, 'spotState.balances.total').gt(0)
+      )
+      .map((balance) => ({
+        balance: spotBalance(
+          spotAssetFromToken(balance),
+          balance.total,
+          priceById
+        ),
+        hold: balance.hold,
+      }))
     this.emit(`spotState:${user}`, {
       channel: 'spotBalances',
       data: rows.map(({ balance, hold }) => ({ ...balance, locked: hold })),

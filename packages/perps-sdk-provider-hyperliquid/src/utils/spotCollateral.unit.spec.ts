@@ -62,4 +62,15 @@ describe('partitionSpotBalances', () => {
     expect(collateralBalances).toHaveLength(0)
     expect(balances).toHaveLength(1)
   })
+
+  it('omits zero-unit rows from both partitions', () => {
+    const { collateralBalances, balances } = partitionSpotBalances(
+      [bal('0', 'USDC', '0'), bal('150', 'HYPE', '0'), bal('254', 'USOL', '0')],
+      quoteAssetIds,
+      true
+    )
+
+    expect(collateralBalances).toEqual([])
+    expect(balances).toEqual([])
+  })
 })

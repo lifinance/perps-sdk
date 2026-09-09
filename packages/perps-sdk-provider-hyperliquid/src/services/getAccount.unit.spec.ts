@@ -203,6 +203,96 @@ describe('getAccount', () => {
     expect(venue?.valueUsd).toBe('10000')
   })
 
+  it.each([
+    null,
+    HlAbstractionMode.DEFAULT,
+    HlAbstractionMode.DISABLED,
+    HlAbstractionMode.DEX_ABSTRACTION,
+  ])('omits a zero-equity sub-dex balance in %s mode', async (abstraction) => {
+    const xyzMarket: Market = {
+      ...HL_MARKETS[0],
+      id: 'xyz:XYZ',
+      categoryId: 'xyz',
+      baseAsset: {
+        ...HL_MARKETS[0].baseAsset,
+        id: 'xyz:XYZ',
+        displaySymbol: 'XYZ',
+      },
+      quoteAsset: {
+        providerId: 'hyperliquid',
+        id: '200',
+        displaySymbol: 'USDE',
+        logoURI: '',
+      },
+    }
+    const responses = defaultResponses(abstraction)
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/marketsContext')) {
+          return new Response(JSON.stringify({ prices: [] }))
+        }
+        if (url.includes('/markets')) {
+          return new Response(
+            JSON.stringify({ markets: [...HL_MARKETS, xyzMarket] })
+          )
+        }
+        const body = JSON.parse((init?.body as string) ?? '{}') as {
+          type: keyof typeof responses
+          dex?: string
+        }
+        const value =
+          body.type === 'clearinghouseState' && body.dex === 'xyz'
+            ? {
+                ...HL_CLEARINGHOUSE_STATE,
+                marginSummary: {
+                  accountValue: '0',
+                  totalMarginUsed: '0',
+                },
+                crossMarginSummary: {
+                  accountValue: '0',
+                  totalMarginUsed: '0',
+                },
+                assetPositions: [],
+              }
+            : responses[body.type]
+        return new Response(JSON.stringify(value))
+      })
+    restore = () => spy.mockRestore()
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(
+      result.collateralBalances.find((balance) => balance.categoryId === 'xyz')
+    ).toBeUndefined()
+    expect(
+      [...result.balances, ...result.collateralBalances].every(
+        (balance) => balance.units !== '0'
+      )
+    ).toBe(true)
+  })
+
+  it('throws a named error identifying a non-decimal accountValue', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          marginSummary: {
+            ...HL_CLEARINGHOUSE_STATE.marginSummary,
+            accountValue: 'n/a',
+          },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    await expect(getAccount(ctx, { address: ADDRESS })).rejects.toThrow(
+      /marginSummary\.accountValue/
+    )
+  })
+
   it('weights PORTFOLIO_MARGIN spot collateral (HYPE/UBTC) at LTV 0.5 through to the summary', async () => {
     const spotMarket = (
       id: string,
