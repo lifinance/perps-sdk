@@ -701,13 +701,14 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   private handleMarkPrices(prices: OndoMarkPrice[]): void {
-    for (const { market, markPrice } of prices) {
+    for (const { market, markPrice, oraclePrice } of prices) {
       const context: MarketContext = {
         ...this.contexts[market],
         marketId: market,
         // Ondo streams no mid price; the mark price stands in.
         midPrice: markPrice,
         markPrice,
+        oraclePrice,
       }
       const funding = this.pendingFunding.get(market)
       if (funding !== undefined) {
