@@ -26,6 +26,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { chromium } from 'playwright'
 import { evaluateClientGraph } from './lib/evaluate-client-graph.js'
 import { buildValidatedUrl } from './lib/validate-url.js'
 
@@ -378,12 +379,6 @@ const targets = {
     nextTarget(root, tarball, 'build', true),
 }
 
-/**
- * Next.js client chunks are not ES modules, so instead of evaluating them the
- * check follows the asset webpack emitted: the chunk that references it, the
- * media type it is served with, and the bytes themselves — then instantiates
- * those bytes with the packaged Go runtime to prove the served asset signs.
- */
 async function nextTarget(root, tarball, mode, turbopack) {
   const name = `next-${mode}${turbopack ? '-turbopack' : ''}`
   const dir = createFixture(root, name, {
@@ -428,10 +423,7 @@ async function nextTarget(root, tarball, mode, turbopack) {
   }
 
   try {
-    // Requesting the page is what makes the dev server compile it, and with it
-    // emit the asset.
-    const html = await (await fetch(`${server.origin}/`)).text()
-    assert(html.includes('probe'), 'the fixture page did not render')
+    const served = await assertBrowserProbe(server.origin)
 
     const staticDir = join(dir, '.next', 'static')
     const media = await waitFor(() => {
@@ -448,53 +440,49 @@ async function nextTarget(root, tarball, mode, turbopack) {
       `no emitted chunk references ${assetName}`
     )
 
-    const served = await assertServedBinary(
-      `${server.origin}/_next/static/media/${assetName}`
-    )
-    await assertSignsWithPackagedRuntime(dir, media)
-    return served
+    return `${served}; browser signer initialized`
   } finally {
     server.stop()
   }
 }
 
-/**
- * Instantiate a fetched binary with the Go runtime the package ships and sign
- * with it, so a served asset is proven to be a working signer and not just the
- * right bytes.
- */
-async function assertSignsWithPackagedRuntime(fixtureDir, binaryPath) {
-  const installed = join(
-    fixtureDir,
-    'node_modules',
-    '@lifi',
-    'perps-sdk-provider-lighter',
-    'dist',
-    'esm',
-    'signers',
-    'generated',
-    'wasmExecRuntime.js'
-  )
-  const { WASM_EXEC_JS } = await import(`file://${installed}`)
-  const previousGo = globalThis.Go
+async function assertBrowserProbe(origin) {
+  const browser = await chromium.launch()
   try {
-    const Go = new Function(`${WASM_EXEC_JS}; return globalThis.Go`)()
-    const go = new Go()
-    const bytes = readFileSync(binaryPath)
-    const { instance } = await WebAssembly.instantiate(
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-      go.importObject
-    )
-    void go.run(instance)
-    await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setImmediate(resolve))
-    const key = globalThis.GenerateAPIKey?.()
-    assert(
-      Boolean(key?.publicKey && key?.privateKey),
-      `the emitted asset did not sign: ${JSON.stringify(key)}`
-    )
+    const page = await browser.newPage()
+    const requests = []
+    page.on('response', (response) => {
+      requests.push({
+        url: response.url(),
+        status: response.status(),
+        contentType: response.headers()['content-type'],
+      })
+    })
+    const clientFailure = new Promise((_, reject) => {
+      page.once('pageerror', (error) => {
+        reject(
+          new Error(`browser client failed: ${error.message}`, { cause: error })
+        )
+      })
+    })
+    return await Promise.race([
+      clientFailure,
+      (async () => {
+        const response = await page.goto(origin)
+        assert(response?.ok(), `${origin} did not serve the fixture page`)
+        await page.waitForFunction(
+          () => globalThis.__probe !== undefined,
+          undefined,
+          {
+            timeout: 60_000,
+          }
+        )
+        assertProbe(await page.evaluate(() => globalThis.__probe))
+        return assertFetchedThroughAssetUrl(requests)
+      })(),
+    ])
   } finally {
-    globalThis.Go = previousGo
+    await browser.close()
   }
 }
 
