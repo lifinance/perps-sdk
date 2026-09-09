@@ -6,6 +6,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import {
   LIGHTER_INVALID_AUTH_CODE,
+  LIGHTER_INVALID_SIGNATURE_CODE,
   LIGHTER_SUCCESS_CODES,
   LIGHTER_TOKEN_REVOKED_CODE,
 } from '../constants.js'
@@ -41,10 +42,16 @@ export class LighterAuthRejectedError extends PerpsError {}
  */
 export class LighterTokenRevokedError extends PerpsError {}
 
-const isLighterAuthRejection = (status: number, data: unknown): boolean =>
-  status === 401 ||
-  status === 403 ||
-  lighterBodyErrorCode(data) === LIGHTER_INVALID_AUTH_CODE
+const isLighterAuthRejection = (status: number, data: unknown): boolean => {
+  if (status === 401 || status === 403) {
+    return true
+  }
+  const code = lighterBodyErrorCode(data)
+  return (
+    code === LIGHTER_INVALID_AUTH_CODE ||
+    code === LIGHTER_INVALID_SIGNATURE_CODE
+  )
+}
 
 const isLighterTokenRevoked = (data: unknown): boolean =>
   lighterBodyErrorCode(data) === LIGHTER_TOKEN_REVOKED_CODE
