@@ -14,6 +14,7 @@ import {
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
+  type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetRunningTwapsParams,
@@ -44,6 +45,7 @@ import type {
   Order,
   OrdersResponse,
   PerpsMarketDisplay,
+  PortfolioHistoryResponse,
   Position,
   PositionsResponse,
   ProviderAction,
@@ -77,6 +79,8 @@ import type {
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
   OndoOrder,
+  OndoPortfolioGraphPoint,
+  OndoPortfolioSummary,
   OndoPosition,
   OndoTwapOrder,
   OndoWalletDeposit,
@@ -108,6 +112,7 @@ import {
   mapWithdrawalActivity,
   positionMarginConstraints,
 } from './utils/index.js'
+import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
 import { mapRunningTwap } from './utils/mapTwap.js'
 
 /**
@@ -708,6 +713,29 @@ export const ondoProvider = (
             items: page.items,
             pagination: page.pagination,
           }
+        }
+      )
+    },
+
+    async getPortfolioHistory(
+      params: ProviderGetPortfolioHistoryParams,
+      opts?: SDKRequestOptions
+    ): Promise<PortfolioHistoryResponse> {
+      return withSession<PortfolioHistoryResponse>(
+        params.address,
+        () => ({ range: params.range, points: [] }),
+        async (token) => {
+          const client = apiClient(opts)
+          const [graph, summary] = await Promise.all([
+            client.get<OndoPortfolioGraphPoint[] | null>(
+              '/v1/portfolio/summary/graph',
+              { params: { range: params.range }, authToken: token.token }
+            ),
+            client.get<OndoPortfolioSummary>('/v1/portfolio/summary', {
+              authToken: token.token,
+            }),
+          ])
+          return mapPortfolioHistory(params.range, graph ?? [], summary)
         }
       )
     },

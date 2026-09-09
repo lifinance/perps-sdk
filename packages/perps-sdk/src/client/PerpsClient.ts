@@ -9,6 +9,7 @@ import type {
   MarketRef,
   MarketSettings,
   MetaActionType,
+  PortfolioHistoryResponse,
   Position,
   PositionMarginConstraints,
   Provider,
@@ -40,6 +41,7 @@ import type {
   ExecuteProviderSetupResult,
   GetAccountResult,
   GetDepositFlowParams,
+  GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
   ModifyOrdersParams,
@@ -52,7 +54,11 @@ import type {
   SubmitOnboardingParams,
   WithdrawParams,
 } from '../types/api.js'
-import type { PerpsClientSigner, SwitchChainHook } from '../types/config.js'
+import type {
+  PerpsClientSigner,
+  SDKRequestOptions,
+  SwitchChainHook,
+} from '../types/config.js'
 import type { DepositFlow } from '../types/deposit.js'
 import type {
   ActionSignerContribution,
@@ -577,6 +583,31 @@ export class PerpsClient {
       }
       return [{ asset, route: row.route, available: row.available }]
     })
+  }
+
+  /**
+   * The account's portfolio value and cumulative PnL over `params.range` at
+   * `params.provider`, read directly from the venue.
+   *
+   * @throws {PerpsError} When the provider plugin is not registered, when it
+   *   declares no portfolio history read, or when the venue read fails.
+   * @public
+   */
+  async getPortfolioHistory(
+    params: GetPortfolioHistoryParams,
+    options?: SDKRequestOptions
+  ): Promise<PortfolioHistoryResponse> {
+    const plugin = this.requireProvider(params.provider)
+    if (typeof plugin.getPortfolioHistory !== 'function') {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Provider '${params.provider}' does not implement getPortfolioHistory.`
+      )
+    }
+    return plugin.getPortfolioHistory(
+      { address: params.address, range: params.range },
+      options
+    )
   }
 
   /**

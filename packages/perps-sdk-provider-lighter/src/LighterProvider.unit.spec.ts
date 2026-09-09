@@ -20,6 +20,7 @@ import {
   OrderSide,
   OrderStatus,
   PerpsErrorCode,
+  type PortfolioHistoryRange,
   PositionMarginAdjustment,
   SigningMethod,
   type WasmBlobActionStep,
@@ -47,7 +48,12 @@ import {
   lighterProvider,
   lighterRhProvider,
 } from './LighterProvider.js'
-import type { LtLiqTrade, LtLiquidationInfo } from './types/index.js'
+import type {
+  LtAccountPnL,
+  LtLiqTrade,
+  LtLiquidationInfo,
+  LtPnLEntry,
+} from './types/index.js'
 import {
   LT_ACCOUNT_TRADING_MODE_SIMPLE,
   LT_MARGIN_MODE_CROSS,
@@ -2600,6 +2606,199 @@ describe('LighterProvider — getFills authed path', () => {
       liquidity: LiquidityRole.TAKER,
     })
     expect(fills.pagination.hasMore).toBe(false)
+  })
+})
+
+describe('LighterProvider — getPortfolioHistory', () => {
+  const NOW_MS = 1_741_100_000_000
+  const HOUR_MS = 3_600_000
+  const pnlBucket = (
+    overrides: Partial<LtPnLEntry> & Pick<LtPnLEntry, 'timestamp'>
+  ): LtPnLEntry => ({
+    trade_pnl: 0,
+    inflow: 0,
+    outflow: 0,
+    pool_pnl: 0,
+    pool_inflow: 0,
+    pool_outflow: 0,
+    pool_total_shares: 0,
+    spot_inflow: 0,
+    spot_outflow: 0,
+    staked_lit: 0,
+    staking_inflow: 0,
+    staking_outflow: 0,
+    staking_pnl: 0,
+    trade_spot_pnl: 0,
+    volume: 0,
+    ...overrides,
+  })
+  /** Two buckets ending at the fixture account's `total_asset_value` of 500. */
+  const PNL_PAYLOAD: LtAccountPnL = {
+    code: 200,
+    resolution: '1h',
+    pnl: [
+      pnlBucket({
+        timestamp: NOW_MS - 2 * HOUR_MS,
+        trade_pnl: 12.5,
+        inflow: 100,
+        volume: 2000,
+      }),
+      pnlBucket({
+        timestamp: NOW_MS - HOUR_MS,
+        trade_pnl: -3,
+        trade_spot_pnl: 1.25,
+        outflow: 40,
+        volume: 500,
+      }),
+    ],
+  }
+  const EXPECTED_HISTORY = {
+    points: [
+      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '541.75', pnl: '12.5' },
+      { timestamp: NOW_MS - HOUR_MS, accountValue: '500', pnl: '10.75' },
+    ],
+    volume: '2500',
+    totalPnl: '10.75',
+  }
+  const pnlCalls = () => recorded.filter((r) => r.url.includes('/api/v1/pnl'))
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each<[PortfolioHistoryRange, string, number, number]>([
+    ['24h', '1h', 24, NOW_MS - 24 * HOUR_MS],
+    ['7d', '4h', 42, NOW_MS - 7 * 24 * HOUR_MS],
+    ['30d', '1d', 30, NOW_MS - 30 * 24 * HOUR_MS],
+    ['all', '1d', 1000, 0],
+  ])('reads /api/v1/pnl for %s at resolution %s and derives the account value', async (range, resolution, countBack, startTimestamp) => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+    )
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    provider.bind(STUB_CLIENT)
+
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range,
+    })
+
+    expect(history).toEqual({ range, ...EXPECTED_HISTORY })
+    const [call] = pnlCalls()
+    expect(pnlCalls()).toHaveLength(1)
+    expect(authHeader(call)).toBe('pre-created-token')
+    const query = Object.fromEntries(new URL(call.url).searchParams)
+    expect(query).toEqual({
+      by: 'index',
+      value: '42',
+      resolution,
+      start_timestamp: String(startTimestamp),
+      end_timestamp: String(NOW_MS),
+      count_back: String(countBack),
+      ignore_transfers: 'false',
+    })
+  })
+
+  it('returns no points without a token and never calls /api/v1/pnl', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getPortfolioHistory!({ address: ADDRESS, range: '7d' })
+    ).resolves.toEqual({ range: '7d', points: [] })
+    expect(pnlCalls()).toHaveLength(0)
+  })
+
+  it('falls back to the standard token when /api/v1/pnl rejects the read-only token', async () => {
+    overrideFetch((url, init) => {
+      if (!url.includes('/api/v1/pnl')) {
+        return undefined
+      }
+      return sentToken(init)?.startsWith('ro-')
+        ? respond({ code: 21100, message: 'account not found' }, 401)
+        : respond(PNL_PAYLOAD)
+    })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+
+    expect(history).toEqual({ range: '24h', ...EXPECTED_HISTORY })
+    const calls = pnlCalls()
+    expect(calls).toHaveLength(2)
+    expect(authHeader(calls[0])).toBe('ro-readonly-lighter')
+    expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('falls back to the standard token when /api/v1/pnl answers 200 with code 20013', async () => {
+    overrideFetch((url, init) => {
+      if (!url.includes('/api/v1/pnl')) {
+        return undefined
+      }
+      return sentToken(init)?.startsWith('ro-')
+        ? respond({ code: 20013, message: 'invalid auth string' })
+        : respond(PNL_PAYLOAD)
+    })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+
+    expect(history).toEqual({ range: '24h', ...EXPECTED_HISTORY })
+    const calls = pnlCalls()
+    expect(calls).toHaveLength(2)
+    expect(authHeader(calls[0])).toBe('ro-readonly-lighter')
+    expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('returns no points when Lighter answers a null pnl list', async () => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/pnl')
+        ? respond({ code: 200, resolution: '1h', pnl: null })
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getPortfolioHistory!({ address: ADDRESS, range: '24h' })
+    ).resolves.toEqual({
+      range: '24h',
+      points: [],
+      volume: '0',
+      totalPnl: undefined,
+    })
+    expect(pnlCalls()).toHaveLength(1)
+  })
+
+  it('does not swap a caller-owned token after a rejection', async () => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/pnl')
+        ? respond({ code: 21100, message: 'account not found' }, 401)
+        : undefined
+    )
+    const provider = lighterProvider({ authToken: 'caller-token' })
+    provider.bind(STUB_CLIENT)
+
+    const err = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+      .then(() => undefined)
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(PerpsError)
+    expect(err.code).toBe(PerpsErrorCode.Unauthorized)
+    expect(pnlCalls()).toHaveLength(1)
   })
 })
 
