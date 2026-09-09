@@ -1,4 +1,5 @@
 import type { Balance } from '@lifi/perps-types'
+import { toWireBig } from './decimal.js'
 
 /**
  * Portfolio-margin collateral beyond the category quote assets, keyed by spot
@@ -37,6 +38,9 @@ export const partitionSpotBalances = (
   const collateralBalances: Balance[] = []
   const balances: Balance[] = []
   for (const balance of spotBalances) {
+    if (!toWireBig(balance.units, 'spotBalance.units').gt(0)) {
+      continue
+    }
     if (quoteAssetIds.has(balance.asset.id)) {
       collateralBalances.push(balance)
       continue

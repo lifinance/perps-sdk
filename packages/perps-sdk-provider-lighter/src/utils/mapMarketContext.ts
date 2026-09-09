@@ -1,6 +1,8 @@
 import type { MarketContext } from '@lifi/perps-types'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 
+const FUNDING_PERIOD_MS = 60 * 60 * 1000
+
 const isPerpStats = (
   stats: LtWsMarketStats | LtWsSpotMarketStats
 ): stats is LtWsMarketStats => 'mark_price' in stats
@@ -27,7 +29,7 @@ export const mapMarketContext = (
       openInterest: stats.open_interest,
       funding: {
         rate: stats.current_funding_rate,
-        nextFundingTime: stats.funding_timestamp,
+        nextFundingTime: stats.funding_timestamp + FUNDING_PERIOD_MS,
       },
     }
   }

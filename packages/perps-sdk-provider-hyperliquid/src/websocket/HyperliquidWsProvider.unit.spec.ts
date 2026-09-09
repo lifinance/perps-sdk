@@ -1265,7 +1265,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data).toEqual({})
     })
 
-    it('emits perp context from compressed pac and merges partial updates', async () => {
+    it('recomputes perp open-interest notional from compressed pac partial updates', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
 
@@ -1289,7 +1289,7 @@ describe('HyperliquidWsProvider', () => {
           marketId: 'BTC',
           midPrice: '95001',
           prevDayPrice: '95001',
-          openInterest: '100',
+          openInterest: '9500100',
         })
       })
 
@@ -1315,12 +1315,31 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '95101',
           markPrice: '95100',
           prevDayPrice: '95001',
-          openInterest: '100',
+          openInterest: '9510000',
         })
         expect(event.data.ETH).toMatchObject({
           marketId: 'ETH',
           midPrice: '3410',
           markPrice: '3401',
+        })
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [{ coin: 'BTC', openInterest: '101' }]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({
+          marketId: 'BTC',
+          midPrice: '95101',
+          markPrice: '95100',
+          openInterest: '9605100',
         })
       })
     })
@@ -1525,7 +1544,8 @@ describe('HyperliquidWsProvider', () => {
       )
 
       // A later fastAssetCtxs frame updates mid + mark; the rarer asset-context
-      // feed's oracle/metadata must persist (field-level last-write-wins).
+      // feed's oracle/metadata must persist (field-level last-write-wins). The
+      // open-interest notional follows the emitted mark: 100 × 95480.
       await seedFast({ BTC: { midPx: '95500', markPx: '95480' } })
 
       await vi.waitFor(() => {
@@ -1535,7 +1555,7 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '95500',
           markPrice: '95480',
           oraclePrice: '94998',
-          openInterest: '100',
+          openInterest: '9548000',
         })
       })
     })
@@ -2568,7 +2588,7 @@ describe('HyperliquidWsProvider', () => {
       expect(ordersListener).toHaveBeenCalledOnce()
     })
 
-    it('emits typed spot Balances keyed on the wire token index', async () => {
+    it('emits typed non-zero spot Balances keyed on the wire token index', async () => {
       const PURR_SPOT: Market = {
         providerId: 'hyperliquid',
         id: 'PURR/USDC',
@@ -2620,6 +2640,7 @@ describe('HyperliquidWsProvider', () => {
                 { coin: 'PURR', token: 5, total: '100', hold: '10' },
                 { coin: 'USDC', token: 0, total: '500', hold: '0' },
                 { coin: 'GHOST', token: 9, total: '1', hold: '0' },
+                { coin: 'ZERO', token: 10, total: '0', hold: '0' },
               ],
             },
           },

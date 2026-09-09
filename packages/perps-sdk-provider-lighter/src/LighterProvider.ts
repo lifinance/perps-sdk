@@ -882,34 +882,40 @@ export const createLighterProvider = (
           'cross_initial_margin_requirement'
         )
       )
-      const collateralBalances: Balance[] = [
-        {
-          categoryId: perpsCategory?.id ?? providerKey,
-          asset:
-            perpsCategory?.quoteAsset ??
-            lighterAsset(
-              collateral.displaySymbol,
-              collateral.displaySymbol,
-              providerKey
-            ),
-          units: availableMargin.toString(),
-          valueUsd: availableMargin.toString(),
-        },
-      ]
+      // An underwater cross account yields a negative difference. That is a
+      // margin deficit, not a holding, so it carries no collateral row either.
+      const collateralBalances: Balance[] = availableMargin.gt(0)
+        ? [
+            {
+              categoryId: perpsCategory?.id ?? providerKey,
+              asset:
+                perpsCategory?.quoteAsset ??
+                lighterAsset(
+                  collateral.displaySymbol,
+                  collateral.displaySymbol,
+                  providerKey
+                ),
+              units: availableMargin.toString(),
+              valueUsd: availableMargin.toString(),
+            },
+          ]
+        : []
       // Spot token holdings — non-collateral. The instance's settlement asset
       // is valued 1:1; other tokens have no price source at this boundary, so
       // their USD value is unknown.
-      const balances: Balance[] = account.assets.map((a) => {
-        const assetId = String(a.asset_id)
-        return {
-          categoryId: spotCategoryId,
-          asset:
-            assetRegistry.get(assetId) ??
-            lighterAsset(assetId, a.symbol, providerKey),
-          units: a.balance,
-          valueUsd: a.asset_id === collateral.assetIndex ? a.balance : '0',
-        }
-      })
+      const balances: Balance[] = account.assets
+        .filter((asset) => toRequiredBig(asset.balance, 'balance').gt(0))
+        .map((a) => {
+          const assetId = String(a.asset_id)
+          return {
+            categoryId: spotCategoryId,
+            asset:
+              assetRegistry.get(assetId) ??
+              lighterAsset(assetId, a.symbol, providerKey),
+            units: a.balance,
+            valueUsd: a.asset_id === collateral.assetIndex ? a.balance : '0',
+          }
+        })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

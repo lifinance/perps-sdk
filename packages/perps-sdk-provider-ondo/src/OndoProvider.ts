@@ -56,6 +56,7 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -316,14 +317,16 @@ export const ondoProvider = (
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
             balances: [],
-            collateralBalances: [
-              {
-                categoryId: ONDO_PROVIDER_KEY,
-                asset: collateralAsset,
-                units: balance.walletBalance,
-                valueUsd: balance.walletBalance,
-              },
-            ],
+            collateralBalances: new Big(balance.walletBalance).gt(0)
+              ? [
+                  {
+                    categoryId: ONDO_PROVIDER_KEY,
+                    asset: collateralAsset,
+                    units: balance.walletBalance,
+                    valueUsd: balance.walletBalance,
+                  },
+                ]
+              : [],
             positions,
             marginUsed: balance.usedMargin,
             unrealizedPnl: balance.unrealizedPnl,
