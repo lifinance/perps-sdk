@@ -1499,19 +1499,32 @@ describe('PerpsClient', () => {
   })
 
   describe('getPortfolioHistory', () => {
-    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
-      new PerpsClient({
+    const clientWith = (plugin: Partial<PerpsProviderPlugin>): PerpsClient => {
+      const stub: PerpsProviderPlugin = {
+        type: provider,
+        bind: vi.fn(),
+        getAccount: vi.fn(),
+        accountExists: vi.fn(),
+        getPositions: vi.fn(),
+        getOrders: vi.fn(),
+        getOrder: vi.fn(),
+        getFills: vi.fn(),
+        getActivity: vi.fn(),
+        getQuote: vi.fn(),
+        getAccountSummary: vi.fn(),
+        formatOrderPrice: vi.fn(),
+        formatOrderSize: vi.fn(),
+        estimateLiquidationPrice: vi.fn(),
+        positionMarginConstraints: vi.fn(),
+        projectConfig: vi.fn(() => []),
+        ...plugin,
+      }
+      return new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [
-          {
-            type: provider,
-            bind: vi.fn(),
-            projectConfig: vi.fn(() => []),
-            ...plugin,
-          } as unknown as PerpsProviderPlugin,
-        ],
+        providers: [stub],
       })
+    }
     const history = {
       range: '7d' as const,
       points: [{ timestamp: 1_741_046_400_000, accountValue: '100', pnl: '5' }],
