@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 12.3.0
+
+### Minor Changes
+
+- [#457](https://github.com/lifinance/perps-sdk/pull/457) [`c5be9cb`](https://github.com/lifinance/perps-sdk/commit/c5be9cb98e697a4ec1d67c2b7cb710dfd12bad81) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the optional `getPortfolioHistory` provider read and `PerpsClient.getPortfolioHistory`. The method returns the account value and the cumulative PnL over a `24h`, `7d`, `30d`, or `all` window. `@lifi/perps-types` exports `PortfolioHistoryRange`, `PortfolioHistoryPoint`, and `PortfolioHistoryResponse`. The Hyperliquid, Ondo, and Lighter providers implement the read.
+
 ## 12.2.0
 
 ### Minor Changes
