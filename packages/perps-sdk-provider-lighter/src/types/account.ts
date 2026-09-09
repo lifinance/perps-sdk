@@ -37,7 +37,11 @@ export type LtAccountPosition = {
   total_funding_paid_out?: string
   margin_mode: number
   allocated_margin: string
-  total_discount: string
+  /**
+   * Funding-fee discount accrued on the position. Lighter marks it
+   * `omitempty`, so an absent field means zero.
+   */
+  total_discount?: string
   /** Lighter bit flags recording which margin settings the account set itself. */
   margin_set_flag?: number
 }
@@ -127,7 +131,12 @@ export interface LtDetailedAccount {
    * treat `0` as "no transaction" and not as the Unix epoch.
    */
   transaction_time: number
-  account_trading_mode: number
+  /**
+   * Lighter marks it `omitempty` here, so an absent field means
+   * `LT_ACCOUNT_TRADING_MODE_SIMPLE`, the wire zero value. `LtSubAccount`
+   * reports the same member without the omission.
+   */
+  account_trading_mode?: number
   account_index: number
   name: string
   description: string

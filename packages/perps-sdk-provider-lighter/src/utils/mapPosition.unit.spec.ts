@@ -227,4 +227,32 @@ describe('mapPosition (Lighter)', () => {
       ).toThrowError()
     })
   })
+
+  // Lighter marks `total_funding_paid_out` and `total_discount` `omitempty` on
+  // the Position object, so a row carrying the zero value drops the key.
+  // `mapPosition` reads only `total_funding_paid_out`; `total_discount`
+  // projects to no `Position` member, so it needs no default.
+  describe('omitted omitempty wire fields', () => {
+    // Every `Position` member the contract types `string`.
+    const REQUIRED_STRINGS = [
+      'size',
+      'entryPrice',
+      'markPrice',
+      'liquidationPrice',
+      'unrealizedPnl',
+      'accruedFunding',
+      'marginUsed',
+      'initialMarginRequirement',
+    ] as const
+
+    it('emits no undefined when total_funding_paid_out is absent', () => {
+      const { total_funding_paid_out, ...withoutFunding } = basePosition()
+
+      const result = mapPosition(withoutFunding, MARKET)
+
+      for (const field of REQUIRED_STRINGS) {
+        expect(typeof result[field]).toBe('string')
+      }
+    })
+  })
 })
