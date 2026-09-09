@@ -269,6 +269,12 @@ interface CachedStandardToken {
   token: string
   /** Unix seconds — re-create when `Date.now()/1000 + renewBuffer >= expiresAt`. */
   expiresAt: number
+  /**
+   * Slot and key material that signed `token`, as
+   * `apiKeyIndex:accountIndex:apiKeyPrivateKey`. `REGISTER_API_KEY` rotates the
+   * stored key, and Lighter rejects a token the superseded key signed.
+   */
+  signingKey: string
 }
 
 /**
@@ -373,10 +379,12 @@ export const createLighterProvider = (
     indices: { apiKeyIndex: number; accountIndex: number }
   ): Promise<string> => {
     const cacheKey = address.toLowerCase()
+    const signingKey = `${indices.apiKeyIndex}:${indices.accountIndex}:${apiKeyPrivateKey}`
     const nowSec = Math.floor(Date.now() / 1000)
     const cached = standardTokenByAddress.get(cacheKey)
     if (
       cached !== undefined &&
+      cached.signingKey === signingKey &&
       cached.expiresAt - nowSec > tokenRenewBufferSeconds
     ) {
       return cached.token
@@ -391,7 +399,7 @@ export const createLighterProvider = (
       lifetimeSeconds: tokenLifetimeSeconds,
     })
     const expiresAt = nowSec + tokenLifetimeSeconds
-    standardTokenByAddress.set(cacheKey, { token, expiresAt })
+    standardTokenByAddress.set(cacheKey, { token, expiresAt, signingKey })
     return token
   }
 
@@ -429,11 +437,17 @@ export const createLighterProvider = (
       return undefined
     }
 
-    const standardToken = (): Promise<string> =>
-      getStandardAuthToken(address, apiKey.apiKeyPrivateKey, {
-        apiKeyIndex: apiKey.apiKeyIndex,
-        accountIndex: apiKey.accountIndex,
+    // Sign with the key registered at call time, not the one read on entry:
+    // `REGISTER_API_KEY` can rotate the store while an await below is pending,
+    // and Lighter rejects a token the superseded key signed. The entry value
+    // stands in only when the record is gone, which no key can re-sign.
+    const standardToken = async (): Promise<string> => {
+      const current = (await keyStore.get(address)) ?? apiKey
+      return getStandardAuthToken(address, current.apiKeyPrivateKey, {
+        apiKeyIndex: current.apiKeyIndex,
+        accountIndex: current.accountIndex,
       })
+    }
 
     const stored = await readOnlyTokenManager.get(address, apiKey.accountIndex)
     if (stored !== undefined) {

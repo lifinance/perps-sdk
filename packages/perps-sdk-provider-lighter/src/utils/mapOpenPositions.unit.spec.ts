@@ -71,4 +71,13 @@ describe('mapOpenPositions', () => {
     expect(positions[0].market.id).toBe('1')
     expect(positions[0].market.baseAsset.displaySymbol).toBe('ETH')
   })
+
+  // REST `/api/v1/account` rows honour the same `omitempty` as the WS frames.
+  it('defaults accruedFunding to "0" when a row omits total_funding_paid_out', () => {
+    const { total_funding_paid_out, ...withoutFunding } = rawPosition()
+
+    const positions = mapOpenPositions([withoutFunding], resolveMarket)
+
+    expect(positions[0].accruedFunding).toBe('0')
+  })
 })

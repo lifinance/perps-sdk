@@ -31,7 +31,8 @@ export type LtAccountPosition = {
    * Funding accrued since the position opened, signed from the account's point
    * of view despite the field name: negative is funding the account paid and
    * positive is funding it received. Lighter resets it to `"0"` on close, and
-   * marks it `omitempty`, so an absent field means zero.
+   * marks it `omitempty`, so a position that accrued no funding yet omits the
+   * field entirely; an absent value means zero.
    */
   total_funding_paid_out?: string
   margin_mode: number

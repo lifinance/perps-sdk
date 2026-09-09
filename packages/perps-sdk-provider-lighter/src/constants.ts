@@ -249,6 +249,16 @@ const LIGHTER_INVALID_AUTH_CODE = 20013
 const LIGHTER_TOKEN_REVOKED_CODE = 61006
 
 /**
+ * Lighter body `code` for the internal-error envelope it answers when a token's
+ * signature does not verify — the message reads `invalid signature`. Only the
+ * auth-gated read path treats it as an auth failure; a public read keeps the
+ * venue-error classification.
+ *
+ * @internal
+ */
+const LIGHTER_INVALID_SIGNATURE_CODE = 29500
+
+/**
  * Lighter body `code` values that mean success. Lighter is inconsistent per
  * endpoint: `/api/v1/account` returns `code: 200`, most others return `code: 0`.
  * A body with no `code` field is also success (no error channel present).
@@ -279,6 +289,7 @@ const LIGHTER_REFERRAL_ALREADY_USED_CODE = 41003
 export {
   LIGHTER_CODE_ACCOUNT_NOT_FOUND,
   LIGHTER_INVALID_AUTH_CODE,
+  LIGHTER_INVALID_SIGNATURE_CODE,
   LIGHTER_MUTATION_SUCCESS_CODE,
   LIGHTER_REFERRAL_ALREADY_USED_CODE,
   LIGHTER_SUCCESS_CODES,

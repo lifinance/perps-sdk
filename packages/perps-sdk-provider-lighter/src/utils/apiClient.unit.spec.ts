@@ -114,6 +114,18 @@ describe('LighterApiClient body error codes', () => {
     })
   })
 
+  it('keeps ThirdPartyError for the invalid-signature code on an unauthenticated read', async () => {
+    const client = clientWith(
+      stubFetch(200, {
+        code: 29500,
+        message: 'internal server error: invalid signature',
+      })
+    )
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+  })
+
   it('keeps ThirdPartyError for a non-2xx body with an unrecognised code', async () => {
     const client = clientWith(
       stubFetch(400, { code: 21702, message: 'invalid order type' })
@@ -162,6 +174,34 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     await expect(
       client.getAuthed('/api/v1/accountLimits', 'tok')
     ).rejects.toBeInstanceOf(LighterTokenRevokedError)
+  })
+
+  // Lighter reports a token the rotated-out API key signed through its generic
+  // internal-error envelope, so the code alone has to read as an auth failure.
+  it.each([
+    200, 500,
+  ])('throws LighterAuthRejectedError for a %i body with the invalid-signature code', async (status) => {
+    const client = clientWith(
+      stubFetch(status, {
+        code: 29500,
+        message: 'internal server error: invalid signature',
+      })
+    )
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+  })
+
+  it('names the invalid-signature rejection as an auth rejection, not a third-party error', async () => {
+    const client = clientWith(
+      stubFetch(200, {
+        code: 29500,
+        message: 'internal server error: invalid signature',
+      })
+    )
+    await expect(
+      client.getAuthed('/api/v1/accountLimits', 'tok')
+    ).rejects.toBeInstanceOf(LighterAuthRejectedError)
   })
 
   it('throws ThirdPartyError (not TypeError) on a 200 body with a non-auth error code', async () => {
