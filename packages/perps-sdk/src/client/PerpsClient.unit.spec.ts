@@ -1498,6 +1498,86 @@ describe('PerpsClient', () => {
     })
   })
 
+  describe('getPortfolioHistory', () => {
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: provider,
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+    const history = {
+      range: '7d' as const,
+      points: [{ timestamp: 1_741_046_400_000, accountValue: '100', pnl: '5' }],
+    }
+
+    it('delegates the address, range, and request options', async () => {
+      const getPortfolioHistory = vi.fn(async () => history)
+      const options = { signal: new AbortController().signal }
+
+      await expect(
+        clientWith({ getPortfolioHistory }).getPortfolioHistory(
+          { provider, address: userAddress, range: '7d' },
+          options
+        )
+      ).resolves.toEqual(history)
+      expect(getPortfolioHistory).toHaveBeenCalledWith(
+        { address: userAddress, range: '7d' },
+        options
+      )
+    })
+
+    it('throws an SDKError when the plugin has no portfolio history read', async () => {
+      await expect(
+        clientWith({}).getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: '24h',
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining(
+          'does not implement getPortfolioHistory'
+        ),
+      })
+    })
+
+    it('propagates provider errors', async () => {
+      const getPortfolioHistory = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
+      })
+
+      await expect(
+        clientWith({ getPortfolioHistory }).getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: 'all',
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+
+      await expect(
+        noProviderClient.getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: '30d',
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
   describe('getPositionMarginConstraints', () => {
     const position: Position = {
       market: {

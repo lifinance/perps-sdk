@@ -17,6 +17,7 @@ import {
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
+  type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetRunningTwapsParams,
@@ -46,6 +47,8 @@ import type {
   MarketSettings,
   Order,
   OrdersResponse,
+  PortfolioHistoryRange,
+  PortfolioHistoryResponse,
   Position,
   PositionsResponse,
   ProviderAction,
@@ -91,6 +94,7 @@ import type {
   LtAccount,
   LtAccountLimits,
   LtAccountOrdersResponse,
+  LtAccountPnL,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
   LtDetailedAccountPosition,
@@ -119,6 +123,7 @@ import {
 import {
   LIGHTER_RETRY_DEFAULTS,
   LighterApiClient,
+  LighterAuthRejectedError,
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
@@ -134,6 +139,7 @@ import {
   mapFill,
   mapOpenPositions,
   mapOrderDetail,
+  mapPortfolioHistory,
   positionMarginConstraints,
   toBigOrNull,
   toIsoFromMs,
@@ -180,6 +186,24 @@ const TX_HASH_PATTERN = /^[0-9a-f]{80}$/
 const CLIENT_ORDER_INDEX_PATTERN = /^\d+$/
 
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
+
+interface PnlWindow {
+  resolution: '1h' | '4h' | '1d'
+  bucketMs: number
+  countBack: number
+}
+
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
+
+// `all` has no natural bucket count; 1000 daily buckets reach back past the
+// venue's launch for every account.
+const PNL_WINDOWS: Record<PortfolioHistoryRange, PnlWindow> = {
+  '24h': { resolution: '1h', bucketMs: HOUR_MS, countBack: 24 },
+  '7d': { resolution: '4h', bucketMs: 4 * HOUR_MS, countBack: 42 },
+  '30d': { resolution: '1d', bucketMs: DAY_MS, countBack: 30 },
+  all: { resolution: '1d', bucketMs: DAY_MS, countBack: 1000 },
+}
 
 /** Activity surfaces whose rows name a market, so they need the market registry. */
 const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
@@ -1297,6 +1321,77 @@ export const createLighterProvider = (
           cursor: response.next_cursor || undefined,
         },
       }
+    },
+
+    async getPortfolioHistory(
+      params: ProviderGetPortfolioHistoryParams,
+      opts?: SDKRequestOptions
+    ): Promise<PortfolioHistoryResponse> {
+      const sdkOwnsToken =
+        opts?.lighterAuthToken === undefined && authTokenSource === undefined
+      const apiKey = sdkOwnsToken ? await keyStore.get(params.address) : null
+      const token = await resolveAuthToken(
+        opts,
+        params.address,
+        apiKey ?? undefined
+      )
+      if (token === undefined) {
+        return { range: params.range, points: [] }
+      }
+
+      const client = apiClient(opts)
+      const account = await fetchDetailedAccount(client, params.address)
+      const window = PNL_WINDOWS[params.range]
+      const endTimestamp = Date.now()
+      const queryParams: Record<string, string | number | boolean> = {
+        by: 'index',
+        value: String(account.index),
+        resolution: window.resolution,
+        start_timestamp:
+          params.range === 'all'
+            ? 0
+            : endTimestamp - window.countBack * window.bucketMs,
+        end_timestamp: endTimestamp,
+        count_back: window.countBack,
+        ignore_transfers: false,
+      }
+      const read = (tok: string) =>
+        client.getAuthed<LtAccountPnL>('/api/v1/pnl', tok, queryParams)
+
+      // The read-only token may not be accepted on `/pnl`; the standard token
+      // is, so a read signed from the SDK's own key retries once with it. The
+      // key is re-read at retry time because `REGISTER_API_KEY` can rotate it.
+      const response = await retryOnRevoked(
+        opts,
+        params.address,
+        token,
+        async (tok) => {
+          try {
+            return await read(tok)
+          } catch (err) {
+            if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
+              throw err
+            }
+            const current = (await keyStore.get(params.address)) ?? apiKey
+            return read(
+              await getStandardAuthToken(
+                params.address,
+                current.apiKeyPrivateKey,
+                {
+                  apiKeyIndex: current.apiKeyIndex,
+                  accountIndex: current.accountIndex,
+                }
+              )
+            )
+          }
+        }
+      )
+
+      return mapPortfolioHistory(
+        params.range,
+        wireList(response.pnl),
+        toRequiredBig(account.total_asset_value, 'total_asset_value')
+      )
     },
 
     async getActivity(

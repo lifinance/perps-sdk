@@ -10,6 +10,7 @@ import type {
   HmacActionStep,
   HmacSignedActionStep,
   PerpsMarket,
+  PortfolioHistoryRange,
   Position,
   Provider,
   ProviderAction,
@@ -47,6 +48,8 @@ import type {
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
   OndoOrder,
+  OndoPortfolioGraphPoint,
+  OndoPortfolioSummary,
   OndoPosition,
   OndoWalletDeposit,
   OndoWalletWithdrawal,
@@ -346,6 +349,39 @@ let depositAddressResult: unknown
 let positionsResult: OndoPosition[] | null
 let providersResult: Provider[]
 
+const PORTFOLIO_GRAPH_RESULT: OndoPortfolioGraphPoint[] = [
+  {
+    time: '2025-03-04T00:00:00Z',
+    marginBalance: '4800.00',
+    totalPnL: '180.00',
+    realizedPnl: '200.00',
+    netInvested: '4620.00',
+    fillVolume: '240000.00',
+    allTimeDeposits: '5000.00',
+    allTimeWithdrawals: '500.00',
+  },
+  {
+    time: '2025-03-05T00:00:00Z',
+    marginBalance: '4950.00',
+    totalPnL: '232.00',
+    realizedPnl: '250.00',
+    netInvested: '4750.00',
+    fillVolume: '250000.00',
+    allTimeDeposits: '5000.00',
+    allTimeWithdrawals: '500.00',
+  },
+]
+
+const PORTFOLIO_SUMMARY_RESULT: OndoPortfolioSummary = {
+  marginBalance: '4950.00',
+  netInvested: '4750.00',
+  totalPnL: '232.00',
+  realizedPnl: '250.00',
+  volume7d: '15000.00',
+  volume30d: '85000.00',
+  volumeAllTime: '250000.00',
+}
+
 const respond = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -404,6 +440,12 @@ beforeEach(() => {
         success: true,
         result: [LIQUIDATION_RESULT],
       })
+    }
+    if (u.includes('/v1/portfolio/summary/graph')) {
+      return respond(envelope(PORTFOLIO_GRAPH_RESULT))
+    }
+    if (u.includes('/v1/portfolio/summary')) {
+      return respond(envelope(PORTFOLIO_SUMMARY_RESULT))
     }
     if (u.includes('/v1/wallet/deposits')) {
       return respond({ success: true, result: [DEPOSIT_RESULT] })
@@ -1084,6 +1126,65 @@ describe('OndoProvider — getFills', () => {
       hasMore: true,
       cursor: 'fills-cur-2',
     })
+  })
+})
+
+describe('OndoProvider — getPortfolioHistory', () => {
+  const EXPECTED_POINTS = [
+    {
+      timestamp: Date.parse('2025-03-04T00:00:00Z'),
+      accountValue: '4800.00',
+      pnl: '180.00',
+    },
+    {
+      timestamp: Date.parse('2025-03-05T00:00:00Z'),
+      accountValue: '4950.00',
+      pnl: '232.00',
+    },
+  ]
+
+  it.each<[PortfolioHistoryRange, string | undefined]>([
+    ['24h', undefined],
+    ['7d', '15000.00'],
+    ['30d', '85000.00'],
+    ['all', '250000.00'],
+  ])('reads the %s graph and summary inside the session and maps the window volume', async (range, volume) => {
+    const { provider } = await loggedInProvider()
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range,
+    })
+
+    expect(history).toEqual({
+      range,
+      points: EXPECTED_POINTS,
+      volume,
+      totalPnl: '232.00',
+    })
+
+    const graphCall = recorded.find((r) =>
+      r.url.includes('/v1/portfolio/summary/graph')
+    ) as Recorded
+    const summaryCall = recorded.find(
+      (r) =>
+        r.url.includes('/v1/portfolio/summary') && !r.url.includes('/graph')
+    ) as Recorded
+    expect(new URL(graphCall.url).searchParams.get('range')).toBe(range)
+    expect(authHeaderOf(graphCall)).toBe('Bearer ondo-jwt-token')
+    expect(authHeaderOf(summaryCall)).toBe('Bearer ondo-jwt-token')
+  })
+
+  it('returns no points and skips the venue when logged out', async () => {
+    const provider = loggedOutProvider()
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '7d',
+    })
+
+    expect(history).toEqual({ range: '7d', points: [] })
+    expect(
+      recorded.find((r) => r.url.includes('/v1/portfolio'))
+    ).toBeUndefined()
   })
 })
 

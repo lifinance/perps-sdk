@@ -346,3 +346,34 @@ export interface OndoAccountWalletKey {
   id: string
   wallet: 'main' | 'margin'
 }
+
+/**
+ * Mirrors Ondo's `PortfolioGraphPoint` (one `GET /v1/portfolio/summary/graph`
+ * row). `time` is an ISO-8601 timestamp; `fillVolume` is cumulative.
+ * @public
+ */
+export interface OndoPortfolioGraphPoint {
+  time: string
+  marginBalance: string
+  totalPnL: string
+  realizedPnl: string
+  netInvested: string
+  fillVolume: string
+  allTimeDeposits: string
+  allTimeWithdrawals: string
+}
+
+/**
+ * Mirrors Ondo's `PortfolioSummaryRes` (the `GET /v1/portfolio/summary`
+ * result). The venue reports no 24-hour volume.
+ * @public
+ */
+export interface OndoPortfolioSummary {
+  marginBalance: string
+  netInvested: string
+  totalPnL: string
+  realizedPnl: string
+  volume7d: string
+  volume30d: string
+  volumeAllTime: string
+}
