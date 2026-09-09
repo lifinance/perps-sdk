@@ -13,6 +13,7 @@ import {
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
+  type WsProviderFactoryParams,
   wsLog,
 } from '@lifi/perps-sdk'
 import {
@@ -159,7 +160,7 @@ export interface LighterWsProviderOptions {
 }
 
 /**
- * Lighter realtime WS provider (extends {@link WsProviderBase}): subscribes to
+ * Lighter WebSocket provider (extends {@link WsProviderBase}): subscribes to
  * Lighter's WS channels (orderbook, marketsContext, orders, positions), attaching auth
  * tokens to gated channels. Construct via {@link lighterWsProvider}.
  *
@@ -257,14 +258,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
-    // Lighter has no live OHLC channel — there's nothing to subscribe to.
-    // Return a no-op unsubscribe so the caller's UX (chart still rendering
-    // from REST history + price-tick mid line) is unaffected, instead of
-    // throwing and surfacing a console error on every chart mount.
-    if (sub.channel === 'candle') {
-      return () => {}
-    }
-
     // Only the auth channels (orders/fills/positions) resolve markets.
     // `marketsContext`/`orderbook` are keyed purely by `String(market_id)`, so
     // gating them on the registry sync would let a failed `/markets` fetch kill
@@ -377,10 +370,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         return `positions:${sub.address.toLowerCase()}`
       case 'accountSummary':
         return `accountSummary:${sub.address.toLowerCase()}`
-      // No live wire sub (openChannel returns a no-op), but a stable key is
-      // still needed so the base's fan-out registry can track/release it.
       case 'candle':
-        return `candle:${sub.marketId}:${sub.interval}`
       case 'spotBalances':
         throw new Error(`Lighter WS does not support channel: ${sub.channel}.`)
     }
@@ -1006,7 +996,11 @@ function collectAuthChannelItems<T>(
  *
  * @public
  */
-export const lighterWsProvider =
-  (options?: LighterWsProviderOptions): WsProviderFactory =>
-  ({ provider, wsUrl, client }) =>
-    new LighterWsProvider(wsUrl, provider, options, client)
+export const lighterWsProvider = (
+  options?: LighterWsProviderOptions
+): WsProviderFactory =>
+  Object.assign(
+    ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
+      new LighterWsProvider(wsUrl, provider, options, client),
+    { streamsCandles: false }
+  )

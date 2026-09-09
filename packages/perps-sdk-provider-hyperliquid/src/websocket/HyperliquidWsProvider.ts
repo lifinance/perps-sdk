@@ -13,6 +13,7 @@ import {
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
+  type WsProviderFactoryParams,
   type WsStatusListener,
   wsLog,
 } from '@lifi/perps-sdk'
@@ -95,13 +96,15 @@ const normalizeHlAddress = (address: string): string =>
  *
  * @public
  */
-export const hyperliquidWsProvider =
-  (): WsProviderFactory =>
-  ({ provider, wsUrl, client }) =>
-    new HyperliquidWsProvider(wsUrl, provider, client)
+export const hyperliquidWsProvider = (): WsProviderFactory =>
+  Object.assign(
+    ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
+      new HyperliquidWsProvider(wsUrl, provider, client),
+    { streamsCandles: true }
+  )
 
 /**
- * Hyperliquid realtime {@link WsProvider}: multiplexes markets context,
+ * Hyperliquid WebSocket {@link WsProvider}: multiplexes markets context,
  * positions, orders, fills and spot balances over a single
  * {@link ReconnectingWebSocket}.
  * Construct via {@link hyperliquidWsProvider}.

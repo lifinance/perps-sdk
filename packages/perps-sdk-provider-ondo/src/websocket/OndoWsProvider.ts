@@ -12,6 +12,7 @@ import {
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
+  type WsProviderFactoryParams,
   wsLog,
 } from '@lifi/perps-sdk'
 import type {
@@ -108,7 +109,7 @@ export interface OndoWsProviderOptions {
 }
 
 /**
- * Ondo realtime WS provider (extends {@link WsProviderBase}): subscribes to
+ * Ondo WebSocket provider (extends {@link WsProviderBase}): subscribes to
  * Ondo's WS channels (orderbook, trades, candles, market context, orders,
  * fills, positions), logging in with the stored SIWE session JWT for the
  * account channels. Construct via {@link ondoWsProvider}.
@@ -841,7 +842,11 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
  *
  * @public
  */
-export const ondoWsProvider =
-  (options?: OndoWsProviderOptions): WsProviderFactory =>
-  ({ provider, wsUrl, client }) =>
-    new OndoWsProvider(wsUrl, provider, options, client)
+export const ondoWsProvider = (
+  options?: OndoWsProviderOptions
+): WsProviderFactory =>
+  Object.assign(
+    ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
+      new OndoWsProvider(wsUrl, provider, options, client),
+    { streamsCandles: true }
+  )

@@ -194,29 +194,33 @@ describe('LighterWsProvider', () => {
     ;(p as any).channels.set(key, { listeners: new Map([[fn, 1]]) })
   }
 
-  it('accepts candle subscriptions as a no-op (Lighter has no candle WS channel)', async () => {
+  it('rejects candle subscriptions which Lighter does not expose', async () => {
     const provider = makeProvider()
-    const listener = vi.fn()
-    const unsubscribe = await provider.subscribe(
-      {
-        channel: 'candle',
-        dex: 'lighter',
-        marketId: 'BTC',
-        interval: '1h',
-      },
-      listener
-    )
-    expect(typeof unsubscribe).toBe('function')
-    unsubscribe()
-    expect(listener).not.toHaveBeenCalled()
+    await expect(
+      provider.subscribe(
+        {
+          channel: 'candle',
+          dex: 'lighter',
+          marketId: 'BTC',
+          interval: '1h',
+        },
+        () => {}
+      )
+    ).rejects.toThrow(/does not support channel: candle/)
     provider.close()
+  })
+
+  it('reports streamsCandles false on the factory', () => {
+    expect(lighterWsProvider().streamsCandles).toBe(false)
   })
 
   it('reports connection status to the subscriber onStatus and forwards transitions', async () => {
     const provider = makeProvider()
+    ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+    ;(provider as any).rws.send = vi.fn()
     const onStatus = vi.fn()
     const unsubscribe = await provider.subscribe(
-      { channel: 'candle', dex: 'lighter', marketId: 'BTC', interval: '1h' },
+      { channel: 'marketsContext', dex: 'lighter' },
       vi.fn(),
       onStatus
     )
