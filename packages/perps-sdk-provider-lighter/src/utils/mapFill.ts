@@ -107,9 +107,11 @@ export const mapFill = (
 
   // Lighter publishes both counterparties' position-before snapshots on every
   // trade row; reading the wrong one mis-classifies when they differ.
-  const startPosition = isMaker
-    ? trade.maker_position_size_before
-    : trade.taker_position_size_before
+  // Both keys are `omitempty`: an absent snapshot means flat.
+  const startPosition =
+    (isMaker
+      ? trade.maker_position_size_before
+      : trade.taker_position_size_before) ?? '0'
   const entryQuoteBefore = isMaker
     ? trade.maker_entry_quote_before
     : trade.taker_entry_quote_before

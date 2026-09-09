@@ -185,6 +185,21 @@ export const LT_MARGIN_MODE_CROSS = 0
 export const LT_MARGIN_MODE_ISOLATED = 1
 
 /**
+ * Lighter account-trading-mode value for the Classic/Simple account, which
+ * segregates margin per market. The wire zero value, so an omitted
+ * `account_trading_mode` means this mode.
+ * @public
+ */
+export const LT_ACCOUNT_TRADING_MODE_SIMPLE = 0
+
+/**
+ * Lighter account-trading-mode value for the Unified Trading Account, which
+ * margins across assets.
+ * @public
+ */
+export const LT_ACCOUNT_TRADING_MODE_UNIFIED = 1
+
+/**
  * Lighter margin-direction value for removing margin.
  * @public
  */

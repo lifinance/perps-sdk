@@ -5,6 +5,10 @@ import type {
   ProviderAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_ACCOUNT_TRADING_MODE_UNIFIED,
+} from './types/action.js'
 
 function assertNever(value: never): never {
   throw new Error(
@@ -27,15 +31,11 @@ const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
 }
 
-// `account_trading_mode` on `DetailedAccount`: 0 = Classic/Simple (segregated
-// margin), 1 = Unified Trading Account (cross-asset margin). Wire strings match
-// the backend descriptor's ParamOption values. An unmapped int projects to null.
-const LIGHTER_ACCOUNT_MODE_SIMPLE = 0
-const LIGHTER_ACCOUNT_MODE_UNIFIED = 1
-
+// Wire strings match the backend descriptor's ParamOption values. An unmapped
+// int projects to null.
 const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
-  [LIGHTER_ACCOUNT_MODE_SIMPLE]: 'simpleTradingAccount',
-  [LIGHTER_ACCOUNT_MODE_UNIFIED]: 'unifiedTradingAccount',
+  [LT_ACCOUNT_TRADING_MODE_SIMPLE]: 'simpleTradingAccount',
+  [LT_ACCOUNT_TRADING_MODE_UNIFIED]: 'unifiedTradingAccount',
 }
 
 /**

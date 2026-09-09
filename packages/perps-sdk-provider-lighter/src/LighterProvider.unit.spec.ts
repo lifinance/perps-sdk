@@ -46,7 +46,11 @@ import {
   lighterRhProvider,
 } from './LighterProvider.js'
 import type { LtLiqTrade, LtLiquidationInfo } from './types/index.js'
-import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
+import {
+  LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_MARGIN_MODE_CROSS,
+  LT_MARGIN_MODE_ISOLATED,
+} from './types/index.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
@@ -812,6 +816,27 @@ describe('LighterProvider — auth token plumbing', () => {
     expect(recorded.some((r) => r.url.includes('/api/v1/tokens/create'))).toBe(
       false
     )
+  })
+
+  // Lighter marks `account_trading_mode` `omitempty` on DetailedAccount, so a
+  // Classic/Simple account drops the key; `LighterAccountConfig` types the
+  // member a required `number`.
+  it('defaults accountTradingMode to Classic/Simple when the account omits account_trading_mode', async () => {
+    const { account_trading_mode, ...accountWithoutMode } =
+      ACCOUNT_PAYLOAD.accounts[0]
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({ ...ACCOUNT_PAYLOAD, accounts: [accountWithoutMode] })
+        : undefined
+    )
+    const provider = lighterProvider({ storage: createMemoryStorage() })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({
+      accountTradingMode: LT_ACCOUNT_TRADING_MODE_SIMPLE,
+    })
   })
 })
 

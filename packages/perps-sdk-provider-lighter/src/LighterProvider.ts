@@ -106,7 +106,11 @@ import type {
   LtWithdrawHistoryItem,
   LtWithdrawHistoryResponse,
 } from './types/index.js'
-import { LT_MARGIN_MODE_CROSS, LT_MARGIN_MODE_ISOLATED } from './types/index.js'
+import {
+  LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_MARGIN_MODE_CROSS,
+  LT_MARGIN_MODE_ISOLATED,
+} from './types/index.js'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -887,7 +891,8 @@ export const createLighterProvider = (
         apiKeyRegistered,
         accountType: account.account_type,
         userTierName: limitsResult?.user_tier_name,
-        accountTradingMode: account.account_trading_mode,
+        accountTradingMode:
+          account.account_trading_mode ?? LT_ACCOUNT_TRADING_MODE_SIMPLE,
         assetCollateral,
         // Satisfied when a non-expired read-only token is stored locally
         // (`readOnlyTokenManager.get` filters out expired ones).
