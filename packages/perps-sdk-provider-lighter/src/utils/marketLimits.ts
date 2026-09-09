@@ -3,25 +3,26 @@ import type { LtPerpsOrderBookDetail } from '../types/index.js'
 
 type MarketOrderLimits = Pick<
   PerpsMarket,
-  'maxMarketOrderUsd' | 'maxLimitOrderUsd'
+  'maxMarketOrderUsd' | 'maxLimitOrderUsd' | 'minOrderValueUsd'
 >
 
 type LighterMarketLimitSource = Pick<
   LtPerpsOrderBookDetail,
-  'order_quote_limit'
+  'order_quote_limit' | 'min_quote_amount'
 >
 
 const NO_ORDER_QUOTE_LIMIT = '281474976.710655'
 
-/** Map the order-value cap published by Lighter's order-book metadata. */
+/** Map the order-value limits published by Lighter's order-book metadata. */
 export const mapMarketOrderLimits = (
   market: LighterMarketLimitSource
 ): MarketOrderLimits => {
   if (market.order_quote_limit === NO_ORDER_QUOTE_LIMIT) {
-    return {}
+    return { minOrderValueUsd: market.min_quote_amount }
   }
 
   return {
+    minOrderValueUsd: market.min_quote_amount,
     maxMarketOrderUsd: market.order_quote_limit,
     maxLimitOrderUsd: market.order_quote_limit,
   }
