@@ -2065,6 +2065,72 @@ describe('LighterProvider — standard auth token after a key rotation', () => {
     expect(wasm.signingKeyOf(rotatedToken)).toBe(rotatedKey.apiKeyPrivateKey)
   })
 
+  it('signs the fallback standard token with a key registered mid-flight', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const storage = await storageWithApiKey()
+    let markCreateDispatched: () => void = () => {}
+    const createDispatched = new Promise<void>((resolve) => {
+      markCreateDispatched = resolve
+    })
+    let releaseCreate: () => void = () => {}
+    const createHeld = new Promise<void>((resolve) => {
+      releaseCreate = resolve
+    })
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        markCreateDispatched()
+        return createHeld.then(
+          () => new Response('tokens/create unavailable', { status: 503 })
+        )
+      }
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({
+          code: 0,
+          api_keys: [
+            {
+              account_index: STORED_API_KEY.accountIndex,
+              api_key_index: STORED_API_KEY.apiKeyIndex,
+              nonce: 1,
+              public_key: STORED_API_KEY.apiKeyPublicKey,
+            },
+          ],
+        })
+      }
+      return undefined
+    })
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = provider.getAccount({ address: ADDRESS })
+    await createDispatched
+
+    // The user completes REGISTER_API_KEY while `tokens/create` is in flight,
+    // so the key the read entered with is superseded before the fallback signs.
+    await provider.signActions?.(
+      SigningMethod.WASM_BLOB,
+      [registerApiKeyStep],
+      ADDRESS,
+      { userWallet }
+    )
+    const rotatedKey = await storedKeyOf(storage)
+    expect(rotatedKey.apiKeyPrivateKey).not.toBe(
+      STORED_API_KEY.apiKeyPrivateKey
+    )
+
+    releaseCreate()
+    await account
+
+    const limitsCalls = recorded.filter((r) =>
+      r.url.includes('/api/v1/accountLimits')
+    )
+    expect(limitsCalls).toHaveLength(1)
+    expect(wasm.signingKeyOf(authHeader(limitsCalls[0]))).toBe(
+      rotatedKey.apiKeyPrivateKey
+    )
+  })
+
   it('keeps serving the cached standard token while the stored key is unchanged', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
     const storage = await storageWithApiKey()

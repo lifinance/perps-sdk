@@ -433,11 +433,17 @@ export const createLighterProvider = (
       return undefined
     }
 
-    const standardToken = (): Promise<string> =>
-      getStandardAuthToken(address, apiKey.apiKeyPrivateKey, {
-        apiKeyIndex: apiKey.apiKeyIndex,
-        accountIndex: apiKey.accountIndex,
+    // Sign with the key registered at call time, not the one read on entry:
+    // `REGISTER_API_KEY` can rotate the store while an await below is pending,
+    // and Lighter rejects a token the superseded key signed. The entry value
+    // stands in only when the record is gone, which no key can re-sign.
+    const standardToken = async (): Promise<string> => {
+      const current = (await keyStore.get(address)) ?? apiKey
+      return getStandardAuthToken(address, current.apiKeyPrivateKey, {
+        apiKeyIndex: current.apiKeyIndex,
+        accountIndex: current.accountIndex,
       })
+    }
 
     const stored = await readOnlyTokenManager.get(address, apiKey.accountIndex)
     if (stored !== undefined) {
