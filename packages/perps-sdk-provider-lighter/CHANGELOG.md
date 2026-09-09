@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 22.1.1
+
+### Patch Changes
+
+- [#435](https://github.com/lifinance/perps-sdk/pull/435) [`be8f9da`](https://github.com/lifinance/perps-sdk/commit/be8f9da91ea6fd749931865db1590133675ee463) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Load the Lighter signer without JavaScript string evaluation. The browser CSP requires `'wasm-unsafe-eval'`, not `'unsafe-eval'`. Go's runtime initializes only when the signer loads, so backend imports preserve host globals and allow later polyfill installation. CommonJS, ESM, and declaration outputs remain available.
+
 ## 22.1.0
 
 ### Minor Changes
