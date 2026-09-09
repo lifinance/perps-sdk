@@ -592,8 +592,16 @@ describe('OndoWsProvider', () => {
         type: 'update',
         channel: 'markPricesPerps',
         data: [
-          { market: 'AAPL-USD.P', markPrice: '227.50' },
-          { market: 'NVDA-USD.P', markPrice: '900.00' },
+          {
+            market: 'AAPL-USD.P',
+            markPrice: '227.50',
+            oraclePrice: '227.47',
+          },
+          {
+            market: 'NVDA-USD.P',
+            markPrice: '900.00',
+            oraclePrice: '899.95',
+          },
         ],
       })
 
@@ -604,14 +612,60 @@ describe('OndoWsProvider', () => {
             marketId: 'AAPL-USD.P',
             midPrice: '227.50',
             markPrice: '227.50',
+            oraclePrice: '227.47',
           },
           'NVDA-USD.P': {
             marketId: 'NVDA-USD.P',
             midPrice: '900.00',
             markPrice: '900.00',
+            oraclePrice: '899.95',
           },
         },
       })
+      p.close()
+    })
+
+    it('reports no oracle price for a mark price frame that carries none', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketsContext', listener)
+
+      feed(p, {
+        type: 'update',
+        channel: 'markPricesPerps',
+        data: [{ market: 'AAPL-USD.P', markPrice: '227.50' }],
+      })
+
+      const context = listener.mock.calls.at(-1)?.[0].data['AAPL-USD.P']
+      expect(context.markPrice).toBe('227.50')
+      expect(context.oraclePrice).toBeUndefined()
+      p.close()
+    })
+
+    it('drops a known oracle price when a later frame omits it', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketsContext', listener)
+
+      feed(p, {
+        type: 'update',
+        channel: 'markPricesPerps',
+        data: [
+          { market: 'AAPL-USD.P', markPrice: '227.50', oraclePrice: '227.47' },
+        ],
+      })
+      // Every frame carries a mark price, so a frame is a complete statement of
+      // the venue's prices, not a patch. An absent oracle price means the venue
+      // publishes none now; holding the earlier one would emit a stale price.
+      feed(p, {
+        type: 'update',
+        channel: 'markPricesPerps',
+        data: [{ market: 'AAPL-USD.P', markPrice: '228.00' }],
+      })
+
+      const context = listener.mock.calls.at(-1)?.[0].data['AAPL-USD.P']
+      expect(context.markPrice).toBe('228.00')
+      expect(context.oraclePrice).toBeUndefined()
       p.close()
     })
 

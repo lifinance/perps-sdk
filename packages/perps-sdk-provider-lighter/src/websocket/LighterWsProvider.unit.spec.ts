@@ -98,6 +98,8 @@ const RAW_POSITION = {
 
 const TEST_ADDR = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 const ACCOUNT_IDX = 42
+const LAST_FUNDING_PAYMENT_TIME = 1704067200000
+const NEXT_FUNDING_PAYMENT_TIME = 1704070800000
 
 describe('LighterWsProvider', () => {
   const BTC_LOGO = 'https://cdn.test/btc.svg'
@@ -1152,7 +1154,7 @@ describe('LighterWsProvider', () => {
               last_trade_price: '50002',
               current_funding_rate: '0.0001',
               funding_rate: '0.00009',
-              funding_timestamp: 1704067200000,
+              funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
               daily_base_token_volume: 10,
               daily_quote_token_volume: 500000,
               daily_price_change: 1.2,
@@ -1170,6 +1172,10 @@ describe('LighterWsProvider', () => {
         oraclePrice: '49998',
         priceChange24h: '1.2',
         openInterest: '12.5',
+        funding: {
+          rate: '0.0001',
+          nextFundingTime: NEXT_FUNDING_PAYMENT_TIME,
+        },
       })
 
       // Spot ticks (2048+ ids) arrive on the spot channel and merge into the
@@ -1241,7 +1247,7 @@ describe('LighterWsProvider', () => {
             last_trade_price: '50002',
             current_funding_rate: '0.0001',
             funding_rate: '0.00009',
-            funding_timestamp: 1704067200000,
+            funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
             daily_base_token_volume: 10,
             daily_quote_token_volume: 500000,
             daily_price_change: 1.2,
@@ -1258,7 +1264,10 @@ describe('LighterWsProvider', () => {
           markPrice: '50000',
           oraclePrice: '49998',
           volume24h: '500000',
-          funding: { rate: '0.0001' },
+          funding: {
+            rate: '0.0001',
+            nextFundingTime: NEXT_FUNDING_PAYMENT_TIME,
+          },
         },
       })
       provider.close()

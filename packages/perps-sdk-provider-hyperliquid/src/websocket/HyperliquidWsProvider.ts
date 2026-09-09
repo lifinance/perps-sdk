@@ -787,12 +787,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       perpCtx = byMarketId[marketId] ?? perpCtx
     }
     if (perpCtx !== undefined) {
-      const base = mapMarketContext(marketId, perpCtx)
-      return {
-        ...base,
-        midPrice: fast?.midPx != null ? fast.midPx : base.midPrice,
-        markPrice: fast?.markPx != null ? fast.markPx : base.markPrice,
-      }
+      return mapMarketContext(marketId, perpCtx, fast)
     }
     const midPrice = fast?.midPx ?? fast?.markPx
     const markPrice = fast?.markPx ?? fast?.midPx
