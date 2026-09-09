@@ -475,10 +475,10 @@ async function assertSignsWithPackagedRuntime(fixtureDir, binaryPath) {
     'generated',
     'wasmExecRuntime.js'
   )
-  const { Go } = await import(`file://${installed}`)
+  const { createGoRuntime } = await import(`file://${installed}`)
   const previousGo = globalThis.Go
   try {
-    const go = new Go()
+    const go = createGoRuntime()
     const bytes = readFileSync(binaryPath)
     const { instance } = await WebAssembly.instantiate(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),

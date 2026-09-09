@@ -1,7 +1,7 @@
 // The Go runtime installs functions (SignCreateOrder, SignCancelOrder, etc.)
 // onto `globalThis` when `go.run(instance)` starts the main goroutine.
 
-import { Go } from './generated/wasmExecRuntime.js'
+import { createGoRuntime } from './generated/wasmExecRuntime.js'
 import {
   lighterWasmBinaryUrl,
   resolveEmittedBinaryUrl,
@@ -278,7 +278,7 @@ export async function loadLighterWasm(): Promise<LighterWasmExports> {
 async function loadWasmUncached(): Promise<LighterWasmExports> {
   const wasmBytes = await readWasmBinary(lighterWasmBinaryUrl)
 
-  const go = new Go()
+  const go = createGoRuntime()
   const { instance } = await WebAssembly.instantiate(wasmBytes, go.importObject)
   // Start the Go goroutine — this never resolves until the Go main() returns,
   // which our signer never does. Intentionally not awaited.

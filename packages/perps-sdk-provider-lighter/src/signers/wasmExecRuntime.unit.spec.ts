@@ -1,7 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { SCRIPT_TEXT_EVALUATION } from '../../scripts/lib/script-text-evaluation.js'
-import { Go } from './generated/wasmExecRuntime.js'
 import { lighterWasmBinaryUrl } from './wasmBinaryUrl.js'
 
 /**
@@ -20,21 +18,6 @@ describe('packaged Go wasm_exec runtime module', () => {
     const source = readFileSync(GO_WASM_EXEC_SOURCE, 'utf8')
     expect(source).toContain('Copyright 2018 The Go Authors')
     expect(readFileSync(GENERATED_MODULE, 'utf8')).toContain(source)
-  })
-
-  it('exports the Go class the source installs on globalThis', () => {
-    expect(typeof Go).toBe('function')
-    const go = new Go()
-    expect(typeof go.importObject).toBe('object')
-    expect(typeof go.run).toBe('function')
-  })
-
-  // A runtime test cannot reach this: the module evaluates at import time,
-  // before any test body can stub `Function`.
-  it('evaluates no script text, so a CSP without unsafe-eval loads it', () => {
-    expect(readFileSync(GENERATED_MODULE, 'utf8')).not.toMatch(
-      SCRIPT_TEXT_EVALUATION
-    )
   })
 })
 

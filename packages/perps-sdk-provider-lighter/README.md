@@ -53,7 +53,9 @@ Each provider instance shares one request hold across its Lighter API clients, p
 
 ## WASM signer loading
 
-The Go signer binary ships as a separate asset and the package resolves it itself. The ESM build points a static `new URL('../../wasm/lighter-signer.wasm', import.meta.url)` at it, which webpack, Turbopack and Vite production builds rewrite into an emitted asset URL, while Node reads the installed binary from disk. The loader checks the WASM preamble of whatever the URL serves; if a bundler relocated the module — Vite's dependency optimizer rewrites the package into `.vite/deps`, leaving the static URL pointing at the cache directory — it re-resolves through that bundler's own asset pipeline. Go's `wasm_exec.js` ships as a generated ES module that exports the `Go` class; the package evaluates no script text.
+The Go signer binary ships as a separate asset that the package resolves itself. The ESM build uses `new URL('../../wasm/lighter-signer.wasm', import.meta.url)`. Webpack, Turbopack, and Vite production builds rewrite this expression into an emitted asset URL. Node reads the installed binary from disk. The loader checks the WASM preamble of the response. Vite's dependency optimizer can relocate the package into `.vite/deps`, which invalidates the static URL. The loader then resolves the asset through the bundler's own asset pipeline.
+
+Go's `wasm_exec.js` ships inside a generated initializer that compiles into both CommonJS and ESM. Package imports do not initialize Go or install its globals. `loadLighterWasm()` initializes the runtime after reading the binary, so callers can install required polyfills after import. The package evaluates no script text.
 
 Under a Content Security Policy, `script-src` must include `'wasm-unsafe-eval'` so the browser can run `WebAssembly.instantiate`. `'unsafe-eval'` is not required.
 

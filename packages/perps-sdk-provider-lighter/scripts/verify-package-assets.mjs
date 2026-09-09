@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify the built package ships the Go signer the way consumers load it:
-// the binary as a separate asset, the Go runtime as a generated module that
-// exports the `Go` class, and the asset-URL resolvers — one static form per
+// the binary as a separate asset, the Go runtime as a lazy initializer,
+// and the asset-URL resolvers — one static form per
 // module system, plus the `?url` recovery module for bundlers that relocate the
 // package — that each consumer toolchain can analyse statically.
 //
@@ -96,10 +96,16 @@ for (const format of ['esm', 'cjs']) {
     'generated',
     'wasmExecRuntime.js'
   )
-  const { Go } = await import(pathToFileURL(module).href).catch(() => ({}))
+  const previousGo = globalThis.Go
+  const { createGoRuntime } = await import(pathToFileURL(module).href)
   check(
-    typeof Go === 'function' && typeof Go.prototype?.run === 'function',
-    `dist/${format}/signers/generated/wasmExecRuntime.js does not export Go's runtime class`
+    globalThis.Go === previousGo,
+    `dist/${format}/signers/generated/wasmExecRuntime.js initialized Go during import`
+  )
+  const go = createGoRuntime()
+  check(
+    typeof go.importObject === 'object' && typeof go.run === 'function',
+    `dist/${format}/signers/generated/wasmExecRuntime.js did not initialize Go's runtime`
   )
 }
 

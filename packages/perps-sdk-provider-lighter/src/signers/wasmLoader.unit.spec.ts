@@ -67,7 +67,7 @@ const importLoaderWithFakes = async (
 ) => {
   vi.resetModules()
   vi.doMock('./generated/wasmExecRuntime.js', () => ({
-    Go: fakeGoRuntime(installNames),
+    createGoRuntime: () => new (fakeGoRuntime(installNames))(),
   }))
   vi.doMock('./wasmBinaryUrl.js', () => ({
     lighterWasmBinaryUrl: binaryUrl,
@@ -366,6 +366,32 @@ describe('loadLighterWasm — packaged Go runtime', () => {
   })
   afterEach(() => {
     vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  // Static imports run before the host-global setup these cases exercise.
+  it('preserves host globals when a backend imports the public package', async () => {
+    const hostGo = class {}
+    vi.stubGlobal('Go', hostGo)
+    vi.stubGlobal('fs', undefined)
+
+    await import('../index.js')
+
+    expect(Reflect.get(globalThis, 'Go')).toBe(hostGo)
+    expect(Reflect.get(globalThis, 'fs')).toBeUndefined()
+  })
+
+  it('accepts a crypto polyfill installed after the public package import', async () => {
+    const crypto = globalThis.crypto
+    vi.stubGlobal('crypto', undefined)
+
+    const { loadLighterWasm } = await import('../index.js')
+    vi.stubGlobal('crypto', crypto)
+    const exports = await loadLighterWasm()
+    const key = exports.GenerateAPIKey()
+
+    expect(key.error).toBeUndefined()
+    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
   })
 
   it('revokes every signer global and still calls Go through the exports', async () => {
