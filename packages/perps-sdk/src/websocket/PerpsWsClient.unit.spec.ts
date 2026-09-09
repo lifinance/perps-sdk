@@ -6,20 +6,28 @@ import {
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
 import * as getProvidersModule from '../services/getProviders.js'
-import { PerpsWsClient, type WsProviderFactory } from './PerpsWsClient.js'
+import {
+  PerpsWsClient,
+  type WsProviderFactory,
+  type WsProviderFactoryParams,
+} from './PerpsWsClient.js'
+import type { WsProvider } from './types.js'
 
 const mockSubscribe = vi.fn().mockResolvedValue(() => {})
 const mockSubscribeQuote = vi.fn().mockResolvedValue(() => {})
 const mockClose = vi.fn()
 const mockReconnect = vi.fn()
 
-const buildHlFactory = () =>
-  vi.fn<WsProviderFactory>((_params) => ({
-    subscribe: mockSubscribe,
-    reconnect: mockReconnect,
-    subscribeQuote: mockSubscribeQuote,
-    close: mockClose,
-  }))
+const buildHlFactory = (streamsCandles = true) =>
+  Object.assign(
+    vi.fn<(params: WsProviderFactoryParams) => WsProvider>((_params) => ({
+      subscribe: mockSubscribe,
+      reconnect: mockReconnect,
+      subscribeQuote: mockSubscribeQuote,
+      close: mockClose,
+    })),
+    { streamsCandles }
+  )
 
 const providersWithWsUrl = {
   providers: mockProviders.providers.map((d) => ({
@@ -53,6 +61,28 @@ function makeWs(factory: WsProviderFactory) {
 describe('PerpsWsClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  describe('streamsCandles', () => {
+    it('reports the registered factory flag without instantiating the provider', () => {
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
+
+      expect(ws.streamsCandles('hyperliquid')).toBe(true)
+      expect(factory).not.toHaveBeenCalled()
+    })
+
+    it('reports false for a factory that does not stream candles', () => {
+      const ws = makeWs(buildHlFactory(false))
+
+      expect(ws.streamsCandles('hyperliquid')).toBe(false)
+    })
+
+    it('reports false when no factory is registered for the provider', () => {
+      const ws = makeWs(buildHlFactory())
+
+      expect(ws.streamsCandles('lighter')).toBe(false)
+    })
   })
 
   describe('subscribe', () => {

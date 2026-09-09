@@ -16,7 +16,10 @@ import {
   HL_MARKETS,
   HL_SPOT_MARKET,
 } from '../../test/fixtures.js'
-import { HyperliquidWsProvider } from './HyperliquidWsProvider.js'
+import {
+  HyperliquidWsProvider,
+  hyperliquidWsProvider,
+} from './HyperliquidWsProvider.js'
 
 const XYZ_BRENTOIL_MARKET: Market = {
   providerId: 'hyperliquid',
@@ -286,6 +289,12 @@ function createEnrichingProvider(
 }
 
 describe('HyperliquidWsProvider', () => {
+  describe('factory', () => {
+    it('reports streamsCandles true', () => {
+      expect(hyperliquidWsProvider().streamsCandles).toBe(true)
+    })
+  })
+
   describe('keepalive framing', () => {
     it('configures the socket keepalive with the Hyperliquid ping frame', () => {
       createProvider()

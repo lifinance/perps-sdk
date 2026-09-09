@@ -12,12 +12,11 @@ import type {
 } from './types.js'
 
 /**
- * Factory for a per-provider WS plugin. Invoked once per provider key the
- * first time `subscribe(...)` is called against it.
+ * Call parameters of a {@link WsProviderFactory}.
  *
  * @public
  */
-export type WsProviderFactory = (params: {
+export interface WsProviderFactoryParams {
   provider: string
   /** WS URL discovered from `/providers`. */
   wsUrl: string
@@ -34,7 +33,19 @@ export type WsProviderFactory = (params: {
    * duplicating backend orchestration in the WS layer.
    */
   client: PerpsSDKClient
-}) => WsProvider
+}
+
+/**
+ * Factory for a per-provider WS plugin. Invoked once per provider key the
+ * first time `subscribe(...)` is called against it.
+ *
+ * @public
+ */
+export interface WsProviderFactory {
+  (params: WsProviderFactoryParams): WsProvider
+  /** `true` when the venue socket serves the `candle` channel. */
+  readonly streamsCandles: boolean
+}
 
 /**
  * Options for {@link PerpsWsClient}.
@@ -54,7 +65,7 @@ export interface PerpsWsClientOptions {
 }
 
 /**
- * Realtime client: lazily instantiates a per-provider {@link WsProvider} on
+ * WebSocket client: lazily instantiates a per-provider {@link WsProvider} on
  * first subscription and fans subscriptions out to it.
  *
  * @public
@@ -72,7 +83,19 @@ export class PerpsWsClient {
   }
 
   /**
-   * Subscribe to a realtime channel, lazily creating the provider's WS
+   * Whether `provider`'s socket serves the `candle` channel, as reported by
+   * its registered factory. Returns `false` when no factory is registered.
+   * Synchronous: it reads the factory without instantiating the provider and
+   * makes no network call, so a caller can branch before the first subscribe.
+   *
+   * @public
+   */
+  streamsCandles(provider: string): boolean {
+    return this.options.wsProviders?.[provider]?.streamsCandles ?? false
+  }
+
+  /**
+   * Subscribe to a WebSocket channel, lazily creating the provider's WS
    * connection. Returns an unsubscribe function.
    *
    * @param onStatus - Optional listener for the underlying connection's

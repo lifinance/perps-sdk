@@ -258,6 +258,7 @@ export { cachePromise } from './websocket/cachePromise.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
+  WsProviderFactoryParams,
 } from './websocket/PerpsWsClient.js'
 export { PerpsWsClient } from './websocket/PerpsWsClient.js'
 export type { ReconnectingWebSocketOptions } from './websocket/ReconnectingWebSocket.js'

@@ -1319,6 +1319,10 @@ describe('OndoWsProvider', () => {
       provider.close()
     })
 
+    it('reports streamsCandles true', () => {
+      expect(ondoWsProvider().streamsCandles).toBe(true)
+    })
+
     it('defaults the API URL to production for session lookups', () => {
       const p = makeProvider()
       expect((p as any).tokenStore).toBeDefined()
