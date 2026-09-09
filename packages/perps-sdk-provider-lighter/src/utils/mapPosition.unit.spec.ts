@@ -204,6 +204,14 @@ describe('mapPosition (Lighter)', () => {
       expect(result.accruedFunding).toBe(totalFundingPaidOut)
     })
 
+    // Lighter marks `total_funding_paid_out` `omitempty`, so a position that
+    // has accrued no funding yet arrives with the key absent.
+    it('defaults accruedFunding to "0" when total_funding_paid_out is absent', () => {
+      const { total_funding_paid_out, ...withoutFunding } = basePosition()
+
+      expect(mapPosition(withoutFunding, MARKET).accruedFunding).toBe('0')
+    })
+
     it.each([
       '0',
       '-1',
@@ -217,6 +225,34 @@ describe('mapPosition (Lighter)', () => {
           MARKET
         )
       ).toThrowError()
+    })
+  })
+
+  // Lighter marks `total_funding_paid_out` and `total_discount` `omitempty` on
+  // the Position object, so a row carrying the zero value drops the key.
+  // `mapPosition` reads only `total_funding_paid_out`; `total_discount`
+  // projects to no `Position` member, so it needs no default.
+  describe('omitted omitempty wire fields', () => {
+    // Every `Position` member the contract types `string`.
+    const REQUIRED_STRINGS = [
+      'size',
+      'entryPrice',
+      'markPrice',
+      'liquidationPrice',
+      'unrealizedPnl',
+      'accruedFunding',
+      'marginUsed',
+      'initialMarginRequirement',
+    ] as const
+
+    it('emits no undefined when total_funding_paid_out is absent', () => {
+      const { total_funding_paid_out, ...withoutFunding } = basePosition()
+
+      const result = mapPosition(withoutFunding, MARKET)
+
+      for (const field of REQUIRED_STRINGS) {
+        expect(typeof result[field]).toBe('string')
+      }
     })
   })
 })

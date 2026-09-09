@@ -41,8 +41,9 @@ export type LtTrade = {
   transaction_time: number
   // Per-counterparty position snapshot BEFORE the trade is applied. Signed
   // strings: positive = long, negative = short, "0" / "0.00000" = flat.
-  taker_position_size_before: string
-  maker_position_size_before: string
+  // Lighter marks both `omitempty`, so an absent key means flat.
+  taker_position_size_before?: string
+  maker_position_size_before?: string
   // Per-counterparty entry-quote (notional cost basis) snapshot BEFORE the
   // trade. Paired with `*_position_size_before`, avg entry =
   // entry_quote_before / |position_size_before|. Optional: absent on older

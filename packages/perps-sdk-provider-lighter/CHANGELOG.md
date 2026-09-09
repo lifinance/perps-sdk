@@ -1,5 +1,21 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 22.1.0
+
+### Minor Changes
+
+- [#450](https://github.com/lifinance/perps-sdk/pull/450) [`c6b3bd7`](https://github.com/lifinance/perps-sdk/commit/c6b3bd718585c8b5879094e03fb15cf2e4eb58ae) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter provider declares every account, position, and trade wire field that Lighter marks `omitempty` as an optional member. Each mapper supplies an explicit default for such a field. A position with no accrued funding, a Classic/Simple account, and a flat counterparty each produced `undefined` against a required contract field. The provider now emits the zero value instead.
+
+  The package also exports `LT_ACCOUNT_TRADING_MODE_SIMPLE` and `LT_ACCOUNT_TRADING_MODE_UNIFIED`, the two Lighter account-trading-mode wire values, beside the existing `LT_MARGIN_MODE_*` pair.
+
+### Patch Changes
+
+- [#448](https://github.com/lifinance/perps-sdk/pull/448) [`2d389d4`](https://github.com/lifinance/perps-sdk/commit/2d389d4f4f62b01fbd29ed948ba07807efc4274e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Re-create the Lighter standard auth token after `REGISTER_API_KEY` rotates the account API key, including a rotation that lands while read-only token creation is in flight.
+
+  Report the venue invalid-signature code `29500` on an auth-gated read as `PerpsErrorCode.Unauthorized`. A consumer that branches on `ThirdPartyError` for that code now receives an unauthorized error instead. A public read keeps the venue-error classification.
+
+- [#449](https://github.com/lifinance/perps-sdk/pull/449) [`9f4666b`](https://github.com/lifinance/perps-sdk/commit/9f4666be9dabe1c10e0df31d75af8e135167a837) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Default `Position.accruedFunding` to `"0"` when Lighter omits `total_funding_paid_out`, so a position that has accrued no funding yet no longer emits `undefined` against the `accruedFunding: string` contract.
+
 ## 22.0.0
 
 ### Major Changes

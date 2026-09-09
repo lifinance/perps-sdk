@@ -920,4 +920,38 @@ describe('mapFill (Lighter)', () => {
       expect(fill.realizedPnl).toBeNull()
     })
   })
+
+  // Lighter marks both `*_position_size_before` keys `omitempty` on the Trade
+  // object, so the counterparty that was flat before the trade drops its key.
+  // The base fixture puts the viewer on the maker side; `is_maker_ask` flips it.
+  describe('omitted position-size-before snapshot', () => {
+    it.each([
+      ['maker_position_size_before' as const, false, LiquidityRole.MAKER],
+      ['taker_position_size_before' as const, true, LiquidityRole.TAKER],
+    ])('reads %s as flat when the row omits it', (key, isMakerAsk, role) => {
+      const { [key]: _absent, ...trade } = baseTrade({
+        is_maker_ask: isMakerAsk,
+      })
+
+      const fill = mapFill(trade, ACCOUNT_INDEX, MARKET)
+
+      expect(fill.liquidity).toBe(role)
+      expect(fill.startPosition).toBe('0')
+      expect(fill.classification).toBe(FillClassification.OPENED_LONG)
+    })
+
+    // The viewer's own snapshot decides; the counterparty's absent key must not
+    // leak into the classification.
+    it('ignores the counterparty key when only that key is absent', () => {
+      const { taker_position_size_before, ...trade } = baseTrade({
+        is_maker_ask: false,
+        maker_position_size_before: '2',
+      })
+
+      const fill = mapFill(trade, ACCOUNT_INDEX, MARKET)
+
+      expect(fill.startPosition).toBe('2')
+      expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
+    })
+  })
 })
