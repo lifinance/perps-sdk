@@ -13,6 +13,7 @@ import type {
   HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
+import type Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import {
@@ -22,6 +23,7 @@ import {
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
+import { toWireBig } from '../utils/decimal.js'
 import {
   partitionSpotBalances,
   perpsDexNames,
@@ -42,8 +44,8 @@ export type GetAccountParams = ProviderGetAccountParams
 // `marginSummary` covers the whole account (cross AND isolated positions);
 // `crossMarginSummary` is the cross-only subset and would drop isolated
 // equity/margin.
-const getAccountValue = (state: HlClearinghouseState): number =>
-  Number.parseFloat(state.marginSummary.accountValue)
+const getAccountValue = (state: HlClearinghouseState): Big =>
+  toWireBig(state.marginSummary.accountValue, 'marginSummary.accountValue')
 
 const getTotalMarginUsed = (state: HlClearinghouseState): number =>
   Number.parseFloat(state.marginSummary.totalMarginUsed)
@@ -114,7 +116,7 @@ const buildBalances = (
     for (const [dex, state] of stateByDex) {
       const categoryId = dex || PROVIDER_KEY
       const value = getAccountValue(state)
-      if (value <= 0) {
+      if (!value.gt(0)) {
         continue
       }
       collateralBalances.push({
@@ -122,8 +124,8 @@ const buildBalances = (
         // Always present: every dex in `stateByDex` derives from `markets`,
         // which is what populates `quoteAssetByCategory`.
         asset: quoteAssetByCategory.get(categoryId)!,
-        units: value.toString(),
-        valueUsd: value.toString(),
+        units: value.toFixed(),
+        valueUsd: value.toFixed(),
       })
     }
   }

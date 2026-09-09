@@ -1346,6 +1346,25 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(account.collateralBalances).toEqual([])
   })
 
+  it('omits a collateral row when available margin is negative', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          cross_asset_value: '100',
+          cross_initial_margin_requirement: '120',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toEqual([])
+  })
+
   it('omits zero-unit spot holdings', async () => {
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,

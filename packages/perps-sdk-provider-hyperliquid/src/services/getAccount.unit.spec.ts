@@ -205,6 +205,8 @@ describe('getAccount', () => {
 
   it.each([
     null,
+    HlAbstractionMode.DEFAULT,
+    HlAbstractionMode.DISABLED,
     HlAbstractionMode.DEX_ABSTRACTION,
   ])('omits a zero-equity sub-dex balance in %s mode', async (abstraction) => {
     const xyzMarket: Market = {
@@ -269,6 +271,26 @@ describe('getAccount', () => {
         (balance) => balance.units !== '0'
       )
     ).toBe(true)
+  })
+
+  it('throws a named error identifying a non-decimal accountValue', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          marginSummary: {
+            ...HL_CLEARINGHOUSE_STATE.marginSummary,
+            accountValue: 'n/a',
+          },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    await expect(getAccount(ctx, { address: ADDRESS })).rejects.toThrow(
+      /marginSummary\.accountValue/
+    )
   })
 
   it('weights PORTFOLIO_MARGIN spot collateral (HYPE/UBTC) at LTV 0.5 through to the summary', async () => {

@@ -858,6 +858,8 @@ export const createLighterProvider = (
           'cross_initial_margin_requirement'
         )
       )
+      // An underwater cross account yields a negative difference. That is a
+      // margin deficit, not a holding, so it carries no collateral row either.
       const collateralBalances: Balance[] = availableMargin.gt(0)
         ? [
             {
