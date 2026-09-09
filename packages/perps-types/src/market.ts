@@ -146,6 +146,7 @@ export interface MarketContext {
   priceChange24h?: string
   volume24h?: string
   marketCap?: string
+  /** Quote-asset open-interest notional as a decimal string. */
   openInterest?: string
   funding?: FundingInfo
 }

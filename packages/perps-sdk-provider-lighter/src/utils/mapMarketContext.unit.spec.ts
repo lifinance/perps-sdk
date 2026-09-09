@@ -48,7 +48,7 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.openInterest).toBe('1234.5')
     expect(result.funding).toEqual({
       rate: '0.0001',
-      nextFundingTime: 1704067200000,
+      nextFundingTime: 1704070800000,
     })
   })
 

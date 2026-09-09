@@ -51,6 +51,7 @@ export interface OndoKline {
 export interface OndoMarkPrice {
   market: string
   markPrice: string
+  oraclePrice?: string
 }
 
 /** Streamed funding rate (`fundingRatesPerps`). @public */

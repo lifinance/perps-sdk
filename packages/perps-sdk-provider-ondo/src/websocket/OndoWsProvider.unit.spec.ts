@@ -592,8 +592,16 @@ describe('OndoWsProvider', () => {
         type: 'update',
         channel: 'markPricesPerps',
         data: [
-          { market: 'AAPL-USD.P', markPrice: '227.50' },
-          { market: 'NVDA-USD.P', markPrice: '900.00' },
+          {
+            market: 'AAPL-USD.P',
+            markPrice: '227.50',
+            oraclePrice: '227.47',
+          },
+          {
+            market: 'NVDA-USD.P',
+            markPrice: '900.00',
+            oraclePrice: '899.95',
+          },
         ],
       })
 
@@ -604,11 +612,13 @@ describe('OndoWsProvider', () => {
             marketId: 'AAPL-USD.P',
             midPrice: '227.50',
             markPrice: '227.50',
+            oraclePrice: '227.47',
           },
           'NVDA-USD.P': {
             marketId: 'NVDA-USD.P',
             midPrice: '900.00',
             markPrice: '900.00',
+            oraclePrice: '899.95',
           },
         },
       })

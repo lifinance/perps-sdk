@@ -1265,7 +1265,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data).toEqual({})
     })
 
-    it('emits perp context from compressed pac and merges partial updates', async () => {
+    it('recomputes perp open-interest notional from compressed pac partial updates', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
 
@@ -1289,7 +1289,7 @@ describe('HyperliquidWsProvider', () => {
           marketId: 'BTC',
           midPrice: '95001',
           prevDayPrice: '95001',
-          openInterest: '100',
+          openInterest: '9500100',
         })
       })
 
@@ -1315,12 +1315,31 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '95101',
           markPrice: '95100',
           prevDayPrice: '95001',
-          openInterest: '100',
+          openInterest: '9510000',
         })
         expect(event.data.ETH).toMatchObject({
           marketId: 'ETH',
           midPrice: '3410',
           markPrice: '3401',
+        })
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'pac',
+          data: await encodeCompressed([
+            ['', [{ coin: 'BTC', openInterest: '101' }]],
+          ]),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({
+          marketId: 'BTC',
+          midPrice: '95101',
+          markPrice: '95100',
+          openInterest: '9605100',
         })
       })
     })
@@ -1535,7 +1554,7 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '95500',
           markPrice: '95480',
           oraclePrice: '94998',
-          openInterest: '100',
+          openInterest: '9500000',
         })
       })
     })

@@ -35,8 +35,18 @@ describe('mapMarketContext (Hyperliquid)', () => {
     expect(result.oraclePrice).toBe('94998')
     expect(result.volume24h).toBe('987654')
     expect(result.prevDayPrice).toBe('94000')
-    expect(result.openInterest).toBe('1234.5')
+    expect(result.openInterest).toBe('117277500')
     expect(result.funding?.rate).toBe('0.0001')
+  })
+
+  it('preserves decimal precision when converting open interest to quote notional', () => {
+    const result = mapMarketContext('BTC', {
+      ...ctx,
+      openInterest: '0.000000000000000001',
+      markPx: '95000.123456789',
+    })
+
+    expect(result.openInterest).toBe('0.000000000000095000123456789')
   })
 
   it('falls back to mark when the book is empty (midPx null)', () => {

@@ -1,4 +1,5 @@
 import type { MarketContext } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { HlWsPerpAssetCtx } from '../types/index.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -24,7 +25,7 @@ export const mapMarketContext = (
     oraclePrice: ctx.oraclePx,
     prevDayPrice: ctx.prevDayPx,
     volume24h: ctx.dayNtlVlm,
-    openInterest: ctx.openInterest,
+    openInterest: new Big(ctx.openInterest).times(ctx.markPx).toFixed(),
     funding: {
       rate: ctx.funding,
       nextFundingTime,
