@@ -47,10 +47,8 @@ const isNonEmpty = (v: string | undefined): v is string =>
  * every per-endpoint key is empty and no `overflow` rows remain — the caller
  * should report `hasMore: false` and omit `cursor` from `Pagination` then.
  *
- * Browser-direct: `Buffer` is Node-only. We use `btoa` over a Latin-1
- * encoding of the UTF-8 bytes and then rewrite `+/=` to base64url. This is
- * the same byte sequence Node's `Buffer.from(json, 'utf8').toString('base64url')`
- * produces, so cursors round-trip across environments.
+ * The codec uses `btoa`/`atob` only. A browser `Buffer` polyfill may lack the
+ * `base64url` encoding, so the Node `Buffer` API is never consulted.
  * @public
  */
 export const encodeActivityCursor = (
@@ -128,17 +126,11 @@ export const decodeActivityCursor = (
 }
 
 const toBase64Url = (s: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(s, 'utf8').toString('base64url')
-  }
   const utf8 = unescape(encodeURIComponent(s))
   return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 const fromBase64Url = (s: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(s, 'base64url').toString('utf8')
-  }
   const padded = s.replace(/-/g, '+').replace(/_/g, '/') + padFor(s)
   const decoded = atob(padded)
   return decodeURIComponent(escape(decoded))

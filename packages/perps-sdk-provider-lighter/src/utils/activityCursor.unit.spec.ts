@@ -1,5 +1,5 @@
 import { type ActivityItem, ActivityType } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -131,5 +131,37 @@ describe('activity cursor round-trip', () => {
     const number = Buffer.from('42', 'utf8').toString('base64url')
     expect(() => decodeActivityCursor(number)).toThrow(/expected JSON object/)
     expect(decodeActivityCursor(bad)).toEqual({})
+  })
+})
+
+describe('activity cursor under a browser Buffer polyfill', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('round-trips when the global Buffer lacks the base64url encoding', () => {
+    const nodeBuffer = Buffer
+    const rejectBase64Url = (encoding: string | undefined) => {
+      if (encoding === 'base64url') {
+        throw new TypeError('Unknown encoding: base64url')
+      }
+    }
+    const polyfill = {
+      from: (value: string, encoding?: string) => {
+        rejectBase64Url(encoding)
+        const bytes = nodeBuffer.from(value, encoding as BufferEncoding)
+        return {
+          toString: (target?: string) => {
+            rejectBase64Url(target)
+            return bytes.toString(target as BufferEncoding)
+          },
+        }
+      },
+    }
+    vi.stubGlobal('Buffer', polyfill)
+    const env: LighterActivityCursor = { deposits: 'dep:1', fundings: 'fnd:ü' }
+    const encoded = encodeActivityCursor(env)
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(decodeActivityCursor(encoded)).toEqual(env)
   })
 })
