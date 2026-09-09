@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify the built package ships the Go signer the way consumers load it:
-// the binary as a separate asset, the Go runtime as generated text reproducing
-// wasm/wasm_exec.js exactly, and the asset-URL resolvers — one static form per
+// the binary as a separate asset, the Go runtime as a lazy initializer,
+// and the asset-URL resolvers — one static form per
 // module system, plus the `?url` recovery module for bundlers that relocate the
 // package — that each consumer toolchain can analyse statically.
 //
@@ -10,6 +10,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const dist = join(packageRoot, 'dist')
@@ -87,7 +88,6 @@ check(
   'dist/esm/signers/wasmBinaryUrl.vite.js lost its static ?url asset import'
 )
 
-const goSource = readFileSync(join(packageRoot, 'wasm', 'wasm_exec.js'), 'utf8')
 for (const format of ['esm', 'cjs']) {
   const module = join(
     dist,
@@ -96,16 +96,21 @@ for (const format of ['esm', 'cjs']) {
     'generated',
     'wasmExecRuntime.js'
   )
-  const { WASM_EXEC_JS } = await import(pathToFileURL(module).href).catch(
-    () => ({})
-  )
+  const previousGo = globalThis.Go
+  const { createGoRuntime } = await import(pathToFileURL(module).href)
   check(
-    WASM_EXEC_JS === goSource,
-    `dist/${format}/signers/generated/wasmExecRuntime.js does not reproduce wasm/wasm_exec.js exactly`
+    globalThis.Go === previousGo,
+    `dist/${format}/signers/generated/wasmExecRuntime.js initialized Go during import`
+  )
+  const go = createGoRuntime()
+  check(
+    typeof go.importObject === 'object' && typeof go.run === 'function',
+    `dist/${format}/signers/generated/wasmExecRuntime.js did not initialize Go's runtime`
   )
 }
 
 const oversizedJs = []
+const evaluatingJs = []
 const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name)
@@ -116,6 +121,9 @@ const walk = (dir) => {
       if (size > MAX_JS_BYTES) {
         oversizedJs.push(`${relative(packageRoot, path)} (${size} bytes)`)
       }
+      if (SCRIPT_TEXT_EVALUATION.test(readFileSync(path, 'utf8'))) {
+        evaluatingJs.push(relative(packageRoot, path))
+      }
     }
   }
 }
@@ -123,6 +131,10 @@ walk(dist)
 check(
   oversizedJs.length === 0,
   `emitted JavaScript exceeds ${MAX_JS_BYTES} bytes — is the WASM binary inlined? ${oversizedJs.join(', ')}`
+)
+check(
+  evaluatingJs.length === 0,
+  `emitted JavaScript evaluates script text, which a CSP without 'unsafe-eval' blocks: ${evaluatingJs.join(', ')}`
 )
 
 if (failures.length > 0) {
@@ -134,5 +146,5 @@ if (failures.length > 0) {
 }
 
 console.error(
-  'verify-package-assets: binary asset, generated Go runtime and both asset-URL resolvers verified'
+  'verify-package-assets: binary asset, generated Go runtime module and both asset-URL resolvers verified'
 )

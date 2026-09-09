@@ -1,4 +1,9 @@
 {
+  "workspaces": {
+    "packages/perps-sdk-provider-lighter": {
+      "entry": ["src/index.ts", "scripts/verify-consumer-bundlers.mjs"]
+    }
+  },
   "ignore": [
     "scripts/**",
     "examples/**",
