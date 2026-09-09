@@ -60,7 +60,7 @@ export const mapPosition = (
         : positionValue.div(size.abs()).toFixed(),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
-    accruedFunding: pos.total_funding_paid_out,
+    accruedFunding: pos.total_funding_paid_out ?? '0',
     leverage: leverageFromImf(pos.initial_margin_fraction) ?? 1,
     marginUsed,
     initialMarginRequirement: initialMarginRequirement.toFixed(),
