@@ -67,6 +67,21 @@ import { loadLighterWasm } from '@lifi/perps-sdk-provider-lighter'
 await loadLighterWasm()
 ```
 
+## Consumer verification
+
+Run these commands from the repository root:
+
+```sh
+pnpm --filter @lifi/perps-sdk-provider-lighter exec playwright install chromium
+pnpm --filter @lifi/perps-sdk-provider-lighter test:consumers
+```
+
+On Linux systems without browser libraries, use `playwright install --with-deps chromium` for the installation step.
+
+The four Next targets execute the client probe in headless Chromium. They cover development and production with webpack and Turbopack. Browser exceptions, failed probes, missing results, and invalid WASM responses fail the checks. The checks also verify the emitted asset and its chunk reference.
+
+Playwright is a development dependency. SDK consumers do not need it.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API
