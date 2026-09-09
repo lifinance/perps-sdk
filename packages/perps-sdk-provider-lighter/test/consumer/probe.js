@@ -2,11 +2,6 @@
 // binary the package resolves for itself, and sign with it. Every fixture in
 // this directory runs this and publishes the outcome as `globalThis.__probe`.
 
-import {
-  lighterProvider,
-  loadLighterWasm,
-} from '@lifi/perps-sdk-provider-lighter'
-
 export const SIGNER_FUNCTIONS = [
   'GenerateAPIKey',
   'CreateClient',
@@ -25,7 +20,10 @@ export const SIGNER_FUNCTIONS = [
   'SignUpdateAccountAssetConfig',
 ]
 
-export const probeLighterSigner = async () => {
+export const probeLighterSigner = async ({
+  lighterProvider,
+  loadLighterWasm,
+}) => {
   try {
     lighterProvider()
     const wasm = await loadLighterWasm()
