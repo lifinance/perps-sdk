@@ -60,6 +60,11 @@ export interface BaseMarket {
  */
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
+  /**
+   * Minimum order notional in USD, as a plain decimal string. Lighter applies
+   * it to resting (post-only) orders only.
+   */
+  minOrderValueUsd?: string
   /** Maximum market-order notional in USD, as a plain decimal string. */
   maxMarketOrderUsd?: string
   /** Maximum limit-order notional in USD, as a plain decimal string. */
