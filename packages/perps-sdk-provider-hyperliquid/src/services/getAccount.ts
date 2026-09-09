@@ -114,6 +114,9 @@ const buildBalances = (
     for (const [dex, state] of stateByDex) {
       const categoryId = dex || PROVIDER_KEY
       const value = getAccountValue(state)
+      if (value <= 0) {
+        continue
+      }
       collateralBalances.push({
         categoryId,
         // Always present: every dex in `stateByDex` derives from `markets`,

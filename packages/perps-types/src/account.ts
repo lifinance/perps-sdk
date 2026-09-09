@@ -134,9 +134,9 @@ export interface Balance {
 export interface AccountResponse {
   provider: string
   address: Address
-  /** Flat, NON-collateral holdings. */
+  /** Non-collateral holdings with non-zero units. */
   balances: Balance[]
-  /** SDK-determined collateral subset: spot balances in a category's quote asset. */
+  /** SDK-determined collateral holdings with non-zero units. */
   collateralBalances: Balance[]
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
   positions: Position[]

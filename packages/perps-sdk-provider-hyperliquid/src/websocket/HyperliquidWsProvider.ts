@@ -1254,10 +1254,16 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const user = data.user.toLowerCase()
     const markets = this.registry?.activeMarkets ?? []
     const priceById = spotPriceById(markets, this.mergedMids())
-    const rows = data.spotState.balances.map((b) => ({
-      balance: spotBalance(spotAssetFromToken(b), b.total, priceById),
-      hold: b.hold,
-    }))
+    const rows = data.spotState.balances
+      .filter((balance) => new Big(balance.total).gt(0))
+      .map((balance) => ({
+        balance: spotBalance(
+          spotAssetFromToken(balance),
+          balance.total,
+          priceById
+        ),
+        hold: balance.hold,
+      }))
     this.emit(`spotState:${user}`, {
       channel: 'spotBalances',
       data: rows.map(({ balance, hold }) => ({ ...balance, locked: hold })),

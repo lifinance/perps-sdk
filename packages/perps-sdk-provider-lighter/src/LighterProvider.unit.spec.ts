@@ -1327,6 +1327,47 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(btc?.units).toBe('2')
     expect(btc?.valueUsd).toBe('0')
   })
+
+  it('omits a collateral row when available margin is zero', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          cross_asset_value: '120',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances).toEqual([])
+  })
+
+  it('omits zero-unit spot holdings', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            { ...ACCOUNT_WITH_SPOT.accounts[0].assets[0], balance: '0' },
+            ACCOUNT_WITH_SPOT.accounts[0].assets[1],
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(
+      account.balances.map((balance) => balance.asset.displaySymbol)
+    ).toEqual(['BTC'])
+  })
 })
 
 describe('LighterProvider — deployment-aware collateral display', () => {
