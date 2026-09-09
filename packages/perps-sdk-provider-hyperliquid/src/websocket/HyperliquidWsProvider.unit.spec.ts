@@ -1544,7 +1544,8 @@ describe('HyperliquidWsProvider', () => {
       )
 
       // A later fastAssetCtxs frame updates mid + mark; the rarer asset-context
-      // feed's oracle/metadata must persist (field-level last-write-wins).
+      // feed's oracle/metadata must persist (field-level last-write-wins). The
+      // open-interest notional follows the emitted mark: 100 × 95480.
       await seedFast({ BTC: { midPx: '95500', markPx: '95480' } })
 
       await vi.waitFor(() => {
@@ -1554,7 +1555,7 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '95500',
           markPrice: '95480',
           oraclePrice: '94998',
-          openInterest: '9500000',
+          openInterest: '9548000',
         })
       })
     })
