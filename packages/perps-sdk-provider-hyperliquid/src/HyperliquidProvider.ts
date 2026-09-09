@@ -14,6 +14,7 @@ import {
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
+  type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetRunningTwapsParams,
@@ -38,6 +39,7 @@ import {
   PerpsErrorCode,
   type PerpsMarket,
   PerpsSigner,
+  type PortfolioHistoryResponse,
   type Position,
   type PositionsResponse,
   type ProviderAction,
@@ -63,6 +65,7 @@ import { getFills } from './services/getFills.js'
 import { getMarketSettings } from './services/getMarketSettings.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
+import { getPortfolioHistory } from './services/getPortfolioHistory.js'
 import { getPositions } from './services/getPositions.js'
 import { getRunningTwaps } from './services/getRunningTwaps.js'
 import {
@@ -384,6 +387,16 @@ export function hyperliquidProvider(
           endTime: params.endTime,
           type: params.type,
         },
+        opts
+      ),
+
+    getPortfolioHistory: (
+      params: ProviderGetPortfolioHistoryParams,
+      opts?: SDKRequestOptions
+    ): Promise<PortfolioHistoryResponse> =>
+      getPortfolioHistory(
+        contextRef.require(),
+        { address: params.address, range: params.range },
         opts
       ),
 

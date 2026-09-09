@@ -23,6 +23,7 @@ import {
   type HlSpotClearinghouseState,
   type HlUserFees,
 } from '../types/index.js'
+import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
 import { toWireBig } from '../utils/decimal.js'
 import {
   partitionSpotBalances,
@@ -83,10 +84,6 @@ const getMarginUsed = (
   return getTotalMarginUsed(mainState).toString()
 }
 
-const isUnifiedMode = (abstraction: HlAbstractionMode | null): boolean =>
-  abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
-  abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
-
 interface BalancePartition {
   balances: Balance[]
   collateralBalances: Balance[]
@@ -112,7 +109,7 @@ const buildBalances = (
   // double-count. Only disabled/dexAbstraction carry separate venue collateral.
   // `accountValue` is the dex's TOTAL equity: locked margin and unrealized
   // PnL are already included, so summaries must not add them on top.
-  if (!isUnifiedMode(abstraction)) {
+  if (!isUnifiedAbstraction(abstraction)) {
     for (const [dex, state] of stateByDex) {
       const categoryId = dex || PROVIDER_KEY
       const value = getAccountValue(state)

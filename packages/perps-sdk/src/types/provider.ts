@@ -16,6 +16,8 @@ import type {
   OrdersResponse,
   PerpsMarket,
   PerpsSigner,
+  PortfolioHistoryRange,
+  PortfolioHistoryResponse,
   Position,
   PositionMarginConstraints,
   PositionsResponse,
@@ -288,6 +290,16 @@ export interface ProviderGetActivityParams {
 }
 
 /**
+ * Read params for {@link PerpsProvider.getPortfolioHistory}.
+ *
+ * @public
+ */
+export interface ProviderGetPortfolioHistoryParams {
+  address: Address
+  range: PortfolioHistoryRange
+}
+
+/**
  * Read params for {@link PerpsProviderPlugin.getQuote}. `provider` is implicit
  * in the provider instance and so is not duplicated here.
  *
@@ -468,6 +480,15 @@ export interface PerpsProviderPlugin {
     params: ProviderGetActivityParams,
     options?: SDKRequestOptions
   ): Promise<ActivitiesResponse>
+
+  /**
+   * Read the account's portfolio value and cumulative PnL over
+   * `params.range`, oldest point first, directly from the venue.
+   */
+  getPortfolioHistory?(
+    params: ProviderGetPortfolioHistoryParams,
+    options?: SDKRequestOptions
+  ): Promise<PortfolioHistoryResponse>
 
   /**
    * Produce a one-shot fill {@link Quote} for `params.symbol` at `params.size`

@@ -14,6 +14,7 @@ import type {
   OnboardParams,
   OrderSide,
   OrderType,
+  PortfolioHistoryRange,
   ProviderAction,
   SignedActionStep,
   TimeInForce,
@@ -296,6 +297,17 @@ export interface GetDepositFlowParams {
 export interface GetWithdrawableBalancesParams {
   provider: string
   address: Address
+}
+
+/**
+ * Parameters for {@link PerpsClient.getPortfolioHistory}.
+ *
+ * @public
+ */
+export interface GetPortfolioHistoryParams {
+  provider: string
+  address: Address
+  range: PortfolioHistoryRange
 }
 
 /**

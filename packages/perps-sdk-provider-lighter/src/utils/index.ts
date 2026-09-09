@@ -25,6 +25,7 @@ export {
   mapStatusReason,
   mapTriggerOrder,
 } from './mapOrder.js'
+export { mapPortfolioHistory } from './mapPortfolioHistory.js'
 export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapMarketOrderLimits } from './marketLimits.js'
 export { mapInterval } from './ohlcvInterval.js'
