@@ -1,5 +1,28 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 12.1.0
+
+### Minor Changes
+
+- [#454](https://github.com/lifinance/perps-sdk/pull/454) [`7595dad`](https://github.com/lifinance/perps-sdk/commit/7595dade0a895dccc1e8ab2996892f02aeadc6af) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Correct market open interest, funding times, and Ondo oracle prices.
+
+  `MarketContext.openInterest` now states its unit: a quote-asset notional as a
+  decimal string. The Hyperliquid provider converts the venue base-unit figure at
+  the emitted mark price, and `mapMarketContext` takes the `fastAssetCtxs` context
+  as a third argument so the notional and the mark come from the same feed. The
+  Lighter provider points `funding.nextFundingTime` at the next payment. The Ondo
+  provider declares `OndoMarkPrice.oraclePrice` and maps it to
+  `MarketContext.oraclePrice`.
+
+### Patch Changes
+
+- [#453](https://github.com/lifinance/perps-sdk/pull/453) [`dc8914a`](https://github.com/lifinance/perps-sdk/commit/dc8914aba03ab834d42f074291526aa58dc2d51b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Omit zero-unit rows from `AccountResponse.balances` and `AccountResponse.collateralBalances`.
+
+  Hyperliquid drops a sub-dex collateral row whose equity is not positive, drops a zero-unit spot row from both partitions, and drops a zero-total row from the WebSocket `spotBalances` event. Lighter drops the perps collateral row when available margin is not positive, and drops a zero-balance spot row. Ondo drops the collateral row when the wallet balance is not positive. Hyperliquid now parses every wire decimal on these paths with exact decimal arithmetic and throws a named `SDKError` that identifies the field, in place of a float comparison that let a non-numeric value through as `NaN`.
+
+- Updated dependencies [[`dc8914a`](https://github.com/lifinance/perps-sdk/commit/dc8914aba03ab834d42f074291526aa58dc2d51b), [`7595dad`](https://github.com/lifinance/perps-sdk/commit/7595dade0a895dccc1e8ab2996892f02aeadc6af), [`79a5291`](https://github.com/lifinance/perps-sdk/commit/79a52915f0b6ce1db3d3bf7e12d0dd7d15a6f480)]:
+  - @lifi/perps-types@12.2.0
+
 ## 12.0.0
 
 ### Major Changes
