@@ -1,5 +1,41 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 24.0.0
+
+### Major Changes
+
+- [#458](https://github.com/lifinance/perps-sdk/pull/458) [`c71802b`](https://github.com/lifinance/perps-sdk/commit/c71802b8afb5a9db2536da3f72596edcebd12f23) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `candle` channel support on the WS provider factory.
+
+  `WsProviderFactory` is now a callable interface with a required
+  `readonly streamsCandles: boolean`. `PerpsWsClient.streamsCandles(provider)`
+  returns that value synchronously. It returns `false` for a provider with no
+  registered factory. The Hyperliquid and Ondo factories report `true`. The
+  Lighter factory reports `false`.
+
+  The bump is major for three reasons. The new required member breaks an external
+  `WsProviderFactory` author. The Lighter provider no longer accepts a `candle`
+  subscription as a no-op, so a `candle` subscription on Lighter now rejects with
+  `Lighter WS does not support channel: candle.` Each provider package moves its
+  `@lifi/perps-sdk` peer range to the new major, so a host must upgrade the set
+  together.
+
+  Release order: `perps-widget` subscribes to `candle` on every venue and depends
+  on the removed Lighter no-op
+  (`perps-widget/src/hooks/useMarketChart.ts:195-223`). A host that installs this
+  version with a widget that predates the widget-side change gets an error status
+  on the Lighter lightweight chart. Release this version with the widget release
+  train.
+
+### Minor Changes
+
+- [#457](https://github.com/lifinance/perps-sdk/pull/457) [`c5be9cb`](https://github.com/lifinance/perps-sdk/commit/c5be9cb98e697a4ec1d67c2b7cb710dfd12bad81) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the optional `getPortfolioHistory` provider read and `PerpsClient.getPortfolioHistory`. The method returns the account value and the cumulative PnL over a `24h`, `7d`, `30d`, or `all` window. `@lifi/perps-types` exports `PortfolioHistoryRange`, `PortfolioHistoryPoint`, and `PortfolioHistoryResponse`. The Hyperliquid, Ondo, and Lighter providers implement the read.
+
+### Patch Changes
+
+- Updated dependencies [[`c71802b`](https://github.com/lifinance/perps-sdk/commit/c71802b8afb5a9db2536da3f72596edcebd12f23), [`c5be9cb`](https://github.com/lifinance/perps-sdk/commit/c5be9cb98e697a4ec1d67c2b7cb710dfd12bad81)]:
+  - @lifi/perps-sdk@13.0.0
+  - @lifi/perps-types@12.3.0
+
 ## 23.0.0
 
 ### Major Changes
