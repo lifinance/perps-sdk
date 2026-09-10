@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 13.0.1
+
+### Patch Changes
+
+- [#464](https://github.com/lifinance/perps-sdk/pull/464) [`308e5b3`](https://github.com/lifinance/perps-sdk/commit/308e5b3d70bd67d00bc036afa4b2abe7e35e9516) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Use exact decimal arithmetic for Hyperliquid account margin totals.
+
 ## 13.0.0
 
 ### Major Changes
