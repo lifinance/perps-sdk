@@ -1,5 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
-import type { Market } from '@lifi/perps-types'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { type Market, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_CLEARINGHOUSE_STATE,
@@ -31,6 +31,23 @@ const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
 })
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
+const XYZ_MARKET: Market = {
+  ...HL_MARKETS[0],
+  id: 'xyz:XYZ',
+  categoryId: 'xyz',
+  baseAsset: {
+    ...HL_MARKETS[0].baseAsset,
+    id: 'xyz:XYZ',
+    displaySymbol: 'XYZ',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: '200',
+    displaySymbol: 'USDE',
+    logoURI: '',
+  },
+}
 
 describe('getAccount', () => {
   let restore: () => void
@@ -182,6 +199,40 @@ describe('getAccount', () => {
     expect(result.marginUsed).toBe('940')
   })
 
+  it('sums unified position margin as exact fixed-point decimals', async () => {
+    const assetPosition = HL_CLEARINGHOUSE_STATE.assetPositions[0]
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            {
+              ...assetPosition,
+              position: {
+                ...assetPosition.position,
+                marginUsed: '0.00000001',
+              },
+            },
+            {
+              ...assetPosition,
+              position: {
+                ...assetPosition.position,
+                coin: 'ETH',
+                marginUsed: '0.00000002',
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.marginUsed).toBe('0.00000003')
+  })
+
   it('treats DEX_ABSTRACTION by aggregating per-dex account values into the hyperliquid balance bucket', async () => {
     ;({ restore } = installInfoFetchMock(
       defaultResponses(HlAbstractionMode.DEX_ABSTRACTION),
@@ -203,28 +254,106 @@ describe('getAccount', () => {
     expect(venue?.valueUsd).toBe('10000')
   })
 
+  it('sums per-dex margin as exact decimals', async () => {
+    const responses = defaultResponses(HlAbstractionMode.DEX_ABSTRACTION)
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/marketsContext')) {
+          return new Response(JSON.stringify({ prices: [] }))
+        }
+        if (url.includes('/markets')) {
+          return new Response(
+            JSON.stringify({ markets: [...HL_MARKETS, XYZ_MARKET] })
+          )
+        }
+        const body = JSON.parse((init?.body as string) ?? '{}') as {
+          type: keyof typeof responses
+          dex?: string
+        }
+        const state =
+          body.dex === 'xyz'
+            ? {
+                ...HL_CLEARINGHOUSE_STATE,
+                marginSummary: {
+                  ...HL_CLEARINGHOUSE_STATE.marginSummary,
+                  accountValue: '0',
+                  totalMarginUsed: '0.2',
+                },
+                assetPositions: [],
+              }
+            : {
+                ...HL_CLEARINGHOUSE_STATE,
+                marginSummary: {
+                  ...HL_CLEARINGHOUSE_STATE.marginSummary,
+                  totalMarginUsed: '0.1',
+                },
+              }
+        const value =
+          body.type === 'clearinghouseState' ? state : responses[body.type]
+        return new Response(JSON.stringify(value))
+      })
+    restore = () => spy.mockRestore()
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.marginUsed).toBe('0.3')
+  })
+
+  it('throws a named error identifying a non-decimal totalMarginUsed', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          marginSummary: {
+            ...HL_CLEARINGHOUSE_STATE.marginSummary,
+            totalMarginUsed: 'n/a',
+          },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const error = await getAccount(ctx, { address: ADDRESS }).catch(
+      (cause: unknown) => cause
+    )
+
+    expect(error).toBeInstanceOf(PerpsError)
+    if (!(error instanceof PerpsError)) {
+      expect.unreachable('getAccount must throw PerpsError')
+    }
+    expect(error.code).toBe(PerpsErrorCode.SDKError)
+    expect(error.message).toContain('marginSummary.totalMarginUsed')
+  })
+
+  it('returns standard account margin in fixed-point notation', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          marginSummary: {
+            ...HL_CLEARINGHOUSE_STATE.marginSummary,
+            totalMarginUsed: '0.00000001',
+          },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.marginUsed).toBe('0.00000001')
+  })
+
   it.each([
     null,
     HlAbstractionMode.DEFAULT,
     HlAbstractionMode.DISABLED,
     HlAbstractionMode.DEX_ABSTRACTION,
   ])('omits a zero-equity sub-dex balance in %s mode', async (abstraction) => {
-    const xyzMarket: Market = {
-      ...HL_MARKETS[0],
-      id: 'xyz:XYZ',
-      categoryId: 'xyz',
-      baseAsset: {
-        ...HL_MARKETS[0].baseAsset,
-        id: 'xyz:XYZ',
-        displaySymbol: 'XYZ',
-      },
-      quoteAsset: {
-        providerId: 'hyperliquid',
-        id: '200',
-        displaySymbol: 'USDE',
-        logoURI: '',
-      },
-    }
     const responses = defaultResponses(abstraction)
     const spy = vi
       .spyOn(globalThis, 'fetch')
@@ -235,7 +364,7 @@ describe('getAccount', () => {
         }
         if (url.includes('/markets')) {
           return new Response(
-            JSON.stringify({ markets: [...HL_MARKETS, xyzMarket] })
+            JSON.stringify({ markets: [...HL_MARKETS, XYZ_MARKET] })
           )
         }
         const body = JSON.parse((init?.body as string) ?? '{}') as {

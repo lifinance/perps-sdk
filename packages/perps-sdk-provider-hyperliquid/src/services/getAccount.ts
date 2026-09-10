@@ -13,7 +13,7 @@ import type {
   HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
-import type Big from 'big.js'
+import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import {
@@ -48,8 +48,11 @@ export type GetAccountParams = ProviderGetAccountParams
 const getAccountValue = (state: HlClearinghouseState): Big =>
   toWireBig(state.marginSummary.accountValue, 'marginSummary.accountValue')
 
-const getTotalMarginUsed = (state: HlClearinghouseState): number =>
-  Number.parseFloat(state.marginSummary.totalMarginUsed)
+const getTotalMarginUsed = (state: HlClearinghouseState): Big =>
+  toWireBig(
+    state.marginSummary.totalMarginUsed,
+    'marginSummary.totalMarginUsed'
+  )
 
 const getMarginUsed = (
   abstraction: HlAbstractionMode | null,
@@ -63,25 +66,26 @@ const getMarginUsed = (
     // Per HL docs, individual per-dex states are not meaningful for these
     // modes; derive total margin from the already-mapped positions.
     const total = positions.reduce(
-      (sum, p) => sum + Number.parseFloat(p.marginUsed),
-      0
+      (sum, position) =>
+        sum.plus(toWireBig(position.marginUsed, 'positions.marginUsed')),
+      new Big(0)
     )
-    return total.toString()
+    return total.toFixed()
   }
 
   if (abstraction === HlAbstractionMode.DEX_ABSTRACTION) {
-    let total = 0
+    let total = new Big(0)
     for (const [, state] of stateByDex) {
-      total += getTotalMarginUsed(state)
+      total = total.plus(getTotalMarginUsed(state))
     }
-    return total.toString()
+    return total.toFixed()
   }
 
   const mainState = stateByDex.get('')
   if (!mainState) {
     return '0'
   }
-  return getTotalMarginUsed(mainState).toString()
+  return getTotalMarginUsed(mainState).toFixed()
 }
 
 interface BalancePartition {
