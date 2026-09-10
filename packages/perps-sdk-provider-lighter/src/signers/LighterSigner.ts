@@ -1,5 +1,5 @@
-import { scaleToInteger } from '@lifi/perps-sdk'
-import { ActionType } from '@lifi/perps-types'
+import { PerpsError, scaleToInteger } from '@lifi/perps-sdk'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
@@ -163,10 +163,16 @@ export class LighterSigner {
     const wasm = await this.ensureLoaded()
     const result = wasm.GenerateAPIKey()
     if (result.error) {
-      throw new Error(`Lighter GenerateAPIKey failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter GenerateAPIKey failed: ${result.error}`
+      )
     }
     if (!result.publicKey || !result.privateKey) {
-      throw new Error('Lighter GenerateAPIKey returned an incomplete result')
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter GenerateAPIKey returned an incomplete result'
+      )
     }
     return { publicKey: result.publicKey, privateKey: result.privateKey }
   }
@@ -187,19 +193,22 @@ export class LighterSigner {
     context: LighterSignerContext
   ): Promise<LighterSignedBlob> {
     if (action === ActionType.REGISTER_API_KEY) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
         'Use signChangePubKey() for REGISTER_API_KEY — the L1 eth_sign hop ' +
           'must be coordinated by the caller.'
       )
     }
     if (action === ActionType.APPROVE_INTEGRATOR) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
         'Use signApproveIntegrator() for APPROVE_INTEGRATOR — sign() does ' +
           'not collect the required L1 user wallet signature.'
       )
     }
     if (action === ActionType.TRANSFER) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
         'Use signTransfer() for TRANSFER — sign() does not collect the ' +
           'required L1 user wallet signature.'
       )
@@ -249,7 +258,10 @@ export class LighterSigner {
       accountIndex
     )
     if (result.error) {
-      throw new Error(`Lighter SignChangePubKey failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter SignChangePubKey failed: ${result.error}`
+      )
     }
     if (
       result.txType === undefined ||
@@ -257,7 +269,10 @@ export class LighterSigner {
       result.txHash === undefined ||
       !result.messageToSign
     ) {
-      throw new Error('Lighter SignChangePubKey returned incomplete result')
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter SignChangePubKey returned incomplete result'
+      )
     }
     return {
       txType: result.txType,
@@ -288,7 +303,10 @@ export class LighterSigner {
       context
     )
     if (result.error) {
-      throw new Error(`Lighter SignApproveIntegrator failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter SignApproveIntegrator failed: ${result.error}`
+      )
     }
     if (
       result.txType === undefined ||
@@ -296,7 +314,8 @@ export class LighterSigner {
       result.txHash === undefined ||
       !result.messageToSign
     ) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
         'Lighter SignApproveIntegrator returned an incomplete result'
       )
     }
@@ -329,7 +348,10 @@ export class LighterSigner {
       context
     )
     if (result.error) {
-      throw new Error(`Lighter SignTransfer failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter SignTransfer failed: ${result.error}`
+      )
     }
     if (
       result.txType === undefined ||
@@ -337,7 +359,10 @@ export class LighterSigner {
       result.txHash === undefined ||
       !result.messageToSign
     ) {
-      throw new Error('Lighter SignTransfer returned an incomplete result')
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter SignTransfer returned an incomplete result'
+      )
     }
     return {
       txType: result.txType,
@@ -359,7 +384,8 @@ export class LighterSigner {
     try {
       parsed = JSON.parse(txInfo) as Record<string, unknown>
     } catch (err) {
-      throw new Error(
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
         `Failed to parse signed txInfo as JSON: ${(err as Error).message}`
       )
     }
@@ -383,10 +409,16 @@ export class LighterSigner {
       context.accountIndex
     )
     if (result.error) {
-      throw new Error(`Lighter CreateAuthToken failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter CreateAuthToken failed: ${result.error}`
+      )
     }
     if (!result.authToken) {
-      throw new Error('Lighter CreateAuthToken returned no token')
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        'Lighter CreateAuthToken returned no token'
+      )
     }
     return result.authToken
   }
@@ -412,7 +444,10 @@ export class LighterSigner {
       context.accountIndex
     )
     if (result.error) {
-      throw new Error(`Lighter CreateClient failed: ${result.error}`)
+      throw new PerpsError(
+        PerpsErrorCode.SignatureInvalid,
+        `Lighter CreateClient failed: ${result.error}`
+      )
     }
     this.registeredClients.add(key)
   }
@@ -543,7 +578,8 @@ export class LighterSigner {
       case ActionType.WITHDRAWAL: {
         const routeType = numberField(p, 'route_type')
         if (routeType !== LT_ROUTE_PERP && routeType !== LT_ROUTE_SPOT) {
-          throw new Error(
+          throw new PerpsError(
+            PerpsErrorCode.ValidationError,
             `Lighter WITHDRAWAL route_type ${routeType} is invalid: expected ` +
               `${LT_ROUTE_PERP} (perps) or ${LT_ROUTE_SPOT} (spot)`
           )
@@ -552,7 +588,8 @@ export class LighterSigner {
         const amount = stringField(p, 'amount')
         const minimum = stringField(p, 'min_withdrawal_amount')
         if (new Big(amount).lt(new Big(minimum))) {
-          throw new Error(
+          throw new PerpsError(
+            PerpsErrorCode.ValidationError,
             `Lighter WITHDRAWAL of ${amount} ${symbol} is below the venue ` +
               `minimum of ${minimum} ${symbol}`
           )
@@ -599,7 +636,8 @@ export class LighterSigner {
         const fromRouteType = routeFromDex(stringField(p, 'sourceDex'))
         const toRouteType = routeFromDex(stringField(p, 'destinationDex'))
         if (fromRouteType === toRouteType) {
-          throw new Error(
+          throw new PerpsError(
+            PerpsErrorCode.ValidationError,
             'Lighter SEND_ASSET requires distinct source/destination routes ' +
               '(perp↔spot); a same-route transfer is a no-op'
           )
@@ -649,7 +687,8 @@ export class LighterSigner {
           ctx.accountIndex
         )
       default:
-        throw new Error(
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
           `Lighter WASM signer does not support action: ${action}`
         )
     }
@@ -658,14 +697,18 @@ export class LighterSigner {
 
 function unwrap(result: SignResult, action: ActionType): LighterSignedBlob {
   if (result.error) {
-    throw new Error(`Lighter sign(${action}) failed: ${result.error}`)
+    throw new PerpsError(
+      PerpsErrorCode.SignatureInvalid,
+      `Lighter sign(${action}) failed: ${result.error}`
+    )
   }
   if (
     result.txType === undefined ||
     result.txInfo === undefined ||
     result.txHash === undefined
   ) {
-    throw new Error(
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
       `Lighter sign(${action}) returned an incomplete signed blob`
     )
   }
@@ -687,7 +730,8 @@ function numberField(p: Record<string, unknown>, key: string): number {
   if (typeof v === 'string' && v !== '' && !Number.isNaN(Number(v))) {
     return Number(v)
   }
-  throw new Error(
+  throw new PerpsError(
+    PerpsErrorCode.ValidationError,
     `Lighter sign params missing numeric field '${key}' (got ${typeof v})`
   )
 }
@@ -709,7 +753,8 @@ function booleanField(p: Record<string, unknown>, key: string): boolean {
   if (typeof v === 'boolean') {
     return v
   }
-  throw new Error(
+  throw new PerpsError(
+    PerpsErrorCode.ValidationError,
     `Lighter sign params missing boolean field '${key}' (got ${typeof v})`
   )
 }
@@ -717,7 +762,8 @@ function booleanField(p: Record<string, unknown>, key: string): boolean {
 function routeFromDex(dex: string): number {
   const route = LIGHTER_ROUTE_BY_DEX[dex]
   if (route === undefined) {
-    throw new Error(
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
       `Lighter SEND_ASSET: unsupported dex '${dex}' (expected 'perps' or 'spot')`
     )
   }
@@ -727,12 +773,16 @@ function routeFromDex(dex: string): number {
 function stringField(p: Record<string, unknown>, key: string): string {
   const v = p[key]
   if (v === '') {
-    throw new Error(`Lighter sign params string field '${key}' is empty`)
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Lighter sign params string field '${key}' is empty`
+    )
   }
   if (typeof v === 'string') {
     return v
   }
-  throw new Error(
+  throw new PerpsError(
+    PerpsErrorCode.ValidationError,
     `Lighter sign params missing string field '${key}' (got ${typeof v})`
   )
 }

@@ -1,4 +1,5 @@
-import { ActionType } from '@lifi/perps-types'
+import { PerpsError } from '@lifi/perps-sdk'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
   LIGHTER_MAINNET_DEPLOYMENT,
@@ -6,6 +7,7 @@ import {
 } from '../constants.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
 import { LighterSigner, type LighterSignerContext } from './LighterSigner.js'
+import { type LighterWasmExports, loadLighterWasm } from './wasmLoader.js'
 
 // Per-asset precision and minimums as live
 // `GET https://mainnet.zklighter.elliot.ai/api/v1/assetDetails` reports them.
@@ -782,6 +784,154 @@ describe('LighterSigner', () => {
         ctx()
       )
     ).rejects.toThrow(/missing numeric field/)
+  })
+  const signerWithWasm = async (
+    overrides: Partial<LighterWasmExports>
+  ): Promise<LighterSigner> => {
+    const wasm = await loadLighterWasm()
+    return Object.assign(
+      new LighterSigner({
+        apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+        signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+        collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+      }),
+      { wasm: { ...wasm, ...overrides } }
+    )
+  }
+
+  it('generateAPIKey classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      GenerateAPIKey: () => ({ error: 'random scalar unavailable' }),
+    })
+
+    const failure = failedSigner.generateAPIKey()
+    await expect(failure).rejects.toBeInstanceOf(PerpsError)
+    await expect(failure).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('generateAPIKey classifies an incomplete WASM result as an SDK invariant failure', async () => {
+    const failedSigner = await signerWithWasm({
+      GenerateAPIKey: () => ({ publicKey: '0x1234' }),
+    })
+
+    await expect(failedSigner.generateAPIKey()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it('sign classifies invalid caller parameters as a validation error', async () => {
+    await expect(
+      signer.sign(ActionType.CANCEL_ORDER, { market_index: 0 }, ctx())
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+    })
+  })
+
+  it('sign classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      SignCancelOrder: () => ({ error: 'cancel signing failed' }),
+    })
+
+    await expect(
+      failedSigner.sign(
+        ActionType.CANCEL_ORDER,
+        { market_index: 0, order_index: 1, nonce: 1 },
+        ctx()
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('signChangePubKey classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      SignChangePubKey: () => ({ error: 'change-pub-key signing failed' }),
+    })
+
+    await expect(
+      failedSigner.signChangePubKey(
+        keypair.publicKey,
+        keypair.privateKey,
+        0,
+        1,
+        42
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('signApproveIntegrator classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      SignApproveIntegrator: () => ({
+        error: 'integrator approval signing failed',
+      }),
+    })
+
+    await expect(
+      failedSigner.signApproveIntegrator(
+        {
+          integrator_account_index: 5,
+          max_perps_taker_fee: 250,
+          max_perps_maker_fee: 100,
+          max_spot_taker_fee: 300,
+          max_spot_maker_fee: 150,
+          approval_expiry: 1_893_456_000,
+          nonce: 3,
+        },
+        ctx()
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('signTransfer classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      SignTransfer: () => ({ error: 'transfer signing failed' }),
+    })
+
+    await expect(
+      failedSigner.signTransfer(TRANSFER_PARAMS, ctx())
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('embedL1Signature classifies malformed signer output as an SDK invariant failure', () => {
+    expect(() =>
+      signer.embedL1Signature('not JSON', '0xdeadbeef')
+    ).toThrowError(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+      })
+    )
+  })
+
+  it('createAuthToken classifies a WASM failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      CreateAuthToken: () => ({ error: 'auth-token signing failed' }),
+    })
+
+    await expect(
+      failedSigner.createAuthToken(Math.floor(Date.now() / 1000) + 60, ctx())
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
+  })
+
+  it('classifies WASM client initialization failure as an invalid signature', async () => {
+    const failedSigner = await signerWithWasm({
+      CreateClient: () => ({ error: 'private key rejected' }),
+    })
+
+    await expect(
+      failedSigner.createAuthToken(Math.floor(Date.now() / 1000) + 60, ctx())
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+    })
   })
 })
 
