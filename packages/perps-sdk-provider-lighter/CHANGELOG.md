@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 24.0.2
+
+### Patch Changes
+
+- [#462](https://github.com/lifinance/perps-sdk/pull/462) [`b447cab`](https://github.com/lifinance/perps-sdk/commit/b447cab294ce7728deabc4ace532326bd23a6359) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter public signing paths now reject with `PerpsError` and a classified `PerpsErrorCode` instead of a native `Error`, so consumers can inspect the error code.
+
 ## 24.0.1
 
 ### Patch Changes
