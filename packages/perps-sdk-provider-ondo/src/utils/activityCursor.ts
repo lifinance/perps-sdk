@@ -56,7 +56,7 @@ export const encodeActivityCursor = (
   if (Object.keys(compact).length === 0) {
     return undefined
   }
-  return toBase64Url(JSON.stringify(compact))
+  return toBase64Url(JSON.stringify({ version: 2, ...compact }))
 }
 
 /**
@@ -108,6 +108,12 @@ export const decodeActivityCursor = (
       throw new PerpsError(
         PerpsErrorCode.ValidationError,
         'Invalid Ondo activity cursor: overflow must be an array'
+      )
+    }
+    if (overflow.length > 0 && cursorRecord.version !== 2) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Invalid Ondo activity cursor: legacy overflow format; restart pagination'
       )
     }
     env.overflow = overflow as ActivityItem[]

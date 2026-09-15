@@ -3231,7 +3231,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-  it('maps a transfer asset_id to its backend token symbol', async () => {
+  it('maps a transfer asset_id to its backend registry entry', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
@@ -3240,27 +3240,23 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       type: [ActivityType.TRANSFER],
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
-    expect(transfer?.asset).toBe('USDC')
-    // The mapper drops `meta.fee` on every transfer row, so the token-registry
-    // suite pins the fee surface too: a symbol lookup must not move the fee
-    // back onto `meta`.
+    expect(transfer?.asset).toEqual(
+      ASSETS_RESPONSE.assets.find((asset) => asset.id === '3')
+    )
     expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
     expect(transfer?.meta).not.toHaveProperty('fee')
   })
 
-  it('falls back to String(asset_id) when the token registry has no symbol', async () => {
+  it('rejects an unresolved transfer asset_id', async () => {
     stubWithTransfer(777)
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
-    const { items } = await provider.getActivity({
-      address: ADDRESS,
-      type: [ActivityType.TRANSFER],
-    })
-    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
-    expect(transfer?.asset).toBe('777')
-    // The transferred asset falls back to the raw id, but the fee asset comes
-    // from the deployment's settlement asset and stays `USDC`.
-    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    await expect(
+      provider.getActivity({
+        address: ADDRESS,
+        type: [ActivityType.TRANSFER],
+      })
+    ).rejects.toThrow(/stale or mis-keyed/)
   })
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
@@ -3406,10 +3402,56 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
     const deposit = items.find((i) => i.type === ActivityType.DEPOSIT)
     const withdrawal = items.find((i) => i.type === ActivityType.WITHDRAWAL)
-    expect(deposit).toMatchObject({ asset: 'USDC', amount: '100' })
-    expect(withdrawal).toMatchObject({ asset: 'USDC', amount: '50' })
+    expect(deposit).toMatchObject({
+      asset: ASSETS_RESPONSE.assets[0],
+      amount: '100',
+    })
+    expect(withdrawal).toMatchObject({
+      asset: ASSETS_RESPONSE.assets[0],
+      amount: '50',
+    })
     // `/withdraw/history` reports no fee, so the field stays absent.
     expect(withdrawal).not.toHaveProperty('fee')
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('rejects an unresolved %s asset without dropping its row', async (type) => {
+    stubHistory({ deposits: [depositRow(777)], withdraws: [withdrawRow(777)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getActivity({ address: ADDRESS, type: [type] })
+    ).rejects.toThrow(/stale or mis-keyed/)
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+    ActivityType.TRANSFER,
+  ])('rejects a legacy %s overflow row instead of returning its display string', async (type) => {
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const cursor = Buffer.from(
+      JSON.stringify({
+        overflow: [
+          {
+            id: 'legacy',
+            provider: 'lighter',
+            timestamp: '2026-01-01T00:00:00Z',
+            type,
+            asset: 'USDC',
+            amount: '1',
+            direction: 'IN',
+            counterpartyAccountIndex: 7,
+          },
+        ],
+      })
+    ).toString('base64url')
+    await expect(
+      provider.getActivity({ address: ADDRESS, cursor, type: [type] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
   it('names USDG as the deposit asset on the Robinhood deployment', async () => {
@@ -3423,7 +3465,10 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     })
 
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ asset: 'USDG', amount: '100' })
+    expect(items[0]).toMatchObject({
+      asset: RH_ASSETS_RESPONSE.assets[0],
+      amount: '100',
+    })
   })
 
   it('excludes a same-account route move from the transfer feed', async () => {
@@ -3496,7 +3541,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     if (transfer.type !== ActivityType.TRANSFER) {
       throw new Error('expected a transfer activity')
     }
-    expect(transfer.asset).toBe('BTC')
+    expect(transfer.asset).toEqual(ASSETS_RESPONSE.assets[1])
     expect(transfer.fees).toEqual([{ amount: '0.4', asset: 'USDC' }])
     expect(transfer.meta).not.toHaveProperty('fee')
   })

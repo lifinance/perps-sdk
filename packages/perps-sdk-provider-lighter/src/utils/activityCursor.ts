@@ -2,17 +2,8 @@ import { PerpsError } from '@lifi/perps-sdk'
 import { type ActivityItem, PerpsErrorCode } from '@lifi/perps-types'
 
 /**
- * Per-endpoint cursor envelope for Lighter activity pagination.
- *
- * Each key holds the upstream `cursor` / `next_cursor` returned by that
- * endpoint on the previous call. When a key is **present** with a non-empty
- * string the corresponding endpoint will be re-fetched at that cursor on the
- * next call; when a key is **absent** the endpoint is treated as exhausted
- * (or never paged because the type filter excluded it) and skipped.
- *
- * The envelope is round-tripped through `cursor` as base64url JSON so callers
- * don't need to know the per-endpoint shape. The encoding mirrors the LI.FI
- * backend's wire format so cursors created by the backend remain usable.
+ * Endpoint-keyed activity cursor; absent endpoints are exhausted or excluded.
+ * Nonempty overflow requires a version-2 base64url JSON envelope.
  * @public
  */
 export interface LighterActivityCursor {
@@ -66,7 +57,7 @@ export const encodeActivityCursor = (
   if (Object.keys(compact).length === 0) {
     return undefined
   }
-  return toBase64Url(JSON.stringify(compact))
+  return toBase64Url(JSON.stringify({ version: 2, ...compact }))
 }
 
 /**
@@ -118,6 +109,12 @@ export const decodeActivityCursor = (
       throw new PerpsError(
         PerpsErrorCode.ValidationError,
         'Invalid Lighter activity cursor: overflow must be an array'
+      )
+    }
+    if (overflow.length > 0 && cursorRecord.version !== 2) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Invalid Lighter activity cursor: legacy overflow format; restart pagination'
       )
     }
     env.overflow = overflow as ActivityItem[]

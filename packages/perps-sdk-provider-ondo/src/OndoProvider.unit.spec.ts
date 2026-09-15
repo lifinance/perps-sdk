@@ -405,6 +405,9 @@ beforeEach(() => {
     if (u.includes('backend.test/v1/perps/markets')) {
       return respond(MARKETS_RESPONSE)
     }
+    if (u.includes('backend.test/v1/perps/assets')) {
+      return respond({ assets: [ONDO_COLLATERAL_ASSET] })
+    }
     if (u.includes('backend.test/v1/perps/providers')) {
       return respond({ providers: providersResult })
     }
@@ -1213,7 +1216,7 @@ describe('OndoProvider — getActivity', () => {
     ])
     expect(activity.items[0]).toMatchObject({
       id: 'w_1',
-      asset: 'USDC',
+      asset: ONDO_COLLATERAL_ASSET,
       amount: '500.00',
     })
     expect(activity.items[1]).toMatchObject({
@@ -1228,10 +1231,34 @@ describe('OndoProvider — getActivity', () => {
     })
     expect(activity.items[3]).toMatchObject({
       id: 'deposit:0xabc123',
-      asset: 'USDC',
+      asset: ONDO_COLLATERAL_ASSET,
       amount: '1000.00',
     })
     expect(activity.pagination.hasMore).toBe(false)
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('rejects a legacy %s overflow row instead of returning its display string', async (type) => {
+    const { provider } = await loggedInProvider()
+    const cursor = Buffer.from(
+      JSON.stringify({
+        overflow: [
+          {
+            id: 'legacy',
+            provider: 'ondo',
+            timestamp: '2026-01-01T00:00:00Z',
+            type,
+            asset: 'USDC',
+            amount: '1',
+          },
+        ],
+      })
+    ).toString('base64url')
+    await expect(
+      provider.getActivity({ address: ADDRESS, cursor, type: [type] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
   it('emits a base64url cursor carrying the overflow when limit < merged count', async () => {
@@ -1277,6 +1304,9 @@ describe('OndoProvider — getActivity surface coverage', () => {
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond({ assets: [ONDO_COLLATERAL_ASSET] })
+      }
       if (u.includes('backend.test/v1/perps/providers')) {
         return respond({ providers: providersResult })
       }
@@ -1317,7 +1347,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         provider: 'ondo',
         timestamp: '2026-07-02T15:45:00.000Z',
         type: ActivityType.WITHDRAWAL,
-        asset: 'USDC',
+        asset: ONDO_COLLATERAL_ASSET,
         amount: '500.00',
         fee: { amount: '1.50', asset: 'USD' },
         explorerLink: 'https://scan.li.fi/tx/0xdef456',
@@ -1327,7 +1357,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         provider: 'ondo',
         timestamp: '2026-07-01T10:30:00.000Z',
         type: ActivityType.DEPOSIT,
-        asset: 'USDC',
+        asset: ONDO_COLLATERAL_ASSET,
         amount: '1000.00',
         counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
         explorerLink: 'https://scan.li.fi/tx/0xabc123',

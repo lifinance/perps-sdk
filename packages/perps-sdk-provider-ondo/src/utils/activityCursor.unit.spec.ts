@@ -46,6 +46,28 @@ describe('encodeActivityCursor / decodeActivityCursor', () => {
     expect(decodeActivityCursor(encoded)).toEqual(envelope)
   })
 
+  it('retains registry asset identity in a deposit overflow row', () => {
+    const deposit: ActivityItem = {
+      id: 'deposit:tx',
+      provider: 'ondo',
+      timestamp: '2026-07-01T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: {
+        providerId: 'ondo',
+        id: 'USDC',
+        wireId: 'wire',
+        l1Address: '0xaddress',
+        displaySymbol: 'USD Coin',
+        logoURI: 'usdc.svg',
+      },
+      amount: '1',
+    }
+    expect(
+      decodeActivityCursor(encodeActivityCursor({ overflow: [deposit] }))
+        ?.overflow
+    ).toEqual([deposit])
+  })
+
   it('drops empty cursor keys and returns undefined for a fully-drained envelope', () => {
     expect(encodeActivityCursor({})).toBeUndefined()
     expect(encodeActivityCursor({ fundings: '', overflow: [] })).toBeUndefined()

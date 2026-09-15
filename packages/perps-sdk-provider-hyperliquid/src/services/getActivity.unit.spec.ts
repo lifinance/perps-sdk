@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import type { Asset } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -408,5 +409,90 @@ describe('getActivity — unresolvable market rows', () => {
     await expect(
       getActivity(ctx, { address: ADDRESS, type: [ActivityType.DEPOSIT] })
     ).rejects.toThrow()
+  })
+})
+
+describe('getActivity — transfer registry identity', () => {
+  const token: Asset = {
+    providerId: 'hyperliquid',
+    id: '150',
+    wireId: '0xwire',
+    displaySymbol: 'HYPE',
+    logoURI: 'hype.svg',
+  }
+  const ledger: HlUserNonFundingLedgerUpdates = [
+    {
+      time: 1704067300000,
+      hash: '0xtransfer',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC:0xwire',
+        amount: '5',
+        usdcValue: '100',
+        user: ADDRESS,
+        destination: '0x2222222222222222222222222222222222222222',
+      },
+    },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+
+  it('returns the registry asset despite a misleading wire symbol', async () => {
+    const mock = installInfoFetchMock(
+      { userNonFundingLedgerUpdates: ledger },
+      [],
+      [],
+      [token]
+    )
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    expect(result.items).toMatchObject([
+      { type: ActivityType.TRANSFER, asset: token, amount: '5' },
+    ])
+    expect(mock.referenceRequests.some((url) => url.includes('/markets'))).toBe(
+      false
+    )
+  })
+
+  it('rejects the feed when a transfer asset cannot resolve', async () => {
+    installInfoFetchMock({ userNonFundingLedgerUpdates: ledger })
+    await expect(
+      getActivity(ctx, { address: ADDRESS, type: [ActivityType.TRANSFER] })
+    ).rejects.toThrow(/stale or mis-keyed/)
+  })
+
+  it('does not resolve excluded transfers in a deposit-only request', async () => {
+    const mock = installInfoFetchMock({
+      userNonFundingLedgerUpdates: [
+        ...ledger,
+        {
+          time: 0,
+          hash: 'vault-deposit',
+          delta: { type: 'vaultDeposit', vault: ADDRESS, usdc: '100' },
+        },
+        {
+          time: 1,
+          hash: 'vault-withdraw',
+          delta: {
+            type: 'vaultWithdraw',
+            vault: ADDRESS,
+            user: ADDRESS,
+            requestedUsd: '100',
+            netWithdrawnUsd: '90',
+            commission: '10',
+            closingCost: '0',
+            basis: '50',
+          },
+        },
+        ...HL_USER_NON_FUNDING_LEDGER,
+      ],
+    })
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT],
+    })
+    expect(result.items.map((item) => item.id)).toEqual(['0xdep1'])
+    expect(mock.referenceRequests).toEqual([])
   })
 })

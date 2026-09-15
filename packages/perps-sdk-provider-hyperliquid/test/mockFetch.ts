@@ -1,4 +1,4 @@
-import type { Market, MarketContext } from '@lifi/perps-types'
+import type { Asset, Market, MarketContext } from '@lifi/perps-types'
 import { vi } from 'vitest'
 
 export interface RecordedRequest {
@@ -25,7 +25,8 @@ const jsonResponse = (value: unknown, status = 200): Response =>
 export function installInfoFetchMock(
   responses: Record<string, unknown>,
   markets: Market[] = [],
-  prices: MarketContext[] = []
+  prices: MarketContext[] = [],
+  assets: Asset[] = []
 ): {
   requests: RecordedRequest[]
   referenceRequests: string[]
@@ -37,6 +38,11 @@ export function installInfoFetchMock(
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
+
+      if (url.includes('/assets')) {
+        referenceRequests.push(url)
+        return jsonResponse({ assets })
+      }
 
       if (url.includes('/marketsContext')) {
         referenceRequests.push(url)

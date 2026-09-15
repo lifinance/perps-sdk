@@ -1,6 +1,7 @@
 import {
   type DepositFlow,
   ETHEREUM_USDC,
+  getAssetRegistry,
   getMarketRegistry,
   getProviders,
   localStorageAdapter,
@@ -599,6 +600,10 @@ export const ondoProvider = (
         async (token) => {
           const inputCursor = decodeActivityCursor(params.cursor)
           const client = apiClient(opts)
+          const assetRegistry = getAssetRegistry(
+            requireClient(),
+            ONDO_PROVIDER_KEY
+          )
 
           // Ondo publishes no account-to-account transfer history. Its
           // transfer surface moves value between the main and margin wallets
@@ -676,6 +681,10 @@ export const ondoProvider = (
               wantsType(ActivityType.LIQUIDATION)
                 ? marketRegistry().sync()
                 : Promise.resolve(),
+              wantsType(ActivityType.DEPOSIT) ||
+              wantsType(ActivityType.WITHDRAWAL)
+                ? assetRegistry.sync()
+                : Promise.resolve(),
             ])
 
           const items: ActivityItem[] = [
@@ -688,11 +697,15 @@ export const ondoProvider = (
             ...liquidations.result
               .map((l) => mapLiquidationActivity(l, marketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
-            ...(deposits ?? []).map(mapDepositActivity),
+            ...(deposits ?? []).map((deposit) =>
+              mapDepositActivity(deposit, assetRegistry)
+            ),
             // A withdrawal Ondo reports as failed or cancelled moved no value,
             // and `WithdrawalActivity` carries no status to say so.
             ...(withdrawals ?? [])
-              .map(mapWithdrawalActivity)
+              .map((withdrawal) =>
+                mapWithdrawalActivity(withdrawal, assetRegistry)
+              )
               .filter((a): a is WithdrawalActivity => a !== null),
           ]
 

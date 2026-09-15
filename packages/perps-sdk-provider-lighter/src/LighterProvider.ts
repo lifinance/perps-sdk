@@ -1433,9 +1433,6 @@ export const createLighterProvider = (
           : Promise.resolve(),
       ])
 
-      const assetSymbol = (assetId: number): string =>
-        assetRegistry.get(String(assetId))?.displaySymbol ?? String(assetId)
-
       const items: ActivityItem[] = [
         ...history.deposits.deposits.map(
           (d): ActivityItem => ({
@@ -1443,7 +1440,7 @@ export const createLighterProvider = (
             provider: providerKey,
             timestamp: toIsoFromMs(d.timestamp),
             type: ActivityType.DEPOSIT,
-            asset: assetSymbol(d.asset_id),
+            asset: assetRegistry.require(String(d.asset_id)),
             amount: d.amount,
             explorerLink: d.l1_tx_hash
               ? `https://scan.li.fi/tx/${d.l1_tx_hash}`
@@ -1458,7 +1455,7 @@ export const createLighterProvider = (
             provider: providerKey,
             timestamp: toIsoFromMs(w.timestamp),
             type: ActivityType.WITHDRAWAL,
-            asset: assetSymbol(w.asset_id),
+            asset: assetRegistry.require(String(w.asset_id)),
             amount: w.amount,
             explorerLink: w.l1_tx_hash
               ? `https://scan.li.fi/tx/${w.l1_tx_hash}`
@@ -1555,7 +1552,7 @@ export const createLighterProvider = (
               type: ActivityType.TRANSFER,
               direction,
               counterpartyAccountIndex,
-              asset: assetSymbol(t.asset_id),
+              asset: assetRegistry.require(String(t.asset_id)),
               amount: t.amount,
               // The venue charges the transfer fee in the deployment's
               // settlement asset, not in the asset the row moves, so a spot

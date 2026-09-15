@@ -51,6 +51,18 @@ Before `getAccount` starts an authenticated read, it compares the local public k
 
 Each provider instance shares one request hold across its Lighter API clients, polls, and token-management requests. An HTTP `429` or HTTP `405` response starts the hold and fails at once with `RateLimitExceeded`. The provider does not retry that request. The provider uses `Retry-After` when Lighter supplies it, up to a maximum of five minutes. Otherwise, the hold lasts 60 seconds. All Lighter requests from that provider fail before network dispatch until the hold expires. Separate provider instances do not share a hold.
 
+## Activity asset identity
+
+Deposit, withdrawal, and transfer rows carry a registry `Asset`.
+The provider resolves each numeric `asset_id` by its primary registry ID.
+Read `asset.displaySymbol` for display and `asset.logoURI` for its icon.
+An unresolved identity raises a stale or mis-keyed registry error.
+`Fee.asset` remains a string.
+
+Activity cursors with overflow rows use format version `2`. The provider rejects
+older overflow formats instead of treating a display symbol as asset identity.
+Restart pagination when the SDK reports this `ValidationError`.
+
 ## WASM signer loading
 
 The Go signer binary ships as a separate asset that the package resolves itself. The ESM build uses `new URL('../../wasm/lighter-signer.wasm', import.meta.url)`. Webpack, Turbopack, and Vite production builds rewrite this expression into an emitted asset URL. Node reads the installed binary from disk. The loader checks the WASM preamble of the response. Vite's dependency optimizer can relocate the package into `.vite/deps`, which invalidates the static URL. The loader then resolves the asset through the bundler's own asset pipeline.

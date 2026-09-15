@@ -1,19 +1,11 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 
-/**
- * Per-provider hash index over one of the provider's reference-data lists
- * (`/markets`, `/assets`), keyed by the list's own primary key.
- *
- * NOT a cache: it holds no freshness policy of its own. Every {@link sync}
- * refetches through the HTTP layer, whose `cache-control` headers decide
- * whether the response comes from disk or the network. A lookup miss warns
- * once per id and returns `undefined`; subsequent syncs reconcile the index
- * without replaying the warning for an id that remains absent.
- *
- * @internal
- */
+/** Atomic provider reference indexes; HTTP cache headers govern freshness. @internal */
 export abstract class ReferenceDataRegistry<T> {
   private index = new Map<string, T>()
+  private secondaryIndexes = new Map<string, Map<string, T>>()
   private current: readonly T[] = []
   private inflight: Promise<readonly T[]> | undefined
   private warnedIds = new Set<string>()
@@ -21,7 +13,10 @@ export abstract class ReferenceDataRegistry<T> {
   protected constructor(
     protected readonly client: PerpsSDKClient,
     readonly provider: string,
-    private readonly kind: string
+    private readonly kind: string,
+    private readonly secondaryKeys: Readonly<
+      Record<string, (item: T) => string | undefined>
+    > = {}
   ) {}
 
   /** Fetch the provider's full list through the HTTP layer. */
@@ -62,9 +57,43 @@ export abstract class ReferenceDataRegistry<T> {
     return undefined
   }
 
+  protected getByIndex(id: string, key: string): T | undefined {
+    return this.secondaryIndexes.get(key)?.get(id)
+  }
+
   private async load(): Promise<readonly T[]> {
     const items = await this.fetchItems()
-    this.index = new Map(items.map((item) => [this.keyOf(item), item]))
+    const index = new Map<string, T>()
+    for (const item of items) {
+      const key = this.keyOf(item)
+      if (index.has(key)) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `[${this.provider}] stale or mis-keyed ${this.kind} registry: duplicate id '${key}'`
+        )
+      }
+      index.set(key, item)
+    }
+    const secondaryIndexes = new Map<string, Map<string, T>>()
+    for (const [name, keyOf] of Object.entries(this.secondaryKeys)) {
+      const secondary = new Map<string, T>()
+      for (const item of items) {
+        const key = keyOf(item)
+        if (key === undefined) {
+          continue
+        }
+        if (secondary.has(key)) {
+          throw new PerpsError(
+            PerpsErrorCode.ValidationError,
+            `[${this.provider}] stale or mis-keyed ${this.kind} registry: duplicate ${name} '${key}'`
+          )
+        }
+        secondary.set(key, item)
+      }
+      secondaryIndexes.set(name, secondary)
+    }
+    this.index = index
+    this.secondaryIndexes = secondaryIndexes
     this.current = items
     return items
   }

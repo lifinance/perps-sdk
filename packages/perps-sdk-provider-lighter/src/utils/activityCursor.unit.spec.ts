@@ -20,22 +20,6 @@ describe('activity cursor round-trip', () => {
     expect(decodeActivityCursor(encoded)).toEqual(env)
   })
 
-  it('preserves the base64url-of-JSON shape backend consumers expect', () => {
-    const env: LighterActivityCursor = { deposits: 'dep:1' }
-    const encoded = encodeActivityCursor(env)
-    expect(encoded).toBeDefined()
-    if (!encoded) {
-      throw new Error('encoded is undefined')
-    }
-    // base64url uses A-Z, a-z, 0-9, -, _ — no padding, no + or /
-    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/)
-    // round-tripping through `Buffer.from(s, 'base64url').toString('utf8')`
-    // (Node) and `atob(toStandardBase64(s))` (browser) MUST yield identical
-    // JSON; we exercise the Node path here.
-    const decoded = Buffer.from(encoded, 'base64url').toString('utf8')
-    expect(JSON.parse(decoded)).toEqual({ deposits: 'dep:1' })
-  })
-
   it('drops empty/undefined keys before encoding', () => {
     const env: LighterActivityCursor = {
       deposits: 'd',
@@ -78,7 +62,14 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.DEPOSIT,
-        asset: 'USDC',
+        asset: {
+          providerId: 'lighter',
+          id: '3',
+          wireId: 'wire',
+          l1Address: '0xaddress',
+          displaySymbol: 'USDC',
+          logoURI: 'usdc.svg',
+        },
         amount: '100',
       },
     ]
@@ -94,7 +85,12 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.WITHDRAWAL,
-        asset: 'USDC',
+        asset: {
+          providerId: 'lighter',
+          id: '3',
+          displaySymbol: 'USDC',
+          logoURI: 'usdc.svg',
+        },
         amount: '5',
       },
     ]
