@@ -913,7 +913,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       resolveMarket
     ) as DepositActivity
     expect(result.type).toBe(ActivityType.DEPOSIT)
-    expect(result.asset).toBe('USDC')
+    expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('100')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
   })
@@ -959,7 +959,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       resolveMarket
     ) as WithdrawalActivity
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
-    expect(result.asset).toBe('USDC')
+    expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('50')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
   })
@@ -978,7 +978,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       resolveMarket
     ) as WithdrawalActivity
     expect(result.fee).toEqual({ amount: '0.5', asset: 'USDC' })
-    expect(result.fee?.asset).toBe(result.asset)
+    expect(result.fee?.asset).toBe(result.asset.displaySymbol)
   })
 
   it('omits the withdrawal fee when the venue reports none', () => {

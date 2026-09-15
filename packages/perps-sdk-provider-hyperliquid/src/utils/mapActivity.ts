@@ -171,7 +171,7 @@ export const mapLedgerEntry = (
     return {
       ...base,
       type: ActivityType.DEPOSIT,
-      asset: HL_COLLATERAL_SYMBOL,
+      asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
       amount: delta.usdc,
       explorerLink: entry.hash
         ? `https://scan.li.fi/tx/${entry.hash}`
@@ -183,7 +183,7 @@ export const mapLedgerEntry = (
     return {
       ...base,
       type: ActivityType.WITHDRAWAL,
-      asset: HL_COLLATERAL_SYMBOL,
+      asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
       amount: delta.usdc,
       ...(delta.fee === undefined
         ? {}

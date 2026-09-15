@@ -461,7 +461,7 @@ export const mockActivity: ActivitiesResponse = {
       provider: 'hyperliquid',
       timestamp: '2024-01-01T00:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: BTC_MARKET_DISPLAY.quoteAsset,
       amount: '5000.00',
     },
     {

@@ -1,5 +1,6 @@
 import type { Asset, Market, MarketContext } from '@lifi/perps-types'
 import { vi } from 'vitest'
+import { USDC_ASSET } from './fixtures.js'
 
 export interface RecordedRequest {
   url: string
@@ -26,7 +27,7 @@ export function installInfoFetchMock(
   responses: Record<string, unknown>,
   markets: Market[] = [],
   prices: MarketContext[] = [],
-  assets: Asset[] = []
+  assets: Asset[] = [USDC_ASSET]
 ): {
   requests: RecordedRequest[]
   referenceRequests: string[]

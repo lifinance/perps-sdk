@@ -334,8 +334,7 @@ export interface BaseActivity {
  */
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
-  /** Only Hyperliquid's fixed-USDC bridge uses the literal instead of an Asset. */
-  asset: Asset | 'USDC'
+  asset: Asset
   amount: string
   /**
    * Address the deposited funds came from, as the venue reports it. Absent
@@ -354,8 +353,7 @@ export interface DepositActivity extends BaseActivity {
  */
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
-  /** Only Hyperliquid's fixed-USDC bridge uses the literal instead of an Asset. */
-  asset: Asset | 'USDC'
+  asset: Asset
   amount: string
   /** Absent when the venue reports no fee for the withdrawal. */
   fee?: Fee

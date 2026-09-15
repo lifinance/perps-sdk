@@ -44,11 +44,11 @@ matches `NAME` to a display symbol. Bare protocol `USDC` resolves by reserved
 spot token index `0`. Missing identities raise a stale or mis-keyed registry
 error. The mapper never fabricates an asset or drops an unresolved transfer.
 
-The fixed-USDC `deposit` and `withdraw` deltas retain the `'USDC'` asset literal.
-Their `usdc` field identifies the venue's collateral, not an arbitrary token.
-All other providers return an `Asset` for deposits and withdrawals.
-Consumers must distinguish this literal from an `Asset`. `Fee.asset` remains
-a display string.
+The fixed-USDC `deposit` and `withdraw` deltas resolve the registry `Asset`
+by reserved spot token index `0`. Their `usdc` field identifies the venue's
+collateral, not an arbitrary token. Consumers read `asset.displaySymbol` and
+`asset.logoURI` on every ledger activity without a string exception.
+`Fee.asset` remains a display string.
 
 ### Hyperliquid ledger coverage
 
@@ -65,8 +65,8 @@ defines token indices and `tokenId`.
 | `send` | Transfer between distinct accounts; resolve the token wire ID or reserved USDC identity. |
 | `internalTransfer` | USDC transfer between distinct accounts; resolve token index `0`. |
 | `subAccountTransfer` | USDC transfer between master and subaccount addresses; resolve token index `0`. |
-| `deposit` | Deposit with the fixed `'USDC'` literal. |
-| `withdraw` | Withdrawal with the fixed `'USDC'` literal. |
+| `deposit` | Deposit with the USDC registry asset at token index `0`. |
+| `withdraw` | Withdrawal with the USDC registry asset at token index `0`. |
 | `liquidation` | Liquidation with resolved positions. |
 | `accountClassTransfer` | Excluded: `toPerp` describes a spot/perp movement within one account, not a counterparty transfer. |
 | `vaultCreate` | Excluded: vault creation and capital allocation require a vault activity model. |

@@ -24,9 +24,11 @@ import type {
 } from '../types/index.js'
 import {
   isCollateralTransferDelta,
+  isDepositDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
+  isWithdrawDelta,
 } from '../types/index.js'
 import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
 import {
@@ -57,6 +59,12 @@ export interface GetActivityParams {
 const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.FUNDING,
   ActivityType.LIQUIDATION,
+])
+
+const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.DEPOSIT,
+  ActivityType.WITHDRAWAL,
+  ActivityType.TRANSFER,
 ])
 
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
@@ -95,11 +103,15 @@ const fetchActivityData = async (
     (entry): ActivityItem[] => {
       if (
         typeFilter !== undefined &&
-        !typeFilter.includes(ActivityType.TRANSFER) &&
-        (isSpotTransferDelta(entry.delta) ||
-          isSendAssetDelta(entry.delta) ||
-          isCollateralTransferDelta(entry.delta) ||
-          isVaultTransferDelta(entry.delta))
+        ((isDepositDelta(entry.delta) &&
+          !typeFilter.includes(ActivityType.DEPOSIT)) ||
+          (isWithdrawDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.TRANSFER) &&
+            (isSpotTransferDelta(entry.delta) ||
+              isSendAssetDelta(entry.delta) ||
+              isCollateralTransferDelta(entry.delta) ||
+              isVaultTransferDelta(entry.delta))))
       ) {
         return []
       }
@@ -157,7 +169,7 @@ export const getActivity = async (
   const assetRegistry = getAssetRegistry(client, PROVIDER_KEY)
   if (
     params.type === undefined ||
-    params.type.includes(ActivityType.TRANSFER)
+    params.type.some((type) => ASSET_BEARING_TYPES.has(type))
   ) {
     await assetRegistry.sync()
   }

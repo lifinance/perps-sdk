@@ -21,15 +21,22 @@ import {
 } from './enums.js'
 import type { MarketDisplay } from './market.js'
 
+const USDC_ASSET: Asset = {
+  providerId: 'hyperliquid',
+  id: '0',
+  displaySymbol: 'USDC',
+  logoURI: 'usdc.svg',
+}
+
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest
 // runs the file via the `.unit.spec.ts` glob so a regression also fails
 // `pnpm test:unit` via tsc.
 describe('TransferActivity', () => {
-  it('requires registry identity while preserving the fixed-USDC bridge exception', () => {
+  it('requires registry identity on every ledger activity', () => {
     expectTypeOf<TransferActivity['asset']>().toEqualTypeOf<Asset>()
-    expectTypeOf<DepositActivity['asset']>().toEqualTypeOf<Asset | 'USDC'>()
-    expectTypeOf<WithdrawalActivity['asset']>().toEqualTypeOf<Asset | 'USDC'>()
+    expectTypeOf<DepositActivity['asset']>().toEqualTypeOf<Asset>()
+    expectTypeOf<WithdrawalActivity['asset']>().toEqualTypeOf<Asset>()
   })
   it('participates in the ActivityItem discriminated union and narrows on type', () => {
     const item: ActivityItem = {
@@ -65,7 +72,7 @@ describe('TransferActivity', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:03:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '500',
     }
 
@@ -174,7 +181,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       explorerLink: 'https://etherscan.io/tx/0xabc',
     }
@@ -183,7 +190,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       fee: { amount: '0', asset: 'USDC' },
       explorerLink: 'https://etherscan.io/tx/0xdef',
@@ -218,7 +225,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
     }
     expect(deposit.explorerLink).toBeUndefined()
@@ -232,7 +239,7 @@ describe('counterpartyAddress on DepositActivity', () => {
       provider: 'ondo',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
     }
@@ -247,7 +254,7 @@ describe('counterpartyAddress on DepositActivity', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
     }
     expect(deposit.counterpartyAddress).toBeUndefined()
@@ -474,7 +481,7 @@ describe('Fee', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:01:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '10',
       // @ts-expect-error a fee must name the asset it is denominated in
       fee: '0.1',
@@ -485,7 +492,7 @@ describe('Fee', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:02:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '10',
       // @ts-expect-error asset is required on a fee
       fee: { amount: '0.1' },
@@ -586,7 +593,7 @@ describe('exhaustive narrowing across ActivityItem', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:09:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '50',
       fee: { amount: '0.1', asset: 'USDC' },
     }
