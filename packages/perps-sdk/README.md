@@ -70,11 +70,12 @@ const client = createPerpsClient({
 `placeOrder()`, `placeTriggerOrder()`, `placeTwapOrder()`, `cancelOrders()`,
 `cancelTwapOrder()`, and `modifyOrders()`.
 
-Account-specific reads remain provider-owned and go directly to the venue. A
-running-TWAP poll uses the registered provider plugin:
+Account-specific reads go directly to the venue. `getOrders()` returns the
+`Order` union with regular, trigger, and TWAP rows. Its default filter includes
+PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 
 ```ts
-import { PerpsClient } from '@lifi/perps-sdk'
+import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 
 const client = new PerpsClient({
@@ -82,11 +83,12 @@ const client = new PerpsClient({
   providers: [hyperliquidProvider()],
 })
 
-const provider = client.client.getProvider('hyperliquid')
-const runningTwaps = await provider?.getRunningTwaps?.({
+const { orders } = await client.getOrders({
+  provider: 'hyperliquid',
   address: '0xUser',
   marketId: 'ETH',
 })
+const runningTwaps = orders.filter(isTwapOrder)
 ```
 
 ## WebSocket

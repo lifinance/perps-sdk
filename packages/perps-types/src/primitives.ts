@@ -13,3 +13,6 @@ export type Address = `0x${string}`
  * @public
  */
 export type Hex = `0x${string}`
+
+/** Opaque provider key assigned by the provider registry. */
+export type ProviderId = string

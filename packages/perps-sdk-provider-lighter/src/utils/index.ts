@@ -16,15 +16,7 @@ export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFill } from './mapFill.js'
 export { mapMarketContext } from './mapMarketContext.js'
 export { mapOpenPositions } from './mapOpenPositions.js'
-export {
-  classifyAndMapOrders,
-  isTriggerOrder,
-  isTriggerType,
-  mapOrder,
-  mapOrderDetail,
-  mapStatusReason,
-  mapTriggerOrder,
-} from './mapOrder.js'
+export { mapOrder, mapOrderUpdates } from './mapOrder.js'
 export { mapPortfolioHistory } from './mapPortfolioHistory.js'
 export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapMarketOrderLimits } from './marketLimits.js'

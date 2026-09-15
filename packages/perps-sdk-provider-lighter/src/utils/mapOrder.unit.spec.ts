@@ -1,14 +1,16 @@
+import { PerpsError } from '@lifi/perps-sdk'
 import {
   type MarketDisplay,
   OrderSide,
   OrderStatus,
   OrderType,
+  TimeInForce,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtOrder } from '../types/index.js'
-import { mapOrder, mapOrderDetail, mapStatusReason } from './mapOrder.js'
+import { mapOrder, mapOrderUpdates } from './mapOrder.js'
 
-const SYMBOL = 'ETH'
 const MARKET: MarketDisplay = {
   providerId: 'lighter',
   id: '1',
@@ -16,7 +18,7 @@ const MARKET: MarketDisplay = {
   baseAsset: {
     providerId: 'lighter',
     id: '1',
-    displaySymbol: SYMBOL,
+    displaySymbol: 'ETH',
     logoURI: '',
   },
   quoteAsset: {
@@ -37,18 +39,18 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   initial_base_amount: '1',
   price: '2000',
   nonce: 0,
-  remaining_base_amount: '0',
+  remaining_base_amount: '1',
   is_ask: false,
-  filled_base_amount: '1',
-  filled_quote_amount: '2000',
+  filled_base_amount: '0',
+  filled_quote_amount: '0',
   side: 'buy',
   type: 'limit',
-  time_in_force: 'good_till_time',
+  time_in_force: 'good-till-time',
   reduce_only: false,
   trigger_price: '0',
-  order_expiry: 0,
-  status: 'filled',
-  trigger_status: '',
+  order_expiry: 1_700_000_900_000,
+  status: 'open',
+  trigger_status: 'na',
   trigger_time: 0,
   parent_order_index: 0,
   parent_order_id: '',
@@ -58,172 +60,135 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   block_height: 1,
   timestamp: 1_700_000_000,
   created_at: 1_700_000_000,
-  updated_at: 1_700_000_000,
+  updated_at: 1_700_000_001,
   transaction_time: 1_700_000_000_000_000,
   ...overrides,
 })
 
-describe('mapStatusReason (Lighter)', () => {
-  it('returns undefined for filled', () => {
-    expect(mapStatusReason('filled')).toBeUndefined()
+describe('mapOrder (Lighter)', () => {
+  it('separates the venue id and client id and omits an absent client id', () => {
+    const order = mapOrder(baseOrder({ client_order_index: 77 }), MARKET)
+    expect(order.orderId).toBe('1')
+    expect(order.clientOrderId).toBe('77')
+    expect(mapOrder(baseOrder(), MARKET)).not.toHaveProperty('clientOrderId')
+    expect(order).not.toHaveProperty('explorerLink')
   })
 
-  it('returns undefined for open', () => {
-    expect(mapStatusReason('open')).toBeUndefined()
-  })
-
-  it('returns undefined for pending', () => {
-    expect(mapStatusReason('pending')).toBeUndefined()
-  })
-
-  it('returns undefined for unknown statuses', () => {
-    expect(mapStatusReason('something-new')).toBeUndefined()
-  })
-
-  it('maps canceled', () => {
-    expect(mapStatusReason('canceled')).toBe('Order cancelled.')
-  })
-
-  it('maps canceled-post-only', () => {
-    expect(mapStatusReason('canceled-post-only')).toBe(
-      'Order cancelled: post-only order would have crossed the book.'
-    )
-  })
-
-  it('maps canceled-reduce-only', () => {
-    expect(mapStatusReason('canceled-reduce-only')).toBe(
-      'Order cancelled: would not reduce your position.'
-    )
-  })
-
-  it('maps canceled-position-not-allowed', () => {
-    expect(mapStatusReason('canceled-position-not-allowed')).toBe(
-      'Order cancelled: position not allowed.'
-    )
-  })
-
-  it('maps canceled-margin-not-allowed', () => {
-    expect(mapStatusReason('canceled-margin-not-allowed')).toBe(
-      'Order cancelled: insufficient margin.'
-    )
-  })
-
-  it('maps canceled-too-much-slippage', () => {
-    expect(mapStatusReason('canceled-too-much-slippage')).toBe(
-      'Order cancelled: slippage exceeded tolerance.'
-    )
-  })
-
-  it('maps canceled-not-enough-liquidity', () => {
-    expect(mapStatusReason('canceled-not-enough-liquidity')).toBe(
-      'Order cancelled: not enough liquidity to fill.'
-    )
-  })
-
-  it('maps canceled-self-trade', () => {
-    expect(mapStatusReason('canceled-self-trade')).toBe(
-      'Order cancelled: would self-trade against your own resting order.'
-    )
-  })
-
-  it('maps canceled-expired', () => {
-    expect(mapStatusReason('canceled-expired')).toBe('Order expired.')
-  })
-
-  it('maps canceled-oco', () => {
-    expect(mapStatusReason('canceled-oco')).toBe(
-      'Order cancelled: sibling OCO order filled or cancelled first.'
-    )
-  })
-
-  it('maps canceled-child', () => {
-    expect(mapStatusReason('canceled-child')).toBe(
-      'Order cancelled: parent order was cancelled.'
-    )
-  })
-
-  it('maps canceled-liquidation', () => {
-    expect(mapStatusReason('canceled-liquidation')).toBe(
-      'Order cancelled: account was liquidated.'
-    )
-  })
-
-  it('maps canceled-invalid-balance', () => {
-    expect(mapStatusReason('canceled-invalid-balance')).toBe(
-      'Order cancelled: invalid balance.'
-    )
-  })
-})
-
-describe('mapOrderDetail (Lighter) — statusReason wiring', () => {
-  it('populates statusReason from the raw status on terminal cancels', () => {
-    const order = mapOrderDetail(
-      baseOrder({ status: 'canceled-too-much-slippage' }),
-      MARKET
-    )
-    expect(order.status).toBe(OrderStatus.CANCELLED)
-    expect(order.statusReason).toBe(
-      'Order cancelled: slippage exceeded tolerance.'
-    )
-  })
-
-  it('omits statusReason for filled orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'filled' }), MARKET)
-    expect(order.status).toBe(OrderStatus.FILLED)
-    expect(order.statusReason).toBeUndefined()
-  })
-
-  it('omits statusReason for open orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'open' }), MARKET)
-    expect(order.status).toBe(OrderStatus.OPEN)
-    expect(order.statusReason).toBeUndefined()
-  })
-
-  it('omits statusReason for pending orders', () => {
-    const order = mapOrderDetail(baseOrder({ status: 'pending' }), MARKET)
-    expect(order.status).toBe(OrderStatus.PENDING)
-    expect(order.statusReason).toBeUndefined()
-  })
-})
-
-describe('mapOrder (Lighter) — OpenOrder sizes', () => {
-  it('reads both sizes straight off the payload for a partial fill', () => {
-    const order = mapOrder(
-      baseOrder({
-        status: 'open',
-        initial_base_amount: '2',
-        remaining_base_amount: '0.5',
-        filled_base_amount: '1.5',
-      }),
-      MARKET
-    )
-    expect(order.originalSize).toBe('2')
-    expect(order.remainingSize).toBe('0.5')
-    expect(order.filledSize).toBe('1.5')
-  })
-
-  it('keeps remainingSize equal to originalSize on an untouched order', () => {
-    const order = mapOrder(
-      baseOrder({
-        status: 'open',
-        initial_base_amount: '2',
-        remaining_base_amount: '2',
-        filled_base_amount: '0',
-      }),
-      MARKET
-    )
-    expect(order.originalSize).toBe('2')
-    expect(order.remainingSize).toBe('2')
-    expect(order.filledSize).toBe('0')
-  })
-
-  it('maps the remaining open-order fields', () => {
+  it('maps a parent-dependent trigger with its parent id', () => {
     expect(
       mapOrder(
         baseOrder({
-          status: 'open',
+          type: 'stop-loss',
+          trigger_price: '1900',
+          trigger_status: 'parent-order',
+          parent_order_id: '42',
+        }),
+        MARKET
+      )
+    ).toMatchObject({ status: OrderStatus.PENDING, parentOrderId: '42' })
+    expect(
+      mapOrder(baseOrder({ type: 'stop-loss', reduce_only: true }), MARKET)
+    ).not.toHaveProperty('parentOrderId')
+  })
+
+  it.each([
+    [
+      'take-profit',
+      false,
+      OrderType.TAKE_PROFIT_MARKET,
+      TriggerCondition.BELOW,
+    ],
+    ['take-profit', true, OrderType.TAKE_PROFIT_MARKET, TriggerCondition.ABOVE],
+    ['stop-loss', false, OrderType.STOP_MARKET, TriggerCondition.ABOVE],
+    ['stop-loss', true, OrderType.STOP_MARKET, TriggerCondition.BELOW],
+    [
+      'take-profit-limit',
+      false,
+      OrderType.TAKE_PROFIT_LIMIT,
+      TriggerCondition.BELOW,
+    ],
+    [
+      'take-profit-limit',
+      true,
+      OrderType.TAKE_PROFIT_LIMIT,
+      TriggerCondition.ABOVE,
+    ],
+    ['stop-loss-limit', false, OrderType.STOP_LIMIT, TriggerCondition.ABOVE],
+    ['stop-loss-limit', true, OrderType.STOP_LIMIT, TriggerCondition.BELOW],
+  ])('derives the condition for %s with is_ask=%s', (type, is_ask, expectedType, triggerCondition) => {
+    const order = mapOrder(
+      baseOrder({ type, is_ask, trigger_price: '2100' }),
+      MARKET
+    )
+    expect(order).toMatchObject({
+      type: expectedType,
+      triggerCondition,
+      triggerPrice: '2100',
+    })
+    if (type.endsWith('-limit')) {
+      expect(order).toHaveProperty('limitPrice', '2000')
+    } else {
+      expect(order).not.toHaveProperty('limitPrice')
+    }
+  })
+
+  it.each([
+    ['open', OrderStatus.OPEN],
+    ['triggered', OrderStatus.TRIGGERED],
+    ['filled', OrderStatus.FILLED],
+    ['canceled', OrderStatus.CANCELLED],
+    ['canceled-expired', OrderStatus.EXPIRED],
+    ['canceled-too-much-slippage', OrderStatus.CANCELLED],
+  ])('maps the %s lifecycle', (status, expected) => {
+    const order = mapOrder(baseOrder({ status }), MARKET)
+    expect(order.status).toBe(expected)
+    expect(order.statusReason).toBe(
+      expected === OrderStatus.CANCELLED ? status : undefined
+    )
+  })
+
+  it.each([
+    'unknown',
+    'pending',
+    'in-progress',
+    'in_progress',
+    'canceled-unknown',
+  ])('rejects undocumented status %s', (status) => {
+    expect(() => mapOrder(baseOrder({ status }), MARKET)).toThrow(PerpsError)
+  })
+
+  it('does not restore a cancelled parent-dependent trigger to pending', () => {
+    expect(
+      mapOrder(
+        baseOrder({ status: 'canceled-child', trigger_status: 'parent-order' }),
+        MARKET
+      ).status
+    ).toBe(OrderStatus.CANCELLED)
+  })
+
+  it('compares partial fills without numeric underflow', () => {
+    expect(
+      mapOrder(
+        baseOrder({
+          filled_base_amount: '1e-400',
+          filled_quote_amount: '2e-397',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      status: OrderStatus.PARTIALLY_FILLED,
+      filledSize: '1e-400',
+      averagePrice: '2000',
+    })
+  })
+
+  it('retains decimal sizes and maps regular order execution fields', () => {
+    expect(
+      mapOrder(
+        baseOrder({
           remaining_base_amount: '0.5',
           filled_base_amount: '0.5',
+          filled_quote_amount: '1000',
         }),
         MARKET
       )
@@ -232,12 +197,115 @@ describe('mapOrder (Lighter) — OpenOrder sizes', () => {
       market: MARKET,
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
+      status: OrderStatus.PARTIALLY_FILLED,
       originalSize: '1',
       remainingSize: '0.5',
-      price: '2000',
       filledSize: '0.5',
+      averagePrice: '2000',
+      price: '2000',
+      timeInForce: TimeInForce.GTT,
+      expiresAt: '2023-11-14T22:28:20.000Z',
       reduceOnly: false,
       createdAt: '2023-11-14T22:13:20.000Z',
+      updatedAt: '2023-11-14T22:13:21.000Z',
     })
+  })
+
+  it.each([
+    'immediate-or-cancel',
+    'post-only',
+  ])('maps time in force %s', (time_in_force) => {
+    expect(mapOrder(baseOrder({ time_in_force }), MARKET)).toHaveProperty(
+      'timeInForce',
+      time_in_force === 'post-only' ? TimeInForce.POST_ONLY : TimeInForce.IOC
+    )
+  })
+
+  it('rejects an unrepresentable time in force', () => {
+    expect(() =>
+      mapOrder(baseOrder({ time_in_force: 'Unknown' }), MARKET)
+    ).toThrow(PerpsError)
+  })
+
+  it.each([
+    'open',
+    'filled',
+  ])('maps a %s TWAP through the order mapper', (status) => {
+    const mapped = mapOrder(baseOrder({ type: 'twap', status }), MARKET)
+    expect(mapped).toMatchObject({
+      orderId: '1',
+      type: OrderType.TWAP,
+      durationSeconds: 900,
+      startedAt: '2023-11-14T22:13:20.000Z',
+    })
+    expect(mapped).not.toHaveProperty('averagePrice')
+  })
+
+  it('maps a TWAP child as a regular order with its parent', () => {
+    expect(
+      mapOrder(baseOrder({ type: 'twap-sub', parent_order_id: '8' }), MARKET)
+    ).toMatchObject({ type: OrderType.LIMIT, parentOrderId: '8' })
+  })
+
+  it.each([
+    'market',
+    'liquidation',
+  ])('maps regular execution type %s without a fabricated expiry', (type) => {
+    const mapped = mapOrder(baseOrder({ type, order_expiry: 0 }), MARKET)
+    expect(mapped.type).toBe(OrderType.MARKET)
+    expect(mapped).not.toHaveProperty('expiresAt')
+  })
+
+  it('rejects an unrepresentable order type', () => {
+    expect(() => mapOrder(baseOrder({ type: 'unknown' }), MARKET)).toThrow(
+      PerpsError
+    )
+  })
+
+  it('accepts underscore spellings from older Lighter payloads', () => {
+    expect(
+      mapOrder(
+        baseOrder({ type: 'stop_loss_limit', time_in_force: 'good_till_time' }),
+        MARKET
+      )
+    ).toMatchObject({
+      type: OrderType.STOP_LIMIT,
+      triggerCondition: TriggerCondition.ABOVE,
+    })
+  })
+})
+
+describe('mapOrderUpdates (Lighter)', () => {
+  it('retains terminal rows and their eviction ids with active and trigger rows', () => {
+    const result = mapOrderUpdates(
+      [
+        baseOrder(),
+        baseOrder({ order_index: 2, status: 'filled' }),
+        baseOrder({
+          order_index: 3,
+          type: 'take-profit',
+          trigger_status: 'parent-order',
+          parent_order_id: '1',
+        }),
+      ],
+      () => MARKET
+    )
+    expect(
+      result.orders.map(({ orderId, status }) => [orderId, status])
+    ).toEqual([
+      ['1', OrderStatus.OPEN],
+      ['2', OrderStatus.FILLED],
+      ['3', OrderStatus.PENDING],
+    ])
+    expect(result.terminated).toEqual(['2'])
+  })
+
+  it('skips rows with no registered market but retains terminal eviction ids', () => {
+    expect(
+      mapOrderUpdates(
+        [baseOrder(), baseOrder({ order_index: 2, status: 'filled' })],
+        () => undefined
+      )
+    ).toEqual({ orders: [], terminated: ['2'] })
   })
 })

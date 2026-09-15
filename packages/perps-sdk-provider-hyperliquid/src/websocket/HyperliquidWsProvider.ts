@@ -3,6 +3,7 @@ import {
   isActiveMarket,
   isActiveOrderStatus,
   type MarketRegistry,
+  PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
@@ -21,13 +22,13 @@ import type {
   AccountResponse,
   Balance,
   MarketContext,
-  OpenOrder,
+  Order,
   OrderbookLevel,
   OrderbookResponse,
   Position,
   Subscription,
-  TriggerOrder,
 } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { isAddress } from 'viem'
 import {
@@ -38,6 +39,7 @@ import {
 import type {
   HlAssetPosition,
   HlOrderDetail,
+  HlOrderStatusResponse,
   HlUserFill,
   HlWsActiveAssetCtxData,
   HlWsActiveSpotAssetCtxData,
@@ -49,6 +51,7 @@ import type {
   HlWsL2BookData,
   HlWsL2Data,
   HlWsMessage,
+  HlWsOrder,
   HlWsPacData,
   HlWsPerpAssetCtx,
   HlWsPerpAssetCtxPayload,
@@ -66,13 +69,10 @@ import {
   hlInfoOptions,
   infoRequest,
   isOpenAssetPosition,
-  isTriggerOrder,
   mapFill,
   mapMarketContext,
-  mapOpenOrder,
-  mapOrderStatus,
+  mapOrder,
   mapPosition,
-  mapTriggerOrder,
   partitionSpotBalances,
   priceStepToAggregation,
   spotAssetFromToken,
@@ -119,6 +119,8 @@ export const hyperliquidWsProvider = (): WsProviderFactory =>
  */
 export class HyperliquidWsProvider extends WsProviderBase<object> {
   private orderUpdatesKey: string | undefined
+  private orderUpdatesEpoch = 0
+  private readonly orderApiUrl: string
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
@@ -191,6 +193,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     'every',
     this.reportDecodeFailure
   )
+  private readonly orderUpdateChain = new DecodeChain(
+    'every',
+    this.reportDecodeFailure
+  )
 
   constructor(wsUrl: string, providerKey: string, client?: PerpsSDKClient) {
     super(
@@ -199,6 +205,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
+    const orderApiUrl = new URL(wsUrl)
+    orderApiUrl.protocol = orderApiUrl.protocol === 'wss:' ? 'https:' : 'http:'
+    this.orderApiUrl = orderApiUrl.origin
   }
 
   override async subscribe(
@@ -350,6 +359,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       this.unregisterSub(key)
       if (this.orderUpdatesKey === key) {
         this.orderUpdatesKey = undefined
+        this.orderUpdatesEpoch++
       }
       this.rws.send(
         JSON.stringify({
@@ -382,6 +392,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           `${active.slice('orderUpdates:'.length)} before subscribing ` +
           `${key.slice('orderUpdates:'.length)}.`
       )
+    }
+    if (active !== key) {
+      this.orderUpdatesEpoch++
     }
     this.orderUpdatesKey = key
   }
@@ -456,6 +469,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.pacDecodeChain.reset()
     this.sacDecodeChain.reset()
     this.orderbookDecodeChain.reset()
+    this.orderUpdateChain.reset()
+    this.orderUpdatesEpoch++
     this.orderUpdatesKey = undefined
   }
 
@@ -627,7 +642,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           this.handleTrades(msg.data as HlWsTrade[])
           break
         case 'orderUpdates':
-          this.handleOrderUpdates(msg.data as HlOrderDetail[])
+          this.handleOrderUpdates(msg.data as HlWsOrder[])
           break
         case 'userFills':
           this.handleUserFills(msg.data as HlWsUserFillsData)
@@ -975,36 +990,73 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
   }
 
-  private handleOrderUpdates(data: HlOrderDetail[]) {
-    // Untagged frame: attributable only via the single-address invariant.
+  private handleOrderUpdates(data: HlWsOrder[]) {
     const key = this.orderUpdatesKey
-    if (key === undefined) {
+    const client = this.client
+    const epoch = this.orderUpdatesEpoch
+    if (key === undefined || client === undefined) {
       return
     }
-    const openOrders: OpenOrder[] = []
-    const triggerOrders: TriggerOrder[] = []
-    const terminated: string[] = []
-    for (const detail of data) {
-      const o = detail.order
-      const orderId = String(o.oid)
-      if (!isActiveOrderStatus(mapOrderStatus(detail.status))) {
-        terminated.push(orderId)
-        continue
+    this.orderUpdateChain.push(async () => {
+      if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
+        return
       }
-      // Unknown market id (absent from the synced snapshot); skip just this item.
-      const market = this.registry?.get(o.coin)
-      if (!market) {
-        continue
+      const mapped = await Promise.all(
+        data.map(async (update) => {
+          const basic = update.order
+          const market = this.registry?.get(basic.coin)
+          if (market === undefined) {
+            return undefined
+          }
+          const response = await infoRequest<HlOrderStatusResponse>(
+            this.orderApiUrl,
+            {
+              type: 'orderStatus',
+              user: key.slice('orderUpdates:'.length),
+              oid: basic.oid,
+            },
+            hlInfoOptions(client)
+          )
+          if (response.status !== 'order') {
+            throw new PerpsError(
+              PerpsErrorCode.OrderNotFound,
+              `Hyperliquid order metadata not found: ${basic.oid}`
+            )
+          }
+          // REST supplies execution metadata; the stream owns this event's lifecycle and quantities.
+          const detail: HlOrderDetail = {
+            status: update.status,
+            statusTimestamp: update.statusTimestamp,
+            order: {
+              ...response.order.order,
+              coin: basic.coin,
+              side: basic.side,
+              limitPx: basic.limitPx,
+              sz: basic.sz,
+              oid: basic.oid,
+              timestamp: basic.timestamp,
+              origSz: basic.origSz,
+              cloid: basic.cloid ?? response.order.order.cloid,
+            },
+          }
+          return mapOrder(detail, market)
+        })
+      )
+      if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
+        return
       }
-      if (isTriggerOrder(o)) {
-        triggerOrders.push(mapTriggerOrder(o, market))
-      } else {
-        openOrders.push(mapOpenOrder(o, market))
+      const orders: Order[] = []
+      const terminated: string[] = []
+      for (const order of mapped) {
+        if (order === undefined) {
+          continue
+        }
+        orders.push(order)
+        if (!isActiveOrderStatus(order.status)) {
+          terminated.push(order.orderId)
+        }
       }
-    }
-    this.emit(key, {
-      channel: 'orderUpdates',
-      data: { openOrders, triggerOrders, terminated },
+      this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })
   }
 

@@ -1,7 +1,6 @@
 import type { MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
-  FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
@@ -76,10 +75,10 @@ describe('mapFill (Lighter)', () => {
     expect(mapFill(baseTrade(), ACCOUNT_INDEX, MARKET).market).toEqual(MARKET)
   })
 
-  it('always reports type LIMIT and status FILLED', () => {
+  it('reports the execution type without an order lifecycle status', () => {
     const fill = mapFill(baseTrade(), ACCOUNT_INDEX, MARKET)
     expect(fill.type).toBe(OrderType.LIMIT)
-    expect(fill.status).toBe(FillStatus.FILLED)
+    expect(fill).not.toHaveProperty('status')
   })
 
   it('serialises timestamp as ISO string', () => {

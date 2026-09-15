@@ -24,14 +24,9 @@ export { mapMarket } from './mapMarket.js'
 export { mapMarketContext } from './mapMarketContext.js'
 export {
   type HlOrderLike,
-  isTriggerOrder,
-  isTriggerType,
-  mapOpenOrder,
   mapOrder,
   mapOrderStatus,
   mapOrderType,
-  mapStatusReason,
-  mapTriggerOrder,
 } from './mapOrder.js'
 export { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 export { coinAsset, perpsDexNames } from './marketDisplay.js'

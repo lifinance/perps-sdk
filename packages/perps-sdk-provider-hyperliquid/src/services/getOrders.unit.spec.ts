@@ -1,4 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { OrderStatus, OrderType } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HL_FRONTEND_OPEN_ORDERS, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -7,94 +8,191 @@ import { getOrders } from './getOrders.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 const client = createPerpsClient({
-  integrator: 'test',
-  apiKey: 'k',
+  integrator: 'orders-test',
+  apiKey: 'test-key',
   retry: false,
 })
-
-const baseResponses = {
-  frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+const activeTwap = {
+  time: 1_775_000_000,
+  twapId: 3156,
+  state: {
+    coin: 'BTC',
+    executedNtl: '19000',
+    executedSz: '0.2',
+    minutes: 15,
+    randomize: true,
+    reduceOnly: false,
+    side: 'B',
+    stopPx: null,
+    sz: '0.5',
+    timestamp: 1_775_000_000_000,
+    trigger: null,
+    user: ADDRESS,
+  },
+  status: { status: 'activated' },
+}
+const historical = {
+  order: { ...HL_FRONTEND_OPEN_ORDERS[0], oid: 88, sz: '0' },
+  status: 'filled',
+  statusTimestamp: 1_775_000_000_000,
 }
 
-const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
-
 describe('getOrders', () => {
-  let restore: () => void
+  let restore: (() => void) | undefined
+  afterEach(() => restore?.())
 
-  afterEach(() => {
-    restore?.()
-  })
-
-  it('splits limit and trigger orders and enriches their asset display fields', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
-
-    const result = await getOrders(ctx, {
-      address: ADDRESS,
-    })
-
-    expect(result.provider).toBe('hyperliquid')
-    expect(result.openOrders).toHaveLength(1)
-    expect(result.openOrders[0].market.categoryId).toBe('hyperliquid')
-    expect(result.openOrders[0].market.quoteAsset.displaySymbol).toBe('USDC')
-    expect(result.openOrders[0].orderId).toBe('1')
-    expect(result.triggerOrders).toHaveLength(1)
-    expect(result.triggerOrders[0].orderId).toBe('2')
-    expect(result.triggerOrders[0].triggerPrice).toBe('90000')
-  })
-
-  it('promotes child TP/SL orders to the trigger orders list and drops their parent from open', async () => {
-    const childOrder = {
-      ...HL_FRONTEND_OPEN_ORDERS[1],
-      oid: 99,
-    }
-    const parentWithChild = {
-      ...HL_FRONTEND_OPEN_ORDERS[0],
-      children: [childOrder],
-    }
-    ;({ restore } = installInfoFetchMock(
+  it('returns regular and trigger rows with market display and running TWAPs', async () => {
+    const installed = installInfoFetchMock(
       {
-        ...baseResponses,
-        frontendOpenOrders: [parentWithChild, childOrder],
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        twapHistory: [activeTwap],
       },
       HL_MARKETS
-    ))
-
-    const result = await getOrders(ctx, {
-      address: ADDRESS,
+    )
+    restore = installed.restore
+    const result = await getOrders(ctx, { address: ADDRESS })
+    expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'frontendOpenOrders',
+      'twapHistory',
+    ])
+    expect(result.orders.map((order) => order.orderId)).toEqual([
+      '1',
+      '2',
+      '3156',
+    ])
+    expect(result.orders[0].market.quoteAsset.displaySymbol).toBe('USDC')
+    expect(result.orders[1]).toMatchObject({
+      type: OrderType.STOP_MARKET,
+      triggerPrice: '90000',
     })
-
-    // child oid 99 was listed at top-level too; gets dropped from openOrders…
-    expect(result.openOrders.map((o) => o.orderId)).toEqual(['1'])
-    // …and surfaced under triggerOrders.
-    expect(result.triggerOrders.map((o) => o.orderId)).toEqual(['99'])
+    expect(result.orders[2]).toMatchObject({
+      type: OrderType.TWAP,
+      originalSize: '0.5',
+      remainingSize: '0.3',
+      filledSize: '0.2',
+      averagePrice: '95000',
+      durationSeconds: 900,
+      status: OrderStatus.PARTIALLY_FILLED,
+    })
   })
 
-  it('maps an order that omits the `children` field entirely', async () => {
-    const { children, ...orderWithoutChildren } = HL_FRONTEND_OPEN_ORDERS[0]
-    ;({ restore } = installInfoFetchMock(
+  it('extracts both attached legs once and retains their parent', async () => {
+    const sl = { ...HL_FRONTEND_OPEN_ORDERS[1], oid: 99 }
+    const tp = { ...sl, oid: 100, orderType: 'Take Profit Market' }
+    const parent = { ...HL_FRONTEND_OPEN_ORDERS[0], children: [sl, tp] }
+    const installed = installInfoFetchMock(
+      { frontendOpenOrders: [parent, sl], twapHistory: [] },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders.map((order) => order.orderId)).toEqual(['1', '99', '100'])
+    expect(orders[0]).not.toHaveProperty('parentOrderId')
+    expect(orders.slice(1)).toEqual([
+      expect.objectContaining({
+        orderId: '99',
+        parentOrderId: '1',
+        status: OrderStatus.PENDING,
+      }),
+      expect.objectContaining({
+        orderId: '100',
+        parentOrderId: '1',
+        status: OrderStatus.PENDING,
+      }),
+    ])
+  })
+
+  it('uses historicalOrders for terminal filters and includes finished TWAPs', async () => {
+    const installed = installInfoFetchMock(
       {
-        ...baseResponses,
-        frontendOpenOrders: [orderWithoutChildren],
+        historicalOrders: [historical],
+        twapHistory: [
+          activeTwap,
+          { ...activeTwap, twapId: 3155, status: { status: 'finished' } },
+        ],
       },
       HL_MARKETS
-    ))
-
-    const result = await getOrders(ctx, {
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
       address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
     })
-
-    expect(result.openOrders).toHaveLength(1)
-    expect(result.openOrders[0].orderId).toBe('1')
+    expect(installed.requests.map((request) => request.body)).toEqual([
+      { type: 'historicalOrders', user: ADDRESS },
+      { type: 'twapHistory', user: ADDRESS },
+    ])
+    expect(orders.map((order) => [order.orderId, order.status])).toEqual([
+      ['88', OrderStatus.FILLED],
+      ['3155', OrderStatus.FILLED],
+    ])
   })
 
-  it('filters by marketId-matching `symbol`', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
-
-    const result = await getOrders(ctx, {
+  it('combines active and terminal feeds and filters the requested statuses', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        historicalOrders: [historical],
+        twapHistory: [activeTwap],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
       address: ADDRESS,
-      marketId: 'ETH',
+      statuses: [OrderStatus.OPEN, OrderStatus.FILLED],
     })
-    expect(result.openOrders).toHaveLength(0)
-    expect(result.triggerOrders).toHaveLength(0)
+    expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'frontendOpenOrders',
+      'historicalOrders',
+      'twapHistory',
+    ])
+    expect(orders.some((order) => order.orderId === '88')).toBe(true)
+    expect(
+      orders.every(
+        (order) =>
+          order.status === OrderStatus.OPEN ||
+          order.status === OrderStatus.FILLED
+      )
+    ).toBe(true)
+    expect(orders.some((order) => order.orderId === '3156')).toBe(false)
+  })
+
+  it('filters regular and TWAP rows by the opaque market id', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        twapHistory: [activeTwap],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    expect(
+      (await getOrders(ctx, { address: ADDRESS, marketId: 'ETH' })).orders
+    ).toEqual([])
+  })
+
+  it('returns no orders and makes no requests for an empty filter', async () => {
+    const installed = installInfoFetchMock({}, HL_MARKETS)
+    restore = installed.restore
+    expect(
+      (await getOrders(ctx, { address: ADDRESS, statuses: [] })).orders
+    ).toEqual([])
+    expect(installed.requests).toEqual([])
+  })
+
+  it('rejects a TWAP state without its venue id', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        twapHistory: [{ ...activeTwap, twapId: undefined }],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    await expect(getOrders(ctx, { address: ADDRESS })).rejects.toThrow(
+      PerpsError
+    )
   })
 })

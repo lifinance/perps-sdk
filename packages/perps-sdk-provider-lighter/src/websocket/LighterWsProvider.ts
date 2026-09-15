@@ -50,10 +50,10 @@ import type {
 } from '../types/index.js'
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
-  classifyAndMapOrders,
   fetchDetailedAccount,
   mapFill,
   mapMarketContext,
+  mapOrderUpdates,
   mapPosition,
   toRequiredBig,
 } from '../utils/index.js'
@@ -598,7 +598,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     const raw = collectAuthChannelItems<LtOrder>(msg, 'orders')
     // Unknown market id (absent from the synced snapshot); the order is skipped.
-    const data = classifyAndMapOrders(raw, (marketIndex) =>
+    const data = mapOrderUpdates(raw, (marketIndex) =>
       this.registry?.get(String(marketIndex))
     )
     this.emit(`orderUpdates:${address}`, {

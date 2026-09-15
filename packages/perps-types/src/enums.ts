@@ -82,8 +82,7 @@ export enum OrderType {
   STOP_LIMIT = 'STOP_LIMIT',
   TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET',
   TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT',
-  TRIGGER_ONLY = 'TRIGGER_ONLY',
-  /** Read-side only: TWAP parents/children surfaced in venue order feeds. Excluded from `PlaceOrderParams.type` — placement goes through `ActionType.PLACE_TWAP_ORDER`. */
+  /** Returned on SDK reads; placement uses `ActionType.PLACE_TWAP_ORDER`. */
   TWAP = 'TWAP',
 }
 
@@ -119,22 +118,22 @@ export enum TimeInForce {
 
 /** Lifecycle status of a provider order. @public */
 export enum OrderStatus {
+  /** A placement TP/SL leg waits for its parent order to fill. */
   PENDING = 'PENDING',
+  /** Live on the book, or an armed trigger waiting for its trigger price. */
   OPEN = 'OPEN',
+  /** Open with a positive filled size. */
   PARTIALLY_FILLED = 'PARTIALLY_FILLED',
+  /** Terminal: the order filled. */
   FILLED = 'FILLED',
+  /** Terminal: the order was cancelled; statusReason carries the venue reason. */
   CANCELLED = 'CANCELLED',
+  /** Terminal: the order was rejected; statusReason carries the venue reason. */
   REJECTED = 'REJECTED',
+  /** Terminal: the order expired. */
   EXPIRED = 'EXPIRED',
+  /** The trigger price was hit and the order went live. */
   TRIGGERED = 'TRIGGERED',
-}
-
-/** Lifecycle status of an execution/fill. @public */
-export enum FillStatus {
-  FILLED = 'FILLED',
-  PARTIALLY_FILLED = 'PARTIALLY_FILLED',
-  CANCELLED = 'CANCELLED',
-  REJECTED = 'REJECTED',
 }
 
 /** Whether a fill supplied maker or taker liquidity. @public */
@@ -192,26 +191,6 @@ export enum ActionType {
 export enum TriggerCondition {
   ABOVE = 'ABOVE',
   BELOW = 'BELOW',
-}
-
-/** Take-profit or stop-loss trigger order classification. @public */
-export enum TriggerOrderType {
-  TAKE_PROFIT = 'TAKE_PROFIT',
-  STOP_LOSS = 'STOP_LOSS',
-}
-
-/** Lifecycle status of a trigger order. @public */
-export enum TriggerOrderStatus {
-  WAITING = 'WAITING',
-  TRIGGERED = 'TRIGGERED',
-  CANCELLED = 'CANCELLED',
-}
-
-/** Lifecycle status of a running TWAP order. @public */
-export enum TwapOrderStatus {
-  RUNNING = 'RUNNING',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
 }
 
 /** Account activity record categories. @public */

@@ -1,86 +1,71 @@
-import type { OrdersResponse } from '@lifi/perps-types'
-import { describe, expect, it, vi } from 'vitest'
-import { mockOrders } from '../../test/handlers.js'
+import { OrderStatus } from '@lifi/perps-types'
+import { describe, expect, it } from 'vitest'
+import { createTestAgentProvider } from '../../test/agentProvider.js'
+import { mockOrder } from '../../test/handlers.js'
 import { createPerpsClient } from '../client/createPerpsClient.js'
-import type { PerpsProviderPlugin } from '../types/provider.js'
 import { getOrders } from './getOrders.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
-
-const makeClient = () => {
-  const getOrdersSpy = vi.fn(async (): Promise<OrdersResponse> => mockOrders)
-  const plugin = {
-    type: 'hyperliquid',
-    bind: vi.fn(),
-    getOrders: getOrdersSpy,
-  } as unknown as PerpsProviderPlugin
-  const client = createPerpsClient({
+const allOrders = Object.values(OrderStatus).map((status) => ({
+  ...mockOrder,
+  orderId: status,
+  status,
+}))
+const makeClient = () =>
+  createPerpsClient({
     integrator: 'test-app',
     apiKey: 'test-key',
-    providers: [plugin],
+    providers: [
+      createTestAgentProvider({
+        type: 'hyperliquid',
+        getOrders: async ({ statuses }) => ({
+          provider: 'hyperliquid',
+          orders: allOrders.filter((order) => statuses?.includes(order.status)),
+          pagination: { limit: allOrders.length, hasMore: false },
+        }),
+      }),
+    ],
   })
-  return { client, getOrdersSpy }
-}
 
 describe('getOrders', () => {
-  it('delegates to the venue plugin with the mapped params and returns its result', async () => {
-    const { client, getOrdersSpy } = makeClient()
-
-    const result = await getOrders(client, {
+  it('selects all active lifecycle states by default', async () => {
+    const result = await getOrders(makeClient(), {
       provider: 'hyperliquid',
       address: ADDRESS,
-      marketId: 'ETH',
-      limit: 50,
-      cursor: 'cursor-2',
     })
-
-    expect(result).toEqual(mockOrders)
-    expect(getOrdersSpy).toHaveBeenCalledWith(
-      { address: ADDRESS, marketId: 'ETH', limit: 50, cursor: 'cursor-2' },
-      undefined
+    expect(result.orders.map((order) => order.status).sort()).toEqual(
+      [
+        OrderStatus.PENDING,
+        OrderStatus.OPEN,
+        OrderStatus.PARTIALLY_FILLED,
+        OrderStatus.TRIGGERED,
+      ].sort()
     )
   })
-
-  it('passes undefined for omitted optional filters', async () => {
-    const { client, getOrdersSpy } = makeClient()
-
-    await getOrders(client, { provider: 'hyperliquid', address: ADDRESS })
-
-    expect(getOrdersSpy).toHaveBeenCalledWith(
-      {
-        address: ADDRESS,
-        marketId: undefined,
-        limit: undefined,
-        cursor: undefined,
-      },
-      undefined
-    )
+  it('uses an explicit terminal status filter instead of the active default', async () => {
+    const result = await getOrders(makeClient(), {
+      provider: 'hyperliquid',
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(result.orders.map((order) => order.status)).toEqual([
+      OrderStatus.FILLED,
+    ])
   })
-
-  it('forwards request options (signal) to the plugin', async () => {
-    const { client, getOrdersSpy } = makeClient()
-    const controller = new AbortController()
-
-    await getOrders(
-      client,
-      { provider: 'hyperliquid', address: ADDRESS },
-      { signal: controller.signal }
-    )
-
-    expect(getOrdersSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ address: ADDRESS }),
-      { signal: controller.signal }
-    )
+  it('preserves an explicitly empty filter', async () => {
+    const result = await getOrders(makeClient(), {
+      provider: 'hyperliquid',
+      address: ADDRESS,
+      statuses: [],
+    })
+    expect(result.orders).toEqual([])
   })
-
   it('throws when no provider plugin is registered', async () => {
-    const client = createPerpsClient({
-      integrator: 'test-app',
-      apiKey: 'test-key',
-    })
-
     await expect(
-      getOrders(client, { provider: 'hyperliquid', address: ADDRESS })
-    ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+      getOrders(createPerpsClient({ integrator: 'test-app' }), {
+        provider: 'hyperliquid',
+        address: ADDRESS,
+      })
+    ).rejects.toThrow(/Provider plugin not registered/)
   })
 })

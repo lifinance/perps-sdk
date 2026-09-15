@@ -4,12 +4,7 @@ import {
   explorerTxUrl,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import {
-  FillStatus,
-  LiquidityRole,
-  OrderSide,
-  OrderType,
-} from '@lifi/perps-types'
+import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
 import Big from 'big.js'
 import {
   LIGHTER_FEE_TICK_SCALE,
@@ -131,7 +126,6 @@ export const mapFill = (
     type: OrderType.LIMIT,
     size: trade.size,
     price: trade.price,
-    status: FillStatus.FILLED,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Lighter charges the fill fee in the market's quote asset.
     fee:

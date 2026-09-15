@@ -32,16 +32,7 @@ export {
   mapWithdrawalActivity,
 } from './mapActivity.js'
 export { mapFill } from './mapFill.js'
-export {
-  classifyAndMapOrders,
-  isTriggerOrder,
-  mapOrder,
-  mapOrderDetail,
-  mapOrderStatus,
-  mapOrderType,
-  mapStatusReason,
-  mapTriggerOrder,
-} from './mapOrder.js'
+export { mapOrder, mapOrderStatus, mapOrderUpdates } from './mapOrder.js'
 export { mapOpenPositions, mapPosition } from './mapPosition.js'
 export { intervalFromBarSpan, mapInterval } from './ohlcvInterval.js'
 export { ondoAsset } from './ondoAsset.js'

@@ -1,210 +1,185 @@
-import type {
-  MarketDisplay,
-  OpenOrder,
-  Order,
-  TriggerOrder,
-} from '@lifi/perps-types'
 import {
+  ACTIVE_ORDER_STATUSES,
+  PerpsError,
+  triggerConditionFor,
+} from '@lifi/perps-sdk'
+import {
+  type MarketDisplay,
+  type Order,
+  type OrderBase,
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
 import Big from 'big.js'
-import type {
-  OndoOrder,
-  OndoOrderStatus,
-  OndoOrderType,
-} from '../types/wire.js'
+import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
 
-const toIso = (time: string): string => new Date(time).toISOString()
-
-const mapSide = (side: OndoOrder['side']): OrderSide =>
-  side === 'buy' ? OrderSide.BUY : OrderSide.SELL
-
-/** Resting quantity: submitted size minus filled size, in base-asset units. */
-const deriveRemainingSize = (size: string, filledSize: string): string =>
-  new Big(size).minus(filledSize).toFixed()
-
-/** @public */
-export const mapOrderType = (type: OndoOrderType): OrderType => {
-  switch (type) {
-    case 'limit':
-      return OrderType.LIMIT
-    case 'market':
-      return OrderType.MARKET
-    case 'stopMarket':
-      return OrderType.STOP_MARKET
-    case 'takeProfitMarket':
-      return OrderType.TAKE_PROFIT_MARKET
-  }
-}
-
-/**
- * Map Ondo's order status onto the generic enum. `untriggered` stop orders
- * are active resting orders from the trader's point of view, so they map to
- * OPEN.
- * @public
- */
-export const mapOrderStatus = (status: OndoOrderStatus): OrderStatus => {
+/** Map supported Ondo lifecycle states; unsupported states fail explicitly. */
+export const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
     case 'open':
     case 'untriggered':
       return OrderStatus.OPEN
-    case 'pending':
-      return OrderStatus.PENDING
     case 'fullyfilled':
       return OrderStatus.FILLED
     case 'canceled':
       return OrderStatus.CANCELLED
+    default:
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Unsupported Ondo order status: ${status}`
+      )
   }
 }
 
-const CANCEL_REASON_SENTENCES: Record<string, string> = {
-  liquidation: 'Order cancelled: position was liquidated.',
-  selfMatchPrevention:
-    'Order cancelled: would self-match against your own resting order.',
-  immediateOrCancel: 'Order cancelled: immediate-or-cancel remainder.',
-}
-
-/**
- * Plain-English `statusReason` for a cancelled order; `undefined` for every
- * other status. Unknown wire reasons fall back to the generic sentence rather
- * than leaking raw enum values into the UI.
- * @public
- */
-export const mapStatusReason = (order: OndoOrder): string | undefined => {
-  if (order.status !== 'canceled') {
-    return undefined
+const twapStatus = (status: string): OrderStatus => {
+  switch (status) {
+    case 'running':
+      return OrderStatus.OPEN
+    case 'completed':
+      return OrderStatus.FILLED
+    case 'cancelled':
+      return OrderStatus.CANCELLED
+    default:
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Unsupported Ondo TWAP status: ${status}`
+      )
   }
-  return CANCEL_REASON_SENTENCES[order.cancelReason ?? ''] ?? 'Order cancelled.'
 }
 
-/**
- * Whether an order rests on a trigger. Checks `stopOrderType` and
- * `triggerPrice` besides the type so a lagging `type` field cannot
- * misclassify a trigger as a plain order.
- * @public
- */
-export const isTriggerOrder = (order: OndoOrder): boolean =>
-  order.type === 'stopMarket' ||
-  order.type === 'takeProfitMarket' ||
-  order.stopOrderType !== undefined ||
-  order.triggerPrice !== undefined
-
-/**
- * Map an active non-trigger Ondo order to an {@link OpenOrder}. Ondo reports
- * the submitted and filled quantities only, so `remainingSize` is derived.
- * @public
- */
+/** Map Ondo regular, trigger and TWAP rows to the shared order union. */
 export const mapOrder = (
-  order: OndoOrder,
-  market: MarketDisplay
-): OpenOrder => ({
-  orderId: order.orderId,
-  market,
-  side: mapSide(order.side),
-  type: mapOrderType(order.type),
-  originalSize: new Big(order.size).toFixed(),
-  remainingSize: deriveRemainingSize(order.size, order.filledSize),
-  price: order.price,
-  filledSize: order.filledSize,
-  reduceOnly: order.reduceOnly ?? false,
-  createdAt: toIso(order.createdAt),
-})
-
-/** Map an active trigger Ondo order to a {@link TriggerOrder}. @public */
-export const mapTriggerOrder = (
-  order: OndoOrder,
-  market: MarketDisplay
-): TriggerOrder => ({
-  orderId: order.orderId,
-  market,
-  type: mapOrderType(order.type),
-  size: order.size,
-  triggerPrice: order.triggerPrice ?? '0',
-  createdAt: toIso(order.createdAt),
-})
-
-const TERMINAL_STATUSES: ReadonlySet<OndoOrderStatus> = new Set([
-  'canceled',
-  'fullyfilled',
-])
-
-/**
- * Bucket a venue order list into active open/trigger orders (mapped) and
- * terminal order ids. Orders whose market the resolver does not know are
- * skipped.
- * @public
- */
-export const classifyAndMapOrders = (
-  orders: OndoOrder[],
-  resolveMarket: (market: string) => MarketDisplay | undefined
-): {
-  openOrders: OpenOrder[]
-  triggerOrders: TriggerOrder[]
-  terminated: string[]
-} => {
-  const openOrders: OpenOrder[] = []
-  const triggerOrders: TriggerOrder[] = []
-  const terminated: string[] = []
-  for (const order of orders) {
-    if (TERMINAL_STATUSES.has(order.status)) {
-      terminated.push(order.orderId)
-      continue
+  order: OndoOrder | OndoTwapOrder,
+  market: MarketDisplay,
+  parentOrderId?: string
+): Order => {
+  const twap = 'twapId' in order
+  const filled = new Big(order.filledSize)
+  const status = twap
+    ? twapStatus(order.orderStatus)
+    : mapOrderStatus(order.status)
+  const createdAt = new Date(
+    twap ? order.startTime : order.createdAt
+  ).toISOString()
+  const base: OrderBase = {
+    orderId: twap ? order.twapId : order.orderId,
+    market,
+    side: order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+    status:
+      status === OrderStatus.OPEN && filled.gt(0)
+        ? OrderStatus.PARTIALLY_FILLED
+        : status,
+    originalSize: new Big(twap ? order.totalSize : order.size).toFixed(),
+    remainingSize: new Big(twap ? order.totalSize : order.size)
+      .minus(filled)
+      .toFixed(),
+    filledSize: order.filledSize,
+    reduceOnly: order.reduceOnly ?? false,
+    createdAt,
+    updatedAt: new Date(
+      twap
+        ? (order.finishTime ?? order.startTime)
+        : (order.canceledAt ?? order.filledAt ?? order.createdAt)
+    ).toISOString(),
+    ...(filled.gt(0)
+      ? {
+          averagePrice: twap
+            ? order.avgFilledPrice
+            : new Big(order.filledCost).div(filled).toFixed(),
+        }
+      : {}),
+  }
+  if (parentOrderId !== undefined) {
+    base.parentOrderId = parentOrderId
+  }
+  if (twap) {
+    if (
+      status === OrderStatus.CANCELLED &&
+      order.twapCancelReason !== undefined
+    ) {
+      base.statusReason = String(order.twapCancelReason)
     }
-    const market = resolveMarket(order.market)
+    return {
+      ...base,
+      type: OrderType.TWAP,
+      durationSeconds: order.runningTime,
+      startedAt: createdAt,
+    }
+  }
+  if (order.clientOrderId !== undefined) {
+    base.clientOrderId = order.clientOrderId
+  }
+  if (order.parentOrderId !== undefined) {
+    base.parentOrderId = order.parentOrderId
+  }
+  if (status === OrderStatus.CANCELLED && order.cancelReason !== undefined) {
+    base.statusReason = order.cancelReason
+  }
+  const stopOrderType =
+    order.stopOrderType ??
+    (order.type === 'stopMarket'
+      ? 'stopLoss'
+      : order.type === 'takeProfitMarket'
+        ? 'takeProfit'
+        : undefined)
+  if (stopOrderType !== undefined || order.triggerPrice !== undefined) {
+    if (stopOrderType === undefined || order.triggerPrice === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Incomplete Ondo trigger order: ${order.orderId}`
+      )
+    }
+    const limit = order.type === 'limit'
+    const type =
+      stopOrderType === 'takeProfit'
+        ? limit
+          ? OrderType.TAKE_PROFIT_LIMIT
+          : OrderType.TAKE_PROFIT_MARKET
+        : limit
+          ? OrderType.STOP_LIMIT
+          : OrderType.STOP_MARKET
+    return {
+      ...base,
+      type,
+      triggerPrice: order.triggerPrice,
+      triggerCondition: triggerConditionFor(type, base.side),
+      ...(limit ? { limitPrice: order.price } : {}),
+    }
+  }
+  return {
+    ...base,
+    type: order.type === 'market' ? OrderType.MARKET : OrderType.LIMIT,
+    price: order.price,
+    // Ondo market orders execute immediately and omit timeInForce on reads.
+    timeInForce:
+      order.timeInForce === undefined
+        ? order.type === 'market'
+          ? TimeInForce.IOC
+          : TimeInForce.GTC
+        : TimeInForce[order.timeInForce],
+  }
+}
+
+/** Map WebSocket rows and retain terminal ids for active-order consumers. */
+export const mapOrderUpdates = (
+  rows: OndoOrder[],
+  resolveMarket: (market: string) => MarketDisplay | undefined
+): { orders: Order[]; terminated: string[] } => {
+  const orders: Order[] = []
+  const terminated: string[] = []
+  for (const row of rows) {
+    const market = resolveMarket(row.market)
     if (market === undefined) {
       continue
     }
-    if (isTriggerOrder(order)) {
-      triggerOrders.push(mapTriggerOrder(order, market))
-    } else {
-      openOrders.push(mapOrder(order, market))
+    const order = mapOrder(row, market)
+    orders.push(order)
+    if (!ACTIVE_ORDER_STATUSES.has(order.status)) {
+      terminated.push(order.orderId)
     }
   }
-  return { openOrders, triggerOrders, terminated }
-}
-
-/**
- * Map a single venue order onto the rich {@link Order} detail shape.
- * `remainingSize` and `averagePrice` are derived (`size − filledSize`,
- * `filledCost ÷ filledSize`); `updatedAt` is the latest transition timestamp
- * Ondo exposes, falling back to `createdAt`.
- * @public
- */
-export const mapOrderDetail = (
-  order: OndoOrder,
-  market: MarketDisplay
-): Order => {
-  const filled = new Big(order.filledSize)
-  const trigger = isTriggerOrder(order)
-  return {
-    orderId: order.orderId,
-    market,
-    side: mapSide(order.side),
-    type: mapOrderType(order.type),
-    price: order.price,
-    originalSize: order.size,
-    remainingSize: deriveRemainingSize(order.size, order.filledSize),
-    filledSize: order.filledSize,
-    timeInForce:
-      order.timeInForce === undefined
-        ? undefined
-        : TimeInForce[order.timeInForce],
-    reduceOnly: order.reduceOnly ?? false,
-    isTrigger: trigger,
-    ...(trigger && order.triggerPrice !== undefined
-      ? { triggerPrice: order.triggerPrice }
-      : {}),
-    status: mapOrderStatus(order.status),
-    ...(mapStatusReason(order) !== undefined
-      ? { statusReason: mapStatusReason(order) }
-      : {}),
-    ...(filled.gt(0)
-      ? { averagePrice: new Big(order.filledCost).div(filled).toFixed() }
-      : {}),
-    createdAt: toIso(order.createdAt),
-    updatedAt: toIso(order.canceledAt ?? order.filledAt ?? order.createdAt),
-  }
+  return { orders, terminated }
 }

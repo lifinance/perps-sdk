@@ -3,14 +3,11 @@ import type {
   ActionType,
   MarginMode,
   OrderSide,
-  OrderStatus,
   OrderType,
   PerpsErrorCode,
   TimeInForce,
-  TriggerCondition,
-  TwapOrderStatus,
 } from './enums.js'
-import type { MarketDisplay, MarketRef } from './market.js'
+import type { MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
 import type { CreateReferralCodeParams, OnboardParams } from './referral.js'
 import type { PerpsTypedData } from './typedData.js'
@@ -297,35 +294,6 @@ export interface ModifyOrderInput {
 }
 
 /**
- * Normalized order returned by a provider, including lifecycle and trigger
- * metadata. Quantities and prices are decimal strings.
- *
- * @public
- */
-export interface Order {
-  orderId: string
-  market: MarketDisplay
-  side: OrderSide
-  type: OrderType
-  price?: string
-  originalSize: string
-  remainingSize: string
-  filledSize: string
-  timeInForce?: TimeInForce
-  expiresAt?: string
-  reduceOnly?: boolean
-  isTrigger?: boolean
-  triggerPrice?: string
-  triggerCondition?: TriggerCondition
-  status: OrderStatus
-  /** Human-readable reason for a terminal non-FILLED status; undefined when no actionable detail. */
-  statusReason?: string
-  averagePrice?: string
-  createdAt: string
-  updatedAt: string
-}
-
-/**
  * Parameters for placing a regular order on a market.
  *
  * @public
@@ -401,30 +369,6 @@ export interface CancelTwapOrderParams {
    * market, so `market` disambiguates it; HL and Ondo ids are globally unique.
    */
   twapId: string
-}
-
-/**
- * Normalized running-TWAP read model returned by provider TWAP queries.
- * Quantities and prices are decimal strings.
- *
- * @public
- */
-export interface TwapOrder {
-  /** Provider-native TWAP identifier, stringified (see {@link CancelTwapOrderParams.twapId}). */
-  twapId: string
-  market: MarketDisplay
-  side: OrderSide
-  /** Total base-asset size the TWAP was placed for. */
-  totalSize: string
-  /** Base-asset size executed so far. */
-  filledSize: string
-  /** Volume-weighted average fill price; absent until the first child fill. */
-  avgFillPrice?: string
-  /** ISO-8601 timestamp at which the TWAP started executing. */
-  startedAt: string
-  /** Total execution window in seconds. */
-  durationSeconds: number
-  status: TwapOrderStatus
 }
 
 /**

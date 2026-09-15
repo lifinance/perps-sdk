@@ -44,8 +44,8 @@ import type {
 } from '../types/index.js'
 import { OndoSessionExpiredError } from '../utils/apiClient.js'
 import {
-  classifyAndMapOrders,
   mapFill,
+  mapOrderUpdates,
   mapPosition,
   OndoApiClient,
 } from '../utils/index.js'
@@ -774,7 +774,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.emit(`orderUpdates:${address}`, {
       channel: 'orderUpdates',
-      data: classifyAndMapOrders(orders, this.resolveMarket),
+      data: mapOrderUpdates(orders, this.resolveMarket),
     })
   }
 
