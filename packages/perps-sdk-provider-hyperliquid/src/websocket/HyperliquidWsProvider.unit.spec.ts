@@ -3685,6 +3685,59 @@ describe('HyperliquidWsProvider', () => {
       errorSpy.mockRestore()
     })
 
+    it('keeps a terminated outcome order out of the terminated id list', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const order = {
+        side: 'B',
+        sz: '0.05',
+        limitPx: '93000',
+        orderType: 'Limit',
+        origSz: '0.1',
+        reduceOnly: false,
+        timestamp: 1704067200000,
+        tif: 'Gtc',
+        cloid: null,
+        triggerCondition: 'N/A',
+        triggerPx: null,
+      }
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            {
+              order: { ...order, oid: 100, coin: '#26140' },
+              status: 'filled',
+              statusTimestamp: 1704067200000,
+            },
+            {
+              order: { ...order, oid: 101, coin: 'BTC' },
+              status: 'canceled',
+              statusTimestamp: 1704067200000,
+            },
+          ],
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.terminated).toEqual(['101'])
+      expect(event.data.openOrders).toEqual([])
+      expect(event.data.triggerOrders).toEqual([])
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
     it('drops an outcome token from the spot balances', async () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const listener = vi.fn()

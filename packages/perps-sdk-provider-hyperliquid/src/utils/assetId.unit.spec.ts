@@ -22,6 +22,8 @@ describe('assetIsOutcome', () => {
   it('treats a "#" coin and a "+" token name as an outcome identity', () => {
     expect(assetIsOutcome('#26140')).toBe(true)
     expect(assetIsOutcome('+26140')).toBe(true)
+    expect(assetIsOutcome('#')).toBe(true)
+    expect(assetIsOutcome('+')).toBe(true)
   })
 
   it('treats an asset ID at or above 100000000 as an outcome identity', () => {
@@ -35,6 +37,7 @@ describe('assetIsOutcome', () => {
     expect(assetIsOutcome('BTC')).toBe(false)
     expect(assetIsOutcome('xyz:BTC')).toBe(false)
     expect(assetIsOutcome(130_007)).toBe(false)
+    expect(assetIsOutcome(99_999_999)).toBe(false)
   })
 })
 
