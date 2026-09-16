@@ -20,7 +20,6 @@ import {
   ActionType,
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -31,6 +30,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -418,6 +418,9 @@ beforeEach(() => {
     if (u.includes('/v1/perps/positions')) {
       return respond(envelope(positionsResult))
     }
+    if (u.includes('/v1/perps/twap/orders/running')) {
+      return respond(envelope([]))
+    }
     if (u.includes('/v1/perps/orders/')) {
       return respond(envelope(ORDER_OPEN))
     }
@@ -597,8 +600,7 @@ describe('OndoProvider — logged-out degrade paths', () => {
     expect(positions.pagination).toEqual({ limit: 0, hasMore: false })
 
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
 
     const fills = await provider.getFills({ address: ADDRESS, limit: 5 })
     expect(fills.items).toEqual([])
@@ -1039,44 +1041,37 @@ describe('OndoProvider — getDepositFlow', () => {
 })
 
 describe('OndoProvider — getOrders', () => {
-  it('classifies venue orders into open and trigger orders and pages on nextCursor', async () => {
+  it('maps active orders into the union and preserves the endpoint cursor', async () => {
     const { provider } = await loggedInProvider()
     const orders = await provider.getOrders({
       address: ADDRESS,
       marketId: 'AAPL-USD.P',
       limit: 10,
-      cursor: 'orders-cur-1',
+      cursor: JSON.stringify({ open: { cursor: 'orders-cur-1', offset: 0 } }),
     })
 
     expect(orders.provider).toBe('ondo')
-    expect(orders.openOrders).toEqual([
-      {
+    expect(orders.orders).toEqual([
+      expect.objectContaining({
         orderId: 'ord-1',
-        market: MARKET_DISPLAY,
-        side: OrderSide.BUY,
         type: OrderType.LIMIT,
+        status: OrderStatus.PARTIALLY_FILLED,
         originalSize: '10',
         remainingSize: '6',
-        price: '200',
         filledSize: '4',
-        reduceOnly: false,
-        createdAt: '2026-07-01T12:00:00.000Z',
-      },
-    ])
-    expect(orders.triggerOrders).toEqual([
-      {
+      }),
+      expect.objectContaining({
         orderId: 'ord-2',
-        market: MARKET_DISPLAY,
         type: OrderType.STOP_MARKET,
-        size: '10',
+        status: OrderStatus.OPEN,
         triggerPrice: '190',
-        createdAt: '2026-07-01T12:05:00.000Z',
-      },
+        triggerCondition: TriggerCondition.BELOW,
+      }),
     ])
     expect(orders.pagination).toEqual({
       limit: 10,
       hasMore: true,
-      cursor: 'orders-cur-2',
+      cursor: JSON.stringify({ open: { offset: 0, cursor: 'orders-cur-2' } }),
     })
 
     const call = recorded.find((r) => r.url.includes('/v1/perps/orders'))
@@ -1103,8 +1098,7 @@ describe('OndoProvider — getOrder', () => {
       filledSize: '4',
       timeInForce: 'GTC',
       reduceOnly: false,
-      isTrigger: false,
-      status: OrderStatus.OPEN,
+      status: OrderStatus.PARTIALLY_FILLED,
       averagePrice: '200.5',
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z',
@@ -1128,7 +1122,6 @@ describe('OndoProvider — getFills', () => {
         side: OrderSide.BUY,
         size: '4',
         price: '200.5',
-        status: FillStatus.FILLED,
         liquidity: LiquidityRole.TAKER,
         fee: { amount: '0.3', asset: 'USDC' },
         realizedPnl: undefined,
@@ -1908,8 +1901,7 @@ describe('OndoProvider — server-revoked session', () => {
 
     await expect(provider.getOrders({ address: ADDRESS })).resolves.toEqual({
       provider: 'ondo',
-      openOrders: [],
-      triggerOrders: [],
+      orders: [],
       pagination: { limit: 0, hasMore: false },
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()

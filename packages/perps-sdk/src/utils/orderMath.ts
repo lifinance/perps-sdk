@@ -1,10 +1,12 @@
 import {
-  type OpenOrder,
   OrderSide,
+  OrderStatus,
   type Position,
   PositionSide,
+  type RegularOrder,
   type TriggerOrder,
 } from '@lifi/perps-types'
+import { isActiveOrderStatus } from './orderClassification.js'
 import { realizedPnlOnClose } from './positionMath.js'
 
 /**
@@ -55,10 +57,10 @@ export function resolveCloseSize(
  * @public
  */
 export function expectedRealizedPnlForOpenOrder(
-  order: OpenOrder,
+  order: RegularOrder,
   position: Position | undefined
 ): number | null {
-  if (!position) {
+  if (!position || !isActiveOrderStatus(order.status)) {
     return null
   }
 
@@ -70,7 +72,7 @@ export function expectedRealizedPnlForOpenOrder(
     return null
   }
 
-  const limitPrice = Number.parseFloat(order.price)
+  const limitPrice = Number.parseFloat(order.price ?? '')
   const entryPrice = Number.parseFloat(position.entryPrice)
   const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
   const positionSize = Math.abs(Number.parseFloat(position.size))
@@ -100,29 +102,29 @@ export function expectedRealizedPnlForOpenOrder(
   })
 }
 
-/**
- * Expected rPnL for a TP/SL trigger order against a matching position.
- *
- * A trigger order is by construction a closing leg — its direction is the
- * opposite of the position's. With no matching position there is nothing to
- * close, so rPnL is `null`. The trigger price (always present on the SDK
- * `TriggerOrder` shape) is used as the rPnL price; the optional `limitPrice`
- * for STOP_LIMIT / TAKE_PROFIT_LIMIT is the post-trigger limit, not the rPnL
- * price.
- * @public
- */
+/** Project the unfilled closing quantity of an active trigger at its trigger price. */
 export function expectedRealizedPnlForTriggerOrder(
   order: TriggerOrder,
   position: Position | undefined
 ): number | null {
-  if (!position) {
+  if (
+    !position ||
+    !isActiveOrderStatus(order.status) ||
+    order.status === OrderStatus.PENDING
+  ) {
     return null
   }
 
   const isLong = position.side === PositionSide.LONG
+  if (
+    (isLong && order.side !== OrderSide.SELL) ||
+    (!isLong && order.side !== OrderSide.BUY)
+  ) {
+    return null
+  }
   const triggerPrice = Number.parseFloat(order.triggerPrice)
   const entryPrice = Number.parseFloat(position.entryPrice)
-  const orderSize = Math.abs(Number.parseFloat(order.size))
+  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
   const positionSize = Math.abs(Number.parseFloat(position.size))
   if (
     !Number.isFinite(triggerPrice) ||
@@ -130,6 +132,12 @@ export function expectedRealizedPnlForTriggerOrder(
     !Number.isFinite(orderSize) ||
     !Number.isFinite(positionSize) ||
     positionSize <= 0
+  ) {
+    return null
+  }
+  if (
+    orderSize === 0 &&
+    (Number.parseFloat(order.originalSize) !== 0 || !order.reduceOnly)
   ) {
     return null
   }

@@ -1,7 +1,6 @@
 import type { MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
-  FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
@@ -232,8 +231,8 @@ describe('mapFill (Hyperliquid)', () => {
     })
   })
 
-  it('always reports status FILLED', () => {
-    expect(map(baseFill()).status).toBe(FillStatus.FILLED)
+  it('has no separate fill lifecycle status', () => {
+    expect(map(baseFill())).not.toHaveProperty('status')
   })
 
   // `userFills` carries no leverage and no margin fraction, so the mapper never

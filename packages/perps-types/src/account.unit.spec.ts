@@ -7,17 +7,24 @@ import type {
   LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
+  Order,
+  OrderBase,
+  OrdersResponse,
+  RegularOrder,
   TransferActivity,
+  TriggerOrder,
+  TwapOrder,
   WithdrawalActivity,
 } from './account.js'
 import type { Asset } from './asset.js'
 import {
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
+  type OrderStatus,
+  type OrderType,
 } from './enums.js'
 import type { MarketDisplay } from './market.js'
 
@@ -446,7 +453,6 @@ const BASE_FILL: Fill = {
   side: OrderSide.BUY,
   size: '1',
   price: '2000',
-  status: FillStatus.FILLED,
   liquidity: LiquidityRole.TAKER,
   classification: FillClassification.OPENED_LONG,
   createdAt: '2026-05-07T12:00:00.000Z',
@@ -621,5 +627,40 @@ describe('MarketSettings', () => {
     })
     expect(missingLeverage.marginMode).toBe(MarginMode.CROSS)
     expect(missingMode.leverage).toBe(3)
+  })
+})
+
+describe('Order read contract', () => {
+  it('narrows the sole type discriminator to the matching order family', () => {
+    expectTypeOf<
+      Extract<Order, { type: RegularOrder['type'] }>
+    >().toEqualTypeOf<RegularOrder>()
+    expectTypeOf<
+      Extract<Order, { type: TriggerOrder['type'] }>
+    >().toEqualTypeOf<TriggerOrder>()
+    expectTypeOf<
+      Extract<Order, { type: OrderType.TWAP }>
+    >().toEqualTypeOf<TwapOrder>()
+    expectTypeOf<Order['status']>().toEqualTypeOf<OrderStatus>()
+    expectTypeOf<OrdersResponse['orders']>().toEqualTypeOf<Order[]>()
+  })
+  it('keeps the complete shared lifecycle and identity fields', () => {
+    expectTypeOf<keyof OrderBase>().toEqualTypeOf<
+      | 'orderId'
+      | 'clientOrderId'
+      | 'market'
+      | 'side'
+      | 'status'
+      | 'statusReason'
+      | 'originalSize'
+      | 'remainingSize'
+      | 'filledSize'
+      | 'averagePrice'
+      | 'reduceOnly'
+      | 'parentOrderId'
+      | 'explorerLink'
+      | 'createdAt'
+      | 'updatedAt'
+    >()
   })
 })

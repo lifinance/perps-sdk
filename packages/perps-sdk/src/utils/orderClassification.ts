@@ -1,17 +1,15 @@
-/**
- * Order classification utilities.
- *
- * Type guards and classifiers that operate on SDK types to determine
- * order categories (TP/SL, open/close). These use the OrderType enum
- * for classification — no string matching.
- */
-
-import type { OpenOrder } from '@lifi/perps-types'
+import type {
+  Order,
+  RegularOrder,
+  TriggerOrder,
+  TwapOrder,
+} from '@lifi/perps-types'
 import {
   FillClassification,
   OrderSide,
   OrderStatus,
   OrderType,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { stringToFloat } from './parse.js'
 
@@ -36,7 +34,7 @@ const SL_TYPES = new Set<OrderType>([
  * Check if an open order is a Take Profit trigger order.
  * @public
  */
-export function isTakeProfitOrder(order: Pick<OpenOrder, 'type'>): boolean {
+export function isTakeProfitOrder(order: Pick<Order, 'type'>): boolean {
   return TP_TYPES.has(order.type)
 }
 
@@ -44,7 +42,7 @@ export function isTakeProfitOrder(order: Pick<OpenOrder, 'type'>): boolean {
  * Check if an open order is a Stop Loss trigger order.
  * @public
  */
-export function isStopLossOrder(order: Pick<OpenOrder, 'type'>): boolean {
+export function isStopLossOrder(order: Pick<Order, 'type'>): boolean {
   return SL_TYPES.has(order.type)
 }
 
@@ -52,17 +50,37 @@ export function isStopLossOrder(order: Pick<OpenOrder, 'type'>): boolean {
  * Check if an open order is a TP or SL trigger order.
  * @public
  */
-export function isTpSlOrder(order: Pick<OpenOrder, 'type'>): boolean {
+export function isTpSlOrder(order: Pick<Order, 'type'>): boolean {
   return TP_TYPES.has(order.type) || SL_TYPES.has(order.type)
 }
 
-/**
- * Order statuses representing an order still resting on the book (visible
- * in `openOrders` / `triggerOrders`). Anything not in this set is terminal —
- * filled, cancelled, rejected, expired — and should be evicted from the
- * cached orders list when seen in a WS update.
- * @public
- */
+/** Narrow an order to a price-activated order. */
+export function isTriggerOrder(order: Order): order is TriggerOrder {
+  return isTpSlOrder(order)
+}
+
+/** Narrow an order to a market or limit order. */
+export function isRegularOrder(order: Order): order is RegularOrder {
+  return order.type === OrderType.MARKET || order.type === OrderType.LIMIT
+}
+
+/** Narrow an order to a time-weighted execution parent. */
+export function isTwapOrder(order: Order): order is TwapOrder {
+  return order.type === OrderType.TWAP
+}
+
+/** Derive the trigger price relation from the trigger type and execution side. */
+export function triggerConditionFor(
+  type: TriggerOrder['type'],
+  side: OrderSide
+): TriggerCondition {
+  const takeProfit = TP_TYPES.has(type)
+  return takeProfit === (side === OrderSide.SELL)
+    ? TriggerCondition.ABOVE
+    : TriggerCondition.BELOW
+}
+
+/** Lifecycle statuses included in order reads by default. */
 export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
   OrderStatus.OPEN,
   OrderStatus.PENDING,

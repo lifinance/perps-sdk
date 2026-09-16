@@ -1,4 +1,5 @@
 import {
+  ACTIVE_ORDER_STATUSES,
   type DepositFlow,
   ETHEREUM_USDC,
   getAssetRegistry,
@@ -18,7 +19,6 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
-  type ProviderGetRunningTwapsParams,
   paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
@@ -53,10 +53,14 @@ import type {
   Quote,
   SignedActionStep,
   SigningMethod,
-  TwapOrder,
   WithdrawalActivity,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  ActivityType,
+  OrderStatus,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
@@ -95,11 +99,11 @@ import {
   type ApiParams,
   ONDO_RETRY_DEFAULTS,
   OndoApiClient,
+  OndoApiError,
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
 import {
-  classifyAndMapOrders,
   estimateLiquidationPrice,
   formatOrderPrice,
   formatOrderSize,
@@ -109,12 +113,17 @@ import {
   mapFundingActivity,
   mapLiquidationActivity,
   mapOpenPositions,
-  mapOrderDetail,
+  mapOrder,
   mapWithdrawalActivity,
   positionMarginConstraints,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
-import { mapRunningTwap } from './utils/mapTwap.js'
+import {
+  decodeOrderCursor,
+  encodeOrderCursor,
+  type OndoOrderCursor,
+  type OrderSource,
+} from './utils/orderCursor.js'
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -443,11 +452,33 @@ export const ondoProvider = (
         params.address,
         () => ({
           provider: ONDO_PROVIDER_KEY,
-          openOrders: [],
-          triggerOrders: [],
+          orders: [],
           pagination: { limit: params.limit ?? 0, hasMore: false },
         }),
         async (token) => {
+          const statuses =
+            params.statuses === undefined
+              ? ACTIVE_ORDER_STATUSES
+              : new Set(params.statuses)
+          const sources: OrderSource[] = []
+          if (
+            [...statuses].some((status) => ACTIVE_ORDER_STATUSES.has(status))
+          ) {
+            sources.push('open', 'twaps')
+          }
+          if (statuses.has(OrderStatus.CANCELLED)) {
+            sources.push('canceled')
+          }
+          if (statuses.has(OrderStatus.FILLED)) {
+            sources.push('fullyfilled')
+          }
+          if (
+            [...statuses].some((status) => !ACTIVE_ORDER_STATUSES.has(status))
+          ) {
+            sources.push('history')
+          }
+          const previous = decodeOrderCursor(params.cursor)
+          const next: OndoOrderCursor = {}
           const client = apiClient(opts)
           const queryParams: ApiParams = {}
           if (params.marketId !== undefined) {
@@ -456,59 +487,122 @@ export const ondoProvider = (
           if (params.limit !== undefined) {
             queryParams.limit = params.limit
           }
-          if (params.cursor !== undefined) {
-            queryParams.cursor = params.cursor
-          }
-          const [page] = await Promise.all([
-            client.getPage<OndoOrder>('/v1/perps/orders', {
-              params: queryParams,
-              authToken: token.token,
-            }),
-            marketRegistry().sync(),
+          const [pages] = await Promise.all([
+            Promise.all(
+              sources.map(async (source) => {
+                const position =
+                  source === 'twaps' ? undefined : previous?.[source]
+                if (previous !== undefined && previous[source] === undefined) {
+                  return undefined
+                }
+                if (source === 'twaps') {
+                  const snapshot =
+                    previous?.twaps ??
+                    (await client.get<OndoTwapOrder[] | null>(
+                      '/v1/perps/twap/orders/running',
+                      {
+                        authToken: token.token,
+                        params:
+                          params.marketId === undefined
+                            ? {}
+                            : { market: params.marketId },
+                      }
+                    )) ??
+                    []
+                  return {
+                    source: 'twaps' as const,
+                    position,
+                    page: { result: snapshot, pageInfo: undefined },
+                  }
+                }
+                const request = {
+                  authToken: token.token,
+                  params: {
+                    ...queryParams,
+                    ...(position?.cursor === undefined
+                      ? {}
+                      : { cursor: position.cursor }),
+                    ...(position?.limit === undefined
+                      ? {}
+                      : { limit: position.limit }),
+                  },
+                }
+                let page: OndoPage<OndoOrder | OndoTwapOrder>
+                if (source === 'history') {
+                  page = await client.getPage<OndoTwapOrder>(
+                    '/v1/perps/twap/orders/history',
+                    request
+                  )
+                } else {
+                  page = await client.getPage<OndoOrder>('/v1/perps/orders', {
+                    ...request,
+                    params: { ...request.params, status: source },
+                  })
+                }
+                return { source, position, page }
+              })
+            ),
+            sources.length === 0 ? Promise.resolve() : marketRegistry().sync(),
           ])
-
-          const { openOrders, triggerOrders } = classifyAndMapOrders(
-            page.result,
-            marketDisplay
-          )
-
-          const nextCursor = page.pageInfo?.nextCursor
+          const orders: Order[] = []
+          for (const result of pages) {
+            if (result === undefined) {
+              continue
+            }
+            const { position, page } = result
+            let offset = position?.offset ?? 0
+            for (; offset < page.result.length; offset++) {
+              const raw = page.result[offset]
+              if (raw === undefined) {
+                continue
+              }
+              const market = marketDisplay(raw.market)
+              if (
+                market === undefined ||
+                (params.marketId !== undefined &&
+                  raw.market !== params.marketId)
+              ) {
+                continue
+              }
+              const order = mapOrder(raw, market)
+              if (!statuses.has(order.status)) {
+                continue
+              }
+              if (params.limit !== undefined && orders.length >= params.limit) {
+                break
+              }
+              orders.push(order)
+            }
+            if (result.source === 'twaps') {
+              if (offset < result.page.result.length) {
+                next.twaps = result.page.result.slice(offset)
+              }
+            } else if (offset < page.result.length) {
+              const limit = position?.limit ?? params.limit
+              next[result.source] = {
+                offset,
+                ...(position?.cursor === undefined
+                  ? {}
+                  : { cursor: position.cursor }),
+                ...(limit === undefined ? {} : { limit }),
+              }
+            } else if (page.pageInfo?.nextCursor !== undefined) {
+              next[result.source] = {
+                offset: 0,
+                cursor: page.pageInfo.nextCursor,
+              }
+            }
+          }
+          const cursor = encodeOrderCursor(next)
           return {
             provider: ONDO_PROVIDER_KEY,
-            openOrders,
-            triggerOrders,
+            orders,
             pagination: {
-              limit: params.limit ?? openOrders.length + triggerOrders.length,
-              hasMore: nextCursor !== undefined,
-              ...(nextCursor === undefined ? {} : { cursor: nextCursor }),
+              limit: params.limit ?? orders.length,
+              hasMore: cursor !== undefined,
+              ...(cursor === undefined ? {} : { cursor }),
             },
           }
-        }
-      )
-    },
-
-    async getRunningTwaps(
-      params: ProviderGetRunningTwapsParams,
-      opts?: SDKRequestOptions
-    ): Promise<TwapOrder[]> {
-      return withSession<TwapOrder[]>(
-        params.address,
-        () => [],
-        async (token) => {
-          const client = apiClient(opts)
-          const queryParams: ApiParams =
-            params.marketId === undefined ? {} : { market: params.marketId }
-          const registry = marketRegistry()
-          const [orders] = await Promise.all([
-            client.get<OndoTwapOrder[] | null>(
-              '/v1/perps/twap/orders/running',
-              { params: queryParams, authToken: token.token }
-            ),
-            registry.sync(),
-          ])
-          return (orders ?? []).map((order) =>
-            mapRunningTwap(order, registry.require(order.market))
-          )
         }
       )
     },
@@ -528,13 +622,26 @@ export const ondoProvider = (
         async (token) => {
           const client = apiClient(opts)
           const [order] = await Promise.all([
-            client.get<OndoOrder>(
-              `/v1/perps/orders/${encodeURIComponent(params.id)}`,
-              { authToken: token.token }
-            ),
+            client
+              .get<OndoOrder>(
+                `/v1/perps/orders/${encodeURIComponent(params.id)}`,
+                { authToken: token.token }
+              )
+              .catch((error: unknown) => {
+                if (
+                  !(error instanceof OndoApiError) ||
+                  error.errorCode !== 'order_not_found'
+                ) {
+                  throw error
+                }
+                return client.get<OndoTwapOrder>(
+                  `/v1/perps/twap/order/${encodeURIComponent(params.id)}`,
+                  { authToken: token.token }
+                )
+              }),
             marketRegistry().sync(),
           ])
-          return mapOrderDetail(order, requireMarketDisplay(order.market))
+          return mapOrder(order, requireMarketDisplay(order.market))
         }
       )
     },

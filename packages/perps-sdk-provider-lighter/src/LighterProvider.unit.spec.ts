@@ -2345,8 +2345,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
 
     expect(createCount).toBe(2) // stale, then fresh after eviction
     expect(activeOrderCalls).toBe(2) // rejected once, retried once
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
   })
 })
 
@@ -2383,6 +2382,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
 
   const makeActiveOrder = (orderIndex: number) => ({
     order_index: orderIndex,
+    client_order_index: 0,
     order_id: String(orderIndex),
     client_order_id: String(orderIndex),
     market_index: 0,
@@ -2444,7 +2444,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
 
     const orders = await provider.getOrders({ address: ADDRESS, limit: 50 })
 
-    const returned = orders.openOrders.length + orders.triggerOrders.length
+    const returned = orders.orders.length
     expect(returned).toBe(200)
     expect(orders.pagination.hasMore).toBe(false)
     expect(orders.pagination.cursor).toBeUndefined()
@@ -2479,12 +2479,11 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
     ).toBeUndefined()
   })
 
-  it('getOrders returns empty arrays when no token is configured', async () => {
+  it('getOrders returns no orders when no token is configured', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
     expect(orders.pagination.hasMore).toBe(false)
   })
 
@@ -4042,10 +4041,11 @@ describe('LighterProvider — one-call order reads', () => {
     const active = requestsTo('/api/v1/accountActiveOrders')
     expect(active).toHaveLength(1)
     expect(active[0].url).toContain(`market_id=${LIGHTER_ALL_MARKETS_WILDCARD}`)
-    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['900', '901'])
-    expect(
-      orders.openOrders.map((o) => o.market.baseAsset.displaySymbol)
-    ).toEqual(['BTC', 'ETH'])
+    expect(orders.orders.map((o) => o.orderId)).toEqual(['900', '901'])
+    expect(orders.orders.map((o) => o.market.baseAsset.displaySymbol)).toEqual([
+      'BTC',
+      'ETH',
+    ])
   })
 
   it('keeps a single filtered request when a marketId is given', async () => {
@@ -4074,7 +4074,7 @@ describe('LighterProvider — one-call order reads', () => {
     const active = requestsTo('/api/v1/accountActiveOrders')
     expect(active).toHaveLength(1)
     expect(active[0].url).toContain('market_id=1')
-    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['901'])
+    expect(orders.orders.map((o) => o.orderId)).toEqual(['901'])
   })
 
   it('resolves an active order by client order index through one accountOrders request', async () => {
@@ -5021,8 +5021,7 @@ describe('LighterProvider — null wire lists', () => {
     provider.bind(STUB_CLIENT)
 
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
   })
 
   it('getOrder reports OrderNotFound when both order lists are null', async () => {

@@ -1,11 +1,14 @@
 import {
   MarginMode,
-  type OpenOrder,
   OrderSide,
+  OrderStatus,
   OrderType,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
+  type RegularOrder,
+  TimeInForce,
+  TriggerCondition,
   type TriggerOrder,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
@@ -65,9 +68,9 @@ function position(
 }
 
 function openOrder(
-  overrides: Partial<OpenOrder> &
-    Pick<OpenOrder, 'side' | 'remainingSize' | 'price'>
-): OpenOrder {
+  overrides: Partial<RegularOrder> &
+    Pick<RegularOrder, 'side' | 'remainingSize' | 'price'>
+): RegularOrder {
   return {
     orderId: 'order-1',
     market: MARKET_BTC,
@@ -77,18 +80,29 @@ function openOrder(
     filledSize: '0',
     reduceOnly: false,
     createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+    status: OrderStatus.OPEN,
+    timeInForce: TimeInForce.GTC,
     ...overrides,
   }
 }
 
 function triggerOrder(
-  overrides: Partial<TriggerOrder> & Pick<TriggerOrder, 'size' | 'triggerPrice'>
+  overrides: Partial<TriggerOrder> &
+    Pick<TriggerOrder, 'remainingSize' | 'triggerPrice'>
 ): TriggerOrder {
   return {
     orderId: 'trigger-1',
     market: MARKET_BTC,
     type: OrderType.TAKE_PROFIT_MARKET,
     createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+    side: OrderSide.SELL,
+    originalSize: overrides.remainingSize,
+    filledSize: '0',
+    reduceOnly: true,
+    status: OrderStatus.OPEN,
+    triggerCondition: TriggerCondition.ABOVE,
     ...overrides,
   }
 }
@@ -233,7 +247,7 @@ describe('expectedRealizedPnlForOpenOrder', () => {
 describe('expectedRealizedPnlForTriggerOrder', () => {
   it('computes profit for a TP on a long at trigger > entry', () => {
     const r = expectedRealizedPnlForTriggerOrder(
-      triggerOrder({ size: '1', triggerPrice: '150' }),
+      triggerOrder({ remainingSize: '1', triggerPrice: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(50, 9)
@@ -242,7 +256,7 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
   it('computes loss for a SL on a long at trigger < entry', () => {
     const r = expectedRealizedPnlForTriggerOrder(
       triggerOrder({
-        size: '1',
+        remainingSize: '1',
         triggerPrice: '90',
         type: OrderType.STOP_MARKET,
       }),
@@ -253,16 +267,19 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
 
   it('computes profit for a TP on a short at trigger < entry', () => {
     const r = expectedRealizedPnlForTriggerOrder(
-      triggerOrder({ size: '2', triggerPrice: '80' }),
+      triggerOrder({
+        remainingSize: '2',
+        triggerPrice: '80',
+        side: OrderSide.BUY,
+      }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(40, 9)
   })
 
-  it('uses the full position size when order.size is zero (close-position trigger)', () => {
-    // Hyperliquid encodes "close entire position" as size === 0 on the trigger
+  it('uses the full position size when originalSize is zero on a reduce-only trigger', () => {
     const r = expectedRealizedPnlForTriggerOrder(
-      triggerOrder({ size: '0', triggerPrice: '150' }),
+      triggerOrder({ remainingSize: '0', triggerPrice: '150' }),
       position({ side: PositionSide.LONG, size: '3', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(150, 9) // (150 - 100) * 3
@@ -270,7 +287,11 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
 
   it('caps an oversized trigger size at the position size', () => {
     const r = expectedRealizedPnlForTriggerOrder(
-      triggerOrder({ size: '10', triggerPrice: '80' }),
+      triggerOrder({
+        remainingSize: '10',
+        triggerPrice: '80',
+        side: OrderSide.BUY,
+      }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
     expect(r).toBeCloseTo(40, 9) // capped to 2 short
@@ -280,7 +301,7 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
     // STOP_LIMIT — limitPrice is the post-trigger limit, not the rPnL price
     const r = expectedRealizedPnlForTriggerOrder(
       triggerOrder({
-        size: '1',
+        remainingSize: '1',
         triggerPrice: '90',
         limitPrice: '85',
         type: OrderType.STOP_LIMIT,
@@ -292,9 +313,34 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
 
   it('returns null when the trigger has no matching position', () => {
     const r = expectedRealizedPnlForTriggerOrder(
-      triggerOrder({ size: '1', triggerPrice: '150' }),
+      triggerOrder({ remainingSize: '1', triggerPrice: '150' }),
       undefined
     )
     expect(r).toBeNull()
+  })
+
+  it('does not project pending, terminal, same-side, or exhausted trigger orders', () => {
+    const long = position({
+      side: PositionSide.LONG,
+      size: '1',
+      entryPrice: '100',
+    })
+    for (const overrides of [
+      { status: OrderStatus.PENDING, parentOrderId: 'parent' },
+      { status: OrderStatus.FILLED },
+      { side: OrderSide.BUY },
+      { originalSize: '1', remainingSize: '0' },
+    ]) {
+      expect(
+        expectedRealizedPnlForTriggerOrder(
+          triggerOrder({
+            remainingSize: '1',
+            triggerPrice: '120',
+            ...overrides,
+          }),
+          long
+        )
+      ).toBeNull()
+    }
   })
 })

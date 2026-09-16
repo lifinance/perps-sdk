@@ -2,9 +2,8 @@ import type {
   AccountSummary,
   Balance,
   Fill,
-  OpenOrder,
+  Order,
   Position,
-  TriggerOrder,
 } from './account.js'
 import type {
   Candle,
@@ -121,14 +120,8 @@ export type TradesEvent = { channel: 'trades'; data: Trade[] }
 export type OrderUpdatesEvent = {
   channel: 'orderUpdates'
   data: {
-    /** Upserts — active orders, non-trigger. */
-    openOrders: OpenOrder[]
-    /** Upserts — active orders with trigger semantics (TP/SL). */
-    triggerOrders: TriggerOrder[]
-    /**
-     * orderIds whose status just transitioned to terminal (filled, cancelled,
-     * rejected, expired). Consumers should evict these from both buckets.
-     */
+    orders: Order[]
+    /** Terminal order ids to evict from an active-order cache. */
     terminated: string[]
   }
 }

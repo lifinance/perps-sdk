@@ -17,7 +17,6 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
-  type ProviderGetRunningTwapsParams,
   resolveQuote,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -46,7 +45,6 @@ import {
   type Quote,
   type SignedActionStep,
   type SigningMethod,
-  type TwapOrder,
 } from '@lifi/perps-types'
 import { type Address, type Hex, isAddress } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
@@ -67,7 +65,6 @@ import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPortfolioHistory } from './services/getPortfolioHistory.js'
 import { getPositions } from './services/getPositions.js'
-import { getRunningTwaps } from './services/getRunningTwaps.js'
 import {
   type HyperliquidAgent,
   HyperliquidAgentStore,
@@ -331,19 +328,10 @@ export function hyperliquidProvider(
         contextRef.require(),
         {
           address: params.address,
+          statuses: params.statuses,
           marketId: params.marketId,
           limit: params.limit,
         },
-        opts
-      ),
-
-    getRunningTwaps: (
-      params: ProviderGetRunningTwapsParams,
-      opts?: SDKRequestOptions
-    ): Promise<TwapOrder[]> =>
-      getRunningTwaps(
-        contextRef.require(),
-        { address: params.address, marketId: params.marketId },
         opts
       ),
 

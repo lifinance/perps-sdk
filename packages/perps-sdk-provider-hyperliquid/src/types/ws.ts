@@ -6,6 +6,22 @@ import type { HlUserFill } from './fill.js'
 
 type HlWsNumberString = string | number
 
+/** Sparse order update returned by the `orderUpdates` WebSocket subscription. */
+export interface HlWsOrder {
+  order: {
+    coin: string
+    side: string
+    limitPx: string
+    sz: string
+    oid: number
+    timestamp: number
+    origSz: string
+    cloid?: string
+  }
+  status: string
+  statusTimestamp: number
+}
+
 /**
  * Perp asset context as carried on the `allDexsAssetCtxs` WS feed. Extends the
  * REST `/info` `HlAssetCtx` shape with the wire-only `coin` tag, the order-book

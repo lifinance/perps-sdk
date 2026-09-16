@@ -6,7 +6,6 @@ import {
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
-  FillStatus,
   LiquidityRole,
   OrderSide,
   OrderType,
@@ -42,7 +41,6 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => {
     type: fill.crossed ? undefined : OrderType.LIMIT,
     size: fill.sz,
     price: fill.px,
-    status: FillStatus.FILLED,
     liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
     filledSize: fill.sz,
     fee: {
