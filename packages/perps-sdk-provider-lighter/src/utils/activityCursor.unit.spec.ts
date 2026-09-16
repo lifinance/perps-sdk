@@ -65,7 +65,6 @@ describe('activity cursor round-trip', () => {
         asset: {
           providerId: 'lighter',
           id: '3',
-          wireId: 'wire',
           l1Address: '0xaddress',
           displaySymbol: 'USDC',
           logoURI: 'usdc.svg',

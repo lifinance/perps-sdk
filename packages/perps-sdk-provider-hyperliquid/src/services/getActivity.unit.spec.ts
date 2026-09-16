@@ -499,7 +499,6 @@ describe('getActivity — transfer registry identity', () => {
   const token: Asset = {
     providerId: 'hyperliquid',
     id: '150',
-    wireId: '0xwire',
     displaySymbol: 'HYPE',
     logoURI: 'hype.svg',
   }
@@ -509,7 +508,7 @@ describe('getActivity — transfer registry identity', () => {
       hash: '0xtransfer',
       delta: {
         type: 'spotTransfer',
-        token: 'USDC:0xwire',
+        token: 'HYPE',
         amount: '5',
         usdcValue: '100',
         user: ADDRESS,
@@ -519,7 +518,7 @@ describe('getActivity — transfer registry identity', () => {
   ]
   afterEach(() => vi.restoreAllMocks())
 
-  it('returns the registry asset despite a misleading wire symbol', async () => {
+  it('returns the registry asset for the row token symbol', async () => {
     const mock = installInfoFetchMock(
       {
         userNonFundingLedgerUpdates: [

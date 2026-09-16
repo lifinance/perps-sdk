@@ -36,14 +36,12 @@ const USDC: Asset = {
 const PURR: Asset = {
   providerId: PROVIDER,
   id: '1',
-  wireId: '0xc1fb593aeffbeb02f85e0308e9956a90',
   displaySymbol: 'PURR',
   logoURI: 'purr.svg',
 }
 const HYPE: Asset = {
   providerId: PROVIDER,
   id: '150',
-  wireId: '0xhype',
   displaySymbol: 'HYPE',
   logoURI: 'hype.svg',
 }
@@ -239,9 +237,9 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.direction).toBe('OUT')
   })
 
-  it('resolves the token wire identity to its registry asset', () => {
+  it('resolves the spot token symbol to its registry asset', () => {
     const entry = spotTransferUpdate({
-      token: 'MISLEADING:0xhype',
+      token: 'HYPE',
       user: QUERIED as HlSpotTransferDelta['user'],
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
     })
@@ -256,6 +254,18 @@ describe('mapLedgerEntry — spotTransfer', () => {
 
     const t = result as TransferActivity
     expect(t.asset).toEqual(HYPE)
+  })
+
+  it('rejects a spot token the registry does not list', () => {
+    const entry = spotTransferUpdate({
+      token: 'NOTLISTED',
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+    })
+
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed asset registry/)
   })
 
   it('preserves spotTransfer metadata fields when present', () => {
@@ -286,7 +296,7 @@ describe('mapLedgerEntry — spotTransfer', () => {
 
   it('reports the spotTransfer fee in USDC and the native-token fee in HYPE', () => {
     const entry = spotTransferUpdate({
-      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      token: 'PURR',
       user: QUERIED as HlSpotTransferDelta['user'],
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
       fee: '1.0',
@@ -539,9 +549,9 @@ describe('mapLedgerEntry — sendAsset', () => {
     expect(t.direction).toBe('OUT')
   })
 
-  it('resolves the token wire identity to its registry asset', () => {
+  it('resolves the sendAsset token symbol to its registry asset', () => {
     const entry = sendAssetUpdate({
-      token: 'MISLEADING:0xhype',
+      token: 'HYPE',
       user: QUERIED as HlSendAssetDelta['user'],
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
     })
@@ -593,13 +603,13 @@ describe('mapLedgerEntry — sendAsset', () => {
     ])
   })
 
-  it('names the sendAsset feeToken as the fee asset and drops its id suffix', () => {
+  it('names the sendAsset feeToken as the fee asset', () => {
     const entry = sendAssetUpdate({
       user: QUERIED as HlSendAssetDelta['user'],
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
       fee: '0.04',
       nativeTokenFee: '0.0004',
-      feeToken: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      feeToken: 'PURR',
     })
 
     const result = mapLedgerEntry(

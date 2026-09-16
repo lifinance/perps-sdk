@@ -55,7 +55,6 @@ describe('encodeActivityCursor / decodeActivityCursor', () => {
       asset: {
         providerId: 'ondo',
         id: 'USDC',
-        wireId: 'wire',
         l1Address: '0xaddress',
         displaySymbol: 'USD Coin',
         logoURI: 'usdc.svg',

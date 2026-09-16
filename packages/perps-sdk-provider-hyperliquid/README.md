@@ -38,11 +38,11 @@ The keypair is persisted through a `StorageAdapter`. The default adapter encrypt
 ## Ledger asset identity
 
 Transfers carry the backend registry `Asset`, including its logo, numeric `id`,
-and optional `wireId` and `l1Address`. Hyperliquid spot ledger tokens use
-`NAME:tokenId`. The mapper joins only `tokenId` to `Asset.wireId`; it never
-matches `NAME` to a display symbol. Bare protocol `USDC` resolves by reserved
-spot token index `0`. Missing identities raise a stale or mis-keyed registry
-error. The mapper never fabricates an asset or drops an unresolved transfer.
+and optional `l1Address`. A Hyperliquid ledger row moves a spot asset, and its
+`token` field holds the bare spot symbol. The mapper resolves that symbol in
+the spot asset registry, which the HIP-1 ticker auction keeps unique. Missing
+symbols raise a stale or mis-keyed registry error. The mapper never fabricates
+an asset or drops an unresolved transfer.
 
 The fixed-USDC `deposit` and `withdraw` deltas resolve the registry `Asset`
 by reserved spot token index `0`. Their `usdc` field identifies the venue's

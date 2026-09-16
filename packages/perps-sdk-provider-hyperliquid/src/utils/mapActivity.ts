@@ -1,6 +1,7 @@
 import { type AssetRegistry, PerpsError } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
+  Asset,
   DepositActivity,
   Fee,
   FundingActivity,
@@ -36,11 +37,24 @@ const HL_NATIVE_TOKEN_SYMBOL = 'HYPE'
 // Hyperliquid reserves spot token index 0 for USDC.
 const HL_COLLATERAL_ASSET_ID = '0'
 
-const resolveLedgerAsset = (token: string, registry: AssetRegistry) => {
-  if (token === HL_COLLATERAL_SYMBOL) {
-    return registry.require(HL_COLLATERAL_ASSET_ID)
+/**
+ * A ledger row moves a spot asset — a perp contract cannot be sent, received
+ * or withdrawn — so the delta's token symbol resolves inside the spot asset
+ * registry. The HIP-1 ticker auction keeps those symbols unique.
+ */
+const resolveLedgerAsset = (symbol: string, registry: AssetRegistry): Asset => {
+  const asset = registry.assets.find(
+    (candidate) => candidate.displaySymbol === symbol
+  )
+  if (asset === undefined) {
+    const error = new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `[hyperliquid] stale or mis-keyed asset registry: unknown spot symbol '${symbol}'`
+    )
+    error.tool = 'hyperliquid'
+    throw error
   }
-  return registry.require(token.slice(token.indexOf(':') + 1), 'wireId')
+  return asset
 }
 
 /**

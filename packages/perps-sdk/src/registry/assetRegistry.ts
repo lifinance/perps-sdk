@@ -8,28 +8,22 @@ import { ReferenceDataRegistry } from './referenceDataRegistry.js'
 const addressKey = (address: string): string =>
   /^0x[0-9a-f]{40}$/i.test(address) ? address.toLowerCase() : address
 
-/** Provider `/assets` index by native `id`, optional wire identity, and L1 address. @public */
+/** Provider `/assets` index by native `id` and by L1 contract address. @public */
 export class AssetRegistry extends ReferenceDataRegistry<Asset> {
   constructor(client: PerpsSDKClient, provider: string) {
     super(client, provider, 'asset', {
-      wireId: (asset) => asset.wireId,
       l1Address: (asset) =>
         asset.l1Address === undefined ? undefined : addressKey(asset.l1Address),
     })
   }
 
   /** Lookup by provider identity; hexadecimal L1 addresses are case-insensitive. */
-  override get(
-    id: string,
-    key: 'id' | 'wireId' | 'l1Address' = 'id'
-  ): Asset | undefined {
-    return key === 'id'
-      ? super.get(id)
-      : this.getByIndex(key === 'l1Address' ? addressKey(id) : id, key)
+  override get(id: string, key: 'id' | 'l1Address' = 'id'): Asset | undefined {
+    return key === 'id' ? super.get(id) : this.getByIndex(addressKey(id), key)
   }
 
   /** Resolve registry membership or report a stale or mis-keyed asset registry. */
-  require(id: string, key: 'id' | 'wireId' | 'l1Address' = 'id'): Asset {
+  require(id: string, key: 'id' | 'l1Address' = 'id'): Asset {
     const asset = this.get(id, key)
     if (asset === undefined) {
       const error = new PerpsError(

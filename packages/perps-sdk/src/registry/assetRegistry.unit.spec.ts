@@ -86,41 +86,31 @@ describe('AssetRegistry', () => {
   it('resolves distinct identities without matching duplicate display symbols', async () => {
     const first = {
       ...USDC,
-      wireId: '0xfirst',
       l1Address: `0x${'aB'.repeat(20)}`,
     }
-    const second = { ...ETH, displaySymbol: 'USDC', wireId: '0xsecond' }
+    const second = { ...ETH, displaySymbol: 'USDC' }
     serveAssets([{ assets: [first, second] }])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await registry.sync()
 
     expect(registry.require('0')).toEqual(first)
-    expect(registry.require('0xsecond', 'wireId')).toEqual(second)
+    expect(registry.require('1')).toEqual(second)
     expect(
       registry.require(first.l1Address.toLowerCase(), 'l1Address')
     ).toEqual(first)
-    expect(() => registry.require('USDC', 'wireId')).toThrow(
-      /stale or mis-keyed/
-    )
-    expect(registry.get('0xFIRST', 'wireId')).toBeUndefined()
+    expect(() => registry.require('USDC')).toThrow(/stale or mis-keyed/)
   })
 
   it('replaces primary and secondary identities together on refresh', async () => {
-    const old = { ...USDC, wireId: 'old', l1Address: 'OldCaseSensitiveAddress' }
-    const replacement = {
-      ...USDC,
-      wireId: 'new',
-      l1Address: 'NewCaseSensitiveAddress',
-    }
+    const old = { ...USDC, l1Address: 'OldCaseSensitiveAddress' }
+    const replacement = { ...USDC, l1Address: 'NewCaseSensitiveAddress' }
     serveAssets([{ assets: [old, ETH] }, { assets: [replacement] }])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await registry.sync()
     await registry.sync()
 
     expect(registry.get('1')).toBeUndefined()
-    expect(registry.get('old', 'wireId')).toBeUndefined()
     expect(registry.get(old.l1Address, 'l1Address')).toBeUndefined()
-    expect(registry.require('new', 'wireId')).toBe(registry.require('0'))
     expect(registry.require(replacement.l1Address, 'l1Address')).toBe(
       registry.require('0')
     )
@@ -131,14 +121,9 @@ describe('AssetRegistry', () => {
 
   it.each([
     'id',
-    'wireId',
     'l1Address',
   ] as const)('retains the complete snapshot after a duplicate %s refresh fails', async (key) => {
-    const original = {
-      ...USDC,
-      wireId: 'original',
-      l1Address: 'original-address',
-    }
+    const original = { ...USDC, l1Address: 'original-address' }
     const duplicate = { ...ETH, [key]: original[key] }
     serveAssets([
       { assets: [original] },
@@ -150,18 +135,17 @@ describe('AssetRegistry', () => {
 
     await expect(registry.sync()).rejects.toThrow(/duplicate/)
     expect(registry.assets).toEqual([original])
-    expect(registry.require('original', 'wireId')).toBe(registry.require('0'))
     expect(registry.require('original-address', 'l1Address')).toBe(
       registry.require('0')
     )
 
     await registry.sync()
     expect(registry.assets).toEqual([ETH])
-    expect(registry.get('original', 'wireId')).toBeUndefined()
+    expect(registry.get('original-address', 'l1Address')).toBeUndefined()
   })
 
   it('shares a concurrent refresh and exposes the same asset through each index', async () => {
-    const indexed = { ...USDC, wireId: 'wire' }
+    const indexed = { ...USDC, l1Address: 'wire-address' }
     const requests = serveAssets([{ assets: [indexed] }])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     const first = registry.sync()
@@ -169,31 +153,34 @@ describe('AssetRegistry', () => {
     expect(first).toBe(second)
     await Promise.all([first, second])
     expect(requests).toHaveLength(1)
-    expect(registry.require('wire', 'wireId')).toBe(registry.require('0'))
+    expect(registry.require('wire-address', 'l1Address')).toBe(
+      registry.require('0')
+    )
   })
 
   it('removes optional identities when the replacement asset omits them', async () => {
     serveAssets([
-      { assets: [{ ...USDC, wireId: 'old', l1Address: 'old-address' }] },
+      { assets: [{ ...USDC, l1Address: 'old-address' }] },
       { assets: [USDC] },
     ])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await registry.sync()
     await registry.sync()
     expect(registry.require('0')).toEqual(USDC)
-    expect(registry.get('old', 'wireId')).toBeUndefined()
     expect(registry.get('old-address', 'l1Address')).toBeUndefined()
   })
 
   it('preserves the previous snapshot when the asset fetch fails', async () => {
-    serveAssets([{ assets: [{ ...USDC, wireId: 'wire' }] }])
+    serveAssets([{ assets: [{ ...USDC, l1Address: 'kept-address' }] }])
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await registry.sync()
     server.use(
       http.get(`${DEFAULT_API_URL}/assets`, () => HttpResponse.error())
     )
     await expect(registry.sync()).rejects.toThrow()
-    expect(registry.require('wire', 'wireId')).toBe(registry.require('0'))
+    expect(registry.require('kept-address', 'l1Address')).toBe(
+      registry.require('0')
+    )
   })
 
   it('rejects case-equivalent EVM addresses as duplicate identities', async () => {
