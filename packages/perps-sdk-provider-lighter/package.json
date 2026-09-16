@@ -63,7 +63,8 @@
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
     "big.js": "^7.0.1",
-    "viem": "^2.55.18"
+    "viem": "^2.55.18",
+    "zklighter-perps": "1.0.303"
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:^"
