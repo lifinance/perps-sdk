@@ -21,8 +21,8 @@ import type {
 /** The terminal `canceled-*` members of Lighter's order status enum. */
 type LtCanceledStatus = Extract<LtOrderStatusEnum, `canceled${string}`>
 
-// TWAP children and liquidation legs rest as limit orders; the cross-provider
-// OrderType has no member for either.
+// `twap`, `twap-sub` and `liquidation` map to LIMIT: a TWAP parent reaches the
+// caller through `getRunningTwaps`, and `OrderType` models no liquidation leg.
 const ORDER_TYPES: Record<LtOrderTypeEnum, OrderType> = {
   limit: OrderType.LIMIT,
   market: OrderType.MARKET,
@@ -35,7 +35,6 @@ const ORDER_TYPES: Record<LtOrderTypeEnum, OrderType> = {
   liquidation: OrderType.LIMIT,
 }
 
-// Lighter reports `Unknown` when it holds no time-in-force for the order.
 const TIME_IN_FORCE: Record<LtOrderTimeInForceEnum, TimeInForce | undefined> = {
   'good-till-time': TimeInForce.GTT,
   'immediate-or-cancel': TimeInForce.IOC,
@@ -43,10 +42,7 @@ const TIME_IN_FORCE: Record<LtOrderTimeInForceEnum, TimeInForce | undefined> = {
   Unknown: undefined,
 }
 
-// The `Partial` half admits a lookup by any status; the `Record` half requires
-// an entry for every `canceled-*` member.
-const CANCEL_REASONS: Partial<Record<LtOrderStatusEnum, string>> &
-  Record<LtCanceledStatus, string> = {
+const CANCEL_REASONS: Record<LtCanceledStatus, string> = {
   canceled: 'Order cancelled.',
   'canceled-post-only':
     'Order cancelled: post-only order would have crossed the book.',
@@ -86,15 +82,18 @@ const mapOrderStatus = (status: LtOrderStatusEnum): OrderStatus => {
   }
 }
 
+const STATUS_REASONS: ReadonlyMap<string, string> = new Map(
+  Object.entries(CANCEL_REASONS)
+)
+
 /**
  * Map a raw Lighter order status to a short English sentence describing
  * *why* the order ended in a terminal non-FILLED state. Non-terminal
- * statuses and plain `filled` return `undefined`.
+ * statuses, plain `filled`, and unknown values return `undefined`.
  * @public
  */
-export const mapStatusReason = (
-  status: LtOrderStatusEnum
-): string | undefined => CANCEL_REASONS[status]
+export const mapStatusReason = (status: string): string | undefined =>
+  STATUS_REASONS.get(status)
 
 /**
  * True for order types Lighter exposes as TP/SL legs. Mirrors the

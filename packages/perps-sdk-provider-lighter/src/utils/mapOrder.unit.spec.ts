@@ -94,6 +94,10 @@ describe('mapStatusReason (Lighter)', () => {
     expect(mapStatusReason('in-progress')).toBeUndefined()
   })
 
+  it('returns undefined for a status it does not know', () => {
+    expect(mapStatusReason('something-new')).toBeUndefined()
+  })
+
   it('maps canceled', () => {
     expect(mapStatusReason('canceled')).toBe('Order cancelled.')
   })
