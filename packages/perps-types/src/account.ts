@@ -341,11 +341,7 @@ export interface BaseActivity {
  */
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
-  /**
-   * Display symbol of the deposited asset, resolved by the provider adapter.
-   * Falls back to the venue's own asset id when the registry knows no symbol.
-   */
-  asset: string
+  asset: Asset
   amount: string
   /**
    * Address the deposited funds came from, as the venue reports it. Absent
@@ -364,11 +360,7 @@ export interface DepositActivity extends BaseActivity {
  */
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
-  /**
-   * Display symbol of the withdrawn asset, resolved by the provider adapter.
-   * Falls back to the venue's own asset id when the registry knows no symbol.
-   */
-  asset: string
+  asset: Asset
   amount: string
   /** Absent when the venue reports no fee for the withdrawal. */
   fee?: Fee
@@ -446,7 +438,7 @@ export interface FundingActivity extends BaseActivity {
 export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
-  asset: string
+  asset: Asset
   amount: string
   /**
    * Every fee the venue charged for the transfer, in the order the venue

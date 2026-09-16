@@ -14,6 +14,8 @@ export interface Asset {
    * identity. NEVER the coin symbol (that is `displaySymbol`).
    */
   id: string
+  /** Venue wire identity when it differs from `id`, e.g. Hyperliquid `tokenId`. */
+  wireId?: string
   displaySymbol: string
   logoURI: string
   displayName?: string

@@ -1,6 +1,7 @@
-import type { MarketDisplay } from '@lifi/perps-types'
+import { AssetRegistry, createPerpsClient } from '@lifi/perps-sdk'
+import type { Asset, MarketDisplay } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   OndoFundingFeeTransfer,
   OndoLiquidationEvent,
@@ -14,6 +15,31 @@ import {
   mapLiquidationActivity,
   mapWithdrawalActivity,
 } from './mapActivity.js'
+
+const USDC: Asset = {
+  providerId: 'ondo',
+  id: 'USDC',
+  displaySymbol: 'USD Coin',
+  logoURI: 'usdc.svg',
+}
+const BTC: Asset = {
+  providerId: 'ondo',
+  id: 'BTC',
+  displaySymbol: 'Bitcoin',
+  logoURI: 'btc.svg',
+}
+let assetRegistry: AssetRegistry
+beforeEach(async () => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ assets: [USDC, BTC] }), { status: 200 })
+  )
+  assetRegistry = new AssetRegistry(
+    createPerpsClient({ integrator: 'test', apiKey: 'test' }),
+    'ondo'
+  )
+  await assetRegistry.sync()
+})
+afterEach(() => vi.restoreAllMocks())
 
 const MARKET: MarketDisplay = {
   providerId: 'ondo',
@@ -190,12 +216,12 @@ const WITHDRAWAL: OndoWalletWithdrawal = {
 
 describe('mapDepositActivity', () => {
   it('maps an Ondo deposit to the public deposit shape', () => {
-    expect(mapDepositActivity(DEPOSIT)).toEqual({
+    expect(mapDepositActivity(DEPOSIT, assetRegistry)).toEqual({
       id: 'deposit:0xabc123',
       provider: 'ondo',
       timestamp: '2026-07-01T10:30:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC,
       amount: '1000.00',
       counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
       explorerLink: 'https://scan.li.fi/tx/0xabc123',
@@ -204,29 +230,34 @@ describe('mapDepositActivity', () => {
 
   it('omits the counterparty address when Ondo names no sending address', () => {
     expect(
-      mapDepositActivity({ ...DEPOSIT, fromAddress: '' })
+      mapDepositActivity({ ...DEPOSIT, fromAddress: '' }, assetRegistry)
     ).not.toHaveProperty('counterpartyAddress')
   })
 
-  it('reports the venue coin as the asset for a non-USDC deposit', () => {
-    expect(mapDepositActivity({ ...DEPOSIT, coin: 'BTC' }).asset).toBe('BTC')
+  it('resolves the venue coin by primary identity, not display symbol', () => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, coin: 'BTC' }, assetRegistry).asset
+    ).toEqual(BTC)
   })
 
   it('suffixes the id with the log index when one transaction carries several deposits', () => {
-    expect(mapDepositActivity({ ...DEPOSIT, logIndex: '7' }).id).toBe(
-      'deposit:0xabc123:7'
-    )
+    expect(
+      mapDepositActivity({ ...DEPOSIT, logIndex: '7' }, assetRegistry).id
+    ).toBe('deposit:0xabc123:7')
   })
 
   it('omits the explorer link when Ondo reports no transaction id', () => {
-    expect(mapDepositActivity({ ...DEPOSIT, txid: '' })).not.toHaveProperty(
-      'explorerLink'
-    )
+    expect(
+      mapDepositActivity({ ...DEPOSIT, txid: '' }, assetRegistry)
+    ).not.toHaveProperty('explorerLink')
   })
 
   it('keeps two deposits distinct when Ondo reports no transaction id', () => {
-    const first = mapDepositActivity({ ...DEPOSIT, txid: '' })
-    const second = mapDepositActivity({ ...DEPOSIT, txid: '', size: '250.00' })
+    const first = mapDepositActivity({ ...DEPOSIT, txid: '' }, assetRegistry)
+    const second = mapDepositActivity(
+      { ...DEPOSIT, txid: '', size: '250.00' },
+      assetRegistry
+    )
 
     expect(first.id).toBe('deposit:2026-07-01T10:30:00Z:USDC:1000.00')
     expect(second.id).not.toBe(first.id)
@@ -235,12 +266,12 @@ describe('mapDepositActivity', () => {
 
 describe('mapWithdrawalActivity', () => {
   it('maps an Ondo withdrawal to the public withdrawal shape', () => {
-    expect(mapWithdrawalActivity(WITHDRAWAL)).toEqual({
+    expect(mapWithdrawalActivity(WITHDRAWAL, assetRegistry)).toEqual({
       id: 'w_9f8e7d6c5b4a3210',
       provider: 'ondo',
       timestamp: '2026-07-02T15:45:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC,
       amount: '500.00',
       fee: { amount: '1.50', asset: 'USD' },
       explorerLink: 'https://scan.li.fi/tx/0xdef456',
@@ -249,40 +280,59 @@ describe('mapWithdrawalActivity', () => {
 
   it('denominates the fee in USD when Ondo withdraws another asset', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, coin: 'BTC', usdFee: '4.20' })?.fee
+      mapWithdrawalActivity(
+        { ...WITHDRAWAL, coin: 'BTC', usdFee: '4.20' },
+        assetRegistry
+      )?.fee
     ).toEqual({ amount: '4.20', asset: 'USD' })
   })
 
   it('omits the fee when Ondo reports none', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, usdFee: undefined })
+      mapWithdrawalActivity({ ...WITHDRAWAL, usdFee: undefined }, assetRegistry)
     ).not.toHaveProperty('fee')
   })
 
   it('keeps a pending withdrawal', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'pending' })
+      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'pending' }, assetRegistry)
     ).not.toBe(null)
   })
 
   it('keeps a withdrawal whose status Ondo reports as unknown', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'unknown' })
+      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'unknown' }, assetRegistry)
     ).not.toBe(null)
   })
 
   it('drops a withdrawal that moved no value', () => {
-    expect(mapWithdrawalActivity({ ...WITHDRAWAL, status: 'failure' })).toBe(
-      null
-    )
-    expect(mapWithdrawalActivity({ ...WITHDRAWAL, status: 'cancelled' })).toBe(
-      null
-    )
+    expect(
+      mapWithdrawalActivity({ ...WITHDRAWAL, status: 'failure' }, assetRegistry)
+    ).toBe(null)
+    expect(
+      mapWithdrawalActivity(
+        { ...WITHDRAWAL, status: 'cancelled' },
+        assetRegistry
+      )
+    ).toBe(null)
   })
 
   it('omits the explorer link when Ondo reports no transaction id', () => {
     expect(
-      mapWithdrawalActivity({ ...WITHDRAWAL, txid: '' })
+      mapWithdrawalActivity({ ...WITHDRAWAL, txid: '' }, assetRegistry)
     ).not.toHaveProperty('explorerLink')
+  })
+})
+
+describe('unresolved ledger assets', () => {
+  it('rejects an unresolved deposit coin', () => {
+    expect(() =>
+      mapDepositActivity({ ...DEPOSIT, coin: 'USD Coin' }, assetRegistry)
+    ).toThrow(/stale or mis-keyed/)
+  })
+  it('rejects an unresolved withdrawal coin', () => {
+    expect(() =>
+      mapWithdrawalActivity({ ...WITHDRAWAL, coin: 'USD Coin' }, assetRegistry)
+    ).toThrow(/stale or mis-keyed/)
   })
 })

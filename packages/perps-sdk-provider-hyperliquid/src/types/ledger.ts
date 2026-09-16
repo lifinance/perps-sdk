@@ -50,6 +50,41 @@ export type HlSendAssetDelta = {
   feeToken: string
 }
 
+/** USDC transfers between Hyperliquid accounts, including subaccounts. @public */
+export type HlCollateralTransferDelta = {
+  type: 'internalTransfer' | 'subAccountTransfer'
+  usdc: string
+  user: Address
+  destination: Address
+  fee?: string
+}
+
+/** Narrow the USDC account-transfer ledger variants. @public */
+export const isCollateralTransferDelta = (
+  delta: HlLedgerDelta
+): delta is HlCollateralTransferDelta =>
+  delta.type === 'internalTransfer' || delta.type === 'subAccountTransfer'
+
+/** USDC movements into or out of a vault, including withdrawal accounting. @public */
+export type HlVaultTransferDelta =
+  | { type: 'vaultDeposit'; vault: Address; usdc: string }
+  | {
+      type: 'vaultWithdraw'
+      vault: Address
+      user: Address
+      requestedUsd: string
+      commission: string
+      closingCost: string
+      basis: string
+      netWithdrawnUsd: string
+    }
+
+/** Narrow the vault fund-movement ledger variants. @public */
+export const isVaultTransferDelta = (
+  delta: HlLedgerDelta
+): delta is HlVaultTransferDelta =>
+  delta.type === 'vaultDeposit' || delta.type === 'vaultWithdraw'
+
 /**
  * Hyperliquid `deposit` ledger delta. Perp-collateral deposits are always
  * USDC-denominated, which is why the amount arrives in a field named `usdc`.
@@ -103,6 +138,8 @@ export type HlLiquidationDelta = {
 export type HlLedgerDelta =
   | HlSpotTransferDelta
   | HlSendAssetDelta
+  | HlCollateralTransferDelta
+  | HlVaultTransferDelta
   | HlDepositDelta
   | HlWithdrawDelta
   | HlLiquidationDelta

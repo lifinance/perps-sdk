@@ -46,6 +46,28 @@ describe('encodeActivityCursor / decodeActivityCursor', () => {
     expect(decodeActivityCursor(encoded)).toEqual(envelope)
   })
 
+  it('retains registry asset identity in a deposit overflow row', () => {
+    const deposit: ActivityItem = {
+      id: 'deposit:tx',
+      provider: 'ondo',
+      timestamp: '2026-07-01T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: {
+        providerId: 'ondo',
+        id: 'USDC',
+        wireId: 'wire',
+        l1Address: '0xaddress',
+        displaySymbol: 'USD Coin',
+        logoURI: 'usdc.svg',
+      },
+      amount: '1',
+    }
+    expect(
+      decodeActivityCursor(encodeActivityCursor({ overflow: [deposit] }))
+        ?.overflow
+    ).toEqual([deposit])
+  })
+
   it('drops empty cursor keys and returns undefined for a fully-drained envelope', () => {
     expect(encodeActivityCursor({})).toBeUndefined()
     expect(encodeActivityCursor({ fundings: '', overflow: [] })).toBeUndefined()
@@ -71,6 +93,38 @@ describe('encodeActivityCursor / decodeActivityCursor', () => {
         Buffer.from(JSON.stringify({ fundings: 5 })).toString('base64url')
       )
     ).toThrowError(PerpsError)
+  })
+
+  it('rejects a legacy version-1 envelope that carries overflow rows', () => {
+    const legacy = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        fundings: 'fund:1',
+        overflow: [OVERFLOW_ITEM],
+      })
+    ).toString('base64url')
+    expect(() => decodeActivityCursor(legacy)).toThrow(/legacy overflow format/)
+  })
+
+  it('rejects an overflow row that lost its identity or activity type', () => {
+    const withRow = (row: unknown): string =>
+      Buffer.from(JSON.stringify({ version: 2, overflow: [row] })).toString(
+        'base64url'
+      )
+    expect(() => decodeActivityCursor(withRow(42))).toThrow(
+      /overflow\[0\] must be an object/
+    )
+    expect(() =>
+      decodeActivityCursor(withRow({ ...OVERFLOW_ITEM, timestamp: 1751371200 }))
+    ).toThrow(/overflow\[0\] timestamp must be a string/)
+    expect(() =>
+      decodeActivityCursor(withRow({ ...OVERFLOW_ITEM, type: 'dividend' }))
+    ).toThrow(/overflow\[0\] carries an unknown activity type/)
+  })
+
+  it('round-trips a non-latin cursor value through the utf-8 codec', () => {
+    const env: OndoActivityCursor = { fundings: 'фонд:1' }
+    expect(decodeActivityCursor(encodeActivityCursor(env))).toEqual(env)
   })
 })
 

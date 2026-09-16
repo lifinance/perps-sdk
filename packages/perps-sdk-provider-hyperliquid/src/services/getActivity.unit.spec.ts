@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import type { Asset } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -29,6 +30,87 @@ const baseResponses = {
 }
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
+describe('getActivity — fixed collateral identity', () => {
+  const collateral: Asset = {
+    providerId: 'hyperliquid',
+    id: '0',
+    displaySymbol: 'USD Coin',
+    logoURI: 'https://assets.example/usdc.svg',
+  }
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('returns registry identity and logo for a %s-only request', async (type) => {
+    const ledger: HlUserNonFundingLedgerUpdates = [
+      {
+        time: 1704067200000,
+        hash: '0xcollateral',
+        delta: {
+          type: type === ActivityType.DEPOSIT ? 'deposit' : 'withdraw',
+          usdc: '12.5',
+        },
+      },
+    ]
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: ledger },
+      [],
+      [],
+      [collateral]
+    )
+    const result = await getActivity(
+      {
+        ...ctx,
+        client: createPerpsClient({
+          integrator: 'test',
+          apiKey: 'k',
+          retry: false,
+        }),
+      },
+      { address: ADDRESS, type: [type] }
+    )
+    expect(result.items).toMatchObject([
+      { type, asset: collateral, amount: '12.5' },
+    ])
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('rejects a missing collateral identity on a %s-only request', async (type) => {
+    const ledger: HlUserNonFundingLedgerUpdates = [
+      {
+        time: 1704067200000,
+        hash: '0xmissing',
+        delta: {
+          type: type === ActivityType.DEPOSIT ? 'deposit' : 'withdraw',
+          usdc: '12.5',
+        },
+      },
+    ]
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: ledger },
+      [],
+      [],
+      [{ ...collateral, id: '150' }]
+    )
+    await expect(
+      getActivity(
+        {
+          ...ctx,
+          client: createPerpsClient({
+            integrator: 'test',
+            apiKey: 'k',
+            retry: false,
+          }),
+        },
+        { address: ADDRESS, type: [type] }
+      )
+    ).rejects.toThrow(/stale or mis-keyed/)
+  })
+})
 
 describe('getActivity', () => {
   let restore: () => void
@@ -199,7 +281,9 @@ describe('getActivity', () => {
       type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
     })
 
-    expect(mock.referenceRequests).toEqual([])
+    expect(mock.referenceRequests.some((url) => url.includes('/markets'))).toBe(
+      false
+    )
   })
 
   it('fetches the market list for a liquidation-only request', async () => {
@@ -408,5 +492,106 @@ describe('getActivity — unresolvable market rows', () => {
     await expect(
       getActivity(ctx, { address: ADDRESS, type: [ActivityType.DEPOSIT] })
     ).rejects.toThrow()
+  })
+})
+
+describe('getActivity — transfer registry identity', () => {
+  const token: Asset = {
+    providerId: 'hyperliquid',
+    id: '150',
+    wireId: '0xwire',
+    displaySymbol: 'HYPE',
+    logoURI: 'hype.svg',
+  }
+  const ledger: HlUserNonFundingLedgerUpdates = [
+    {
+      time: 1704067300000,
+      hash: '0xtransfer',
+      delta: {
+        type: 'spotTransfer',
+        token: 'USDC:0xwire',
+        amount: '5',
+        usdcValue: '100',
+        user: ADDRESS,
+        destination: '0x2222222222222222222222222222222222222222',
+      },
+    },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+
+  it('returns the registry asset despite a misleading wire symbol', async () => {
+    const mock = installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: [
+          ...ledger,
+          {
+            time: 0,
+            hash: 'excluded-deposit',
+            delta: { type: 'deposit', usdc: '1' },
+          },
+          {
+            time: 1,
+            hash: 'excluded-withdrawal',
+            delta: { type: 'withdraw', usdc: '2' },
+          },
+        ],
+      },
+      [],
+      [],
+      [token]
+    )
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    expect(result.items).toMatchObject([
+      { type: ActivityType.TRANSFER, asset: token, amount: '5' },
+    ])
+    expect(mock.referenceRequests.some((url) => url.includes('/markets'))).toBe(
+      false
+    )
+  })
+
+  it('rejects the feed when a transfer asset cannot resolve', async () => {
+    installInfoFetchMock({ userNonFundingLedgerUpdates: ledger })
+    await expect(
+      getActivity(ctx, { address: ADDRESS, type: [ActivityType.TRANSFER] })
+    ).rejects.toThrow(/stale or mis-keyed/)
+  })
+
+  it('does not resolve excluded transfers in a deposit-only request', async () => {
+    installInfoFetchMock({
+      userNonFundingLedgerUpdates: [
+        ...ledger,
+        {
+          time: 0,
+          hash: 'vault-deposit',
+          delta: { type: 'vaultDeposit', vault: ADDRESS, usdc: '100' },
+        },
+        {
+          time: 1,
+          hash: 'vault-withdraw',
+          delta: {
+            type: 'vaultWithdraw',
+            vault: ADDRESS,
+            user: ADDRESS,
+            requestedUsd: '100',
+            netWithdrawnUsd: '90',
+            commission: '10',
+            closingCost: '0',
+            basis: '50',
+          },
+        },
+        ...HL_USER_NON_FUNDING_LEDGER,
+      ],
+    })
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT],
+    })
+    expect(result.items.map((item) => item.id)).toEqual(['0xdep1'])
+    expect(result.items[0]).toMatchObject({
+      asset: { id: '0', displaySymbol: 'USDC' },
+    })
   })
 })

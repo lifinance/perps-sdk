@@ -1,4 +1,9 @@
-import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
+import {
+  type AssetRegistry,
+  getAssetRegistry,
+  getMarketRegistry,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
@@ -16,6 +21,14 @@ import type { HyperliquidContext } from '../context.js'
 import type {
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
+} from '../types/index.js'
+import {
+  isCollateralTransferDelta,
+  isDepositDelta,
+  isSendAssetDelta,
+  isSpotTransferDelta,
+  isVaultTransferDelta,
+  isWithdrawDelta,
 } from '../types/index.js'
 import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
 import {
@@ -48,6 +61,12 @@ const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.LIQUIDATION,
 ])
 
+const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.DEPOSIT,
+  ActivityType.WITHDRAWAL,
+  ActivityType.TRANSFER,
+])
+
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
   !typeFilter || typeFilter.some((t) => MARKET_BEARING_TYPES.has(t))
 
@@ -55,6 +74,7 @@ const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
   timeParams: { user: Address; startTime?: number; endTime?: number },
+  assetRegistry: AssetRegistry,
   resolveMarket: (coin: string) => MarketDisplay | undefined,
   options?: InfoRequestOptions
 ): Promise<ActivityItem[]> => {
@@ -81,10 +101,25 @@ const fetchActivityData = async (
 
   const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
     (entry): ActivityItem[] => {
+      if (
+        typeFilter !== undefined &&
+        ((isDepositDelta(entry.delta) &&
+          !typeFilter.includes(ActivityType.DEPOSIT)) ||
+          (isWithdrawDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.TRANSFER) &&
+            (isSpotTransferDelta(entry.delta) ||
+              isSendAssetDelta(entry.delta) ||
+              isCollateralTransferDelta(entry.delta) ||
+              isVaultTransferDelta(entry.delta))))
+      ) {
+        return []
+      }
       const item = mapLedgerEntry(
         entry,
         PROVIDER_KEY,
         timeParams.user,
+        assetRegistry,
         resolveMarket
       )
       return item === null ? [] : [item]
@@ -131,6 +166,13 @@ export const getActivity = async (
   if (needsMarkets(params.type)) {
     await registry.sync()
   }
+  const assetRegistry = getAssetRegistry(client, PROVIDER_KEY)
+  if (
+    params.type === undefined ||
+    params.type.some((type) => ASSET_BEARING_TYPES.has(type))
+  ) {
+    await assetRegistry.sync()
+  }
   const infoOpts = hlInfoOptions(client, options)
 
   const limit = Math.min(
@@ -152,6 +194,7 @@ export const getActivity = async (
     apiUrl,
     params.type,
     timeParams,
+    assetRegistry,
     (coin) => registry.get(coin),
     infoOpts
   )

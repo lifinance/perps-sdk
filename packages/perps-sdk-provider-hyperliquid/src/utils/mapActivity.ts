@@ -1,3 +1,4 @@
+import { type AssetRegistry, PerpsError } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
   DepositActivity,
@@ -8,13 +9,15 @@ import type {
   TransferActivity,
   WithdrawalActivity,
 } from '@lifi/perps-types'
-import { ActivityType } from '@lifi/perps-types'
+import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
 import {
+  isCollateralTransferDelta,
   isDepositDelta,
   isLiquidationDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
+  isVaultTransferDelta,
   isWithdrawDelta,
 } from '../types/index.js'
 
@@ -30,34 +33,26 @@ const HL_COLLATERAL_SYMBOL = 'USDC'
  */
 const HL_NATIVE_TOKEN_SYMBOL = 'HYPE'
 
-/**
- * Display symbol for a ledger delta's wire token (`"USDC"`, `"PURR:0x..."`).
- * The colon separates the name from the token id, so the symbol is the part
- * BEFORE it — the opposite half to a market coin's `dex:COIN`, which is why
- * `coinAsset` cannot be reused here.
- */
-const ledgerTokenSymbol = (token: string): string => {
-  const separator = token.indexOf(':')
-  return separator === -1 ? token : token.slice(0, separator)
+// Hyperliquid reserves spot token index 0 for USDC.
+const HL_COLLATERAL_ASSET_ID = '0'
+
+const resolveLedgerAsset = (token: string, registry: AssetRegistry) => {
+  if (token === HL_COLLATERAL_SYMBOL) {
+    return registry.require(HL_COLLATERAL_ASSET_ID)
+  }
+  return registry.require(token.slice(token.indexOf(':') + 1), 'wireId')
 }
 
 /**
- * Map a Hyperliquid non-funding ledger entry to an ActivityItem.
- *
- * Direction for `spotTransfer` and `sendAsset` is derived from
- * `queriedAddress` matching the delta's `user` (OUT) or `destination` (IN).
- * Returns null for unsupported delta types and for same-account moves, where
- * `user === destination === queriedAddress`.
- *
- * @param resolveMarket - Market identity for a venue coin, or `undefined` when
- * the backend market list does not hold it. A liquidated position the resolver
- * cannot identify is dropped.
+ * Map supported ledger entries; exclude same-account moves and unsupported types.
+ * Missing assets throw; unresolved liquidation markets omit only those positions.
  * @public
  */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
   providerKey: string,
   queriedAddress: string,
+  assetRegistry: AssetRegistry,
   resolveMarket: (coin: string) => MarketDisplay | undefined
 ): ActivityItem | null => {
   const { delta } = entry
@@ -67,48 +62,57 @@ export const mapLedgerEntry = (
     timestamp: new Date(entry.time).toISOString(),
   }
 
-  // Handled before the switch: the catch-all arm of `HlLedgerDelta` is a
-  // structural supertype of the concrete delta, so a `switch (delta.type)`
-  // cannot narrow off the discriminant. The user-defined type guard does.
-  if (isSpotTransferDelta(delta)) {
+  if (
+    isSpotTransferDelta(delta) ||
+    isSendAssetDelta(delta) ||
+    isCollateralTransferDelta(delta)
+  ) {
     const queried = queriedAddress.toLowerCase()
     const sender = delta.user.toLowerCase()
     const recipient = delta.destination.toLowerCase()
-
-    // A transfer reports a movement between two accounts. A row whose sender
-    // and recipient are the queried account moves nothing between accounts.
     if (sender === recipient && sender === queried) {
       return null
     }
-
     const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
-    const counterpartyAddress = direction === 'OUT' ? recipient : sender
-    const meta: Record<string, unknown> = {
-      transferType: 'spotTransfer',
-    }
-    if (delta.usdcValue !== undefined) {
-      meta.usdcValue = delta.usdcValue
-    }
-    if (delta.nonce !== undefined) {
-      meta.nonce = delta.nonce
-    }
     const fees: Fee[] = []
     if (delta.fee !== undefined) {
-      fees.push({ amount: delta.fee, asset: HL_COLLATERAL_SYMBOL })
-    }
-    if (delta.nativeTokenFee !== undefined) {
       fees.push({
-        amount: delta.nativeTokenFee,
-        asset: HL_NATIVE_TOKEN_SYMBOL,
+        amount: delta.fee,
+        asset: isSendAssetDelta(delta)
+          ? delta.feeToken.split(':')[0]
+          : HL_COLLATERAL_SYMBOL,
       })
+    }
+    if (
+      !isCollateralTransferDelta(delta) &&
+      delta.nativeTokenFee !== undefined
+    ) {
+      fees.push({ amount: delta.nativeTokenFee, asset: HL_NATIVE_TOKEN_SYMBOL })
+    }
+    const meta: Record<string, unknown> = {
+      transferType: isSendAssetDelta(delta) ? 'sendAsset' : delta.type,
+    }
+    if (!isCollateralTransferDelta(delta)) {
+      if (delta.usdcValue !== undefined) {
+        meta.usdcValue = delta.usdcValue
+      }
+      if (delta.nonce !== undefined) {
+        meta.nonce = delta.nonce
+      }
+    }
+    if (isSendAssetDelta(delta)) {
+      meta.sourceDex = delta.sourceDex
+      meta.destinationDex = delta.destinationDex
     }
     return {
       ...base,
       type: ActivityType.TRANSFER,
       direction,
-      counterpartyAddress,
-      asset: ledgerTokenSymbol(delta.token),
-      amount: delta.amount,
+      counterpartyAddress: direction === 'OUT' ? recipient : sender,
+      asset: isCollateralTransferDelta(delta)
+        ? assetRegistry.require(HL_COLLATERAL_ASSET_ID)
+        : resolveLedgerAsset(delta.token, assetRegistry),
+      amount: isCollateralTransferDelta(delta) ? delta.usdc : delta.amount,
       ...(fees.length === 0 ? {} : { fees }),
       meta,
       explorerLink: entry.hash
@@ -117,40 +121,44 @@ export const mapLedgerEntry = (
     } satisfies TransferActivity
   }
 
-  // `sendAsset` (wire `type === 'send'`) covers cross-user transfers
-  // (modelled as TRANSFER) and same-user dex moves (returned as null —
-  // overloading TRANSFER for those would lie about direction). Pre-switch
-  // narrowing for the same reason as spotTransfer.
-  if (isSendAssetDelta(delta)) {
+  if (isVaultTransferDelta(delta)) {
     const queried = queriedAddress.toLowerCase()
-    const sender = delta.user.toLowerCase()
-    const recipient = delta.destination.toLowerCase()
-
-    if (sender === recipient && sender === queried) {
-      return null
+    const vault = delta.vault.toLowerCase()
+    if (delta.type === 'vaultDeposit' && queried === vault) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Hyperliquid vaultDeposit identifies no depositor for the vault account'
+      )
     }
-
-    const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
-    const counterpartyAddress = direction === 'OUT' ? recipient : sender
-    const meta: Record<string, unknown> = {
-      transferType: 'sendAsset',
-      sourceDex: delta.sourceDex,
-      destinationDex: delta.destinationDex,
-      usdcValue: delta.usdcValue,
-      nonce: delta.nonce,
+    if (
+      delta.type === 'vaultWithdraw' &&
+      delta.user.toLowerCase() === vault &&
+      queried === vault
+    ) {
+      return null
     }
     return {
       ...base,
       type: ActivityType.TRANSFER,
-      direction,
-      counterpartyAddress,
-      asset: ledgerTokenSymbol(delta.token),
-      amount: delta.amount,
-      fees: [
-        { amount: delta.fee, asset: ledgerTokenSymbol(delta.feeToken) },
-        { amount: delta.nativeTokenFee, asset: HL_NATIVE_TOKEN_SYMBOL },
-      ],
-      meta,
+      direction:
+        delta.type === 'vaultDeposit' || queried === vault ? 'OUT' : 'IN',
+      counterpartyAddress:
+        delta.type === 'vaultWithdraw' && queried === vault
+          ? delta.user.toLowerCase()
+          : vault,
+      asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
+      amount:
+        delta.type === 'vaultDeposit' ? delta.usdc : delta.netWithdrawnUsd,
+      meta:
+        delta.type === 'vaultDeposit'
+          ? { transferType: delta.type }
+          : {
+              transferType: delta.type,
+              requestedUsd: delta.requestedUsd,
+              commission: delta.commission,
+              closingCost: delta.closingCost,
+              basis: delta.basis,
+            },
       explorerLink: entry.hash
         ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
         : undefined,
@@ -163,7 +171,7 @@ export const mapLedgerEntry = (
     return {
       ...base,
       type: ActivityType.DEPOSIT,
-      asset: HL_COLLATERAL_SYMBOL,
+      asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
       amount: delta.usdc,
       explorerLink: entry.hash
         ? `https://scan.li.fi/tx/${entry.hash}`
@@ -175,7 +183,7 @@ export const mapLedgerEntry = (
     return {
       ...base,
       type: ActivityType.WITHDRAWAL,
-      asset: HL_COLLATERAL_SYMBOL,
+      asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
       amount: delta.usdc,
       ...(delta.fee === undefined
         ? {}

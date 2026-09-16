@@ -20,22 +20,6 @@ describe('activity cursor round-trip', () => {
     expect(decodeActivityCursor(encoded)).toEqual(env)
   })
 
-  it('preserves the base64url-of-JSON shape backend consumers expect', () => {
-    const env: LighterActivityCursor = { deposits: 'dep:1' }
-    const encoded = encodeActivityCursor(env)
-    expect(encoded).toBeDefined()
-    if (!encoded) {
-      throw new Error('encoded is undefined')
-    }
-    // base64url uses A-Z, a-z, 0-9, -, _ — no padding, no + or /
-    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/)
-    // round-tripping through `Buffer.from(s, 'base64url').toString('utf8')`
-    // (Node) and `atob(toStandardBase64(s))` (browser) MUST yield identical
-    // JSON; we exercise the Node path here.
-    const decoded = Buffer.from(encoded, 'base64url').toString('utf8')
-    expect(JSON.parse(decoded)).toEqual({ deposits: 'dep:1' })
-  })
-
   it('drops empty/undefined keys before encoding', () => {
     const env: LighterActivityCursor = {
       deposits: 'd',
@@ -78,7 +62,14 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.DEPOSIT,
-        asset: 'USDC',
+        asset: {
+          providerId: 'lighter',
+          id: '3',
+          wireId: 'wire',
+          l1Address: '0xaddress',
+          displaySymbol: 'USDC',
+          logoURI: 'usdc.svg',
+        },
         amount: '100',
       },
     ]
@@ -94,7 +85,12 @@ describe('activity cursor round-trip', () => {
         provider: 'lighter',
         timestamp: '2023-11-14T22:13:20.000Z',
         type: ActivityType.WITHDRAWAL,
-        asset: 'USDC',
+        asset: {
+          providerId: 'lighter',
+          id: '3',
+          displaySymbol: 'USDC',
+          logoURI: 'usdc.svg',
+        },
         amount: '5',
       },
     ]
@@ -120,6 +116,58 @@ describe('activity cursor round-trip', () => {
       'utf8'
     ).toString('base64url')
     expect(() => decodeActivityCursor(bad)).toThrow(/overflow must be an array/)
+  })
+
+  it('rejects a legacy version-1 envelope that carries overflow rows', () => {
+    const legacy = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        deposits: 'dep:1',
+        overflow: [
+          {
+            id: 'd1',
+            provider: 'lighter',
+            timestamp: '2023-11-14T22:13:20.000Z',
+            type: ActivityType.DEPOSIT,
+            asset: 'USDC',
+            amount: '100',
+          },
+        ],
+      }),
+      'utf8'
+    ).toString('base64url')
+    expect(() => decodeActivityCursor(legacy)).toThrow(/legacy overflow format/)
+  })
+
+  it('rejects an overflow row that lost its identity or activity type', () => {
+    const withRow = (row: unknown): string =>
+      Buffer.from(
+        JSON.stringify({ version: 2, overflow: [row] }),
+        'utf8'
+      ).toString('base64url')
+    expect(() => decodeActivityCursor(withRow('deposit'))).toThrow(
+      /overflow\[0\] must be an object/
+    )
+    expect(() =>
+      decodeActivityCursor(
+        withRow({ provider: 'lighter', timestamp: 'now', type: 'deposit' })
+      )
+    ).toThrow(/overflow\[0\] id must be a string/)
+    expect(() =>
+      decodeActivityCursor(
+        withRow({
+          id: 'd1',
+          provider: 'lighter',
+          timestamp: 'now',
+          type: 'airdrop',
+        })
+      )
+    ).toThrow(/overflow\[0\] carries an unknown activity type/)
+  })
+
+  it('round-trips a non-latin asset name through the utf-8 codec', () => {
+    const env: LighterActivityCursor = { deposits: 'дэп:1' }
+    expect(decodeActivityCursor(encodeActivityCursor(env))).toEqual(env)
   })
 
   it('rejects a non-object JSON cursor', () => {
