@@ -11,95 +11,90 @@ import {
   OrderType,
   TimeInForce,
 } from '@lifi/perps-types'
-import type { LtOrder } from '../types/index.js'
+import type {
+  LtOrder,
+  LtOrderStatusEnum,
+  LtOrderTimeInForceEnum,
+  LtOrderTypeEnum,
+} from '../types/index.js'
 
-// Lighter's `type` enum uses hyphens in the OpenAPI spec but earlier API
-// versions emitted underscores. Tolerate both so we don't silently fall
-// through to LIMIT for stop/take-profit orders.
-const mapOrderType = (ltType: string): OrderType => {
-  const normalized = ltType.replace(/-/g, '_')
-  const map: Record<string, OrderType> = {
-    limit: OrderType.LIMIT,
-    market: OrderType.MARKET,
-    stop_loss: OrderType.STOP_MARKET,
-    stop_loss_limit: OrderType.STOP_LIMIT,
-    take_profit: OrderType.TAKE_PROFIT_MARKET,
-    take_profit_limit: OrderType.TAKE_PROFIT_LIMIT,
-  }
-  return map[normalized] ?? OrderType.LIMIT
+/** The terminal `canceled-*` members of Lighter's order status enum. */
+type LtCanceledStatus = Extract<LtOrderStatusEnum, `canceled${string}`>
+
+// TWAP children and liquidation legs rest as limit orders; the cross-provider
+// OrderType has no member for either.
+const ORDER_TYPES: Record<LtOrderTypeEnum, OrderType> = {
+  limit: OrderType.LIMIT,
+  market: OrderType.MARKET,
+  'stop-loss': OrderType.STOP_MARKET,
+  'stop-loss-limit': OrderType.STOP_LIMIT,
+  'take-profit': OrderType.TAKE_PROFIT_MARKET,
+  'take-profit-limit': OrderType.TAKE_PROFIT_LIMIT,
+  twap: OrderType.LIMIT,
+  'twap-sub': OrderType.LIMIT,
+  liquidation: OrderType.LIMIT,
 }
 
-const mapTimeInForce = (tif: string): TimeInForce | undefined => {
-  switch (tif.replace(/-/g, '_')) {
-    case 'good_till_time':
-      return TimeInForce.GTT
-    case 'immediate_or_cancel':
-      return TimeInForce.IOC
-    case 'post_only':
-      return TimeInForce.POST_ONLY
+// Lighter reports `Unknown` when it holds no time-in-force for the order.
+const TIME_IN_FORCE: Record<LtOrderTimeInForceEnum, TimeInForce | undefined> = {
+  'good-till-time': TimeInForce.GTT,
+  'immediate-or-cancel': TimeInForce.IOC,
+  'post-only': TimeInForce.POST_ONLY,
+  Unknown: undefined,
+}
+
+// The `Partial` half admits a lookup by any status; the `Record` half requires
+// an entry for every `canceled-*` member.
+const CANCEL_REASONS: Partial<Record<LtOrderStatusEnum, string>> &
+  Record<LtCanceledStatus, string> = {
+  canceled: 'Order cancelled.',
+  'canceled-post-only':
+    'Order cancelled: post-only order would have crossed the book.',
+  'canceled-reduce-only': 'Order cancelled: would not reduce your position.',
+  'canceled-position-not-allowed': 'Order cancelled: position not allowed.',
+  'canceled-margin-not-allowed': 'Order cancelled: insufficient margin.',
+  'canceled-too-much-slippage': 'Order cancelled: slippage exceeded tolerance.',
+  'canceled-not-enough-liquidity':
+    'Order cancelled: not enough liquidity to fill.',
+  'canceled-self-trade':
+    'Order cancelled: would self-trade against your own resting order.',
+  'canceled-expired': 'Order expired.',
+  'canceled-oco':
+    'Order cancelled: sibling OCO order filled or cancelled first.',
+  'canceled-child': 'Order cancelled: parent order was cancelled.',
+  'canceled-liquidation': 'Order cancelled: account was liquidated.',
+  'canceled-invalid-balance': 'Order cancelled: invalid balance.',
+}
+
+const mapOrderType = (ltType: LtOrderTypeEnum): OrderType => ORDER_TYPES[ltType]
+
+const mapTimeInForce = (tif: LtOrderTimeInForceEnum): TimeInForce | undefined =>
+  TIME_IN_FORCE[tif]
+
+const mapOrderStatus = (status: LtOrderStatusEnum): OrderStatus => {
+  switch (status) {
+    case 'open':
+    case 'in-progress':
+      return OrderStatus.OPEN
+    case 'pending':
+      return OrderStatus.PENDING
+    case 'filled':
+      return OrderStatus.FILLED
     default:
-      return undefined
+      status satisfies LtCanceledStatus
+      return OrderStatus.CANCELLED
   }
-}
-
-const mapOrderStatus = (status: string): OrderStatus => {
-  if (
-    status === 'open' ||
-    status === 'in-progress' ||
-    status === 'in_progress'
-  ) {
-    return OrderStatus.OPEN
-  }
-  if (status === 'pending') {
-    return OrderStatus.PENDING
-  }
-  if (status === 'filled') {
-    return OrderStatus.FILLED
-  }
-  if (status.startsWith('canceled')) {
-    return OrderStatus.CANCELLED
-  }
-  return OrderStatus.OPEN
 }
 
 /**
  * Map a raw Lighter order status to a short English sentence describing
  * *why* the order ended in a terminal non-FILLED state. Non-terminal
- * statuses, plain `filled`, and unknown values return `undefined`.
+ * statuses and plain `filled` return `undefined`.
  * @public
  */
-export const mapStatusReason = (status: string): string | undefined => {
-  switch (status) {
-    case 'canceled':
-      return 'Order cancelled.'
-    case 'canceled-post-only':
-      return 'Order cancelled: post-only order would have crossed the book.'
-    case 'canceled-reduce-only':
-      return 'Order cancelled: would not reduce your position.'
-    case 'canceled-position-not-allowed':
-      return 'Order cancelled: position not allowed.'
-    case 'canceled-margin-not-allowed':
-      return 'Order cancelled: insufficient margin.'
-    case 'canceled-too-much-slippage':
-      return 'Order cancelled: slippage exceeded tolerance.'
-    case 'canceled-not-enough-liquidity':
-      return 'Order cancelled: not enough liquidity to fill.'
-    case 'canceled-self-trade':
-      return 'Order cancelled: would self-trade against your own resting order.'
-    case 'canceled-expired':
-      return 'Order expired.'
-    case 'canceled-oco':
-      return 'Order cancelled: sibling OCO order filled or cancelled first.'
-    case 'canceled-child':
-      return 'Order cancelled: parent order was cancelled.'
-    case 'canceled-liquidation':
-      return 'Order cancelled: account was liquidated.'
-    case 'canceled-invalid-balance':
-      return 'Order cancelled: invalid balance.'
-    default:
-      return undefined
-  }
-}
+export const mapStatusReason = (
+  status: LtOrderStatusEnum
+): string | undefined => CANCEL_REASONS[status]
 
 /**
  * True for order types Lighter exposes as TP/SL legs. Mirrors the

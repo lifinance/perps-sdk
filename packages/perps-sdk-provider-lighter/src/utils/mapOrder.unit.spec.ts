@@ -1,11 +1,18 @@
+import { isActiveOrderStatus } from '@lifi/perps-sdk'
 import {
   type MarketDisplay,
   OrderSide,
   OrderStatus,
   OrderType,
+  TimeInForce,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import type { LtOrder } from '../types/index.js'
+import type {
+  LtOrder,
+  LtOrderStatusEnum,
+  LtOrderTimeInForceEnum,
+  LtOrderTypeEnum,
+} from '../types/index.js'
 import { mapOrder, mapOrderDetail, mapStatusReason } from './mapOrder.js'
 
 const SYMBOL = 'ETH'
@@ -83,8 +90,8 @@ describe('mapStatusReason (Lighter)', () => {
     expect(mapStatusReason('pending')).toBeUndefined()
   })
 
-  it('returns undefined for unknown statuses', () => {
-    expect(mapStatusReason('something-new')).toBeUndefined()
+  it('returns undefined for in-progress', () => {
+    expect(mapStatusReason('in-progress')).toBeUndefined()
   })
 
   it('maps canceled', () => {
@@ -246,5 +253,103 @@ describe('mapOrder (Lighter) — OpenOrder sizes', () => {
       reduceOnly: false,
       createdAt: '2023-11-14T22:13:20.000Z',
     })
+  })
+})
+
+// Every literal below is checked against the adopted union, so a spelling
+// Lighter drops from the wire enum fails to compile here.
+const ORDER_TYPE_SPELLINGS = [
+  'limit',
+  'market',
+  'stop-loss',
+  'stop-loss-limit',
+  'take-profit',
+  'take-profit-limit',
+  'twap',
+  'twap-sub',
+  'liquidation',
+] satisfies LtOrderTypeEnum[]
+
+const TIME_IN_FORCE_SPELLINGS = [
+  'good-till-time',
+  'immediate-or-cancel',
+  'post-only',
+  'Unknown',
+] satisfies LtOrderTimeInForceEnum[]
+
+const CANCELED_STATUSES = [
+  'canceled',
+  'canceled-post-only',
+  'canceled-reduce-only',
+  'canceled-position-not-allowed',
+  'canceled-margin-not-allowed',
+  'canceled-too-much-slippage',
+  'canceled-not-enough-liquidity',
+  'canceled-self-trade',
+  'canceled-expired',
+  'canceled-oco',
+  'canceled-child',
+  'canceled-liquidation',
+  'canceled-invalid-balance',
+] satisfies LtOrderStatusEnum[]
+
+const LIVE_STATUSES = [
+  'in-progress',
+  'pending',
+  'open',
+  'filled',
+] satisfies LtOrderStatusEnum[]
+
+describe('mapOrderDetail (Lighter) — wire enum spellings', () => {
+  it('maps every hyphenated order type Lighter declares', () => {
+    const mapped = ORDER_TYPE_SPELLINGS.map(
+      (type) => mapOrderDetail(baseOrder({ type }), MARKET).type
+    )
+    expect(mapped).toEqual([
+      OrderType.LIMIT,
+      OrderType.MARKET,
+      OrderType.STOP_MARKET,
+      OrderType.STOP_LIMIT,
+      OrderType.TAKE_PROFIT_MARKET,
+      OrderType.TAKE_PROFIT_LIMIT,
+      OrderType.LIMIT,
+      OrderType.LIMIT,
+      OrderType.LIMIT,
+    ])
+  })
+
+  it('maps every hyphenated time-in-force Lighter declares', () => {
+    const mapped = TIME_IN_FORCE_SPELLINGS.map(
+      (time_in_force) =>
+        mapOrderDetail(baseOrder({ time_in_force }), MARKET).timeInForce
+    )
+    expect(mapped).toEqual([
+      TimeInForce.GTT,
+      TimeInForce.IOC,
+      TimeInForce.POST_ONLY,
+      undefined,
+    ])
+  })
+
+  it('maps in-progress to OPEN', () => {
+    const order = mapOrderDetail(baseOrder({ status: 'in-progress' }), MARKET)
+    expect(order.status).toBe(OrderStatus.OPEN)
+  })
+
+  it('maps every canceled status to CANCELLED with a reason', () => {
+    for (const status of CANCELED_STATUSES) {
+      const order = mapOrderDetail(baseOrder({ status }), MARKET)
+      expect(order.status).toBe(OrderStatus.CANCELLED)
+      expect(isActiveOrderStatus(order.status)).toBe(false)
+      expect(order.statusReason).toBeDefined()
+    }
+  })
+
+  it('leaves every non-canceled status without a reason', () => {
+    for (const status of LIVE_STATUSES) {
+      expect(mapOrderDetail(baseOrder({ status }), MARKET).statusReason).toBe(
+        undefined
+      )
+    }
   })
 })

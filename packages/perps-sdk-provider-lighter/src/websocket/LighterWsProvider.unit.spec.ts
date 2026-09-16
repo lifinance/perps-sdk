@@ -39,7 +39,7 @@ const RAW_ORDER = {
   filled_quote_amount: '0',
   side: 'sell',
   type: 'limit',
-  time_in_force: 'good_till_time',
+  time_in_force: 'good-till-time',
   reduce_only: false,
   trigger_price: '0',
   order_expiry: 0,
