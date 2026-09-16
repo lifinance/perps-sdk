@@ -1,5 +1,9 @@
 import { PerpsError } from '@lifi/perps-sdk'
-import { type ActivityItem, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  type ActivityItem,
+  ActivityType,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 
 /**
  * Per-endpoint cursor envelope for Ondo activity pagination.
@@ -116,20 +120,51 @@ export const decodeActivityCursor = (
         'Invalid Ondo activity cursor: legacy overflow format; restart pagination'
       )
     }
-    env.overflow = overflow as ActivityItem[]
+    env.overflow = overflow.map(toOverflowItem)
   }
   return env
 }
 
+const ACTIVITY_TYPES: readonly string[] = Object.values(ActivityType)
+
+/**
+ * A cursor travels through consumer storage, so an overflow row may arrive
+ * corrupted or from an incompatible build. Reject it here rather than let a
+ * malformed row reach a consumer as a typed activity.
+ */
+const toOverflowItem = (row: unknown, index: number): ActivityItem => {
+  const invalid = (detail: string): PerpsError =>
+    new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid Ondo activity cursor: overflow[${index}] ${detail}`
+    )
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+    throw invalid('must be an object')
+  }
+  const item = row as Record<string, unknown>
+  for (const field of ['id', 'provider', 'timestamp'] as const) {
+    if (typeof item[field] !== 'string') {
+      throw invalid(`${field} must be a string`)
+    }
+  }
+  if (typeof item.type !== 'string' || !ACTIVITY_TYPES.includes(item.type)) {
+    throw invalid('carries an unknown activity type')
+  }
+  return row as ActivityItem
+}
+
 const toBase64Url = (s: string): string => {
-  const utf8 = unescape(encodeURIComponent(s))
-  return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  let binary = ''
+  for (const byte of new TextEncoder().encode(s)) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 const fromBase64Url = (s: string): string => {
   const padded = s.replace(/-/g, '+').replace(/_/g, '/') + padFor(s)
-  const decoded = atob(padded)
-  return decodeURIComponent(escape(decoded))
+  const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
 }
 
 const padFor = (s: string): string => {
