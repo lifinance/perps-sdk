@@ -9,7 +9,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlOrderStatusResponse } from '../types/index.js'
-import { mapOrder } from '../utils/index.js'
+import { assetIsOutcome, mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -46,7 +46,7 @@ export const getOrder = async (
     hlInfoOptions(client, options)
   )
 
-  if (status.status !== 'order') {
+  if (status.status !== 'order' || assetIsOutcome(status.order.order.coin)) {
     const err = new PerpsError(
       PerpsErrorCode.OrderNotFound,
       `Order not found: ${params.id}`

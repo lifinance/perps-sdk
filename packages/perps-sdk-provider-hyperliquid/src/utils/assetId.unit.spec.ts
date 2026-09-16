@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
+import {
+  assetIsOutcome,
+  assetIsSpot,
+  calculateAssetId,
+  getProviderIndex,
+} from './assetId.js'
 
 describe('assetIsSpot', () => {
   it('treats an "@<pairIndex>" id as spot', () => {
@@ -10,6 +15,26 @@ describe('assetIsSpot', () => {
   it('treats a bare perp coin as non-spot', () => {
     expect(assetIsSpot('BTC')).toBe(false)
     expect(assetIsSpot('xyz:PURR')).toBe(false)
+  })
+})
+
+describe('assetIsOutcome', () => {
+  it('treats a "#" coin and a "+" token name as an outcome identity', () => {
+    expect(assetIsOutcome('#26140')).toBe(true)
+    expect(assetIsOutcome('+26140')).toBe(true)
+  })
+
+  it('treats an asset ID at or above 100000000 as an outcome identity', () => {
+    expect(assetIsOutcome(100_026_140)).toBe(true)
+    expect(assetIsOutcome(100_000_000)).toBe(true)
+  })
+
+  it('treats a spot, perp, or sub-dex identity as non-outcome', () => {
+    expect(assetIsOutcome('@1')).toBe(false)
+    expect(assetIsOutcome('PURR/USDC')).toBe(false)
+    expect(assetIsOutcome('BTC')).toBe(false)
+    expect(assetIsOutcome('xyz:BTC')).toBe(false)
+    expect(assetIsOutcome(130_007)).toBe(false)
   })
 })
 

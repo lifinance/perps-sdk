@@ -108,6 +108,49 @@ describe('getAccount', () => {
     expect(result.unrealizedPnl).toBe('100')
   })
 
+  it('skips an outcome market position and an outcome spot token', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        spotClearinghouseState: {
+          balances: [
+            ...HL_SPOT_CLEARINGHOUSE_STATE.balances,
+            {
+              coin: '+26140',
+              token: 100_026_140,
+              total: '3',
+              hold: '0',
+              entryNtl: '0',
+            },
+          ],
+        },
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            ...HL_CLEARINGHOUSE_STATE.assetPositions,
+            {
+              position: {
+                ...HL_CLEARINGHOUSE_STATE.assetPositions[0].position,
+                coin: '#26140',
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.positions.map((p) => p.market.id)).toEqual(['BTC'])
+    expect(result.balances).toEqual([])
+    expect(result.collateralBalances.map((b) => b.asset.displaySymbol)).toEqual(
+      ['USDC', 'USDC']
+    )
+  })
+
   it('reads marginSummary (whole account), not the cross-only crossMarginSummary', async () => {
     // Isolated positions diverge the two summaries: marginSummary carries the
     // full account equity/margin, crossMarginSummary only the cross subset.

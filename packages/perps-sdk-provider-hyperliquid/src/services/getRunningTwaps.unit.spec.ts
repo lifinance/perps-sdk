@@ -109,6 +109,27 @@ describe('Hyperliquid getRunningTwaps', () => {
     ).resolves.toEqual([])
   })
 
+  it('skips an outcome market TWAP', async () => {
+    const installed = installInfoFetchMock(
+      {
+        twapHistory: [
+          activeTwap,
+          {
+            ...activeTwap,
+            state: { ...activeTwap.state, coin: '#26140' },
+            twapId: 3158,
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const result = await getRunningTwaps(ctx, { address: ADDRESS })
+
+    expect(result.map((twap) => twap.twapId)).toEqual(['3156'])
+  })
+
   it('rejects an active state without the stable venue TWAP id', async () => {
     const installed = installInfoFetchMock(
       { twapHistory: [{ ...activeTwap, twapId: undefined }] },

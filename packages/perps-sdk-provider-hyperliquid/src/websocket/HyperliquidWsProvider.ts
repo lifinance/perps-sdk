@@ -61,6 +61,7 @@ import type {
 import { HlAbstractionMode } from '../types/index.js'
 import { toWireBig } from '../utils/decimal.js'
 import {
+  assetIsOutcome,
   decodeCompressedJson,
   decodeFastAssetCtxs,
   hlInfoOptions,
@@ -675,7 +676,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       for (const ctx of ctxs) {
         const marketId = ctx.coin
-        if (marketId === undefined) {
+        if (marketId === undefined || assetIsOutcome(marketId)) {
           continue
         }
         const merged = mergePerpAssetCtx(byMarketId[marketId], marketId, ctx)
@@ -694,6 +695,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       const ctxs = await decodeCompressedJson<HlWsSacData>(base64)
       const touched = new Set<string>()
       for (const [sacKey, ctx] of Object.entries(ctxs)) {
+        if (assetIsOutcome(sacKey)) {
+          continue
+        }
         const marketId = spotMarketIdBySacKey.get(sacKey)
         if (marketId === undefined) {
           continue
@@ -733,14 +737,19 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private handleFastAssetCtxs(base64: string) {
     this.fastDecodeChain.push(async () => {
       const ctxs = await decodeFastAssetCtxs(base64)
+      const touched: string[] = []
       for (const [marketId, ctx] of Object.entries(ctxs)) {
+        if (assetIsOutcome(marketId)) {
+          continue
+        }
         const prev = this.fastCtxByMarketId[marketId]
         this.fastCtxByMarketId[marketId] = {
           markPx: 'markPx' in ctx ? ctx.markPx : prev?.markPx,
           midPx: 'midPx' in ctx ? ctx.midPx : prev?.midPx,
         }
+        touched.push(marketId)
       }
-      this.emitMarketsContext(Object.keys(ctxs))
+      this.emitMarketsContext(touched)
     })
   }
 
@@ -770,12 +779,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
    * Context for one market from the cached feeds: spot asset context when it
    * maps, else perp asset context with mid + mark overlaid from
    * `fastAssetCtxs`, else the fast feed alone — each price standing in for the
-   * other where it carries only one of mid/mark.
+   * other where it carries only one of mid/mark. An attached registry gates the
+   * market id: an id it does not list, or lists as delisted, yields no context.
    */
   private computeMarketContext(marketId: string): MarketContext | undefined {
-    const market = this.registry?.get(marketId)
-    if (market !== undefined && !isActiveMarket(market)) {
-      return undefined
+    if (this.registry !== undefined) {
+      const market = this.registry.get(marketId)
+      if (market === undefined || !isActiveMarket(market)) {
+        return undefined
+      }
     }
     const fast = this.fastCtxByMarketId[marketId]
     const spotCtx = this.spotCtxByMarketId[marketId]
@@ -801,6 +813,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleActiveAssetCtx(data: HlWsActiveAssetCtxData, raw: string) {
+    if (assetIsOutcome(data.coin)) {
+      return
+    }
     const ctx = activePerpAssetCtx(data.coin, data.ctx)
     if (ctx === undefined) {
       wsLog.parseFailure(this.providerKey, raw)
@@ -813,6 +828,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleActiveSpotAssetCtx(data: HlWsActiveSpotAssetCtxData) {
+    if (assetIsOutcome(data.coin)) {
+      return
+    }
     const context = mapSpotMarketContext(data.coin, data.ctx)
     if (context === undefined) {
       return
@@ -943,6 +961,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleCandle(data: HlWsCandleData) {
+    if (assetIsOutcome(data.s)) {
+      return
+    }
     this.emit(`candle:${data.s}:${data.i}`, {
       channel: 'candle',
       data: {
@@ -958,6 +979,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private handleTrades(data: HlWsTrade[]) {
     for (const trade of data) {
+      if (assetIsOutcome(trade.coin)) {
+        continue
+      }
       this.emit(`trades:${trade.coin}`, {
         channel: 'trades',
         data: [
@@ -986,6 +1010,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const terminated: string[] = []
     for (const detail of data) {
       const o = detail.order
+      if (assetIsOutcome(o.coin)) {
+        continue
+      }
       const orderId = String(o.oid)
       if (!isActiveOrderStatus(mapOrderStatus(detail.status))) {
         terminated.push(orderId)
@@ -1017,6 +1044,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const items = data.isSnapshot
       ? []
       : data.fills.flatMap((f) => {
+          if (assetIsOutcome(f.coin)) {
+            return []
+          }
           const market = this.registry?.get(f.coin)
           return market ? [mapFill(f as HlUserFill, market)] : []
         })
@@ -1031,7 +1061,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   ) {
     const positions = data.clearinghouseStates.flatMap(([, state]) =>
       state.assetPositions.flatMap((ap) => {
-        if (!isOpenAssetPosition(ap as HlAssetPosition)) {
+        if (
+          assetIsOutcome(ap.position.coin) ||
+          !isOpenAssetPosition(ap as HlAssetPosition)
+        ) {
           return []
         }
         const market = this.registry?.get(ap.position.coin)
@@ -1254,8 +1287,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const markets = this.registry?.activeMarkets ?? []
     const priceById = spotPriceById(markets, this.mergedMids())
     const rows = data.spotState.balances
-      .filter((balance) =>
-        toWireBig(balance.total, 'spotState.balances.total').gt(0)
+      .filter(
+        (balance) =>
+          !assetIsOutcome(balance.coin) &&
+          toWireBig(balance.total, 'spotState.balances.total').gt(0)
       )
       .map((balance) => ({
         balance: spotBalance(

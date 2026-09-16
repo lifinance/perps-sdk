@@ -2,7 +2,12 @@
 // for the package's utility surface. Internal modules import per-file paths
 // (e.g. `./assetId.js`, `./mapFill.js`) directly.
 
-export { assetIsSpot, calculateAssetId, getProviderIndex } from './assetId.js'
+export {
+  assetIsOutcome,
+  assetIsSpot,
+  calculateAssetId,
+  getProviderIndex,
+} from './assetId.js'
 export {
   applyLogoOverride,
   spotLogoURI,

@@ -14,6 +14,7 @@ import Big from 'big.js'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
+import { assetIsOutcome } from '../utils/assetId.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 interface HlTwapState {
@@ -59,6 +60,7 @@ export const getRunningTwaps = async (
     .filter(
       (entry) =>
         entry.status.status === 'activated' &&
+        !assetIsOutcome(entry.state.coin) &&
         (params.marketId === undefined || entry.state.coin === params.marketId)
     )
     .map((entry) => {

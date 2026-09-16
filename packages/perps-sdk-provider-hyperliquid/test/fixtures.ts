@@ -4,6 +4,7 @@ import type {
   HlExtraAgents,
   HlFrontendOpenOrders,
   HlMetaAndAssetCtxs,
+  HlOrderDetail,
   HlOrderStatusResponse,
   HlPerpDexs,
   HlSpotClearinghouseState,
@@ -236,26 +237,37 @@ export const HL_FRONTEND_OPEN_ORDERS: HlFrontendOpenOrders = [
   },
 ]
 
+const HL_ORDER_DETAIL_FOUND: HlOrderDetail = {
+  order: {
+    oid: 1,
+    coin: 'BTC',
+    side: 'B',
+    sz: '0',
+    limitPx: '94000',
+    orderType: 'Limit',
+    origSz: '0.05',
+    reduceOnly: false,
+    timestamp: 1704067200000,
+    tif: 'Gtc',
+    cloid: null,
+    triggerCondition: 'N/A',
+    triggerPx: null,
+  },
+  status: 'filled',
+  statusTimestamp: 1704067201000,
+}
+
 export const HL_ORDER_STATUS_FOUND: HlOrderStatusResponse = {
   status: 'order',
+  order: HL_ORDER_DETAIL_FOUND,
+}
+
+/** `orderStatus` for an order on an HIP-4 outcome market. */
+export const HL_ORDER_STATUS_OUTCOME: HlOrderStatusResponse = {
+  status: 'order',
   order: {
-    order: {
-      oid: 1,
-      coin: 'BTC',
-      side: 'B',
-      sz: '0',
-      limitPx: '94000',
-      orderType: 'Limit',
-      origSz: '0.05',
-      reduceOnly: false,
-      timestamp: 1704067200000,
-      tif: 'Gtc',
-      cloid: null,
-      triggerCondition: 'N/A',
-      triggerPx: null,
-    },
-    status: 'filled',
-    statusTimestamp: 1704067201000,
+    ...HL_ORDER_DETAIL_FOUND,
+    order: { ...HL_ORDER_DETAIL_FOUND.order, coin: '#26140' },
   },
 }
 

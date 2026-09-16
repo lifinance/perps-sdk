@@ -87,6 +87,26 @@ describe('getOrders', () => {
     expect(result.openOrders[0].orderId).toBe('1')
   })
 
+  it('skips an outcome market order row', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        frontendOpenOrders: [
+          ...HL_FRONTEND_OPEN_ORDERS,
+          { ...HL_FRONTEND_OPEN_ORDERS[0], oid: 3, coin: '#26140' },
+        ],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getOrders(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.openOrders.map((o) => o.orderId)).toEqual(['1'])
+    expect(result.triggerOrders.map((o) => o.orderId)).toEqual(['2'])
+  })
+
   it('filters by marketId-matching `symbol`', async () => {
     ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
 
