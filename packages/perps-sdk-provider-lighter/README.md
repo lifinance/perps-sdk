@@ -82,6 +82,49 @@ The four Next targets execute the client probe in headless Chromium. They cover 
 
 Playwright is a development dependency. SDK consumers do not need it.
 
+## Order reads
+
+`getOrders` returns `{ provider, orders, pagination }`. Each order belongs to the `Order` union.
+The `type` field selects `RegularOrder`, `TriggerOrder`, or `TwapOrder`.
+Every row includes its lifecycle `status`, original size, remaining size, filled size, side, and timestamps.
+Trigger rows include `triggerPrice` and a derived `triggerCondition`. Limit triggers also include `limitPrice`.
+TWAP rows include `durationSeconds` and `startedAt`. TWAP children are regular orders with a `parentOrderId`.
+
+`orderId` contains the venue `order_index`. `clientOrderId` contains the nonzero `client_order_index`.
+`parentOrderId` contains `parent_order_id` when the venue supplies it.
+Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
+`getOrder` uses the same mapper and accepts a venue id or a `client_order_index:<index>` reference.
+
+| Lighter status | SDK status |
+| --- | --- |
+| `open` with `trigger_status: parent-order` | `PENDING` |
+| `open` with a positive filled amount | `PARTIALLY_FILLED` |
+| `open` | `OPEN` |
+| `triggered` | `TRIGGERED` |
+| `filled` | `FILLED` |
+| `canceled` and documented cancellation variants | `CANCELLED` |
+| `canceled-expired` | `EXPIRED` |
+
+Cancelled rows retain the venue status text in `statusReason`.
+Unknown statuses, including `pending` and `in-progress`, throw `PerpsError`.
+
+```ts
+import { OrderStatus } from '@lifi/perps-types'
+
+const history = await client.getOrders({
+  address,
+  statuses: [OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.EXPIRED],
+})
+```
+
+Without `statuses`, the provider requests `PENDING`, `OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`.
+An empty status list returns no orders.
+Active filters use `accountActiveOrders`. Terminal filters use `accountInactiveOrders`.
+A mixed filter reads both endpoints. Running and finished TWAP parents use these same reads.
+Active reads return the complete snapshot and do not apply `limit` or `cursor`.
+History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
+WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API

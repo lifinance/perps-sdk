@@ -1,4 +1,5 @@
 import {
+  ACTIVE_ORDER_STATUSES,
   type DepositFlow,
   explorerTxUrlFromBase,
   getAssetRegistry,
@@ -20,7 +21,6 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
-  type ProviderGetRunningTwapsParams,
   type ProviderGetWithdrawableBalancesParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
@@ -55,7 +55,6 @@ import type {
   Quote,
   SignedActionStep,
   SigningMethod,
-  TwapOrder,
 } from '@lifi/perps-types'
 import {
   ActionType,
@@ -97,7 +96,6 @@ import type {
   LtAccountPnL,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
-  LtDetailedAccountPosition,
   LtLiquidation,
   LtLiquidationsResponse,
   LtOrder,
@@ -128,7 +126,6 @@ import {
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
-  classifyAndMapOrders,
   estimateLiquidationPrice,
   fetchDetailedAccount,
   formatOrderPrice,
@@ -138,7 +135,7 @@ import {
   lighterWithdrawableBalances,
   mapFill,
   mapOpenPositions,
-  mapOrderDetail,
+  mapOrder,
   mapPortfolioHistory,
   positionMarginConstraints,
   toBigOrNull,
@@ -146,7 +143,6 @@ import {
   toIsoFromSeconds,
   toRequiredBig,
 } from './utils/index.js'
-import { mapRunningTwap } from './utils/mapTwap.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -164,11 +160,6 @@ const projectFeeTier = (
   maker: tickToFeeString(limits.current_maker_fee_tick),
   taker: tickToFeeString(limits.current_taker_fee_tick),
 })
-
-const orderCountFor = (p: LtDetailedAccountPosition): number =>
-  (p.open_order_count ?? 0) +
-  (p.pending_order_count ?? 0) +
-  (p.position_tied_order_count ?? 0)
 
 /**
  * Lighter `sendTx` returns a bare lowercase-hex tx hash (40 bytes → 80 hex
@@ -647,11 +638,6 @@ export const createLighterProvider = (
     return wireList(response.orders)
   }
 
-  const deriveOrderBearingMarketIds = (account: LtAccount): number[] =>
-    account.positions
-      .filter((p) => orderCountFor(p) > 0)
-      .map((p) => p.market_id)
-
   const fetchAllHistory = async (
     client: LighterApiClient,
     token: string,
@@ -1063,24 +1049,22 @@ export const createLighterProvider = (
       }
     },
 
-    /**
-     * Lighter's `accountActiveOrders` endpoint takes no limit/cursor and
-     * returns every active order for the account, so the response is always
-     * the complete set: `params.limit` is not honoured and `pagination` is
-     * reported as `{ limit: <count returned>, hasMore: false }` with no cursor.
-     */
     async getOrders(
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
     ): Promise<OrdersResponse> {
+      const statuses = new Set(params.statuses ?? ACTIVE_ORDER_STATUSES)
+      const empty: OrdersResponse = {
+        provider: providerKey,
+        orders: [],
+        pagination: { limit: params.limit ?? 0, hasMore: false },
+      }
+      if (statuses.size === 0) {
+        return empty
+      }
       const token = await resolveAuthToken(opts, params.address)
       if (token === undefined) {
-        return {
-          provider: providerKey,
-          openOrders: [],
-          triggerOrders: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }
+        return empty
       }
 
       const client = apiClient(opts)
@@ -1089,69 +1073,68 @@ export const createLighterProvider = (
         fetchDetailedAccount(client, params.address),
         registry.sync(),
       ])
-
       const marketId =
         params.marketId === undefined
           ? LIGHTER_ALL_MARKETS_WILDCARD
           : Number(registry.require(params.marketId).id)
-
-      const response = await retryOnRevoked(opts, params.address, token, (t) =>
-        fetchActiveOrders(client, t, account.index, marketId)
-      )
-
-      const { openOrders, triggerOrders } = classifyAndMapOrders(
-        response.orders,
-        (marketIndex) => registry.require(String(marketIndex))
-      )
-
-      const total = openOrders.length + triggerOrders.length
-      return {
-        provider: providerKey,
-        openOrders,
-        triggerOrders,
-        pagination: { limit: total, hasMore: false },
+      let active = false
+      let terminal = false
+      for (const status of statuses) {
+        if (isActiveOrderStatus(status)) {
+          active = true
+        } else {
+          terminal = true
+        }
       }
-    },
-
-    async getRunningTwaps(
-      params: ProviderGetRunningTwapsParams,
-      opts?: SDKRequestOptions
-    ): Promise<TwapOrder[]> {
-      const token = await resolveAuthToken(opts, params.address)
-      if (token === undefined) {
-        return []
-      }
-
-      const client = apiClient(opts)
-      const registry = getMarketRegistry(requireClient(), providerKey)
-      const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
-        registry.sync(),
-      ])
-      const marketIds =
-        params.marketId === undefined
-          ? deriveOrderBearingMarketIds(account)
-          : [Number(registry.require(params.marketId).id)]
-      const responses = await retryOnRevoked(opts, params.address, token, (t) =>
-        Promise.all(
-          marketIds.map((id) => fetchActiveOrders(client, t, account.index, id))
-        )
+      const [activeResponse, inactiveResponse] = await retryOnRevoked(
+        opts,
+        params.address,
+        token,
+        (t) =>
+          Promise.all([
+            active && params.cursor === undefined
+              ? fetchActiveOrders(client, t, account.index, marketId)
+              : undefined,
+            terminal
+              ? client.getAuthed<LtOrdersResponse>(
+                  '/api/v1/accountInactiveOrders',
+                  t,
+                  {
+                    account_index: account.index,
+                    market_id: marketId,
+                    limit: params.limit ?? LIGHTER_HISTORY_PAGE_SIZE,
+                    ...(params.cursor === undefined
+                      ? {}
+                      : { cursor: params.cursor }),
+                  }
+                )
+              : undefined,
+          ])
       )
-
-      const twaps: TwapOrder[] = []
-      for (const response of responses) {
-        for (const order of response.orders) {
-          if (order.type === 'twap') {
-            twaps.push(
-              mapRunningTwap(
-                order,
-                registry.require(String(order.market_index))
-              )
-            )
+      const orders: Order[] = []
+      for (const response of [activeResponse, inactiveResponse]) {
+        for (const raw of wireList(response?.orders)) {
+          const order = mapOrder(
+            raw,
+            registry.require(String(raw.market_index))
+          )
+          if (statuses.has(order.status)) {
+            orders.push(order)
           }
         }
       }
-      return twaps
+      const cursor = inactiveResponse?.next_cursor || undefined
+      return {
+        provider: providerKey,
+        orders,
+        pagination: {
+          limit: terminal
+            ? (params.limit ?? LIGHTER_HISTORY_PAGE_SIZE)
+            : orders.length,
+          hasMore: cursor !== undefined,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+      }
     },
 
     /**
@@ -1189,7 +1172,7 @@ export const createLighterProvider = (
           `Lighter order ${params.id} not found for ${params.address}`
         )
       const detail = (order: LtOrder): Order =>
-        mapOrderDetail(order, registry.require(String(order.market_index)))
+        mapOrder(order, registry.require(String(order.market_index)))
 
       // A tx-hash route would require mapping the caller's executeAction tx
       // hash → wasm nonce → matching order, which the LI.FI backend did via

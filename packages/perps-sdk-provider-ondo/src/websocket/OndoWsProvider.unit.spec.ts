@@ -3,7 +3,7 @@ import {
   createPerpsClient,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
-import { PositionMarginAdjustment } from '@lifi/perps-types'
+import { OrderStatus, PositionMarginAdjustment } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_ONDO_API_URL, DEFAULT_ONDO_WS_URL } from '../constants.js'
@@ -1012,7 +1012,7 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('classifies ordersPerps updates into open, trigger and terminated buckets', async () => {
+    it('maps order updates and retains terminal rows and ids', async () => {
       const p = makeProvider()
       stubSocket(p)
       const listener = vi.fn()
@@ -1034,18 +1034,19 @@ describe('OndoWsProvider', () => {
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('orderUpdates')
-      expect(event.data.openOrders).toHaveLength(1)
-      expect(event.data.openOrders[0]).toMatchObject({
+      expect(event.data.orders).toHaveLength(3)
+      expect(event.data.orders[0]).toMatchObject({
         orderId: 'ord-1',
         price: '227.50',
         originalSize: '10',
         remainingSize: '10',
       })
-      expect(event.data.openOrders[0].market.baseAsset.displaySymbol).toBe(
-        'AAPL'
-      )
-      expect(event.data.triggerOrders).toHaveLength(1)
-      expect(event.data.triggerOrders[0].orderId).toBe('ord-2')
+      expect(event.data.orders[0].market.baseAsset.displaySymbol).toBe('AAPL')
+      expect(event.data.orders[1].orderId).toBe('ord-2')
+      expect(event.data.orders[2]).toMatchObject({
+        orderId: 'ord-3',
+        status: OrderStatus.CANCELLED,
+      })
       expect(event.data.terminated).toEqual(['ord-3'])
       p.close()
     })
@@ -1062,15 +1063,16 @@ describe('OndoWsProvider', () => {
       feed(p, {
         type: 'update',
         channel: 'ordersPerps',
-        data: [{ ...RAW_ORDER, filledSize: '4.00', status: 'partiallyFilled' }],
+        data: [{ ...RAW_ORDER, filledSize: '4.00', status: 'open' }],
       })
 
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders[0]).toMatchObject({
+      expect(event.data.orders[0]).toMatchObject({
         orderId: 'ord-1',
         originalSize: '10',
         remainingSize: '6',
         filledSize: '4.00',
+        status: OrderStatus.PARTIALLY_FILLED,
       })
       p.close()
     })

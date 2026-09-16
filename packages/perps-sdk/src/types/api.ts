@@ -176,8 +176,8 @@ export interface PlaceOrderParams {
 }
 
 /**
- * Parameters for placing trigger-only orders (TP/SL on existing positions).
- * Sends a TRIGGER_ONLY order that skips the main order wire.
+ * Sends `ActionType.PLACE_TRIGGER_ORDER` with
+ * `{ market, side, takeProfit?, stopLoss? }`.
  *
  * @public
  */

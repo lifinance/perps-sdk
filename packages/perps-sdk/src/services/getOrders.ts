@@ -1,8 +1,9 @@
-import type { OrdersResponse } from '@lifi/perps-types'
+import type { OrderStatus, OrdersResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { requireProvider } from '../client/requireProvider.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
+import { ACTIVE_ORDER_STATUSES } from '../utils/orderClassification.js'
 
 /**
  * Parameters for {@link getOrders}.
@@ -12,6 +13,7 @@ import type { PerpsSDKClient } from '../types/provider.js'
 export interface GetOrdersParams {
   provider: string
   address: Address
+  statuses?: OrderStatus[]
   /** Optional opaque `Market.id` filter, not a display symbol. */
   marketId?: string
   /** Maximum items returned; provider defaults and caps apply. */
@@ -20,22 +22,7 @@ export interface GetOrdersParams {
   cursor?: string
 }
 
-/**
- * Get open orders and trigger orders for an account. Delegates to the
- * registered venue plugin (direct-to-venue); requires the provider plugin to be
- * registered on the client.
- *
- * @throws {PerpsError} When the provider plugin is not registered, or on
- *   backend / network / parsing errors.
- * @example
- * ```ts
- * const { openOrders, triggerOrders } = await getOrders(client, {
- *   provider: 'hyperliquid',
- *   address: '0x1234...',
- * })
- * ```
- * @public
- */
+/** Read account orders with active lifecycle statuses as the default filter. */
 export async function getOrders(
   client: PerpsSDKClient,
   params: GetOrdersParams,
@@ -44,6 +31,7 @@ export async function getOrders(
   return requireProvider(client, params.provider).getOrders(
     {
       address: params.address,
+      statuses: params.statuses ?? [...ACTIVE_ORDER_STATUSES],
       marketId: params.marketId,
       limit: params.limit,
       cursor: params.cursor,

@@ -3,15 +3,17 @@ import type {
   ActionType,
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
+  OrderStatus,
   OrderType,
   PositionSide,
+  TimeInForce,
+  TriggerCondition,
 } from './enums.js'
 import type { MarketDisplay, PerpsMarketDisplay } from './market.js'
-import type { Address } from './primitives.js'
+import type { Address, ProviderId } from './primitives.js'
 
 /**
  * Maker and taker fee rates for the account's current venue tier.
@@ -80,29 +82,59 @@ export interface PositionMarginConstraints {
   amountIncrement: string
 }
 
-/**
- * Normalized non-trigger order currently open at a provider.
- *
- * @public
- */
-export interface OpenOrder {
+/** Shared identity, quantities, and lifecycle of a venue order. */
+export interface OrderBase {
+  /** Venue-assigned id: Hyperliquid `oid`, Lighter `order_index`, Ondo `orderId`. */
   orderId: string
+  /** Client-set id, absent when the placer set none. */
+  clientOrderId?: string
   market: MarketDisplay
   side: OrderSide
-  type: OrderType
-  /** Quantity the order was submitted for, in base-asset units. */
+  status: OrderStatus
+  /** Venue text for a REJECTED or CANCELLED order, when the venue gives one. */
+  statusReason?: string
   originalSize: string
-  /** Quantity still resting on the book, in base-asset units. */
   remainingSize: string
-  /** Limit/order price in quote-asset units. */
-  price: string
-  /** Quantity already filled in base-asset units. */
   filledSize: string
+  averagePrice?: string
   reduceOnly: boolean
-  label?: string
-  /** ISO-8601 creation timestamp. */
+  /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
+  parentOrderId?: string
+  /** Set only when the venue row carries a transaction hash. */
+  explorerLink?: string
   createdAt: string
+  updatedAt: string
 }
+
+/** Market or limit order with a time-in-force policy. */
+export interface RegularOrder extends OrderBase {
+  type: OrderType.MARKET | OrderType.LIMIT
+  price?: string
+  timeInForce: TimeInForce
+  expiresAt?: string
+}
+
+/** Price-activated take-profit or stop-loss order. */
+export interface TriggerOrder extends OrderBase {
+  type:
+    | OrderType.STOP_MARKET
+    | OrderType.STOP_LIMIT
+    | OrderType.TAKE_PROFIT_MARKET
+    | OrderType.TAKE_PROFIT_LIMIT
+  triggerPrice: string
+  triggerCondition: TriggerCondition
+  limitPrice?: string
+}
+
+/** Time-weighted execution parent. */
+export interface TwapOrder extends OrderBase {
+  type: OrderType.TWAP
+  durationSeconds: number
+  startedAt: string
+}
+
+/** Venue order discriminated only by its execution type. */
+export type Order = RegularOrder | TriggerOrder | TwapOrder
 
 /**
  * Asset balance normalized across providers. `units` and `valueUsd` are
@@ -180,25 +212,6 @@ export interface MarketSettings {
 }
 
 /**
- * Normalized take-profit or stop-loss order waiting for its trigger condition.
- *
- * @public
- */
-export interface TriggerOrder {
-  orderId: string
-  market: MarketDisplay
-  type: OrderType
-  /** Triggered quantity in base-asset units. */
-  size: string
-  /** Price at which the trigger activates, in quote-asset units. */
-  triggerPrice: string
-  /** Optional limit price submitted after activation, in quote-asset units. */
-  limitPrice?: string
-  label?: string
-  createdAt: string
-}
-
-/**
  * Paginated open-position response for one provider and account.
  *
  * @public
@@ -209,15 +222,10 @@ export interface PositionsResponse {
   pagination: Pagination
 }
 
-/**
- * Paginated open-order response containing regular and trigger orders.
- *
- * @public
- */
+/** Paginated order response for the requested lifecycle statuses. */
 export interface OrdersResponse {
-  provider: string
-  openOrders: OpenOrder[]
-  triggerOrders: TriggerOrder[]
+  provider: ProviderId
+  orders: Order[]
   pagination: Pagination
 }
 
@@ -258,7 +266,6 @@ export interface Fill {
   type?: OrderType
   size: string
   price: string
-  status: FillStatus
   liquidity: LiquidityRole
   filledSize?: string
   /** Absent when the venue reports no fee for the fill. */

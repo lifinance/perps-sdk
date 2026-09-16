@@ -160,7 +160,6 @@ export type {
   ProviderGetPortfolioHistoryParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
-  ProviderGetRunningTwapsParams,
   ProviderGetWithdrawableBalancesParams,
   QuoteListener,
   SignActionProgress,
@@ -222,9 +221,13 @@ export {
   classifyFill,
   FillClassification,
   isActiveOrderStatus,
+  isRegularOrder,
   isStopLossOrder,
   isTakeProfitOrder,
   isTpSlOrder,
+  isTriggerOrder,
+  isTwapOrder,
+  triggerConditionFor,
 } from './utils/orderClassification.js'
 export {
   expectedRealizedPnlForOpenOrder,
