@@ -552,7 +552,12 @@ export interface LighterAccountConfig {
    */
   apiKeyIndex?: number
   apiKeyRegistered: boolean
-  /** Lighter `account_type`. Upstream documents no integer for any tier. */
+  /**
+   * Lighter `account_type`: the `SubAccountType` of this account
+   * (`Main` = 0, `Sub` = 1, `Public` = 2, `LighterPublic` = 3,
+   * `Staking` = 4). It is not an account tier — the tier is
+   * {@link LighterAccountConfig.userTierName}.
+   */
   accountType: number
   /**
    * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary

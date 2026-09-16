@@ -16,21 +16,6 @@ function assertNever(value: never): never {
   )
 }
 
-const LIGHTER_ACCOUNT_TYPE_STANDARD = 0
-const LIGHTER_ACCOUNT_TYPE_PREMIUM = 1
-
-/**
- * Tier decode for the unauthenticated read, where `/accountLimits` — and with
- * it the tier string — is out of reach. Neither official Lighter client
- * documents an integer for any tier, so `0` (the `account_type` every sampled
- * public account reports) reads as the default tier `standard`, and `1` as
- * `premium`. No integer is known for `plus`: that account projects `null` here.
- */
-const ACCOUNT_TYPE_INT_TO_WIRE: Readonly<Record<number, string>> = {
-  [LIGHTER_ACCOUNT_TYPE_STANDARD]: 'standard',
-  [LIGHTER_ACCOUNT_TYPE_PREMIUM]: 'premium',
-}
-
 // Wire strings match the backend descriptor's ParamOption values. An unmapped
 // int projects to null.
 const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
@@ -43,8 +28,10 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
  * `userTierName` decides it, but only when the descriptor enumerates the
  * string: Lighter owns that vocabulary, so an unrecognised value projects
  * `null` instead of a mis-reported tier. A descriptor whose parameter carries
- * no `values` array enumerates nothing, so it also projects `null`. With no
- * tier string in hand the integer map decides.
+ * no `values` array enumerates nothing, so it also projects `null`. The
+ * unauthenticated read reaches no `/accountLimits` and so carries no tier
+ * string, which projects `null` as well: `config.accountType` is Lighter's
+ * `SubAccountType`, not a tier, so nothing else in the config decides it.
  */
 function resolveAccountTier(
   descriptor: ProviderAction,
@@ -52,7 +39,7 @@ function resolveAccountTier(
 ): string | null {
   const { userTierName } = config
   if (userTierName === undefined) {
-    return ACCOUNT_TYPE_INT_TO_WIRE[config.accountType] ?? null
+    return null
   }
   const enumerated = descriptor.params?.[0]?.values ?? []
   return enumerated.some((option) => option.value === userTierName)
