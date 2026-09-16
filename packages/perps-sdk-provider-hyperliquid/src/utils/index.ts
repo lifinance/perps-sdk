@@ -18,7 +18,11 @@ export {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
 } from './liquidation.js'
-export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
+export {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from './mapActivity.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export { mapMarket } from './mapMarket.js'
 export { mapMarketContext } from './mapMarketContext.js'

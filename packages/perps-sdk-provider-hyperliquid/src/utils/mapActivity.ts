@@ -11,7 +11,12 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import type { HlFundingUpdate, HlLedgerUpdate } from '../types/index.js'
+import Big from 'big.js'
+import type {
+  HlFundingUpdate,
+  HlLedgerUpdate,
+  HlUserFill,
+} from '../types/index.js'
 import {
   isCollateralTransferDelta,
   isDepositDelta,
@@ -268,4 +273,65 @@ export const mapFundingActivity = (
     positionSize: entry.delta.szi,
     fundingRate: entry.delta.fundingRate,
   }
+}
+
+/**
+ * Build one liquidation activity per liquidation order from the fills of the
+ * liquidated account. Hyperliquid attaches `liquidation` to the fills of both
+ * parties, so only fills whose `liquidatedUser` is the queried address count.
+ * A fill whose hash a ledger liquidation row already carries is the same
+ * event and is skipped. The size sign follows the closed position: a sell
+ * fill closes a long. Groups whose market does not resolve are dropped.
+ * @public
+ */
+export const mapLiquidationFills = (
+  fills: HlUserFill[],
+  providerKey: string,
+  queriedAddress: string,
+  resolveMarket: (coin: string) => MarketDisplay | undefined,
+  ledgerHashes: ReadonlySet<string>
+): LiquidationActivity[] => {
+  const queried = queriedAddress.toLowerCase()
+  const byOrder = new Map<number, HlUserFill[]>()
+  for (const fill of fills) {
+    if (
+      fill.liquidation?.liquidatedUser.toLowerCase() !== queried ||
+      (fill.hash !== undefined && ledgerHashes.has(fill.hash))
+    ) {
+      continue
+    }
+    const group = byOrder.get(fill.oid) ?? []
+    group.push(fill)
+    byOrder.set(fill.oid, group)
+  }
+  return [...byOrder.entries()].flatMap(([oid, group]) => {
+    const [first] = group
+    const market = resolveMarket(first.coin)
+    if (market === undefined) {
+      return []
+    }
+    let size = new Big(0)
+    let notional = new Big(0)
+    let time = first.time
+    for (const fill of group) {
+      size = size.plus(fill.sz)
+      notional = notional.plus(new Big(fill.px).times(fill.sz))
+      time = Math.max(time, fill.time)
+    }
+    return [
+      {
+        id: `liquidation:${oid}`,
+        provider: providerKey,
+        timestamp: new Date(time).toISOString(),
+        type: ActivityType.LIQUIDATION,
+        liquidatedNotionalPosition: notional.toFixed(),
+        liquidatedPositions: [
+          {
+            market,
+            size: (first.side === 'A' ? size : size.neg()).toFixed(),
+          },
+        ],
+      } satisfies LiquidationActivity,
+    ]
+  })
 }

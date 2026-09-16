@@ -5,7 +5,7 @@ import { decodeOrderCursor, encodeOrderCursor } from './orderCursor.js'
 describe('Ondo order cursors', () => {
   it('retains independent endpoint positions and a running TWAP snapshot', () => {
     const cursor = {
-      open: { cursor: 'next/open', offset: 0 },
+      active: { cursor: 'next/active', offset: 0 },
       history: { cursor: 'next/history', offset: 1, limit: 2 },
       twaps: [],
     }
@@ -19,10 +19,11 @@ describe('Ondo order cursors', () => {
     'invalid',
     'null',
     '[]',
-    '{"open":2}',
+    '{"active":2}',
     '{"other":"cursor"}',
-    '{"open":{"offset":-1}}',
-    '{"open":{"offset":0,"cursor":2}}',
+    '{"open":{"offset":0}}',
+    '{"active":{"offset":-1}}',
+    '{"active":{"offset":0,"cursor":2}}',
     '{"history":{"offset":0,"limit":0}}',
     '{"twaps":{"offset":1}}',
     '{"twaps":[null]}',

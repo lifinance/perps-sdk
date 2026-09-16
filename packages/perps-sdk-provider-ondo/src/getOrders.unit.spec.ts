@@ -163,7 +163,8 @@ describe('Ondo getOrders', () => {
       '/v1/perps/orders',
       '/v1/perps/twap/orders/running',
     ])
-    expect(requests[0]?.url.searchParams.get('status')).toBe('open')
+    expect(requests[0]?.url.searchParams.get('activeOnly')).toBe('true')
+    expect(requests[0]?.url.searchParams.has('status')).toBe(false)
     for (const request of requests) {
       expect(request.url.searchParams.get('market')).toBe(MARKET.id)
       expect(request.authorization).toBe('Bearer session-jwt')
@@ -190,39 +191,48 @@ describe('Ondo getOrders', () => {
       '/v1/perps/orders',
       '/v1/perps/twap/orders/history',
     ])
-    expect(requests[0]?.url.searchParams.get('status')).toBe('fullyfilled')
+    expect(requests[0]?.url.searchParams.has('activeOnly')).toBe(false)
+    expect(requests[0]?.url.searchParams.has('status')).toBe(false)
     expect(result.orders.map((order) => [order.type, order.status])).toEqual([
       [OrderType.LIMIT, OrderStatus.FILLED],
       [OrderType.TWAP, OrderStatus.FILLED],
     ])
   })
-  it('selects each active and terminal endpoint once for a mixed filter', async () => {
+  it('reads the unfiltered order list once for a mixed filter and keeps only the requested statuses', async () => {
     const { provider, requests } = await setup((url) => ({
       result:
-        url.searchParams.get('status') === 'canceled'
-          ? [orderFixture({ status: 'canceled', cancelReason: 'liquidation' })]
+        url.pathname === '/v1/perps/orders'
+          ? [
+              orderFixture(),
+              orderFixture({
+                orderId: 'terminal',
+                status: 'canceled',
+                cancelReason: 'liquidation',
+              }),
+              orderFixture({
+                orderId: 'filled',
+                status: 'fullyfilled',
+                filledSize: '12',
+              }),
+            ]
           : [],
     }))
     const result = await provider.getOrders({
       address: ADDRESS,
       statuses: [OrderStatus.OPEN, OrderStatus.CANCELLED],
     })
-    expect(
-      requests.map(
-        ({ url }) => url.pathname + (url.searchParams.get('status') ?? '')
-      )
-    ).toEqual([
-      '/v1/perps/ordersopen',
+    expect(requests.map(({ url }) => url.pathname + url.search)).toEqual([
+      '/v1/perps/orders',
       '/v1/perps/twap/orders/running',
-      '/v1/perps/orderscanceled',
       '/v1/perps/twap/orders/history',
     ])
-    expect(result.orders).toEqual([
-      expect.objectContaining({
-        status: OrderStatus.CANCELLED,
-        statusReason: 'liquidation',
-      }),
-    ])
+    expect(result.orders.map((order) => [order.orderId, order.status])).toEqual(
+      [
+        ['order-1', OrderStatus.OPEN],
+        ['terminal', OrderStatus.CANCELLED],
+      ]
+    )
+    expect(result.orders[1]).toMatchObject({ statusReason: 'liquidation' })
   })
   it('filters open rows by partial fill status and excludes other markets', async () => {
     const { provider } = await setup((url) => ({
@@ -380,8 +390,7 @@ describe('Ondo getOrders', () => {
     const { provider, requests } = await setup((url) => {
       if (url.pathname === '/v1/perps/orders') {
         return {
-          result:
-            url.searchParams.get('status') === 'open' ? [orderFixture()] : [],
+          result: [orderFixture()],
         }
       }
       if (url.pathname === '/v1/perps/twap/orders/running') {

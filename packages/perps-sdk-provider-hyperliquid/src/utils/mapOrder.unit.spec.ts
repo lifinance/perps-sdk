@@ -192,6 +192,7 @@ describe('mapOrder', () => {
     ['Ioc', OrderType.LIMIT, TimeInForce.IOC],
     ['Alo', OrderType.LIMIT, TimeInForce.POST_ONLY],
     ['FrontendMarket', OrderType.MARKET, TimeInForce.IOC],
+    ['LiquidationMarket', OrderType.MARKET, TimeInForce.IOC],
   ] as const)('maps %s time-in-force', (tif, type, timeInForce) => {
     expect(
       mapOrder(

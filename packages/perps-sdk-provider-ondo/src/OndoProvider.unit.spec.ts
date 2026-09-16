@@ -1047,7 +1047,7 @@ describe('OndoProvider — getOrders', () => {
       address: ADDRESS,
       marketId: 'AAPL-USD.P',
       limit: 10,
-      cursor: JSON.stringify({ open: { cursor: 'orders-cur-1', offset: 0 } }),
+      cursor: JSON.stringify({ active: { cursor: 'orders-cur-1', offset: 0 } }),
     })
 
     expect(orders.provider).toBe('ondo')
@@ -1071,7 +1071,7 @@ describe('OndoProvider — getOrders', () => {
     expect(orders.pagination).toEqual({
       limit: 10,
       hasMore: true,
-      cursor: JSON.stringify({ open: { offset: 0, cursor: 'orders-cur-2' } }),
+      cursor: JSON.stringify({ active: { offset: 0, cursor: 'orders-cur-2' } }),
     })
 
     const call = recorded.find((r) => r.url.includes('/v1/perps/orders'))

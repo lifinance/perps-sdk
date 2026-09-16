@@ -19,18 +19,24 @@ import {
 } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
+  HlUserFills,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
 import {
   isCollateralTransferDelta,
   isDepositDelta,
+  isLiquidationDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
   isWithdrawDelta,
 } from '../types/index.js'
-import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
+import {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from '../utils/index.js'
 import {
   hlInfoOptions,
   type InfoRequestOptions,
@@ -81,8 +87,12 @@ const fetchActivityData = async (
   const needLedger =
     !typeFilter || typeFilter.some((t) => t !== ActivityType.FUNDING)
   const needFunding = !typeFilter || typeFilter.includes(ActivityType.FUNDING)
+  // A liquidation executed as a market order reaches the account as fills
+  // with a `liquidation` field and never as a ledger `liquidation` delta.
+  const needLiquidationFills =
+    !typeFilter || typeFilter.includes(ActivityType.LIQUIDATION)
 
-  const [ledgerUpdates, fundingUpdates] = await Promise.all([
+  const [ledgerUpdates, fundingUpdates, fills] = await Promise.all([
     needLedger
       ? infoRequest<HlUserNonFundingLedgerUpdates>(
           apiUrl,
@@ -97,6 +107,15 @@ const fetchActivityData = async (
           options
         )
       : Promise.resolve([] as HlUserFunding),
+    needLiquidationFills
+      ? infoRequest<HlUserFills>(
+          apiUrl,
+          timeParams.startTime === undefined
+            ? { type: 'userFills', user: timeParams.user }
+            : { type: 'userFillsByTime', ...timeParams },
+          options
+        )
+      : Promise.resolve([] as HlUserFills),
   ])
 
   const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
@@ -133,7 +152,20 @@ const fetchActivityData = async (
     }
   )
 
-  const merged = [...ledgerItems, ...fundingItems].sort(
+  const ledgerLiquidationHashes = new Set(
+    ledgerUpdates
+      .filter((entry) => isLiquidationDelta(entry.delta))
+      .map((entry) => entry.hash)
+  )
+  const liquidationItems = mapLiquidationFills(
+    fills,
+    PROVIDER_KEY,
+    timeParams.user,
+    resolveMarket,
+    ledgerLiquidationHashes
+  )
+
+  const merged = [...ledgerItems, ...fundingItems, ...liquidationItems].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   )
 
@@ -147,8 +179,8 @@ const fetchActivityData = async (
 /**
  * Fetch a chronological activity feed (deposits, withdrawals, transfers,
  * liquidations, funding) for `address`. Combines results from Hyperliquid's
- * `userNonFundingLedgerUpdates` and `userFunding` endpoints, sorted
- * newest-first.
+ * `userNonFundingLedgerUpdates`, `userFunding`, and `userFills` endpoints,
+ * sorted newest-first.
  *
  * Cursor-based pagination uses the ms-since-epoch timestamp of the last item
  * on the current page.

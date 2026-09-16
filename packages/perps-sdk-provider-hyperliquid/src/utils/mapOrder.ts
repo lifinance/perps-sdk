@@ -211,6 +211,7 @@ export const mapOrder = (
   switch (o.tif) {
     case 'Ioc':
     case 'FrontendMarket':
+    case 'LiquidationMarket':
       timeInForce = TimeInForce.IOC
       break
     case 'Alo':

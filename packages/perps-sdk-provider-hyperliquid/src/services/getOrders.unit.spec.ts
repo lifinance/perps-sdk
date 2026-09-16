@@ -1,6 +1,6 @@
-import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
-import { OrderStatus, OrderType } from '@lifi/perps-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { createPerpsClient } from '@lifi/perps-sdk'
+import { OrderStatus, OrderType, TimeInForce } from '@lifi/perps-types'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HL_FRONTEND_OPEN_ORDERS, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -182,17 +182,89 @@ describe('getOrders', () => {
     expect(installed.requests).toEqual([])
   })
 
-  it('rejects a TWAP state without its venue id', async () => {
+  it('maps a liquidation market order from the terminal feed', async () => {
     const installed = installInfoFetchMock(
       {
-        frontendOpenOrders: [],
+        historicalOrders: [
+          {
+            ...historical,
+            order: {
+              ...historical.order,
+              oid: 89,
+              orderType: 'Market',
+              tif: 'LiquidationMarket',
+            },
+          },
+        ],
+        twapHistory: [],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '89',
+        type: OrderType.MARKET,
+        timeInForce: TimeInForce.IOC,
+        status: OrderStatus.FILLED,
+      }),
+    ])
+  })
+
+  it('drops a row whose coin the market list does not hold and keeps the rest', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [
+          HL_FRONTEND_OPEN_ORDERS[0],
+          { ...HL_FRONTEND_OPEN_ORDERS[1], coin: 'GHOST' },
+        ],
+        twapHistory: [],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders.map((order) => order.orderId)).toEqual(['1'])
+    expect(warn).toHaveBeenCalledWith("[hyperliquid] unknown market id 'GHOST'")
+    warn.mockRestore()
+  })
+
+  it('drops a row the mapper rejects and warns once per message', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [
+          historical,
+          {
+            ...historical,
+            order: { ...historical.order, oid: 90 },
+            status: 'unexpected',
+          },
+          {
+            ...historical,
+            order: { ...historical.order, oid: 91 },
+            status: 'unexpected',
+          },
+        ],
         twapHistory: [{ ...activeTwap, twapId: undefined }],
       },
       HL_MARKETS
     )
     restore = installed.restore
-    await expect(getOrders(ctx, { address: ADDRESS })).rejects.toThrow(
-      PerpsError
-    )
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(orders.map((order) => order.orderId)).toEqual(['88'])
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[hyperliquid] dropped order row: Unknown Hyperliquid order status: unexpected',
+      '[hyperliquid] dropped order row: Hyperliquid returned a TWAP without a twapId.',
+    ])
+    warn.mockRestore()
   })
 })

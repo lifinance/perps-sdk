@@ -2,13 +2,11 @@ import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OndoTwapOrder } from '../types/wire.js'
 
-export const ORDER_SOURCES = [
-  'open',
-  'canceled',
-  'fullyfilled',
-  'twaps',
-  'history',
-] as const
+/**
+ * `active` reads `/v1/perps/orders?activeOnly=true`; `all` reads the same
+ * route with no status filter, because the server rejects a `status` query.
+ */
+export const ORDER_SOURCES = ['active', 'all', 'twaps', 'history'] as const
 export type OrderSource = (typeof ORDER_SOURCES)[number]
 export interface OrderPageCursor {
   cursor?: string

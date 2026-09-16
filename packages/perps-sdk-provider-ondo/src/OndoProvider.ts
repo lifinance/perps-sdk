@@ -55,12 +55,7 @@ import type {
   SigningMethod,
   WithdrawalActivity,
 } from '@lifi/perps-types'
-import {
-  ActionType,
-  ActivityType,
-  OrderStatus,
-  PerpsErrorCode,
-} from '@lifi/perps-types'
+import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
@@ -460,21 +455,22 @@ export const ondoProvider = (
             params.statuses === undefined
               ? ACTIVE_ORDER_STATUSES
               : new Set(params.statuses)
+          const active = [...statuses].some((status) =>
+            ACTIVE_ORDER_STATUSES.has(status)
+          )
+          const terminal = [...statuses].some(
+            (status) => !ACTIVE_ORDER_STATUSES.has(status)
+          )
           const sources: OrderSource[] = []
-          if (
-            [...statuses].some((status) => ACTIVE_ORDER_STATUSES.has(status))
-          ) {
-            sources.push('open', 'twaps')
+          if (terminal) {
+            sources.push('all')
+          } else if (active) {
+            sources.push('active')
           }
-          if (statuses.has(OrderStatus.CANCELLED)) {
-            sources.push('canceled')
+          if (active) {
+            sources.push('twaps')
           }
-          if (statuses.has(OrderStatus.FILLED)) {
-            sources.push('fullyfilled')
-          }
-          if (
-            [...statuses].some((status) => !ACTIVE_ORDER_STATUSES.has(status))
-          ) {
+          if (terminal) {
             sources.push('history')
           }
           const previous = decodeOrderCursor(params.cursor)
@@ -536,7 +532,10 @@ export const ondoProvider = (
                 } else {
                   page = await client.getPage<OndoOrder>('/v1/perps/orders', {
                     ...request,
-                    params: { ...request.params, status: source },
+                    params: {
+                      ...request.params,
+                      ...(source === 'active' ? { activeOnly: true } : {}),
+                    },
                   })
                 }
                 return { source, position, page }

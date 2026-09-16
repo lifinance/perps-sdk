@@ -12,6 +12,7 @@ import {
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import type {
+  HlUserFill,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
@@ -27,6 +28,7 @@ const client = createPerpsClient({
 const baseResponses = {
   userNonFundingLedgerUpdates: HL_USER_NON_FUNDING_LEDGER,
   userFunding: HL_USER_FUNDING,
+  userFills: [],
 }
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
@@ -146,6 +148,7 @@ describe('getActivity', () => {
     expect(mock.requests.map(({ body }) => body)).toEqual([
       { type: 'userNonFundingLedgerUpdates', user: ADDRESS },
       { type: 'userFunding', user: ADDRESS },
+      { type: 'userFills', user: ADDRESS },
     ])
     expect(result.items.map(({ id }) => id)).toEqual([
       '0xdep1',
@@ -313,6 +316,7 @@ describe('getActivity', () => {
     expect(mock.requests.map(({ body }) => body)).toEqual([
       { type: 'userNonFundingLedgerUpdates', user: ADDRESS },
       { type: 'userFunding', user: ADDRESS },
+      { type: 'userFills', user: ADDRESS },
     ])
     expect(result.items).toHaveLength(2)
     expect(result.pagination.cursor).toBe(
@@ -492,6 +496,159 @@ describe('getActivity — unresolvable market rows', () => {
     await expect(
       getActivity(ctx, { address: ADDRESS, type: [ActivityType.DEPOSIT] })
     ).rejects.toThrow()
+  })
+})
+
+describe('getActivity — liquidation fills', () => {
+  let restore: () => void
+  afterEach(() => {
+    restore?.()
+  })
+
+  const liquidationFill = (
+    overrides: Partial<HlUserFill> = {}
+  ): HlUserFill => ({
+    tid: 700,
+    oid: 503983804932,
+    hash: '0xliq-fill',
+    coin: 'ETH',
+    side: 'A',
+    sz: '1.5',
+    px: '3400',
+    dir: 'Close Long',
+    fee: '1.2',
+    closedPnl: '-500',
+    crossed: true,
+    time: 1704067400000,
+    startPosition: '1.5',
+    liquidation: { liquidatedUser: ADDRESS, markPx: '3390', method: 'market' },
+    ...overrides,
+  })
+
+  it('maps the fills of one liquidation order to one liquidation row', async () => {
+    const mock = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFillsByTime: [
+          liquidationFill({ tid: 700, sz: '1', px: '3400' }),
+          liquidationFill({
+            tid: 701,
+            sz: '0.5',
+            px: '3380',
+            time: 1704067400500,
+          }),
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = mock.restore
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+      startTime: 123,
+    })
+
+    expect(mock.requests.map(({ body }) => body)).toEqual([
+      { type: 'userNonFundingLedgerUpdates', user: ADDRESS, startTime: 123 },
+      { type: 'userFillsByTime', user: ADDRESS, startTime: 123 },
+    ])
+    expect(result.items).toEqual([
+      {
+        id: 'liquidation:503983804932',
+        provider: 'hyperliquid',
+        timestamp: '2024-01-01T00:03:20.500Z',
+        type: ActivityType.LIQUIDATION,
+        liquidatedNotionalPosition: '5090',
+        liquidatedPositions: [
+          { market: expect.objectContaining({ id: 'ETH' }), size: '1.5' },
+        ],
+      },
+    ])
+  })
+
+  it('signs a closed short as a negative size', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [liquidationFill({ side: 'B', dir: 'Close Short' })],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(result.items[0]).toMatchObject({
+      liquidatedPositions: [{ size: '-1.5' }],
+    })
+  })
+
+  it('ignores a liquidation fill where the queried account is the liquidator', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [
+          liquidationFill({
+            liquidation: {
+              liquidatedUser: '0x9999999999999999999999999999999999999999',
+              markPx: '3390',
+              method: 'market',
+            },
+          }),
+        ],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(result.items).toEqual([])
+  })
+
+  it('skips a fill whose hash a ledger liquidation row already carries', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userNonFundingLedgerUpdates: [
+          {
+            time: 1704067400000,
+            hash: '0xliq-fill',
+            delta: {
+              type: 'liquidation',
+              leverageType: 'cross',
+              liquidatedPositions: [{ coin: 'ETH', szi: '1.5' }],
+            },
+          },
+        ],
+        userFills: [liquidationFill()],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+    })
+
+    expect(result.items.map((item) => item.id)).toEqual(['0xliq-fill'])
+  })
+
+  it('does not read fills when no requested type is a liquidation', async () => {
+    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
+    restore = mock.restore
+
+    await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.FUNDING, ActivityType.DEPOSIT],
+    })
+
+    expect(mock.requests.some((r) => r.body.type === 'userFills')).toBe(false)
   })
 })
 

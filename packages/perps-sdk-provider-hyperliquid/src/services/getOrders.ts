@@ -2,10 +2,12 @@ import {
   ACTIVE_ORDER_STATUSES,
   getMarketRegistry,
   isActiveOrderStatus,
+  type MarketRegistry,
+  PerpsError,
   type ProviderGetOrdersParams,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
-import type { Order, OrdersResponse } from '@lifi/perps-types'
+import type { MarketDisplay, Order, OrdersResponse } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -18,6 +20,36 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
+
+const warnedRows = new Set<string>()
+
+/**
+ * Map one venue row, or drop it. A coin the backend market list does not hold
+ * and a row the mapper rejects each drop only their own row instead of
+ * rejecting the whole page; each distinct mapper message warns once.
+ */
+const mapRow = (
+  coin: string,
+  registry: MarketRegistry,
+  map: (market: MarketDisplay) => Order
+): Order | undefined => {
+  const market = registry.get(coin)
+  if (market === undefined) {
+    return undefined
+  }
+  try {
+    return map(market)
+  } catch (error) {
+    if (!(error instanceof PerpsError)) {
+      throw error
+    }
+    if (!warnedRows.has(error.message)) {
+      warnedRows.add(error.message)
+      console.warn(`[${PROVIDER_KEY}] dropped order row: ${error.message}`)
+    }
+    return undefined
+  }
+}
 
 /** Read regular, trigger, and TWAP orders from the requested lifecycle feeds. */
 export const getOrders = async (
@@ -68,9 +100,16 @@ export const getOrders = async (
     ),
   ])
   const rows = new Map<string, Order>()
+  const keep = (key: string, order: Order | undefined): void => {
+    if (order !== undefined) {
+      rows.set(key, order)
+    }
+  }
   for (const detail of historical) {
-    const order = mapOrder(detail, registry.require(detail.order.coin))
-    rows.set(order.orderId, order)
+    keep(
+      String(detail.order.oid),
+      mapRow(detail.order.coin, registry, (market) => mapOrder(detail, market))
+    )
   }
   const raw = open.flat()
   const childIds = new Set(
@@ -78,19 +117,26 @@ export const getOrders = async (
   )
   for (const order of raw) {
     if (!childIds.has(order.oid)) {
-      rows.set(String(order.oid), mapOrder(order, registry.require(order.coin)))
+      keep(
+        String(order.oid),
+        mapRow(order.coin, registry, (market) => mapOrder(order, market))
+      )
     }
     for (const child of order.children ?? []) {
-      rows.set(
+      keep(
         String(child.oid),
-        mapOrder(child, registry.require(child.coin), String(order.oid))
+        mapRow(child.coin, registry, (market) =>
+          mapOrder(child, market, String(order.oid))
+        )
       )
     }
   }
   // TWAP ids and regular order ids occupy separate venue namespaces.
   for (const twap of twaps) {
-    const order = mapOrder(twap, registry.require(twap.state.coin))
-    rows.set(`twap:${order.orderId}`, order)
+    keep(
+      `twap:${twap.twapId}`,
+      mapRow(twap.state.coin, registry, (market) => mapOrder(twap, market))
+    )
   }
   const matching = [...rows.values()].filter(
     (order) =>
