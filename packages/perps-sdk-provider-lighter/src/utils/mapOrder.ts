@@ -39,6 +39,7 @@ const TIME_IN_FORCE: Record<LtOrderTimeInForceEnum, TimeInForce | undefined> = {
   'good-till-time': TimeInForce.GTT,
   'immediate-or-cancel': TimeInForce.IOC,
   'post-only': TimeInForce.POST_ONLY,
+  // `Unknown` is Lighter's own spelling in its swagger enum, capital U and all.
   Unknown: undefined,
 }
 
@@ -82,6 +83,8 @@ const mapOrderStatus = (status: LtOrderStatusEnum): OrderStatus => {
   }
 }
 
+// Widened to `string` so the exported `mapStatusReason(status: string)` reads
+// it without a cast. `CANCEL_REASONS` keeps the exact check over the 13 members.
 const STATUS_REASONS: ReadonlyMap<string, string> = new Map(
   Object.entries(CANCEL_REASONS)
 )

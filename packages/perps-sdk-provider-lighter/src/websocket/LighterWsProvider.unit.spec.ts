@@ -3,7 +3,7 @@ import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
-import type { LtWsUserStatsMessage } from '../types/index.js'
+import type { LtOrder, LtWsUserStatsMessage } from '../types/index.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
 type LighterWsProviderInternals = {
@@ -35,6 +35,8 @@ const RAW_ORDER = {
   nonce: 1,
   remaining_base_amount: '1.0',
   is_ask: true,
+  base_size: 0,
+  base_price: 0,
   filled_base_amount: '0',
   filled_quote_amount: '0',
   side: 'sell',
@@ -46,12 +48,22 @@ const RAW_ORDER = {
   status: 'open',
   trigger_status: 'na',
   trigger_time: 0,
+  parent_order_index: 0,
+  parent_order_id: '',
+  to_trigger_order_id_0: '',
+  to_trigger_order_id_1: '',
+  to_cancel_order_id_0: '',
+  integrator_fee_collector_index: '0',
+  integrator_taker_fee: '0',
+  integrator_maker_fee: '0',
+  order_flags: 0,
   block_height: 100,
   timestamp: 1000,
   created_at: 1000,
   updated_at: 1000,
   transaction_time: 1000,
-}
+  order_version: 0,
+} satisfies LtOrder
 
 const RAW_TRADE = {
   trade_id: 1,

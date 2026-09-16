@@ -52,6 +52,7 @@ import type {
   LtAccountPnL,
   LtLiqTrade,
   LtLiquidationInfo,
+  LtOrder,
   LtPnLEntry,
 } from './types/index.js'
 import {
@@ -2381,8 +2382,9 @@ describe('LighterProvider — getOrders pagination contract', () => {
     ],
   }
 
-  const makeActiveOrder = (orderIndex: number) => ({
+  const makeActiveOrder = (orderIndex: number): LtOrder => ({
     order_index: orderIndex,
+    client_order_index: orderIndex,
     order_id: String(orderIndex),
     client_order_id: String(orderIndex),
     market_index: 0,
@@ -2392,6 +2394,8 @@ describe('LighterProvider — getOrders pagination contract', () => {
     nonce: orderIndex,
     remaining_base_amount: '0.1',
     is_ask: false,
+    base_size: 0,
+    base_price: 0,
     filled_base_amount: '0',
     filled_quote_amount: '0',
     side: 'buy',
@@ -2408,11 +2412,16 @@ describe('LighterProvider — getOrders pagination contract', () => {
     to_trigger_order_id_0: '',
     to_trigger_order_id_1: '',
     to_cancel_order_id_0: '',
+    integrator_fee_collector_index: '0',
+    integrator_taker_fee: '0',
+    integrator_maker_fee: '0',
+    order_flags: 0,
     block_height: 1,
     timestamp: 1700000000000,
     created_at: 1700000000,
     updated_at: 1700000000,
     transaction_time: 1_700_000_000_000_000,
+    order_version: 0,
   })
 
   it('returns a payload whose size, hasMore and cursor agree when the active-orders response exceeds the requested limit', async () => {
@@ -3926,7 +3935,7 @@ describe('LighterProvider — one-call order reads', () => {
     ],
   }
 
-  const makeOrder = (overrides: Record<string, unknown>) => ({
+  const makeOrder = (overrides: Partial<LtOrder>): LtOrder => ({
     order_index: 900,
     client_order_index: 7,
     order_id: '900',
@@ -3938,6 +3947,8 @@ describe('LighterProvider — one-call order reads', () => {
     nonce: 1,
     remaining_base_amount: '0.1',
     is_ask: false,
+    base_size: 0,
+    base_price: 0,
     filled_base_amount: '0',
     filled_quote_amount: '0',
     side: 'buy',
@@ -3954,11 +3965,16 @@ describe('LighterProvider — one-call order reads', () => {
     to_trigger_order_id_0: '',
     to_trigger_order_id_1: '',
     to_cancel_order_id_0: '',
+    integrator_fee_collector_index: '0',
+    integrator_taker_fee: '0',
+    integrator_maker_fee: '0',
+    order_flags: 0,
     block_height: 1,
     timestamp: 1700000000000,
     created_at: 1700000000,
     updated_at: 1700000000,
     transaction_time: 1_700_000_000_000_000,
+    order_version: 0,
     ...overrides,
   })
 

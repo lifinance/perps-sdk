@@ -11,9 +11,15 @@ import type {
   LtOrder,
   LtOrderStatusEnum,
   LtOrderTimeInForceEnum,
+  LtOrderTriggerStatusEnum,
   LtOrderTypeEnum,
 } from '../types/index.js'
-import { mapOrder, mapOrderDetail, mapStatusReason } from './mapOrder.js'
+import {
+  isTriggerOrder,
+  mapOrder,
+  mapOrderDetail,
+  mapStatusReason,
+} from './mapOrder.js'
 
 const SYMBOL = 'ETH'
 const MARKET: MarketDisplay = {
@@ -355,5 +361,65 @@ describe('mapOrderDetail (Lighter) — wire enum spellings', () => {
         undefined
       )
     }
+  })
+})
+
+const TRIGGER_STATUS_SPELLINGS = [
+  'na',
+  'ready',
+  'mark-price',
+  'twap',
+  'parent-order',
+] satisfies LtOrderTriggerStatusEnum[]
+
+describe('isTriggerOrder (Lighter)', () => {
+  it('buckets every trigger_status Lighter declares', () => {
+    const mapped = TRIGGER_STATUS_SPELLINGS.map((trigger_status) =>
+      isTriggerOrder(baseOrder({ trigger_status }))
+    )
+    expect(mapped).toEqual([false, true, true, false, true])
+  })
+
+  it('buckets a twap child as a resting order, not a trigger order', () => {
+    expect(
+      isTriggerOrder(baseOrder({ trigger_status: 'twap', type: 'twap-sub' }))
+    ).toBe(false)
+  })
+
+  it('buckets an order with a positive trigger price while trigger_status lags', () => {
+    expect(
+      isTriggerOrder(baseOrder({ trigger_status: 'na', trigger_price: '1000' }))
+    ).toBe(true)
+  })
+
+  it('falls back to the order type when trigger_status and trigger_price say nothing', () => {
+    for (const type of [
+      'stop-loss',
+      'stop-loss-limit',
+      'take-profit',
+      'take-profit-limit',
+    ] satisfies LtOrderTypeEnum[]) {
+      expect(
+        isTriggerOrder(
+          baseOrder({ type, trigger_status: 'na', trigger_price: '0' })
+        )
+      ).toBe(true)
+    }
+  })
+
+  it('buckets a plain limit order as a regular order', () => {
+    expect(
+      isTriggerOrder(
+        baseOrder({ type: 'limit', trigger_status: 'na', trigger_price: '0' })
+      )
+    ).toBe(false)
+  })
+
+  it('buckets a regular order whose trigger price is an empty string', () => {
+    expect(
+      isTriggerOrder(
+        baseOrder({ type: 'limit', trigger_status: 'na', trigger_price: '' })
+      )
+    ).toBe(false)
   })
 })
