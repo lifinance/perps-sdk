@@ -166,27 +166,15 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
-  it('falls back to the account_type integer when the account-limits read supplies no tier string', () => {
-    const standard = projectLighterConfigSettings(
-      { ...baseConfig, accountType: 0 },
-      [],
-      [accountTypeOptionWithPlus]
-    )
-    expect(standard[0].values[0].value).toBe('standard')
-
-    const premium = projectLighterConfigSettings(
-      { ...baseConfig, accountType: 1 },
-      [],
-      [accountTypeOptionWithPlus]
-    )
-    expect(premium[0].values[0].value).toBe('premium')
-  })
-
-  it('projects an unmapped account_type integer to null (drift surfaces in the widget rather than silently)', () => {
+  // `account_type` is Lighter's SubAccountType (Main = 0, Sub = 1, Public = 2,
+  // LighterPublic = 3, Staking = 4), not a tier, so no integer projects a tier.
+  it.each([
+    0, 1, 2, 3, 4, 99,
+  ])('projects null for account_type %i when the account-limits read supplies no tier string', (accountType) => {
     const result = projectLighterConfigSettings(
-      { ...baseConfig, accountType: 99 },
+      { ...baseConfig, accountType },
       [],
-      [accountTypeOption]
+      [accountTypeOptionWithPlus]
     )
     expect(result[0].values[0].value).toBeNull()
   })
