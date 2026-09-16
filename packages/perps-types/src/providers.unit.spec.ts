@@ -337,7 +337,7 @@ const hyperliquidModeSetting: AccountConfigSetting = {
 
 const lighterTypeSetting: AccountConfigSetting = {
   type: ActionType.ACCOUNT_TYPE,
-  values: [{ name: 'tier', value: 0 }],
+  values: [{ name: 'tier', value: 'standard' }],
 }
 
 // AccountConfigValue covers the four primitive shapes the descriptor may emit.
@@ -807,7 +807,7 @@ describe('AccountConfigSetting / AccountConfigValue', () => {
     expect(nullValue.value).toBeNull()
   })
 
-  it('admits a number as the AccountConfigSetting value for Lighter accountType', () => {
-    expect(lighterTypeSetting.values[0].value).toBe(0)
+  it('carries the Lighter accountType tier as the descriptor wire string', () => {
+    expect(lighterTypeSetting.values[0].value).toBe('standard')
   })
 })
