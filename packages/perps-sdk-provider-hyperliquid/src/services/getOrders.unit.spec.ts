@@ -129,6 +129,24 @@ describe('getOrders', () => {
     ])
   })
 
+  it('keeps the newest row of an id when the terminal feed repeats it', async () => {
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [historical, { ...historical, status: 'open' }],
+        twapHistory: [],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(orders.map((order) => [order.orderId, order.status])).toEqual([
+      ['88', OrderStatus.FILLED],
+    ])
+  })
+
   it('combines active and terminal feeds and filters the requested statuses', async () => {
     const installed = installInfoFetchMock(
       {

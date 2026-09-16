@@ -106,8 +106,15 @@ export const getOrders = async (
     }
   }
   for (const detail of historical) {
+    const key = String(detail.order.oid)
+    // The feed carries one row per lifecycle transition, newest first, and a
+    // terminal row shares its timestamp with the `open` row beneath it, so
+    // only the first row of an id states that order's current status.
+    if (rows.has(key)) {
+      continue
+    }
     keep(
-      String(detail.order.oid),
+      key,
       mapRow(detail.order.coin, registry, (market) => mapOrder(detail, market))
     )
   }
