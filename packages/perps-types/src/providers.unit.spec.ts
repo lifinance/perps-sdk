@@ -807,7 +807,7 @@ describe('AccountConfigSetting / AccountConfigValue', () => {
     expect(nullValue.value).toBeNull()
   })
 
-  it('surfaces Lighter accountType as a number (raw integer tier)', () => {
+  it('admits a number as the AccountConfigSetting value for Lighter accountType', () => {
     expect(lighterTypeSetting.values[0].value).toBe(0)
   })
 })
