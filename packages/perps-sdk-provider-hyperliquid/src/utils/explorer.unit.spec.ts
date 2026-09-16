@@ -167,4 +167,8 @@ describe('matchOrderActionHash', () => {
   it('returns undefined when the order carries no client order id', () => {
     expect(matchOrderActionHash(txs, {})).toBeUndefined()
   })
+
+  it('returns undefined when the transaction window is empty', () => {
+    expect(matchOrderActionHash([], { clientOrderId: CLOID_A })).toBeUndefined()
+  })
 })

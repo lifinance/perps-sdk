@@ -87,7 +87,7 @@ export { createMemoryStorage } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
 export { errorCodeFromStatus } from './transport/errorCodeFromStatus.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
-export { fetchWithRetry } from './transport/fetchWithRetry.js'
+export { fetchWithRetry, isAbortError } from './transport/fetchWithRetry.js'
 export type {
   ProviderRetryConfig,
   ResolvedRetryPolicy,

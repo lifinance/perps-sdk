@@ -35,11 +35,14 @@ export type GetOrdersParams = ProviderGetOrdersParams
 
 const warned = new Set<string>()
 
-const warnOnce = (message: string): void => {
-  if (!warned.has(message)) {
-    warned.add(message)
-    console.warn(`[${PROVIDER_KEY}] ${message}`)
+const warnOnce = (key: string, detail?: string): void => {
+  if (warned.has(key)) {
+    return
   }
+  warned.add(key)
+  console.warn(
+    `[${PROVIDER_KEY}] ${detail === undefined ? key : `${key}: ${detail}`}`
+  )
 }
 
 /**
@@ -89,7 +92,9 @@ const withExplorerLinks = async (
     if (!(error instanceof PerpsError)) {
       throw error
     }
-    warnOnce(`explorer link lookup failed: ${error.message}`)
+    // The message stays out of the key: a transport failure names hosts and
+    // ports, so keying on it would let the dedupe set grow without bound.
+    warnOnce('explorer link lookup failed', error.message)
     return orders
   }
   return orders.map((order) => {

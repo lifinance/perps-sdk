@@ -344,7 +344,7 @@ describe('getOrders', () => {
     expect(orders.every((order) => order.explorerLink === undefined)).toBe(true)
   })
 
-  it('returns the rows unlinked when the explorer read fails', async () => {
+  it('returns the rows unlinked when the explorer read fails, and warns once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const installed = installInfoFetchMock(
       {
@@ -356,10 +356,53 @@ describe('getOrders', () => {
     )
     restore = installed.restore
     const { orders } = await getOrders(ctx, { address: ADDRESS })
+    await getOrders(ctx, { address: ADDRESS })
     expect(orders[0]).not.toHaveProperty('explorerLink')
-    expect(warn).toHaveBeenCalledWith(
-      '[hyperliquid] explorer link lookup failed: Hyperliquid explorer userDetails failed: 503'
-    )
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[hyperliquid] explorer link lookup failed: Hyperliquid explorer userDetails failed: 503',
+    ])
     warn.mockRestore()
+  })
+
+  it('returns the rows unlinked when the explorer answers 2xx with a body that is not JSON', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [{ ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A }],
+        twapHistory: [],
+        userDetails: new Response('<html>blocked</html>', { status: 200 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders[0]).toMatchObject({ clientOrderId: CLOID_A })
+    expect(orders[0]).not.toHaveProperty('explorerLink')
+    warn.mockRestore()
+  })
+
+  it('links a filled row to its placement transaction', async () => {
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [
+          { ...historical, order: { ...historical.order, cloid: CLOID_A } },
+        ],
+        twapHistory: [],
+        userDetails: { txs: [explorerTx('0xplacement', [CLOID_A])] },
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '88',
+        status: OrderStatus.FILLED,
+        explorerLink: 'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+      }),
+    ])
   })
 })
