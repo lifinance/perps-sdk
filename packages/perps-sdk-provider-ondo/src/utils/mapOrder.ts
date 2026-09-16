@@ -50,6 +50,20 @@ const twapStatus = (status: string): OrderStatus => {
   }
 }
 
+const mapTimeInForce = (tif: string): TimeInForce => {
+  switch (tif) {
+    case 'GTC':
+      return TimeInForce.GTC
+    case 'IOC':
+      return TimeInForce.IOC
+    default:
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Unsupported Ondo time in force: ${tif}`
+      )
+  }
+}
+
 /** Map Ondo regular, trigger and TWAP rows to the shared order union. */
 export const mapOrder = (
   order: OndoOrder | OndoTwapOrder,
@@ -159,7 +173,7 @@ export const mapOrder = (
         ? order.type === 'market'
           ? TimeInForce.IOC
           : TimeInForce.GTC
-        : TimeInForce[order.timeInForce],
+        : mapTimeInForce(order.timeInForce),
   }
 }
 

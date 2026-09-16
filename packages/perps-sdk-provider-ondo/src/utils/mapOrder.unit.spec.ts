@@ -119,6 +119,12 @@ describe('mapOrder', () => {
       mapOrder(orderFixture({ type: 'market', timeInForce: undefined }), MARKET)
     ).toMatchObject({ type: OrderType.MARKET, timeInForce: TimeInForce.IOC })
   })
+  it('rejects an unsupported timeInForce instead of reporting none', () => {
+    const raw: OndoOrder = JSON.parse(
+      JSON.stringify({ ...orderFixture(), timeInForce: 'FOK' })
+    )
+    expect(() => mapOrder(raw, MARKET)).toThrow(PerpsError)
+  })
   it.each([
     ['takeProfit', 'sell', TriggerCondition.ABOVE],
     ['takeProfit', 'buy', TriggerCondition.BELOW],
