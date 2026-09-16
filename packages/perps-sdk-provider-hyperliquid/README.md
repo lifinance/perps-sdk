@@ -96,8 +96,15 @@ and timestamps. `type` distinguishes `RegularOrder`, `TriggerOrder`, and
 
 Attached TP/SL legs appear as separate PENDING rows with the parent's `oid` in
 `parentOrderId`. Position-level triggers have no parent. A null `cloid` omits
-`clientOrderId`. These order feeds contain no transaction hash, so they omit
-`explorerLink`.
+`clientOrderId`.
+
+The order feeds carry no transaction hash. `getOrders` resolves `explorerLink`
+from the explorer RPC instead: one `userDetails` read per call returns the
+address's recent HyperCore transactions, and each row links to the transaction
+whose action names its `clientOrderId`. A row with no `clientOrderId`, or one
+whose placement transaction has left the explorer window, keeps `explorerLink`
+absent. The read is skipped when no row carries a `clientOrderId`, and an
+explorer failure leaves the rows unlinked instead of failing the order read.
 
 | Venue state | SDK status |
 | --- | --- |

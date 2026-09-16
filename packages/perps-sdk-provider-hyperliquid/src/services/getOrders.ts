@@ -1,5 +1,7 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  ExplorerChainId,
+  explorerTxUrl,
   getMarketRegistry,
   isActiveOrderStatus,
   type MarketRegistry,
@@ -11,17 +13,34 @@ import type { MarketDisplay, Order, OrdersResponse } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
+  HlExplorerTx,
   HlFrontendOpenOrders,
   HlHistoricalOrders,
   HlTwapHistoryEntry,
 } from '../types/index.js'
-import { mapOrder, perpsDexNames } from '../utils/index.js'
-import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import {
+  fetchUserTransactions,
+  mapOrder,
+  matchOrderActionHash,
+  perpsDexNames,
+} from '../utils/index.js'
+import {
+  hlInfoOptions,
+  type InfoRequestOptions,
+  infoRequest,
+} from '../utils/infoClient.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
 
-const warnedRows = new Set<string>()
+const warned = new Set<string>()
+
+const warnOnce = (message: string): void => {
+  if (!warned.has(message)) {
+    warned.add(message)
+    console.warn(`[${PROVIDER_KEY}] ${message}`)
+  }
+}
 
 /**
  * Map one venue row, or drop it. A coin the backend market list does not hold
@@ -43,12 +62,43 @@ const mapRow = (
     if (!(error instanceof PerpsError)) {
       throw error
     }
-    if (!warnedRows.has(error.message)) {
-      warnedRows.add(error.message)
-      console.warn(`[${PROVIDER_KEY}] dropped order row: ${error.message}`)
-    }
+    warnOnce(`dropped order row: ${error.message}`)
     return undefined
   }
+}
+
+/**
+ * Set `explorerLink` on each row whose placement transaction the explorer
+ * window still holds. One explorer read serves the whole page, and it is
+ * skipped when no row carries a client order id to match on. The link is
+ * supplementary, so an explorer failure warns and leaves the rows unlinked
+ * instead of failing the order read.
+ */
+const withExplorerLinks = async (
+  orders: Order[],
+  address: string,
+  options: InfoRequestOptions
+): Promise<Order[]> => {
+  if (!orders.some((order) => order.clientOrderId !== undefined)) {
+    return orders
+  }
+  let txs: HlExplorerTx[]
+  try {
+    txs = await fetchUserTransactions(address, options)
+  } catch (error) {
+    if (!(error instanceof PerpsError)) {
+      throw error
+    }
+    warnOnce(`explorer link lookup failed: ${error.message}`)
+    return orders
+  }
+  return orders.map((order) => {
+    const explorerLink = explorerTxUrl(
+      ExplorerChainId.HYPERLIQUID,
+      matchOrderActionHash(txs, order)
+    )
+    return explorerLink === undefined ? order : { ...order, explorerLink }
+  })
 }
 
 /** Read regular, trigger, and TWAP orders from the requested lifecycle feeds. */
@@ -143,9 +193,10 @@ export const getOrders = async (
       statuses.includes(order.status) &&
       (params.marketId === undefined || order.market.id === params.marketId)
   )
+  const orders = await withExplorerLinks(matching, params.address, infoOpts)
   return {
     provider: PROVIDER_KEY,
-    orders: matching,
-    pagination: { limit: params.limit ?? matching.length, hasMore: false },
+    orders,
+    pagination: { limit: params.limit ?? orders.length, hasMore: false },
   }
 }

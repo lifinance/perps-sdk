@@ -57,7 +57,7 @@ export const HYPERLIQUID_RETRY_DEFAULTS: ResolvedRetryPolicy = {
 }
 
 /**
- * Transport options for a direct Hyperliquid `/info` request. `policy`
+ * Transport options for a direct Hyperliquid REST request. `policy`
  * controls retries, `signal` cancels the request, and `fetchImpl` overrides
  * the runtime's global `fetch` implementation.
  * @public
@@ -87,7 +87,7 @@ export const hlInfoOptions = (
 })
 
 /**
- * POST to the Hyperliquid `/info` endpoint and return the parsed JSON body.
+ * POST a JSON body to a Hyperliquid REST surface and return the parsed body.
  *
  * Direct-to-venue: no proxy, no AJV validation, no cache. The caller's type
  * parameter is trusted; consumers should treat the response shape as
@@ -98,10 +98,13 @@ export const hlInfoOptions = (
  * provider key, carrying the code the status resolves to: `RateLimitExceeded`
  * for a 429, `Unauthorized` for a 401, `AgentUnauthorized` for a 403, and
  * `ThirdPartyError` for every other status.
- * @public
+ *
+ * @param label - Names the surface in the error message, e.g. `info request`.
+ * @internal
  */
-export async function infoRequest<T>(
-  apiUrl: string,
+export async function hlPostJson<T>(
+  url: string,
+  label: string,
   body: Record<string, unknown>,
   options?: InfoRequestOptions
 ): Promise<T> {
@@ -110,7 +113,7 @@ export async function infoRequest<T>(
   let response: Response
   try {
     response = await fetchWithRetry(
-      `${apiUrl}/info`,
+      url,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,7 +128,7 @@ export async function infoRequest<T>(
   } catch (error) {
     const err = new PerpsError(
       PerpsErrorCode.ServerError,
-      error instanceof Error ? error.message : 'Hyperliquid info request failed'
+      error instanceof Error ? error.message : `Hyperliquid ${label} failed`
     )
     err.tool = PROVIDER_KEY
     throw err
@@ -138,11 +141,25 @@ export async function infoRequest<T>(
         PerpsErrorCode.ThirdPartyError,
         HYPERLIQUID_STATUS_ERROR_CODES
       ),
-      `Hyperliquid info request failed: ${response.status}`
+      `Hyperliquid ${label} failed: ${response.status}`
     )
     err.tool = PROVIDER_KEY
     throw err
   }
 
   return (await response.json()) as T
+}
+
+/**
+ * POST to the Hyperliquid `/info` endpoint and return the parsed JSON body.
+ * See {@link hlPostJson} for the transport and error contract.
+ *
+ * @public
+ */
+export function infoRequest<T>(
+  apiUrl: string,
+  body: Record<string, unknown>,
+  options?: InfoRequestOptions
+): Promise<T> {
+  return hlPostJson<T>(`${apiUrl}/info`, 'info request', body, options)
 }

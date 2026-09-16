@@ -16,6 +16,16 @@ export const PROVIDER_KEY = 'hyperliquid'
 export const DEFAULT_HYPERLIQUID_API_URL = 'https://api.hyperliquid.xyz'
 
 /**
+ * Hyperliquid explorer RPC endpoint. It serves the `userDetails` transaction
+ * window from a host separate from the REST API, and it answers a browser
+ * cross-origin POST.
+ *
+ * @public
+ */
+export const HYPERLIQUID_EXPLORER_RPC_URL =
+  'https://rpc.hyperliquid.xyz/explorer'
+
+/**
  * Approximate published baseline maker/taker fee tier for Hyperliquid, used to
  * seed fee math before the live account `feeTier` resolves. Rates are fractions
  * (not basis points): `0.00015` = 0.015% maker, `0.00045` = 0.045% taker.
