@@ -5,6 +5,10 @@
  * `tx_info` are the signed WASM transaction envelope; `price_protection` is an
  * optional venue-side execution guard.
  *
+ * Lighter's OpenAPI declares this body as `ReqSendTx`, but the generator emits
+ * no model for it: the members reach the generated client as form parameters
+ * on the transaction API, not as a wire model.
+ *
  * @public
  */
 export interface LtSendTxRequest {
@@ -31,6 +35,9 @@ export interface LtSendTxResponse {
  * Batch request body for Lighter's transaction submission endpoint.
  * `tx_types` is a JSON-encoded number array and `tx_infos` a JSON-encoded
  * string array; corresponding entries are submitted in array order.
+ *
+ * Lighter's OpenAPI declares this body as `ReqSendTxBatch`, but the generator
+ * emits no model for it, for the same reason it emits none for `ReqSendTx`.
  *
  * @public
  */

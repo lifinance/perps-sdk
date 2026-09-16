@@ -10,12 +10,14 @@
  * authoritative side indicator: values greater than or equal to zero represent
  * long positions and values less than zero represent short positions.
  *
+ * Lighter's OpenAPI marks `total_discount` required, but live
+ * `/api/v1/account` rows omit it on every position.
+ *
  * @public
  */
 export type LtAccountPosition = {
   market_id: number
-  /** Present on REST `/api/v1/account` rows; WS position frames may omit it. */
-  symbol?: string
+  symbol: string
   initial_margin_fraction: string
   open_order_count: number
   pending_order_count: number
@@ -38,8 +40,9 @@ export type LtAccountPosition = {
   margin_mode: number
   allocated_margin: string
   /**
-   * Funding-fee discount accrued on the position. Lighter marks it
-   * `omitempty`, so an absent field means zero.
+   * Funding-fee discount accrued on the position. Live `/api/v1/account` rows
+   * never carry it and live `account_all_positions` frames carry it only on a
+   * non-flat position, so an absent field means zero.
    */
   total_discount?: string
   /** Lighter bit flags recording which margin settings the account set itself. */
@@ -73,8 +76,8 @@ export type LtAccountAsset = {
   /** Collateral weighting Lighter applies to the asset, as a decimal factor. */
   multiplier: string
   /**
-   * Lighter surfaces it via `additional_properties`, so it may be absent —
-   * chiefly outside Unified Trading Account mode.
+   * Cross-margin collateral flag. Live `/api/v1/account` rows carry it as a
+   * top-level member on every asset row.
    */
   margin_mode?: LtAssetMarginMode
 }

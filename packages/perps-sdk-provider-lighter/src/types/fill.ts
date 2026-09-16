@@ -12,6 +12,10 @@
  * the same side, on the same 1e6 tick scale. The mapper adds that second rate
  * to the side's own rate.
  *
+ * Lighter's OpenAPI marks twelve further members required — two `*_account_pnl`,
+ * four `integrator_*_fee*`, two `*_position_sign_changed` and four
+ * `*_allocated_margin_usdc_*` members — that live trade rows omit.
+ *
  * @public
  */
 export type LtTrade = {

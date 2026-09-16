@@ -159,6 +159,10 @@ export interface LtAssetDetailsResponse {
  * OHLCV candle returned by Lighter. `t` is the candle timestamp in Unix
  * milliseconds; `o`, `h`, `l`, and `c` are prices and `v` is volume.
  *
+ * Lighter's OpenAPI marks `O`, `H`, `L` and `C` required on the
+ * `/api/v1/candles` model, but live rows omit all four. The
+ * `/api/v1/markPriceCandles` model carries no `v` at all.
+ *
  * @public
  */
 export interface LtCandle {

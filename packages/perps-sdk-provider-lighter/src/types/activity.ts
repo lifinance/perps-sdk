@@ -142,13 +142,15 @@ export type LtLiquidationPosition = Pick<
  * reports the settled risk info, mark prices, assets and asset index prices
  * here; the SDK models only the members the liquidation mapper reads.
  *
+ * Lighter's OpenAPI marks `positions` non-nullable and `cross_risk_parameters`
+ * required, but `/api/v1/liquidations` answers only a signed auth token, so no
+ * live body confirms either claim.
+ *
  * @public
  */
 export interface LtLiquidationInfo {
   positions: LtLiquidationPosition[] | null
   risk_info_before: {
-    // Lighter's OpenAPI does not require this member, so an account without
-    // cross exposure may omit it.
     cross_risk_parameters?: {
       /** Account equity as a decimal string, in quote-currency units. */
       total_account_value: string
@@ -158,7 +160,8 @@ export interface LtLiquidationInfo {
 
 /**
  * Liquidation event row returned by Lighter. `executed_at` is a Unix timestamp
- * in milliseconds.
+ * in milliseconds. Lighter's OpenAPI matches this row member for member, but
+ * its `trade` and `info` members resolve to wider shapes than this file models.
  *
  * @public
  */
