@@ -77,7 +77,8 @@ export type LtAccountAsset = {
   multiplier: string
   /**
    * Cross-margin collateral flag. Live `/api/v1/account` rows carry it as a
-   * top-level member on every asset row.
+   * top-level member on every asset row. An absent member leaves the asset's
+   * collateral state unknown.
    */
   margin_mode?: LtAssetMarginMode
 }
