@@ -1114,10 +1114,15 @@ export const createLighterProvider = (
       const orders: Order[] = []
       for (const response of [activeResponse, inactiveResponse]) {
         for (const raw of wireList(response?.orders)) {
-          const order = mapOrder(
-            raw,
-            registry.require(String(raw.market_index))
-          )
+          // `get`, not `require`: a market id the backend list no longer
+          // carries drops only its own row instead of rejecting the whole
+          // page. The registry warns once per unresolved id. A delisted
+          // market still resolves, so its rows stay.
+          const market = registry.get(String(raw.market_index))
+          if (market === undefined) {
+            continue
+          }
+          const order = mapOrder(raw, market)
           if (statuses.has(order.status)) {
             orders.push(order)
           }

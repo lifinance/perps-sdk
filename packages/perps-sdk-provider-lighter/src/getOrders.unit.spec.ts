@@ -80,14 +80,15 @@ const order = (overrides: Partial<LtOrder> = {}): LtOrder => ({
 function setup(
   active: LtOrder[] | null,
   inactive: LtOrder[] | null = [],
-  nextCursor = ''
+  nextCursor = '',
+  markets: Market[] = [MARKET]
 ) {
   const requests: { url: URL; init?: RequestInit }[] = []
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input))
     requests.push({ url, init })
     if (url.pathname.endsWith('/markets')) {
-      return Response.json({ markets: [MARKET] })
+      return Response.json({ markets })
     }
     if (url.pathname === '/api/v1/account') {
       return Response.json({
@@ -270,6 +271,35 @@ describe('Lighter getOrders lifecycle reads', () => {
     const result = await provider.getOrders({ address: ADDRESS, statuses: [] })
     expect(result.orders).toEqual([])
     expect(requests).toEqual([])
+  })
+
+  it('drops a history row whose market the registry cannot resolve', async () => {
+    const { provider } = setup(
+      [],
+      [
+        order({ status: 'filled' }),
+        order({ order_index: 91, market_index: 999, status: 'filled' }),
+      ]
+    )
+    const result = await provider.getOrders({
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(result.orders.map(({ orderId }) => orderId)).toEqual(['88'])
+  })
+
+  it('keeps a history row whose market is delisted', async () => {
+    const { provider } = setup(
+      [],
+      [order({ order_index: 91, market_index: 2, status: 'filled' })],
+      '',
+      [MARKET, { ...MARKET, id: '2', isDelisted: true }]
+    )
+    const result = await provider.getOrders({
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(result.orders.map(({ orderId }) => orderId)).toEqual(['91'])
   })
 
   it('rejects a market id that the registry does not contain', async () => {
