@@ -41,14 +41,19 @@ export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
   logoURI: spotLogoURI(b.coin),
 })
 
-/** Assemble a typed spot {@link Balance}; `total` is native token units and its USD value uses `priceById`. @public */
+/** Assemble a typed spot {@link Balance}; `total` is native token units and its unit price and USD value use `priceById`. @public */
 export const spotBalance = (
   asset: Asset,
   total: string,
   priceById: Map<string, number>
-): Balance => ({
-  categoryId: SPOT_MARKET_ID,
-  asset,
-  units: total,
-  valueUsd: (stringToFloat(total) * (priceById.get(asset.id) ?? 0)).toString(),
-})
+): Balance => {
+  const price = priceById.get(asset.id) ?? 0
+  return {
+    categoryId: SPOT_MARKET_ID,
+    asset,
+    units: total,
+    valueUsd: (stringToFloat(total) * price).toString(),
+    // A zero entry means the map holds no mark for the asset, not a free asset.
+    ...(price > 0 ? { price: price.toString() } : {}),
+  }
+}

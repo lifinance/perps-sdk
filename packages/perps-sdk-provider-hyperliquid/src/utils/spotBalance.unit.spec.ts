@@ -1,6 +1,7 @@
+import type { Asset } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlSpotBalance } from '../types/index.js'
-import { spotAssetFromToken } from './spotBalance.js'
+import { spotAssetFromToken, spotBalance } from './spotBalance.js'
 
 const balance = (coin: string, token: number): HlSpotBalance => ({
   coin,
@@ -33,5 +34,29 @@ describe('spotAssetFromToken', () => {
     expect(spotAssetFromToken(balance('UBTC', 197)).logoURI).toBe(
       'https://app.hyperliquid.xyz/coins/UBTC_spot.svg'
     )
+  })
+})
+
+describe('spotBalance', () => {
+  const asset: Asset = {
+    providerId: 'hyperliquid',
+    id: '150',
+    displaySymbol: 'HYPE',
+  }
+
+  it('carries the unit price beside the USD value', () => {
+    expect(spotBalance(asset, '2', new Map([['150', 37.5]]))).toEqual({
+      categoryId: 'spot',
+      asset,
+      units: '2',
+      valueUsd: '75',
+      price: '37.5',
+    })
+  })
+
+  it('omits the price when the map holds no mark for the asset', () => {
+    const result = spotBalance(asset, '2', new Map())
+    expect(result.price).toBeUndefined()
+    expect(result.valueUsd).toBe('0')
   })
 })

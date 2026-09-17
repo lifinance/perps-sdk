@@ -1330,8 +1330,10 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     // AC5: USDC spot is valued 1:1; other tokens have no price source here.
     expect(usdc?.units).toBe('10')
     expect(usdc?.valueUsd).toBe('10')
+    expect(usdc?.price).toBe('1')
     expect(btc?.units).toBe('2')
     expect(btc?.valueUsd).toBe('0')
+    expect(btc?.price).toBeUndefined()
   })
 
   it('omits a collateral row when available margin is zero', async () => {
@@ -1485,6 +1487,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         },
         units: '10',
         valueUsd: '10',
+        price: '1',
       },
       {
         categoryId: 'spot',

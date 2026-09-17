@@ -883,23 +883,26 @@ export const createLighterProvider = (
                 ),
               units: availableMargin.toString(),
               valueUsd: availableMargin.toString(),
+              price: '1',
             },
           ]
         : []
       // Spot token holdings — non-collateral. The instance's settlement asset
       // is valued 1:1; other tokens have no price source at this boundary, so
-      // their USD value is unknown.
+      // their price and USD value are unknown.
       const balances: Balance[] = account.assets
         .filter((asset) => toRequiredBig(asset.balance, 'balance').gt(0))
         .map((a) => {
           const assetId = String(a.asset_id)
+          const settlement = a.asset_id === collateral.assetIndex
           return {
             categoryId: spotCategoryId,
             asset:
               assetRegistry.get(assetId) ??
               lighterAsset(assetId, a.symbol, providerKey),
             units: a.balance,
-            valueUsd: a.asset_id === collateral.assetIndex ? a.balance : '0',
+            valueUsd: settlement ? a.balance : '0',
+            ...(settlement ? { price: '1' } : {}),
           }
         })
 

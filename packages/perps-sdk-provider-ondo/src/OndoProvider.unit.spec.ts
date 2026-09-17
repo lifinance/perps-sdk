@@ -651,6 +651,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         asset: ONDO_COLLATERAL_ASSET,
         units: '1000',
         valueUsd: '1000',
+        price: '1',
       },
     ])
     expect(account.marginUsed).toBe('401')

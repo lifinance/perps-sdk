@@ -329,6 +329,7 @@ export const ondoProvider = (
                     asset: collateralAsset,
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
+                    price: '1',
                   },
                 ]
               : [],

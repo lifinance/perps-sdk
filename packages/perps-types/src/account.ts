@@ -137,8 +137,8 @@ export interface TwapOrder extends OrderBase {
 export type Order = RegularOrder | TriggerOrder | TwapOrder
 
 /**
- * Asset balance normalized across providers. `units` and `valueUsd` are
- * decimal strings; `valueUsd` is the balance's USD valuation.
+ * Asset balance normalized across providers. `units`, `price` and `valueUsd`
+ * are decimal strings; `valueUsd` is the balance's USD valuation.
  *
  * @public
  */
@@ -149,6 +149,8 @@ export interface Balance {
   units: string
   /** USD value the SDK fills from the prices map; consumers render with zero math. */
   valueUsd: string
+  /** USD price of one unit. Absent when the provider holds no price for the asset. */
+  price?: string
   /**
    * Fraction of `valueUsd` that backs available margin (a loan-to-value
    * ratio). Absent means 1 — full value. Set below 1 for collateral the

@@ -2772,6 +2772,7 @@ describe('HyperliquidWsProvider', () => {
           },
           units: '100',
           valueUsd: '50',
+          price: '0.5',
           locked: '10',
         },
         {
@@ -2784,6 +2785,7 @@ describe('HyperliquidWsProvider', () => {
           },
           units: '500',
           valueUsd: '500',
+          price: '1',
           locked: '0',
         },
         {
