@@ -3400,6 +3400,402 @@ describe('HyperliquidWsProvider', () => {
     })
   })
 
+  describe('outcome market identities', () => {
+    it('drops an outcome coin from the fastAssetCtxs snapshot', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      await seedFast({
+        BTC: { midPx: '95000', markPx: '95001' },
+        '@1': { midPx: '0.5', markPx: '0.51' },
+        '#26140': { midPx: '0.42', markPx: '0.43' },
+      })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({ marketId: 'BTC' })
+        expect(event.data['@1']).toMatchObject({ marketId: '@1' })
+      })
+
+      for (const [event] of listener.mock.calls) {
+        expect(
+          Object.keys(event.data).filter((id: string) => id.startsWith('#'))
+        ).toEqual([])
+      }
+    })
+
+    it('drops an outcome coin from the perp and spot asset-context frames', async () => {
+      const purrSpot: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      const provider = createEnrichingProvider([...HL_MARKETS, purrSpot])
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allDexsAssetCtxs',
+          data: {
+            assetCtxs: [
+              ['', [perpCtx('BTC', '95001'), perpCtx('#26140', '0.42')]],
+            ],
+          },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+            '#26140': {
+              prevDayPx: '0.4',
+              dayNtlVlm: '2',
+              markPx: '0.43',
+              midPx: '0.42',
+            },
+          }),
+        })
+      )
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({ marketId: 'BTC' })
+        expect(event.data['PURR/USDC']).toMatchObject({
+          marketId: 'PURR/USDC',
+        })
+      })
+
+      for (const [event] of listener.mock.calls) {
+        expect(
+          Object.keys(event.data).filter((id: string) => id.startsWith('#'))
+        ).toEqual([])
+      }
+    })
+
+    it('emits no marketsContext entry for a registry-unknown perp coin', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        listener
+      )
+
+      await seedFast({
+        BTC: { midPx: '95000', markPx: '95001' },
+        DOGE: { midPx: '0.2', markPx: '0.21' },
+      })
+
+      await vi.waitFor(() => {
+        const event = listener.mock.calls.at(-1)?.[0]
+        expect(event.data.BTC).toMatchObject({ marketId: 'BTC' })
+      })
+
+      for (const [event] of listener.mock.calls) {
+        expect(event.data.DOGE).toBeUndefined()
+      }
+      warnSpy.mockRestore()
+    })
+
+    it('emits no marketContext for an outcome coin on the per-market feeds', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'hyperliquid', marketId: '#26140' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: { coin: '#26140', ctx: indexedPerpCtx('0.42') },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeSpotAssetCtx',
+          data: {
+            coin: '#26140',
+            ctx: {
+              prevDayPx: '0.4',
+              dayNtlVlm: '2',
+              markPx: '0.43',
+              midPx: '0.42',
+              circulatingSupply: '1000',
+            },
+          },
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('emits no trade and no candle for an outcome coin', async () => {
+      const provider = createProvider()
+      const tradesListener = vi.fn()
+      const candleListener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'trades', dex: 'hyperliquid', marketId: '#26140' },
+        tradesListener
+      )
+      await provider.subscribe(
+        {
+          channel: 'candle',
+          dex: 'hyperliquid',
+          marketId: '#26140',
+          interval: '1h',
+        },
+        candleListener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'trades',
+          data: [
+            {
+              coin: '#26140',
+              side: 'B',
+              px: '0.42',
+              sz: '10',
+              time: 1704067200000,
+              tid: 123,
+            },
+          ],
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'candle',
+          data: {
+            t: 1704063600000,
+            T: 1704067200000,
+            s: '#26140',
+            i: '1h',
+            o: '0.4',
+            c: '0.42',
+            h: '0.43',
+            l: '0.39',
+            v: '100',
+            n: 50,
+          },
+        })
+      )
+
+      expect(tradesListener).not.toHaveBeenCalled()
+      expect(candleListener).not.toHaveBeenCalled()
+    })
+
+    it('emits the known market position and stays silent for an outcome coin', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        allDexsFrame('0xuser1', [['', ['BTC', '#26140']]])
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({ market: { id: 'BTC' } })
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('emits the known market fill and stays silent for an outcome coin', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const fill = {
+        side: 'B',
+        px: '94000',
+        sz: '0.1',
+        dir: 'Buy',
+        fee: '4.70',
+        closedPnl: '0',
+        time: 1704067200000,
+        startPosition: '0.0',
+      }
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [
+              { ...fill, tid: 1, coin: '#26140' },
+              { ...fill, tid: 2, coin: 'BTC' },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({ id: '2', market: { id: 'BTC' } })
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('emits the known market order and stays silent for an outcome coin', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            sparseOrderUpdate({ oid: 100, coin: '#26140' }),
+            sparseOrderUpdate({ oid: 101 }),
+          ],
+        })
+      )
+
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      // The outcome row is skipped before the metadata read, so the venue is
+      // asked about the known market only.
+      expect(orderStatusFetchMock).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0]).toMatchObject({
+        orderId: '101',
+        market: { id: 'BTC' },
+      })
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('keeps a terminated outcome order out of the terminated id list', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            sparseOrderUpdate({ oid: 100, coin: '#26140' }, 'filled'),
+            sparseOrderUpdate({ oid: 101 }, 'canceled'),
+          ],
+        })
+      )
+
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      const event = listener.mock.calls[0][0]
+      expect(event.data.terminated).toEqual(['101'])
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0]).toMatchObject({
+        orderId: '101',
+        status: OrderStatus.CANCELLED,
+      })
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('drops an outcome token from the spot balances', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotState',
+          data: {
+            user: '0xuser1',
+            spotState: {
+              balances: [
+                { coin: 'USDC', token: 0, total: '500', hold: '0' },
+                { coin: '+26140', token: 100_026_140, total: '3', hold: '0' },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({
+        asset: { displaySymbol: 'USDC' },
+        units: '500',
+      })
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+  })
+
   describe('resubscribe on reconnect', () => {
     it('should resend all active subscriptions on open', async () => {
       const provider = createProvider()

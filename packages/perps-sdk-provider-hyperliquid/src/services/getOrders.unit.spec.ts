@@ -139,6 +139,29 @@ describe('getOrders', () => {
     ])
   })
 
+  it('skips outcome market rows across the open and TWAP feeds', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [
+          ...HL_FRONTEND_OPEN_ORDERS,
+          { ...HL_FRONTEND_OPEN_ORDERS[0], oid: 3, coin: '#26140' },
+        ],
+        twapHistory: [
+          activeTwap,
+          {
+            ...activeTwap,
+            twapId: 3157,
+            state: { ...activeTwap.state, coin: '#26140' },
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders.map((order) => order.orderId)).toEqual(['1', '2', '3156'])
+  })
+
   it('keeps the newest row of an id when the terminal feed repeats it', async () => {
     const installed = installInfoFetchMock(
       {

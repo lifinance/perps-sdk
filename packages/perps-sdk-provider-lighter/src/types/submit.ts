@@ -1,9 +1,14 @@
 // Lighter submit/execute-path wire shapes (sendTx, fastwithdraw, changeAccountTier).
 
 /**
- * Request body for Lighter's `/api/v1/sendTx` endpoint. `tx_type` and
- * `tx_info` are the signed WASM transaction envelope; `price_protection` is an
- * optional venue-side execution guard.
+ * Request body for Lighter's `/api/v1/sendTx` endpoint (spec schema
+ * `ReqSendTx`). `tx_type` and `tx_info` are the signed WASM transaction
+ * envelope. `price_protection` is a venue-side execution guard the spec
+ * defaults to `true`, so an absent member leaves the guard on.
+ *
+ * The generated client carries the same members as `SendTxRequest` in
+ * `zklighter-perps/apis/TransactionApi` — the call signature of
+ * `TransactionApi.sendTx`, not a `models/` wire model.
  *
  * @public
  */
@@ -28,9 +33,14 @@ export interface LtSendTxResponse {
 }
 
 /**
- * Batch request body for Lighter's transaction submission endpoint.
- * `tx_types` is a JSON-encoded number array and `tx_infos` a JSON-encoded
- * string array; corresponding entries are submitted in array order.
+ * Batch request body for Lighter's `/api/v1/sendTxBatch` endpoint (spec schema
+ * `ReqSendTxBatch`). `tx_types` is a JSON-encoded number array and `tx_infos` a
+ * JSON-encoded string array; corresponding entries are submitted in array
+ * order.
+ *
+ * The generated client carries the same members as `SendTxBatchRequest` in
+ * `zklighter-perps/apis/TransactionApi` — the call signature of
+ * `TransactionApi.sendTxBatch`, not a `models/` wire model.
  *
  * @public
  */

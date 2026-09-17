@@ -91,6 +91,33 @@ describe('getPositions', () => {
     expect(result.pagination.limit).toBe(1)
   })
 
+  it('skips an outcome market position', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...responses,
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            ...HL_CLEARINGHOUSE_STATE.assetPositions,
+            {
+              position: {
+                ...HL_CLEARINGHOUSE_STATE.assetPositions[0].position,
+                coin: '#26140',
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getPositions(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.positions.map((p) => p.market.id)).toEqual(['BTC'])
+  })
+
   it('throws MarketNotFound for a wire coin absent from /markets', async () => {
     ;({ restore } = installInfoFetchMock(
       {

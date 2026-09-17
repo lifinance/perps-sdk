@@ -26,6 +26,7 @@ import {
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
 import { toWireBig } from '../utils/decimal.js'
 import {
+  assetIsOutcome,
   partitionSpotBalances,
   perpsDexNames,
   spotAssetFromToken,
@@ -102,9 +103,9 @@ const buildBalances = (
   quoteAssetByCategory: Map<string, Asset>
 ): BalancePartition => {
   const { balances, collateralBalances } = partitionSpotBalances(
-    spotState.balances.map((b) =>
-      spotBalance(spotAssetFromToken(b), b.total, priceById)
-    ),
+    spotState.balances
+      .filter((b) => !assetIsOutcome(b.coin))
+      .map((b) => spotBalance(spotAssetFromToken(b), b.total, priceById)),
     quoteAssetIds,
     abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
   )
@@ -220,7 +221,9 @@ export const getAccount = async (
 
   const positions: Position[] = stateResults.flatMap((state) =>
     state.assetPositions
-      .filter(isOpenAssetPosition)
+      .filter(
+        (ap) => !assetIsOutcome(ap.position.coin) && isOpenAssetPosition(ap)
+      )
       .map((ap) =>
         mapPosition(
           ap,

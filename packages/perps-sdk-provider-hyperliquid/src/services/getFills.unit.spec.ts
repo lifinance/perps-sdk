@@ -109,6 +109,25 @@ describe('getFills', () => {
     expect(result.items[0].market.isDelisted).toBe(true)
   })
 
+  it('skips an outcome market fill', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [
+          ...HL_USER_FILLS,
+          { ...HL_USER_FILLS[0], tid: 101, coin: '#26140' },
+        ],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, {
+      address: ADDRESS,
+    })
+
+    expect(result.items.map((item) => item.market.id)).toEqual(['BTC'])
+  })
+
   it('paginates completely without duplicates or gaps when the upstream response is ascending-time with non-monotonic tids', async () => {
     // Ascending time order with a tid that dips mid-sequence — HL's docs
     // guarantee neither newest-first ordering nor monotonic tid.

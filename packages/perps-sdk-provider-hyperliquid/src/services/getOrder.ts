@@ -12,7 +12,7 @@ import type {
   HlOrderStatusResponse,
   HlTwapHistoryEntry,
 } from '../types/index.js'
-import { mapOrder } from '../utils/index.js'
+import { assetIsOutcome, mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -59,12 +59,18 @@ export const getOrder = async (
       { type: 'twapHistory', user: params.address },
       hlInfoOptions(client, options)
     )
-    const twap = history.find((entry) => String(entry.twapId) === params.id)
+    const twap = history.find(
+      (entry) =>
+        String(entry.twapId) === params.id && !assetIsOutcome(entry.state.coin)
+    )
     if (twap !== undefined) {
       const registry = getMarketRegistry(client, PROVIDER_KEY)
       await registry.sync()
       return mapOrder(twap, registry.require(twap.state.coin))
     }
+  }
+
+  if (status.status !== 'order' || assetIsOutcome(status.order.order.coin)) {
     const err = new PerpsError(
       PerpsErrorCode.OrderNotFound,
       `Order not found: ${params.id}`

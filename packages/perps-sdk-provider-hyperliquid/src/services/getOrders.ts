@@ -19,6 +19,7 @@ import type {
   HlTwapHistoryEntry,
 } from '../types/index.js'
 import {
+  assetIsOutcome,
   fetchUserTransactions,
   mapOrder,
   matchOrderActionHash,
@@ -46,15 +47,19 @@ const warnOnce = (key: string, detail?: string): void => {
 }
 
 /**
- * Map one venue row, or drop it. A coin the backend market list does not hold
- * and a row the mapper rejects each drop only their own row instead of
- * rejecting the whole page; each distinct mapper message warns once.
+ * Map one venue row, or drop it. An outcome market identity, a coin the backend
+ * market list does not hold, and a row the mapper rejects each drop only their
+ * own row instead of rejecting the whole page; each distinct mapper message
+ * warns once.
  */
 const mapRow = (
   coin: string,
   registry: MarketRegistry,
   map: (market: MarketDisplay) => Order
 ): Order | undefined => {
+  if (assetIsOutcome(coin)) {
+    return undefined
+  }
   const market = registry.get(coin)
   if (market === undefined) {
     return undefined
