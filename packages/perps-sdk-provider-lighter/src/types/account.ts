@@ -46,7 +46,7 @@ export type LtAccountPosition = {
    */
   total_discount?: string
   /** Lighter bit flags recording which margin settings the account set itself. */
-  margin_set_flag?: number
+  margin_set_flag: number
 }
 
 /**

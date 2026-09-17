@@ -52,6 +52,7 @@ const basePosition = (
   margin_mode: LT_MARGIN_MODE_CROSS,
   allocated_margin: '0.000000',
   total_discount: '0',
+  margin_set_flag: 0,
   ...overrides,
 })
 
