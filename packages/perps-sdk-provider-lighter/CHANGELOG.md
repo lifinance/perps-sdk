@@ -1,5 +1,51 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 25.0.0
+
+### Major Changes
+
+- [#465](https://github.com/lifinance/perps-sdk/pull/465) [`ef23ec2`](https://github.com/lifinance/perps-sdk/commit/ef23ec23035d809a8e33e27a5158fbb862e11d8b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Replace the separate order read models with the `Order` union of `RegularOrder`, `TriggerOrder`, and `TwapOrder`. Every order includes `status`, decimal quantities, and separate venue and client identifiers. Attached orders include `parentOrderId`. Trigger orders include a derived `triggerCondition`.
+
+  Remove `OpenOrder`, the former flat `TriggerOrder` and `TwapOrder` shapes, `Order.isTrigger`, order labels, `OrderType.TRIGGER_ONLY`, `FillStatus`, `TriggerOrderType`, `TriggerOrderStatus`, and `TwapOrderStatus`. Fills no longer include `status`. Remove separate mapper exports, including `mapOpenOrder`, `mapTriggerOrder`, `mapOrderDetail`, `classifyAndMapOrders`, provider `isTriggerOrder`, `isTriggerType`, and `mapStatusReason`.
+
+  Replace `getRunningTwaps` with status-filtered `getOrders`. The response contains one `orders` array instead of `openOrders` and `triggerOrders`. Active statuses remain the default; explicit terminal statuses read venue history. `getOrder` uses the same mapper and returns the union. WebSocket order updates contain `orders` and terminal identifiers. Placement payloads remain unchanged.
+
+- [#466](https://github.com/lifinance/perps-sdk/pull/466) [`0c7f1b1`](https://github.com/lifinance/perps-sdk/commit/0c7f1b1381b7afd77808eb0558d8a09fed2bb6e1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Ledger deposits, withdrawals, and transfers return a resolved `Asset` instead of a display string. Hyperliquid's fixed-USDC bridge resolves reserved token index `0` through the registry. Read `asset.displaySymbol` and `asset.logoURI` directly on every ledger activity.
+
+  `AssetRegistry.get` and `require` accept an optional `id` or `l1Address` selector. Registry refreshes replace all indexes atomically and reject duplicate identities. Unresolved ledger assets raise an explicit stale or mis-keyed registry error.
+
+  Hyperliquid resolves a ledger row's spot token symbol in the asset registry, and includes internal, subaccount, and vault deposit/withdrawal transfers. Lighter resolves numeric asset IDs. Ondo resolves venue coin IDs. Hyperliquid and Ondo ledger mapper functions require an asset registry argument. Fee asset strings remain unchanged.
+
+  Lighter and Ondo activity cursors with overflow rows use format version `2`. Restart pagination when the provider rejects an older overflow format with `ValidationError`.
+
+  Hyperliquid vault-address deposit feeds omit the depositor identity. Those rows raise a specific `ValidationError`; normal depositor-account vault deposits and withdrawals return complete transfers.
+
+### Minor Changes
+
+- [#467](https://github.com/lifinance/perps-sdk/pull/467) [`a5dca06`](https://github.com/lifinance/perps-sdk/commit/a5dca069f97ee8d7818b33ea6f8f3acde3c7df03) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the optional `price` field to `Balance`. It is the USD price of one unit, as a decimal string. A consumer renders an asset price with no market lookup and no math. The field is absent when the provider holds no price for the asset.
+
+  Hyperliquid fills `price` on every spot balance from the same spot price map that already makes `valueUsd`, on both the REST account read and the `spotBalances` WebSocket channel. A quote token gets `1`. A token with no spot market stays unpriced. Lighter and Ondo fill `price` with `1` on the settlement asset. Lighter leaves its other spot tokens unpriced.
+
+- [#467](https://github.com/lifinance/perps-sdk/pull/467) [`1d78d2b`](https://github.com/lifinance/perps-sdk/commit/1d78d2ba44c4339cb9cd18652eb87ee275ccb732) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Rebuild the vendored Lighter WASM signer from lighter-go `v1.0.10`.
+
+  Lighter now assigns market IDs from a 64-bit sequence that starts at 4095. The previous signer rejected any market index above 254 for perps and outside `[2048, 4094]` for spot, so it refused to sign an order on a new market. The new signer accepts any index from 0 to 32767, except the reserved value 255. The signed `MarketIndex` field stays 16-bit.
+
+  The signer no longer checks the market type of a transaction. A market ID no longer tells the signer whether the market is perps or spot, so the caller must apply the perps-only rules for reduce-only orders and for stop-loss and take-profit legs.
+
+  `SignModifyOrder` takes an order-version argument. The SDK supplies the nil value, which keeps the wire attributes unchanged.
+
+### Patch Changes
+
+- [#468](https://github.com/lifinance/perps-sdk/pull/468) [`5a800cc`](https://github.com/lifinance/perps-sdk/commit/5a800cc50843ad0b49c44f50c3f190e601236b88) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `account_type` is the account's `SubAccountType`, not an account tier. The account-config projection no longer decodes that integer into a tier, so a sub-account no longer reports the `premium` tier. Without a `user_tier_name` from `/accountLimits` the projected tier is now `null`.
+
+- [#467](https://github.com/lifinance/perps-sdk/pull/467) [`9a0b80e`](https://github.com/lifinance/perps-sdk/commit/9a0b80e65c86576b4de577b80ee16f1a43b8a5e4) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Drop a Lighter order row whose market the registry cannot resolve, instead of rejecting the whole order page. One delisted market that the backend market list omits no longer empties the order history. The registry warns once per unresolved id. A row whose market is delisted still resolves, so it stays in the response.
+
+- [#478](https://github.com/lifinance/perps-sdk/pull/478) [`7dab6c7`](https://github.com/lifinance/perps-sdk/commit/7dab6c7c5c958e704daec3c94cc6feb9d3e3f8d7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Document `LtSendTxRequest` and `LtSendTxBatchRequest` against their Lighter spec schemas and name the generated form-parameter counterparts in the emitted declarations.
+
+- Updated dependencies [[`a5dca06`](https://github.com/lifinance/perps-sdk/commit/a5dca069f97ee8d7818b33ea6f8f3acde3c7df03), [`ef23ec2`](https://github.com/lifinance/perps-sdk/commit/ef23ec23035d809a8e33e27a5158fbb862e11d8b), [`0c7f1b1`](https://github.com/lifinance/perps-sdk/commit/0c7f1b1381b7afd77808eb0558d8a09fed2bb6e1), [`a9853c6`](https://github.com/lifinance/perps-sdk/commit/a9853c622537e1f89690042b5e798b9dd72600e0), [`5a800cc`](https://github.com/lifinance/perps-sdk/commit/5a800cc50843ad0b49c44f50c3f190e601236b88), [`46fd6b5`](https://github.com/lifinance/perps-sdk/commit/46fd6b5dac0d0023185eb6a41db7dab9134eee24)]:
+  - @lifi/perps-types@13.0.0
+  - @lifi/perps-sdk@14.0.0
+
 ## 24.0.2
 
 ### Patch Changes
