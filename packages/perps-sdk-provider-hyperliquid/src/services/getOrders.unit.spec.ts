@@ -37,6 +37,16 @@ const historical = {
   status: 'filled',
   statusTimestamp: 1_775_000_000_000,
 }
+const CLOID_A = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const CLOID_B = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const explorerTx = (hash: string, cloids: string[]) => ({
+  time: 1_775_000_000_000,
+  user: ADDRESS,
+  action: { type: 'order', orders: cloids.map((c) => ({ a: 0, b: true, c })) },
+  block: 100,
+  hash,
+  error: null,
+})
 
 describe('getOrders', () => {
   let restore: (() => void) | undefined
@@ -284,5 +294,133 @@ describe('getOrders', () => {
       '[hyperliquid] dropped order row: Hyperliquid returned a TWAP without a twapId.',
     ])
     warn.mockRestore()
+  })
+
+  it('sets explorerLink from the placement transaction that names the cloid', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [
+          { ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A },
+          HL_FRONTEND_OPEN_ORDERS[1],
+        ],
+        twapHistory: [],
+        userDetails: {
+          txs: [
+            explorerTx('0xunrelated', [CLOID_B]),
+            explorerTx('0xplacement', [CLOID_A]),
+          ],
+        },
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders[0]).toMatchObject({
+      orderId: '1',
+      clientOrderId: CLOID_A,
+      explorerLink: 'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+    })
+    expect(orders[1]).not.toHaveProperty('explorerLink')
+  })
+
+  it('reads the explorer once for a page of rows', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [
+          { ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A },
+          { ...HL_FRONTEND_OPEN_ORDERS[1], cloid: CLOID_B },
+        ],
+        twapHistory: [],
+        userDetails: { txs: [explorerTx('0xbatch', [CLOID_A, CLOID_B])] },
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(
+      installed.requests.filter(
+        (request) => request.body.type === 'userDetails'
+      )
+    ).toHaveLength(1)
+    expect(orders.map((order) => order.explorerLink)).toEqual([
+      'https://app.hyperliquid.xyz/explorer/tx/0xbatch',
+      'https://app.hyperliquid.xyz/explorer/tx/0xbatch',
+    ])
+  })
+
+  it('skips the explorer read when no row carries a client order id', async () => {
+    const installed = installInfoFetchMock(
+      { frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS, twapHistory: [] },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'frontendOpenOrders',
+      'twapHistory',
+    ])
+    expect(orders.every((order) => order.explorerLink === undefined)).toBe(true)
+  })
+
+  it('returns the rows unlinked when the explorer read fails, and warns once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [{ ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A }],
+        twapHistory: [],
+        userDetails: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    await getOrders(ctx, { address: ADDRESS })
+    expect(orders[0]).not.toHaveProperty('explorerLink')
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[hyperliquid] explorer link lookup failed: Hyperliquid explorer userDetails failed: 503',
+    ])
+    warn.mockRestore()
+  })
+
+  it('returns the rows unlinked when the explorer answers 2xx with a body that is not JSON', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [{ ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A }],
+        twapHistory: [],
+        userDetails: new Response('<html>blocked</html>', { status: 200 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(orders[0]).toMatchObject({ clientOrderId: CLOID_A })
+    expect(orders[0]).not.toHaveProperty('explorerLink')
+    warn.mockRestore()
+  })
+
+  it('links a filled row to its placement transaction', async () => {
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [
+          { ...historical, order: { ...historical.order, cloid: CLOID_A } },
+        ],
+        twapHistory: [],
+        userDetails: { txs: [explorerTx('0xplacement', [CLOID_A])] },
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.FILLED],
+    })
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '88',
+        status: OrderStatus.FILLED,
+        explorerLink: 'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+      }),
+    ])
   })
 })

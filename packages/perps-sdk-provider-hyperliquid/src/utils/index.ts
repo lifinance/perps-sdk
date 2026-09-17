@@ -12,6 +12,11 @@ export {
   decodeCompressedJson,
   decodeFastAssetCtxs,
 } from './decodeFastAssetCtxs.js'
+export {
+  fetchUserTransactions,
+  getClientOrderIds,
+  matchOrderActionHash,
+} from './explorer.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {

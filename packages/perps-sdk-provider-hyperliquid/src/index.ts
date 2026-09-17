@@ -15,6 +15,7 @@ export { projectHyperliquidConfigSettings } from './accountConfig.js'
 export { getAccountSummary } from './accountSummary.js'
 export {
   DEFAULT_HYPERLIQUID_API_URL,
+  HYPERLIQUID_EXPLORER_RPC_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY as HYPERLIQUID_PROVIDER_KEY,
 } from './constants.js'

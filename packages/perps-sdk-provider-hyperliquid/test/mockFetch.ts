@@ -17,11 +17,12 @@ const jsonResponse = (value: unknown, status = 200): Response =>
  * Install a `vi.spyOn(globalThis, 'fetch')` for account-read specs. Serves the
  * backend `/markets` GET route from `markets` (the enriched source of truth) —
  * `getMarket` filters by the `marketIds` query param — the `/marketsContext` GET
- * route from `prices`, and resolves each Hyperliquid `/info` POST from `responses`
- * keyed by the body's `type` field. `/info` requests are recorded in
- * `requests`; the reference-data GET routes are recorded separately in
- * `referenceRequests`, so a spec can assert a filtered read skipped one.
- * Unknown `type` values raise so tests can't rely on default fixtures.
+ * route from `prices`, and resolves each Hyperliquid POST from `responses`
+ * keyed by the body's `type` field. A `Response` entry is served as-is, so a
+ * spec can drive a non-2xx status. POSTs are recorded in `requests`; the
+ * reference-data GET routes are recorded separately in `referenceRequests`, so
+ * a spec can assert a filtered read skipped one. Unknown `type` values raise so
+ * tests can't rely on default fixtures.
  */
 export function installInfoFetchMock(
   responses: Record<string, unknown>,
@@ -73,7 +74,10 @@ export function installInfoFetchMock(
       if (!(type in responses)) {
         throw new Error(`No mock response registered for /info type=${type}`)
       }
-      return jsonResponse(responses[type])
+      const registered = responses[type]
+      return registered instanceof Response
+        ? registered.clone()
+        : jsonResponse(registered)
     })
 
   return {
