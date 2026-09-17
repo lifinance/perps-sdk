@@ -2,6 +2,12 @@
 // (deposits, withdrawals, funding payments, liquidations, transfers).
 // Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
+import type { DepositHistoryItem } from 'zklighter-perps/models/DepositHistoryItem'
+import type { LiqTrade } from 'zklighter-perps/models/LiqTrade'
+import type { LiquidationTypeEnum } from 'zklighter-perps/models/Liquidation'
+import type { PositionFunding } from 'zklighter-perps/models/PositionFunding'
+import type { TransferHistoryItem } from 'zklighter-perps/models/TransferHistoryItem'
+import type { WithdrawHistoryItem } from 'zklighter-perps/models/WithdrawHistoryItem'
 import type { LtAccountPosition } from './account.js'
 
 /**
@@ -11,14 +17,7 @@ import type { LtAccountPosition } from './account.js'
  *
  * @public
  */
-export interface LtDepositHistoryItem {
-  id: string
-  asset_id: number
-  amount: string
-  timestamp: number
-  status: string
-  l1_tx_hash: string
-}
+export type LtDepositHistoryItem = DepositHistoryItem
 
 /**
  * Paginated deposit-history response from Lighter. `cursor` is an opaque
@@ -39,15 +38,7 @@ export interface LtDepositHistoryResponse {
  *
  * @public
  */
-export interface LtWithdrawHistoryItem {
-  id: string
-  asset_id: number
-  amount: string
-  timestamp: number
-  status: string
-  type: string
-  l1_tx_hash: string
-}
+export type LtWithdrawHistoryItem = WithdrawHistoryItem
 
 /**
  * Paginated withdrawal-history response from Lighter. `cursor` is an opaque
@@ -63,27 +54,13 @@ export interface LtWithdrawHistoryResponse {
 
 /**
  * Funding-payment history row for one perpetual position. `change`,
- * `position_size`, and `rate` are decimal strings; `timestamp` is a Unix
- * timestamp in seconds and `position_side` is Lighter's side literal.
+ * `position_size`, `rate` and `discount` are decimal strings; `timestamp` is a
+ * Unix timestamp in seconds. `change` is signed in quote-currency units:
+ * positive means the account received funding and negative means it paid.
  *
  * @public
  */
-export interface LtPositionFunding {
-  timestamp: number
-  market_id: number
-  funding_id: number
-  /**
-   * Signed, in quote-currency units. Positive means the account received
-   * funding; negative means the account paid it. Mapped straight onto
-   * `FundingActivity.amount`.
-   */
-  change: string
-  rate: string
-  position_size: string
-  position_side: string
-  /** Funding-fee discount Lighter applied to `change`, as a decimal string. */
-  discount?: string
-}
+export type LtPositionFunding = PositionFunding
 
 /**
  * Paginated position-funding response from Lighter. `next_cursor` is an opaque
@@ -103,26 +80,17 @@ export interface LtPositionFundingsResponse {
  *
  * @public
  */
-export type LtLiquidationType = 'partial' | 'deleverage'
+export type LtLiquidationType = LiquidationTypeEnum
 
 /**
  * Forced trade Lighter executed to close the liquidated position. Prices,
  * sizes and fees are decimal strings in the market's native precision.
+ * `transaction_time` is a Unix microsecond timestamp, while the enclosing
+ * row's `executed_at` is milliseconds.
  *
  * @public
  */
-export interface LtLiqTrade {
-  price: string
-  size: string
-  taker_fee: string
-  maker_fee: string
-  /**
-   * Unix timestamp in microseconds. The enclosing row's `executed_at` is
-   * milliseconds. Lighter documents no unit, and its public trade rows report
-   * this member in microseconds.
-   */
-  transaction_time: number
-}
+export type LtLiqTrade = LiqTrade
 
 /**
  * Position row inside a liquidation payload. Lighter returns the full
@@ -194,21 +162,7 @@ export interface LtLiquidationsResponse {
  *
  * @public
  */
-export interface LtTransfer {
-  id: string
-  asset_id: number
-  amount: string
-  fee: string
-  timestamp: number
-  type: string
-  from_l1_address: string
-  to_l1_address: string
-  from_account_index: number
-  to_account_index: number
-  from_route: 'spot' | 'perps'
-  to_route: 'spot' | 'perps'
-  tx_hash: string
-}
+export type LtTransfer = TransferHistoryItem
 
 /**
  * Paginated transfer-history response from Lighter. `cursor` is an opaque
