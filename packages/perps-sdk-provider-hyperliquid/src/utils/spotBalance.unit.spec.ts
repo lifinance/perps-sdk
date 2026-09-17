@@ -42,6 +42,7 @@ describe('spotBalance', () => {
     providerId: 'hyperliquid',
     id: '150',
     displaySymbol: 'HYPE',
+    logoURI: 'https://app.hyperliquid.xyz/coins/HYPE_spot.svg',
   }
 
   it('carries the unit price beside the USD value', () => {
