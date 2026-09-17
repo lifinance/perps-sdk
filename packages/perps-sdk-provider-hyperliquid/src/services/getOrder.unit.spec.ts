@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   HL_MARKETS,
   HL_ORDER_STATUS_FOUND,
+  HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -57,6 +58,23 @@ describe('getOrder', () => {
       getOrder(ctx, {
         address: ADDRESS,
         id: '7',
+      })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+  })
+
+  it('throws OrderNotFound when the order is on an outcome market', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        orderStatus: HL_ORDER_STATUS_OUTCOME,
+      },
+      HL_MARKETS
+    ))
+
+    await expect(
+      getOrder(ctx, {
+        address: ADDRESS,
+        id: '1',
       })
     ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
   })

@@ -9,6 +9,7 @@ import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlClearinghouseState } from '../types/index.js'
 import {
+  assetIsOutcome,
   isOpenAssetPosition,
   mapPosition,
   perpsDexNames,
@@ -61,7 +62,9 @@ export const getPositions = async (
 
   let positions = stateResults.flatMap((state) =>
     state.assetPositions
-      .filter(isOpenAssetPosition)
+      .filter(
+        (ap) => !assetIsOutcome(ap.position.coin) && isOpenAssetPosition(ap)
+      )
       .map((ap) =>
         mapPosition(
           ap,

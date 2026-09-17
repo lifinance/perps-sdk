@@ -8,6 +8,7 @@ import type {
   HlFrontendOpenOrders,
 } from '../types/index.js'
 import {
+  assetIsOutcome,
   isTriggerOrder,
   mapOpenOrder,
   mapTriggerOrder,
@@ -61,7 +62,9 @@ export const getOrders = async (
     )
   )
 
-  const raw: HlFrontendOpenOrder[] = ordersResults.flat()
+  const raw: HlFrontendOpenOrder[] = ordersResults
+    .flat()
+    .filter((o) => !assetIsOutcome(o.coin))
 
   const childOids = new Set<number>()
   for (const o of raw) {

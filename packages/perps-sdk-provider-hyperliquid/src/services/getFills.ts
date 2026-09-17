@@ -12,7 +12,7 @@ import type {
   HlUserFills,
   HlUserFillsByTime,
 } from '../types/index.js'
-import { mapFill } from '../utils/index.js'
+import { assetIsOutcome, mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /**
@@ -112,6 +112,9 @@ export const getFills = async (
   // only its own row instead of rejecting the whole page. The registry warns
   // once per unresolved id. A delisted market still resolves, so its rows stay.
   const items = page.flatMap((f): Fill[] => {
+    if (assetIsOutcome(f.coin)) {
+      return []
+    }
     const market = registry.get(f.coin)
     return market === undefined ? [] : [mapFill(f, market)]
   })
