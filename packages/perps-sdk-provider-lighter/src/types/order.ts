@@ -1,56 +1,61 @@
 // Order shapes returned by Lighter's REST API.
 // Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
-import type {
-  Order,
-  OrderStatusEnum,
-  OrderTimeInForceEnum,
-  OrderTriggerStatusEnum,
-  OrderTypeEnum,
-} from 'zklighter-perps/models/Order'
-import type { SimpleOrder } from 'zklighter-perps/models/SimpleOrder'
-
-/**
- * Lifecycle status Lighter reports on an order. Every `canceled-*` member
- * names the venue rule that ended the order.
- *
- * @public
- */
-export type LtOrderStatusEnum = OrderStatusEnum
-
-/**
- * Order type Lighter reports on the wire, in its hyphenated spelling.
- *
- * @public
- */
-export type LtOrderTypeEnum = OrderTypeEnum
-
-/**
- * Time-in-force Lighter reports on the wire, in its hyphenated spelling.
- *
- * @public
- */
-export type LtOrderTimeInForceEnum = OrderTimeInForceEnum
-
-/**
- * Trigger state Lighter reports on an order. `'na'` marks a regular order;
- * every other member marks an order with trigger semantics.
- *
- * @public
- */
-export type LtOrderTriggerStatusEnum = OrderTriggerStatusEnum
-
 /**
  * Order payload returned by Lighter's REST API. Amounts and prices are decimal
  * strings in market precision. `order_expiry` is an absolute Unix-millisecond
- * expiry; `created_at` and `updated_at` are Unix seconds. `transaction_time` is
- * a Unix microsecond timestamp. Lighter documents no unit for `timestamp` or
- * `trigger_time`, and every endpoint that returns this row is auth-gated, so
- * no public probe can observe either value.
+ * expiry; `created_at` and `updated_at` are Unix seconds. `timestamp` and
+ * `transaction_time` carry their unit on the member; `trigger_time` has no
+ * documented unit. Enum-like side, type, time-in-force, status, and trigger
+ * fields retain Lighter's wire strings.
  *
  * @public
  */
-export type LtOrder = Order
+export type LtOrder = {
+  order_index: number
+  client_order_index: number
+  order_id: string
+  client_order_id: string
+  market_index: number
+  owner_account_index: number
+  initial_base_amount: string
+  price: string
+  nonce: number
+  remaining_base_amount: string
+  is_ask: boolean
+  filled_base_amount: string
+  filled_quote_amount: string
+  side: string
+  type: string
+  time_in_force: string
+  reduce_only: boolean
+  trigger_price: string
+  order_expiry: number
+  status: string
+  trigger_status: string
+  trigger_time: number
+  parent_order_index: number
+  parent_order_id: string
+  to_trigger_order_id_0: string
+  to_trigger_order_id_1: string
+  to_cancel_order_id_0: string
+  block_height: number
+  /**
+   * Unit unproven. Lighter documents no unit, and every endpoint that returns
+   * this row is auth-gated, so no public probe can observe a value.
+   */
+  timestamp: number
+  created_at: number
+  updated_at: number
+  /** Lighter bit flags recording the order's wire options. */
+  order_flags?: number
+  /**
+   * Unix timestamp in microseconds. Lighter documents no unit, and its public
+   * trade rows report this member in microseconds while the sibling
+   * `created_at` and `updated_at` stay in seconds.
+   */
+  transaction_time: number
+}
 
 /**
  * Paginated order-history response from Lighter. `next_cursor` is an opaque
@@ -80,12 +85,24 @@ export interface LtAccountOrdersResponse {
 /**
  * Single order-book level returned by Lighter. Amounts and prices are decimal
  * strings in the market's native precision; `order_expiry` is an absolute
- * Unix-millisecond expiry. Lighter documents no unit for `transaction_time`,
- * and every resting order this endpoint returns reports the member as zero.
+ * Unix-millisecond expiry.
  *
  * @public
  */
-export type LtOrderBookOrder = SimpleOrder
+export interface LtOrderBookOrder {
+  order_index: number
+  order_id: string
+  owner_account_index: number
+  initial_base_amount: string
+  remaining_base_amount: string
+  price: string
+  order_expiry: number
+  /**
+   * Unit unproven. Lighter documents no unit, and every resting order this
+   * endpoint returns reports the member as zero.
+   */
+  transaction_time: number
+}
 
 /**
  * Order-book response containing separate ask and bid levels plus their counts.

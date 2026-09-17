@@ -1,8 +1,5 @@
 // Lighter submit/execute-path wire shapes (sendTx, fastwithdraw, changeAccountTier).
 
-import type { RespChangeAccountTier } from 'zklighter-perps/models/RespChangeAccountTier'
-import type { RespGetFastwithdrawalInfo } from 'zklighter-perps/models/RespGetFastwithdrawalInfo'
-
 /**
  * Request body for Lighter's `/api/v1/sendTx` endpoint (spec schema
  * `ReqSendTx`). `tx_type` and `tx_info` are the signed WASM transaction
@@ -80,7 +77,13 @@ export interface LtSendTxBatchResponse {
  *
  * @public
  */
-export type LtFastwithdrawInfoResponse = RespGetFastwithdrawalInfo
+export interface LtFastwithdrawInfoResponse {
+  code: number
+  message?: string
+  to_account_index: number
+  withdraw_limit: string
+  max_withdrawal_amount: string
+}
 
 /**
  * `POST /api/v1/fastwithdraw` (Lighter `ResultCode`).
@@ -106,4 +109,7 @@ export interface LtFastwithdrawResponse {
  *
  * @public
  */
-export type LtChangeAccountTierResponse = RespChangeAccountTier
+export interface LtChangeAccountTierResponse {
+  code: number
+  message?: string
+}
