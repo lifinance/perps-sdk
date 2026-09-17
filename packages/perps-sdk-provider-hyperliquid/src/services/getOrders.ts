@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  createWarnOnce,
   ExplorerChainId,
   explorerTxUrl,
   getMarketRegistry,
@@ -34,14 +35,11 @@ import {
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
 
-const warned = new Set<string>()
+const warn = createWarnOnce()
 
 const warnOnce = (key: string, detail?: string): void => {
-  if (warned.has(key)) {
-    return
-  }
-  warned.add(key)
-  console.warn(
+  warn(
+    key,
     `[${PROVIDER_KEY}] ${detail === undefined ? key : `${key}: ${detail}`}`
   )
 }

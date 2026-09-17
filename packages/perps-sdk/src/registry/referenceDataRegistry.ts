@@ -1,6 +1,7 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsSDKClient } from '../types/provider.js'
+import { createWarnOnce } from '../utils/warnOnce.js'
 
 /** Atomic provider reference indexes; HTTP cache headers govern freshness. @internal */
 export abstract class ReferenceDataRegistry<T> {
@@ -8,7 +9,7 @@ export abstract class ReferenceDataRegistry<T> {
   private secondaryIndexes = new Map<string, Map<string, T>>()
   private current: readonly T[] = []
   private inflight: Promise<readonly T[]> | undefined
-  private warnedIds = new Set<string>()
+  private readonly warnOnce = createWarnOnce()
 
   protected constructor(
     protected readonly client: PerpsSDKClient,
@@ -50,10 +51,7 @@ export abstract class ReferenceDataRegistry<T> {
     if (item !== undefined) {
       return item
     }
-    if (!this.warnedIds.has(id)) {
-      this.warnedIds.add(id)
-      console.warn(`[${this.provider}] unknown ${this.kind} id '${id}'`)
-    }
+    this.warnOnce(id, `[${this.provider}] unknown ${this.kind} id '${id}'`)
     return undefined
   }
 
