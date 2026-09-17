@@ -1,10 +1,5 @@
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  FillStatus,
-  LiquidityRole,
-  OrderSide,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { OndoFill, OndoFillDirection } from '../types/wire.js'
 
@@ -34,7 +29,6 @@ export const mapFill = (fill: OndoFill, market: MarketDisplay): Fill => ({
   side: fill.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
   size: fill.size,
   price: fill.price,
-  status: FillStatus.FILLED,
   liquidity: fill.isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
   // Ondo charges the fill fee in the market's quote asset.
   fee: {

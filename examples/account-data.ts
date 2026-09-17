@@ -26,13 +26,11 @@ async function run() {
   })
   console.log('Positions:', positions)
 
-  // Get open orders and trigger orders
-  const { openOrders, triggerOrders } = await getOrders(client, {
+  const { orders } = await getOrders(client, {
     provider: 'hyperliquid',
     address: '0x1234...',
   })
-  console.log('Open orders:', openOrders)
-  console.log('Trigger orders:', triggerOrders)
+  console.log('Orders:', orders)
 
   // Get order fills
   const { items, pagination } = await getFills(client, {

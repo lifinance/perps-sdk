@@ -19,6 +19,7 @@ import {
   MarginMode,
   META_PROVIDER,
   OrderSide,
+  OrderStatus,
   OrderType,
   onboardTypeFields,
   PerpsErrorCode,
@@ -41,6 +42,7 @@ import {
   mockAccount,
   mockCreateOrderResponse,
   mockCreateWithdrawalResponse,
+  mockOrder,
   mockProviders,
   mockSubmitWithdrawalResponse,
   server,
@@ -67,6 +69,54 @@ describe('PerpsClient', () => {
       integrator: 'test-app',
       apiKey: 'test-key',
       providers: [agentProvider],
+    })
+  })
+
+  describe('order reads', () => {
+    it('reads active orders by default and terminal orders on request', async () => {
+      const rows = [
+        { ...mockOrder, orderId: 'live', status: OrderStatus.OPEN },
+        { ...mockOrder, orderId: 'done', status: OrderStatus.FILLED },
+      ]
+      const reader = new PerpsClient({
+        providers: [
+          createTestAgentProvider({
+            type: provider,
+            getOrders: async ({ statuses }) => ({
+              provider,
+              orders: rows.filter((order) => statuses?.includes(order.status)),
+              pagination: { limit: 2, hasMore: false },
+            }),
+            getOrder: async ({ id }) => {
+              const order = rows.find((row) => row.orderId === id)
+              if (order === undefined) {
+                throw new PerpsError(
+                  PerpsErrorCode.OrderNotFound,
+                  'Order not found'
+                )
+              }
+              return order
+            },
+          }),
+        ],
+      })
+      expect(
+        (await reader.getOrders({ provider, address: userAddress })).orders.map(
+          (order) => order.orderId
+        )
+      ).toEqual(['live'])
+      expect(
+        (
+          await reader.getOrders({
+            provider,
+            address: userAddress,
+            statuses: [OrderStatus.FILLED],
+          })
+        ).orders.map((order) => order.orderId)
+      ).toEqual(['done'])
+      expect(
+        await reader.getOrder({ provider, address: userAddress, id: 'done' })
+      ).toMatchObject({ orderId: 'done', status: OrderStatus.FILLED })
     })
   })
 

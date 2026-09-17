@@ -6,12 +6,19 @@ import {
 import { describe, expect, it } from 'vitest'
 import { paginateActivity } from './activityPaging.js'
 
+const collateral = {
+  providerId: 'test',
+  id: '0',
+  displaySymbol: 'USDC',
+  logoURI: 'usdc.svg',
+}
+
 const deposit = (id: string, timestampMs: number): DepositActivity => ({
   id,
   provider: 'test',
   timestamp: new Date(timestampMs).toISOString(),
   type: ActivityType.DEPOSIT,
-  asset: 'USDC',
+  asset: collateral,
   amount: '100',
 })
 
@@ -20,7 +27,7 @@ const withdrawal = (id: string, timestampMs: number): WithdrawalActivity => ({
   provider: 'test',
   timestamp: new Date(timestampMs).toISOString(),
   type: ActivityType.WITHDRAWAL,
-  asset: 'USDC',
+  asset: collateral,
   amount: '100',
 })
 

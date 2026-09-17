@@ -109,6 +109,7 @@ const NIL_INTEGRATOR_MAKER_FEE = 0
 const SELF_TRADE_BEHAVIOR_EXPIRE_MAKER = 0
 const SELF_TRADE_EQUALITY_ACCOUNT_INDEX = 0
 const SKIP_NONCE_DISABLED = 0
+const NIL_ORDER_VERSION = 0
 // CancelAll across every market (lighter-go `NilMarketIndex`); a real index
 // scopes the cancel to a single market.
 const NIL_MARKET_INDEX = 255
@@ -552,6 +553,7 @@ export class LighterSigner {
           SELF_TRADE_EQUALITY_ACCOUNT_INDEX,
           SKIP_NONCE_DISABLED,
           nonce,
+          NIL_ORDER_VERSION,
           ctx.apiKeyIndex,
           ctx.accountIndex
         )

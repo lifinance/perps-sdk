@@ -90,6 +90,7 @@ describe('getAccount', () => {
         },
         units: '500',
         valueUsd: '500',
+        price: '1',
       },
       {
         // Collateral asset is the dex's market quote asset (token-index id).
@@ -102,6 +103,7 @@ describe('getAccount', () => {
         },
         units: '10000',
         valueUsd: '10000',
+        price: '1',
       },
     ])
     expect(result.marginUsed).toBe('500')
@@ -236,6 +238,7 @@ describe('getAccount', () => {
         },
         units: '500',
         valueUsd: '500',
+        price: '1',
       },
     ])
     // Derived from the single position's marginUsed (940)
@@ -539,6 +542,7 @@ describe('getAccount', () => {
         },
         units: '1000',
         valueUsd: '1000',
+        price: '1',
       },
       {
         categoryId: 'spot',
@@ -551,6 +555,7 @@ describe('getAccount', () => {
         },
         units: '100',
         valueUsd: '4000',
+        price: '40',
         collateralWeight: 0.5,
       },
       {
@@ -563,6 +568,7 @@ describe('getAccount', () => {
         },
         units: '0.1',
         valueUsd: '10000',
+        price: '100000',
         collateralWeight: 0.5,
       },
     ])

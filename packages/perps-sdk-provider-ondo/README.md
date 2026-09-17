@@ -40,6 +40,58 @@ const client = createPerpsClient({
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
 - `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
+## Orders
+
+`getOrders` returns `{ provider, orders, pagination }`. Each `Order` has one
+`type` discriminator and one lifecycle `status`:
+
+- `MARKET` and `LIMIT` rows carry `timeInForce` and an optional `price`.
+- `STOP_MARKET`, `STOP_LIMIT`, `TAKE_PROFIT_MARKET`, and `TAKE_PROFIT_LIMIT`
+  rows carry `triggerPrice` and `triggerCondition`. Limit triggers also carry `limitPrice`.
+- `TWAP` rows carry `durationSeconds` and `startedAt`.
+
+Every row carries the venue `orderId`, sizes, side, market, `reduceOnly`, and
+creation/update times. Ondo's optional `clientOrderId` and `parentOrderId` remain
+separate fields. The mapper omits `explorerLink` because these venue rows carry no transaction hash.
+
+| Ondo status | SDK status |
+| --- | --- |
+| `open`, `untriggered` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
+| `fullyfilled` | `FILLED` |
+| `canceled` | `CANCELLED`; `statusReason` preserves the venue cancellation reason |
+| TWAP `running` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
+| TWAP `completed` | `FILLED` |
+| TWAP `cancelled` | `CANCELLED`; `statusReason` preserves the venue cancellation code |
+| `pending` or an unknown status | The mapper throws `PerpsError` |
+
+`getOrders({ statuses })` defaults to `ACTIVE_ORDER_STATUSES`: `PENDING`,
+`OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`. Active reads use
+`/v1/perps/orders?status=open` and `/v1/perps/twap/orders/running`.
+Terminal reads use the documented order history queries
+`/v1/perps/orders?status=canceled` and `/v1/perps/orders?status=fullyfilled`,
+plus `/v1/perps/twap/orders/history`. A mixed filter reads both endpoint groups.
+The provider applies the exact requested status filter after the mapper.
+
+```ts
+import { OrderStatus } from '@lifi/perps-types'
+
+const history = await client.getOrders({
+  address,
+  statuses: [OrderStatus.FILLED, OrderStatus.CANCELLED],
+})
+```
+
+`marketId` restricts provider reads to one market. The pagination cursor keeps
+each endpoint's position independent. Pass the returned cursor unchanged to
+the next request, with the same market and status filter.
+The cursor stores unconsumed running TWAP rows from the first snapshot.
+Later pages do not read the running feed again.
+`getOrder` uses the same order mapper as the list read. After a regular
+lookup returns `order_not_found`, it checks `/v1/perps/twap/order/{orderID}`.
+WebSocket `orderUpdates.data.orders` includes terminal rows.
+`orderUpdates.data.terminated` also contains their ids.
+Fills carry no lifecycle status.
+
 ## Activity coverage
 
 `getActivity` reports four movement types from Ondo's authenticated REST API:
@@ -55,13 +107,19 @@ const client = createPerpsClient({
 the whole history in one response, so `getActivity` calls each on the first
 page only and carries the rows past the page `limit` in the activity cursor.
 
-`asset` on a `DEPOSIT` or a `WITHDRAWAL` is Ondo's own `coin`, which is already
-a display symbol. Ondo charges a withdrawal fee in USD (`usdFee`) rather than
+`asset` on a `DEPOSIT` or a `WITHDRAWAL` is the registry `Asset` resolved by
+Ondo's `coin` identity. Read `asset.displaySymbol` for display and `asset.logoURI`
+for its icon. A missing registry entry raises an explicit error.
+Ondo charges a withdrawal fee in USD (`usdFee`) rather than
 in the withdrawn asset, so `WithdrawalActivity.fee` carries `asset: 'USD'` on
 a withdrawal where Ondo reports a `usdFee`, and is absent otherwise. A
 consumer that formats the fee must read `fee.asset` and never reuse the
 withdrawal's own `asset`. A withdrawal Ondo reports as
 `failure` or `cancelled` moved no value and is dropped.
+
+Activity cursors with overflow rows use format version `2`. The provider rejects
+older overflow formats instead of treating a display symbol as asset identity.
+Restart pagination when the SDK reports this `ValidationError`.
 
 `getActivity` never returns a `TRANSFER` item for Ondo. Ondo's transfer surface
 moves value between the `main` and `margin` wallets of one account, and

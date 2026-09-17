@@ -5,10 +5,11 @@ import {
 } from '@lifi/perps-sdk'
 import type { Market, Subscription } from '@lifi/perps-types'
 import {
-  FillStatus,
   OrderSide,
+  OrderStatus,
   OrderType,
   PositionMarginAdjustment,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -16,6 +17,12 @@ import {
   HL_MARKETS,
   HL_SPOT_MARKET,
 } from '../../test/fixtures.js'
+import type {
+  HlOrderDetail,
+  HlOrderStatusFound,
+  HlOrderStatusResponse,
+  HlWsOrder,
+} from '../types/index.js'
 import {
   HyperliquidWsProvider,
   hyperliquidWsProvider,
@@ -233,6 +240,51 @@ const marketsFailureResponse = () =>
 // The summary gate reads `userAbstraction` from `${apiUrl}/info` — serve it
 // here. Unset/cleared resolves `null` (= never set = standard mode).
 const abstractionFetchMock = vi.fn()
+const orderStatusFetchMock = vi.fn()
+
+const orderMetadata = (
+  overrides: Partial<HlOrderDetail['order']> = {}
+): HlOrderStatusFound => ({
+  status: 'order',
+  order: {
+    order: {
+      coin: 'BTC',
+      side: 'B',
+      limitPx: '93000',
+      sz: '0',
+      oid: 100,
+      timestamp: 1704067200000,
+      origSz: '0.1',
+      cloid: null,
+      orderType: 'Limit',
+      reduceOnly: false,
+      tif: 'Gtc',
+      triggerCondition: 'N/A',
+      triggerPx: null,
+      ...overrides,
+    },
+    status: 'filled',
+    statusTimestamp: 1704067201000,
+  },
+})
+
+const sparseOrderUpdate = (
+  overrides: Partial<HlWsOrder['order']> = {},
+  status = 'open'
+): HlWsOrder => ({
+  order: {
+    coin: 'BTC',
+    side: 'B',
+    limitPx: '93000',
+    sz: '0.05',
+    oid: 100,
+    timestamp: 1704067200000,
+    origSz: '0.1',
+    ...overrides,
+  },
+  status,
+  statusTimestamp: 1704067200000,
+})
 
 vi.stubGlobal(
   'fetch',
@@ -240,6 +292,9 @@ vi.stubGlobal(
     const url = input.toString()
     if (url.includes('/info')) {
       const body = JSON.parse(String(init?.body ?? '{}'))
+      if (body.type === 'orderStatus') {
+        return Response.json(await orderStatusFetchMock(body, url))
+      }
       if (body.type !== 'userAbstraction') {
         throw new Error(`Unexpected info request: ${body.type}`)
       }
@@ -817,7 +872,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage(
         JSON.stringify({ channel: 'orderUpdates', data: [] })
       )
-      expect(listenerA).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listenerA).toHaveBeenCalledOnce())
       expect(listenerB).not.toHaveBeenCalled()
     })
 
@@ -854,7 +909,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage(
         JSON.stringify({ channel: 'orderUpdates', data: [] })
       )
-      expect(listenerA).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listenerA).toHaveBeenCalledOnce())
       expect(listenerB).toHaveBeenCalledOnce()
     })
 
@@ -897,8 +952,8 @@ describe('HyperliquidWsProvider', () => {
         getMockRwsInstance().simulateMessage(
           JSON.stringify({ channel: 'orderUpdates', data: [] })
         )
+        await vi.waitFor(() => expect(listenerB).toHaveBeenCalledOnce())
         expect(listenerA).not.toHaveBeenCalled()
-        expect(listenerB).toHaveBeenCalledOnce()
       } finally {
         vi.useRealTimers()
       }
@@ -925,7 +980,7 @@ describe('HyperliquidWsProvider', () => {
         getMockRwsInstance().simulateMessage(
           JSON.stringify({ channel: 'orderUpdates', data: [] })
         )
-        expect(listenerB).toHaveBeenCalledOnce()
+        await vi.waitFor(() => expect(listenerB).toHaveBeenCalledOnce())
       } finally {
         vi.useRealTimers()
       }
@@ -2199,164 +2254,234 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
-    it('should emit orderUpdates event to the subscribed address listener', async () => {
+    it('enriches a documented sparse update without replacing its lifecycle with a newer REST state', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
-
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(
+          orderMetadata({ cloid: '0x1234567890abcdef1234567890abcdef' })
+        )
       await provider.subscribe(
-        {
-          channel: 'orderUpdates',
-          dex: 'hyperliquid',
-          address: '0xuser1',
-        },
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
-
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [
-            {
-              order: {
-                oid: 100,
-                coin: 'BTC',
-                side: 'B',
-                sz: '0.05',
-                limitPx: '93000',
-                orderType: 'Limit',
-                origSz: '0.1',
-                reduceOnly: false,
-                timestamp: 1704067200000,
-                tif: 'Gtc',
-                cloid: null,
-                triggerCondition: 'N/A',
-                triggerPx: null,
-              },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-          ],
+          data: [sparseOrderUpdate()],
         })
       )
-
-      expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.channel).toBe('orderUpdates')
-      expect(event.data.openOrders).toHaveLength(1)
-      expect(event.data.triggerOrders).toHaveLength(0)
-      expect(event.data.openOrders[0]).toMatchObject({
-        orderId: '100',
-        market: { id: 'BTC' },
-        side: OrderSide.BUY,
-        type: OrderType.LIMIT,
-        originalSize: '0.1',
-        remainingSize: '0.05',
-        filledSize: '0.05',
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(orderStatusFetchMock).toHaveBeenCalledWith(
+        { type: 'orderStatus', user: '0xuser1', oid: 100 },
+        'https://api.hyperliquid.xyz/info'
+      )
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        orders: [
+          {
+            orderId: '100',
+            type: OrderType.LIMIT,
+            status: OrderStatus.PARTIALLY_FILLED,
+            originalSize: '0.1',
+            remainingSize: '0.05',
+            filledSize: '0.05',
+            clientOrderId: '0x1234567890abcdef1234567890abcdef',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+        terminated: [],
       })
     })
 
-    it('emits an active TP/SL leg as a trigger order', async () => {
+    it('gets trigger type and price from HTTP metadata for a sparse trigger update', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
-
+      orderStatusFetchMock.mockReset().mockResolvedValue(
+        orderMetadata({
+          oid: 300,
+          orderType: 'Stop Market',
+          triggerPx: '90000',
+          reduceOnly: true,
+          tif: null,
+        })
+      )
       await provider.subscribe(
-        {
-          channel: 'orderUpdates',
-          dex: 'hyperliquid',
-          address: '0xuser1',
-        },
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
-
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [
-            {
-              order: {
-                oid: 300,
-                coin: 'BTC',
-                side: 'A',
-                sz: '0.05',
-                limitPx: '0',
-                orderType: 'Stop Market',
-                origSz: '0.05',
-                reduceOnly: true,
-                timestamp: 1704067200000,
-                tif: null,
-                cloid: null,
-                triggerCondition: 'Stop Loss',
-                triggerPx: '90000',
-              },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-          ],
+          data: [sparseOrderUpdate({ oid: 300, side: 'A', origSz: '0.05' })],
         })
       )
-
-      expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders).toHaveLength(0)
-      expect(event.data.terminated).toEqual([])
-      expect(event.data.triggerOrders).toEqual([
-        {
-          orderId: '300',
-          market: expect.objectContaining({ id: 'BTC' }),
-          type: OrderType.STOP_MARKET,
-          size: '0.05',
-          triggerPrice: '90000',
-          label: 'Stop Loss',
-          createdAt: '2024-01-01T00:00:00.000Z',
-        },
-      ])
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        orders: [
+          {
+            orderId: '300',
+            type: OrderType.STOP_MARKET,
+            triggerPrice: '90000',
+            triggerCondition: TriggerCondition.BELOW,
+            side: OrderSide.SELL,
+            status: OrderStatus.OPEN,
+          },
+        ],
+        terminated: [],
+      })
     })
 
-    it('evicts a siblingFilledCanceled TP/SL leg into terminated instead of re-emitting it as active', async () => {
+    it('retains terminal rows and ids from a documented sparse cancellation', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
-
+      orderStatusFetchMock.mockReset().mockResolvedValue(
+        orderMetadata({
+          oid: 200,
+          orderType: 'Stop Market',
+          triggerPx: '90000',
+          reduceOnly: true,
+          tif: null,
+        })
+      )
       await provider.subscribe(
-        {
-          channel: 'orderUpdates',
-          dex: 'hyperliquid',
-          address: '0xuser1',
-        },
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
-
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
           data: [
-            {
-              order: {
-                oid: 200,
-                coin: 'BTC',
-                side: 'A',
-                sz: '0.05',
-                limitPx: '0',
-                orderType: 'Stop Market',
-                origSz: '0.05',
-                reduceOnly: true,
-                timestamp: 1704067200000,
-                tif: null,
-                cloid: null,
-                triggerCondition: 'Stop Loss',
-                triggerPx: '90000',
-              },
-              status: 'siblingFilledCanceled',
-              statusTimestamp: 1704067201000,
-            },
+            sparseOrderUpdate({ oid: 200, side: 'A' }, 'siblingFilledCanceled'),
           ],
         })
       )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        orders: [
+          {
+            orderId: '200',
+            status: OrderStatus.CANCELLED,
+            statusReason: 'siblingFilledCanceled',
+          },
+        ],
+        terminated: ['200'],
+      })
+    })
 
-      expect(listener).toHaveBeenCalledOnce()
-      const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders).toHaveLength(0)
-      expect(event.data.triggerOrders).toHaveLength(0)
-      expect(event.data.terminated).toEqual(['200'])
+    it('drops an order update for a coin the registry does not carry', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ coin: 'NOTLISTED' }, 'canceled')],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data).toEqual({
+        orders: [],
+        terminated: [],
+      })
+      expect(orderStatusFetchMock).not.toHaveBeenCalled()
+    })
+
+    it('preserves stream order while metadata reads are pending', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      let finish!: (response: HlOrderStatusResponse) => void
+      const pending = new Promise<HlOrderStatusResponse>((resolve) => {
+        finish = resolve
+      })
+      orderStatusFetchMock
+        .mockReset()
+        .mockReturnValueOnce(pending)
+        .mockResolvedValue(orderMetadata())
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [sparseOrderUpdate()] })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ sz: '0' }, 'filled')],
+        })
+      )
+      await vi.waitFor(() =>
+        expect(orderStatusFetchMock).toHaveBeenCalledOnce()
+      )
+      expect(listener).not.toHaveBeenCalled()
+      finish(orderMetadata())
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
+      expect(
+        listener.mock.calls.map(([event]) => event.data.orders[0].status)
+      ).toEqual([OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED])
+    })
+
+    it('discards metadata from an earlier account subscription', async () => {
+      const provider = createEnrichingProvider()
+      const oldListener = vi.fn()
+      const newListener = vi.fn()
+      let finish!: (response: HlOrderStatusResponse) => void
+      const pending = new Promise<HlOrderStatusResponse>((resolve) => {
+        finish = resolve
+      })
+      orderStatusFetchMock
+        .mockReset()
+        .mockReturnValueOnce(pending)
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
+      const unsubscribe = await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        oldListener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [sparseOrderUpdate()] })
+      )
+      await vi.waitFor(() =>
+        expect(orderStatusFetchMock).toHaveBeenCalledOnce()
+      )
+      unsubscribe()
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser2' },
+        newListener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ oid: 101 })],
+        })
+      )
+      finish(orderMetadata())
+      await vi.waitFor(() => expect(newListener).toHaveBeenCalledOnce())
+      expect(oldListener).not.toHaveBeenCalled()
+      expect(newListener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
+    })
+
+    it('does not invent execution metadata when orderStatus cannot find the order', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue({ status: 'unknownOid' })
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [sparseOrderUpdate()] })
+      )
+      await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledOnce())
+      expect(listener).not.toHaveBeenCalled()
+      errorSpy.mockRestore()
     })
 
     it('should emit fills event for userFills channel', async () => {
@@ -2403,7 +2528,6 @@ describe('HyperliquidWsProvider', () => {
         price: '94000',
         size: '0.1',
         fee: { amount: '4.70', asset: 'USDC' },
-        status: FillStatus.FILLED,
       })
     })
 
@@ -2594,7 +2718,7 @@ describe('HyperliquidWsProvider', () => {
       expect(fillsListener).toHaveBeenCalledOnce()
       expect(positionsListener).toHaveBeenCalledOnce()
       expect(spotListener).toHaveBeenCalledOnce()
-      expect(ordersListener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(ordersListener).toHaveBeenCalledOnce())
     })
 
     it('emits typed non-zero spot Balances keyed on the wire token index', async () => {
@@ -2670,6 +2794,7 @@ describe('HyperliquidWsProvider', () => {
           },
           units: '100',
           valueUsd: '50',
+          price: '0.5',
           locked: '10',
         },
         {
@@ -2682,6 +2807,7 @@ describe('HyperliquidWsProvider', () => {
           },
           units: '500',
           valueUsd: '500',
+          price: '1',
           locked: '0',
         },
         {
@@ -2858,6 +2984,9 @@ describe('HyperliquidWsProvider', () => {
     it('enriches a spot order onto the backend BASE/QUOTE display and spot logo', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ coin: '@142' }))
 
       await provider.subscribe(
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
@@ -2867,35 +2996,16 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [
-            {
-              order: {
-                oid: 100,
-                coin: '@142',
-                side: 'B',
-                sz: '0.05',
-                limitPx: '93000',
-                orderType: 'Limit',
-                origSz: '0.1',
-                reduceOnly: false,
-                timestamp: 1704067200000,
-                tif: 'Gtc',
-                cloid: null,
-                triggerCondition: 'N/A',
-                triggerPx: null,
-              },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-          ],
+          data: [sparseOrderUpdate({ coin: '@142' })],
         })
       )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
 
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders[0].market.baseAsset.displaySymbol).toBe(
+      expect(event.data.orders[0].market.baseAsset.displaySymbol).toBe(
         'BTC/USDC'
       )
-      expect(event.data.openOrders[0].market.baseAsset.logoURI).toBe(
+      expect(event.data.orders[0].market.baseAsset.logoURI).toBe(
         'https://app.hyperliquid.xyz/coins/BTC_spot.svg'
       )
     })
@@ -3098,6 +3208,7 @@ describe('HyperliquidWsProvider', () => {
       const priceListener = vi.fn()
       const orderListener = vi.fn()
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
 
       await provider.subscribe(
         { channel: 'marketsContext', dex: 'hyperliquid' },
@@ -3108,38 +3219,17 @@ describe('HyperliquidWsProvider', () => {
         orderListener
       )
 
-      // Out-of-range timestamp: the handler throws while building createdAt.
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [
-            {
-              order: {
-                oid: 100,
-                coin: 'BTC',
-                side: 'B',
-                sz: '0.05',
-                limitPx: '93000',
-                orderType: 'Limit',
-                origSz: '0.1',
-                reduceOnly: false,
-                timestamp: 1e20,
-                tif: 'Gtc',
-                cloid: null,
-                triggerCondition: 'N/A',
-                triggerPx: null,
-              },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-          ],
+          data: [sparseOrderUpdate({ timestamp: 1e20 })],
         })
       )
 
       // A subsequent good frame on a different channel must still be delivered.
       seedMids({ BTC: '95000' })
 
-      expect(errorSpy).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledOnce())
       expect(orderListener).not.toHaveBeenCalled()
       const event = priceListener.mock.calls.at(-1)?.[0]
       expect(event.channel).toBe('marketsContext')
@@ -3268,47 +3358,29 @@ describe('HyperliquidWsProvider', () => {
       const provider = createEnrichingProvider(HL_MARKETS)
       const listener = vi.fn()
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
 
       await provider.subscribe(
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
 
-      const order = {
-        side: 'B',
-        sz: '0.05',
-        limitPx: '93000',
-        orderType: 'Limit',
-        origSz: '0.1',
-        reduceOnly: false,
-        timestamp: 1704067200000,
-        tif: 'Gtc',
-        cloid: null,
-        triggerCondition: 'N/A',
-        triggerPx: null,
-      }
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
           data: [
-            {
-              order: { ...order, oid: 100, coin: 'xyz:BRENTOIL' },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-            {
-              order: { ...order, oid: 101, coin: 'BTC' },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
+            sparseOrderUpdate({ oid: 100, coin: 'xyz:BRENTOIL' }),
+            sparseOrderUpdate({ oid: 101 }),
           ],
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders).toHaveLength(1)
-      expect(event.data.openOrders[0]).toMatchObject({
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0]).toMatchObject({
         orderId: '101',
         market: { id: 'BTC' },
       })
@@ -3635,47 +3707,32 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
 
       await provider.subscribe(
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
 
-      const order = {
-        side: 'B',
-        sz: '0.05',
-        limitPx: '93000',
-        orderType: 'Limit',
-        origSz: '0.1',
-        reduceOnly: false,
-        timestamp: 1704067200000,
-        tif: 'Gtc',
-        cloid: null,
-        triggerCondition: 'N/A',
-        triggerPx: null,
-      }
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
           data: [
-            {
-              order: { ...order, oid: 100, coin: '#26140' },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
-            {
-              order: { ...order, oid: 101, coin: 'BTC' },
-              status: 'open',
-              statusTimestamp: 1704067200000,
-            },
+            sparseOrderUpdate({ oid: 100, coin: '#26140' }),
+            sparseOrderUpdate({ oid: 101 }),
           ],
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      // The outcome row is skipped before the metadata read, so the venue is
+      // asked about the known market only.
+      expect(orderStatusFetchMock).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders).toHaveLength(1)
-      expect(event.data.openOrders[0]).toMatchObject({
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0]).toMatchObject({
         orderId: '101',
         market: { id: 'BTC' },
       })
@@ -3690,48 +3747,33 @@ describe('HyperliquidWsProvider', () => {
       const listener = vi.fn()
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue(orderMetadata({ oid: 101 }))
 
       await provider.subscribe(
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
 
-      const order = {
-        side: 'B',
-        sz: '0.05',
-        limitPx: '93000',
-        orderType: 'Limit',
-        origSz: '0.1',
-        reduceOnly: false,
-        timestamp: 1704067200000,
-        tif: 'Gtc',
-        cloid: null,
-        triggerCondition: 'N/A',
-        triggerPx: null,
-      }
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
           data: [
-            {
-              order: { ...order, oid: 100, coin: '#26140' },
-              status: 'filled',
-              statusTimestamp: 1704067200000,
-            },
-            {
-              order: { ...order, oid: 101, coin: 'BTC' },
-              status: 'canceled',
-              statusTimestamp: 1704067200000,
-            },
+            sparseOrderUpdate({ oid: 100, coin: '#26140' }, 'filled'),
+            sparseOrderUpdate({ oid: 101 }, 'canceled'),
           ],
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.data.terminated).toEqual(['101'])
-      expect(event.data.openOrders).toEqual([])
-      expect(event.data.triggerOrders).toEqual([])
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0]).toMatchObject({
+        orderId: '101',
+        status: OrderStatus.CANCELLED,
+      })
       expect(warnSpy).not.toHaveBeenCalled()
       expect(errorSpy).not.toHaveBeenCalled()
       warnSpy.mockRestore()

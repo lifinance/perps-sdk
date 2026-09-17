@@ -1,5 +1,9 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
+import {
+  OrderStatus,
+  PerpsErrorCode,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
@@ -659,15 +663,14 @@ describe('LighterWsProvider', () => {
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('orderUpdates')
-      expect(event.data.openOrders).toHaveLength(1)
-      expect(event.data.triggerOrders).toHaveLength(0)
-      expect(event.data.openOrders[0].orderId).toBe('1')
-      expect(event.data.openOrders[0].originalSize).toBe('1.0')
-      expect(event.data.openOrders[0].remainingSize).toBe('1.0')
+      expect(event.data.orders).toHaveLength(1)
+      expect(event.data.orders[0].orderId).toBe('1')
+      expect(event.data.orders[0].originalSize).toBe('1.0')
+      expect(event.data.orders[0].remainingSize).toBe('1.0')
       p.close()
     })
 
-    it('emits both sizes for a partially filled order', async () => {
+    it('emits partial fills and terminal rows with their eviction ids', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)
       const listener = vi.fn()
@@ -685,15 +688,51 @@ describe('LighterWsProvider', () => {
                 remaining_base_amount: '0.4',
                 filled_base_amount: '0.6',
               },
+              { ...RAW_ORDER, order_index: 2, status: 'canceled-expired' },
             ],
           },
         })
       )
 
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders[0].originalSize).toBe('1.0')
-      expect(event.data.openOrders[0].remainingSize).toBe('0.4')
-      expect(event.data.openOrders[0].filledSize).toBe('0.6')
+      expect(event.data.orders[0].originalSize).toBe('1.0')
+      expect(event.data.orders[0].remainingSize).toBe('0.4')
+      expect(event.data.orders[0].filledSize).toBe('0.6')
+      expect(
+        event.data.orders.map((order: { status: OrderStatus }) => order.status)
+      ).toEqual([OrderStatus.PARTIALLY_FILLED, OrderStatus.EXPIRED])
+      expect(event.data.terminated).toEqual(['2'])
+      p.close()
+    })
+
+    it('drops a row whose market index the registry does not carry, and still evicts it when terminal', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `orderUpdates:${TEST_ADDR}`, listener)
+
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: `account_all_orders:${ACCOUNT_IDX}`,
+          orders: {
+            '99': [
+              { ...RAW_ORDER, order_index: 3, market_index: 99 },
+              {
+                ...RAW_ORDER,
+                order_index: 4,
+                market_index: 99,
+                status: 'canceled-expired',
+              },
+            ],
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.orders).toEqual([])
+      expect(event.data.terminated).toEqual(['4'])
       p.close()
     })
 
@@ -713,8 +752,7 @@ describe('LighterWsProvider', () => {
       )
 
       const event = listener.mock.calls[0][0]
-      expect(event.data.openOrders).toHaveLength(2)
-      expect(event.data.triggerOrders).toHaveLength(0)
+      expect(event.data.orders).toHaveLength(2)
       p.close()
     })
 

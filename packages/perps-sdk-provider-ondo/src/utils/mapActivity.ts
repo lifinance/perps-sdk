@@ -1,3 +1,4 @@
+import type { AssetRegistry } from '@lifi/perps-sdk'
 import type {
   DepositActivity,
   FundingActivity,
@@ -90,25 +91,16 @@ const depositId = (deposit: OndoWalletDeposit): string => {
     : `deposit:${deposit.txid}:${deposit.logIndex}`
 }
 
-/**
- * Map an Ondo wallet deposit to a {@link DepositActivity}. Ondo carries no
- * deposit id on the wire and addresses a single deposit by transaction id, so
- * the id is `deposit:<txid>`, suffixed with `logIndex` when one transaction
- * carried several deposits. `coin` is already a display symbol, so it is the
- * normalized asset identity. `fromAddress` is the sending address and becomes
- * `counterpartyAddress`; an empty string names no address, so the field stays
- * absent.
- *
- * @public
- */
+/** Map a wallet deposit with registry asset identity and its on-chain transaction. @public */
 export const mapDepositActivity = (
-  deposit: OndoWalletDeposit
+  deposit: OndoWalletDeposit,
+  assetRegistry: AssetRegistry
 ): DepositActivity => ({
   id: depositId(deposit),
   provider: ONDO_PROVIDER_KEY,
   timestamp: new Date(deposit.time).toISOString(),
   type: ActivityType.DEPOSIT,
-  asset: deposit.coin,
+  asset: assetRegistry.require(deposit.coin),
   amount: deposit.size,
   ...(deposit.fromAddress === ''
     ? {}
@@ -135,7 +127,8 @@ const ONDO_WITHDRAWAL_FEE_SYMBOL = 'USD'
  * @public
  */
 export const mapWithdrawalActivity = (
-  withdrawal: OndoWalletWithdrawal
+  withdrawal: OndoWalletWithdrawal,
+  assetRegistry: AssetRegistry
 ): WithdrawalActivity | null => {
   if (!SETTLING_WITHDRAWAL_STATUSES.has(withdrawal.status)) {
     return null
@@ -145,7 +138,7 @@ export const mapWithdrawalActivity = (
     provider: ONDO_PROVIDER_KEY,
     timestamp: new Date(withdrawal.time).toISOString(),
     type: ActivityType.WITHDRAWAL,
-    asset: withdrawal.coin,
+    asset: assetRegistry.require(withdrawal.coin),
     amount: withdrawal.size,
     // Loose equality also drops a `null` the live API may send for "no fee".
     ...(withdrawal.usdFee == null

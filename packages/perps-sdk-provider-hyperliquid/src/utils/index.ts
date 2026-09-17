@@ -17,26 +17,30 @@ export {
   decodeCompressedJson,
   decodeFastAssetCtxs,
 } from './decodeFastAssetCtxs.js'
+export {
+  fetchUserTransactions,
+  getClientOrderIds,
+  matchOrderActionHash,
+} from './explorer.js'
 export type { InfoRequestOptions } from './infoClient.js'
 export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
 } from './liquidation.js'
-export { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
+export {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from './mapActivity.js'
 export { classifyFillFromPosition, mapFill } from './mapFill.js'
 export { mapMarket } from './mapMarket.js'
 export { mapMarketContext } from './mapMarketContext.js'
 export {
   type HlOrderLike,
-  isTriggerOrder,
-  isTriggerType,
-  mapOpenOrder,
   mapOrder,
   mapOrderStatus,
   mapOrderType,
-  mapStatusReason,
-  mapTriggerOrder,
 } from './mapOrder.js'
 export { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 export { coinAsset, perpsDexNames } from './marketDisplay.js'

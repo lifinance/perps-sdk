@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import type { Order, OrderBase, TwapOrder } from './account.js'
 import type {
   ActionParamsMap,
   CancelTwapOrderParams,
   CreateActionRequest,
   ExecuteActionRequest,
-  Order,
   PlaceOrderParams,
   PlaceTwapOrderParams,
-  TwapOrder,
 } from './action.js'
-import { ActionType, OrderSide, OrderType, TwapOrderStatus } from './enums.js'
-import type { MarketDisplay } from './market.js'
+import { ActionType, OrderSide, type OrderStatus, OrderType } from './enums.js'
 import type { Param } from './providers.js'
 
 // TWAP is modelled as distinct action types advertised per provider — not a
@@ -120,27 +118,15 @@ type _PlaceOrderTypeExcludesTwap = Expect<
   Equals<Extract<PlaceOrderParams['type'], OrderType.TWAP>, never>
 >
 
-// The TwapOrder read model exposes exactly the running-TWAP query surface;
-// `avgFillPrice` is absent until the first child fill.
 type _TwapOrderKeys = Expect<
   Equals<
     keyof TwapOrder,
-    | 'twapId'
-    | 'market'
-    | 'side'
-    | 'totalSize'
-    | 'filledSize'
-    | 'avgFillPrice'
-    | 'startedAt'
-    | 'durationSeconds'
-    | 'status'
+    keyof OrderBase | 'type' | 'startedAt' | 'durationSeconds'
   >
 >
-type _TwapOrderStatusField = Expect<
-  Equals<TwapOrder['status'], TwapOrderStatus>
->
-type _TwapOrderAvgFillPriceOptional = Expect<
-  Equals<Extract<RequiredKeys<TwapOrder>, 'avgFillPrice'>, never>
+type _TwapOrderStatusField = Expect<Equals<TwapOrder['status'], OrderStatus>>
+type _TwapOrderAveragePriceOptional = Expect<
+  Equals<Extract<RequiredKeys<TwapOrder>, 'averagePrice'>, never>
 >
 
 export type _TypeAssertions = [
@@ -159,7 +145,7 @@ export type _TypeAssertions = [
   _PlaceOrderTypeExcludesTwap,
   _TwapOrderKeys,
   _TwapOrderStatusField,
-  _TwapOrderAvgFillPriceOptional,
+  _TwapOrderAveragePriceOptional,
 ]
 
 // Runtime smoke assertions back the type-level assertions for the
@@ -236,68 +222,9 @@ describe('CancelTwapOrderParams', () => {
   })
 })
 
-const marketDisplay = (providerId: string, id: string): MarketDisplay => ({
-  providerId,
-  id,
-  categoryId: 'perps',
-  baseAsset: { providerId, id, displaySymbol: id, logoURI: '' },
-  quoteAsset: { providerId, id: 'USDC', displaySymbol: 'USDC', logoURI: '' },
-})
-
-describe('TwapOrder', () => {
-  it('round-trips its identifier into CancelTwapOrderParams', () => {
-    const running: TwapOrder = {
-      twapId: '12345',
-      market: marketDisplay('hyperliquid', 'BTC'),
-      side: OrderSide.BUY,
-      totalSize: '1.5',
-      filledSize: '0.5',
-      avgFillPrice: '64000.25',
-      startedAt: '2026-08-02T22:00:00.000Z',
-      durationSeconds: 3600,
-      status: TwapOrderStatus.RUNNING,
-    }
-
-    const cancel: CancelTwapOrderParams = {
-      market: {
-        marketId: running.market.id,
-        categoryId: running.market.categoryId,
-      },
-      twapId: running.twapId,
-    }
-
-    expect(cancel.twapId).toBe('12345')
-  })
-
-  it('omits avgFillPrice before the first child fill', () => {
-    const unfilled: TwapOrder = {
-      twapId: 'twap_abc123',
-      market: marketDisplay('ondo', 'ETH'),
-      side: OrderSide.SELL,
-      totalSize: '10',
-      filledSize: '0',
-      startedAt: '2026-08-02T22:00:00.000Z',
-      durationSeconds: 7200,
-      status: TwapOrderStatus.RUNNING,
-    }
-
-    expect(unfilled.avgFillPrice).toBeUndefined()
-  })
-})
-
 describe('OrderType.TWAP', () => {
   it('is available read-side for venue order feeds', () => {
     expect(OrderType.TWAP).toBe('TWAP')
-  })
-})
-
-describe('TwapOrderStatus', () => {
-  it('covers the running-TWAP lifecycle', () => {
-    expect(Object.values(TwapOrderStatus)).toEqual([
-      'RUNNING',
-      'COMPLETED',
-      'CANCELLED',
-    ])
   })
 })
 

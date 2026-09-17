@@ -1,31 +1,32 @@
+import { PerpsError, triggerConditionFor } from '@lifi/perps-sdk'
 import type {
   MarketDisplay,
-  OpenOrder,
   Order,
+  OrderBase,
   TriggerOrder,
 } from '@lifi/perps-types'
 import {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import type { HlFrontendOpenOrder, HlOrderDetail } from '../types/index.js'
+import Big from 'big.js'
+import { PROVIDER_KEY } from '../constants.js'
+import type {
+  HlFrontendOpenOrder,
+  HlOrderDetail,
+  HlTwapHistoryEntry,
+} from '../types/index.js'
 
-/**
- * An order as seen by the REST `frontendOpenOrders` payload, or the smaller
- * shape nested in the `orderUpdates` WebSocket frame. `mapOpenOrder` and
- * `mapTriggerOrder` accept either so both code paths share one mapper.
- * @public
- */
+/** Order payload shared by frontend, historical, and single-order reads. */
 export type HlOrderLike = HlFrontendOpenOrder | HlOrderDetail['order']
 
-/**
- * Map a Hyperliquid orderType string to the OrderType enum.
- *
- * @public
- */
-export const mapOrderType = (orderType: string): OrderType => {
+/** Translate documented venue execution types without reading trigger prose. */
+export const mapOrderType = (
+  orderType: string
+): Exclude<OrderType, OrderType.TWAP> => {
   switch (orderType) {
     case 'Take Profit Market':
       return OrderType.TAKE_PROFIT_MARKET
@@ -37,243 +38,193 @@ export const mapOrderType = (orderType: string): OrderType => {
       return OrderType.STOP_LIMIT
     case 'Market':
       return OrderType.MARKET
-    default:
+    case 'Limit':
       return OrderType.LIMIT
+    default:
+      throw venueError(`Unknown Hyperliquid order type: ${orderType}`)
   }
 }
 
-/** Return whether an SDK order type represents a take-profit or stop trigger. @public */
-export const isTriggerType = (type: OrderType): boolean =>
-  type === OrderType.TAKE_PROFIT_MARKET ||
-  type === OrderType.TAKE_PROFIT_LIMIT ||
-  type === OrderType.STOP_MARKET ||
-  type === OrderType.STOP_LIMIT
-
-/**
- * Decide whether a raw Hyperliquid order belongs in the cross-provider
- * `triggerOrders` bucket. Single source of truth for both the REST
- * `getOrders` path (`HlFrontendOpenOrder` payload) and the `orderUpdates`
- * WS handler (`HlOrderDetail.order`, a strict subset).
- *
- * Authoritative signals, in order:
- *   1. `isTrigger` — REST-only boolean Hyperliquid sets on
- *      `frontendOpenOrders`. Definitive when present.
- *   2. `isPositionTpsl` — REST-only flag for TP/SL legs attached to a
- *      position.
- *   3. `triggerCondition !== 'N/A'` — present on both REST and WS payloads.
- *      Non-trigger orders carry the literal `'N/A'`.
- *   4. `triggerPx` non-null and non-zero — present on both. The reliable
- *      trigger signal on the WS wire when `orderType` lies (HL pushes
- *      `'Limit'` for a freshly-placed TP/SL until REST refetch lands the
- *      corrected type).
- *   5. `orderType` — final fall-back via `isTriggerType`.
- * @public
- */
-export const isTriggerOrder = (o: HlOrderLike): boolean => {
-  if ('isTrigger' in o && o.isTrigger === true) {
-    return true
-  }
-  if ('isPositionTpsl' in o && o.isPositionTpsl === true) {
-    return true
-  }
-  if (o.triggerCondition && o.triggerCondition !== 'N/A') {
-    return true
-  }
-  if (
-    o.triggerPx != null &&
-    o.triggerPx !== '' &&
-    parseFloat(o.triggerPx) > 0
-  ) {
-    return true
-  }
-  return isTriggerType(mapOrderType(o.orderType))
-}
-
-/**
- * Map an open Hyperliquid order to the SDK's normalized open-order shape.
- * Numeric IDs become strings and wire millisecond timestamps become ISO dates.
- * @public
- */
-export const mapOpenOrder = (
-  o: HlOrderLike,
-  market: MarketDisplay
-): OpenOrder => ({
-  orderId: String(o.oid),
-  market,
-  side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-  type: mapOrderType(o.orderType),
-  originalSize: o.origSz,
-  remainingSize: o.sz,
-  price: o.limitPx,
-  filledSize: o.origSz
-    ? (parseFloat(o.origSz) - parseFloat(o.sz)).toString()
-    : '0',
-  reduceOnly: o.reduceOnly ?? false,
-  label: 'isTrigger' in o && o.isTrigger ? o.triggerCondition : undefined,
-  createdAt: new Date(o.timestamp).toISOString(),
-})
-
-/**
- * Map a Hyperliquid trigger/TP-SL order to the SDK's trigger-order shape.
- * @public
- */
-export const mapTriggerOrder = (
-  o: HlOrderLike,
-  market: MarketDisplay
-): TriggerOrder => {
-  const type = mapOrderType(o.orderType)
-  const isLimit =
-    type === OrderType.TAKE_PROFIT_LIMIT || type === OrderType.STOP_LIMIT
-  return {
-    orderId: String(o.oid),
-    market,
-    type,
-    size: o.sz,
-    triggerPrice: o.triggerPx ?? '0',
-    ...(isLimit ? { limitPrice: o.limitPx } : {}),
-    label: o.triggerCondition,
-    createdAt: new Date(o.timestamp).toISOString(),
-  }
-}
-
-/**
- * Map a raw Hyperliquid order status string to the SDK's OrderStatus enum.
- *
- * HL's terminal statuses are mostly compound strings ending in `Canceled`
- * or `Rejected` (e.g. `siblingFilledCanceled`, `tickRejected`); classify
- * those by suffix so a status HL adds later still lands in the correct
- * terminal bucket instead of silently falling through to PENDING, which
- * {@link isActiveOrderStatus} treats as active. `scheduledCancel` is the
- * one documented cancel status without the `Canceled` suffix.
- * @public
- */
+/** Translate venue lifecycle statuses; unknown statuses are errors. */
 export const mapOrderStatus = (status: string): OrderStatus => {
   switch (status) {
     case 'open':
-    case 'resting':
       return OrderStatus.OPEN
     case 'filled':
       return OrderStatus.FILLED
     case 'canceled':
-    case 'cancelled':
     case 'scheduledCancel':
+    case 'marginCanceled':
+    case 'vaultWithdrawalCanceled':
+    case 'openInterestCapCanceled':
+    case 'selfTradeCanceled':
+    case 'reduceOnlyCanceled':
+    case 'siblingFilledCanceled':
+    case 'delistedCanceled':
+    case 'liquidatedCanceled':
       return OrderStatus.CANCELLED
     case 'rejected':
+    case 'tickRejected':
+    case 'minTradeNtlRejected':
+    case 'perpMarginRejected':
+    case 'reduceOnlyRejected':
+    case 'badAloPxRejected':
+    case 'iocCancelRejected':
+    case 'badTriggerPxRejected':
+    case 'marketOrderNoLiquidityRejected':
+    case 'positionIncreaseAtOpenInterestCapRejected':
+    case 'positionFlipAtOpenInterestCapRejected':
+    case 'tooAggressiveAtOpenInterestCapRejected':
+    case 'openInterestIncreaseRejected':
+    case 'insufficientSpotBalanceRejected':
+    case 'oracleRejected':
+    case 'perpMaxPositionRejected':
       return OrderStatus.REJECTED
     case 'triggered':
       return OrderStatus.TRIGGERED
     default:
-      if (status.endsWith('Canceled') || status.endsWith('Cancelled')) {
-        return OrderStatus.CANCELLED
-      }
-      if (status.endsWith('Rejected')) {
-        return OrderStatus.REJECTED
-      }
-      return OrderStatus.PENDING
+      throw venueError(`Unknown Hyperliquid order status: ${status}`)
   }
 }
 
-/**
- * Map a raw Hyperliquid order status to a short English sentence
- * describing *why* the order ended in a terminal non-FILLED state. Bare
- * `canceled`/`cancelled`/`rejected` carry no actionable detail and
- * return `undefined`; so do non-terminal and unknown values.
- * @public
- */
-export const mapStatusReason = (status: string): string | undefined => {
-  switch (status) {
-    case 'iocCancelRejected':
-      return 'Order cancelled: not enough liquidity to fill immediately.'
-    case 'reduceOnlyCanceled':
-      return 'Order cancelled: would not reduce your position.'
-    case 'marginCanceled':
-      return 'Order cancelled: insufficient margin.'
-    case 'liquidatedCanceled':
-      return 'Order cancelled: account was liquidated.'
-    case 'siblingFilledCanceled':
-      return 'Order cancelled: sibling OCO order filled first.'
-    case 'selfTradeCanceled':
-      return 'Order cancelled: would self-trade against your own resting order.'
-    case 'scheduledCancel':
-      return "Order cancelled: dead man's switch triggered."
-    case 'tickRejected':
-      return 'Order rejected: price did not match the tick size.'
-    case 'minTradeNtlRejected':
-      return 'Order rejected: notional value below the minimum trade size.'
-    case 'delistedCanceled':
-      return 'Order cancelled: market has been delisted.'
-    case 'perpMarginRejected':
-      return 'Order rejected: insufficient margin.'
-    case 'reduceOnlyRejected':
-      return 'Order rejected: would not reduce your position.'
-    case 'badAloPxRejected':
-      return 'Order rejected: post-only order would have matched immediately.'
-    case 'badTriggerPxRejected':
-      return 'Order rejected: invalid take-profit/stop-loss trigger price.'
-    case 'marketOrderNoLiquidityRejected':
-      return 'Order rejected: not enough liquidity for the market order.'
-    case 'oracleRejected':
-      return 'Order rejected: price too far from the oracle price.'
-    case 'vaultWithdrawalCanceled':
-      return 'Order cancelled: a vault withdrawal occurred.'
-    case 'openInterestCapCanceled':
-      return 'Order cancelled: too aggressive while open interest was at its cap.'
-    case 'positionIncreaseAtOpenInterestCapRejected':
-    case 'positionFlipAtOpenInterestCapRejected':
-    case 'openInterestIncreaseRejected':
-      return 'Order rejected: open interest is at its cap.'
-    case 'tooAggressiveAtOpenInterestCapRejected':
-      return 'Order rejected: price too aggressive while open interest was at its cap.'
-    case 'insufficientSpotBalanceRejected':
-      return 'Order rejected: insufficient spot balance.'
-    case 'perpMaxPositionRejected':
-      return 'Order rejected: exceeds the maximum position size for the current leverage tier.'
-    default:
-      return undefined
-  }
+function venueError(message: string): PerpsError {
+  const error = new PerpsError(PerpsErrorCode.ThirdPartyError, message)
+  error.tool = PROVIDER_KEY
+  return error
 }
 
-const mapTimeInForce = (tif: string | undefined): TimeInForce | undefined => {
-  switch (tif) {
-    case 'Gtc':
-      return TimeInForce.GTC
-    case 'Ioc':
-      return TimeInForce.IOC
-    case 'Alo':
-      return TimeInForce.POST_ONLY
-    default:
-      return undefined
-  }
-}
-
-/**
- * Map an `orderStatus` detail to the SDK's normalized order shape, preserving
- * decimal size/price strings and translating status, side, and time-in-force.
- * @public
- */
+/** Normalize regular, trigger, and TWAP rows through one lifecycle model. */
 export const mapOrder = (
-  detail: HlOrderDetail,
-  market: MarketDisplay
+  raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
+  market: MarketDisplay,
+  parentOrderId?: string
 ): Order => {
-  const o = detail.order
-  const filled = parseFloat(o.origSz) - parseFloat(o.sz)
-
-  return {
+  if ('state' in raw) {
+    if (raw.twapId === undefined) {
+      throw venueError('Hyperliquid returned a TWAP without a twapId.')
+    }
+    const { state } = raw
+    const filled = new Big(state.executedSz)
+    let status: OrderStatus
+    switch (raw.status.status) {
+      case 'activated':
+        status = filled.gt(0) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+        break
+      case 'waitingForTrigger':
+        status = OrderStatus.OPEN
+        break
+      case 'finished':
+        status = OrderStatus.FILLED
+        break
+      case 'terminated':
+      case 'stopped':
+        status = OrderStatus.CANCELLED
+        break
+      case 'error':
+        status = OrderStatus.REJECTED
+        break
+      default:
+        throw venueError(
+          `Unknown Hyperliquid TWAP status: ${raw.status.status}`
+        )
+    }
+    return {
+      orderId: String(raw.twapId),
+      market,
+      type: OrderType.TWAP,
+      side: state.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+      originalSize: state.sz,
+      remainingSize: new Big(state.sz).minus(filled).toFixed(),
+      filledSize: state.executedSz,
+      ...(filled.eq(0)
+        ? {}
+        : { averagePrice: new Big(state.executedNtl).div(filled).toFixed() }),
+      reduceOnly: state.reduceOnly,
+      status,
+      ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
+        ? { statusReason: raw.status.description ?? raw.status.status }
+        : {}),
+      createdAt: new Date(state.timestamp).toISOString(),
+      updatedAt: new Date(raw.time * 1000).toISOString(),
+      startedAt: new Date(state.timestamp).toISOString(),
+      durationSeconds: state.minutes * 60,
+    }
+  }
+  const o = 'order' in raw ? raw.order : raw
+  const venueStatus = 'order' in raw ? raw.status : 'open'
+  const filled = new Big(o.origSz).minus(o.sz)
+  let status = mapOrderStatus(venueStatus)
+  if (parentOrderId !== undefined && !('order' in raw)) {
+    status = OrderStatus.PENDING
+  } else if (status === OrderStatus.OPEN && filled.gt(0)) {
+    status = OrderStatus.PARTIALLY_FILLED
+  }
+  const base: OrderBase = {
     orderId: String(o.oid),
     market,
+    ...(typeof o.cloid === 'string' ? { clientOrderId: o.cloid } : {}),
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-    type: mapOrderType(o.orderType),
-    price: o.limitPx,
+    status,
+    ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
+      ? { statusReason: venueStatus }
+      : {}),
     originalSize: o.origSz,
     remainingSize: o.sz,
-    filledSize: filled.toString(),
-    timeInForce: mapTimeInForce(o.tif ?? undefined),
-    reduceOnly: o.reduceOnly ?? undefined,
-    isTrigger: o.triggerCondition !== undefined && o.triggerCondition !== 'N/A',
-    triggerPrice: o.triggerPx ?? undefined,
-    status: mapOrderStatus(detail.status),
-    statusReason: mapStatusReason(detail.status),
+    filledSize: filled.toFixed(),
+    reduceOnly: o.reduceOnly,
+    ...(parentOrderId === undefined ? {} : { parentOrderId }),
     createdAt: new Date(o.timestamp).toISOString(),
-    updatedAt: new Date(detail.statusTimestamp).toISOString(),
+    updatedAt: new Date(
+      'order' in raw ? raw.statusTimestamp : o.timestamp
+    ).toISOString(),
   }
+  let type = mapOrderType(o.orderType)
+  if (o.isTrigger && (type === OrderType.MARKET || type === OrderType.LIMIT)) {
+    if (o.tpsl === undefined) {
+      throw venueError('Hyperliquid trigger order has no tpsl discriminator.')
+    }
+    type =
+      o.tpsl === 'tp'
+        ? type === OrderType.MARKET
+          ? OrderType.TAKE_PROFIT_MARKET
+          : OrderType.TAKE_PROFIT_LIMIT
+        : type === OrderType.MARKET
+          ? OrderType.STOP_MARKET
+          : OrderType.STOP_LIMIT
+  }
+  if (type !== OrderType.MARKET && type !== OrderType.LIMIT) {
+    const triggerType: TriggerOrder['type'] = type
+    if (o.triggerPx === null) {
+      throw venueError('Hyperliquid trigger order has no trigger price.')
+    }
+    return {
+      ...base,
+      type: triggerType,
+      triggerPrice: o.triggerPx,
+      triggerCondition: triggerConditionFor(triggerType, base.side),
+      ...(type === OrderType.STOP_LIMIT || type === OrderType.TAKE_PROFIT_LIMIT
+        ? { limitPrice: o.limitPx }
+        : {}),
+    }
+  }
+  let timeInForce: TimeInForce
+  switch (o.tif) {
+    case 'Ioc':
+    case 'FrontendMarket':
+    case 'LiquidationMarket':
+      timeInForce = TimeInForce.IOC
+      break
+    case 'Alo':
+      timeInForce = TimeInForce.POST_ONLY
+      break
+    case 'Gtc':
+    case null:
+    case undefined:
+      timeInForce =
+        type === OrderType.MARKET ? TimeInForce.IOC : TimeInForce.GTC
+      break
+    default:
+      throw venueError(`Unknown Hyperliquid time in force: ${o.tif}`)
+  }
+  return { ...base, type, price: o.limitPx, timeInForce }
 }

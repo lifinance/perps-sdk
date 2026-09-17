@@ -1,4 +1,9 @@
-import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
+import {
+  type AssetRegistry,
+  getAssetRegistry,
+  getMarketRegistry,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type {
   ActivitiesResponse,
   ActivityItem,
@@ -14,10 +19,24 @@ import {
 } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
+  HlUserFills,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
-import { mapFundingActivity, mapLedgerEntry } from '../utils/index.js'
+import {
+  isCollateralTransferDelta,
+  isDepositDelta,
+  isLiquidationDelta,
+  isSendAssetDelta,
+  isSpotTransferDelta,
+  isVaultTransferDelta,
+  isWithdrawDelta,
+} from '../types/index.js'
+import {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from '../utils/index.js'
 import {
   hlInfoOptions,
   type InfoRequestOptions,
@@ -48,6 +67,12 @@ const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.LIQUIDATION,
 ])
 
+const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
+  ActivityType.DEPOSIT,
+  ActivityType.WITHDRAWAL,
+  ActivityType.TRANSFER,
+])
+
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
   !typeFilter || typeFilter.some((t) => MARKET_BEARING_TYPES.has(t))
 
@@ -55,14 +80,19 @@ const fetchActivityData = async (
   apiUrl: string,
   typeFilter: ActivityType[] | undefined,
   timeParams: { user: Address; startTime?: number; endTime?: number },
+  assetRegistry: AssetRegistry,
   resolveMarket: (coin: string) => MarketDisplay | undefined,
   options?: InfoRequestOptions
 ): Promise<ActivityItem[]> => {
   const needLedger =
     !typeFilter || typeFilter.some((t) => t !== ActivityType.FUNDING)
   const needFunding = !typeFilter || typeFilter.includes(ActivityType.FUNDING)
+  // A liquidation executed as a market order reaches the account as fills
+  // with a `liquidation` field and never as a ledger `liquidation` delta.
+  const needLiquidationFills =
+    !typeFilter || typeFilter.includes(ActivityType.LIQUIDATION)
 
-  const [ledgerUpdates, fundingUpdates] = await Promise.all([
+  const [ledgerUpdates, fundingUpdates, fills] = await Promise.all([
     needLedger
       ? infoRequest<HlUserNonFundingLedgerUpdates>(
           apiUrl,
@@ -77,14 +107,38 @@ const fetchActivityData = async (
           options
         )
       : Promise.resolve([] as HlUserFunding),
+    needLiquidationFills
+      ? infoRequest<HlUserFills>(
+          apiUrl,
+          timeParams.startTime === undefined
+            ? { type: 'userFills', user: timeParams.user }
+            : { type: 'userFillsByTime', ...timeParams },
+          options
+        )
+      : Promise.resolve([] as HlUserFills),
   ])
 
   const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
     (entry): ActivityItem[] => {
+      if (
+        typeFilter !== undefined &&
+        ((isDepositDelta(entry.delta) &&
+          !typeFilter.includes(ActivityType.DEPOSIT)) ||
+          (isWithdrawDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.TRANSFER) &&
+            (isSpotTransferDelta(entry.delta) ||
+              isSendAssetDelta(entry.delta) ||
+              isCollateralTransferDelta(entry.delta) ||
+              isVaultTransferDelta(entry.delta))))
+      ) {
+        return []
+      }
       const item = mapLedgerEntry(
         entry,
         PROVIDER_KEY,
         timeParams.user,
+        assetRegistry,
         resolveMarket
       )
       return item === null ? [] : [item]
@@ -98,7 +152,20 @@ const fetchActivityData = async (
     }
   )
 
-  const merged = [...ledgerItems, ...fundingItems].sort(
+  const ledgerLiquidationHashes = new Set(
+    ledgerUpdates
+      .filter((entry) => isLiquidationDelta(entry.delta))
+      .map((entry) => entry.hash)
+  )
+  const liquidationItems = mapLiquidationFills(
+    fills,
+    PROVIDER_KEY,
+    timeParams.user,
+    resolveMarket,
+    ledgerLiquidationHashes
+  )
+
+  const merged = [...ledgerItems, ...fundingItems, ...liquidationItems].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   )
 
@@ -112,8 +179,8 @@ const fetchActivityData = async (
 /**
  * Fetch a chronological activity feed (deposits, withdrawals, transfers,
  * liquidations, funding) for `address`. Combines results from Hyperliquid's
- * `userNonFundingLedgerUpdates` and `userFunding` endpoints, sorted
- * newest-first.
+ * `userNonFundingLedgerUpdates`, `userFunding`, and `userFills` endpoints,
+ * sorted newest-first.
  *
  * Cursor-based pagination uses the ms-since-epoch timestamp of the last item
  * on the current page.
@@ -130,6 +197,13 @@ export const getActivity = async (
   // request must not pull the market list.
   if (needsMarkets(params.type)) {
     await registry.sync()
+  }
+  const assetRegistry = getAssetRegistry(client, PROVIDER_KEY)
+  if (
+    params.type === undefined ||
+    params.type.some((type) => ASSET_BEARING_TYPES.has(type))
+  ) {
+    await assetRegistry.sync()
   }
   const infoOpts = hlInfoOptions(client, options)
 
@@ -152,6 +226,7 @@ export const getActivity = async (
     apiUrl,
     params.type,
     timeParams,
+    assetRegistry,
     (coin) => registry.get(coin),
     infoOpts
   )

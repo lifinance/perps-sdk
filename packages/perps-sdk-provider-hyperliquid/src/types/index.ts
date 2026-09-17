@@ -5,6 +5,7 @@
 export * from './account.js'
 export * from './action.js'
 export * from './asset.js'
+export * from './explorer.js'
 export * from './fill.js'
 export * from './ledger.js'
 export * from './order.js'

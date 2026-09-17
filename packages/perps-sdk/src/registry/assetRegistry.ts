@@ -1,19 +1,39 @@
 import type { Asset, AssetsResponse } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 import { buildUrl, request } from '../transport/request.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { ReferenceDataRegistry } from './referenceDataRegistry.js'
 
-/**
- * Per-provider index over the backend's `/assets` token registry, keyed by
- * `Asset.id` — the provider-native asset id (Lighter: the stringified
- * `asset_id`, Hyperliquid spot: the venue token index). Obtain via
- * {@link getAssetRegistry}.
- *
- * @public
- */
+const addressKey = (address: string): string =>
+  /^0x[0-9a-f]{40}$/i.test(address) ? address.toLowerCase() : address
+
+/** Provider `/assets` index by native `id` and by L1 contract address. @public */
 export class AssetRegistry extends ReferenceDataRegistry<Asset> {
   constructor(client: PerpsSDKClient, provider: string) {
-    super(client, provider, 'asset')
+    super(client, provider, 'asset', {
+      l1Address: (asset) =>
+        asset.l1Address === undefined ? undefined : addressKey(asset.l1Address),
+    })
+  }
+
+  /** Lookup by provider identity; hexadecimal L1 addresses are case-insensitive. */
+  override get(id: string, key: 'id' | 'l1Address' = 'id'): Asset | undefined {
+    return key === 'id' ? super.get(id) : this.getByIndex(addressKey(id), key)
+  }
+
+  /** Resolve registry membership or report a stale or mis-keyed asset registry. */
+  require(id: string, key: 'id' | 'l1Address' = 'id'): Asset {
+    const asset = this.get(id, key)
+    if (asset === undefined) {
+      const error = new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `[${this.provider}] stale or mis-keyed asset registry: unknown ${key} '${id}'`
+      )
+      error.tool = this.provider
+      throw error
+    }
+    return asset
   }
 
   /**

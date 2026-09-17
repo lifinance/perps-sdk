@@ -34,6 +34,18 @@ export type HlUserFill = {
   crossed: boolean
   time: number
   startPosition: string
+  /**
+   * Present on both sides of a liquidation fill. `liquidatedUser` names the
+   * account that was liquidated; the other party is the liquidator.
+   */
+  liquidation?: HlFillLiquidation
+}
+
+/** Liquidation detail Hyperliquid attaches to a fill. @public */
+export type HlFillLiquidation = {
+  liquidatedUser: string
+  markPx: string
+  method: string
 }
 
 /** All fills returned by the unbounded `userFills` query. @public */

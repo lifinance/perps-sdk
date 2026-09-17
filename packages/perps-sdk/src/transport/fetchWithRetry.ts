@@ -18,9 +18,10 @@ export interface FetchWithRetryOptions {
 /**
  * True when `error` is an `AbortSignal` cancellation (the native `fetch` abort
  * rejection) rather than a genuine network failure. An abort is a deliberate
- * caller action, so it is rethrown untouched instead of being retried.
+ * caller action, so every transport rethrows it untouched instead of retrying
+ * it or wrapping it in a provider error.
  *
- * @internal
+ * @public
  */
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'

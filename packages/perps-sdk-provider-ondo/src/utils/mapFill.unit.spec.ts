@@ -1,10 +1,5 @@
 import type { MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  FillStatus,
-  LiquidityRole,
-  OrderSide,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { OndoFill } from '../types/wire.js'
 import { mapFill } from './mapFill.js'
@@ -51,7 +46,6 @@ describe('mapFill', () => {
       side: OrderSide.BUY,
       size: '4',
       price: '200.5',
-      status: FillStatus.FILLED,
       liquidity: LiquidityRole.TAKER,
       fee: { amount: '0.4', asset: 'USD' },
       realizedPnl: undefined,

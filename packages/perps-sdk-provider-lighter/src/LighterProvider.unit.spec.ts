@@ -1330,8 +1330,10 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     // AC5: USDC spot is valued 1:1; other tokens have no price source here.
     expect(usdc?.units).toBe('10')
     expect(usdc?.valueUsd).toBe('10')
+    expect(usdc?.price).toBe('1')
     expect(btc?.units).toBe('2')
     expect(btc?.valueUsd).toBe('0')
+    expect(btc?.price).toBeUndefined()
   })
 
   it('omits a collateral row when available margin is zero', async () => {
@@ -1485,6 +1487,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         },
         units: '10',
         valueUsd: '10',
+        price: '1',
       },
       {
         categoryId: 'spot',
@@ -2345,8 +2348,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
 
     expect(createCount).toBe(2) // stale, then fresh after eviction
     expect(activeOrderCalls).toBe(2) // rejected once, retried once
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
   })
 })
 
@@ -2383,6 +2385,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
 
   const makeActiveOrder = (orderIndex: number) => ({
     order_index: orderIndex,
+    client_order_index: 0,
     order_id: String(orderIndex),
     client_order_id: String(orderIndex),
     market_index: 0,
@@ -2444,7 +2447,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
 
     const orders = await provider.getOrders({ address: ADDRESS, limit: 50 })
 
-    const returned = orders.openOrders.length + orders.triggerOrders.length
+    const returned = orders.orders.length
     expect(returned).toBe(200)
     expect(orders.pagination.hasMore).toBe(false)
     expect(orders.pagination.cursor).toBeUndefined()
@@ -2479,12 +2482,11 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
     ).toBeUndefined()
   })
 
-  it('getOrders returns empty arrays when no token is configured', async () => {
+  it('getOrders returns no orders when no token is configured', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
     expect(orders.pagination.hasMore).toBe(false)
   })
 
@@ -3231,7 +3233,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-  it('maps a transfer asset_id to its backend token symbol', async () => {
+  it('maps a transfer asset_id to its backend registry entry', async () => {
     stubWithTransfer(3)
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
@@ -3240,27 +3242,23 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       type: [ActivityType.TRANSFER],
     })
     const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
-    expect(transfer?.asset).toBe('USDC')
-    // The mapper drops `meta.fee` on every transfer row, so the token-registry
-    // suite pins the fee surface too: a symbol lookup must not move the fee
-    // back onto `meta`.
+    expect(transfer?.asset).toEqual(
+      ASSETS_RESPONSE.assets.find((asset) => asset.id === '3')
+    )
     expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
     expect(transfer?.meta).not.toHaveProperty('fee')
   })
 
-  it('falls back to String(asset_id) when the token registry has no symbol', async () => {
+  it('rejects an unresolved transfer asset_id', async () => {
     stubWithTransfer(777)
     const provider = lighterProvider({ authToken: 'tok' })
     provider.bind(STUB_CLIENT)
-    const { items } = await provider.getActivity({
-      address: ADDRESS,
-      type: [ActivityType.TRANSFER],
-    })
-    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
-    expect(transfer?.asset).toBe('777')
-    // The transferred asset falls back to the raw id, but the fee asset comes
-    // from the deployment's settlement asset and stays `USDC`.
-    expect(transfer?.fees).toEqual([{ amount: '0', asset: 'USDC' }])
+    await expect(
+      provider.getActivity({
+        address: ADDRESS,
+        type: [ActivityType.TRANSFER],
+      })
+    ).rejects.toThrow(/stale or mis-keyed/)
   })
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
@@ -3406,10 +3404,56 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
     const deposit = items.find((i) => i.type === ActivityType.DEPOSIT)
     const withdrawal = items.find((i) => i.type === ActivityType.WITHDRAWAL)
-    expect(deposit).toMatchObject({ asset: 'USDC', amount: '100' })
-    expect(withdrawal).toMatchObject({ asset: 'USDC', amount: '50' })
+    expect(deposit).toMatchObject({
+      asset: ASSETS_RESPONSE.assets[0],
+      amount: '100',
+    })
+    expect(withdrawal).toMatchObject({
+      asset: ASSETS_RESPONSE.assets[0],
+      amount: '50',
+    })
     // `/withdraw/history` reports no fee, so the field stays absent.
     expect(withdrawal).not.toHaveProperty('fee')
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('rejects an unresolved %s asset without dropping its row', async (type) => {
+    stubHistory({ deposits: [depositRow(777)], withdraws: [withdrawRow(777)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getActivity({ address: ADDRESS, type: [type] })
+    ).rejects.toThrow(/stale or mis-keyed/)
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+    ActivityType.TRANSFER,
+  ])('rejects a legacy %s overflow row instead of returning its display string', async (type) => {
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const cursor = Buffer.from(
+      JSON.stringify({
+        overflow: [
+          {
+            id: 'legacy',
+            provider: 'lighter',
+            timestamp: '2026-01-01T00:00:00Z',
+            type,
+            asset: 'USDC',
+            amount: '1',
+            direction: 'IN',
+            counterpartyAccountIndex: 7,
+          },
+        ],
+      })
+    ).toString('base64url')
+    await expect(
+      provider.getActivity({ address: ADDRESS, cursor, type: [type] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
   it('names USDG as the deposit asset on the Robinhood deployment', async () => {
@@ -3423,7 +3467,10 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     })
 
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ asset: 'USDG', amount: '100' })
+    expect(items[0]).toMatchObject({
+      asset: RH_ASSETS_RESPONSE.assets[0],
+      amount: '100',
+    })
   })
 
   it('excludes a same-account route move from the transfer feed', async () => {
@@ -3496,7 +3543,7 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     if (transfer.type !== ActivityType.TRANSFER) {
       throw new Error('expected a transfer activity')
     }
-    expect(transfer.asset).toBe('BTC')
+    expect(transfer.asset).toEqual(ASSETS_RESPONSE.assets[1])
     expect(transfer.fees).toEqual([{ amount: '0.4', asset: 'USDC' }])
     expect(transfer.meta).not.toHaveProperty('fee')
   })
@@ -3997,10 +4044,11 @@ describe('LighterProvider — one-call order reads', () => {
     const active = requestsTo('/api/v1/accountActiveOrders')
     expect(active).toHaveLength(1)
     expect(active[0].url).toContain(`market_id=${LIGHTER_ALL_MARKETS_WILDCARD}`)
-    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['900', '901'])
-    expect(
-      orders.openOrders.map((o) => o.market.baseAsset.displaySymbol)
-    ).toEqual(['BTC', 'ETH'])
+    expect(orders.orders.map((o) => o.orderId)).toEqual(['900', '901'])
+    expect(orders.orders.map((o) => o.market.baseAsset.displaySymbol)).toEqual([
+      'BTC',
+      'ETH',
+    ])
   })
 
   it('keeps a single filtered request when a marketId is given', async () => {
@@ -4029,7 +4077,7 @@ describe('LighterProvider — one-call order reads', () => {
     const active = requestsTo('/api/v1/accountActiveOrders')
     expect(active).toHaveLength(1)
     expect(active[0].url).toContain('market_id=1')
-    expect(orders.openOrders.map((o) => o.orderId)).toEqual(['901'])
+    expect(orders.orders.map((o) => o.orderId)).toEqual(['901'])
   })
 
   it('resolves an active order by client order index through one accountOrders request', async () => {
@@ -4976,8 +5024,7 @@ describe('LighterProvider — null wire lists', () => {
     provider.bind(STUB_CLIENT)
 
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
   })
 
   it('getOrder reports OrderNotFound when both order lists are null', async () => {

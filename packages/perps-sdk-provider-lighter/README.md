@@ -51,6 +51,18 @@ Before `getAccount` starts an authenticated read, it compares the local public k
 
 Each provider instance shares one request hold across its Lighter API clients, polls, and token-management requests. An HTTP `429` or HTTP `405` response starts the hold and fails at once with `RateLimitExceeded`. The provider does not retry that request. The provider uses `Retry-After` when Lighter supplies it, up to a maximum of five minutes. Otherwise, the hold lasts 60 seconds. All Lighter requests from that provider fail before network dispatch until the hold expires. Separate provider instances do not share a hold.
 
+## Activity asset identity
+
+Deposit, withdrawal, and transfer rows carry a registry `Asset`.
+The provider resolves each numeric `asset_id` by its primary registry ID.
+Read `asset.displaySymbol` for display and `asset.logoURI` for its icon.
+An unresolved identity raises a stale or mis-keyed registry error.
+`Fee.asset` remains a string.
+
+Activity cursors with overflow rows use format version `2`. The provider rejects
+older overflow formats instead of treating a display symbol as asset identity.
+Restart pagination when the SDK reports this `ValidationError`.
+
 ## WASM signer loading
 
 The Go signer binary ships as a separate asset that the package resolves itself. The ESM build uses `new URL('../../wasm/lighter-signer.wasm', import.meta.url)`. Webpack, Turbopack, and Vite production builds rewrite this expression into an emitted asset URL. Node reads the installed binary from disk. The loader checks the WASM preamble of the response. Vite's dependency optimizer can relocate the package into `.vite/deps`, which invalidates the static URL. The loader then resolves the asset through the bundler's own asset pipeline.
@@ -81,6 +93,49 @@ On Linux systems without browser libraries, use `playwright install --with-deps 
 The four Next targets execute the client probe in headless Chromium. They cover development and production with webpack and Turbopack. Browser exceptions, failed probes, missing results, and invalid WASM responses fail the checks. The checks also verify the emitted asset and its chunk reference.
 
 Playwright is a development dependency. SDK consumers do not need it.
+
+## Order reads
+
+`getOrders` returns `{ provider, orders, pagination }`. Each order belongs to the `Order` union.
+The `type` field selects `RegularOrder`, `TriggerOrder`, or `TwapOrder`.
+Every row includes its lifecycle `status`, original size, remaining size, filled size, side, and timestamps.
+Trigger rows include `triggerPrice` and a derived `triggerCondition`. Limit triggers also include `limitPrice`.
+TWAP rows include `durationSeconds` and `startedAt`. TWAP children are regular orders with a `parentOrderId`.
+
+`orderId` contains the venue `order_index`. `clientOrderId` contains the nonzero `client_order_index`.
+`parentOrderId` contains `parent_order_id` when the venue supplies it.
+Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
+`getOrder` uses the same mapper and accepts a venue id or a `client_order_index:<index>` reference.
+
+| Lighter status | SDK status |
+| --- | --- |
+| `open` with `trigger_status: parent-order` | `PENDING` |
+| `open` with a positive filled amount | `PARTIALLY_FILLED` |
+| `open` | `OPEN` |
+| `triggered` | `TRIGGERED` |
+| `filled` | `FILLED` |
+| `canceled` and documented cancellation variants | `CANCELLED` |
+| `canceled-expired` | `EXPIRED` |
+
+Cancelled rows retain the venue status text in `statusReason`.
+Unknown statuses, including `pending` and `in-progress`, throw `PerpsError`.
+
+```ts
+import { OrderStatus } from '@lifi/perps-types'
+
+const history = await client.getOrders({
+  address,
+  statuses: [OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.EXPIRED],
+})
+```
+
+Without `statuses`, the provider requests `PENDING`, `OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`.
+An empty status list returns no orders.
+Active filters use `accountActiveOrders`. Terminal filters use `accountInactiveOrders`.
+A mixed filter reads both endpoints. Running and finished TWAP parents use these same reads.
+Active reads return the complete snapshot and do not apply `limit` or `cursor`.
+History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
+WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
 
 ## Documentation
 

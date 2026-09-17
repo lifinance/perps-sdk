@@ -17,6 +17,7 @@ export type HlFrontendOpenOrder = {
   reduceOnly: boolean
   timestamp: number
   isTrigger: boolean
+  tpsl?: 'tp' | 'sl'
   isPositionTpsl: boolean
   triggerCondition: string
   triggerPx: string
@@ -49,6 +50,10 @@ export type HlOrderDetail = {
     cloid: string | null
     triggerCondition: string
     triggerPx: string | null
+    isTrigger?: boolean
+    tpsl?: 'tp' | 'sl'
+    children?: HlFrontendOpenOrder[]
+    isPositionTpsl?: boolean
   }
   status: string
   statusTimestamp: number
@@ -68,3 +73,23 @@ export type HlOrderStatusFound = {
 export type HlOrderStatusResponse =
   | HlOrderStatusFound
   | { status: 'unknownOid' }
+
+/** Rows returned by the `historicalOrders` info query. */
+export type HlHistoricalOrders = HlOrderDetail[]
+
+/** TWAP execution state returned by `twapHistory`; time uses epoch seconds. */
+export interface HlTwapHistoryEntry {
+  state: {
+    coin: string
+    executedNtl: string
+    executedSz: string
+    minutes: number
+    side: string
+    sz: string
+    timestamp: number
+    reduceOnly: boolean
+  }
+  status: { status: string; description?: string }
+  time: number
+  twapId?: number
+}

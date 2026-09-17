@@ -22,7 +22,6 @@ import {
   ActionType,
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -32,6 +31,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
+  TimeInForce,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
@@ -412,7 +412,7 @@ export const mockPositions: PositionsResponse = {
 
 export const mockOrders: OrdersResponse = {
   provider: 'hyperliquid',
-  openOrders: [
+  orders: [
     {
       orderId: 'order1',
       market: BTC_MARKET_DISPLAY,
@@ -423,10 +423,12 @@ export const mockOrders: OrdersResponse = {
       price: '93000.00',
       filledSize: '0',
       reduceOnly: false,
+      status: OrderStatus.OPEN,
+      timeInForce: TimeInForce.GTC,
+      updatedAt: '2024-01-01T00:00:00Z',
       createdAt: '2024-01-01T00:00:00Z',
     },
   ],
-  triggerOrders: [],
   pagination: { limit: 100, hasMore: false },
 }
 
@@ -441,7 +443,6 @@ export const mockFills: FillsResponse = {
       type: OrderType.MARKET,
       size: '0.1',
       price: '94000.00',
-      status: FillStatus.FILLED,
       liquidity: LiquidityRole.TAKER,
       classification: FillClassification.OPENED_LONG,
       filledSize: '0.1',
@@ -461,7 +462,7 @@ export const mockActivity: ActivitiesResponse = {
       provider: 'hyperliquid',
       timestamp: '2024-01-01T00:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: BTC_MARKET_DISPLAY.quoteAsset,
       amount: '5000.00',
     },
     {
@@ -488,6 +489,8 @@ export const mockOrder: Order = {
   remainingSize: '0.05',
   filledSize: '0',
   status: OrderStatus.OPEN,
+  reduceOnly: false,
+  timeInForce: TimeInForce.GTC,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 }

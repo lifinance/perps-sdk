@@ -1,4 +1,6 @@
+import { AssetRegistry, createPerpsClient } from '@lifi/perps-sdk'
 import type {
+  Asset,
   DepositActivity,
   LiquidationActivity,
   MarketDisplay,
@@ -6,16 +8,21 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   HlFundingUpdate,
   HlLedgerDelta,
   HlLedgerUpdate,
   HlSendAssetDelta,
   HlSpotTransferDelta,
+  HlUserFill,
 } from '../types/index.js'
 import { isSendAssetDelta } from '../types/index.js'
-import { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
+import {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from './mapActivity.js'
 
 // ---------------------------------------------------------------------------
 // Fixture builders
@@ -24,6 +31,39 @@ import { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
 const PROVIDER = 'hyperliquid'
 const QUERIED = '0x1111111111111111111111111111111111111111'
 const COUNTERPARTY = '0x2222222222222222222222222222222222222222'
+
+const USDC: Asset = {
+  providerId: PROVIDER,
+  id: '0',
+  displaySymbol: 'USDC',
+  logoURI: '',
+}
+const PURR: Asset = {
+  providerId: PROVIDER,
+  id: '1',
+  displaySymbol: 'PURR',
+  logoURI: 'purr.svg',
+}
+const HYPE: Asset = {
+  providerId: PROVIDER,
+  id: '150',
+  displaySymbol: 'HYPE',
+  logoURI: 'hype.svg',
+}
+let assetRegistry: AssetRegistry
+beforeEach(async () => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ assets: [USDC, PURR, HYPE] }), {
+      status: 200,
+    })
+  )
+  assetRegistry = new AssetRegistry(
+    createPerpsClient({ integrator: 'test', apiKey: 'test' }),
+    PROVIDER
+  )
+  await assetRegistry.sync()
+})
+afterEach(() => vi.restoreAllMocks())
 
 const resolveMarket = (coin: string): MarketDisplay => ({
   providerId: PROVIDER,
@@ -117,7 +157,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect(result).not.toBeNull()
     const t = result as TransferActivity
@@ -125,7 +171,7 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.direction).toBe('OUT')
     expect(t.counterpartyAddress).toBe(COUNTERPARTY.toLowerCase())
     expect(t.counterpartyAccountIndex).toBeUndefined()
-    expect(t.asset).toBe('USDC')
+    expect(t.asset).toEqual(USDC)
     expect(t.amount).toBe('12.5')
     expect(t.explorerLink).toBe(
       'https://app.hyperliquid.xyz/explorer/tx/0xhash-spot'
@@ -141,7 +187,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       destination: QUERIED as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.direction).toBe('IN')
@@ -155,7 +207,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       destination: upperCounterparty as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.counterpartyAddress).toBe(upperCounterparty.toLowerCase())
@@ -172,35 +230,47 @@ describe('mapLedgerEntry — spotTransfer', () => {
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, upperQueried, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      upperQueried,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.direction).toBe('OUT')
   })
 
-  it('passes the token symbol through as the asset', () => {
+  it('resolves the spot token symbol to its registry asset', () => {
     const entry = spotTransferUpdate({
       token: 'HYPE',
       user: QUERIED as HlSpotTransferDelta['user'],
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
-    expect(t.asset).toBe('HYPE')
+    expect(t.asset).toEqual(HYPE)
   })
 
-  it('drops the token id suffix from the asset symbol', () => {
+  it('rejects a spot token the registry does not list', () => {
     const entry = spotTransferUpdate({
-      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      token: 'NOTLISTED',
       user: QUERIED as HlSpotTransferDelta['user'],
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
-
-    expect((result as TransferActivity).asset).toBe('PURR')
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed asset registry/)
   })
 
   it('preserves spotTransfer metadata fields when present', () => {
@@ -213,7 +283,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       nonce: 7,
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.meta).toEqual({
@@ -225,17 +301,23 @@ describe('mapLedgerEntry — spotTransfer', () => {
 
   it('reports the spotTransfer fee in USDC and the native-token fee in HYPE', () => {
     const entry = spotTransferUpdate({
-      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      token: 'PURR',
       user: QUERIED as HlSpotTransferDelta['user'],
       destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
       fee: '1.0',
       nativeTokenFee: '0.25',
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
-    expect(t.asset).toBe('PURR')
+    expect(t.asset).toEqual(PURR)
     expect(t.fees).toEqual([
       { amount: '1.0', asset: 'USDC' },
       { amount: '0.25', asset: 'HYPE' },
@@ -259,7 +341,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       },
     }
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect((result as TransferActivity).fees).toEqual([
       { amount: '0.0001', asset: 'HYPE' },
@@ -281,7 +369,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       },
     }
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect((result as TransferActivity).fees).toEqual([
       { amount: '0.01', asset: 'USDC' },
@@ -302,7 +396,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       },
     }
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect(result).not.toHaveProperty('fees')
   })
@@ -321,7 +421,13 @@ describe('mapLedgerEntry — spotTransfer', () => {
       },
     }
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.meta).toEqual({
@@ -344,7 +450,13 @@ describe('mapLedgerEntry — sendAsset', () => {
       destinationDex: 'spot',
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect(result).not.toBeNull()
     const t = result as TransferActivity
@@ -352,7 +464,7 @@ describe('mapLedgerEntry — sendAsset', () => {
     expect(t.direction).toBe('OUT')
     expect(t.counterpartyAddress).toBe(COUNTERPARTY.toLowerCase())
     expect(t.counterpartyAccountIndex).toBeUndefined()
-    expect(t.asset).toBe('USDC')
+    expect(t.asset).toEqual(USDC)
     expect(t.amount).toBe('20')
     expect(t.explorerLink).toBe(
       'https://app.hyperliquid.xyz/explorer/tx/0xhash-send'
@@ -368,7 +480,13 @@ describe('mapLedgerEntry — sendAsset', () => {
       destination: QUERIED as HlSendAssetDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.direction).toBe('IN')
@@ -386,7 +504,13 @@ describe('mapLedgerEntry — sendAsset', () => {
       destinationDex: 'spot',
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect(result).toBeNull()
   })
@@ -398,7 +522,13 @@ describe('mapLedgerEntry — sendAsset', () => {
       destination: upperCounterparty as HlSendAssetDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.counterpartyAddress).toBe(upperCounterparty.toLowerCase())
@@ -412,35 +542,35 @@ describe('mapLedgerEntry — sendAsset', () => {
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, upperQueried, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      upperQueried,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.direction).toBe('OUT')
   })
 
-  it('passes the token symbol through as the asset', () => {
+  it('resolves the sendAsset token symbol to its registry asset', () => {
     const entry = sendAssetUpdate({
       token: 'HYPE',
       user: QUERIED as HlSendAssetDelta['user'],
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
-    expect(t.asset).toBe('HYPE')
-  })
-
-  it('drops the token id suffix from the asset symbol', () => {
-    const entry = sendAssetUpdate({
-      token: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
-      user: QUERIED as HlSendAssetDelta['user'],
-      destination: COUNTERPARTY as HlSendAssetDelta['destination'],
-    })
-
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
-
-    expect((result as TransferActivity).asset).toBe('PURR')
+    expect(t.asset).toEqual(HYPE)
   })
 
   it('projects sourceDex / destinationDex / nonce into meta and fees onto the typed shape', () => {
@@ -456,7 +586,13 @@ describe('mapLedgerEntry — sendAsset', () => {
       nonce: 1_700_000_000_999,
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     const t = result as TransferActivity
     expect(t.meta).toEqual({
@@ -472,16 +608,22 @@ describe('mapLedgerEntry — sendAsset', () => {
     ])
   })
 
-  it('names the sendAsset feeToken as the fee asset and drops its id suffix', () => {
+  it('names the sendAsset feeToken as the fee asset', () => {
     const entry = sendAssetUpdate({
       user: QUERIED as HlSendAssetDelta['user'],
       destination: COUNTERPARTY as HlSendAssetDelta['destination'],
       fee: '0.04',
       nativeTokenFee: '0.0004',
-      feeToken: 'PURR:0xc1fb593aeffbeb02f85e0308e9956a90',
+      feeToken: 'PURR',
     })
 
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect((result as TransferActivity).fees).toEqual([
       { amount: '0.04', asset: 'PURR' },
@@ -538,7 +680,232 @@ describe('mapLedgerEntry — same-account moves', () => {
         destination: QUERIED,
       },
     }
-    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toBeNull()
+  })
+})
+
+describe('mapLedgerEntry — registry failures', () => {
+  it.each([
+    'spotTransfer',
+    'send',
+  ] as const)('rejects an unresolved %s asset instead of trusting its symbol', (type) => {
+    const builder = type === 'send' ? sendAssetUpdate : spotTransferUpdate
+    const entry = builder({
+      user: QUERIED,
+      destination: COUNTERPARTY,
+      token: 'USDC:0xunknown',
+    })
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed/)
+  })
+})
+
+describe('mapLedgerEntry — vault transfers', () => {
+  const deposit: HlLedgerUpdate = {
+    hash: 'vault-deposit',
+    time: 0,
+    delta: { type: 'vaultDeposit', vault: COUNTERPARTY, usdc: '100' },
+  }
+  const withdrawal: HlLedgerUpdate = {
+    hash: 'vault-withdraw',
+    time: 1,
+    delta: {
+      type: 'vaultWithdraw',
+      vault: COUNTERPARTY,
+      user: QUERIED,
+      requestedUsd: '200',
+      netWithdrawnUsd: '190',
+      commission: '8',
+      closingCost: '2',
+      basis: '100',
+    },
+  }
+
+  it('maps a vault deposit as an outbound collateral transfer', () => {
+    expect(
+      mapLedgerEntry(deposit, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toMatchObject({
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAddress: COUNTERPARTY,
+      asset: USDC,
+      amount: '100',
+      meta: { transferType: 'vaultDeposit' },
+    })
+  })
+
+  it('maps net vault withdrawals and preserves the accounting fields', () => {
+    expect(
+      mapLedgerEntry(
+        withdrawal,
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toMatchObject({
+      type: ActivityType.TRANSFER,
+      direction: 'IN',
+      counterpartyAddress: COUNTERPARTY,
+      asset: USDC,
+      amount: '190',
+      meta: {
+        transferType: 'vaultWithdraw',
+        requestedUsd: '200',
+        commission: '8',
+        closingCost: '2',
+        basis: '100',
+      },
+    })
+  })
+
+  it('derives the withdrawal direction from the queried vault account', () => {
+    expect(
+      mapLedgerEntry(
+        withdrawal,
+        PROVIDER,
+        COUNTERPARTY,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toMatchObject({
+      direction: 'OUT',
+      counterpartyAddress: QUERIED,
+      asset: USDC,
+      amount: '190',
+    })
+  })
+
+  it('rejects a vault-side deposit whose payload identifies no depositor', () => {
+    expect(() =>
+      mapLedgerEntry(
+        deposit,
+        PROVIDER,
+        COUNTERPARTY,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toThrow(/identifies no depositor/)
+  })
+
+  it('excludes a withdrawal back to the same vault account', () => {
+    const entry: HlLedgerUpdate = {
+      ...withdrawal,
+      delta: { ...withdrawal.delta, user: COUNTERPARTY },
+    }
+    expect(
+      mapLedgerEntry(
+        entry,
+        PROVIDER,
+        COUNTERPARTY,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
+  it.each([
+    deposit,
+    withdrawal,
+  ])('rejects unresolved collateral on $hash', async (entry) => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ assets: [PURR] }), { status: 200 })
+    )
+    await assetRegistry.sync()
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed/)
+  })
+})
+
+describe('mapLedgerEntry — collateral transfers', () => {
+  it.each([
+    'internalTransfer',
+    'subAccountTransfer',
+  ] as const)('maps both directions of %s with registry collateral', (type) => {
+    const entry: HlLedgerUpdate = {
+      hash: '0xtransfer',
+      time: 1_700_000_000_000,
+      delta: {
+        type,
+        user: QUERIED,
+        destination: COUNTERPARTY,
+        usdc: '12.5',
+        ...(type === 'internalTransfer' ? { fee: '0.1' } : {}),
+      },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toMatchObject({
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      asset: USDC,
+      amount: '12.5',
+      counterpartyAddress: COUNTERPARTY,
+    })
+    expect(
+      mapLedgerEntry(
+        entry,
+        PROVIDER,
+        COUNTERPARTY,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toMatchObject({ direction: 'IN', counterpartyAddress: QUERIED })
+  })
+
+  it.each([
+    'internalTransfer',
+    'subAccountTransfer',
+  ] as const)('excludes same-account %s movements', (type) => {
+    const entry: HlLedgerUpdate = {
+      hash: 'self',
+      time: 0,
+      delta: { type, user: QUERIED, destination: QUERIED, usdc: '1' },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toBeNull()
+  })
+
+  it('preserves the internal transfer fee in collateral units', () => {
+    const entry: HlLedgerUpdate = {
+      hash: 'internal',
+      time: 0,
+      delta: {
+        type: 'internalTransfer',
+        user: QUERIED,
+        destination: COUNTERPARTY,
+        usdc: '1',
+        fee: '0.1',
+      },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toMatchObject({ fees: [{ amount: '0.1', asset: 'USDC' }] })
+  })
+
+  it('rejects collateral transfers when the registry omits collateral', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ assets: [PURR] }), { status: 200 })
+    )
+    await assetRegistry.sync()
+    const entry: HlLedgerUpdate = {
+      hash: 'internal',
+      time: 0,
+      delta: {
+        type: 'internalTransfer',
+        user: QUERIED,
+        destination: COUNTERPARTY,
+        usdc: '1',
+      },
+    }
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed/)
   })
 })
 
@@ -557,10 +924,11 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as DepositActivity
     expect(result.type).toBe(ActivityType.DEPOSIT)
-    expect(result.asset).toBe('USDC')
+    expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('100')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
   })
@@ -575,6 +943,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as DepositActivity
     expect(result).not.toHaveProperty('counterpartyAddress')
@@ -586,7 +955,9 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       hash: '0xdep-no-amount',
       delta: { type: 'deposit' },
     }
-    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toBeNull()
   })
 
   it('maps a withdrawal', () => {
@@ -599,10 +970,11 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as WithdrawalActivity
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
-    expect(result.asset).toBe('USDC')
+    expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('50')
     expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
   })
@@ -617,10 +989,11 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as WithdrawalActivity
     expect(result.fee).toEqual({ amount: '0.5', asset: 'USDC' })
-    expect(result.fee?.asset).toBe(result.asset)
+    expect(result.fee?.asset).toBe(result.asset.displaySymbol)
   })
 
   it('omits the withdrawal fee when the venue reports none', () => {
@@ -629,7 +1002,13 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       hash: '0xwdr-no-fee',
       delta: { type: 'withdraw', usdc: '50' },
     }
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
     expect(result?.type).toBe(ActivityType.WITHDRAWAL)
     expect(result).not.toHaveProperty('fee')
   })
@@ -650,6 +1029,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as LiquidationActivity
     expect(result.type).toBe(ActivityType.LIQUIDATION)
@@ -677,6 +1057,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
       entry,
       PROVIDER,
       QUERIED,
+      assetRegistry,
       resolveMarket
     ) as LiquidationActivity
 
@@ -698,7 +1079,13 @@ describe('mapLedgerEntry — non-transfer branches', () => {
         liquidatedPositions: [{ coin: 'ETH', szi: '-1.5' }],
       },
     }
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
 
     expect(result).not.toBeNull()
     expect(result).not.toHaveProperty('liquidatedNotionalPosition')
@@ -716,7 +1103,9 @@ describe('mapLedgerEntry — non-transfer branches', () => {
         leverageType: 'cross',
       },
     }
-    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toBeNull()
   })
 
   it('drops a liquidated position the resolver cannot identify', () => {
@@ -734,8 +1123,12 @@ describe('mapLedgerEntry — non-transfer branches', () => {
         ],
       },
     }
-    const result = mapLedgerEntry(entry, PROVIDER, QUERIED, (coin) =>
-      coin === 'GHOST' ? undefined : resolveMarket(coin)
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      (coin) => (coin === 'GHOST' ? undefined : resolveMarket(coin))
     ) as LiquidationActivity
 
     expect(result.liquidatedPositions).toEqual([
@@ -755,7 +1148,9 @@ describe('mapLedgerEntry — non-transfer branches', () => {
         liquidatedPositions: [{ coin: 'GHOST', szi: '-1.5' }],
       },
     }
-    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, () => undefined)).toBeNull()
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, () => undefined)
+    ).toBeNull()
   })
 
   it('returns null for liquidation entries with empty liquidatedPositions', () => {
@@ -770,23 +1165,22 @@ describe('mapLedgerEntry — non-transfer branches', () => {
         liquidatedPositions: [],
       },
     }
-    expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toBeNull()
   })
 
   it('returns null for unsupported delta types', () => {
-    const types = [
-      'accountClassTransfer',
-      'internalTransfer',
-      'subAccountTransfer',
-      'somethingNew',
-    ]
+    const types = ['accountClassTransfer', 'somethingNew']
     for (const type of types) {
       const entry: HlLedgerUpdate = {
         time: 1_700_000_000_000,
         hash: `0xnull-${type}`,
         delta: { type, usdc: '1' },
       }
-      expect(mapLedgerEntry(entry, PROVIDER, QUERIED, resolveMarket)).toBeNull()
+      expect(
+        mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+      ).toBeNull()
     }
   })
 })
@@ -846,5 +1240,111 @@ describe('mapFundingActivity', () => {
         () => undefined
       )
     ).toBeNull()
+  })
+})
+
+describe('mapLiquidationFills', () => {
+  const liquidationFill = (
+    overrides: Partial<HlUserFill> = {}
+  ): HlUserFill => ({
+    tid: 1,
+    oid: 10,
+    hash: '0xaaa',
+    coin: 'BTC',
+    side: 'A',
+    sz: '0.5',
+    px: '40000',
+    dir: 'Close Long',
+    fee: '1',
+    closedPnl: '-100',
+    crossed: true,
+    time: 1_700_000_000_000,
+    startPosition: '1',
+    liquidation: {
+      liquidatedUser: QUERIED,
+      markPx: '40000',
+      method: 'market',
+    },
+    ...overrides,
+  })
+
+  it('groups the fills of one order into a single activity', () => {
+    expect(
+      mapLiquidationFills(
+        [
+          liquidationFill(),
+          liquidationFill({ tid: 2, sz: '0.5', time: 1_700_000_060_000 }),
+        ],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set()
+      )
+    ).toEqual([
+      {
+        id: 'liquidation:10',
+        provider: PROVIDER,
+        timestamp: '2023-11-14T22:14:20.000Z',
+        type: ActivityType.LIQUIDATION,
+        liquidatedNotionalPosition: '40000',
+        liquidatedPositions: [{ market: resolveMarket('BTC'), size: '1' }],
+      },
+    ])
+  })
+
+  it('drops a fill the ledger already reported under the same hash', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill()],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set(['0xaaa'])
+      )
+    ).toEqual([])
+  })
+
+  it('keeps a fill that carries no hash to dedup on', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill({ hash: undefined })],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set(['0xaaa'])
+      )
+    ).toHaveLength(1)
+  })
+
+  it('drops a fill that liquidated another account', () => {
+    expect(
+      mapLiquidationFills(
+        [
+          liquidationFill({
+            liquidation: {
+              liquidatedUser: COUNTERPARTY,
+              markPx: '40000',
+              method: 'market',
+            },
+          }),
+        ],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set()
+      )
+    ).toEqual([])
+  })
+
+  it('drops a fill whose coin the resolver cannot identify', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill({ coin: 'GHOST' })],
+        PROVIDER,
+        QUERIED,
+        () => undefined,
+        new Set()
+      )
+    ).toEqual([])
   })
 })

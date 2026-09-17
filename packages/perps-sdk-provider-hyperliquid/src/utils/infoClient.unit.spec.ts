@@ -133,6 +133,37 @@ describe('infoRequest', () => {
     })
   })
 
+  it('wraps a 2xx body that is not JSON as a ServerError', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('<html>blocked</html>', { status: 200 })
+    )
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ServerError,
+      tool: 'hyperliquid',
+    })
+  })
+
+  it('rethrows an abort as a native AbortError, not a ServerError', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new DOMException('Aborted', 'AbortError')
+    )
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { policy: DISABLED_RETRY }
+      )
+    ).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   it('forwards an AbortSignal to fetch', async () => {
     const spy = vi
       .spyOn(globalThis, 'fetch')

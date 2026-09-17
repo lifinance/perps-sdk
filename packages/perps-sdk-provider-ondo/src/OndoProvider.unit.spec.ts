@@ -20,7 +20,6 @@ import {
   ActionType,
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -31,6 +30,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -405,6 +405,9 @@ beforeEach(() => {
     if (u.includes('backend.test/v1/perps/markets')) {
       return respond(MARKETS_RESPONSE)
     }
+    if (u.includes('backend.test/v1/perps/assets')) {
+      return respond({ assets: [ONDO_COLLATERAL_ASSET] })
+    }
     if (u.includes('backend.test/v1/perps/providers')) {
       return respond({ providers: providersResult })
     }
@@ -414,6 +417,9 @@ beforeEach(() => {
     }
     if (u.includes('/v1/perps/positions')) {
       return respond(envelope(positionsResult))
+    }
+    if (u.includes('/v1/perps/twap/orders/running')) {
+      return respond(envelope([]))
     }
     if (u.includes('/v1/perps/orders/')) {
       return respond(envelope(ORDER_OPEN))
@@ -594,8 +600,7 @@ describe('OndoProvider — logged-out degrade paths', () => {
     expect(positions.pagination).toEqual({ limit: 0, hasMore: false })
 
     const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.openOrders).toEqual([])
-    expect(orders.triggerOrders).toEqual([])
+    expect(orders.orders).toEqual([])
 
     const fills = await provider.getFills({ address: ADDRESS, limit: 5 })
     expect(fills.items).toEqual([])
@@ -646,6 +651,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         asset: ONDO_COLLATERAL_ASSET,
         units: '1000',
         valueUsd: '1000',
+        price: '1',
       },
     ])
     expect(account.marginUsed).toBe('401')
@@ -1036,44 +1042,37 @@ describe('OndoProvider — getDepositFlow', () => {
 })
 
 describe('OndoProvider — getOrders', () => {
-  it('classifies venue orders into open and trigger orders and pages on nextCursor', async () => {
+  it('maps active orders into the union and preserves the endpoint cursor', async () => {
     const { provider } = await loggedInProvider()
     const orders = await provider.getOrders({
       address: ADDRESS,
       marketId: 'AAPL-USD.P',
       limit: 10,
-      cursor: 'orders-cur-1',
+      cursor: JSON.stringify({ active: { cursor: 'orders-cur-1', offset: 0 } }),
     })
 
     expect(orders.provider).toBe('ondo')
-    expect(orders.openOrders).toEqual([
-      {
+    expect(orders.orders).toEqual([
+      expect.objectContaining({
         orderId: 'ord-1',
-        market: MARKET_DISPLAY,
-        side: OrderSide.BUY,
         type: OrderType.LIMIT,
+        status: OrderStatus.PARTIALLY_FILLED,
         originalSize: '10',
         remainingSize: '6',
-        price: '200',
         filledSize: '4',
-        reduceOnly: false,
-        createdAt: '2026-07-01T12:00:00.000Z',
-      },
-    ])
-    expect(orders.triggerOrders).toEqual([
-      {
+      }),
+      expect.objectContaining({
         orderId: 'ord-2',
-        market: MARKET_DISPLAY,
         type: OrderType.STOP_MARKET,
-        size: '10',
+        status: OrderStatus.OPEN,
         triggerPrice: '190',
-        createdAt: '2026-07-01T12:05:00.000Z',
-      },
+        triggerCondition: TriggerCondition.BELOW,
+      }),
     ])
     expect(orders.pagination).toEqual({
       limit: 10,
       hasMore: true,
-      cursor: 'orders-cur-2',
+      cursor: JSON.stringify({ active: { offset: 0, cursor: 'orders-cur-2' } }),
     })
 
     const call = recorded.find((r) => r.url.includes('/v1/perps/orders'))
@@ -1100,8 +1099,7 @@ describe('OndoProvider — getOrder', () => {
       filledSize: '4',
       timeInForce: 'GTC',
       reduceOnly: false,
-      isTrigger: false,
-      status: OrderStatus.OPEN,
+      status: OrderStatus.PARTIALLY_FILLED,
       averagePrice: '200.5',
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z',
@@ -1125,7 +1123,6 @@ describe('OndoProvider — getFills', () => {
         side: OrderSide.BUY,
         size: '4',
         price: '200.5',
-        status: FillStatus.FILLED,
         liquidity: LiquidityRole.TAKER,
         fee: { amount: '0.3', asset: 'USDC' },
         realizedPnl: undefined,
@@ -1213,7 +1210,7 @@ describe('OndoProvider — getActivity', () => {
     ])
     expect(activity.items[0]).toMatchObject({
       id: 'w_1',
-      asset: 'USDC',
+      asset: ONDO_COLLATERAL_ASSET,
       amount: '500.00',
     })
     expect(activity.items[1]).toMatchObject({
@@ -1228,10 +1225,34 @@ describe('OndoProvider — getActivity', () => {
     })
     expect(activity.items[3]).toMatchObject({
       id: 'deposit:0xabc123',
-      asset: 'USDC',
+      asset: ONDO_COLLATERAL_ASSET,
       amount: '1000.00',
     })
     expect(activity.pagination.hasMore).toBe(false)
+  })
+
+  it.each([
+    ActivityType.DEPOSIT,
+    ActivityType.WITHDRAWAL,
+  ])('rejects a legacy %s overflow row instead of returning its display string', async (type) => {
+    const { provider } = await loggedInProvider()
+    const cursor = Buffer.from(
+      JSON.stringify({
+        overflow: [
+          {
+            id: 'legacy',
+            provider: 'ondo',
+            timestamp: '2026-01-01T00:00:00Z',
+            type,
+            asset: 'USDC',
+            amount: '1',
+          },
+        ],
+      })
+    ).toString('base64url')
+    await expect(
+      provider.getActivity({ address: ADDRESS, cursor, type: [type] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
   it('emits a base64url cursor carrying the overflow when limit < merged count', async () => {
@@ -1277,6 +1298,9 @@ describe('OndoProvider — getActivity surface coverage', () => {
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond({ assets: [ONDO_COLLATERAL_ASSET] })
+      }
       if (u.includes('backend.test/v1/perps/providers')) {
         return respond({ providers: providersResult })
       }
@@ -1317,7 +1341,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         provider: 'ondo',
         timestamp: '2026-07-02T15:45:00.000Z',
         type: ActivityType.WITHDRAWAL,
-        asset: 'USDC',
+        asset: ONDO_COLLATERAL_ASSET,
         amount: '500.00',
         fee: { amount: '1.50', asset: 'USD' },
         explorerLink: 'https://scan.li.fi/tx/0xdef456',
@@ -1327,7 +1351,7 @@ describe('OndoProvider — getActivity surface coverage', () => {
         provider: 'ondo',
         timestamp: '2026-07-01T10:30:00.000Z',
         type: ActivityType.DEPOSIT,
-        asset: 'USDC',
+        asset: ONDO_COLLATERAL_ASSET,
         amount: '1000.00',
         counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
         explorerLink: 'https://scan.li.fi/tx/0xabc123',
@@ -1878,8 +1902,7 @@ describe('OndoProvider — server-revoked session', () => {
 
     await expect(provider.getOrders({ address: ADDRESS })).resolves.toEqual({
       provider: 'ondo',
-      openOrders: [],
-      triggerOrders: [],
+      orders: [],
       pagination: { limit: 0, hasMore: false },
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()

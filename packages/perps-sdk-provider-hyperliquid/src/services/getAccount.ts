@@ -128,6 +128,7 @@ const buildBalances = (
         asset: quoteAssetByCategory.get(categoryId)!,
         units: value.toFixed(),
         valueUsd: value.toFixed(),
+        price: '1',
       })
     }
   }

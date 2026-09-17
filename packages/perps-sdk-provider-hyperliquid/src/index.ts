@@ -15,6 +15,7 @@ export { projectHyperliquidConfigSettings } from './accountConfig.js'
 export { getAccountSummary } from './accountSummary.js'
 export {
   DEFAULT_HYPERLIQUID_API_URL,
+  HYPERLIQUID_EXPLORER_RPC_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY as HYPERLIQUID_PROVIDER_KEY,
 } from './constants.js'
@@ -39,8 +40,6 @@ export type { GetPortfolioHistoryParams } from './services/getPortfolioHistory.j
 export { getPortfolioHistory } from './services/getPortfolioHistory.js'
 export type { GetPositionsParams } from './services/getPositions.js'
 export { getPositions } from './services/getPositions.js'
-export type { GetRunningTwapsParams } from './services/getRunningTwaps.js'
-export { getRunningTwaps } from './services/getRunningTwaps.js'
 export type { HyperliquidAgent } from './signers/HyperliquidAgentStore.js'
 export { HyperliquidAgentStore } from './signers/HyperliquidAgentStore.js'
 export * from './types/index.js'

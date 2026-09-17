@@ -9,6 +9,8 @@ import type {
   MarketRef,
   MarketSettings,
   MetaActionType,
+  Order,
+  OrdersResponse,
   PortfolioHistoryResponse,
   Position,
   PositionMarginConstraints,
@@ -30,6 +32,14 @@ import { getAssetRegistry } from '../registry/assetRegistry.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
+import {
+  getOrder as fetchOrder,
+  type GetOrderParams,
+} from '../services/getOrder.js'
+import {
+  getOrders as fetchOrders,
+  type GetOrdersParams,
+} from '../services/getOrders.js'
 import { getProviders } from '../services/getProviders.js'
 import type {
   BuildProviderSetupParams,
@@ -188,6 +198,22 @@ export class PerpsClient {
    */
   private requireProvider(provider: string): PerpsProvider {
     return resolveProvider(this.sdkClient, provider)
+  }
+
+  /** Read active or historical orders from the selected venue. */
+  async getOrders(
+    params: GetOrdersParams,
+    options?: SDKRequestOptions
+  ): Promise<OrdersResponse> {
+    return fetchOrders(this.sdkClient, params, options)
+  }
+
+  /** Read one venue order through the provider's unified mapper. */
+  async getOrder(
+    params: GetOrderParams,
+    options?: SDKRequestOptions
+  ): Promise<Order> {
+    return fetchOrder(this.sdkClient, params, options)
   }
 
   /**

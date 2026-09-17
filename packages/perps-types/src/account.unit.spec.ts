@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   AccountConfig,
   ActivityItem,
@@ -7,99 +7,44 @@ import type {
   LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
+  Order,
+  OrderBase,
+  OrdersResponse,
+  RegularOrder,
   TransferActivity,
+  TriggerOrder,
+  TwapOrder,
   WithdrawalActivity,
 } from './account.js'
+import type { Asset } from './asset.js'
 import {
   ActivityType,
   FillClassification,
-  FillStatus,
   LiquidityRole,
   MarginMode,
   OrderSide,
+  type OrderStatus,
+  type OrderType,
 } from './enums.js'
 import type { MarketDisplay } from './market.js'
+
+const USDC_ASSET: Asset = {
+  providerId: 'hyperliquid',
+  id: '0',
+  displaySymbol: 'USDC',
+  logoURI: 'usdc.svg',
+}
 
 // Type-level coverage for `TransferActivity`: the structural shape, narrowing
 // off the `type` discriminator, and rejection of misshaped variants. Vitest
 // runs the file via the `.unit.spec.ts` glob so a regression also fails
 // `pnpm test:unit` via tsc.
 describe('TransferActivity', () => {
-  it('accepts a minimal IN-direction fixture', () => {
-    const item: TransferActivity = {
-      id: 'transfer-1',
-      provider: 'lighter',
-      timestamp: '2026-05-07T12:00:00.000Z',
-      type: ActivityType.TRANSFER,
-      direction: 'IN',
-      counterpartyAccountIndex: 42,
-      asset: 'USDC',
-      amount: '100.50',
-    }
-
-    expect(item.type).toBe(ActivityType.TRANSFER)
-    expect(item.direction).toBe('IN')
-    expect(item.counterpartyAccountIndex).toBe(42)
-    expect(item.asset).toBe('USDC')
-    expect(item.amount).toBe('100.50')
-    expect(item.meta).toBeUndefined()
+  it('requires registry identity on every ledger activity', () => {
+    expectTypeOf<TransferActivity['asset']>().toEqualTypeOf<Asset>()
+    expectTypeOf<DepositActivity['asset']>().toEqualTypeOf<Asset>()
+    expectTypeOf<WithdrawalActivity['asset']>().toEqualTypeOf<Asset>()
   })
-
-  it('accepts an OUT-direction fixture with provider-specific meta', () => {
-    const item: TransferActivity = {
-      id: 'transfer-2',
-      provider: 'lighter',
-      timestamp: '2026-05-07T12:01:00.000Z',
-      type: ActivityType.TRANSFER,
-      direction: 'OUT',
-      counterpartyAccountIndex: 7,
-      asset: 'USDC',
-      amount: '25',
-      meta: { txHash: '0xabc', memo: 'rebalance' },
-    }
-
-    expect(item.direction).toBe('OUT')
-    expect(item.meta).toEqual({ txHash: '0xabc', memo: 'rebalance' })
-  })
-
-  it('accepts a counterpartyAddress-only fixture (HL spotTransfer shape)', () => {
-    const item: TransferActivity = {
-      id: 'transfer-hl-1',
-      provider: 'hyperliquid',
-      timestamp: '2026-05-07T12:01:30.000Z',
-      type: ActivityType.TRANSFER,
-      direction: 'IN',
-      counterpartyAddress: '0xabcdef0123456789abcdef0123456789abcdef01',
-      asset: 'USDC',
-      amount: '5',
-      meta: { transferType: 'spotTransfer' },
-    }
-
-    expect(item.counterpartyAddress).toBe(
-      '0xabcdef0123456789abcdef0123456789abcdef01'
-    )
-    expect(item.counterpartyAccountIndex).toBeUndefined()
-  })
-
-  it('accepts a fixture with BOTH counterparty fields populated', () => {
-    const item: TransferActivity = {
-      id: 'transfer-both-1',
-      provider: 'hybrid',
-      timestamp: '2026-05-07T12:01:45.000Z',
-      type: ActivityType.TRANSFER,
-      direction: 'OUT',
-      counterpartyAccountIndex: 99,
-      counterpartyAddress: '0xffff000000000000000000000000000000000001',
-      asset: 'USDC',
-      amount: '10',
-    }
-
-    expect(item.counterpartyAccountIndex).toBe(99)
-    expect(item.counterpartyAddress).toBe(
-      '0xffff000000000000000000000000000000000001'
-    )
-  })
-
   it('participates in the ActivityItem discriminated union and narrows on type', () => {
     const item: ActivityItem = {
       id: 'transfer-3',
@@ -108,7 +53,12 @@ describe('TransferActivity', () => {
       type: ActivityType.TRANSFER,
       direction: 'IN',
       counterpartyAccountIndex: 1,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '1',
     }
 
@@ -129,7 +79,7 @@ describe('TransferActivity', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:03:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '500',
     }
 
@@ -157,7 +107,12 @@ describe('TransferActivity', () => {
       // @ts-expect-error direction must be 'IN' | 'OUT'
       direction: 'INBOUND',
       counterpartyAccountIndex: 1,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '1',
     }
 
@@ -172,7 +127,12 @@ describe('TransferActivity', () => {
       timestamp: '2026-05-07T12:05:00.000Z',
       type: ActivityType.TRANSFER,
       direction: 'IN',
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '1',
     }
 
@@ -185,7 +145,12 @@ describe('TransferActivity', () => {
       type: ActivityType.DEPOSIT,
       direction: 'IN',
       counterpartyAccountIndex: 1,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '1',
     }
 
@@ -197,7 +162,12 @@ describe('TransferActivity', () => {
       type: ActivityType.TRANSFER,
       direction: 'IN',
       counterpartyAccountIndex: 1,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       // @ts-expect-error amount must be a string
       amount: 1,
     }
@@ -218,7 +188,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       explorerLink: 'https://etherscan.io/tx/0xabc',
     }
@@ -227,7 +197,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       fee: { amount: '0', asset: 'USDC' },
       explorerLink: 'https://etherscan.io/tx/0xdef',
@@ -239,7 +209,12 @@ describe('explorerLink on on-chain item types', () => {
       type: ActivityType.TRANSFER,
       direction: 'IN',
       counterpartyAccountIndex: 1,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '1',
       explorerLink: 'https://app.lighter.xyz/explorer/logs/0000abcd',
     }
@@ -257,7 +232,7 @@ describe('explorerLink on on-chain item types', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
     }
     expect(deposit.explorerLink).toBeUndefined()
@@ -271,7 +246,7 @@ describe('counterpartyAddress on DepositActivity', () => {
       provider: 'ondo',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
       counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
     }
@@ -286,7 +261,7 @@ describe('counterpartyAddress on DepositActivity', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:00:00.000Z',
       type: ActivityType.DEPOSIT,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '1',
     }
     expect(deposit.counterpartyAddress).toBeUndefined()
@@ -478,7 +453,6 @@ const BASE_FILL: Fill = {
   side: OrderSide.BUY,
   size: '1',
   price: '2000',
-  status: FillStatus.FILLED,
   liquidity: LiquidityRole.TAKER,
   classification: FillClassification.OPENED_LONG,
   createdAt: '2026-05-07T12:00:00.000Z',
@@ -507,27 +481,13 @@ describe('Fill leverage', () => {
 })
 
 describe('Fee', () => {
-  it('accepts a fee denominated in an asset other than the withdrawn one', () => {
-    const item: WithdrawalActivity = {
-      id: 'withdrawal-1',
-      provider: 'ondo',
-      timestamp: '2026-05-07T12:00:00.000Z',
-      type: ActivityType.WITHDRAWAL,
-      asset: 'BTC',
-      amount: '0.5',
-      fee: { amount: '2.5', asset: 'USD' },
-    }
-
-    expect(item.fee).toEqual({ amount: '2.5', asset: 'USD' })
-  })
-
   it('rejects a bare fee amount and a fee that names no asset', () => {
     const bareAmount: WithdrawalActivity = {
       id: 'withdrawal-2',
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:01:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '10',
       // @ts-expect-error a fee must name the asset it is denominated in
       fee: '0.1',
@@ -538,7 +498,7 @@ describe('Fee', () => {
       provider: 'hyperliquid',
       timestamp: '2026-05-07T12:02:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '10',
       // @ts-expect-error asset is required on a fee
       fee: { amount: '0.1' },
@@ -571,26 +531,6 @@ describe('Fee', () => {
     expect(BASE_FILL.fee).toBeUndefined()
   })
 
-  it('accepts several transfer fees, each in its own asset', () => {
-    const item: TransferActivity = {
-      id: 'transfer-fee-1',
-      provider: 'hyperliquid',
-      timestamp: '2026-05-07T12:03:00.000Z',
-      type: ActivityType.TRANSFER,
-      direction: 'OUT',
-      counterpartyAddress: '0xabc',
-      asset: 'PURR',
-      amount: '10',
-      fees: [
-        { amount: '1.0', asset: 'USDC' },
-        { amount: '0.25', asset: 'HYPE' },
-      ],
-    }
-
-    expect(item.fees).toHaveLength(2)
-    expect(item.fees?.[1]).toEqual({ amount: '0.25', asset: 'HYPE' })
-  })
-
   it('rejects a transfer fee list of bare amounts', () => {
     const item: TransferActivity = {
       id: 'transfer-fee-2',
@@ -599,7 +539,12 @@ describe('Fee', () => {
       type: ActivityType.TRANSFER,
       direction: 'OUT',
       counterpartyAddress: '0xabc',
-      asset: 'USDC',
+      asset: {
+        providerId: 'hyperliquid',
+        id: '0',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '10',
       // @ts-expect-error every transfer fee must name its asset
       fees: ['1.0'],
@@ -639,7 +584,12 @@ describe('exhaustive narrowing across ActivityItem', () => {
       type: ActivityType.TRANSFER,
       direction: 'OUT',
       counterpartyAccountIndex: 99,
-      asset: 'USDC',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
       amount: '12.34',
     }
     expect(route(transfer)).toBe('transfer:OUT:99:12.34')
@@ -649,7 +599,7 @@ describe('exhaustive narrowing across ActivityItem', () => {
       provider: 'lighter',
       timestamp: '2026-05-07T12:09:00.000Z',
       type: ActivityType.WITHDRAWAL,
-      asset: 'USDC',
+      asset: USDC_ASSET,
       amount: '50',
       fee: { amount: '0.1', asset: 'USDC' },
     }
@@ -677,5 +627,40 @@ describe('MarketSettings', () => {
     })
     expect(missingLeverage.marginMode).toBe(MarginMode.CROSS)
     expect(missingMode.leverage).toBe(3)
+  })
+})
+
+describe('Order read contract', () => {
+  it('narrows the sole type discriminator to the matching order family', () => {
+    expectTypeOf<
+      Extract<Order, { type: RegularOrder['type'] }>
+    >().toEqualTypeOf<RegularOrder>()
+    expectTypeOf<
+      Extract<Order, { type: TriggerOrder['type'] }>
+    >().toEqualTypeOf<TriggerOrder>()
+    expectTypeOf<
+      Extract<Order, { type: OrderType.TWAP }>
+    >().toEqualTypeOf<TwapOrder>()
+    expectTypeOf<Order['status']>().toEqualTypeOf<OrderStatus>()
+    expectTypeOf<OrdersResponse['orders']>().toEqualTypeOf<Order[]>()
+  })
+  it('keeps the complete shared lifecycle and identity fields', () => {
+    expectTypeOf<keyof OrderBase>().toEqualTypeOf<
+      | 'orderId'
+      | 'clientOrderId'
+      | 'market'
+      | 'side'
+      | 'status'
+      | 'statusReason'
+      | 'originalSize'
+      | 'remainingSize'
+      | 'filledSize'
+      | 'averagePrice'
+      | 'reduceOnly'
+      | 'parentOrderId'
+      | 'explorerLink'
+      | 'createdAt'
+      | 'updatedAt'
+    >()
   })
 })

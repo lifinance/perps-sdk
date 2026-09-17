@@ -87,7 +87,7 @@ export { createMemoryStorage } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
 export { errorCodeFromStatus } from './transport/errorCodeFromStatus.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
-export { fetchWithRetry } from './transport/fetchWithRetry.js'
+export { fetchWithRetry, isAbortError } from './transport/fetchWithRetry.js'
 export type {
   ProviderRetryConfig,
   ResolvedRetryPolicy,
@@ -160,7 +160,6 @@ export type {
   ProviderGetPortfolioHistoryParams,
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
-  ProviderGetRunningTwapsParams,
   ProviderGetWithdrawableBalancesParams,
   QuoteListener,
   SignActionProgress,
@@ -222,9 +221,13 @@ export {
   classifyFill,
   FillClassification,
   isActiveOrderStatus,
+  isRegularOrder,
   isStopLossOrder,
   isTakeProfitOrder,
   isTpSlOrder,
+  isTriggerOrder,
+  isTwapOrder,
+  triggerConditionFor,
 } from './utils/orderClassification.js'
 export {
   expectedRealizedPnlForOpenOrder,
@@ -252,6 +255,7 @@ export type { RemovableIsolatedMarginParams } from './utils/transferMargin.js'
 export { removableIsolatedMargin } from './utils/transferMargin.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
+export { createWarnOnce } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
 export { cachePromise } from './websocket/cachePromise.js'

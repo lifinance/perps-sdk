@@ -1,22 +1,15 @@
-import type { MarketDisplay } from '@lifi/perps-types'
+import { PerpsError } from '@lifi/perps-sdk'
 import {
+  type MarketDisplay,
   OrderSide,
   OrderStatus,
   OrderType,
   TimeInForce,
+  TriggerCondition,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import type { OndoOrder } from '../types/wire.js'
-import {
-  classifyAndMapOrders,
-  isTriggerOrder,
-  mapOrder,
-  mapOrderDetail,
-  mapOrderStatus,
-  mapOrderType,
-  mapStatusReason,
-  mapTriggerOrder,
-} from './mapOrder.js'
+import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
+import { mapOrder, mapOrderUpdates } from './mapOrder.js'
 
 const MARKET: MarketDisplay = {
   providerId: 'ondo',
@@ -35,13 +28,12 @@ const MARKET: MarketDisplay = {
     logoURI: '',
   },
 }
-
-const orderFixture = (overrides?: Partial<OndoOrder>): OndoOrder => ({
+const orderFixture = (overrides: Partial<OndoOrder> = {}): OndoOrder => ({
   orderId: 'ord-1',
   side: 'buy',
   price: '200.5',
   size: '10',
-  market: 'AAPL-USD.P',
+  market: MARKET.id,
   filledSize: '4',
   lastFillSize: '4',
   filledCost: '802',
@@ -53,91 +45,26 @@ const orderFixture = (overrides?: Partial<OndoOrder>): OndoOrder => ({
   reduceOnly: false,
   ...overrides,
 })
-
-describe('mapOrderType', () => {
-  it('maps the Ondo order-type enum', () => {
-    expect(mapOrderType('limit')).toBe(OrderType.LIMIT)
-    expect(mapOrderType('market')).toBe(OrderType.MARKET)
-    expect(mapOrderType('stopMarket')).toBe(OrderType.STOP_MARKET)
-    expect(mapOrderType('takeProfitMarket')).toBe(OrderType.TAKE_PROFIT_MARKET)
-  })
-})
-
-describe('mapOrderStatus', () => {
-  it('maps the Ondo status enum', () => {
-    expect(mapOrderStatus('open')).toBe(OrderStatus.OPEN)
-    expect(mapOrderStatus('pending')).toBe(OrderStatus.PENDING)
-    expect(mapOrderStatus('fullyfilled')).toBe(OrderStatus.FILLED)
-    expect(mapOrderStatus('canceled')).toBe(OrderStatus.CANCELLED)
-  })
-
-  it('treats untriggered stop orders as active (OPEN)', () => {
-    expect(mapOrderStatus('untriggered')).toBe(OrderStatus.OPEN)
-  })
-})
-
-describe('mapStatusReason', () => {
-  it('describes cancel reasons in plain English', () => {
-    expect(
-      mapStatusReason(
-        orderFixture({ status: 'canceled', cancelReason: 'liquidation' })
-      )
-    ).toBe('Order cancelled: position was liquidated.')
-    expect(
-      mapStatusReason(
-        orderFixture({
-          status: 'canceled',
-          cancelReason: 'selfMatchPrevention',
-        })
-      )
-    ).toBe('Order cancelled: would self-match against your own resting order.')
-    expect(
-      mapStatusReason(
-        orderFixture({ status: 'canceled', cancelReason: 'immediateOrCancel' })
-      )
-    ).toBe('Order cancelled: immediate-or-cancel remainder.')
-  })
-
-  it('falls back to a generic sentence for a plain cancellation', () => {
-    expect(mapStatusReason(orderFixture({ status: 'canceled' }))).toBe(
-      'Order cancelled.'
-    )
-    expect(
-      mapStatusReason(orderFixture({ status: 'canceled', cancelReason: '' }))
-    ).toBe('Order cancelled.')
-  })
-
-  it('returns undefined for non-cancelled statuses', () => {
-    expect(mapStatusReason(orderFixture({ status: 'open' }))).toBeUndefined()
-    expect(
-      mapStatusReason(orderFixture({ status: 'fullyfilled' }))
-    ).toBeUndefined()
-  })
-})
-
-describe('isTriggerOrder', () => {
-  it('classifies stop and take-profit orders as triggers', () => {
-    expect(isTriggerOrder(orderFixture({ type: 'stopMarket' }))).toBe(true)
-    expect(isTriggerOrder(orderFixture({ type: 'takeProfitMarket' }))).toBe(
-      true
-    )
-  })
-
-  it('classifies via stopOrderType and triggerPrice even when type lags', () => {
-    expect(isTriggerOrder(orderFixture({ stopOrderType: 'stopLoss' }))).toBe(
-      true
-    )
-    expect(isTriggerOrder(orderFixture({ triggerPrice: '190' }))).toBe(true)
-  })
-
-  it('classifies plain limit and market orders as non-triggers', () => {
-    expect(isTriggerOrder(orderFixture())).toBe(false)
-    expect(isTriggerOrder(orderFixture({ type: 'market' }))).toBe(false)
-  })
+const twapFixture = (
+  overrides: Partial<OndoTwapOrder> = {}
+): OndoTwapOrder => ({
+  twapId: 'twap-1',
+  market: MARKET.id,
+  side: 'sell',
+  startTime: '2026-07-01T12:00:00Z',
+  runningTime: 1800,
+  frequency: 60,
+  avgFilledPrice: '200.5',
+  filledSize: '4',
+  totalSize: '10',
+  totalFees: '0.4',
+  orderStatus: 'running',
+  reduceOnly: true,
+  ...overrides,
 })
 
 describe('mapOrder', () => {
-  it('maps a partially filled open limit order with both sizes', () => {
+  it('maps the partial fill quantities, lifecycle and average price', () => {
     expect(mapOrder(orderFixture(), MARKET)).toEqual({
       orderId: 'ord-1',
       market: MARKET,
@@ -145,151 +72,260 @@ describe('mapOrder', () => {
       type: OrderType.LIMIT,
       originalSize: '10',
       remainingSize: '6',
-      price: '200.5',
       filledSize: '4',
-      reduceOnly: false,
-      createdAt: '2026-07-01T12:00:00.000Z',
-    })
-  })
-
-  it('keeps remainingSize equal to originalSize while nothing is filled', () => {
-    const mapped = mapOrder(orderFixture({ filledSize: '0' }), MARKET)
-    expect(mapped.originalSize).toBe('10')
-    expect(mapped.remainingSize).toBe('10')
-    expect(mapped.filledSize).toBe('0')
-  })
-
-  it('normalizes originalSize so an unfilled order compares equal on both sizes', () => {
-    const mapped = mapOrder(
-      orderFixture({ size: '10.00', filledSize: '0.00' }),
-      MARKET
-    )
-    expect(mapped.originalSize).toBe(mapped.remainingSize)
-  })
-
-  it('derives a fractional remainingSize without float error', () => {
-    const mapped = mapOrder(
-      orderFixture({ size: '0.3', filledSize: '0.1' }),
-      MARKET
-    )
-    expect(mapped.remainingSize).toBe('0.2')
-  })
-
-  it('defaults an absent reduceOnly to false and maps sell side', () => {
-    const mapped = mapOrder(
-      orderFixture({ side: 'sell', reduceOnly: undefined }),
-      MARKET
-    )
-    expect(mapped.side).toBe(OrderSide.SELL)
-    expect(mapped.reduceOnly).toBe(false)
-  })
-})
-
-describe('mapTriggerOrder', () => {
-  it('maps a stop-market order with its trigger price', () => {
-    const mapped = mapTriggerOrder(
-      orderFixture({
-        type: 'stopMarket',
-        stopOrderType: 'stopLoss',
-        triggerPrice: '190',
-      }),
-      MARKET
-    )
-    expect(mapped).toEqual({
-      orderId: 'ord-1',
-      market: MARKET,
-      type: OrderType.STOP_MARKET,
-      size: '10',
-      triggerPrice: '190',
-      createdAt: '2026-07-01T12:00:00.000Z',
-    })
-  })
-})
-
-describe('classifyAndMapOrders', () => {
-  it('buckets actives into open vs trigger and collects terminal ids', () => {
-    const orders = [
-      orderFixture(),
-      orderFixture({
-        orderId: 'ord-2',
-        type: 'stopMarket',
-        status: 'untriggered',
-        triggerPrice: '190',
-      }),
-      orderFixture({ orderId: 'ord-3', status: 'canceled' }),
-      orderFixture({ orderId: 'ord-4', status: 'fullyfilled' }),
-    ]
-    const { openOrders, triggerOrders, terminated } = classifyAndMapOrders(
-      orders,
-      () => MARKET
-    )
-    expect(openOrders.map((o) => o.orderId)).toEqual(['ord-1'])
-    expect(triggerOrders.map((o) => o.orderId)).toEqual(['ord-2'])
-    expect(terminated).toEqual(['ord-3', 'ord-4'])
-  })
-
-  it('skips orders whose market the resolver does not know', () => {
-    const { openOrders } = classifyAndMapOrders(
-      [orderFixture()],
-      () => undefined
-    )
-    expect(openOrders).toEqual([])
-  })
-})
-
-describe('mapOrderDetail', () => {
-  it('maps the rich Order shape with derived remaining size and average price', () => {
-    expect(mapOrderDetail(orderFixture(), MARKET)).toEqual({
-      orderId: 'ord-1',
-      market: MARKET,
-      side: OrderSide.BUY,
-      type: OrderType.LIMIT,
       price: '200.5',
-      originalSize: '10',
-      remainingSize: '6',
-      filledSize: '4',
       timeInForce: TimeInForce.GTC,
       reduceOnly: false,
-      isTrigger: false,
-      status: OrderStatus.OPEN,
+      status: OrderStatus.PARTIALLY_FILLED,
       averagePrice: '200.5',
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z',
     })
   })
-
-  it('carries the cancel transition into statusReason and updatedAt', () => {
-    const mapped = mapOrderDetail(
-      orderFixture({
-        status: 'canceled',
-        cancelReason: 'liquidation',
-        canceledAt: '2026-07-01T13:00:00Z',
-      }),
+  it('preserves venue, client and parent ids independently', () => {
+    expect(
+      mapOrder(
+        orderFixture({ clientOrderId: 'client-1', parentOrderId: 'parent-1' }),
+        MARKET
+      )
+    ).toMatchObject({
+      orderId: 'ord-1',
+      clientOrderId: 'client-1',
+      parentOrderId: 'parent-1',
+    })
+    const absent = mapOrder(orderFixture(), MARKET)
+    expect(absent).not.toHaveProperty('clientOrderId')
+    expect(absent).not.toHaveProperty('parentOrderId')
+    expect(absent).not.toHaveProperty('explorerLink')
+  })
+  it('keeps precise fractional sizes and detects subnormal partial fills', () => {
+    expect(
+      mapOrder(orderFixture({ size: '0.3', filledSize: '0.1' }), MARKET)
+        .remainingSize
+    ).toBe('0.2')
+    expect(
+      mapOrder(orderFixture({ filledSize: '1e-400' }), MARKET).status
+    ).toBe(OrderStatus.PARTIALLY_FILLED)
+    const unfilled = mapOrder(
+      orderFixture({ size: '10.00', filledSize: '0.00' }),
       MARKET
     )
-    expect(mapped.status).toBe(OrderStatus.CANCELLED)
-    expect(mapped.statusReason).toBe(
-      'Order cancelled: position was liquidated.'
-    )
-    expect(mapped.updatedAt).toBe('2026-07-01T13:00:00.000Z')
+    expect(unfilled.originalSize).toBe(unfilled.remainingSize)
+    expect(unfilled.status).toBe(OrderStatus.OPEN)
+    expect(unfilled).not.toHaveProperty('averagePrice')
   })
-
-  it('marks trigger orders and omits averagePrice when nothing filled', () => {
-    const mapped = mapOrderDetail(
+  it('maps market execution to IOC when the venue omits timeInForce', () => {
+    expect(
+      mapOrder(orderFixture({ type: 'market', timeInForce: undefined }), MARKET)
+    ).toMatchObject({ type: OrderType.MARKET, timeInForce: TimeInForce.IOC })
+  })
+  it('rejects an unsupported timeInForce instead of reporting none', () => {
+    const raw: OndoOrder = JSON.parse(
+      JSON.stringify({ ...orderFixture(), timeInForce: 'FOK' })
+    )
+    expect(() => mapOrder(raw, MARKET)).toThrow(PerpsError)
+  })
+  it.each([
+    ['takeProfit', 'sell', TriggerCondition.ABOVE],
+    ['takeProfit', 'buy', TriggerCondition.BELOW],
+    ['stopLoss', 'sell', TriggerCondition.BELOW],
+    ['stopLoss', 'buy', TriggerCondition.ABOVE],
+  ] as const)('derives %s %s trigger condition', (stopOrderType, side, triggerCondition) => {
+    const mapped = mapOrder(
       orderFixture({
-        type: 'stopMarket',
-        status: 'untriggered',
+        type: 'market',
+        stopOrderType,
+        side,
         triggerPrice: '190',
         filledSize: '0',
-        filledCost: '0',
-        timeInForce: undefined,
+        status: 'untriggered',
       }),
       MARKET
     )
-    expect(mapped.isTrigger).toBe(true)
-    expect(mapped.triggerPrice).toBe('190')
-    expect(mapped.averagePrice).toBeUndefined()
-    expect(mapped.timeInForce).toBeUndefined()
-    expect(mapped.remainingSize).toBe('10')
+    expect(mapped).toMatchObject({
+      type:
+        stopOrderType === 'takeProfit'
+          ? OrderType.TAKE_PROFIT_MARKET
+          : OrderType.STOP_MARKET,
+      triggerPrice: '190',
+      triggerCondition,
+      status: OrderStatus.OPEN,
+    })
+    expect(mapped).not.toHaveProperty('price')
+    expect(mapped).not.toHaveProperty('timeInForce')
+    expect(mapped).not.toHaveProperty('parentOrderId')
+  })
+  it.each([
+    ['stopLoss', OrderType.STOP_LIMIT],
+    ['takeProfit', OrderType.TAKE_PROFIT_LIMIT],
+  ] as const)('maps %s limit triggers with a separate limit price', (stopOrderType, type) => {
+    expect(
+      mapOrder(
+        orderFixture({
+          stopOrderType,
+          triggerPrice: '190',
+          parentOrderId: 'parent-1',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      type,
+      triggerPrice: '190',
+      limitPrice: '200.5',
+      parentOrderId: 'parent-1',
+    })
+  })
+  it.each([
+    ['stopMarket', OrderType.STOP_MARKET],
+    ['takeProfitMarket', OrderType.TAKE_PROFIT_MARKET],
+  ] as const)('uses the %s type when stopOrderType is absent', (type, expected) => {
+    expect(
+      mapOrder(orderFixture({ type, triggerPrice: '190' }), MARKET).type
+    ).toBe(expected)
+  })
+  it('rejects a trigger without its price or direction', () => {
+    expect(() =>
+      mapOrder(orderFixture({ type: 'stopMarket' }), MARKET)
+    ).toThrow(PerpsError)
+    expect(() =>
+      mapOrder(orderFixture({ triggerPrice: '190' }), MARKET)
+    ).toThrow(PerpsError)
+  })
+  it.each([
+    'pending',
+    'unknown',
+  ])('rejects unsupported order status %s', (status) => {
+    const raw: OndoOrder = JSON.parse(
+      JSON.stringify({ ...orderFixture(), status })
+    )
+    expect(() => mapOrder(raw, MARKET)).toThrow(PerpsError)
+  })
+  it('keeps the venue cancellation reason and transition time', () => {
+    expect(
+      mapOrder(
+        orderFixture({
+          status: 'canceled',
+          cancelReason: 'liquidation',
+          canceledAt: '2026-07-01T13:00:00Z',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      status: OrderStatus.CANCELLED,
+      statusReason: 'liquidation',
+      updatedAt: '2026-07-01T13:00:00.000Z',
+    })
+    expect(
+      mapOrder(orderFixture({ status: 'canceled' }), MARKET)
+    ).not.toHaveProperty('statusReason')
+    expect(
+      mapOrder(
+        orderFixture({
+          status: 'fullyfilled',
+          filledSize: '10',
+          filledAt: '2026-07-01T13:00:00Z',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      status: OrderStatus.FILLED,
+      remainingSize: '0',
+      updatedAt: '2026-07-01T13:00:00.000Z',
+    })
+  })
+  it('maps running and completed TWAPs through the same order mapper', () => {
+    expect(mapOrder(twapFixture(), MARKET)).toMatchObject({
+      orderId: 'twap-1',
+      type: OrderType.TWAP,
+      status: OrderStatus.PARTIALLY_FILLED,
+      originalSize: '10',
+      remainingSize: '6',
+      filledSize: '4',
+      averagePrice: '200.5',
+      reduceOnly: true,
+      durationSeconds: 1800,
+      startedAt: '2026-07-01T12:00:00.000Z',
+    })
+    const unfilled = mapOrder(twapFixture({ filledSize: '0' }), MARKET)
+    expect(unfilled.status).toBe(OrderStatus.OPEN)
+    expect(unfilled).not.toHaveProperty('averagePrice')
+    expect(
+      mapOrder(
+        twapFixture({
+          orderStatus: 'completed',
+          filledSize: '10',
+          finishTime: '2026-07-01T12:30:00Z',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      status: OrderStatus.FILLED,
+      remainingSize: '0',
+      updatedAt: '2026-07-01T12:30:00.000Z',
+    })
+    expect(
+      mapOrder(
+        twapFixture({ orderStatus: 'cancelled', twapCancelReason: 2 }),
+        MARKET
+      )
+    ).toMatchObject({ status: OrderStatus.CANCELLED, statusReason: '2' })
+    expect(() =>
+      mapOrder(twapFixture({ orderStatus: 'unexpected' }), MARKET)
+    ).toThrow(PerpsError)
+  })
+})
+
+describe('mapOrderUpdates', () => {
+  it('includes terminal rows and their ids in the order event', () => {
+    const result = mapOrderUpdates(
+      [
+        orderFixture(),
+        orderFixture({
+          orderId: 'trigger',
+          type: 'stopMarket',
+          triggerPrice: '190',
+          status: 'untriggered',
+          filledSize: '0',
+        }),
+        orderFixture({ orderId: 'cancelled', status: 'canceled' }),
+        orderFixture({ orderId: 'filled', status: 'fullyfilled' }),
+      ],
+      () => MARKET
+    )
+    expect(result.orders.map((order) => order.orderId)).toEqual([
+      'ord-1',
+      'trigger',
+      'cancelled',
+      'filled',
+    ])
+    expect(result.terminated).toEqual(['cancelled', 'filled'])
+  })
+  it('skips unknown markets', () => {
+    expect(mapOrderUpdates([orderFixture()], () => undefined)).toEqual({
+      orders: [],
+      terminated: [],
+    })
+  })
+  it('retires a terminal row whose market it cannot resolve', () => {
+    expect(
+      mapOrderUpdates(
+        [orderFixture({ orderId: 'cancelled', status: 'canceled' })],
+        () => undefined
+      )
+    ).toEqual({ orders: [], terminated: ['cancelled'] })
+  })
+  it('drops an unmappable row and keeps the rest of the frame', () => {
+    expect(
+      mapOrderUpdates(
+        [
+          orderFixture({ orderId: 'unmappable', status: 'pending' }),
+          orderFixture({ orderId: 'cancelled', status: 'canceled' }),
+        ],
+        () => MARKET
+      )
+    ).toEqual({
+      orders: [expect.objectContaining({ orderId: 'cancelled' })],
+      terminated: ['cancelled'],
+    })
   })
 })
