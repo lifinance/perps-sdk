@@ -15,9 +15,14 @@ import type {
   HlLedgerUpdate,
   HlSendAssetDelta,
   HlSpotTransferDelta,
+  HlUserFill,
 } from '../types/index.js'
 import { isSendAssetDelta } from '../types/index.js'
-import { mapFundingActivity, mapLedgerEntry } from './mapActivity.js'
+import {
+  mapFundingActivity,
+  mapLedgerEntry,
+  mapLiquidationFills,
+} from './mapActivity.js'
 
 // ---------------------------------------------------------------------------
 // Fixture builders
@@ -1235,5 +1240,111 @@ describe('mapFundingActivity', () => {
         () => undefined
       )
     ).toBeNull()
+  })
+})
+
+describe('mapLiquidationFills', () => {
+  const liquidationFill = (
+    overrides: Partial<HlUserFill> = {}
+  ): HlUserFill => ({
+    tid: 1,
+    oid: 10,
+    hash: '0xaaa',
+    coin: 'BTC',
+    side: 'A',
+    sz: '0.5',
+    px: '40000',
+    dir: 'Close Long',
+    fee: '1',
+    closedPnl: '-100',
+    crossed: true,
+    time: 1_700_000_000_000,
+    startPosition: '1',
+    liquidation: {
+      liquidatedUser: QUERIED,
+      markPx: '40000',
+      method: 'market',
+    },
+    ...overrides,
+  })
+
+  it('groups the fills of one order into a single activity', () => {
+    expect(
+      mapLiquidationFills(
+        [
+          liquidationFill(),
+          liquidationFill({ tid: 2, sz: '0.5', time: 1_700_000_060_000 }),
+        ],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set()
+      )
+    ).toEqual([
+      {
+        id: 'liquidation:10',
+        provider: PROVIDER,
+        timestamp: '2023-11-14T22:14:20.000Z',
+        type: ActivityType.LIQUIDATION,
+        liquidatedNotionalPosition: '40000',
+        liquidatedPositions: [{ market: resolveMarket('BTC'), size: '1' }],
+      },
+    ])
+  })
+
+  it('drops a fill the ledger already reported under the same hash', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill()],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set(['0xaaa'])
+      )
+    ).toEqual([])
+  })
+
+  it('keeps a fill that carries no hash to dedup on', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill({ hash: undefined })],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set(['0xaaa'])
+      )
+    ).toHaveLength(1)
+  })
+
+  it('drops a fill that liquidated another account', () => {
+    expect(
+      mapLiquidationFills(
+        [
+          liquidationFill({
+            liquidation: {
+              liquidatedUser: COUNTERPARTY,
+              markPx: '40000',
+              method: 'market',
+            },
+          }),
+        ],
+        PROVIDER,
+        QUERIED,
+        resolveMarket,
+        new Set()
+      )
+    ).toEqual([])
+  })
+
+  it('drops a fill whose coin the resolver cannot identify', () => {
+    expect(
+      mapLiquidationFills(
+        [liquidationFill({ coin: 'GHOST' })],
+        PROVIDER,
+        QUERIED,
+        () => undefined,
+        new Set()
+      )
+    ).toEqual([])
   })
 })

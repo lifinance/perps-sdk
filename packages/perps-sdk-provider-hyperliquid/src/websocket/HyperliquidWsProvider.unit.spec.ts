@@ -2369,6 +2369,28 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('drops an order update for a coin the registry does not carry', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ coin: 'NOTLISTED' }, 'canceled')],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data).toEqual({
+        orders: [],
+        terminated: [],
+      })
+      expect(orderStatusFetchMock).not.toHaveBeenCalled()
+    })
+
     it('preserves stream order while metadata reads are pending', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()

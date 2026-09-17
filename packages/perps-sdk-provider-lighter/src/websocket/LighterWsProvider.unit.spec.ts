@@ -705,6 +705,37 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('drops a row whose market index the registry does not carry, and still evicts it when terminal', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `orderUpdates:${TEST_ADDR}`, listener)
+
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: `account_all_orders:${ACCOUNT_IDX}`,
+          orders: {
+            '99': [
+              { ...RAW_ORDER, order_index: 3, market_index: 99 },
+              {
+                ...RAW_ORDER,
+                order_index: 4,
+                market_index: 99,
+                status: 'canceled-expired',
+              },
+            ],
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.orders).toEqual([])
+      expect(event.data.terminated).toEqual(['4'])
+      p.close()
+    })
+
     it('emits orderUpdates when orders span multiple markets', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)
