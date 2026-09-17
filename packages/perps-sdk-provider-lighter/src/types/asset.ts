@@ -1,10 +1,5 @@
 // Market / asset / orderbook metadata returned by Lighter's REST API.
 
-import type { Asset } from 'zklighter-perps/models/Asset'
-import type { FundingRate } from 'zklighter-perps/models/FundingRate'
-import type { MarketConfig } from 'zklighter-perps/models/MarketConfig'
-import type { Token } from 'zklighter-perps/models/Token'
-
 /**
  * Venue configuration nested in a Lighter perpetual-market descriptor.
  * Numeric fields are Lighter wire mode values; booleans indicate whether the
@@ -12,7 +7,15 @@ import type { Token } from 'zklighter-perps/models/Token'
  *
  * @public
  */
-export type LtMarketConfig = MarketConfig
+export interface LtMarketConfig {
+  market_margin_mode: number
+  insurance_fund_account_index: number
+  liquidation_mode: number
+  force_reduce_only: boolean
+  trading_hours: string
+  funding_fee_discounts_enabled: boolean
+  hidden: boolean
+}
 
 /**
  * Perpetual-market metadata returned by Lighter's order-book-details endpoint.
@@ -110,7 +113,13 @@ export interface LtOrderBookDetailsResponse {
  *
  * @public
  */
-export type LtToken = Token
+export interface LtToken {
+  symbol: string
+  name: string
+  logo: string
+  logo_extension: string
+  market: 'PERPS' | 'SPOT'
+}
 
 /**
  * Response envelope for Lighter's token-list endpoint.
@@ -128,7 +137,13 @@ export interface LtTokenListResponse {
  *
  * @public
  */
-export type LtAssetDetail = Asset
+export interface LtAssetDetail {
+  asset_id: number
+  symbol: string
+  l1_decimals: number
+  decimals: number
+  l1_address: string
+}
 
 /**
  * Response envelope for Lighter's asset-details endpoint.
@@ -169,12 +184,16 @@ export interface LtCandlesResponse {
 
 /**
  * Funding-rate snapshot for one Lighter perpetual market. `rate` is the
- * funding-rate value the named exchange reports for the market, so the same
- * market appears once per exchange Lighter tracks.
+ * venue-provided funding-rate value for the named exchange and market.
  *
  * @public
  */
-export type LtFundingRate = FundingRate
+export interface LtFundingRate {
+  market_id: number
+  exchange: string
+  symbol: string
+  rate: number
+}
 
 /**
  * Response envelope containing current funding rates by market.

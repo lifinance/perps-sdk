@@ -8,7 +8,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
-import type { LtOrder, LtOrderTypeEnum } from './types/order.js'
+import type { LtOrder } from './types/order.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 const REST_URL = 'https://lighter.test'
@@ -45,7 +45,7 @@ const MARKET_TWO: Market = {
   baseAsset: { ...MARKET.baseAsset, id: '2', displaySymbol: 'BTC' },
 }
 
-const order = (type: LtOrderTypeEnum, orderIndex: number): LtOrder => ({
+const order = (type: string, orderIndex: number): LtOrder => ({
   order_index: orderIndex,
   client_order_index: 0,
   order_id: `lt-${orderIndex}`,
@@ -57,8 +57,6 @@ const order = (type: LtOrderTypeEnum, orderIndex: number): LtOrder => ({
   nonce: 10,
   remaining_base_amount: '0.3',
   is_ask: false,
-  base_size: 0,
-  base_price: 0,
   filled_base_amount: '0.2',
   filled_quote_amount: '700',
   side: 'buy',
@@ -75,16 +73,11 @@ const order = (type: LtOrderTypeEnum, orderIndex: number): LtOrder => ({
   to_trigger_order_id_0: '',
   to_trigger_order_id_1: '',
   to_cancel_order_id_0: '',
-  integrator_fee_collector_index: '0',
-  integrator_taker_fee: '0',
-  integrator_maker_fee: '0',
-  order_flags: 0,
   block_height: 1,
   timestamp: 1_775_000_000,
   created_at: 1_775_000_000,
   updated_at: 1_775_000_100,
   transaction_time: 1_775_000_000_000_000,
-  order_version: 0,
 })
 
 describe('Lighter getRunningTwaps', () => {

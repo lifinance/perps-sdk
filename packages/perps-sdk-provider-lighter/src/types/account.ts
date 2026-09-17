@@ -2,9 +2,6 @@
 // `/api/v1/accountLimits` endpoints.
 // Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
-import type { Account } from 'zklighter-perps/models/Account'
-import type { AccountLimits } from 'zklighter-perps/models/AccountLimits'
-
 /**
  * Per-market position row returned by Lighter's account endpoints.
  *
@@ -183,17 +180,48 @@ export interface LtDetailedAccountsResponse {
  *
  * @public
  */
-export type LtAccountLimits = AccountLimits
+export interface LtAccountLimits {
+  code: number
+  message?: string
+  max_llp_percentage: number
+  max_llp_amount: string
+  user_tier: string
+  user_tier_name?: string
+  can_create_public_pool: boolean
+  current_maker_fee_tick: number
+  current_taker_fee_tick: number
+  leased_lit: string
+  effective_lit_stakes: string
+}
 
 /**
  * Sub-account summary returned by Lighter's `accountsByL1Address` endpoint.
  * Balance and collateral values are decimal strings; status and trading-mode
- * fields are Lighter wire values. Lighter leaves `transaction_time` at `0` on
- * these rows, so read that value from the account endpoint instead.
+ * fields are Lighter wire values.
  *
  * @public
  */
-export type LtSubAccount = Account
+export interface LtSubAccount {
+  code: number
+  account_type: number
+  index: number
+  l1_address: string
+  cancel_all_time: number
+  total_order_count: number
+  total_isolated_order_count: number
+  pending_order_count: number
+  available_balance: string
+  status: number
+  collateral: string
+  /**
+   * Unix timestamp in microseconds, the same wire member as
+   * `LtDetailedAccount.transaction_time`. Lighter leaves it at `0` on the
+   * `accountsByL1Address` rows, so read the value from the account endpoint
+   * instead.
+   */
+  transaction_time: number
+  account_trading_mode: number
+}
 
 /**
  * Response envelope for an L1-address sub-account lookup.

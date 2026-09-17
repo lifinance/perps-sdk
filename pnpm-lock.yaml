@@ -118,9 +118,6 @@ importers:
       viem:
         specifier: ^2.55.18
         version: 2.55.18(typescript@5.9.3)(zod@4.5.4)
-      zklighter-perps:
-        specifier: 1.0.303
-        version: 1.0.303
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:^
@@ -2465,9 +2462,6 @@ packages:
     resolution: {integrity: sha512-7dSzzRQ++CKnNI/krKnYRV7JKKPUXMEh61soaHKg9mrWEhzFWhFnxPxGl+69cD1Ou63C13NUPCnmIcrvqCuM6w==}
     engines: {node: '>=12'}
 
-  zklighter-perps@1.0.303:
-    resolution: {integrity: sha512-w1Hod/UwgxwYbSAoWzwCAVWKQYavOefS7lHRZ9UgLa95jF2jrj0qNBVQkHL/lSpJwbtdpjqlXSBIao7+nxrmKw==}
-
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
@@ -4698,7 +4692,5 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
-
-  zklighter-perps@1.0.303: {}
 
   zod@4.5.4: {}
