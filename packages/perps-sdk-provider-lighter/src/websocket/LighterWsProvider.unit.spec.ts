@@ -94,6 +94,7 @@ const RAW_POSITION = {
   margin_mode: 0,
   allocated_margin: '2500',
   total_discount: '0',
+  margin_set_flag: 0,
 }
 
 const TEST_ADDR = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'

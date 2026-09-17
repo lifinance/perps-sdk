@@ -26,6 +26,7 @@ const rawPosition = (
   margin_mode: 0,
   allocated_margin: '2500',
   total_discount: '0',
+  margin_set_flag: 0,
   ...overrides,
 })
 

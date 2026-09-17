@@ -2271,6 +2271,7 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
             margin_mode: 0,
             allocated_margin: '2500',
             total_discount: '0',
+            margin_set_flag: 0,
           },
         ],
       },
@@ -2375,6 +2376,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
             margin_mode: 0,
             allocated_margin: '2500',
             total_discount: '0',
+            margin_set_flag: 0,
           },
         ],
       },
@@ -2543,6 +2545,7 @@ describe('LighterProvider — getAccount carries positions', () => {
             margin_mode: 0,
             allocated_margin: '2500',
             total_discount: '0',
+            margin_set_flag: 0,
           },
         ],
       },
@@ -3914,6 +3917,7 @@ describe('LighterProvider — one-call order reads', () => {
     margin_mode: 0,
     allocated_margin: '2500',
     total_discount: '0',
+    margin_set_flag: 0,
   })
 
   const ACCOUNT_IN_TWO_MARKETS = {
@@ -4929,6 +4933,7 @@ describe('LighterProvider — null wire lists', () => {
             margin_mode: 0,
             allocated_margin: '2500',
             total_discount: '0',
+            margin_set_flag: 0,
           },
         ],
       },
