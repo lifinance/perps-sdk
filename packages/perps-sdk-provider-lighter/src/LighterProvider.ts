@@ -917,16 +917,10 @@ export const createLighterProvider = (
           }
         })
 
-      const assetCollateral = account.assets.flatMap((a) =>
-        a.margin_mode === undefined
-          ? []
-          : [
-              {
-                assetId: String(a.asset_id),
-                enabled: isAssetMarginEnabled(a.margin_mode),
-              },
-            ]
-      )
+      const assetCollateral = account.assets.map((a) => ({
+        assetId: String(a.asset_id),
+        enabled: isAssetMarginEnabled(a.margin_mode),
+      }))
 
       const config: LighterAccountConfig = {
         provider: providerKey,

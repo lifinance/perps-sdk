@@ -3,6 +3,7 @@
 // Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 import type { Account } from 'zklighter-perps/models/Account'
+import type { AccountAsset } from 'zklighter-perps/models/AccountAsset'
 import type { AccountLimits } from 'zklighter-perps/models/AccountLimits'
 
 /**
@@ -59,28 +60,16 @@ export type LtAssetMarginMode = 'enabled' | 'disabled'
 /**
  * Held asset row returned in a Lighter account response. The two balances are
  * the asset's two withdrawal routes: `balance` is the spot route
- * (`AssetRouteType_Spot`) and `margin_balance` the perps route
- * (`AssetRouteType_Perps`). All amounts are decimal strings.
+ * (`AssetRouteType_Spot`), `locked_balance` included, and `margin_balance` the
+ * perps route (`AssetRouteType_Perps`) — the asset's collateral leg.
+ * `locked_balance` is the portion of `balance` that pending activity reserves
+ * and that no withdrawal can reach. `multiplier` is the collateral weighting
+ * Lighter applies to the asset, as a decimal factor. All amounts are decimal
+ * strings.
  *
  * @public
  */
-export type LtAccountAsset = {
-  symbol: string
-  asset_id: number
-  /** Spot-route balance, `locked_balance` included. */
-  balance: string
-  /** Portion of `balance` reserved by pending activity and not withdrawable. */
-  locked_balance: string
-  /** Perps-route balance — the asset's collateral leg. */
-  margin_balance: string
-  /** Collateral weighting Lighter applies to the asset, as a decimal factor. */
-  multiplier: string
-  /**
-   * Lighter surfaces it via `additional_properties`, so it may be absent —
-   * chiefly outside Unified Trading Account mode.
-   */
-  margin_mode?: LtAssetMarginMode
-}
+export type LtAccountAsset = AccountAsset
 
 /**
  * Account-position row from `/api/v1/account`. Identical shape to

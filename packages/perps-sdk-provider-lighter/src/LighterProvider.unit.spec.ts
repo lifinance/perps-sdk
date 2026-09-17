@@ -1102,7 +1102,9 @@ describe('LighterProvider — assetCollateral projection', () => {
     })
   })
 
-  it('omits assets whose margin_mode Lighter does not surface', async () => {
+  // `margin_mode` is required on the generated `AccountAsset` model, so a row
+  // that omits it is off-contract. The projection reports such a row disabled.
+  it('keeps an asset row Lighter sends without margin_mode, reported disabled', async () => {
     stubAccount([
       {
         symbol: 'BTC',
@@ -1126,7 +1128,10 @@ describe('LighterProvider — assetCollateral projection', () => {
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
     expect(account.config).toMatchObject({
-      assetCollateral: [{ assetId: '0', enabled: true }],
+      assetCollateral: [
+        { assetId: '0', enabled: true },
+        { assetId: '5', enabled: false },
+      ],
     })
   })
 })
