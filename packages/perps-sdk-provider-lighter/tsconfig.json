@@ -6,7 +6,8 @@
     "moduleResolution": "Node",
     "strict": true,
     "noImplicitReturns": true,
-    "noImplicitOverride": true,
+    // zklighter-perps runtime.ts FetchError omits `override` on `name` (TS4115).
+    "noImplicitOverride": false,
     "useUnknownInCatchVariables": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
