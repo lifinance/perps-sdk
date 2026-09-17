@@ -306,4 +306,26 @@ describe('mapOrderUpdates', () => {
       terminated: [],
     })
   })
+  it('retires a terminal row whose market it cannot resolve', () => {
+    expect(
+      mapOrderUpdates(
+        [orderFixture({ orderId: 'cancelled', status: 'canceled' })],
+        () => undefined
+      )
+    ).toEqual({ orders: [], terminated: ['cancelled'] })
+  })
+  it('drops an unmappable row and keeps the rest of the frame', () => {
+    expect(
+      mapOrderUpdates(
+        [
+          orderFixture({ orderId: 'unmappable', status: 'pending' }),
+          orderFixture({ orderId: 'cancelled', status: 'canceled' }),
+        ],
+        () => MARKET
+      )
+    ).toEqual({
+      orders: [expect.objectContaining({ orderId: 'cancelled' })],
+      terminated: ['cancelled'],
+    })
+  })
 })

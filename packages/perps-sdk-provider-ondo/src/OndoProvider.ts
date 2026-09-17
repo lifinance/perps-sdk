@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
   getAssetRegistry,
@@ -189,6 +190,31 @@ export const ondoProvider = (
 
   const marketRegistry = () =>
     getMarketRegistry(requireClient(), ONDO_PROVIDER_KEY)
+
+  const warnDroppedOrder = createWarnOnce()
+
+  /**
+   * Map one venue row, or drop it. A row the mapper rejects, such as a
+   * lifecycle state the SDK does not carry, costs only its own row instead of
+   * the whole page. Each distinct mapper message warns once.
+   */
+  const mapOrderOrDrop = (
+    raw: OndoOrder | OndoTwapOrder,
+    market: MarketDisplay
+  ): Order | undefined => {
+    try {
+      return mapOrder(raw, market)
+    } catch (error) {
+      if (!(error instanceof PerpsError)) {
+        throw error
+      }
+      warnDroppedOrder(
+        error.message,
+        `[${ONDO_PROVIDER_KEY}] dropped order row: ${error.message}`
+      )
+      return undefined
+    }
+  }
 
   const requireMarketDisplay = (marketId: string): MarketDisplay =>
     toMarketDisplay(marketRegistry().require(marketId))
@@ -564,8 +590,8 @@ export const ondoProvider = (
               ) {
                 continue
               }
-              const order = mapOrder(raw, market)
-              if (!statuses.has(order.status)) {
+              const order = mapOrderOrDrop(raw, market)
+              if (order === undefined || !statuses.has(order.status)) {
                 continue
               }
               if (params.limit !== undefined && orders.length >= params.limit) {

@@ -9,7 +9,7 @@ import {
   OrderType,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoOrder, OndoTwapOrder } from './types/wire.js'
@@ -458,6 +458,26 @@ describe('Ondo getOrders', () => {
       '/v1/perps/orders/twap-1',
       '/v1/perps/twap/order/twap-1',
     ])
+  })
+  it('drops an unmappable row and keeps the rest of the page', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { provider } = await setup((url) => ({
+      result:
+        url.pathname === '/v1/perps/orders'
+          ? [
+              orderFixture({ orderId: 'unmappable', status: 'pending' }),
+              orderFixture({ orderId: 'unmappable-2', status: 'pending' }),
+              orderFixture(),
+            ]
+          : [],
+    }))
+    const result = await provider.getOrders({
+      address: ADDRESS,
+      marketId: MARKET.id,
+    })
+    expect(result.orders.map((order) => order.orderId)).toEqual(['order-1'])
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
   })
   it('does not try the TWAP endpoint for an unrelated regular read error', async () => {
     const { provider, requests } = await setup(() =>

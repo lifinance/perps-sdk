@@ -177,7 +177,11 @@ export const mapOrder = (
   }
 }
 
-/** Map WebSocket rows and retain terminal ids for active-order consumers. */
+/**
+ * Map WebSocket rows and retain terminal ids for active-order consumers. A row
+ * the mapper rejects is dropped, so one row costs only itself and not the whole
+ * frame.
+ */
 export const mapOrderUpdates = (
   rows: OndoOrder[],
   resolveMarket: (market: string) => MarketDisplay | undefined
@@ -186,13 +190,24 @@ export const mapOrderUpdates = (
   const terminated: string[] = []
   for (const row of rows) {
     const market = resolveMarket(row.market)
-    if (market === undefined) {
+    let order: Order | undefined
+    let status: OrderStatus
+    try {
+      order = market === undefined ? undefined : mapOrder(row, market)
+      // A row the registry cannot resolve still retires its own active entry:
+      // the id alone closes it out, and the status needs no market to read.
+      status = order?.status ?? mapOrderStatus(row.status)
+    } catch (error) {
+      if (!(error instanceof PerpsError)) {
+        throw error
+      }
       continue
     }
-    const order = mapOrder(row, market)
-    orders.push(order)
-    if (!ACTIVE_ORDER_STATUSES.has(order.status)) {
-      terminated.push(order.orderId)
+    if (!ACTIVE_ORDER_STATUSES.has(status)) {
+      terminated.push(order?.orderId ?? row.orderId)
+    }
+    if (order !== undefined) {
+      orders.push(order)
     }
   }
   return { orders, terminated }
