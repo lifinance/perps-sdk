@@ -8,3 +8,8 @@ minimumReleaseAgeExclude:
   - '@lifi/*'
 overrides:
   ws@8: 8.21.1
+  ox@0: 1.0.0
+  "@noble/hashes@1": 2.4.0
+  "@noble/curves@1": 2.4.0
+  "@scure/bip32@1": 2.4.0
+  "@scure/bip39@1": 2.4.0
