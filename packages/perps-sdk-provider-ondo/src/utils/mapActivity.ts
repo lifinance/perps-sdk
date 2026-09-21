@@ -102,6 +102,8 @@ const depositId = (deposit: OndoWalletDeposit): string => {
  */
 const EXPLORER_CHAIN_BY_ONDO_CHAIN_ID: Record<string, ExplorerChainId> = {
   'eth-mainnet': ExplorerChainId.ETHEREUM,
+  'avax-c-chain': ExplorerChainId.AVALANCHE_C_CHAIN,
+  'bsc-mainnet': ExplorerChainId.BNB_SMART_CHAIN,
 }
 
 const ondoExplorerLink = (

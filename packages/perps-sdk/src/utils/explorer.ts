@@ -17,6 +17,8 @@ export const ExplorerChainId = {
   LIGHTER: 304,
   ROBINHOOD: 4663,
   HYPERLIQUID: 999,
+  AVALANCHE_C_CHAIN: 43114,
+  BNB_SMART_CHAIN: 56,
 } as const
 
 /**
@@ -33,6 +35,8 @@ const TX_BASE_URL_BY_CHAIN: Record<ExplorerChainId, string> = {
   [ExplorerChainId.LIGHTER]: 'https://app.lighter.xyz/explorer/logs/',
   [ExplorerChainId.ROBINHOOD]: 'https://robin.etherscan.io/tx/',
   [ExplorerChainId.HYPERLIQUID]: 'https://app.hyperliquid.xyz/explorer/tx/',
+  [ExplorerChainId.AVALANCHE_C_CHAIN]: 'https://snowtrace.io/tx/',
+  [ExplorerChainId.BNB_SMART_CHAIN]: 'https://bscscan.com/tx/',
 }
 
 /**
