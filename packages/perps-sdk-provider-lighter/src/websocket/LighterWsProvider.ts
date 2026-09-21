@@ -260,9 +260,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
-    // `marketsContext` and `orderbook` are keyed purely by `String(market_id)`,
-    // so gating them on the registry sync would let a failed `/markets` fetch
-    // kill live price ticks.
+    // `marketsContext` resolves to two fixed `/all` channels and `orderbook` is
+    // keyed purely by `String(market_id)`, so neither needs the registry;
+    // gating them on the sync would let a failed `/markets` fetch kill live
+    // price ticks.
     if (channelNeedsMarkets(sub.channel)) {
       await this.registry?.sync()
     }
