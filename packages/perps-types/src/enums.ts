@@ -185,7 +185,7 @@ export enum ActionType {
   META_ONBOARD = 'metaOnboard',
   /** Provider-independent: reserves the shareable internal referral code an address owns. */
   META_CREATE_REFERRAL_CODE = 'metaCreateReferralCode',
-  /** Never projected on `Provider.setup` or `Provider.options`, and never offered as a user-facing trading action. */
+  /** Never projected on `Provider.setup`, and never offered as a user-facing trading action. */
   SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }
 

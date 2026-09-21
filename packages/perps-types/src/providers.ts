@@ -30,11 +30,11 @@ export interface Param {
 }
 
 /**
- * A single provider action. The same shape backs `Provider.setup`,
- * `Provider.options`, and `Provider.actions` — categorisation lives in which
- * array it sits in, not in the type. The core three fields are always present;
- * the rest are presentation/ordering hints provided per-action in the
- * provider's hardcoded metadata.
+ * A single provider action. The same shape backs `Provider.setup` and
+ * `Provider.actions` — categorisation lives in which array it sits in, not in
+ * the type. The core three fields are always present; the rest are
+ * presentation/ordering hints provided per-action in the provider's hardcoded
+ * metadata.
  * @public
  */
 export interface ProviderAction {
@@ -64,6 +64,39 @@ export interface ProviderAction {
    * nothing, so a consumer tests `=== true` rather than truthiness.
    */
   gatesAccountReads?: boolean
+}
+
+/**
+ * How a `Provider.setup` step is fulfilled.
+ *
+ * `approval`: the user fulfils it by signing the action the SDK stages for it.
+ * The step is shown in the setup checklist. It is satisfied once the provider
+ * stages no action for it, and it is not re-enterable — a satisfied approval
+ * offers the user nothing further to do.
+ *
+ * `automatic`: the SDK fulfils it on the account's behalf, with no user
+ * signature. The step is never shown. It is satisfied once the provider stages
+ * no action for it, and it is not re-enterable.
+ *
+ * `preference`: the user owns the value. The step is always shown, with the
+ * current selection. Satisfaction comes from the account state the provider
+ * plugin projects, not from staging. It is re-enterable: the user may change a
+ * satisfied preference at any time. While it stays unsatisfied and the
+ * descriptor declares a parameter default, the SDK applies that default
+ * without user input.
+ *
+ * @public
+ */
+export type SetupKind = 'approval' | 'automatic' | 'preference'
+
+/**
+ * One `Provider.setup` step: a provider action plus the `kind` that states how
+ * the step is fulfilled.
+ *
+ * @public
+ */
+export interface SetupAction extends ProviderAction {
+  kind: SetupKind
 }
 
 /**
@@ -118,8 +151,7 @@ export interface Provider {
   signingMethod: SigningMethod
   /** When false, the provider is announced but not yet selectable in clients. */
   active: boolean
-  setup: ProviderAction[]
-  options: ProviderAction[]
+  setup: SetupAction[]
   actions: ProviderAction[]
   categories: ProviderCategory[]
   wsUrl?: string

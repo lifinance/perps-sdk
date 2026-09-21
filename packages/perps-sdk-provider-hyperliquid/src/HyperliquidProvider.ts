@@ -41,8 +41,8 @@ import {
   type PortfolioHistoryResponse,
   type Position,
   type PositionsResponse,
-  type ProviderAction,
   type Quote,
+  type SetupAction,
   type SignedActionStep,
   type SigningMethod,
 } from '@lifi/perps-types'
@@ -222,8 +222,6 @@ export function hyperliquidProvider(
 
   return {
     type: PROVIDER_KEY,
-
-    internalSetupActions: [ActionType.SET_REFERRAL],
 
     // REVOKE_AGENT stages a step only when every named agent slot is taken,
     // so `checkSetup` omits it from `ProviderSetup.checklist` instead of
@@ -430,8 +428,7 @@ export function hyperliquidProvider(
 
     projectConfig: (
       config: AccountConfig,
-      setup: ProviderAction[],
-      options: ProviderAction[]
+      setup: SetupAction[]
     ): AccountConfigSetting[] => {
       if (config.provider !== PROVIDER_KEY) {
         throw new PerpsError(
@@ -440,7 +437,7 @@ export function hyperliquidProvider(
             `'${config.provider}'.`
         )
       }
-      return projectHyperliquidConfigSettings(config, setup, options)
+      return projectHyperliquidConfigSettings(config, setup)
     },
   }
 }

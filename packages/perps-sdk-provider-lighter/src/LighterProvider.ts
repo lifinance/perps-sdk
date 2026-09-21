@@ -52,8 +52,8 @@ import type {
   PortfolioHistoryResponse,
   Position,
   PositionsResponse,
-  ProviderAction,
   Quote,
+  SetupAction,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -199,6 +199,12 @@ const PNL_WINDOWS: Record<PortfolioHistoryRange, PnlWindow> = {
 }
 
 /** Activity surfaces whose rows name a market, so they need the market registry. */
+const ORDER_PLACEMENT_ACTIONS: ReadonlySet<ActionType> = new Set([
+  ActionType.PLACE_ORDER,
+  ActionType.PLACE_TRIGGER_ORDER,
+  ActionType.PLACE_TWAP_ORDER,
+])
+
 const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.FUNDING,
   ActivityType.LIQUIDATION,
@@ -781,10 +787,59 @@ export const createLighterProvider = (
     }
   }
 
+  /** The venue's own `Provider.setup` descriptor for an action, if declared. */
+  const setupDescriptor = async (
+    action: ActionType
+  ): Promise<SetupAction | undefined> => {
+    const { providers } = await getProviders(requireClient())
+    return providers
+      .find((provider) => provider.key === providerKey)
+      ?.setup.find((descriptor) => descriptor.type === action)
+  }
+
+  /**
+   * Lighter's matching engine rejects an order from an account whose tier it
+   * no longer accepts, so the tier is read before a signature is spent. An
+   * address with no local API key, and a descriptor that enumerates no tier,
+   * both assert nothing.
+   */
+  const assertOrderTier = async (address: Address): Promise<void> => {
+    const localKey = await keyStore.get(address)
+    if (localKey === null) {
+      return
+    }
+    const descriptor = await setupDescriptor(ActionType.ACCOUNT_TYPE)
+    const enumerated = descriptor?.params?.[0]?.values ?? []
+    if (enumerated.length === 0) {
+      return
+    }
+    const token = await resolveAuthToken(undefined, address, localKey)
+    const limits =
+      token === undefined
+        ? undefined
+        : await retryOnRevoked(undefined, address, token, (resolvedToken) =>
+            fetchAccountLimits(
+              apiClient(),
+              localKey.accountIndex,
+              resolvedToken
+            )
+          )
+    const userTierName = limits?.user_tier_name
+    if (
+      userTierName === undefined ||
+      !enumerated.some((option) => option.value === userTierName)
+    ) {
+      throw new PerpsError(
+        PerpsErrorCode.SetupRequired,
+        `Lighter account tier '${userTierName ?? 'unknown'}' is not one the ` +
+          `'${ActionType.ACCOUNT_TYPE}' setup step accepts. Complete the ` +
+          `account tier setup step before placing an order.`
+      )
+    }
+  }
+
   return {
     type: providerKey,
-
-    internalSetupActions: [ActionType.SET_REFERRAL],
 
     bind(client: PerpsSDKClient): void {
       boundClient = client
@@ -1613,8 +1668,7 @@ export const createLighterProvider = (
 
     projectConfig(
       config: AccountConfig,
-      setup: ProviderAction[],
-      options: ProviderAction[]
+      setup: SetupAction[]
     ): AccountConfigSetting[] {
       if (config.provider !== providerKey) {
         throw new PerpsError(
@@ -1623,18 +1677,25 @@ export const createLighterProvider = (
             `'${config.provider}'.`
         )
       }
-      return projectLighterConfigSettings(config, setup, options)
+      return projectLighterConfigSettings(config, setup)
     },
 
     /**
      * Hand the backend the local pubkey for REGISTER_API_KEY so its
      * idempotency check can compare against the on-chain slot. No key stored
      * for this address → omit the field; backend stages a fresh registration.
+     * ACCOUNT_TYPE answers with the descriptor's declared default tier, which
+     * is what the SDK applies while the preference is unsatisfied.
      */
     async resolveSetupParams(
       action: ActionType,
       address: Address
     ): Promise<Record<string, unknown>> {
+      if (action === ActionType.ACCOUNT_TYPE) {
+        const descriptor = await setupDescriptor(action)
+        const tier = descriptor?.params?.[0]?.default?.value
+        return tier === undefined ? {} : { tier }
+      }
       if (action !== ActionType.REGISTER_API_KEY) {
         return {}
       }
@@ -1659,6 +1720,9 @@ export const createLighterProvider = (
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
+      if (steps.some((step) => ORDER_PLACEMENT_ACTIONS.has(step.action))) {
+        await assertOrderTier(address)
+      }
       return lighterSignActions(
         {
           signer,

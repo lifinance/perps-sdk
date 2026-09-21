@@ -10,6 +10,7 @@ import type {
   ExecuteActionResponse,
   HmacSignedActionStep,
   Position,
+  SetupKind,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -858,7 +859,7 @@ describe('PerpsClient', () => {
   describe('executeProviderOption — mandatory option failure throws', () => {
     const BASE_URL = DEFAULT_API_URL
 
-    // ACCOUNT_MODE is a Provider.options tunable dispatched through `execute`.
+    // ACCOUNT_MODE is a `preference` setup step dispatched through `execute`.
     // The backend rejects the selected value with a 200 OK carrying a
     // per-action `{ success: false, error }`; executeProviderOption must turn
     // that into a throw rather than silently resolving.
@@ -1164,14 +1165,11 @@ describe('PerpsClient', () => {
         address: userAddress,
       })
 
-      // projectConfig was invoked with (config, setup, options) drawn from
-      // the /account response and the /providers metadata.
       const hlMeta = mockProviders.providers.find((d) => d.key === provider)!
       expect(stub.projectConfig).toHaveBeenCalledOnce()
       expect(stub.projectConfig).toHaveBeenCalledWith(
         mockAccount.config,
-        hlMeta.setup,
-        hlMeta.options
+        hlMeta.setup
       )
       // The dispatcher merges projectConfig's output into the AccountResponse.
       expect(result.settings).toEqual(sentinelSettings)
@@ -1794,6 +1792,7 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SET_REFERRAL,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.HMAC,
                     sequence: 10,
@@ -1801,13 +1800,13 @@ describe('PerpsClient', () => {
                   },
                   {
                     type: ActionType.SIWE_LOGIN,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.SIWE,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -1900,6 +1899,7 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SIWE_LOGIN,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.SIWE,
                     sequence: 10,
@@ -1907,13 +1907,13 @@ describe('PerpsClient', () => {
                   },
                   {
                     type: ActionType.SET_REFERRAL,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -1976,6 +1976,7 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SIWE_LOGIN,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.SIWE,
                     sequence: 10,
@@ -1983,13 +1984,13 @@ describe('PerpsClient', () => {
                   },
                   {
                     type: ActionType.SET_REFERRAL,
+                    kind: 'approval',
                     signers: [PerpsSigner.USER],
                     signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -2019,11 +2020,11 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // checkSetup — provider-declared internal setup steps are drained in place
-  // and never surface in the returned setup list.
+  // checkSetup — `automatic` setup steps are drained in place and never
+  // surface in the returned setup list.
   // ---------------------------------------------------------------------------
 
-  describe('checkSetup — internal setup steps', () => {
+  describe('checkSetup — automatic setup steps', () => {
     const BASE_URL = DEFAULT_API_URL
     const key = 'venue'
 
@@ -2038,7 +2039,6 @@ describe('PerpsClient', () => {
               signingMethod: SigningMethod.EIP712,
               active: true,
               setup,
-              options: [],
               actions: [],
               categories: [],
             },
@@ -2046,15 +2046,16 @@ describe('PerpsClient', () => {
         })
       )
 
-    const internalStep = (signers: PerpsSigner[]) => ({
+    const internalStep = (kind: SetupKind) => ({
       type: ActionType.SET_REFERRAL,
-      signers,
+      kind,
+      signers: [PerpsSigner.SDK],
       signingMethod: SigningMethod.EIP712,
       sequence: 10,
       params: [],
     })
 
-    it('drains a backend-executed internal step and omits it from setup', async () => {
+    it('drains a backend-executed automatic step and omits it from setup', async () => {
       const signActions = vi.fn(
         async (
           _method: SigningMethod,
@@ -2080,7 +2081,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2089,7 +2089,7 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep('automatic')]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           createCalls.push(body.action)
@@ -2132,7 +2132,7 @@ describe('PerpsClient', () => {
       expect(executeCount).toBe(1)
     })
 
-    it('drains a client-executed internal step with no executeAction hop', async () => {
+    it('drains a client-executed automatic step with no executeAction hop', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2143,7 +2143,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2151,7 +2150,7 @@ describe('PerpsClient', () => {
 
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep('automatic')]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2179,7 +2178,7 @@ describe('PerpsClient', () => {
       expect(executeCount).toBe(0)
     })
 
-    it('never drains an internal step the provider config already reports satisfied', async () => {
+    it('never drains an automatic step the provider config already reports satisfied', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2193,7 +2192,6 @@ describe('PerpsClient', () => {
             projectConfig: vi.fn(() => [
               { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
             ]),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2201,7 +2199,7 @@ describe('PerpsClient', () => {
 
       let createCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep('automatic')]),
         http.post(`${BASE_URL}/createAction`, () => {
           createCount++
           return HttpResponse.json({ actions: [] })
@@ -2223,7 +2221,7 @@ describe('PerpsClient', () => {
       expect(createCount).toBe(0)
     })
 
-    it('never blocks setup when a silent internal step fails; the step stays hidden', async () => {
+    it('never blocks setup when an automatic step fails; the step stays hidden', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => {
         throw new Error('venue rejected the silent step')
       })
@@ -2236,14 +2234,13 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep('automatic')]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2266,7 +2263,7 @@ describe('PerpsClient', () => {
       expect(signActions).toHaveBeenCalledOnce()
     })
 
-    it('never hides a step whose signers include USER, even when declared internal', async () => {
+    it('never hides an approval step, even when the provider drains others', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2277,7 +2274,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2285,7 +2281,7 @@ describe('PerpsClient', () => {
 
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.USER])]),
+        providersHandler([internalStep('approval')]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2315,16 +2311,17 @@ describe('PerpsClient', () => {
     const sequencedStep = (
       type: ActionType,
       sequence: number,
-      signers: PerpsSigner[]
+      kind: SetupKind
     ) => ({
       type,
-      signers,
+      kind,
+      signers: [PerpsSigner.USER],
       signingMethod: SigningMethod.EIP712,
       sequence,
       params: [],
     })
 
-    const internalReferralPlugin = (
+    const automaticReferralPlugin = (
       signActions: ReturnType<typeof vi.fn>,
       overrides: Record<string, unknown> = {}
     ) =>
@@ -2333,24 +2330,23 @@ describe('PerpsClient', () => {
         bind: vi.fn(),
         accountExists: vi.fn(async () => true),
         projectConfig: vi.fn(() => []),
-        internalSetupActions: [ActionType.SET_REFERRAL],
         signActions,
         ...overrides,
       }) as unknown as PerpsProviderPlugin
 
-    it('defers an internal step while a staged visible step has a lower sequence', async () => {
+    it('defers an automatic step while a staged visible step has a lower sequence', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [automaticReferralPlugin(signActions)],
       })
 
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, 'approval'),
+          sequencedStep(ActionType.SET_REFERRAL, 20, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2377,13 +2373,13 @@ describe('PerpsClient', () => {
       expect(signActions).not.toHaveBeenCalled()
     })
 
-    it('drains the internal step once the lower-sequence step is satisfied', async () => {
+    it('drains the automatic step once the lower-sequence step is satisfied', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          automaticReferralPlugin(signActions, {
             getAccount: vi.fn(async () => mockAccount),
             projectConfig: vi.fn(() => [
               {
@@ -2399,8 +2395,8 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, 'approval'),
+          sequencedStep(ActionType.SET_REFERRAL, 20, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2425,18 +2421,18 @@ describe('PerpsClient', () => {
       expect(signActions).toHaveBeenCalledOnce()
     })
 
-    it('drains the internal step when the lower-sequence visible step stages nothing', async () => {
+    it('drains the automatic step when the lower-sequence visible step stages nothing', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [automaticReferralPlugin(signActions)],
       })
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, 'approval'),
+          sequencedStep(ActionType.SET_REFERRAL, 20, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2468,7 +2464,7 @@ describe('PerpsClient', () => {
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          automaticReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2476,8 +2472,8 @@ describe('PerpsClient', () => {
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 15, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, 'approval'),
+          sequencedStep(ActionType.SET_REFERRAL, 15, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2507,7 +2503,7 @@ describe('PerpsClient', () => {
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          automaticReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2515,7 +2511,7 @@ describe('PerpsClient', () => {
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, 'approval'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2537,13 +2533,13 @@ describe('PerpsClient', () => {
       expect(checklistView(result)).toEqual([[ActionType.REVOKE_AGENT, false]])
     })
 
-    it('defers the internal step while a staged conditional step has a lower sequence', async () => {
+    it('defers the automatic step while a staged conditional step has a lower sequence', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          automaticReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2552,8 +2548,8 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 15, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, 'approval'),
+          sequencedStep(ActionType.SET_REFERRAL, 15, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2578,24 +2574,25 @@ describe('PerpsClient', () => {
       expect(signActions).not.toHaveBeenCalled()
     })
 
-    it('defers a sequence-less internal step while a sequence-less visible step is staged', async () => {
+    it('defers a sequence-less automatic step while a sequence-less visible step is staged', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [automaticReferralPlugin(signActions)],
       })
 
-      const unsequencedStep = (type: ActionType, signers: PerpsSigner[]) => ({
+      const unsequencedStep = (type: ActionType, kind: SetupKind) => ({
         type,
-        signers,
+        kind,
+        signers: [PerpsSigner.USER],
         signingMethod: SigningMethod.EIP712,
         params: [],
       })
       server.use(
         providersHandler([
-          unsequencedStep(ActionType.REGISTER_API_KEY, [PerpsSigner.USER]),
-          unsequencedStep(ActionType.SET_REFERRAL, [PerpsSigner.SDK]),
+          unsequencedStep(ActionType.REGISTER_API_KEY, 'approval'),
+          unsequencedStep(ActionType.SET_REFERRAL, 'automatic'),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2617,6 +2614,300 @@ describe('PerpsClient', () => {
         [ActionType.REGISTER_API_KEY, false],
       ])
       expect(signActions).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // checkSetup — a `preference` is shown, never staged by the generic loop,
+  // and drained from its declared default only while it stays unsatisfied.
+  // ---------------------------------------------------------------------------
+
+  describe('checkSetup — preference setup steps', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const preferenceStep = (withDefault: boolean) => ({
+      type: ActionType.ACCOUNT_MODE,
+      kind: 'preference' as SetupKind,
+      signers: [PerpsSigner.SDK],
+      signingMethod: SigningMethod.EIP712,
+      sequence: 10,
+      params: [
+        {
+          name: 'mode',
+          type: 'string',
+          values: [
+            { value: 'simple', label: 'Simple' },
+            { value: 'unified', label: 'Unified' },
+          ],
+          ...(withDefault
+            ? { default: { value: 'unified', label: 'Unified' } }
+            : {}),
+        },
+      ],
+    })
+
+    const providersHandler = (setup: unknown[]) =>
+      http.get(`${BASE_URL}/providers`, () =>
+        HttpResponse.json({
+          providers: [
+            {
+              key,
+              name: 'Venue',
+              logoURI: 'https://example.com/venue.png',
+              signingMethod: SigningMethod.EIP712,
+              active: true,
+              setup,
+              actions: [],
+              categories: [],
+            },
+          ],
+        })
+      )
+
+    const venueClientFor = (
+      satisfied: boolean,
+      signActions: ReturnType<typeof vi.fn>
+    ) =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              { type: ActionType.ACCOUNT_MODE, values: [], satisfied },
+            ]),
+            resolveSetupParams: vi.fn(async () => ({ mode: 'unified' })),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('drains an unsatisfied preference that declares a default, and never stages it', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions)
+
+      const createCalls: CreateActionRequest[] = []
+      server.use(
+        providersHandler([preferenceStep(true)]),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.ACCOUNT_MODE,
+      ])
+      expect(createCalls[0].params).toMatchObject({ mode: 'unified' })
+      expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    it('shows an unsatisfied preference that declares no default, and neither stages nor drains it', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions)
+
+      let createCount = 0
+      server.use(
+        providersHandler([preferenceStep(false)]),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCount).toBe(0)
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('never touches a satisfied preference', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(true, signActions)
+
+      let createCount = 0
+      server.use(
+        providersHandler([preferenceStep(true)]),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, true]])
+      expect(createCount).toBe(0)
+      expect(signActions).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // executeProviderSetupAction — a step whose predecessor is unsatisfied is
+  // rejected before any signature is requested.
+  // ---------------------------------------------------------------------------
+
+  describe('executeProviderSetupAction — sequence gating', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const approvalStep = (type: ActionType, sequence: number) => ({
+      type,
+      kind: 'approval' as SetupKind,
+      signers: [PerpsSigner.USER],
+      signingMethod: SigningMethod.EIP712,
+      sequence,
+      params: [],
+    })
+
+    it('rejects a step while a lower-sequence step is unsatisfied, naming the blocking step', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup: [
+                  approvalStep(ActionType.REGISTER_API_KEY, 10),
+                  approvalStep(ActionType.SET_REFERRAL, 20),
+                ],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+
+      await expect(
+        venueClient.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action: ActionType.SET_REFERRAL } as ActionStep,
+        })
+      ).rejects.toThrow(
+        /is blocked: 'registerApiKey' runs first and is not satisfied/
+      )
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('runs the lowest-sequence step with nothing before it', async () => {
+      const signActions = vi.fn(
+        async (): Promise<SignedActionStep[]> => [
+          {
+            action: ActionType.REGISTER_API_KEY,
+            wasmSignParams: {},
+          } as unknown as SignedActionStep,
+        ]
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup: [
+                  approvalStep(ActionType.REGISTER_API_KEY, 10),
+                  approvalStep(ActionType.SET_REFERRAL, 20),
+                ],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      await expect(
+        venueClient.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action: ActionType.REGISTER_API_KEY } as ActionStep,
+        })
+      ).resolves.toBeUndefined()
+      expect(createCount).toBe(0)
+      expect(signActions).toHaveBeenCalledOnce()
     })
   })
 
@@ -2856,7 +3147,6 @@ describe('PerpsClient', () => {
       signingMethod: SigningMethod.HMAC,
       active: true,
       setup: [],
-      options: [],
       actions: [
         {
           type: ActionType.PLACE_ORDER,

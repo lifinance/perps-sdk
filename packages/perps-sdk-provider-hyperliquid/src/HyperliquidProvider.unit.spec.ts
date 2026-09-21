@@ -83,12 +83,6 @@ describe('hyperliquidProvider', () => {
     expect(hyperliquidProvider().type).toBe('hyperliquid')
   })
 
-  it('declares SET_REFERRAL as an internal setup action', () => {
-    expect(hyperliquidProvider().internalSetupActions).toContain(
-      ActionType.SET_REFERRAL
-    )
-  })
-
   it('exposes no explorer hook — HyperCore assigns its hash at block inclusion, so execute results carry none', () => {
     expect(hyperliquidProvider().resolveExplorerLink).toBeUndefined()
   })

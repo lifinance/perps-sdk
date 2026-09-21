@@ -22,9 +22,9 @@ import type {
   Position,
   PositionMarginConstraints,
   PositionsResponse,
-  ProviderAction,
   Quote,
   QuoteSide,
+  SetupAction,
   SignedActionStep,
   SigningMethod,
   TradeType,
@@ -350,17 +350,6 @@ export interface PerpsProviderPlugin {
   readonly type: string
 
   /**
-   * Setup actions the provider completes on its own, without surfacing a card
-   * to the caller. `PerpsClient.checkSetup` drains each such pending step in
-   * place — building, signing, and executing it with the provider's own
-   * credentials — and omits it from the returned `setup` list. A descriptor
-   * whose `signers` include {@link PerpsSigner.USER} is never treated as
-   * internal, even when named here. Omit when the provider has no
-   * self-completed setup steps.
-   */
-  readonly internalSetupActions?: readonly ActionType[]
-
-  /**
    * Setup actions that stage work only when the account needs remediation
    * (e.g. Hyperliquid's REVOKE_AGENT frees an agent slot only when every
    * named slot is taken). When such a step stages no actions,
@@ -551,9 +540,11 @@ export interface PerpsProviderPlugin {
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`
-   * + `options` descriptors into `AccountConfigSetting[]`. Used by
+   * descriptors into `AccountConfigSetting[]`. Used by
    * `PerpsClient.getAccount` to attach a `settings` array to the response —
-   * one entry per descriptor, in `setup`-then-`options` order.
+   * one entry per descriptor, in `setup` order. Every `preference` descriptor
+   * carries a boolean `satisfied`, because `PerpsClient.checkSetup` reads a
+   * preference's satisfied state from this projection alone.
    *
    * Implementations receive the union-typed `AccountConfig` and narrow on
    * `config.provider` themselves; the dispatcher in `PerpsClient` does not
@@ -561,8 +552,7 @@ export interface PerpsProviderPlugin {
    */
   projectConfig(
     config: AccountConfig,
-    setup: ProviderAction[],
-    options: ProviderAction[]
+    setup: SetupAction[]
   ): AccountConfigSetting[]
 
   /**

@@ -563,12 +563,6 @@ describe('LighterProvider — `type` field', () => {
     provider.bind(STUB_CLIENT)
     expect(provider.type).toBe('lighter')
   })
-
-  it('declares SET_REFERRAL as an internal setup action', () => {
-    expect(lighterProvider().internalSetupActions).toContain(
-      ActionType.SET_REFERRAL
-    )
-  })
 })
 
 describe('LighterProvider — provider-owned credential stores', () => {

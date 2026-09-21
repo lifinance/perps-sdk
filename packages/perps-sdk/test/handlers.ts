@@ -74,10 +74,11 @@ export const mockProviders: ProvidersResponse = {
       active: true,
       // `setup` gates trading — Hyperliquid requires the user to authorise
       // the SDK session signer and the LI.FI builder fee before placing
-      // orders. Both are zero-parameter user-approval descriptors.
+      // orders, and offers the account mode as a preference.
       setup: [
         {
           type: ActionType.APPROVE_AGENT,
+          kind: 'approval',
           title: 'Approve agent wallet',
           description:
             'Authorises the SDK session signer to place orders on your behalf.',
@@ -87,19 +88,16 @@ export const mockProviders: ProvidersResponse = {
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
+          kind: 'approval',
           title: 'Approve builder fee',
           description: 'Authorises the LI.FI builder fee for this provider.',
           signers: [PerpsSigner.USER],
           signingMethod: SigningMethod.EIP712,
           params: [],
         },
-      ],
-      // `options` exposes post-setup tunables — Hyperliquid's account-mode
-      // selector. Agent-signed so the SDK can auto-upgrade after
-      // APPROVE_AGENT when abstraction has never been set.
-      options: [
         {
           type: ActionType.ACCOUNT_MODE,
+          kind: 'preference',
           title: 'Account mode',
           description: 'Choose how this account interacts with Hyperliquid.',
           signers: [PerpsSigner.SDK],
@@ -164,15 +162,15 @@ export const mockProviders: ProvidersResponse = {
       setup: [
         {
           type: ActionType.REGISTER_API_KEY,
+          kind: 'approval',
           title: 'Register API key',
           signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.WASM_BLOB,
           params: [],
         },
-      ],
-      options: [
         {
           type: ActionType.ACCOUNT_TYPE,
+          kind: 'preference',
           title: 'Account tier',
           signers: [PerpsSigner.SDK],
           signingMethod: SigningMethod.WASM_BLOB,

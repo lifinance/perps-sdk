@@ -3,6 +3,7 @@ import type {
   AccountConfigSetting,
   LighterAccountConfig,
   ProviderAction,
+  SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import {
@@ -64,7 +65,7 @@ function resolveAccountTier(
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
- * `Provider.setup` / `Provider.options` throw at runtime.
+ * `Provider.setup` throw at runtime.
  */
 function projectLighterDescriptor(
   descriptor: ProviderAction,
@@ -109,26 +110,26 @@ function projectLighterDescriptor(
     // `mode` decodes the raw `account_trading_mode` integer to the descriptor's
     // wire strings (`unifiedTradingAccount` / `simpleTradingAccount`).
     // Unrecognised integers project to `null`.
-    case ActionType.ACCOUNT_MODE:
+    case ActionType.ACCOUNT_MODE: {
+      const mode = ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null
+      const enumerated = descriptor.params?.[0]?.values ?? []
       return {
         type: descriptor.type,
-        values: [
-          {
-            name: 'mode',
-            value: ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null,
-          },
-        ],
+        values: [{ name: 'mode', value: mode }],
+        satisfied: enumerated.some((option) => option.value === mode),
       }
+    }
 
     // An unresolved `tier` projects to `null` (surfaces as "tier not
     // detected" — the widget still lets the user pick a value).
-    case ActionType.ACCOUNT_TYPE:
+    case ActionType.ACCOUNT_TYPE: {
+      const tier = resolveAccountTier(descriptor, config)
       return {
         type: descriptor.type,
-        values: [
-          { name: 'tier', value: resolveAccountTier(descriptor, config) },
-        ],
+        values: [{ name: 'tier', value: tier }],
+        satisfied: tier !== null,
       }
+    }
 
     case ActionType.APPROVE_AGENT:
     case ActionType.REVOKE_AGENT:
@@ -158,7 +159,7 @@ function projectLighterDescriptor(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +
           `descriptor type '${descriptor.type}' — this ActionType is not ` +
-          `valid on Provider.setup / Provider.options for Lighter.`
+          `valid on Provider.setup for Lighter.`
       )
 
     default:
@@ -167,22 +168,16 @@ function projectLighterDescriptor(
 }
 
 /**
- * Project the union of Lighter setup + options descriptors against the typed
+ * Project the Lighter setup descriptors against the typed
  * `LighterAccountConfig`. Produces exactly one `AccountConfigSetting` per
- * descriptor, in `setup`-then-`options` order (preserving the order in which
- * the backend emits them).
+ * descriptor, preserving the order in which the backend emits them.
  *
- * @param config Typed account state for the Lighter account.
- * @param setup  `Provider.setup` array as emitted by `/providers`.
- * @param options `Provider.options` array as emitted by `/providers`.
+ * @param setup `Provider.setup` array as emitted by `/providers`.
  * @public
  */
 export function projectLighterConfigSettings(
   config: LighterAccountConfig,
-  setup: ProviderAction[],
-  options: ProviderAction[]
+  setup: SetupAction[]
 ): AccountConfigSetting[] {
-  return [...setup, ...options].map((descriptor) =>
-    projectLighterDescriptor(descriptor, config)
-  )
+  return setup.map((descriptor) => projectLighterDescriptor(descriptor, config))
 }

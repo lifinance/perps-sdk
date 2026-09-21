@@ -639,6 +639,10 @@ export interface AccountConfigValue {
 export interface AccountConfigSetting {
   type: ActionType
   values: AccountConfigValue[]
-  /** `undefined` means satisfaction is tracked outside `AccountConfig` (e.g. backend `checkSetup`). */
+  /**
+   * `undefined` means the account state carries no answer, so satisfaction is
+   * decided from staging instead. Every `preference` setup step carries a
+   * boolean.
+   */
   satisfied?: boolean
 }

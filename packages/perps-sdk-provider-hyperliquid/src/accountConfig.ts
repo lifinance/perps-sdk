@@ -3,8 +3,17 @@ import type {
   AccountConfigSetting,
   HyperliquidAccountConfig,
   ProviderAction,
+  SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import { HlAbstractionMode } from './types/account.js'
+
+// `null`, `'default'` and `'disabled'` are the same off state; a descriptor may
+// enumerate either spelling of it.
+const ABSTRACTION_OFF_VALUES: ReadonlySet<string> = new Set([
+  HlAbstractionMode.DEFAULT,
+  HlAbstractionMode.DISABLED,
+])
 
 function assertNever(value: never): never {
   throw new Error(
@@ -28,7 +37,7 @@ function assertNever(value: never): never {
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
- * `Provider.setup` / `Provider.options` for Hyperliquid throw at runtime.
+ * `Provider.setup` for Hyperliquid throw at runtime.
  */
 function projectHyperliquidDescriptor(
   descriptor: ProviderAction,
@@ -41,11 +50,20 @@ function projectHyperliquidDescriptor(
     case ActionType.SET_REFERRAL:
       return { type: descriptor.type, values: [] }
 
-    case ActionType.ACCOUNT_MODE:
+    case ActionType.ACCOUNT_MODE: {
+      const mode = config.abstractionMode
+      const isOff = mode === null || ABSTRACTION_OFF_VALUES.has(mode)
+      const enumerated = descriptor.params?.[0]?.values ?? []
       return {
         type: descriptor.type,
-        values: [{ name: 'mode', value: config.abstractionMode }],
+        values: [{ name: 'mode', value: mode }],
+        satisfied: enumerated.some((option) =>
+          isOff
+            ? ABSTRACTION_OFF_VALUES.has(option.value)
+            : option.value === mode
+        ),
       }
+    }
 
     case ActionType.APPROVE_INTEGRATOR:
     case ActionType.ACCOUNT_TYPE:
@@ -76,7 +94,7 @@ function projectHyperliquidDescriptor(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +
           `descriptor type '${descriptor.type}' — this ActionType is not ` +
-          `valid on Provider.setup / Provider.options for Hyperliquid.`
+          `valid on Provider.setup for Hyperliquid.`
       )
 
     default:
@@ -85,18 +103,17 @@ function projectHyperliquidDescriptor(
 }
 
 /**
- * Project the union of Hyperliquid setup + options descriptors against the
- * typed `HyperliquidAccountConfig`. Produces exactly one
- * `AccountConfigSetting` per descriptor, in `setup`-then-`options` order.
+ * Project the Hyperliquid setup descriptors against the typed
+ * `HyperliquidAccountConfig`. Produces exactly one `AccountConfigSetting` per
+ * descriptor, in `Provider.setup` order.
  *
  * @public
  */
 export function projectHyperliquidConfigSettings(
   config: HyperliquidAccountConfig,
-  setup: ProviderAction[],
-  options: ProviderAction[]
+  setup: SetupAction[]
 ): AccountConfigSetting[] {
-  return [...setup, ...options].map((descriptor) =>
+  return setup.map((descriptor) =>
     projectHyperliquidDescriptor(descriptor, config)
   )
 }

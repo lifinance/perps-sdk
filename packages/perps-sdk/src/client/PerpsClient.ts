@@ -16,13 +16,13 @@ import type {
   PositionMarginConstraints,
   Provider,
   ProviderAction,
+  SetupAction,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
   META_PROVIDER,
   PerpsErrorCode,
-  PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
 import Big from 'big.js'
@@ -87,6 +87,23 @@ import {
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
+/** Absent `sequence` sorts last, so an unordered step gates nothing. */
+function sequenceOf(descriptor: ProviderAction): number {
+  return descriptor.sequence ?? Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * Whether the SDK can apply a preference without user input. Every declared
+ * parameter must carry a `default`, since the action's params object is only
+ * complete when each one has a value.
+ */
+function declaresDefault(descriptor: ProviderAction): boolean {
+  const params = descriptor.params ?? []
+  return (
+    params.length > 0 && params.every((param) => param.default !== undefined)
+  )
+}
+
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the
  * action isn't declared — defensive: better to fail loudly than to mis-sign.
@@ -95,11 +112,9 @@ function findActionDescriptor(
   metadata: Provider,
   action: ActionType
 ): ProviderAction {
-  const descriptor = [
-    ...metadata.setup,
-    ...metadata.options,
-    ...metadata.actions,
-  ].find((d) => d.type === action)
+  const descriptor = [...metadata.setup, ...metadata.actions].find(
+    (d) => d.type === action
+  )
   if (!descriptor) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
@@ -452,7 +467,7 @@ export class PerpsClient {
   /**
    * Fetch the user's account state from the backend and attach the
    * SDK-projected `settings` array — one `AccountConfigSetting` per
-   * descriptor on `Provider.setup` + `Provider.options`. Callers read
+   * descriptor on `Provider.setup`. Callers read
    * `result.settings` directly without re-deriving values from the typed
    * `AccountConfig`.
    *
@@ -469,11 +484,7 @@ export class PerpsClient {
       fetchAccount(this.sdkClient, params),
       this.getProviderMetadata(params.provider),
     ])
-    const settings = plugin.projectConfig(
-      response.config,
-      metadata.setup,
-      metadata.options
-    )
+    const settings = plugin.projectConfig(response.config, metadata.setup)
     return { ...response, settings }
   }
 
@@ -637,15 +648,16 @@ export class PerpsClient {
   }
 
   /**
-   * Return the unsatisfied entries on `Provider.setup` for this account as a
-   * flat, self-describing list. Trading is gated on `isReady === true`.
-   * `checklist` carries the renderable onboarding list: every USER-signed
-   * descriptor with its satisfied state, with not-required conditional steps
-   * omitted.
+   * Return the setup steps this account must still sign as a flat,
+   * self-describing list. Trading is gated on `isReady === true`.
+   * `checklist` carries the renderable onboarding list: every `approval` and
+   * `preference` descriptor with its satisfied state, with not-required
+   * conditional steps omitted.
    *
-   * `Provider.options` descriptors are NEVER returned here — options are
-   * post-setup tunables and never gate trading. Option state is surfaced
-   * separately via `getAccount().settings`.
+   * `automatic` descriptors are NEVER returned here — the SDK drains them with
+   * the provider's own credentials. A `preference` is listed but never staged:
+   * the user re-enters it through {@link executeProviderOption}, and the SDK
+   * applies the descriptor's declared default while it stays unsatisfied.
    *
    * @public
    */
@@ -677,12 +689,12 @@ export class PerpsClient {
     )
 
     const plugin = this.sdkClient.getProvider(provider)
-    const internalTypes = new Set(plugin?.internalSetupActions ?? [])
-    const isInternal = (descriptor: ProviderAction): boolean =>
-      internalTypes.has(descriptor.type) &&
-      !descriptor.signers.includes(PerpsSigner.USER)
-    const visibleSetup = pendingSetup.filter(
-      (descriptor) => !isInternal(descriptor)
+
+    // Only an `approval` is staged by the generic loop: an `automatic` step is
+    // drained below, and a `preference` is re-entered by the user through
+    // `executeProviderOption` rather than signed off a staged step.
+    const stageable = pendingSetup.filter(
+      (descriptor) => descriptor.kind === 'approval'
     )
 
     // The backend filters already-satisfied setup actions and returns typed
@@ -691,7 +703,7 @@ export class PerpsClient {
     const actions = await this.buildProviderSetupActions(
       provider,
       address,
-      visibleSetup
+      stageable
     )
 
     // A staged step is one the build produced actions for — a pending
@@ -699,10 +711,8 @@ export class PerpsClient {
     // (backend-gated) or not applicable to this account.
     const stagedTypes = new Set(actions.map((step) => step.action))
     const conditionalTypes = new Set(plugin?.conditionalSetupActions ?? [])
-    const sequenceOf = (descriptor: ProviderAction): number =>
-      descriptor.sequence ?? Number.MAX_SAFE_INTEGER
     const checklist = metadata.setup
-      .filter((descriptor) => descriptor.signers.includes(PerpsSigner.USER))
+      .filter((descriptor) => descriptor.kind !== 'automatic')
       .filter(
         (descriptor) =>
           !conditionalTypes.has(descriptor.type) ||
@@ -711,14 +721,21 @@ export class PerpsClient {
       .sort((a, b) => sequenceOf(a) - sequenceOf(b))
       .map((descriptor) => ({
         descriptor,
-        satisfied: !stagedTypes.has(descriptor.type),
+        satisfied:
+          descriptor.kind === 'preference'
+            ? satisfiedSetup.has(descriptor.type)
+            : !stagedTypes.has(descriptor.type),
       }))
 
-    await this.drainInternalSetup(
+    await this.drainSetup(
       provider,
       address,
-      pendingSetup.filter(isInternal),
-      visibleSetup.filter((descriptor) => stagedTypes.has(descriptor.type))
+      pendingSetup.filter(
+        (descriptor) =>
+          descriptor.kind === 'automatic' ||
+          (descriptor.kind === 'preference' && declaresDefault(descriptor))
+      ),
+      stageable.filter((descriptor) => stagedTypes.has(descriptor.type))
     )
 
     return {
@@ -744,43 +761,34 @@ export class PerpsClient {
       return new Set()
     }
     const account = await plugin.getAccount({ address })
-    const settings = plugin.projectConfig(
-      account.config,
-      metadata.setup,
-      metadata.options
-    )
-    const setupTypes = new Set(
-      metadata.setup.map((descriptor) => descriptor.type)
-    )
+    const settings = plugin.projectConfig(account.config, metadata.setup)
     return new Set(
       settings
-        .filter((setting) => setting.satisfied && setupTypes.has(setting.type))
+        .filter((setting) => setting.satisfied)
         .map((setting) => setting.type)
     )
   }
 
   /**
-   * Drain the pending setup steps the provider declares as internal via
-   * `PerpsProviderPlugin.internalSetupActions`. Each step is built, signed,
-   * and executed in place with the provider's own credentials. A step is
-   * deferred while any staged user-facing step with a lower `sequence` is
-   * outstanding — it cannot succeed before its prerequisite (e.g. SET_REFERRAL
-   * authenticates with the credential REGISTER_API_KEY installs) and each
-   * doomed attempt is venue traffic. A drain failure is swallowed so it never
-   * blocks setup — the step stays unsatisfied and is retried on a later
-   * `checkSetup`.
+   * Drain the pending setup steps the SDK fulfils without user input: every
+   * `automatic` step, and every unsatisfied `preference` whose descriptor
+   * declares a parameter default. Each step is built, signed, and executed in
+   * place with the provider's own credentials. A step is deferred while any
+   * staged user-facing step with a lower `sequence` is outstanding — it cannot
+   * succeed before its prerequisite (e.g. SET_REFERRAL authenticates with the
+   * credential REGISTER_API_KEY installs) and each doomed attempt is venue
+   * traffic. A drain failure is swallowed so it never blocks setup — the step
+   * stays unsatisfied and is retried on a later `checkSetup`.
    */
-  private async drainInternalSetup(
+  private async drainSetup(
     provider: string,
     address: Address,
-    internalPending: ProviderAction[],
-    stagedVisible: ProviderAction[]
+    drainable: SetupAction[],
+    stagedVisible: SetupAction[]
   ): Promise<void> {
-    const sequenceOf = (descriptor: ProviderAction): number =>
-      descriptor.sequence ?? Number.MAX_SAFE_INTEGER
-    for (const descriptor of internalPending) {
+    for (const descriptor of drainable) {
       // A tie (equal sequences, or both absent) declares no order, so the
-      // internal step defers to the next checkSetup rather than racing.
+      // drained step defers to the next checkSetup rather than racing.
       const blocked = stagedVisible.some(
         (staged) => sequenceOf(staged) <= sequenceOf(descriptor)
       )
@@ -808,7 +816,7 @@ export class PerpsClient {
         }
       } catch (error) {
         console.debug(
-          `[perps-sdk] internal setup step '${descriptor.type}' for '${provider}' did not complete; will retry on the next checkSetup.`,
+          `[perps-sdk] setup step '${descriptor.type}' for '${provider}' did not drain; will retry on the next checkSetup.`,
           error
         )
       }
@@ -860,7 +868,9 @@ export class PerpsClient {
 
   /**
    * Build the unsigned setup `ActionStep`s still outstanding for an account,
-   * ordered by descriptor `sequence`. The backend filters already-satisfied
+   * ordered by descriptor `sequence`. Only an `approval` step is staged: an
+   * `automatic` step drains inside {@link checkSetup} and a `preference`
+   * carries the user's own selection. The backend filters already-satisfied
    * setup; each plugin contributes its own signer-bearing request fields and
    * any local-state params (e.g. Lighter's known pubkey).
    *
@@ -875,7 +885,7 @@ export class PerpsClient {
     const actions = await this.buildProviderSetupActions(
       provider,
       address,
-      metadata.setup
+      metadata.setup.filter((descriptor) => descriptor.kind === 'approval')
     )
     return { actions }
   }
@@ -930,6 +940,45 @@ export class PerpsClient {
   }
 
   /**
+   * The lowest-`sequence` visible setup step that runs before `descriptor` and
+   * is not satisfied, or `undefined` when nothing blocks it. A `preference`
+   * reads its satisfied state from the plugin projection; an `approval` is
+   * satisfied once the provider stages no action for it, so only the earlier
+   * steps are staged here.
+   */
+  private async findBlockingSetupStep(
+    provider: string,
+    address: Address,
+    descriptor: SetupAction
+  ): Promise<SetupAction | undefined> {
+    const metadata = await this.getProviderMetadata(provider)
+    const earlier = metadata.setup
+      .filter(
+        (d) => d.kind !== 'automatic' && sequenceOf(d) < sequenceOf(descriptor)
+      )
+      .sort((a, b) => sequenceOf(a) - sequenceOf(b))
+    if (earlier.length === 0) {
+      return undefined
+    }
+
+    const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
+    const pending = earlier.filter((d) => !satisfiedSetup.has(d.type))
+    if (pending.length === 0) {
+      return undefined
+    }
+
+    const stageable = pending.filter((d) => d.kind === 'approval')
+    const staged =
+      stageable.length === 0
+        ? []
+        : await this.buildProviderSetupActions(provider, address, stageable)
+    const stagedTypes = new Set(staged.map((action) => action.action))
+    return pending.find(
+      (d) => d.kind === 'preference' || stagedTypes.has(d.type)
+    )
+  }
+
+  /**
    * Sign and submit one pre-staged setup `ActionStep` end-to-end.
    *
    * The caller is expected to have already obtained the step from a prior
@@ -942,7 +991,8 @@ export class PerpsClient {
    * retries with a fresh step.
    *
    * @throws {PerpsError} When the step's action is not in the provider's
-   *   `setup` descriptors.
+   *   `setup` descriptors, or when a lower-`sequence` step on the same
+   *   checklist is still unsatisfied.
    * @public
    */
   async executeProviderSetupAction(params: {
@@ -958,6 +1008,18 @@ export class PerpsClient {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Action '${step.action}' is not in '${provider}'.setup`
+      )
+    }
+
+    const blocking = await this.findBlockingSetupStep(
+      provider,
+      address,
+      descriptor
+    )
+    if (blocking) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Setup step '${step.action}' for '${provider}' is blocked: '${blocking.type}' runs first and is not satisfied.`
       )
     }
 
@@ -979,19 +1041,19 @@ export class PerpsClient {
   }
 
   /**
-   * Sign and submit a single provider-option change (a `Provider.options`
-   * tunable such as Lighter `ACCOUNT_TYPE` or Hyperliquid `ACCOUNT_MODE`)
-   * end-to-end, throwing on a venue rejection.
+   * Sign and submit a single preference change (a `preference` setup step such
+   * as Lighter `ACCOUNT_TYPE` or Hyperliquid `ACCOUNT_MODE`) end-to-end,
+   * throwing on a venue rejection.
    *
-   * Options are dispatched through the same {@link execute} pipeline as
-   * trades, but unlike a trade an option change is a single mandatory action:
-   * a per-action `success: false` (returned as a 200 OK) means the user's
-   * selection was rejected and must surface, not be silently dropped. This
-   * wrapper inspects the result and throws a {@link PerpsError} carrying the
-   * venue `error`, giving options the same throw contract that setup has via
-   * {@link executeProviderSetupAction}. The only structural difference is that
-   * an option carries `params` (the selected value) rather than a pre-staged
-   * step.
+   * Preferences are dispatched through the same {@link execute} pipeline as
+   * trades, but unlike a trade a preference change is a single mandatory
+   * action: a per-action `success: false` (returned as a 200 OK) means the
+   * user's selection was rejected and must surface, not be silently dropped.
+   * This wrapper inspects the result and throws a {@link PerpsError} carrying
+   * the venue `error`, giving a preference the same throw contract that setup
+   * has via {@link executeProviderSetupAction}. The only structural difference
+   * is that a preference carries `params` (the selected value) rather than a
+   * pre-staged step.
    *
    * `execute` itself is unchanged — it still returns results without throwing,
    * which the trade hooks rely on for partial-fill handling.

@@ -19,6 +19,8 @@ import type {
   ProviderAction,
   ProviderCategory,
   ProviderFunding,
+  SetupAction,
+  SetupKind,
   TradeNotice,
 } from './providers.js'
 
@@ -35,13 +37,14 @@ const usdcAsset: Asset = {
 }
 
 // ---------------------------------------------------------------------------
-// Provider setup / options fixtures
+// Provider setup fixtures
 // ---------------------------------------------------------------------------
 
 // Hyperliquid: APPROVE_AGENT is a mandatory setup descriptor with no params —
 // the widget renders a single sign-and-submit button.
-const approveAgentSetup: ProviderAction = {
+const approveAgentSetup: SetupAction = {
   type: ActionType.APPROVE_AGENT,
+  kind: 'approval',
   title: 'Approve agent wallet',
   description:
     'Lets the LI.FI session signer place orders on your behalf without further wallet prompts.',
@@ -50,8 +53,9 @@ const approveAgentSetup: ProviderAction = {
   params: [],
 }
 
-const approveBuilderFeeSetup: ProviderAction = {
+const approveBuilderFeeSetup: SetupAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
+  kind: 'approval',
   title: 'Approve builder fee',
   description: 'Authorises the builder fee for this provider.',
   signers: [PerpsSigner.USER],
@@ -61,8 +65,9 @@ const approveBuilderFeeSetup: ProviderAction = {
 
 // Lighter: REGISTER_API_KEY is the sole setup descriptor — once a session API
 // key is registered, the WASM signer can produce signatures for the rest.
-const registerApiKeySetup: ProviderAction = {
+const registerApiKeySetup: SetupAction = {
   type: ActionType.REGISTER_API_KEY,
+  kind: 'approval',
   title: 'Register session API key',
   description:
     'Registers a Lighter API key so the session signer can place orders.',
@@ -76,10 +81,11 @@ const dexAbstractionOption: ParamOption = {
   label: 'Dex abstraction',
 }
 
-// Hyperliquid: ACCOUNT_MODE is an options-tab descriptor — the user can toggle
+// Hyperliquid: ACCOUNT_MODE is a preference descriptor — the user can toggle
 // abstraction variants but trading is never blocked on the selection.
-const hlAccountModeOption: ProviderAction = {
+const hlAccountModeSetup: SetupAction = {
   type: ActionType.ACCOUNT_MODE,
+  kind: 'preference',
   title: 'Account mode',
   description:
     'Choose how this account interacts with Hyperliquid. Defaults to dexAbstraction.',
@@ -106,8 +112,9 @@ const lighterStandardTierOption: ParamOption = {
 
 // Lighter: ACCOUNT_TYPE — fee/latency tier selector. `readOnly: true`
 // demonstrates the disabled-control branch (selection happens elsewhere).
-const lighterAccountTypeOption: ProviderAction = {
+const lighterAccountTypeSetup: SetupAction = {
   type: ActionType.ACCOUNT_TYPE,
+  kind: 'preference',
   title: 'Account tier',
   description:
     'Premium tier reduces fees and improves matching priority on Lighter.',
@@ -127,16 +134,15 @@ const lighterAccountTypeOption: ProviderAction = {
   ],
 }
 
-// Provider exercising both arrays with real-world entries: Hyperliquid has two
-// setup gates and one tunable option.
+// Provider exercising the setup array with real-world entries: Hyperliquid has
+// two approval gates and one preference.
 const hyperliquidProvider: Provider = {
   key: 'hyperliquid',
   name: 'Hyperliquid',
   logoURI: 'https://example.invalid/hyperliquid.svg',
   signingMethod: SigningMethod.EIP712,
   active: true,
-  setup: [approveAgentSetup, approveBuilderFeeSetup],
-  options: [hlAccountModeOption],
+  setup: [approveAgentSetup, approveBuilderFeeSetup, hlAccountModeSetup],
   actions: [
     {
       type: ActionType.PLACE_ORDER,
@@ -151,7 +157,7 @@ const hyperliquidProvider: Provider = {
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
 
-// Provider exercising the Lighter mapping: one setup gate, two options.
+// Provider exercising the Lighter mapping: one approval gate, one preference.
 const lighterProvider: Provider = {
   key: 'lighter',
   name: 'Lighter',
@@ -159,8 +165,7 @@ const lighterProvider: Provider = {
   referralCode: 'lifi',
   signingMethod: SigningMethod.WASM_BLOB,
   active: true,
-  setup: [registerApiKeySetup],
-  options: [lighterAccountTypeOption],
+  setup: [registerApiKeySetup, lighterAccountTypeSetup],
   actions: [
     {
       type: ActionType.PLACE_ORDER,
@@ -213,7 +218,7 @@ const spotCategory: ProviderCategory = {
   quoteAsset: null,
 }
 
-// Empty setup + options is valid (provider with no gates and no knobs).
+// An empty setup array is valid (provider with no gates and no knobs).
 const providerWithNoDescriptors: Provider = {
   key: 'noop',
   name: 'No-op',
@@ -221,7 +226,6 @@ const providerWithNoDescriptors: Provider = {
   signingMethod: SigningMethod.EVM_TX,
   active: true,
   setup: [],
-  options: [],
   actions: [],
   categories: [],
   supportedIntervals: [],
@@ -236,7 +240,6 @@ const announcedProvider: Provider = {
   signingMethod: SigningMethod.EIP712,
   active: false,
   setup: [],
-  options: [],
   actions: [],
   categories: [],
   supportedIntervals: [],
@@ -356,11 +359,18 @@ type Equals<X, Y> =
     ? true
     : false
 
-// All three provider arrays are exactly `ProviderAction[]` — categorisation
-// lives in which array an entry sits in, not in the type.
-type _SetupFieldShape = Expect<Equals<Provider['setup'], ProviderAction[]>>
-type _OptionsFieldShape = Expect<Equals<Provider['options'], ProviderAction[]>>
+// `Provider.setup` carries the `kind` discriminator; `Provider.actions` stays a
+// plain `ProviderAction[]` with no `kind`.
+type _SetupFieldShape = Expect<Equals<Provider['setup'], SetupAction[]>>
 type _ActionsFieldShape = Expect<Equals<Provider['actions'], ProviderAction[]>>
+type _SetupKindValues = Expect<
+  Equals<SetupKind, 'approval' | 'automatic' | 'preference'>
+>
+type _SetupActionKind = Expect<Equals<SetupAction['kind'], SetupKind>>
+type _ActionsCarryNoKind = Expect<
+  Equals<Extract<keyof Provider['actions'][number], 'kind'>, never>
+>
+type _NoOptionsField = Expect<Equals<Extract<keyof Provider, 'options'>, never>>
 
 type _ProviderFundingKeys = Expect<
   Equals<keyof ProviderFunding, 'ratePeriodSeconds' | 'payoutCadenceSeconds'>
@@ -387,17 +397,13 @@ type _MarketContextHasNoFundingCadence = Expect<
   >
 >
 
-// Both arrays are required on `Provider` — no implicit empty fallback.
+// `setup` is required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
   [K in keyof T]-?: object extends Pick<T, K> ? never : K
 }[keyof T]
 type _SetupIsRequired = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'setup'>, 'setup'>
 >
-type _OptionsIsRequired = Expect<
-  Equals<Extract<RequiredKeys<Provider>, 'options'>, 'options'>
->
-
 // `supportedIntervals` reuses `OhlcvInterval` (no new enum) and is required —
 // every provider declares its set, empty for inactive / no-candle venues.
 type _SupportedIntervalsShape = Expect<
@@ -497,8 +503,8 @@ export const _fixtures = {
   approveAgentSetup,
   approveBuilderFeeSetup,
   registerApiKeySetup,
-  hlAccountModeOption,
-  lighterAccountTypeOption,
+  hlAccountModeSetup,
+  lighterAccountTypeSetup,
   hyperliquidProvider,
   lighterProvider,
   warnNotice,
@@ -524,8 +530,11 @@ export const _fixtures = {
 
 export type _TypeAssertions = [
   _SetupFieldShape,
-  _OptionsFieldShape,
   _ActionsFieldShape,
+  _SetupKindValues,
+  _SetupActionKind,
+  _ActionsCarryNoKind,
+  _NoOptionsField,
   _ProviderFundingKeys,
   _ProviderFundingRatePeriod,
   _ProviderFundingPayoutCadence,
@@ -534,7 +543,6 @@ export type _TypeAssertions = [
   _ProviderFundingIsOptional,
   _MarketContextHasNoFundingCadence,
   _SetupIsRequired,
-  _OptionsIsRequired,
   _SupportedIntervalsShape,
   _SupportedIntervalsIsRequired,
   _ChainIdShape,
@@ -556,28 +564,33 @@ export type _TypeAssertions = [
 // `.unit.spec.ts` glob's runtime pass catches regressions too (not just tsc).
 // ---------------------------------------------------------------------------
 
-describe('Provider setup / options descriptors', () => {
+describe('Provider setup descriptors', () => {
   it('hyperliquid setup gates trading on agent + builder fee approval', () => {
-    expect(hyperliquidProvider.setup.map((d) => d.type)).toEqual([
-      ActionType.APPROVE_AGENT,
-      ActionType.APPROVE_BUILDER_FEE,
-    ])
+    expect(
+      hyperliquidProvider.setup
+        .filter((d) => d.kind === 'approval')
+        .map((d) => d.type)
+    ).toEqual([ActionType.APPROVE_AGENT, ActionType.APPROVE_BUILDER_FEE])
   })
 
-  it('hyperliquid options expose the ACCOUNT_MODE descriptor only', () => {
-    expect(hyperliquidProvider.options.map((d) => d.type)).toEqual([
-      ActionType.ACCOUNT_MODE,
-    ])
+  it('hyperliquid carries ACCOUNT_MODE as the only preference step', () => {
+    expect(
+      hyperliquidProvider.setup
+        .filter((d) => d.kind === 'preference')
+        .map((d) => d.type)
+    ).toEqual([ActionType.ACCOUNT_MODE])
   })
 
   it('lighter setup gates trading on API key registration only', () => {
-    expect(lighterProvider.setup.map((d) => d.type)).toEqual([
-      ActionType.REGISTER_API_KEY,
-    ])
+    expect(
+      lighterProvider.setup
+        .filter((d) => d.kind === 'approval')
+        .map((d) => d.type)
+    ).toEqual([ActionType.REGISTER_API_KEY])
   })
 
   it('hl ACCOUNT_MODE param wires the descriptor through to AccountModeParams.mode', () => {
-    const param = hlAccountModeOption.params?.[0]
+    const param = hlAccountModeSetup.params?.[0]
     expect(param?.name).toBe('mode')
     expect(param?.default?.value).toBe('dexAbstraction')
     expect(param?.values?.map((o) => o.value)).toEqual([
@@ -588,15 +601,15 @@ describe('Provider setup / options descriptors', () => {
   })
 
   it('lighter ACCOUNT_TYPE param wires through to AccountTypeParams.tier and is read-only', () => {
-    const param = lighterProvider.options[0]?.params?.[0]
+    const param = lighterAccountTypeSetup.params?.[0]
     expect(param?.name).toBe('tier')
     expect(param?.readOnly).toBe(true)
     expect(param?.values?.map((o) => o.value)).toEqual(['standard', 'premium'])
   })
 
-  it('admits providers with empty setup and options arrays', () => {
+  it('admits providers with an empty setup array', () => {
     expect(providerWithNoDescriptors.setup).toEqual([])
-    expect(providerWithNoDescriptors.options).toEqual([])
+    expect(announcedProvider.setup).toEqual([])
   })
 })
 

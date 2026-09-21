@@ -175,6 +175,11 @@ describe.each([
         if (u.includes('/api/v1/account')) {
           return respond(ACCOUNT_PAYLOAD)
         }
+        // The pre-order tier assert reads the backend setup descriptors; this
+        // deployment enumerates no account tier, so it asserts nothing.
+        if (u.includes('/perps/providers')) {
+          return respond({ providers: [] })
+        }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
     )
@@ -335,6 +340,11 @@ describe('lighterProvider() — custom generic storage', () => {
         }
         if (u.includes('/api/v1/account')) {
           return respond(ACCOUNT_PAYLOAD)
+        }
+        // The pre-order tier assert reads the backend setup descriptors; this
+        // deployment enumerates no account tier, so it asserts nothing.
+        if (u.includes('/perps/providers')) {
+          return respond({ providers: [] })
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
