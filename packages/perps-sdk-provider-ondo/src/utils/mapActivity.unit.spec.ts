@@ -214,6 +214,17 @@ const WITHDRAWAL: OndoWalletWithdrawal = {
   from: { id: '10458932786832481', wallet: 'margin' },
 }
 
+// Every wire `chainId` Ondo's REST spec enumerates that names no EVM mainnet.
+const UNLINKED_ONDO_CHAIN_IDS = [
+  'avax-fuji-c-chain',
+  'eth-sepolia',
+  'btc-mainnet',
+  'btc-testnet',
+  'sol-mainnet',
+  'sol-testnet',
+  'bsc-testnet',
+]
+
 describe('mapDepositActivity', () => {
   it('maps an Ondo deposit to the public deposit shape', () => {
     expect(mapDepositActivity(DEPOSIT, assetRegistry)).toEqual({
@@ -259,9 +270,25 @@ describe('mapDepositActivity', () => {
     ).toBe('https://etherscan.io/tx/0xabc123')
   })
 
-  it('omits the explorer link when the wire chain id names an unknown chain', () => {
+  it('resolves the SnowTrace explorer for an Avalanche C-Chain deposit', () => {
     expect(
-      mapDepositActivity({ ...DEPOSIT, chainId: 'sol-mainnet' }, assetRegistry)
+      mapDepositActivity({ ...DEPOSIT, chainId: 'avax-c-chain' }, assetRegistry)
+        .explorerLink
+    ).toBe('https://snowtrace.io/tx/0xabc123')
+  })
+
+  it('resolves the BscScan explorer for a BNB Smart Chain deposit', () => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, chainId: 'bsc-mainnet' }, assetRegistry)
+        .explorerLink
+    ).toBe('https://bscscan.com/tx/0xabc123')
+  })
+
+  it.each(
+    UNLINKED_ONDO_CHAIN_IDS
+  )('omits the explorer link for a deposit on %s', (chainId) => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, chainId }, assetRegistry)
     ).not.toHaveProperty('explorerLink')
   })
 
@@ -315,12 +342,29 @@ describe('mapWithdrawalActivity', () => {
     ).toBe('https://etherscan.io/tx/0xdef456')
   })
 
-  it('omits the explorer link when the wire chain id names an unknown chain', () => {
+  it('resolves the SnowTrace explorer for an Avalanche C-Chain withdrawal', () => {
     expect(
       mapWithdrawalActivity(
-        { ...WITHDRAWAL, chainId: 'btc-mainnet' },
+        { ...WITHDRAWAL, chainId: 'avax-c-chain' },
         assetRegistry
-      )
+      )?.explorerLink
+    ).toBe('https://snowtrace.io/tx/0xdef456')
+  })
+
+  it('resolves the BscScan explorer for a BNB Smart Chain withdrawal', () => {
+    expect(
+      mapWithdrawalActivity(
+        { ...WITHDRAWAL, chainId: 'bsc-mainnet' },
+        assetRegistry
+      )?.explorerLink
+    ).toBe('https://bscscan.com/tx/0xdef456')
+  })
+
+  it.each(
+    UNLINKED_ONDO_CHAIN_IDS
+  )('omits the explorer link for a withdrawal on %s', (chainId) => {
+    expect(
+      mapWithdrawalActivity({ ...WITHDRAWAL, chainId }, assetRegistry)
     ).not.toHaveProperty('explorerLink')
   })
 
