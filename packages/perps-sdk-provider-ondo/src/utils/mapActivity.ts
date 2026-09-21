@@ -95,26 +95,46 @@ const depositId = (deposit: OndoWalletDeposit): string => {
     : `deposit:${deposit.txid}:${deposit.logIndex}`
 }
 
+/**
+ * Explorer chain per Ondo wire `chainId`, whose values Ondo's REST spec
+ * enumerates. Ondo also settles on Bitcoin, Solana and testnets, and a row on
+ * one of those resolves to no explorer link.
+ */
+const EXPLORER_CHAIN_BY_ONDO_CHAIN_ID: Record<string, ExplorerChainId> = {
+  'eth-mainnet': ExplorerChainId.ETHEREUM,
+  'avax-c-chain': ExplorerChainId.AVALANCHE_C_CHAIN,
+  'bsc-mainnet': ExplorerChainId.BNB_SMART_CHAIN,
+}
+
+const ondoExplorerLink = (
+  chainId: string,
+  txid: string
+): string | undefined => {
+  const explorerChainId = EXPLORER_CHAIN_BY_ONDO_CHAIN_ID[chainId]
+  return explorerChainId === undefined
+    ? undefined
+    : explorerTxUrl(explorerChainId, txid)
+}
+
 /** Map a wallet deposit with registry asset identity and its on-chain transaction. @public */
 export const mapDepositActivity = (
   deposit: OndoWalletDeposit,
   assetRegistry: AssetRegistry
-): DepositActivity => ({
-  id: depositId(deposit),
-  provider: ONDO_PROVIDER_KEY,
-  timestamp: new Date(deposit.time).toISOString(),
-  type: ActivityType.DEPOSIT,
-  asset: assetRegistry.require(deposit.coin),
-  amount: deposit.size,
-  ...(deposit.fromAddress === ''
-    ? {}
-    : { counterpartyAddress: deposit.fromAddress }),
-  ...(deposit.txid === ''
-    ? {}
-    : {
-        explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, deposit.txid),
-      }),
-})
+): DepositActivity => {
+  const explorerLink = ondoExplorerLink(deposit.chainId, deposit.txid)
+  return {
+    id: depositId(deposit),
+    provider: ONDO_PROVIDER_KEY,
+    timestamp: new Date(deposit.time).toISOString(),
+    type: ActivityType.DEPOSIT,
+    asset: assetRegistry.require(deposit.coin),
+    amount: deposit.size,
+    ...(deposit.fromAddress === ''
+      ? {}
+      : { counterpartyAddress: deposit.fromAddress }),
+    ...(explorerLink === undefined ? {} : { explorerLink }),
+  }
+}
 
 const SETTLING_WITHDRAWAL_STATUSES = new Set<string>([
   'complete',
@@ -139,6 +159,7 @@ export const mapWithdrawalActivity = (
   if (!SETTLING_WITHDRAWAL_STATUSES.has(withdrawal.status)) {
     return null
   }
+  const explorerLink = ondoExplorerLink(withdrawal.chainId, withdrawal.txid)
   return {
     id: withdrawal.withdrawal_id,
     provider: ONDO_PROVIDER_KEY,
@@ -155,13 +176,6 @@ export const mapWithdrawalActivity = (
             asset: ONDO_WITHDRAWAL_FEE_SYMBOL,
           },
         }),
-    ...(withdrawal.txid === ''
-      ? {}
-      : {
-          explorerLink: explorerTxUrl(
-            ExplorerChainId.ETHEREUM,
-            withdrawal.txid
-          ),
-        }),
+    ...(explorerLink === undefined ? {} : { explorerLink }),
   }
 }

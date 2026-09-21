@@ -1,5 +1,22 @@
 # @lifi/perps-sdk
 
+## 15.0.0
+
+### Major Changes
+
+- [#484](https://github.com/lifinance/perps-sdk/pull/484) [`8ee8c42`](https://github.com/lifinance/perps-sdk/commit/8ee8c42bdcc37b23bb329e6a21174834290b8a9f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `OrderStatus.ACCEPTED` for an order that the venue accepted and has not yet placed on the book. `OrderStatus.PENDING` now covers only a placement TP/SL leg that waits for its parent order to fill. `ACTIVE_ORDER_STATUSES` includes `ACCEPTED`, so the order stays in the default order read. The Lighter mapper returns `ACCEPTED` for the `pending` and `in-progress` venue statuses. A consumer that reads `OrderStatus` exhaustively must handle the new member.
+
+### Minor Changes
+
+- [#485](https://github.com/lifinance/perps-sdk/pull/485) [`f04923f`](https://github.com/lifinance/perps-sdk/commit/f04923fd8241fcdb9fe241f4333aeb038c3f71fd) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Resolve a bridge row's block explorer from the chain that settled it. `LighterDeployment` gains `bridgeChainId`, so the `lighter-rh` deployment links its deposit and withdrawal rows to the Robinhood Chain explorer instead of Etherscan, and `ExplorerChainId` gains `ROBINHOOD`. An Ondo deposit or withdrawal row resolves its explorer from the wire `chainId` field, and a row that settled on a chain the SDK holds no explorer for carries no link.
+
+- [#486](https://github.com/lifinance/perps-sdk/pull/486) [`0ad6849`](https://github.com/lifinance/perps-sdk/commit/0ad68496fbfc8a9d6b2e1d774e8fb1cdfb4abc02) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Link Ondo deposit and withdrawal rows that settle on Avalanche C-Chain or BNB Smart Chain to their block explorer.
+
+### Patch Changes
+
+- Updated dependencies [[`8ee8c42`](https://github.com/lifinance/perps-sdk/commit/8ee8c42bdcc37b23bb329e6a21174834290b8a9f)]:
+  - @lifi/perps-types@14.0.0
+
 ## 14.0.0
 
 ### Major Changes

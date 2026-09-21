@@ -65,7 +65,7 @@ export type LtWsMarketStatsAllMessage = LtWsMessage & {
 
 /**
  * Spot market stats carry no funding/open-interest fields and address
- * markets by their spot `market_id` (2048+).
+ * markets by their `market_id`.
  * @public
  */
 export type LtWsSpotMarketStats = {

@@ -30,6 +30,24 @@ describe('explorerTxUrl', () => {
     )
   })
 
+  it('builds a Robinhood Chain explorer URL for a Robinhood L1 tx', () => {
+    expect(explorerTxUrl(ExplorerChainId.ROBINHOOD, '0x5678')).toBe(
+      'https://robin.etherscan.io/tx/0x5678'
+    )
+  })
+
+  it('builds a SnowTrace URL for an Avalanche C-Chain tx', () => {
+    expect(explorerTxUrl(ExplorerChainId.AVALANCHE_C_CHAIN, '0x9abc')).toBe(
+      'https://snowtrace.io/tx/0x9abc'
+    )
+  })
+
+  it('builds a BscScan URL for a BNB Smart Chain tx', () => {
+    expect(explorerTxUrl(ExplorerChainId.BNB_SMART_CHAIN, '0xbeef')).toBe(
+      'https://bscscan.com/tx/0xbeef'
+    )
+  })
+
   it('returns undefined for an empty hash', () => {
     expect(explorerTxUrl(ExplorerChainId.ETHEREUM, '')).toBeUndefined()
   })

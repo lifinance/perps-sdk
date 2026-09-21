@@ -1,7 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
   type DepositFlow,
-  ExplorerChainId,
   explorerTxUrl,
   explorerTxUrlFromBase,
   getAssetRegistry,
@@ -343,6 +342,7 @@ export const createLighterProvider = (
   const providerKey = deployment.providerKey
   const restUrl = options.restUrl ?? deployment.restUrl
   const explorerTxBaseUrl = deployment.explorerTxBaseUrl
+  const bridgeChainId = deployment.bridgeChainId
   const collateral = deployment.collateral
   const authTokenSource: (() => string | Promise<string>) | undefined =
     typeof options.authToken === 'function'
@@ -1436,7 +1436,7 @@ export const createLighterProvider = (
             type: ActivityType.DEPOSIT,
             asset: assetRegistry.require(String(d.asset_id)),
             amount: d.amount,
-            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, d.l1_tx_hash),
+            explorerLink: explorerTxUrl(bridgeChainId, d.l1_tx_hash),
           })
         ),
         // `/withdraw/history` carries no fee field, so `fee` stays absent
@@ -1449,7 +1449,7 @@ export const createLighterProvider = (
             type: ActivityType.WITHDRAWAL,
             asset: assetRegistry.require(String(w.asset_id)),
             amount: w.amount,
-            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, w.l1_tx_hash),
+            explorerLink: explorerTxUrl(bridgeChainId, w.l1_tx_hash),
           })
         ),
         // `get`, not `require`: a market id the backend list no longer carries
