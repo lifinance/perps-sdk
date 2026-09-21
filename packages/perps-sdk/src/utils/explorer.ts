@@ -15,6 +15,7 @@ export const ExplorerChainId = {
   ETHEREUM: 1,
   ARBITRUM_ONE: 42161,
   LIGHTER: 304,
+  ROBINHOOD: 4663,
   HYPERLIQUID: 999,
 } as const
 
@@ -30,6 +31,7 @@ const TX_BASE_URL_BY_CHAIN: Record<ExplorerChainId, string> = {
   [ExplorerChainId.ETHEREUM]: 'https://etherscan.io/tx/',
   [ExplorerChainId.ARBITRUM_ONE]: 'https://arbiscan.io/tx/',
   [ExplorerChainId.LIGHTER]: 'https://app.lighter.xyz/explorer/logs/',
+  [ExplorerChainId.ROBINHOOD]: 'https://robin.etherscan.io/tx/',
   [ExplorerChainId.HYPERLIQUID]: 'https://app.hyperliquid.xyz/explorer/tx/',
 }
 

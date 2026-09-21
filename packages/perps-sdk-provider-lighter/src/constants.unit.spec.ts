@@ -1,3 +1,4 @@
+import { ExplorerChainId } from '@lifi/perps-sdk'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
@@ -37,6 +38,7 @@ describe('Lighter deployment descriptors', () => {
       signerChainId: 304,
       collateral: { assetIndex: 3, displaySymbol: 'USDC' },
       explorerTxBaseUrl: DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
+      bridgeChainId: ExplorerChainId.ETHEREUM,
     })
     expect(LIGHTER_MAINNET_SIGNER_CHAIN_ID).toBe(304)
   })
@@ -50,6 +52,7 @@ describe('Lighter deployment descriptors', () => {
       // USDG sits at the RH registry's slot 3 — the slot mainnet holds USDC in.
       collateral: { assetIndex: 3, displaySymbol: 'USDG' },
       explorerTxBaseUrl: undefined,
+      bridgeChainId: ExplorerChainId.ROBINHOOD,
     })
     expect(LIGHTER_RH_REST_URL).toBe('https://api.rh.lighter.xyz')
     expect(LIGHTER_RH_WS_URL).toBe('wss://api.rh.lighter.xyz/stream')
@@ -70,6 +73,16 @@ describe('Lighter deployment descriptors', () => {
     )
     expect(LIGHTER_RH_DEPLOYMENT.collateral.displaySymbol).not.toBe(
       LIGHTER_MAINNET_DEPLOYMENT.collateral.displaySymbol
+    )
+  })
+
+  it('settles each deployment bridge on its own L1', () => {
+    expect(LIGHTER_MAINNET_DEPLOYMENT.bridgeChainId).toBe(
+      ExplorerChainId.ETHEREUM
+    )
+    expect(LIGHTER_RH_DEPLOYMENT.bridgeChainId).toBe(ExplorerChainId.ROBINHOOD)
+    expect(LIGHTER_RH_DEPLOYMENT.bridgeChainId).not.toBe(
+      LIGHTER_MAINNET_DEPLOYMENT.bridgeChainId
     )
   })
 
