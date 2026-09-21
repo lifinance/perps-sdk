@@ -133,6 +133,8 @@ describe('mapOrder (Lighter)', () => {
   })
 
   it.each([
+    ['pending', OrderStatus.PENDING],
+    ['in-progress', OrderStatus.PENDING],
     ['open', OrderStatus.OPEN],
     ['triggered', OrderStatus.TRIGGERED],
     ['filled', OrderStatus.FILLED],
@@ -149,11 +151,9 @@ describe('mapOrder (Lighter)', () => {
 
   it.each([
     'unknown',
-    'pending',
-    'in-progress',
     'in_progress',
     'canceled-unknown',
-  ])('rejects undocumented status %s', (status) => {
+  ])('rejects the undocumented status %s', (status) => {
     expect(() => mapOrder(baseOrder({ status }), MARKET)).toThrow(PerpsError)
   })
 
@@ -298,6 +298,20 @@ describe('mapOrderUpdates (Lighter)', () => {
       ['3', OrderStatus.PENDING],
     ])
     expect(result.terminated).toEqual(['2'])
+  })
+
+  it('emits a pre-book row and keeps it out of the eviction ids', () => {
+    expect(
+      mapOrderUpdates([baseOrder({ status: 'pending' })], () => MARKET)
+    ).toEqual({
+      orders: [
+        expect.objectContaining({
+          orderId: '1',
+          status: OrderStatus.PENDING,
+        }),
+      ],
+      terminated: [],
+    })
   })
 
   it('skips rows with no registered market but retains terminal eviction ids', () => {
