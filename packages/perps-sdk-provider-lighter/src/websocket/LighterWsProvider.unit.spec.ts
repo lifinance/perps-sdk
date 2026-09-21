@@ -145,6 +145,60 @@ describe('LighterWsProvider', () => {
       },
       positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
     },
+    {
+      providerId: 'lighter',
+      id: '2048',
+      categoryId: 'spot',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '2048',
+        displaySymbol: 'LIT',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+    },
+    // Lighter's new market ids start at 4095 and carry no type information, so
+    // the perps row sits above the spot row in id order.
+    {
+      providerId: 'lighter',
+      id: '4095',
+      categoryId: 'perps',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '4095',
+        displaySymbol: 'SOL',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+    },
+    {
+      providerId: 'lighter',
+      id: '4096',
+      categoryId: 'spot',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '4096',
+        displaySymbol: 'XPL',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+    },
   ]
 
   beforeEach(() => {
@@ -1220,8 +1274,8 @@ describe('LighterWsProvider', () => {
         },
       })
 
-      // Spot ticks (2048+ ids) arrive on the spot channel and merge into the
-      // same `marketsContext` emit; spot carries oracle + mid, mark folds to mid.
+      // Spot ticks arrive on the spot channel and merge into the same
+      // `marketsContext` emit; spot carries oracle + mid, mark folds to mid.
       ;(provider as any).handleMessage(
         JSON.stringify({
           type: 'update/spot_market_stats',
@@ -1257,8 +1311,6 @@ describe('LighterWsProvider', () => {
     })
 
     it('subscribes to one perp marketContext channel and emits a single context', async () => {
-      marketsFetchMock.mockReset()
-      marketsFetchMock.mockResolvedValue(marketsFailureResponse())
       const provider = makeFetchingProvider()
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
       ;(provider as any).rws.getStatus = () => 'connected'
@@ -1271,7 +1323,7 @@ describe('LighterWsProvider', () => {
         listener
       )
 
-      expect(marketsFetchMock).not.toHaveBeenCalled()
+      expect(marketsFetchMock).toHaveBeenCalledOnce()
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({ type: 'subscribe', channel: 'market_stats/0' })
       )
@@ -1367,6 +1419,78 @@ describe('LighterWsProvider', () => {
       })
       expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
       expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
+      provider.close()
+    })
+
+    it('routes a perps market with a high market id to the perps stats channel', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '4095' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'market_stats/4095' })
+      )
+      provider.close()
+    })
+
+    it('routes a spot market with a neighbouring market id to the spot stats channel', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      const send = vi.fn()
+      ;(provider as any).rws.send = send
+
+      await provider.subscribe(
+        { channel: 'marketContext', dex: 'lighter', marketId: '4096' },
+        vi.fn()
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/4096' })
+      )
+      provider.close()
+    })
+
+    it('rejects a marketContext subscription for a market the registry does not hold', async () => {
+      const provider = makeFetchingProvider()
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      ;(provider as any).rws.send = vi.fn()
+
+      await expect(
+        provider.subscribe(
+          { channel: 'marketContext', dex: 'lighter', marketId: '9999' },
+          vi.fn()
+        )
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.MarketNotFound,
+        message: expect.stringContaining("'9999'"),
+      })
+      provider.close()
+    })
+
+    it('rejects a marketContext subscription when no client bound a market registry', async () => {
+      const provider = new LighterWsProvider('ws://127.0.0.1:1', 'lighter')
+      ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+      ;(provider as any).rws.getStatus = () => 'connected'
+      ;(provider as any).rws.send = vi.fn()
+
+      await expect(
+        provider.subscribe(
+          { channel: 'marketContext', dex: 'lighter', marketId: '0' },
+          vi.fn()
+        )
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.MarketNotFound,
+        message: expect.stringContaining("'0'"),
+      })
       provider.close()
     })
 

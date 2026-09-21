@@ -35,6 +35,7 @@ describe('getOrders', () => {
     })
     expect(result.orders.map((order) => order.status).sort()).toEqual(
       [
+        OrderStatus.ACCEPTED,
         OrderStatus.PENDING,
         OrderStatus.OPEN,
         OrderStatus.PARTIALLY_FILLED,
