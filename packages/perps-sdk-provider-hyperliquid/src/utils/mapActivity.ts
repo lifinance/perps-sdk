@@ -1,4 +1,9 @@
-import { type AssetRegistry, PerpsError } from '@lifi/perps-sdk'
+import {
+  type AssetRegistry,
+  ExplorerChainId,
+  explorerTxUrl,
+  PerpsError,
+} from '@lifi/perps-sdk'
 import type {
   ActivityItem,
   Asset,
@@ -134,9 +139,7 @@ export const mapLedgerEntry = (
       amount: isCollateralTransferDelta(delta) ? delta.usdc : delta.amount,
       ...(fees.length === 0 ? {} : { fees }),
       meta,
-      explorerLink: entry.hash
-        ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
-        : undefined,
+      explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
     } satisfies TransferActivity
   }
 
@@ -178,9 +181,7 @@ export const mapLedgerEntry = (
               closingCost: delta.closingCost,
               basis: delta.basis,
             },
-      explorerLink: entry.hash
-        ? `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`
-        : undefined,
+      explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
     } satisfies TransferActivity
   }
 
@@ -192,9 +193,7 @@ export const mapLedgerEntry = (
       type: ActivityType.DEPOSIT,
       asset: assetRegistry.require(HL_COLLATERAL_ASSET_ID),
       amount: delta.usdc,
-      explorerLink: entry.hash
-        ? `https://scan.li.fi/tx/${entry.hash}`
-        : undefined,
+      explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
     } satisfies DepositActivity
   }
 
@@ -207,9 +206,7 @@ export const mapLedgerEntry = (
       ...(delta.fee === undefined
         ? {}
         : { fee: { amount: delta.fee, asset: HL_COLLATERAL_SYMBOL } }),
-      explorerLink: entry.hash
-        ? `https://scan.li.fi/tx/${entry.hash}`
-        : undefined,
+      explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
     } satisfies WithdrawalActivity
   }
 

@@ -930,7 +930,9 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.DEPOSIT)
     expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('100')
-    expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xdep')
+    expect(result.explorerLink).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0xdep'
+    )
   })
 
   it('omits the counterparty address on a deposit', () => {
@@ -976,7 +978,9 @@ describe('mapLedgerEntry — non-transfer branches', () => {
     expect(result.type).toBe(ActivityType.WITHDRAWAL)
     expect(result.asset).toEqual(USDC)
     expect(result.amount).toBe('50')
-    expect(result.explorerLink).toBe('https://scan.li.fi/tx/0xwdr')
+    expect(result.explorerLink).toBe(
+      'https://app.hyperliquid.xyz/explorer/tx/0xwdr'
+    )
   })
 
   it('denominates the withdrawal fee in the withdrawn asset', () => {

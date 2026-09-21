@@ -1,4 +1,8 @@
-import type { AssetRegistry } from '@lifi/perps-sdk'
+import {
+  type AssetRegistry,
+  ExplorerChainId,
+  explorerTxUrl,
+} from '@lifi/perps-sdk'
 import type {
   DepositActivity,
   FundingActivity,
@@ -107,7 +111,9 @@ export const mapDepositActivity = (
     : { counterpartyAddress: deposit.fromAddress }),
   ...(deposit.txid === ''
     ? {}
-    : { explorerLink: `https://scan.li.fi/tx/${deposit.txid}` }),
+    : {
+        explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, deposit.txid),
+      }),
 })
 
 const SETTLING_WITHDRAWAL_STATUSES = new Set<string>([
@@ -151,6 +157,11 @@ export const mapWithdrawalActivity = (
         }),
     ...(withdrawal.txid === ''
       ? {}
-      : { explorerLink: `https://scan.li.fi/tx/${withdrawal.txid}` }),
+      : {
+          explorerLink: explorerTxUrl(
+            ExplorerChainId.ETHEREUM,
+            withdrawal.txid
+          ),
+        }),
   }
 }

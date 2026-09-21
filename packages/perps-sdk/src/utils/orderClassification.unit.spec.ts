@@ -235,6 +235,7 @@ describe('Order union classification', () => {
   it('includes only nonterminal lifecycle statuses by default', () => {
     expect([...ACTIVE_ORDER_STATUSES].sort()).toEqual(
       [
+        OrderStatus.ACCEPTED,
         OrderStatus.PENDING,
         OrderStatus.OPEN,
         OrderStatus.PARTIALLY_FILLED,
