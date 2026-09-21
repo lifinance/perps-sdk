@@ -311,6 +311,18 @@ describe('expectedRealizedPnlForTriggerOrder', () => {
     expect(r).toBeCloseTo(-10, 9) // priced off triggerPrice (90), not limitPrice (85)
   })
 
+  it('projects an accepted trigger order that waits on no parent order', () => {
+    const r = expectedRealizedPnlForTriggerOrder(
+      triggerOrder({
+        remainingSize: '1',
+        triggerPrice: '150',
+        status: OrderStatus.ACCEPTED,
+      }),
+      position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+    )
+    expect(r).toBeCloseTo(50, 9)
+  })
+
   it('returns null when the trigger has no matching position', () => {
     const r = expectedRealizedPnlForTriggerOrder(
       triggerOrder({ remainingSize: '1', triggerPrice: '150' }),

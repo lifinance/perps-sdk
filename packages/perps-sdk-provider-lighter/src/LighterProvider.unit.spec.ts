@@ -2897,7 +2897,7 @@ describe('LighterProvider — normalisation', () => {
     if (item.type !== ActivityType.DEPOSIT) {
       throw new Error('expected a deposit activity')
     }
-    expect(item.explorerLink).toBe('https://scan.li.fi/tx/0xabc')
+    expect(item.explorerLink).toBe('https://etherscan.io/tx/0xabc')
   })
 })
 
@@ -3168,21 +3168,28 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
           | { explorerLink?: string }
           | undefined
       )?.explorerLink
-    ).toBe('https://scan.li.fi/tx/0xd1')
+    ).toBe('https://etherscan.io/tx/0xd1')
     expect(
       (
         page1.items.find((item) => item.id === 'w1') as
           | { explorerLink?: string }
           | undefined
       )?.explorerLink
-    ).toBe('https://scan.li.fi/tx/0xw1')
+    ).toBe('https://etherscan.io/tx/0xw1')
     expect(page1.pagination.hasMore).toBe(true)
     expect(page1.pagination.cursor).toBeTypeOf('string')
   })
 })
 
+// Live `/api/v1/recentTrades` rows, verbatim: a row that settled no
+// transaction carries a 40-byte hash whose trailing 24 bytes are zero.
+const PLACEHOLDER_TX_HASH =
+  '0000001d6266414e000001a0c3361302000000000000000000000000000000000000000000000000'
+const SETTLED_TX_HASH =
+  '3981a9639035409777f73feb18bb96c6c07fa55127863e58f2319691924a59b0e448ab560c1b135d'
+
 describe('LighterProvider — getActivity transfer token registry', () => {
-  const transferRow = (assetId: number) => ({
+  const transferRow = (assetId: number, txHash = '0xfeed') => ({
     id: `tr-${assetId}`,
     from_account_index: 42,
     to_account_index: 99,
@@ -3190,13 +3197,13 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     amount: '25',
     timestamp: 1700000000000,
     type: 'standard',
-    tx_hash: '0xfeed',
+    tx_hash: txHash,
     from_route: 'r1',
     to_route: 'r2',
     fee: '0',
   })
 
-  const stubWithTransfer = (assetId: number) =>
+  const stubWithTransfer = (assetId: number, txHash?: string) =>
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
@@ -3216,7 +3223,7 @@ describe('LighterProvider — getActivity transfer token registry', () => {
         return respond(ORDER_BOOK_DETAILS_PAYLOAD)
       }
       if (u.includes('/api/v1/transfer/history')) {
-        return respond({ code: 0, transfers: [transferRow(assetId)] })
+        return respond({ code: 0, transfers: [transferRow(assetId, txHash)] })
       }
       if (
         u.includes('/api/v1/deposit/history') ||
@@ -3259,6 +3266,32 @@ describe('LighterProvider — getActivity transfer token registry', () => {
         type: [ActivityType.TRANSFER],
       })
     ).rejects.toThrow(/stale or mis-keyed/)
+  })
+
+  it('links a settled transfer tx hash to the Lighter explorer', async () => {
+    stubWithTransfer(3, SETTLED_TX_HASH)
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
+    expect(transfer?.explorerLink).toBe(
+      `https://app.lighter.xyz/explorer/logs/${SETTLED_TX_HASH}`
+    )
+  })
+
+  it('omits the explorer link when Lighter reports a placeholder transfer tx hash', async () => {
+    stubWithTransfer(3, PLACEHOLDER_TX_HASH)
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    const transfer = items.find((i) => i.type === ActivityType.TRANSFER)
+    expect(transfer?.explorerLink).toBeUndefined()
   })
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
