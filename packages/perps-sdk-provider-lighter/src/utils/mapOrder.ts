@@ -63,7 +63,7 @@ const mapOrderStatus = (
   switch (order.status) {
     case 'pending':
     case 'in-progress':
-      return OrderStatus.PENDING
+      return OrderStatus.ACCEPTED
     case 'open':
       if (order.trigger_status === 'parent-order') {
         return OrderStatus.PENDING
