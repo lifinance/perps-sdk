@@ -322,4 +322,10 @@ describe('mapOrderUpdates (Lighter)', () => {
       )
     ).toEqual({ orders: [], terminated: ['2'] })
   })
+
+  it('skips a pre-book row with no registered market and evicts nothing', () => {
+    expect(
+      mapOrderUpdates([baseOrder({ status: 'pending' })], () => undefined)
+    ).toEqual({ orders: [], terminated: [] })
+  })
 })
