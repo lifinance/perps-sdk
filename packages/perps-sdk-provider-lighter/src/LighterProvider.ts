@@ -1,6 +1,8 @@
 import {
   ACTIVE_ORDER_STATUSES,
   type DepositFlow,
+  ExplorerChainId,
+  explorerTxUrl,
   explorerTxUrlFromBase,
   getAssetRegistry,
   getMarketRegistry,
@@ -147,6 +149,7 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
+import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
@@ -1433,9 +1436,7 @@ export const createLighterProvider = (
             type: ActivityType.DEPOSIT,
             asset: assetRegistry.require(String(d.asset_id)),
             amount: d.amount,
-            explorerLink: d.l1_tx_hash
-              ? `https://scan.li.fi/tx/${d.l1_tx_hash}`
-              : undefined,
+            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, d.l1_tx_hash),
           })
         ),
         // `/withdraw/history` carries no fee field, so `fee` stays absent
@@ -1448,9 +1449,7 @@ export const createLighterProvider = (
             type: ActivityType.WITHDRAWAL,
             asset: assetRegistry.require(String(w.asset_id)),
             amount: w.amount,
-            explorerLink: w.l1_tx_hash
-              ? `https://scan.li.fi/tx/${w.l1_tx_hash}`
-              : undefined,
+            explorerLink: explorerTxUrl(ExplorerChainId.ETHEREUM, w.l1_tx_hash),
           })
         ),
         // `get`, not `require`: a market id the backend list no longer carries
@@ -1549,7 +1548,9 @@ export const createLighterProvider = (
               // settlement asset, not in the asset the row moves, so a spot
               // token transfer still reports a collateral-denominated fee.
               fees: [{ amount: t.fee, asset: collateral.displaySymbol }],
-              explorerLink: explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
+              explorerLink: isPlaceholderTxHash(t.tx_hash)
+                ? undefined
+                : explorerTxUrlFromBase(explorerTxBaseUrl, t.tx_hash),
               meta: {
                 transferType: t.type,
                 txHash: t.tx_hash,
