@@ -114,7 +114,6 @@ function projectOndoDescriptor(
  * `Provider.setup` order.
  *
  * @param config Typed account state; a non-`ondo` config throws `SDKError`.
- * @param setup `Provider.setup` array as emitted by `/providers`.
  * @public
  */
 export function projectOndoConfigSettings(

@@ -172,7 +172,6 @@ function projectLighterDescriptor(
  * `LighterAccountConfig`. Produces exactly one `AccountConfigSetting` per
  * descriptor, preserving the order in which the backend emits them.
  *
- * @param setup `Provider.setup` array as emitted by `/providers`.
  * @public
  */
 export function projectLighterConfigSettings(
