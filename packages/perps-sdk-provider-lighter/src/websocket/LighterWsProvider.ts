@@ -29,6 +29,7 @@ import {
   DEFAULT_LIGHTER_WS_URL,
   LIGHTER_BASE_FEE_TIER,
   LIGHTER_PROVIDER_KEY,
+  LIGHTER_SPOT_CATEGORY_ID,
 } from '../constants.js'
 import type { LighterPerpsProvider } from '../LighterProvider.js'
 import type {
@@ -84,18 +85,19 @@ import {
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
 
-const LIGHTER_SPOT_MARKET_ID_OFFSET = 2048
-
 const LIGHTER_AUTH_CHANNEL = {
   orderUpdates: 'account_all_orders',
   fills: 'account_all_trades',
   positions: 'account_all_positions',
 } as const
 
-/** Channels whose handlers resolve market identity from the registry. */
+/** Channels whose wire name or handler reads market identity from the registry. */
 function channelNeedsMarkets(channel: Subscription['channel']): boolean {
   return (
-    channel === 'orderUpdates' || channel === 'fills' || channel === 'positions'
+    channel === 'marketContext' ||
+    channel === 'orderUpdates' ||
+    channel === 'fills' ||
+    channel === 'positions'
   )
 }
 
@@ -258,10 +260,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
-    // Only the auth channels (orders/fills/positions) resolve markets.
-    // `marketsContext`/`orderbook` are keyed purely by `String(market_id)`, so
-    // gating them on the registry sync would let a failed `/markets` fetch kill
-    // live price ticks.
+    // `marketsContext` and `orderbook` are keyed purely by `String(market_id)`,
+    // so gating them on the registry sync would let a failed `/markets` fetch
+    // kill live price ticks.
     if (channelNeedsMarkets(sub.channel)) {
       await this.registry?.sync()
     }
@@ -393,18 +394,21 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       ]
     }
     if (sub.channel === 'marketContext') {
-      const id = Number(sub.marketId)
-      if (!Number.isFinite(id)) {
-        throw new Error(
-          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
-            'MarketId must be a numeric market_id string.'
+      // Lighter market ids carry no type information, so the wire channel comes
+      // from the registry row's category, not from the numeric id.
+      if (this.registry === undefined) {
+        throw new PerpsError(
+          PerpsErrorCode.MarketNotFound,
+          `Lighter WS: no market registry for marketId '${sub.marketId}'. ` +
+            'Construct via `lighterWsProvider({...})` and register with PerpsWsClient.'
         )
       }
+      const market = this.registry.require(sub.marketId)
       const prefix =
-        id >= LIGHTER_SPOT_MARKET_ID_OFFSET
+        market.categoryId === LIGHTER_SPOT_CATEGORY_ID
           ? 'spot_market_stats'
           : 'market_stats'
-      return [{ channel: `${prefix}/${id}`, needsAuth: false }]
+      return [{ channel: `${prefix}/${market.id}`, needsAuth: false }]
     }
     if (sub.channel === 'orderbook') {
       const id = Number(sub.marketId)
