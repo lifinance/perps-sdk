@@ -12,6 +12,7 @@ import {
 } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromImf } from './mapPosition.js'
+import { isPlaceholderTxHash } from './txHash.js'
 
 /**
  * Fee charged on a fill, in the market's quote asset. Lighter publishes the
@@ -156,6 +157,8 @@ export const mapFill = (
       trade.size
     ),
     createdAt: new Date(trade.timestamp).toISOString(),
-    explorerLink: explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
+    explorerLink: isPlaceholderTxHash(trade.tx_hash)
+      ? undefined
+      : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
   }
 }

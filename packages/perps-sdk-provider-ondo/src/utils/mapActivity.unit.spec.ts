@@ -224,7 +224,7 @@ describe('mapDepositActivity', () => {
       asset: USDC,
       amount: '1000.00',
       counterpartyAddress: '0x054A94b753CBf65D1Bc484F6D41897b48251fbfF',
-      explorerLink: 'https://scan.li.fi/tx/0xabc123',
+      explorerLink: 'https://etherscan.io/tx/0xabc123',
     })
   })
 
@@ -274,7 +274,7 @@ describe('mapWithdrawalActivity', () => {
       asset: USDC,
       amount: '500.00',
       fee: { amount: '1.50', asset: 'USD' },
-      explorerLink: 'https://scan.li.fi/tx/0xdef456',
+      explorerLink: 'https://etherscan.io/tx/0xdef456',
     })
   })
 
