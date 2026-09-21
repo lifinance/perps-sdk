@@ -3506,6 +3506,46 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     })
   })
 
+  it('links the mainnet bridge rows to the Ethereum explorer', async () => {
+    stubHistory({ deposits: [depositRow(3)], withdraws: [withdrawRow(3)] })
+    const provider = lighterProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(items.find((i) => i.type === ActivityType.DEPOSIT)).toMatchObject({
+      explorerLink: 'https://etherscan.io/tx/0xdep',
+    })
+    expect(items.find((i) => i.type === ActivityType.WITHDRAWAL)).toMatchObject(
+      { explorerLink: 'https://etherscan.io/tx/0xwdr' }
+    )
+  })
+
+  it('links the Robinhood bridge rows to the Robinhood Chain explorer', async () => {
+    stubHistory({
+      deposits: [depositRow(4)],
+      withdraws: [withdrawRow(4)],
+      assets: RH_ASSETS_RESPONSE,
+    })
+    const provider = lighterRhProvider({ authToken: 'tok' })
+    provider.bind(STUB_CLIENT)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.DEPOSIT, ActivityType.WITHDRAWAL],
+    })
+
+    expect(items.find((i) => i.type === ActivityType.DEPOSIT)).toMatchObject({
+      explorerLink: 'https://robin.etherscan.io/tx/0xdep',
+    })
+    expect(items.find((i) => i.type === ActivityType.WITHDRAWAL)).toMatchObject(
+      { explorerLink: 'https://robin.etherscan.io/tx/0xwdr' }
+    )
+  })
+
   it('excludes a same-account route move from the transfer feed', async () => {
     stubHistory({
       transfers: [

@@ -252,6 +252,19 @@ describe('mapDepositActivity', () => {
     ).not.toHaveProperty('explorerLink')
   })
 
+  it('resolves the explorer from the wire chain id', () => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, chainId: 'eth-mainnet' }, assetRegistry)
+        .explorerLink
+    ).toBe('https://etherscan.io/tx/0xabc123')
+  })
+
+  it('omits the explorer link when the wire chain id names an unknown chain', () => {
+    expect(
+      mapDepositActivity({ ...DEPOSIT, chainId: 'sol-mainnet' }, assetRegistry)
+    ).not.toHaveProperty('explorerLink')
+  })
+
   it('keeps two deposits distinct when Ondo reports no transaction id', () => {
     const first = mapDepositActivity({ ...DEPOSIT, txid: '' }, assetRegistry)
     const second = mapDepositActivity(
@@ -291,6 +304,24 @@ describe('mapWithdrawalActivity', () => {
     expect(
       mapWithdrawalActivity({ ...WITHDRAWAL, usdFee: undefined }, assetRegistry)
     ).not.toHaveProperty('fee')
+  })
+
+  it('resolves the explorer from the wire chain id', () => {
+    expect(
+      mapWithdrawalActivity(
+        { ...WITHDRAWAL, chainId: 'eth-mainnet' },
+        assetRegistry
+      )?.explorerLink
+    ).toBe('https://etherscan.io/tx/0xdef456')
+  })
+
+  it('omits the explorer link when the wire chain id names an unknown chain', () => {
+    expect(
+      mapWithdrawalActivity(
+        { ...WITHDRAWAL, chainId: 'btc-mainnet' },
+        assetRegistry
+      )
+    ).not.toHaveProperty('explorerLink')
   })
 
   it('keeps a pending withdrawal', () => {

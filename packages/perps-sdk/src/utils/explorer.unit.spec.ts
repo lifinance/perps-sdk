@@ -30,6 +30,12 @@ describe('explorerTxUrl', () => {
     )
   })
 
+  it('builds a Robinhood Chain explorer URL for a Robinhood L1 tx', () => {
+    expect(explorerTxUrl(ExplorerChainId.ROBINHOOD, '0x5678')).toBe(
+      'https://robin.etherscan.io/tx/0x5678'
+    )
+  })
+
   it('returns undefined for an empty hash', () => {
     expect(explorerTxUrl(ExplorerChainId.ETHEREUM, '')).toBeUndefined()
   })

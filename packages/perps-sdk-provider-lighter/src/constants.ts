@@ -1,3 +1,4 @@
+import { ExplorerChainId } from '@lifi/perps-sdk'
 import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
 import { LT_ASSET_ID_USDC } from './types/action.js'
 
@@ -114,6 +115,11 @@ export interface LighterDeployment {
    * When omitted, transfer links are not emitted for this deployment.
    */
   explorerTxBaseUrl?: string
+  /**
+   * L1 the deployment's bridge settles on. Deposit and withdrawal rows report
+   * an `l1_tx_hash` on this chain, not on the zkLighter L2.
+   */
+  bridgeChainId: ExplorerChainId
 }
 
 /**
@@ -128,6 +134,7 @@ export const LIGHTER_MAINNET_DEPLOYMENT: LighterDeployment = Object.freeze({
   signerChainId: LIGHTER_MAINNET_SIGNER_CHAIN_ID,
   collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_PROVIDER_KEY],
   explorerTxBaseUrl: DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
+  bridgeChainId: ExplorerChainId.ETHEREUM,
 })
 
 /**
@@ -155,9 +162,9 @@ export const LIGHTER_RH_WS_URL = 'wss://api.rh.lighter.xyz/stream'
 export const LIGHTER_RH_SIGNER_CHAIN_ID = 466324
 
 /**
- * Lighter on Robinhood chain, as served by `lighterRhProvider()`. No explorer
- * base URL: the RH zkLighter explorer is unpublished, so transfer links are
- * left unset rather than pointed at the mainnet explorer.
+ * Lighter on Robinhood chain, as served by `lighterRhProvider()`. No L2
+ * explorer base URL: the RH zkLighter explorer is unpublished, so transfer
+ * links are left unset rather than pointed at the mainnet explorer.
  *
  * @public
  */
@@ -168,6 +175,7 @@ export const LIGHTER_RH_DEPLOYMENT: LighterDeployment = Object.freeze({
   signerChainId: LIGHTER_RH_SIGNER_CHAIN_ID,
   collateral: LIGHTER_COLLATERAL_ASSETS[LIGHTER_RH_PROVIDER_KEY],
   explorerTxBaseUrl: undefined,
+  bridgeChainId: ExplorerChainId.ROBINHOOD,
 })
 
 /** @internal */
