@@ -36,6 +36,13 @@ const MARKET: MarketDisplay = {
   },
 }
 
+// Live `/api/v1/recentTrades` rows, verbatim: a trade that settled no
+// transaction carries a 40-byte hash whose trailing 24 bytes are zero.
+const PLACEHOLDER_TX_HASH =
+  '0000001d6266414e000001a0c3361302000000000000000000000000000000000000000000000000'
+const SETTLED_TX_HASH =
+  '3981a9639035409777f73feb18bb96c6c07fa55127863e58f2319691924a59b0e448ab560c1b135d'
+
 const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   trade_id: 7,
   tx_hash: '0xabc',
@@ -471,6 +478,26 @@ describe('mapFill (Lighter)', () => {
     it('omits the link when the tx hash is empty', () => {
       const fill = mapFill(baseTrade({ tx_hash: '' }), ACCOUNT_INDEX, MARKET)
       expect(fill.explorerLink).toBeUndefined()
+    })
+
+    it('omits the link when Lighter reports a placeholder tx hash', () => {
+      const fill = mapFill(
+        baseTrade({ tx_hash: PLACEHOLDER_TX_HASH }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.explorerLink).toBeUndefined()
+    })
+
+    it('links a settled 40-byte tx hash to the Lighter explorer', () => {
+      const fill = mapFill(
+        baseTrade({ tx_hash: SETTLED_TX_HASH }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.explorerLink).toBe(
+        `https://app.lighter.xyz/explorer/logs/${SETTLED_TX_HASH}`
+      )
     })
   })
 
