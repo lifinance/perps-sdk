@@ -133,8 +133,8 @@ describe('mapOrder (Lighter)', () => {
   })
 
   it.each([
-    ['pending', OrderStatus.PENDING],
-    ['in-progress', OrderStatus.PENDING],
+    ['pending', OrderStatus.ACCEPTED],
+    ['in-progress', OrderStatus.ACCEPTED],
     ['open', OrderStatus.OPEN],
     ['triggered', OrderStatus.TRIGGERED],
     ['filled', OrderStatus.FILLED],
@@ -307,7 +307,7 @@ describe('mapOrderUpdates (Lighter)', () => {
       orders: [
         expect.objectContaining({
           orderId: '1',
-          status: OrderStatus.PENDING,
+          status: OrderStatus.ACCEPTED,
         }),
       ],
       terminated: [],

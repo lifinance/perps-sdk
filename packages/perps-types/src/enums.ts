@@ -120,6 +120,8 @@ export enum TimeInForce {
 export enum OrderStatus {
   /** A placement TP/SL leg waits for its parent order to fill. */
   PENDING = 'PENDING',
+  /** The venue accepted the order and has not yet placed it on the book. Unlike `PENDING`, it waits on no parent order. */
+  ACCEPTED = 'ACCEPTED',
   /** Live on the book, or an armed trigger waiting for its trigger price. */
   OPEN = 'OPEN',
   /** Open with a positive filled size. */

@@ -84,6 +84,7 @@ export function triggerConditionFor(
 export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
   OrderStatus.OPEN,
   OrderStatus.PENDING,
+  OrderStatus.ACCEPTED,
   OrderStatus.PARTIALLY_FILLED,
   OrderStatus.TRIGGERED,
 ])
