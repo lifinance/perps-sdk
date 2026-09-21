@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 14.0.0
+
+### Major Changes
+
+- [#484](https://github.com/lifinance/perps-sdk/pull/484) [`8ee8c42`](https://github.com/lifinance/perps-sdk/commit/8ee8c42bdcc37b23bb329e6a21174834290b8a9f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `OrderStatus.ACCEPTED` for an order that the venue accepted and has not yet placed on the book. `OrderStatus.PENDING` now covers only a placement TP/SL leg that waits for its parent order to fill. `ACTIVE_ORDER_STATUSES` includes `ACCEPTED`, so the order stays in the default order read. The Lighter mapper returns `ACCEPTED` for the `pending` and `in-progress` venue statuses. A consumer that reads `OrderStatus` exhaustively must handle the new member.
+
 ## 13.0.0
 
 ### Major Changes

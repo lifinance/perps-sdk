@@ -1,5 +1,19 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 15.0.0
+
+### Major Changes
+
+- [#484](https://github.com/lifinance/perps-sdk/pull/484) [`8ee8c42`](https://github.com/lifinance/perps-sdk/commit/8ee8c42bdcc37b23bb329e6a21174834290b8a9f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `OrderStatus.ACCEPTED` for an order that the venue accepted and has not yet placed on the book. `OrderStatus.PENDING` now covers only a placement TP/SL leg that waits for its parent order to fill. `ACTIVE_ORDER_STATUSES` includes `ACCEPTED`, so the order stays in the default order read. The Lighter mapper returns `ACCEPTED` for the `pending` and `in-progress` venue statuses. A consumer that reads `OrderStatus` exhaustively must handle the new member.
+
+### Patch Changes
+
+- [#482](https://github.com/lifinance/perps-sdk/pull/482) [`e54fd64`](https://github.com/lifinance/perps-sdk/commit/e54fd64f639e477dddd59dd59a8a2289aa3b9193) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Point every activity row's explorer link at the chain that settled the row. Ondo and Lighter deposit and withdrawal rows now link to Etherscan, Hyperliquid deposit and withdrawal rows link to the Hyperliquid explorer, and a Lighter fill or transfer row whose `tx_hash` is the venue's placeholder carries no link.
+
+- Updated dependencies [[`f04923f`](https://github.com/lifinance/perps-sdk/commit/f04923fd8241fcdb9fe241f4333aeb038c3f71fd), [`8ee8c42`](https://github.com/lifinance/perps-sdk/commit/8ee8c42bdcc37b23bb329e6a21174834290b8a9f), [`0ad6849`](https://github.com/lifinance/perps-sdk/commit/0ad68496fbfc8a9d6b2e1d774e8fb1cdfb4abc02)]:
+  - @lifi/perps-sdk@15.0.0
+  - @lifi/perps-types@14.0.0
+
 ## 14.0.0
 
 ### Major Changes
