@@ -10,7 +10,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { isUnifiedAbstraction } from './utils/abstractionMode.js'
 import { toWireBig } from './utils/decimal.js'
-import { perpsTotals } from './utils/venueTotals.js'
+import { perpsTotals, sumUnrealizedPnl } from './utils/venueTotals.js'
 
 const sumValueUsd = (balances: readonly Balance[]): Big =>
   balances.reduce(
@@ -64,11 +64,6 @@ export function getAccountSummary(
 ): AccountSummary {
   const config = hyperliquidConfig(account)
   const { accountValue, marginUsed } = perpsTotals(config.dexStates)
-  const unrealizedPnl = positions.reduce(
-    (sum, position) =>
-      sum.plus(toWireBig(position.unrealizedPnl, 'position.unrealizedPnl')),
-    new Big(0)
-  )
 
   return {
     portfolioValue: sumValueUsd(account.collateralBalances)
@@ -80,6 +75,6 @@ export function getAccountSummary(
       marginUsed
     ).toFixed(),
     marginUsed: marginUsed.toFixed(),
-    unrealizedPnl: unrealizedPnl.toFixed(),
+    unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
   }
 }

@@ -4347,6 +4347,105 @@ describe('accountSummary channel', () => {
     }
   })
 
+  it('emits no summary and retries the REST read when it fails', async () => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    spotStateFetchMock.mockRejectedValue(new Error('info request failed'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      await vi.advanceTimersByTimeAsync(0)
+
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      // The transport retries a failed read to the policy limit, then gives up.
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(spotStateFetchMock).toHaveBeenCalledTimes(3)
+      expect(errorSpy).toHaveBeenCalled()
+      // Buying power stays unknown, so the channel reports nothing at all.
+      expect(listener).not.toHaveBeenCalled()
+
+      spotStateFetchMock.mockReset()
+      spotStateFetchMock.mockResolvedValue({
+        balances: [{ coin: 'USDC', token: 0, total: '1000', hold: '0' }],
+        tokenToAvailableAfterMaintenance: [[0, '160']],
+      })
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(spotStateFetchMock).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '1000',
+          availableMargin: '160',
+          marginUsed: '940',
+          unrealizedPnl: '100',
+        },
+      })
+    } finally {
+      errorSpy.mockRestore()
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+      spotStateFetchMock.mockReset()
+    }
+  })
+
+  it('sums only the sub-dexes that carry a marginSummary', async () => {
+    const provider = createEnrichingProvider()
+    const listener = vi.fn()
+    await provider.subscribe(
+      { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+      listener
+    )
+
+    getMockRwsInstance().simulateMessage(
+      JSON.stringify({
+        channel: 'allDexsClearinghouseState',
+        data: {
+          user: '0xabc',
+          clearinghouseStates: [
+            [
+              '',
+              {
+                assetPositions: [assetPositionOf('BTC')],
+                marginSummary: {
+                  accountValue: '1000',
+                  totalMarginUsed: '940',
+                },
+              },
+            ],
+            ['xyz', { assetPositions: [] }],
+          ],
+        },
+      })
+    )
+    await flushMicrotasks()
+
+    expect(listener).toHaveBeenCalledWith({
+      channel: 'accountSummary',
+      data: {
+        portfolioValue: '1000',
+        availableMargin: '60',
+        marginUsed: '940',
+        unrealizedPnl: '100',
+      },
+    })
+  })
+
   it('tears the spot pipeline down when a refresh resolves back to standard', async () => {
     vi.useFakeTimers()
     abstractionFetchMock.mockResolvedValue('unifiedAccount')

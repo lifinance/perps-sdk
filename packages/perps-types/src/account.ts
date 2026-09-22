@@ -57,8 +57,10 @@ export interface Position {
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
-   * Margin allocated and reserved by this position as a decimal string,
-   * excluding unrealized PnL.
+   * Margin allocated and reserved by this position as a decimal string. Most
+   * venues report it without unrealized PnL. A Hyperliquid isolated position
+   * reports venue position equity instead, so its value includes the
+   * unrealized PnL of that position.
    */
   marginUsed: string
   /**
@@ -153,8 +155,8 @@ export interface Balance {
   price?: string
   /**
    * Fraction of `valueUsd` that backs available margin (a loan-to-value
-   * ratio). Absent means 1 — full value. Set below 1 for collateral the
-   * venue haircuts; ignored on non-collateral balances.
+   * ratio). Absent means 1 — full value. Reserved: no provider sets it,
+   * because every supported venue reports its own borrow capacity.
    */
   collateralWeight?: number
 }

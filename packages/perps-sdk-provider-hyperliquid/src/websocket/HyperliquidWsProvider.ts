@@ -76,10 +76,12 @@ import {
   mapOrder,
   mapPosition,
   partitionSpotBalances,
+  perpsTotals,
   priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
+  sumUnrealizedPnl,
 } from '../utils/index.js'
 import { DecodeChain } from './decodeChain.js'
 
@@ -88,13 +90,6 @@ const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
 
 const normalizeHlAddress = (address: string): string =>
   isAddress(address, { strict: false }) ? address.toLowerCase() : address
-
-const sumUnrealizedPnl = (positions: readonly Position[]): Big =>
-  positions.reduce(
-    (sum, position) =>
-      sum.plus(toWireBig(position.unrealizedPnl, 'positions.unrealizedPnl')),
-    new Big(0)
-  )
 
 /** Venue buying power for the asset the main perps dex settles in. */
 const availableAfterMaintenance = (
@@ -1164,20 +1159,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       data: positions,
     })
 
-    let accountValue = new Big(0)
-    let marginUsed = new Big(0)
-    for (const [, state] of data.clearinghouseStates) {
-      const summary = state.marginSummary
-      if (summary === undefined) {
-        continue
-      }
-      accountValue = accountValue.plus(
-        toWireBig(summary.accountValue, 'marginSummary.accountValue')
-      )
-      marginUsed = marginUsed.plus(
-        toWireBig(summary.totalMarginUsed, 'marginSummary.totalMarginUsed')
-      )
-    }
+    const { accountValue, marginUsed } = perpsTotals(
+      data.clearinghouseStates.map(([, state]) => state)
+    )
 
     const key = data.user.toLowerCase()
     this.latestPerpsByUser.set(key, {
