@@ -859,21 +859,13 @@ export const createLighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      // Cross buying power is isolated from per-position allocations. Lighter
-      // reports cross equity (already marked by cross uPnL) separately from
-      // the initial margin locked by cross positions.
-      const availableMargin = toRequiredBig(
-        account.cross_asset_value,
-        'cross_asset_value'
-      ).minus(
-        toRequiredBig(
-          account.cross_initial_margin_requirement,
-          'cross_initial_margin_requirement'
-        )
+      const availableBalance = toRequiredBig(
+        account.available_balance,
+        'available_balance'
       )
-      // An underwater cross account yields a negative difference. That is a
-      // margin deficit, not a holding, so it carries no collateral row either.
-      const collateralBalances: Balance[] = availableMargin.gt(0)
+      // An underwater account reports no buying power. That is a margin
+      // deficit, not a holding, so it carries no collateral row either.
+      const collateralBalances: Balance[] = availableBalance.gt(0)
         ? [
             {
               categoryId: perpsCategory?.id ?? providerKey,
@@ -884,8 +876,8 @@ export const createLighterProvider = (
                   collateral.displaySymbol,
                   providerKey
                 ),
-              units: availableMargin.toString(),
-              valueUsd: availableMargin.toString(),
+              units: availableBalance.toString(),
+              valueUsd: availableBalance.toString(),
               price: '1',
             },
           ]
@@ -926,6 +918,8 @@ export const createLighterProvider = (
         apiKeyIndex: localKey?.apiKeyIndex,
         apiKeyRegistered,
         accountType: account.account_type,
+        availableBalance: account.available_balance,
+        totalAssetValue: account.total_asset_value,
         userTierName: limitsResult?.user_tier_name,
         accountTradingMode:
           account.account_trading_mode ?? LT_ACCOUNT_TRADING_MODE_SIMPLE,

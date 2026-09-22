@@ -175,10 +175,6 @@ export type {
   WithdrawableBalance,
   WithdrawalRoute,
 } from './types/withdrawal.js'
-export {
-  type CollateralSemantics,
-  summarizeAccount,
-} from './utils/accountSummary.js'
 export { paginateActivity } from './utils/activityPaging.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
@@ -264,6 +260,8 @@ export { createWarnOnce } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
 export { cachePromise } from './websocket/cachePromise.js'
+export type { DecodeChainMode } from './websocket/decodeChain.js'
+export { DecodeChain } from './websocket/decodeChain.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,

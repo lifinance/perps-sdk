@@ -1,4 +1,5 @@
 import {
+  DecodeChain,
   getMarketRegistry,
   isActiveMarket,
   isActiveOrderStatus,
@@ -83,7 +84,6 @@ import {
   spotPriceById,
   sumUnrealizedPnl,
 } from '../utils/index.js'
-import { DecodeChain } from './decodeChain.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20

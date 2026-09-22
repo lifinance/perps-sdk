@@ -343,7 +343,7 @@ export const ondoProvider = (
           )
 
           // The backend owns the collateral identity; the venue supplies its
-          // gross wallet balance (locked margin in, unrealized PnL out).
+          // wallet balance (locked margin in, unrealized PnL out).
           return {
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
@@ -373,6 +373,14 @@ export const ondoProvider = (
               apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
               depositAddress,
+              balance: {
+                walletBalance: balance.walletBalance,
+                unrealizedPnl: balance.unrealizedPnl,
+                marginBalance: balance.marginBalance,
+                usedMargin: balance.usedMargin,
+                availableMargin: balance.availableMargin,
+                withdrawableMargin: balance.withdrawableMargin,
+              },
             },
           }
         }
@@ -899,11 +907,8 @@ export const ondoProvider = (
       )
     },
 
-    getAccountSummary(
-      account: AccountResponse,
-      positions: Position[]
-    ): AccountSummary {
-      return getAccountSummary(account, positions)
+    getAccountSummary(account: AccountResponse): AccountSummary {
+      return getAccountSummary(account)
     },
 
     formatOrderPrice,

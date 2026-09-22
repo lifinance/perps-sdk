@@ -153,12 +153,6 @@ export interface Balance {
   valueUsd: string
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
-  /**
-   * Fraction of `valueUsd` that backs available margin (a loan-to-value
-   * ratio). Absent means 1 — full value. Reserved: no provider sets it,
-   * because every supported venue reports its own borrow capacity.
-   */
-  collateralWeight?: number
 }
 
 /**
@@ -620,6 +614,16 @@ export interface LighterAccountConfig {
    */
   accountType: number
   /**
+   * Lighter `available_balance`: venue buying power for the whole account,
+   * already marked to market. A decimal string in quote-asset units.
+   */
+  availableBalance: string
+  /**
+   * Lighter `total_asset_value`: total account equity, isolated allocations
+   * and unrealized PnL included. A decimal string in quote-asset units.
+   */
+  totalAssetValue: string
+  /**
    * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
    * `changeAccountTier` accepts. Absent on an unauthenticated read, which
    * fetches no limits.
@@ -648,6 +652,27 @@ export interface LighterAccountConfig {
 }
 
 /**
+ * Ondo `MarginAccountBalanceSummary` figures, copied from the venue wire
+ * response. Every member is a decimal string in quote-asset units. Ondo
+ * publishes two invariants: `marginBalance = walletBalance + unrealizedPnl`
+ * and `availableMargin = marginBalance - usedMargin`.
+ *
+ * @public
+ */
+export interface OndoAccountBalance {
+  /** Collateral only: locked margin included, unrealized PnL excluded. */
+  walletBalance: string
+  unrealizedPnl: string
+  /** Total equity. */
+  marginBalance: string
+  usedMargin: string
+  /** Venue buying power. */
+  availableMargin: string
+  /** Venue withdrawable figure, at or below {@link OndoAccountBalance.availableMargin}. */
+  withdrawableMargin: string
+}
+
+/**
  * Ondo account/session configuration returned in {@link AccountResponse.config}.
  * Expiry values are Unix timestamps in seconds.
  *
@@ -656,6 +681,8 @@ export interface LighterAccountConfig {
 export interface OndoAccountConfig {
   provider: 'ondo'
   loggedIn: boolean
+  /** Venue balance figures. Absent when logged out, which reads no balance. */
+  balance?: OndoAccountBalance
   /** Unix seconds. Present iff `loggedIn === true`. The token itself never appears here. */
   authTokenExpiry?: number
   /** Venue terms accepted, inferred from the login token's `newAccount` flag. Always `false` when logged out. */
