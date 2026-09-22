@@ -70,6 +70,7 @@ const baseConfig: HyperliquidAccountConfig = {
   provider: 'hyperliquid',
   abstractionMode: 'dexAbstraction',
   agents: [],
+  dexStates: [],
 }
 
 describe('projectHyperliquidConfigSettings', () => {

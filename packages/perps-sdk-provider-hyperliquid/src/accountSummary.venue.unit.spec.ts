@@ -107,7 +107,7 @@ describe('accountSummary.venue: unified account', () => {
     )
   })
 
-  it.fails('Position.marginUsed equals venue marginUsed for MEGA', async () => {
+  it('Position.marginUsed equals venue marginUsed for MEGA', async () => {
     const { positions } = await load()
     const mega = positions.find((p) => p.market.id === 'MEGA')
     expect(mega?.marginUsed).toBe(
@@ -115,14 +115,14 @@ describe('accountSummary.venue: unified account', () => {
     )
   })
 
-  it.fails('AccountSummary.marginUsed equals marginSummary.totalMarginUsed', async () => {
+  it('AccountSummary.marginUsed equals marginSummary.totalMarginUsed', async () => {
     const { summary } = await load()
     expect(summary.marginUsed).toBe(
       UNIFIED_SNAPSHOT.clearinghouseState.marginSummary.totalMarginUsed
     )
   })
 
-  it.fails('AccountSummary.availableMargin equals the USDC entry of tokenToAvailableAfterMaintenance', async () => {
+  it('AccountSummary.availableMargin equals the USDC entry of tokenToAvailableAfterMaintenance', async () => {
     const { summary } = await load()
     const [, usdcAvailable] =
       UNIFIED_SNAPSHOT.spotClearinghouseState
@@ -130,7 +130,7 @@ describe('accountSummary.venue: unified account', () => {
     expect(summary.availableMargin).toBe(usdcAvailable)
   })
 
-  it.fails('AccountSummary.portfolioValue equals the sum of every spot total times mid', async () => {
+  it('AccountSummary.portfolioValue equals the sum of every spot total times mid', async () => {
     const { summary } = await load()
     const expected = spotTotalTimesMid(
       UNIFIED_SNAPSHOT,
@@ -140,7 +140,7 @@ describe('accountSummary.venue: unified account', () => {
     expect(Number.parseFloat(summary.portfolioValue)).toBeCloseTo(expected, 6)
   })
 
-  it.fails('AccountSummary.availableMargin is positive', async () => {
+  it('AccountSummary.availableMargin is positive', async () => {
     const { summary } = await load()
     expect(Number.parseFloat(summary.availableMargin)).toBeGreaterThan(0)
   })
@@ -174,7 +174,7 @@ describe('accountSummary.venue: standard account', () => {
     }
   }
 
-  it.fails('Position.marginUsed equals venue marginUsed for HYPE', async () => {
+  it('Position.marginUsed equals venue marginUsed for HYPE', async () => {
     const { positions } = await load()
     const hype = positions.find((p) => p.market.id === 'HYPE')
     expect(hype?.marginUsed).toBe(
@@ -182,14 +182,14 @@ describe('accountSummary.venue: standard account', () => {
     )
   })
 
-  it.fails('AccountSummary.marginUsed equals marginSummary.totalMarginUsed', async () => {
+  it('AccountSummary.marginUsed equals marginSummary.totalMarginUsed', async () => {
     const { summary } = await load()
     expect(summary.marginUsed).toBe(
       STANDARD_SNAPSHOT.clearinghouseState.marginSummary.totalMarginUsed
     )
   })
 
-  it.fails('AccountSummary.availableMargin equals marginSummary.accountValue minus totalMarginUsed', async () => {
+  it('AccountSummary.availableMargin equals marginSummary.accountValue minus totalMarginUsed', async () => {
     const { summary } = await load()
     const { accountValue, totalMarginUsed } =
       STANDARD_SNAPSHOT.clearinghouseState.marginSummary
@@ -242,12 +242,17 @@ describe('accountSummary.venue: portfolio-margin account', () => {
     }
   }
 
-  it.fails('spot USDC hold equals marginSummary.accountValue', () => {
+  // Under portfolio margin the spot USDC hold covers the perps equity and the
+  // margin the venue reserves against the non-USDC spot collateral, so it is
+  // larger than `marginSummary.accountValue` alone.
+  it('spot USDC hold covers marginSummary.accountValue', () => {
     const usdc = PM_SNAPSHOT.spotClearinghouseState.balances.find(
       (b) => b.coin === 'USDC'
     )
-    expect(usdc?.hold).toBe(
-      PM_SNAPSHOT.clearinghouseState.marginSummary.accountValue
+    expect(Number.parseFloat(usdc?.hold ?? '0')).toBeGreaterThanOrEqual(
+      Number.parseFloat(
+        PM_SNAPSHOT.clearinghouseState.marginSummary.accountValue
+      )
     )
   })
 
@@ -281,14 +286,14 @@ describe('accountSummary.venue: portfolio-margin account', () => {
     )
   })
 
-  it.fails('AccountSummary.availableMargin equals the USDC entry of tokenToAvailableAfterMaintenance', async () => {
+  it('AccountSummary.availableMargin equals the USDC entry of tokenToAvailableAfterMaintenance', async () => {
     const { summary } = await load()
     const [, usdcAvailable] =
       PM_SNAPSHOT.spotClearinghouseState.tokenToAvailableAfterMaintenance[0]
     expect(summary.availableMargin).toBe(usdcAvailable)
   })
 
-  it.fails('AccountSummary.portfolioValue equals the sum of every spot total times mid', async () => {
+  it('AccountSummary.portfolioValue equals the sum of every spot total times mid', async () => {
     const { summary } = await load()
     const expected = spotTotalTimesMid(PM_SNAPSHOT, PM_MARKETS, PM_PRICES)
     expect(Number.parseFloat(summary.portfolioValue)).toBeCloseTo(expected, 2)

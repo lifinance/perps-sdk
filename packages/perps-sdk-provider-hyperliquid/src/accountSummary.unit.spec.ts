@@ -1,7 +1,10 @@
+import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   Asset,
   Balance,
+  HyperliquidDexAccountState,
+  OndoAccountConfig,
   Position,
 } from '@lifi/perps-types'
 import {
@@ -9,6 +12,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { HlAbstractionMode } from './types/index.js'
@@ -49,10 +53,34 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   marginMode: MarginMode.CROSS,
 })
 
+const dexState = (
+  dex: string,
+  accountValue: string,
+  totalMarginUsed: string
+): HyperliquidDexAccountState => {
+  const marginSummary = {
+    accountValue,
+    totalNtlPos: '0.0',
+    totalRawUsd: accountValue,
+    totalMarginUsed,
+  }
+  return {
+    dex,
+    marginSummary,
+    crossMarginSummary: marginSummary,
+    crossMaintenanceMarginUsed: '0.0',
+    withdrawable: '0.0',
+  }
+}
+
+const MAIN_DEX = dexState('', '10000', '940')
+
 const account = (
   abstractionMode: HlAbstractionMode | null,
   collateralBalances: Balance[],
-  balances: Balance[] = []
+  balances: Balance[] = [],
+  dexStates: HyperliquidDexAccountState[] = [MAIN_DEX],
+  availableAfterMaintenance?: string
 ): AccountResponse => ({
   provider: 'hyperliquid',
   address: '0x0000000000000000000000000000000000000001',
@@ -62,114 +90,140 @@ const account = (
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },
-  config: { provider: 'hyperliquid', abstractionMode, agents: [] },
+  config: {
+    provider: 'hyperliquid',
+    abstractionMode,
+    agents: [],
+    dexStates,
+    ...(availableAfterMaintenance === undefined
+      ? {}
+      : { availableAfterMaintenance }),
+  },
 })
 
+// Every figure below reads back a venue field the response carries, so the
+// spec cannot drift from what Hyperliquid reports.
+const { accountValue, totalMarginUsed } = MAIN_DEX.marginSummary
+
 describe('getAccountSummary', () => {
-  // Standard (unset), disabled and dexAbstraction modes: venue collateral rows
-  // hold `accountValue` = total venue equity, which already includes locked
-  // margin AND unrealized PnL — nothing may be added back on top of it.
   describe.each([
     ['standard (null abstraction)', null],
     ['disabled', HlAbstractionMode.DISABLED],
     ['dexAbstraction', HlAbstractionMode.DEX_ABSTRACTION],
   ])('non-unified mode: %s', (_label, mode) => {
-    it('does not double-count marginUsed or unrealized pnl embedded in accountValue', () => {
-      // Deposit 1000, open a position locking 100 margin, uPnL +50:
-      // HL reports accountValue 1050 (equity = cash 1000 + uPnL 50).
+    it('reads margin used from the venue margin summary, not from the positions', () => {
       const summary = getAccountSummary(
         account(mode as HlAbstractionMode | null, [
-          balance('hyperliquid', '1050'),
+          balance('hyperliquid', accountValue),
         ]),
         [position('100', '50')]
       )
-      // free margin = equity − locked margin, NOT equity itself
-      expect(summary.availableMargin).toBe('950')
-      // portfolio = equity as-is; adding marginUsed/uPnL would double-count
-      expect(summary.portfolioValue).toBe('1050')
-      expect(summary.marginUsed).toBe('100')
+
+      expect(summary.marginUsed).toBe(totalMarginUsed)
       expect(summary.unrealizedPnl).toBe('50')
     })
 
-    it('sums spot collateral (cash) and venue equity rows', () => {
+    it('reports account value minus margin used as available margin', () => {
       const summary = getAccountSummary(
         account(mode as HlAbstractionMode | null, [
-          balance('spot', '500'),
-          balance('hyperliquid', '10000'),
+          balance('hyperliquid', accountValue),
         ]),
-        [position('940', '100')]
+        [position('100', '50')]
       )
-      expect(summary.availableMargin).toBe('9560')
-      expect(summary.portfolioValue).toBe('10500')
-      expect(summary.marginUsed).toBe('940')
-      expect(summary.unrealizedPnl).toBe('100')
+
+      expect(summary.availableMargin).toBe(
+        new Big(accountValue).minus(totalMarginUsed).toFixed()
+      )
     })
 
-    it('adds non-collateral balances to portfolio value only', () => {
+    it('sums every balance row into portfolio value', () => {
       const summary = getAccountSummary(
         account(
           mode as HlAbstractionMode | null,
-          [balance('hyperliquid', '1000')],
+          [balance('spot', '500'), balance('hyperliquid', accountValue)],
           [balance('spot', '250')]
         ),
         [position('200', '0')]
       )
-      // available = venue equity 1000 − locked margin 200
-      expect(summary.availableMargin).toBe('800')
-      // portfolio = balances 250 + venue equity 1000
-      expect(summary.portfolioValue).toBe('1250')
+
+      expect(summary.portfolioValue).toBe(
+        new Big(accountValue).plus('500').plus('250').toFixed()
+      )
     })
   })
 
-  // Unified/portfolio-margin modes: spot holds the whole account as gross
-  // collateral (locked margin included, unrealized PnL carried by the
-  // positions). HL counts cross-position uPnL toward buying power, so
-  // available margin = spot collateral − locked margin + uPnL.
   describe.each([
     ['unifiedAccount', HlAbstractionMode.UNIFIED_ACCOUNT],
     ['portfolioMargin', HlAbstractionMode.PORTFOLIO_MARGIN],
   ])('unified mode: %s', (_label, mode) => {
-    it('adds profit uPnL to available margin on top of gross spot collateral', () => {
+    it('reports the venue buying power as available margin', () => {
       const summary = getAccountSummary(
-        account(mode, [balance('spot', '10000')]),
-        [position('940', '100')]
-      )
-      expect(summary.availableMargin).toBe('9160')
-      expect(summary.portfolioValue).toBe('10100')
-      expect(summary.marginUsed).toBe('940')
-      expect(summary.unrealizedPnl).toBe('100')
-    })
-
-    it('subtracts loss uPnL from available margin so buying power is not overstated', () => {
-      const summary = getAccountSummary(
-        account(mode, [balance('spot', '10000')]),
+        account(mode, [balance('spot', '10000')], [], [MAIN_DEX], '9060'),
         [position('940', '-100')]
       )
-      expect(summary.availableMargin).toBe('8960')
-      expect(summary.portfolioValue).toBe('9900')
-      expect(summary.marginUsed).toBe('940')
+
+      expect(summary.availableMargin).toBe('9060')
+      expect(summary.marginUsed).toBe(totalMarginUsed)
       expect(summary.unrealizedPnl).toBe('-100')
+      expect(summary.portfolioValue).toBe('10000')
+    })
+
+    it('rejects an account that carries no venue buying power', () => {
+      expect(() =>
+        getAccountSummary(account(mode, [balance('spot', '10000')]), [])
+      ).toThrowError(PerpsError)
     })
   })
 
-  it('aggregates margin used and pnl across multiple positions', () => {
+  it('sums the margin summaries of every perps sub-dex', () => {
+    const xyz = dexState('xyz', '0.2', '0.1')
     const summary = getAccountSummary(
-      account(null, [balance('hyperliquid', '1000')]),
+      account(
+        HlAbstractionMode.DEX_ABSTRACTION,
+        [balance('hyperliquid', accountValue)],
+        [],
+        [MAIN_DEX, xyz]
+      ),
+      []
+    )
+
+    expect(summary.marginUsed).toBe(
+      new Big(totalMarginUsed).plus(xyz.marginSummary.totalMarginUsed).toFixed()
+    )
+  })
+
+  it('aggregates unrealized pnl across positions', () => {
+    const summary = getAccountSummary(
+      account(null, [balance('hyperliquid', accountValue)]),
       [position('100', '10'), position('150', '-30')]
     )
-    expect(summary.marginUsed).toBe('250')
+
     expect(summary.unrealizedPnl).toBe('-20')
-    // non-unified: available = venue equity 1000 − aggregate locked margin 250
-    expect(summary.availableMargin).toBe('750')
   })
 
   it('returns string scalars for an empty account', () => {
-    const summary = getAccountSummary(account(null, []), [])
+    const summary = getAccountSummary(account(null, [], [], []), [])
+
     expect(summary).toEqual({
       portfolioValue: '0',
       availableMargin: '0',
       marginUsed: '0',
       unrealizedPnl: '0',
     })
+  })
+
+  it('rejects an account config from another provider', () => {
+    const ondo: OndoAccountConfig = {
+      provider: 'ondo',
+      loggedIn: false,
+      termsAccepted: false,
+      apiKeyRegistered: false,
+      referralSet: false,
+      depositAddress: null,
+    }
+
+    expect(() =>
+      getAccountSummary({ ...account(null, []), config: ondo }, [])
+    ).toThrowError(PerpsError)
   })
 })

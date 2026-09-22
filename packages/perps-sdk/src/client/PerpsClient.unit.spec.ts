@@ -668,6 +668,7 @@ describe('PerpsClient', () => {
           provider: 'hyperliquid',
           abstractionMode: status,
           agents: [],
+          dexStates: [],
         },
       }
       stubGetAccount.mockResolvedValue(account)
@@ -1490,6 +1491,117 @@ describe('PerpsClient', () => {
       })
       await expect(
         noProviderClient.getDepositFlow({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // getAvailableToTrade — per-market read with an account-summary fallback
+  // ---------------------------------------------------------------------------
+
+  describe('getAvailableToTrade', () => {
+    const USDC_DISPLAY = {
+      providerId: 'hyperliquid',
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: 'https://example.com/usdc.png',
+    }
+
+    const clientWith = (plugin: Partial<PerpsProviderPlugin>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          createTestAgentProvider({
+            type: provider,
+            getAccount: async () => mockAccount,
+            getAccountSummary: () => ({
+              portfolioValue: '10000.00',
+              availableMargin: '9500.00',
+              marginUsed: '500.00',
+              unrealizedPnl: '125.50',
+            }),
+            ...plugin,
+          }),
+        ],
+      })
+
+    it('falls back to the account summary availableMargin on both sides', async () => {
+      await expect(
+        clientWith({}).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).resolves.toEqual({
+        providerId: 'hyperliquid',
+        marketId: 'BTC',
+        asset: USDC_DISPLAY,
+        buy: '9500.00',
+        sell: '9500.00',
+      })
+    })
+
+    it('reports the per-market figure when the plugin implements the read', async () => {
+      const perMarket = {
+        providerId: 'hyperliquid',
+        marketId: 'BTC',
+        asset: USDC_DISPLAY,
+        buy: '431.749348',
+        sell: '182.319517',
+      }
+      const getAvailableToTrade = vi.fn(async () => perMarket)
+      const getAccount = vi.fn(async () => mockAccount)
+      await expect(
+        clientWith({ getAvailableToTrade, getAccount }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).resolves.toEqual(perMarket)
+      expect(getAvailableToTrade).toHaveBeenCalledWith(
+        { address: userAddress, marketId: 'BTC' },
+        undefined
+      )
+      expect(getAccount).not.toHaveBeenCalled()
+    })
+
+    it('falls back when the plugin read resolves undefined for the market', async () => {
+      const getAvailableToTrade = vi.fn(async () => undefined)
+      await expect(
+        clientWith({ getAvailableToTrade }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'ETH',
+        })
+      ).resolves.toMatchObject({
+        marketId: 'ETH',
+        buy: '9500.00',
+        sell: '9500.00',
+      })
+    })
+
+    it('reports an unknown market against the provider registry', async () => {
+      await expect(
+        clientWith({}).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'NOPE',
+        })
+      ).rejects.toThrow(/No hyperliquid market found for marketId 'NOPE'/)
+    })
+
+    it('reports an unregistered provider plugin', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
     })
   })

@@ -6,7 +6,7 @@ import { HlAbstractionMode } from '../types/account.js'
  * per-dex, apart from the spot balances.
  */
 export const isUnifiedAbstraction = (
-  abstraction: HlAbstractionMode | null
+  abstraction: HlAbstractionMode | string | null
 ): boolean =>
   abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
   abstraction === HlAbstractionMode.PORTFOLIO_MARGIN

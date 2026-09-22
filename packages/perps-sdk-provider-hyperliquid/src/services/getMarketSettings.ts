@@ -7,8 +7,7 @@ import {
 import type { Address } from 'viem'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type { HlActiveAssetData } from '../types/index.js'
-import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { fetchActiveAssetData } from './activeAssetData.js'
 
 /**
  * Parameters for {@link getMarketSettings}.
@@ -27,7 +26,7 @@ export interface GetMarketSettingsParams {
  * @public
  */
 export const getMarketSettings = async (
-  { client, apiUrl }: HyperliquidContext,
+  context: HyperliquidContext,
   params: GetMarketSettingsParams,
   options?: SDKRequestOptions
 ): Promise<MarketSettings | undefined> => {
@@ -35,14 +34,11 @@ export const getMarketSettings = async (
   if (params.market.categoryId === SPOT_MARKET_ID) {
     return undefined
   }
-  const data = await infoRequest<HlActiveAssetData>(
-    apiUrl,
-    {
-      type: 'activeAssetData',
-      user: params.address,
-      coin: params.market.marketId,
-    },
-    hlInfoOptions(client, options)
+  const data = await fetchActiveAssetData(
+    context,
+    params.address,
+    params.market.marketId,
+    options
   )
   const leverage = data.leverage
   if (!leverage) {
