@@ -133,7 +133,7 @@ describe('mapOrder (Lighter)', () => {
   })
 
   it.each([
-    ['pending', OrderStatus.ACCEPTED],
+    ['pending', OrderStatus.OPEN],
     ['in-progress', OrderStatus.ACCEPTED],
     ['open', OrderStatus.OPEN],
     ['triggered', OrderStatus.TRIGGERED],
@@ -302,7 +302,7 @@ describe('mapOrderUpdates (Lighter)', () => {
 
   it('emits a pre-book row and keeps it out of the eviction ids', () => {
     expect(
-      mapOrderUpdates([baseOrder({ status: 'pending' })], () => MARKET)
+      mapOrderUpdates([baseOrder({ status: 'in-progress' })], () => MARKET)
     ).toEqual({
       orders: [
         expect.objectContaining({
@@ -325,7 +325,7 @@ describe('mapOrderUpdates (Lighter)', () => {
 
   it('skips a pre-book row with no registered market and evicts nothing', () => {
     expect(
-      mapOrderUpdates([baseOrder({ status: 'pending' })], () => undefined)
+      mapOrderUpdates([baseOrder({ status: 'in-progress' })], () => undefined)
     ).toEqual({ orders: [], terminated: [] })
   })
 })
