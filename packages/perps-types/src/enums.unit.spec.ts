@@ -26,6 +26,19 @@ describe('PerpsErrorCode.Unauthorized', () => {
   })
 })
 
+describe('PerpsErrorCode.Forbidden', () => {
+  it('carries the auth-range value 2014', () => {
+    expect(PerpsErrorCode.Forbidden).toBe(2014)
+  })
+
+  it('is distinct from the credential-rejection codes a client could otherwise conflate it with', () => {
+    expect(PerpsErrorCode.Forbidden).not.toBe(PerpsErrorCode.Unauthorized)
+    expect(PerpsErrorCode.Forbidden).not.toBe(PerpsErrorCode.AgentUnauthorized)
+    expect(PerpsErrorCode.Forbidden).not.toBe(PerpsErrorCode.SignatureInvalid)
+    expect(PerpsErrorCode.Forbidden).not.toBe(PerpsErrorCode.TermsNotAccepted)
+  })
+})
+
 describe('PerpsErrorCode.SetupRequired', () => {
   it('carries the setup-range value 2070', () => {
     expect(PerpsErrorCode.SetupRequired).toBe(2070)
@@ -132,6 +145,7 @@ describe('PerpsErrorCode wire compatibility', () => {
     AgentUnauthorized: 2011,
     TermsNotAccepted: 2012,
     Unauthorized: 2013,
+    Forbidden: 2014,
     ExchangeRejected: 2020,
     InsufficientMargin: 2021,
     InsufficientBalance: 2022,
