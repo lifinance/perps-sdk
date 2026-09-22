@@ -23,6 +23,8 @@ export enum PerpsErrorCode {
   TermsNotAccepted = 2012,
   /** Rejected or invalid caller credential (e.g. API key); maps to HTTP 401. */
   Unauthorized = 2013,
+  /** Valid credential without the route's privilege; maps to HTTP 403. */
+  Forbidden = 2014,
 
   // Trading errors (2020-2039)
   ExchangeRejected = 2020,

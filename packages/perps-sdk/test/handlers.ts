@@ -384,6 +384,7 @@ export const mockAccount: AccountResponse = {
     provider: 'hyperliquid',
     abstractionMode: null,
     agents: [],
+    dexStates: [],
   },
 }
 

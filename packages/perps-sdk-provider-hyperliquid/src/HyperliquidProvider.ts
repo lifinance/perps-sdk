@@ -10,6 +10,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
@@ -17,6 +18,8 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -30,6 +33,7 @@ import {
   type ActionStep,
   ActionType,
   type ActivitiesResponse,
+  type AvailableToTrade,
   type FillsResponse,
   type Market,
   type MarketSettings,
@@ -59,12 +63,14 @@ import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
 import { getAccountExists } from './services/getAccountExists.js'
 import { getActivity } from './services/getActivity.js'
+import { getAvailableToTrade } from './services/getAvailableToTrade.js'
 import { getFills } from './services/getFills.js'
 import { getMarketSettings } from './services/getMarketSettings.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPortfolioHistory } from './services/getPortfolioHistory.js'
 import { getPositions } from './services/getPositions.js'
+import { getWithdrawableBalances } from './services/getWithdrawableBalances.js'
 import {
   type HyperliquidAgent,
   HyperliquidAgentStore,
@@ -294,6 +300,16 @@ export function hyperliquidProvider(
       destination: HYPERLIQUID_USDC,
     }),
 
+    getWithdrawableBalances: (
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> =>
+      getWithdrawableBalances(
+        contextRef.require(),
+        { address: params.address },
+        opts
+      ),
+
     getPositions: (
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
@@ -315,6 +331,16 @@ export function hyperliquidProvider(
       getMarketSettings(
         contextRef.require(),
         { address: params.address, market: params.market },
+        opts
+      ),
+
+    getAvailableToTrade: (
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> =>
+      getAvailableToTrade(
+        contextRef.require(),
+        { address: params.address, marketId: params.marketId },
         opts
       ),
 

@@ -6,6 +6,7 @@ import {
   HL_EXTRA_AGENTS,
   HL_MARKETS,
   HL_SPOT_CLEARINGHOUSE_STATE,
+  HL_UNIFIED_SPOT_CLEARINGHOUSE_STATE,
   HL_USER_FEES,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -16,6 +17,8 @@ import { getAccount } from './getAccount.js'
 import { getPositions } from './getPositions.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
+/** Venue buying power of the portfolio-margin spot state below. */
+const PM_AVAILABLE = '7160'
 const client = createPerpsClient({
   integrator: 'test',
   apiKey: 'k',
@@ -28,6 +31,12 @@ const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
   extraAgents: HL_EXTRA_AGENTS,
   spotClearinghouseState: HL_SPOT_CLEARINGHOUSE_STATE,
   clearinghouseState: HL_CLEARINGHOUSE_STATE,
+})
+
+/** Unified and portfolio-margin accounts keep the whole account in spot. */
+const unifiedResponses = (abstraction: HlAbstractionMode) => ({
+  ...defaultResponses(abstraction),
+  spotClearinghouseState: HL_UNIFIED_SPOT_CLEARINGHOUSE_STATE,
 })
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
@@ -106,7 +115,9 @@ describe('getAccount', () => {
         price: '1',
       },
     ])
-    expect(result.marginUsed).toBe('500')
+    expect(result.marginUsed).toBe(
+      HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
+    )
     expect(result.unrealizedPnl).toBe('100')
   })
 
@@ -215,9 +226,9 @@ describe('getAccount', () => {
     ).toBeUndefined()
   })
 
-  it('treats UNIFIED_ACCOUNT abstraction by deriving margin from positions and dropping per-dex balances', async () => {
+  it('treats UNIFIED_ACCOUNT abstraction by dropping per-dex balances', async () => {
     ;({ restore } = installInfoFetchMock(
-      defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+      unifiedResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
       HL_MARKETS
     ))
 
@@ -236,20 +247,50 @@ describe('getAccount', () => {
           displaySymbol: 'USDC',
           logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
         },
-        units: '500',
-        valueUsd: '500',
+        units: '10000',
+        valueUsd: '10000',
         price: '1',
       },
     ])
-    // Derived from the single position's marginUsed (940)
-    expect(result.marginUsed).toBe('940')
+    expect(result.marginUsed).toBe(
+      HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
+    )
   })
 
-  it('sums unified position margin as exact fixed-point decimals', async () => {
+  it('carries the venue buying power on a UNIFIED_ACCOUNT config', async () => {
+    ;({ restore } = installInfoFetchMock(
+      unifiedResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    const [, usdcAvailable] =
+      HL_UNIFIED_SPOT_CLEARINGHOUSE_STATE.tokenToAvailableAfterMaintenance[0]
+    expect(
+      result.config.provider === 'hyperliquid'
+        ? result.config.availableAfterMaintenance
+        : undefined
+    ).toBe(usdcAvailable)
+  })
+
+  it('omits the venue buying power on a standard config', async () => {
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(
+      result.config.provider === 'hyperliquid'
+        ? result.config.availableAfterMaintenance
+        : undefined
+    ).toBeUndefined()
+  })
+
+  it('reads unified margin from the venue total, not from the positions', async () => {
     const assetPosition = HL_CLEARINGHOUSE_STATE.assetPositions[0]
     ;({ restore } = installInfoFetchMock(
       {
-        ...defaultResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+        ...unifiedResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
         clearinghouseState: {
           ...HL_CLEARINGHOUSE_STATE,
           assetPositions: [
@@ -276,7 +317,9 @@ describe('getAccount', () => {
 
     const result = await getAccount(ctx, { address: ADDRESS })
 
-    expect(result.marginUsed).toBe('0.00000003')
+    expect(result.marginUsed).toBe(
+      HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
+    )
   })
 
   it('treats DEX_ABSTRACTION by aggregating per-dex account values into the hyperliquid balance bucket', async () => {
@@ -468,7 +511,7 @@ describe('getAccount', () => {
     )
   })
 
-  it('weights PORTFOLIO_MARGIN spot collateral (HYPE/UBTC) at LTV 0.5 through to the summary', async () => {
+  it('carries PORTFOLIO_MARGIN spot collateral at full value and reads the venue buying power', async () => {
     const spotMarket = (
       id: string,
       baseId: string,
@@ -513,6 +556,7 @@ describe('getAccount', () => {
               entryNtl: '0',
             },
           ],
+          tokenToAvailableAfterMaintenance: [[0, PM_AVAILABLE]],
         },
       },
       [
@@ -528,9 +572,8 @@ describe('getAccount', () => {
 
     const result = await getAccount(ctx, { address: ADDRESS })
 
-    // USDC is full-value category quote collateral; HYPE/UBTC are
-    // portfolio-margin collateral carrying the 0.5 LTV weight. `valueUsd`
-    // stays full price — the weight is what the summary discounts.
+    // Only the category quote asset is collateral. Borrow capacity against the
+    // other spot tokens comes from the venue, not from an SDK weight.
     expect(result.collateralBalances).toEqual([
       {
         categoryId: 'spot',
@@ -544,6 +587,8 @@ describe('getAccount', () => {
         valueUsd: '1000',
         price: '1',
       },
+    ])
+    expect(result.balances).toEqual([
       {
         categoryId: 'spot',
         asset: {
@@ -556,7 +601,6 @@ describe('getAccount', () => {
         units: '100',
         valueUsd: '4000',
         price: '40',
-        collateralWeight: 0.5,
       },
       {
         categoryId: 'spot',
@@ -569,17 +613,14 @@ describe('getAccount', () => {
         units: '0.1',
         valueUsd: '10000',
         price: '100000',
-        collateralWeight: 0.5,
       },
     ])
 
-    // availableMargin = USDC 1000 + HYPE 4000×0.5 + UBTC 10000×0.5
-    //   + uPnL 100 − marginUsed 940 = 7160. portfolioValue takes the full
-    //   (unweighted) collateral value: 15000 + uPnL 100 = 15100.
     const summary = getAccountSummary(result, result.positions)
-    expect(summary.availableMargin).toBe('7160')
-    expect(summary.portfolioValue).toBe('15100')
-    expect(summary.marginUsed).toBe('940')
+    expect(summary.availableMargin).toBe(PM_AVAILABLE)
+    expect(summary.marginUsed).toBe(
+      HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
+    )
   })
 
   it('values spot collateral from `total`, ignoring the `hold` (in-order) portion', async () => {

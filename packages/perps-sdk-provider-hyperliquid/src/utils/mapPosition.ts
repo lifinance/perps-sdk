@@ -30,10 +30,6 @@ export const mapPosition = (
   const leverage = new Big(pos.leverage.value)
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
-  const marginUsed =
-    marginMode === MarginMode.ISOLATED
-      ? new Big(pos.marginUsed).minus(pos.unrealizedPnl).toFixed()
-      : pos.marginUsed
 
   return {
     market,
@@ -45,7 +41,7 @@ export const mapPosition = (
     unrealizedPnl: pos.unrealizedPnl,
     accruedFunding: new Big(pos.cumFunding.sinceOpen).neg().toFixed(),
     leverage: ap.position.leverage.value,
-    marginUsed,
+    marginUsed: pos.marginUsed,
     initialMarginRequirement: positionValue.div(leverage).toFixed(),
     marginMode,
   }

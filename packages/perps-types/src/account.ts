@@ -1,4 +1,4 @@
-import type { Asset } from './asset.js'
+import type { Asset, AssetDisplay } from './asset.js'
 import type {
   ActionType,
   ActivityType,
@@ -57,8 +57,10 @@ export interface Position {
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
-   * Margin allocated and reserved by this position as a decimal string,
-   * excluding unrealized PnL.
+   * Margin allocated and reserved by this position as a decimal string. Most
+   * venues report it without unrealized PnL. A Hyperliquid isolated position
+   * reports venue position equity instead, so its value includes the
+   * unrealized PnL of that position.
    */
   marginUsed: string
   /**
@@ -151,12 +153,6 @@ export interface Balance {
   valueUsd: string
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
-  /**
-   * Fraction of `valueUsd` that backs available margin (a loan-to-value
-   * ratio). Absent means 1 — full value. Set below 1 for collateral the
-   * venue haircuts; ignored on non-collateral balances.
-   */
-  collateralWeight?: number
 }
 
 /**
@@ -200,6 +196,25 @@ export interface AccountSummary {
   marginUsed: string
   /** Aggregate unrealized PnL in USD. */
   unrealizedPnl: string
+}
+
+/**
+ * The amount an account can still buy or sell on one market, in that market's
+ * margin asset. The order panel reads this per-market figure. It differs from
+ * {@link AccountSummary.availableMargin}, which stays account-scoped.
+ *
+ * @public
+ */
+export interface AvailableToTrade {
+  providerId: string
+  /** The market this figure applies to, equal to `Market.id`. */
+  marketId: string
+  /** The market's margin asset, which both amounts are denominated in. */
+  asset: AssetDisplay
+  /** Amount the account can still buy, represented as a decimal string. */
+  buy: string
+  /** Amount the account can still sell, represented as a decimal string. */
+  sell: string
 }
 
 /**
@@ -504,6 +519,36 @@ export interface HyperliquidBuilderFeeApproval {
 }
 
 /**
+ * Hyperliquid `marginSummary` block, copied from the venue wire response.
+ * Every member is a decimal string in quote-asset units.
+ *
+ * @public
+ */
+export interface HyperliquidMarginSummary {
+  /** Total equity: locked margin and unrealized PnL included. */
+  accountValue: string
+  totalNtlPos: string
+  totalRawUsd: string
+  totalMarginUsed: string
+}
+
+/**
+ * Venue account figures for one Hyperliquid perps sub-dex.
+ *
+ * @public
+ */
+export interface HyperliquidDexAccountState {
+  /** Sub-dex name; the empty string is the main perps dex. */
+  dex: string
+  /** Whole account, cross and isolated positions together. */
+  marginSummary: HyperliquidMarginSummary
+  /** Cross-margin subset of {@link HyperliquidDexAccountState.marginSummary}. */
+  crossMarginSummary: HyperliquidMarginSummary
+  crossMaintenanceMarginUsed: string
+  withdrawable: string
+}
+
+/**
  * Hyperliquid account configuration returned in {@link AccountResponse.config}.
  *
  * @public
@@ -514,6 +559,14 @@ export interface HyperliquidAccountConfig {
   abstractionMode: string | null
   agents: HyperliquidAgent[]
   builderFeeApproval?: HyperliquidBuilderFeeApproval
+  /** One entry per perps sub-dex that still has a live market. */
+  dexStates: HyperliquidDexAccountState[]
+  /**
+   * Venue buying power: the quote-asset entry of the spot
+   * `tokenToAvailableAfterMaintenance` list. Unified and portfolio-margin
+   * accounts only; other modes derive buying power from `marginSummary`.
+   */
+  availableAfterMaintenance?: string
 }
 
 /**
@@ -561,6 +614,16 @@ export interface LighterAccountConfig {
    */
   accountType: number
   /**
+   * Lighter `available_balance`: venue buying power for the whole account,
+   * already marked to market. A decimal string in quote-asset units.
+   */
+  availableBalance: string
+  /**
+   * Lighter `total_asset_value`: total account equity, isolated allocations
+   * and unrealized PnL included. A decimal string in quote-asset units.
+   */
+  totalAssetValue: string
+  /**
    * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
    * `changeAccountTier` accepts. Absent on an unauthenticated read, which
    * fetches no limits.
@@ -589,6 +652,27 @@ export interface LighterAccountConfig {
 }
 
 /**
+ * Ondo `MarginAccountBalanceSummary` figures, copied from the venue wire
+ * response. Every member is a decimal string in quote-asset units. Ondo
+ * publishes two invariants: `marginBalance = walletBalance + unrealizedPnl`
+ * and `availableMargin = marginBalance - usedMargin`.
+ *
+ * @public
+ */
+export interface OndoAccountBalance {
+  /** Collateral only: locked margin included, unrealized PnL excluded. */
+  walletBalance: string
+  unrealizedPnl: string
+  /** Total equity. */
+  marginBalance: string
+  usedMargin: string
+  /** Venue buying power. */
+  availableMargin: string
+  /** Venue withdrawable figure, at or below {@link OndoAccountBalance.availableMargin}. */
+  withdrawableMargin: string
+}
+
+/**
  * Ondo account/session configuration returned in {@link AccountResponse.config}.
  * Expiry values are Unix timestamps in seconds.
  *
@@ -597,6 +681,8 @@ export interface LighterAccountConfig {
 export interface OndoAccountConfig {
   provider: 'ondo'
   loggedIn: boolean
+  /** Venue balance figures. Absent when logged out, which reads no balance. */
+  balance?: OndoAccountBalance
   /** Unix seconds. Present iff `loggedIn === true`. The token itself never appears here. */
   authTokenExpiry?: number
   /** Venue terms accepted, inferred from the login token's `newAccount` flag. Always `false` when logged out. */

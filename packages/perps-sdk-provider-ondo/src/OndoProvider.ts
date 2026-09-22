@@ -20,6 +20,8 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
@@ -111,7 +113,9 @@ import {
   mapOpenPositions,
   mapOrder,
   mapWithdrawalActivity,
+  ondoWithdrawableBalances,
   positionMarginConstraints,
+  requireOndoCollateralAsset,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
 import {
@@ -321,19 +325,7 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const collateralAsset = providers
-            .find((provider) => provider.key === ONDO_PROVIDER_KEY)
-            ?.categories.find(
-              (category) => category.id === ONDO_PROVIDER_KEY
-            )?.quoteAsset
-          if (collateralAsset === null || collateralAsset === undefined) {
-            const error = new PerpsError(
-              PerpsErrorCode.SDKError,
-              'Ondo provider metadata is missing its collateral asset'
-            )
-            error.tool = ONDO_PROVIDER_KEY
-            throw error
-          }
+          const collateralAsset = requireOndoCollateralAsset(providers)
 
           const positions: Position[] = mapOpenPositions(
             rawPositions ?? [],
@@ -341,7 +333,7 @@ export const ondoProvider = (
           )
 
           // The backend owns the collateral identity; the venue supplies its
-          // gross wallet balance (locked margin in, unrealized PnL out).
+          // wallet balance (locked margin in, unrealized PnL out).
           return {
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
@@ -371,8 +363,38 @@ export const ondoProvider = (
               apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
               depositAddress,
+              balance: {
+                walletBalance: balance.walletBalance,
+                unrealizedPnl: balance.unrealizedPnl,
+                marginBalance: balance.marginBalance,
+                usedMargin: balance.usedMargin,
+                availableMargin: balance.availableMargin,
+                withdrawableMargin: balance.withdrawableMargin,
+              },
             },
           }
+        }
+      )
+    },
+
+    async getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      return withSession(
+        params.address,
+        (): ProviderWithdrawableBalance[] => [],
+        async (token) => {
+          const [{ providers }, balance] = await Promise.all([
+            getProviders(requireClient(), opts),
+            apiClient(opts).get<OndoBalanceSummary>('/v1/perps/balance', {
+              authToken: token.token,
+            }),
+          ])
+          return ondoWithdrawableBalances(
+            requireOndoCollateralAsset(providers).id,
+            balance
+          )
         }
       )
     },
@@ -897,11 +919,8 @@ export const ondoProvider = (
       )
     },
 
-    getAccountSummary(
-      account: AccountResponse,
-      positions: Position[]
-    ): AccountSummary {
-      return getAccountSummary(account, positions)
+    getAccountSummary(account: AccountResponse): AccountSummary {
+      return getAccountSummary(account)
     },
 
     formatOrderPrice,

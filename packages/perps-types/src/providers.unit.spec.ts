@@ -258,6 +258,25 @@ const hyperliquidConfig: HyperliquidAccountConfig = {
     maxFeeRate: '50',
     approved: true,
   },
+  dexStates: [
+    {
+      dex: '',
+      marginSummary: {
+        accountValue: '1000',
+        totalNtlPos: '500',
+        totalRawUsd: '500',
+        totalMarginUsed: '50',
+      },
+      crossMarginSummary: {
+        accountValue: '1000',
+        totalNtlPos: '500',
+        totalRawUsd: '500',
+        totalMarginUsed: '50',
+      },
+      crossMaintenanceMarginUsed: '25',
+      withdrawable: '950',
+    },
+  ],
 }
 
 // abstractionMode: null is valid (account has never had abstraction set).
@@ -265,6 +284,7 @@ const hyperliquidConfigUnset: HyperliquidAccountConfig = {
   provider: 'hyperliquid',
   abstractionMode: null,
   agents: [{ address: '0xabc', validUntil: 123 }],
+  dexStates: [],
 }
 
 const lighterConfig: LighterAccountConfig = {
@@ -273,6 +293,8 @@ const lighterConfig: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  availableBalance: '100',
+  totalAssetValue: '500',
   accountTradingMode: 0,
   assetCollateral: [],
   readOnlyTokenApproved: false,
@@ -286,6 +308,8 @@ const lighterConfigRoApproved: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  availableBalance: '100',
+  totalAssetValue: '500',
   accountTradingMode: 0,
   assetCollateral: [],
   readOnlyTokenApproved: true,

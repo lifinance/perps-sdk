@@ -1,5 +1,27 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 27.0.0
+
+### Major Changes
+
+- [#495](https://github.com/lifinance/perps-sdk/pull/495) [`320fad6`](https://github.com/lifinance/perps-sdk/commit/320fad69a055123912aff324da08f87134035a39) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read the Ondo and Lighter account summaries from the venue figures, and delete the shared collateral calculator.
+
+  `summarizeAccount` and `CollateralSemantics` are removed from `@lifi/perps-sdk`. Every provider now reports the figures its venue publishes, so no caller needs the shared derivation. `Balance.collateralWeight` is removed from `@lifi/perps-types` because no provider populates it.
+
+  `OndoAccountConfig` gains an optional `balance` of the new `OndoAccountBalance` type, which carries the venue `walletBalance`, `unrealizedPnl`, `marginBalance`, `usedMargin`, `availableMargin` and `withdrawableMargin`. The Ondo `getAccountSummary` reads `portfolioValue` from `marginBalance`, `availableMargin` from `availableMargin`, `marginUsed` from `usedMargin` and `unrealizedPnl` from `unrealizedPnl`. A logged-out account carries no venue balance and summarizes as zero. The Ondo WebSocket `accountSummary` channel emits the same four figures and re-reads the venue balance on a fills or positions frame, instead of recomputing them from the positions.
+
+  `LighterAccountConfig` gains the required `availableBalance` and `totalAssetValue`, copied from the venue `available_balance` and `total_asset_value`. The Lighter `getAccountSummary` reads `availableMargin` from `availableBalance` and `portfolioValue` from `totalAssetValue`; the positions supply only `marginUsed` and `unrealizedPnl`. The previous `cross_asset_value` minus `cross_initial_margin_requirement` derivation is removed, and the Lighter collateral row now carries `available_balance`.
+
+  `@lifi/perps-sdk` exports the `DecodeChain` frame-ordering helper. The Ondo WebSocket provider pushes the account-summary balance re-read onto a `'latest'` chain, so a fills frame and a positions frame that arrive together coalesce to one read and cannot apply out of order.
+
+### Patch Changes
+
+- [#494](https://github.com/lifinance/perps-sdk/pull/494) [`b49efcc`](https://github.com/lifinance/perps-sdk/commit/b49efcc12365bd16cf7837232fbfb17b69b3db6e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a per-market available-to-trade read. `PerpsClient.getAvailableToTrade` reports the amounts an account can still buy and sell on one market, in that market's margin asset. The Hyperliquid provider reads the figure from `activeAssetData` and streams it on the new `availableToTrade` WebSocket channel. Every other provider falls back to the account summary `availableMargin`. The Lighter and Ondo WebSocket providers reject the new channel, which they do not stream.
+
+- Updated dependencies [[`bb1a973`](https://github.com/lifinance/perps-sdk/commit/bb1a97350f9e7c7111b701174b9dbd722914a276), [`320fad6`](https://github.com/lifinance/perps-sdk/commit/320fad69a055123912aff324da08f87134035a39), [`b49efcc`](https://github.com/lifinance/perps-sdk/commit/b49efcc12365bd16cf7837232fbfb17b69b3db6e), [`4e5744c`](https://github.com/lifinance/perps-sdk/commit/4e5744ce70d000ce568932823b27d1309bdd719c)]:
+  - @lifi/perps-sdk@16.0.0
+  - @lifi/perps-types@15.0.0
+
 ## 26.0.0
 
 ### Major Changes

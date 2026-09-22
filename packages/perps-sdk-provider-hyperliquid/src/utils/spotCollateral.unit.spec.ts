@@ -23,51 +23,27 @@ describe('partitionSpotBalances', () => {
   it('classifies a quote asset as full-value collateral', () => {
     const { collateralBalances, balances } = partitionSpotBalances(
       [bal('0', 'USDC', '1000')],
-      quoteAssetIds,
-      false
+      quoteAssetIds
     )
     expect(balances).toHaveLength(0)
     expect(collateralBalances).toHaveLength(1)
-    expect(collateralBalances[0].collateralWeight).toBeUndefined()
+    expect(collateralBalances[0].valueUsd).toBe('1000')
   })
 
-  it('weights HYPE and BTC as collateral at LTV 0.5 under portfolio margin', () => {
+  it('keeps every non-quote token as a flat holding', () => {
     const { collateralBalances, balances } = partitionSpotBalances(
       [bal('150', 'HYPE', '6000'), bal('197', 'UBTC', '4000')],
-      quoteAssetIds,
-      true
-    )
-    expect(balances).toHaveLength(0)
-    expect(collateralBalances.map((b) => b.collateralWeight)).toEqual([
-      0.5, 0.5,
-    ])
-  })
-
-  it('keeps HYPE/BTC as flat holdings when not portfolio margin', () => {
-    const { collateralBalances, balances } = partitionSpotBalances(
-      [bal('150', 'HYPE', '6000')],
-      quoteAssetIds,
-      false
+      quoteAssetIds
     )
     expect(collateralBalances).toHaveLength(0)
-    expect(balances).toHaveLength(1)
-  })
-
-  it('never treats a non-eligible token as collateral', () => {
-    const { collateralBalances, balances } = partitionSpotBalances(
-      [bal('254', 'USOL', '500')],
-      quoteAssetIds,
-      true
-    )
-    expect(collateralBalances).toHaveLength(0)
-    expect(balances).toHaveLength(1)
+    expect(balances).toHaveLength(2)
+    expect(balances.map((b) => b.valueUsd)).toEqual(['6000', '4000'])
   })
 
   it('omits zero-unit rows from both partitions', () => {
     const { collateralBalances, balances } = partitionSpotBalances(
       [bal('0', 'USDC', '0'), bal('150', 'HYPE', '0'), bal('254', 'USOL', '0')],
-      quoteAssetIds,
-      true
+      quoteAssetIds
     )
 
     expect(collateralBalances).toEqual([])

@@ -1,4 +1,5 @@
 import {
+  DecodeChain,
   getMarketRegistry,
   isActiveMarket,
   isActiveOrderStatus,
@@ -10,7 +11,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type SubscriptionListener,
-  summarizeAccount,
+  toAssetDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
@@ -19,7 +20,6 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import type {
-  AccountResponse,
   Balance,
   MarketContext,
   Order,
@@ -37,9 +37,11 @@ import {
   SPOT_MARKET_ID,
 } from '../constants.js'
 import type {
+  HlActiveAssetData,
   HlAssetPosition,
   HlOrderDetail,
   HlOrderStatusResponse,
+  HlSpotClearinghouseState,
   HlUserFill,
   HlWsActiveAssetCtxData,
   HlWsActiveSpotAssetCtxData,
@@ -75,18 +77,28 @@ import {
   mapOrder,
   mapPosition,
   partitionSpotBalances,
+  perpsTotals,
   priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
+  sumUnrealizedPnl,
 } from '../utils/index.js'
-import { DecodeChain } from './decodeChain.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
 
 const normalizeHlAddress = (address: string): string =>
   isAddress(address, { strict: false }) ? address.toLowerCase() : address
+
+/** Venue buying power for the asset the main perps dex settles in. */
+const availableAfterMaintenance = (
+  spotState: { tokenToAvailableAfterMaintenance?: readonly [number, string][] },
+  quoteAssetId: string | undefined
+): string | undefined =>
+  spotState.tokenToAvailableAfterMaintenance?.find(
+    ([token]) => String(token) === quoteAssetId
+  )?.[1]
 
 /**
  * `WsProviderFactory` constructor for Hyperliquid — pass to
@@ -147,11 +159,16 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     {
       releaseSpot: Promise<() => void>
       spot?: { collateralBalances: Balance[]; balances: Balance[] }
+      availableMargin?: string
+      availableMarginPending?: boolean
     }
   >()
   // Kept outside the pipeline entry: the first clearinghouse frame lands
   // while the mode read is still pending, before the pipeline exists.
-  private readonly latestPositionsByUser = new Map<string, Position[]>()
+  private readonly latestPerpsByUser = new Map<
+    string,
+    { positions: Position[]; marginUsed: string }
+  >()
   private readonly heldSummaryByUser = new Map<
     string,
     {
@@ -273,7 +290,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       (sub.channel === 'marketContext' ||
         sub.channel === 'orderbook' ||
         sub.channel === 'candle' ||
-        sub.channel === 'trades')
+        sub.channel === 'trades' ||
+        sub.channel === 'availableToTrade')
     ) {
       this.registry.requireActive(sub.marketId)
     }
@@ -331,7 +349,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           // subscription so a resubscribe reflects an account-mode change.
           this.abstractionByUser.delete(user)
           this.heldSummaryByUser.delete(user)
-          this.latestPositionsByUser.delete(user)
+          this.latestPerpsByUser.delete(user)
           this.syncUnifiedPipeline(user, user, null)
           this.unregisterSub(wireKey)
           this.rws.send(
@@ -506,6 +524,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return `accountSummary:${sub.address.toLowerCase()}`
       case 'spotBalances':
         return `spotState:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        return `activeAssetData:${sub.address.toLowerCase()}:${sub.marketId}`
     }
   }
 
@@ -581,6 +601,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
       case 'spotBalances':
         return { type: 'spotState', user: normalizeHlAddress(sub.address) }
+      case 'availableToTrade':
+        return {
+          type: 'activeAssetData',
+          user: normalizeHlAddress(sub.address),
+          coin: sub.marketId,
+        }
     }
   }
 
@@ -655,6 +681,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'spotState':
           this.handleSpotState(msg.data as HlWsSpotStateData)
+          break
+        case 'activeAssetData':
+          this.handleActiveAssetData(msg.data as HlActiveAssetData)
           break
       }
     } catch (error) {
@@ -1130,30 +1159,26 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       data: positions,
     })
 
-    this.latestPositionsByUser.set(data.user.toLowerCase(), positions)
-    this.emitUnifiedSummary(data.user.toLowerCase())
-
-    let accountValue = 0
-    let marginUsed = 0
-    for (const [, state] of data.clearinghouseStates) {
-      accountValue +=
-        Number.parseFloat(state.marginSummary?.accountValue ?? '') || 0
-      marginUsed +=
-        Number.parseFloat(state.marginSummary?.totalMarginUsed ?? '') || 0
-    }
-    const unrealizedPnl = positions.reduce(
-      (sum, p) => sum + (Number.parseFloat(p.unrealizedPnl) || 0),
-      0
+    const { accountValue, marginUsed } = perpsTotals(
+      data.clearinghouseStates.map(([, state]) => state)
     )
+
+    const key = data.user.toLowerCase()
+    this.latestPerpsByUser.set(key, {
+      positions,
+      marginUsed: marginUsed.toFixed(),
+    })
+    this.emitUnifiedSummary(key)
+
     // Equity semantics, matching the REST summary: `accountValue` already
     // carries locked margin and unrealized PnL. Spot balances stream apart,
     // so this portfolio value covers perps equity only — which is why the
     // frame is gated on the abstraction mode below.
     this.emitSummaryIfModeAllows(data.user, {
-      portfolioValue: accountValue.toString(),
-      availableMargin: (accountValue - marginUsed).toString(),
-      marginUsed: marginUsed.toString(),
-      unrealizedPnl: unrealizedPnl.toString(),
+      portfolioValue: accountValue.toFixed(),
+      availableMargin: accountValue.minus(marginUsed).toFixed(),
+      marginUsed: marginUsed.toFixed(),
+      unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
     })
   }
 
@@ -1219,24 +1244,32 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private emitUnifiedSummary(key: string) {
     const pipeline = this.unifiedSummaryByUser.get(key)
-    const positions = this.latestPositionsByUser.get(key)
+    const perps = this.latestPerpsByUser.get(key)
     // Both envelopes must have arrived: a spot-only summary would report
     // zero margin used against real positions.
-    if (pipeline?.spot === undefined || positions === undefined) {
+    if (
+      pipeline?.spot === undefined ||
+      pipeline.availableMargin === undefined ||
+      perps === undefined
+    ) {
       return
     }
-    const summary = summarizeAccount(
-      // summarizeAccount reads only the two balance lists.
-      {
-        collateralBalances: pipeline.spot.collateralBalances,
-        balances: pipeline.spot.balances,
-      } as AccountResponse,
-      positions,
-      'gross'
+    const portfolioValue = [
+      ...pipeline.spot.collateralBalances,
+      ...pipeline.spot.balances,
+    ].reduce(
+      (sum, balance) =>
+        sum.plus(toWireBig(balance.valueUsd, 'spotBalance.valueUsd')),
+      new Big(0)
     )
     this.emit(`accountSummary:${key}`, {
       channel: 'accountSummary',
-      data: summary,
+      data: {
+        portfolioValue: portfolioValue.toFixed(),
+        availableMargin: pipeline.availableMargin,
+        marginUsed: perps.marginUsed,
+        unrealizedPnl: sumUnrealizedPnl(perps.positions).toFixed(),
+      },
     })
   }
 
@@ -1334,6 +1367,27 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
   }
 
+  private handleActiveAssetData(data: HlActiveAssetData) {
+    const market = this.registry?.get(data.coin)
+    if (market === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `[${this.providerKey}] activeAssetData frame names unknown market '${data.coin}'.`
+      )
+    }
+    const [buy, sell] = data.availableToTrade
+    this.emit(`activeAssetData:${data.user.toLowerCase()}:${data.coin}`, {
+      channel: 'availableToTrade',
+      data: {
+        providerId: market.providerId,
+        marketId: market.id,
+        asset: toAssetDisplay(market.quoteAsset),
+        buy,
+        sell,
+      },
+    })
+  }
+
   private handleSpotState(data: HlWsSpotStateData) {
     const user = data.user.toLowerCase()
     const markets = this.registry?.activeMarkets ?? []
@@ -1360,19 +1414,65 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const pipeline = this.unifiedSummaryByUser.get(user)
     if (pipeline !== undefined) {
       const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
-      const entry = this.abstractionByUser.get(user)
-      const portfolioMargin =
-        entry !== undefined &&
-        entry !== 'pending' &&
-        entry.mode === HlAbstractionMode.PORTFOLIO_MARGIN
       // Same partition as getAccount so REST and WS agree on collateral.
       pipeline.spot = partitionSpotBalances(
         rows.map(({ balance }) => balance),
-        quoteAssetIds,
-        portfolioMargin
+        quoteAssetIds
       )
+      const settlementAssetId = markets.find(
+        (m) => m.categoryId === this.providerKey
+      )?.quoteAsset.id
+      const available = availableAfterMaintenance(
+        data.spotState,
+        settlementAssetId
+      )
+      if (available === undefined) {
+        this.fetchAvailableAfterMaintenance(user, data.user, settlementAssetId)
+      } else {
+        pipeline.availableMargin = available
+      }
       this.emitUnifiedSummary(user)
     }
+  }
+
+  /** Read the venue buying power over REST when the spot frame omits it. */
+  private fetchAvailableAfterMaintenance(
+    key: string,
+    user: string,
+    quoteAssetId: string | undefined
+  ) {
+    const client = this.client
+    const pipeline = this.unifiedSummaryByUser.get(key)
+    if (
+      client === undefined ||
+      pipeline === undefined ||
+      pipeline.availableMarginPending
+    ) {
+      return
+    }
+    pipeline.availableMarginPending = true
+    infoRequest<HlSpotClearinghouseState>(
+      DEFAULT_HYPERLIQUID_API_URL,
+      { type: 'spotClearinghouseState', user },
+      hlInfoOptions(client)
+    ).then(
+      (state) => {
+        const current = this.unifiedSummaryByUser.get(key)
+        if (current === undefined) {
+          return
+        }
+        current.availableMarginPending = false
+        current.availableMargin = availableAfterMaintenance(state, quoteAssetId)
+        this.emitUnifiedSummary(key)
+      },
+      (error) => {
+        const current = this.unifiedSummaryByUser.get(key)
+        if (current !== undefined) {
+          current.availableMarginPending = false
+        }
+        wsLog.handlerFailure(this.providerKey, error)
+      }
+    )
   }
 }
 
@@ -1598,6 +1698,13 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
         typeof data.user === 'string' &&
         isObject(data.spotState) &&
         Array.isArray(data.spotState.balances)
+      )
+    case 'activeAssetData':
+      return (
+        typeof data.user === 'string' &&
+        typeof data.coin === 'string' &&
+        Array.isArray(data.availableToTrade) &&
+        data.availableToTrade.length === 2
       )
     default:
       return true

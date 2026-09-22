@@ -1,4 +1,5 @@
 import {
+  DecodeChain,
   getMarketRegistry,
   localStorageAdapter,
   type MarketRegistry,
@@ -18,6 +19,7 @@ import {
 import type {
   MarketContext,
   MarketDisplay,
+  OndoAccountBalance,
   PerpsMarketDisplay,
   Subscription,
 } from '@lifi/perps-types'
@@ -131,13 +133,20 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   private readonly authWireRefs = new Map<string, number>()
 
   /**
-   * Running account-summary inputs while `accountSummary` is subscribed
-   * (`undefined` otherwise). `walletBalance` is REST-seeded and refreshed on
-   * fills; `marginUsed`/`unrealizedPnl` track the latest positions frame.
+   * Latest venue balance figures while `accountSummary` is subscribed
+   * (`undefined` otherwise). REST-seeded, then re-read on every fills and
+   * positions frame, which is what moves them.
    */
-  private accountSummary:
-    | { walletBalance: number; marginUsed: number; unrealizedPnl: number }
-    | undefined
+  private accountSummary: OndoAccountBalance | undefined
+
+  /**
+   * Serializes the balance re-read: a single trade event emits a fills frame
+   * and a positions frame together, and two concurrent REST reads can resolve
+   * out of order. `'latest'` coalesces the backlog to one trailing refresh.
+   */
+  private readonly accountSummaryChain = new DecodeChain('latest', (err) =>
+    wsLog.handlerFailure(this.providerKey, err)
+  )
 
   /** Complete (mark-price-bearing) contexts, keyed by venue market symbol. */
   private contexts: Record<string, MarketContext> = {}
@@ -215,6 +224,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       case 'accountSummary':
       case 'spotBalances':
         return `${sub.channel}:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        throw new Error(`Ondo WS does not support channel: ${sub.channel}.`)
     }
   }
 
@@ -269,6 +280,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return () => {
       if (sub.channel === 'accountSummary') {
         this.accountSummary = undefined
+        this.accountSummaryChain.reset()
       }
       for (const [key, state] of wireSubs) {
         this.releaseWire(key, state, needsLogin)
@@ -484,6 +496,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
           ],
         ]
       case 'spotBalances':
+      case 'availableToTrade':
         return []
     }
   }
@@ -530,62 +543,60 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   /**
-   * Seed the account-summary inputs from the REST balance so the first emit is
-   * complete before any positions frame lands. Throws {@link
+   * Seed the account-summary figures from the REST balance so the first emit
+   * is complete before any positions frame lands. Throws {@link
    * OndoSessionExpiredError} when the SIWE session is missing, matching the
    * other authenticated channels.
    */
   private async seedAccountSummary(address: Address): Promise<void> {
     const token = await this.requireSession(address)
-    const balance = await this.restClient().get<OndoBalanceSummary>(
-      '/v1/perps/balance',
-      { authToken: token.token }
-    )
-    this.accountSummary = {
-      walletBalance: Number.parseFloat(balance.walletBalance) || 0,
-      marginUsed: Number.parseFloat(balance.usedMargin) || 0,
-      unrealizedPnl: Number.parseFloat(balance.unrealizedPnl) || 0,
-    }
+    this.accountSummary = await this.readBalance(token.token)
     this.emitAccountSummary()
   }
 
-  /** Re-pull the wallet balance (moved by the fill) and re-emit the summary. */
-  private async refreshAccountSummaryBalance(address: Address): Promise<void> {
+  /** Re-read the venue balance moved by the frame and re-emit the summary. */
+  private async refreshAccountSummary(address: Address): Promise<void> {
     const token = await this.tokenStore.get(address)
     if (token === null || this.accountSummary === undefined) {
       return
     }
-    const balance = await this.restClient().get<OndoBalanceSummary>(
-      '/v1/perps/balance',
-      { authToken: token.token }
-    )
+    const balance = await this.readBalance(token.token)
     if (this.accountSummary === undefined) {
       return
     }
-    this.accountSummary.walletBalance =
-      Number.parseFloat(balance.walletBalance) || 0
+    this.accountSummary = balance
     this.emitAccountSummary()
   }
 
-  /**
-   * Emit the current account summary. Gross semantics: `walletBalance` is the
-   * collateral, the positions carry unrealized PnL, so it counts toward buying
-   * power (`availableMargin = walletBalance + unrealizedPnl − marginUsed`).
-   */
+  private async readBalance(authToken: string): Promise<OndoAccountBalance> {
+    const balance = await this.restClient().get<OndoBalanceSummary>(
+      '/v1/perps/balance',
+      { authToken }
+    )
+    return {
+      walletBalance: balance.walletBalance,
+      unrealizedPnl: balance.unrealizedPnl,
+      marginBalance: balance.marginBalance,
+      usedMargin: balance.usedMargin,
+      availableMargin: balance.availableMargin,
+      withdrawableMargin: balance.withdrawableMargin,
+    }
+  }
+
+  /** Emit the current account summary from the venue balance figures. */
   private emitAccountSummary(): void {
-    const summary = this.accountSummary
+    const balance = this.accountSummary
     const address = this.accountAddress
-    if (summary === undefined || address === undefined) {
+    if (balance === undefined || address === undefined) {
       return
     }
-    const portfolioValue = summary.walletBalance + summary.unrealizedPnl
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
-        portfolioValue: portfolioValue.toString(),
-        availableMargin: (portfolioValue - summary.marginUsed).toString(),
-        marginUsed: summary.marginUsed.toString(),
-        unrealizedPnl: summary.unrealizedPnl.toString(),
+        portfolioValue: balance.marginBalance,
+        availableMargin: balance.availableMargin,
+        marginUsed: balance.usedMargin,
+        unrealizedPnl: balance.unrealizedPnl,
       },
     })
   }
@@ -792,8 +803,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
     if (this.accountSummary !== undefined) {
-      this.refreshAccountSummaryBalance(address as Address).catch((err) =>
-        wsLog.handlerFailure(this.providerKey, err)
+      this.accountSummaryChain.push(() =>
+        this.refreshAccountSummary(address as Address)
       )
     }
   }
@@ -818,15 +829,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       data: mapped,
     })
     if (this.accountSummary !== undefined) {
-      let marginUsed = 0
-      let unrealizedPnl = 0
-      for (const position of positions) {
-        marginUsed += Number.parseFloat(position.usedMargin) || 0
-        unrealizedPnl += Number.parseFloat(position.unrealizedPnl) || 0
-      }
-      this.accountSummary.marginUsed = marginUsed
-      this.accountSummary.unrealizedPnl = unrealizedPnl
-      this.emitAccountSummary()
+      this.accountSummaryChain.push(() =>
+        this.refreshAccountSummary(address as Address)
+      )
     }
   }
 }

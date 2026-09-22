@@ -5,6 +5,7 @@ import type {
   Asset,
   CreateActionRequest,
   CreateActionResponse,
+  Eip712ActionStep,
   Eip712SignedActionStep,
   ExecuteActionRequest,
   ExecuteActionResponse,
@@ -31,7 +32,12 @@ import {
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import type { Address, EIP1193RequestFn, Hex } from 'viem'
-import { createWalletClient, custom, http as viemHttp } from 'viem'
+import {
+  createWalletClient,
+  custom,
+  recoverTypedDataAddress,
+  http as viemHttp,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -193,6 +199,211 @@ describe('PerpsClient', () => {
         throw new Error('expected success')
       }
       expect(first.orderId).toBe('neworder123')
+    })
+  })
+
+  describe('mixed-descriptor createAction batch', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const userAccount = privateKeyToAccount(`0x${'44'.repeat(32)}` as Hex)
+    const orderParams = {
+      market: MARKET,
+      side: OrderSide.BUY,
+      type: OrderType.MARKET,
+      size: '0.1',
+      price: '95000.00',
+    } as const
+
+    // A Hyperliquid `placeOrder` batch can arrive with a USER-signed
+    // APPROVE_BUILDER_FEE step prepended to the SDK-signed PLACE_ORDER step.
+    const builderFeeStep: Eip712ActionStep = {
+      action: ActionType.APPROVE_BUILDER_FEE,
+      typedData: {
+        domain: {
+          name: 'HyperliquidSignTransaction',
+          version: '1',
+          chainId: 42161,
+          verifyingContract: '0x0000000000000000000000000000000000000000',
+        },
+        types: {
+          'HyperliquidTransaction:ApproveBuilderFee': [
+            { name: 'hyperliquidChain', type: 'string' },
+            { name: 'maxFeeRate', type: 'string' },
+            { name: 'builder', type: 'address' },
+            { name: 'nonce', type: 'uint64' },
+          ],
+        },
+        primaryType: 'HyperliquidTransaction:ApproveBuilderFee',
+        message: {
+          hyperliquidChain: 'Mainnet',
+          maxFeeRate: '0.1%',
+          builder: '0x1234567890123456789012345678901234567890',
+          nonce: 1700000000000,
+        },
+      },
+    }
+    const placeOrderStep = mockCreateOrderResponse
+      .actions[0] as Eip712ActionStep
+
+    function stageBatch(actions: ActionStep[]) {
+      const executeCalls: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({ actions } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executeCalls.push(body)
+          return HttpResponse.json({
+            results: body.actions.map((step) => ({
+              action: step.action,
+              success: true,
+            })),
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      return executeCalls
+    }
+
+    // `bindProvider` spreads the plugin into the runtime provider, so the spy
+    // has to be installed before the client is constructed.
+    async function mixedClient() {
+      const plugin = createTestAgentProvider({ type: provider })
+      const signActions = vi.spyOn(plugin, 'signActions')
+      const perps = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [plugin],
+      })
+      const agentAddress = await plugin.createAgent(userAccount.address)
+      perps.setUserWallet(
+        createWalletClient({
+          account: userAccount,
+          chain: mainnet,
+          transport: viemHttp(),
+        })
+      )
+      return { agentAddress, perps, signActions }
+    }
+
+    const recoverSigner = (
+      step: Eip712ActionStep,
+      signed: SignedActionStep
+    ): Promise<Address> =>
+      recoverTypedDataAddress({
+        domain: step.typedData.domain,
+        types: step.typedData.types,
+        primaryType: step.typedData.primaryType,
+        message: step.typedData.message,
+        signature: (signed as Eip712SignedActionStep).signature,
+      })
+
+    it('signs each step with its own descriptor signer and keeps the order', async () => {
+      const { agentAddress, perps } = await mixedClient()
+      const executeCalls = stageBatch([builderFeeStep, placeOrderStep])
+
+      await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      const [submitted] = executeCalls
+      expect(submitted.actions.map((step) => step.action)).toEqual([
+        ActionType.APPROVE_BUILDER_FEE,
+        ActionType.PLACE_ORDER,
+      ])
+      expect(await recoverSigner(builderFeeStep, submitted.actions[0])).toBe(
+        userAccount.address
+      )
+      expect(await recoverSigner(placeOrderStep, submitted.actions[1])).toBe(
+        agentAddress
+      )
+    })
+
+    it('calls signActions once per descriptor group with that group signers', async () => {
+      const { perps, signActions } = await mixedClient()
+      stageBatch([builderFeeStep, placeOrderStep])
+
+      await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(signActions).toHaveBeenCalledTimes(2)
+      const [firstCall, secondCall] = signActions.mock.calls
+      expect(firstCall[0]).toBe(SigningMethod.EIP712)
+      expect(firstCall[1]).toEqual([builderFeeStep])
+      expect(firstCall[3]?.signers).toEqual([PerpsSigner.USER])
+      expect(secondCall[0]).toBe(SigningMethod.EIP712)
+      expect(secondCall[1]).toEqual([placeOrderStep])
+      expect(secondCall[3]?.signers).toEqual([PerpsSigner.SDK])
+    })
+
+    it('keeps non-adjacent runs of one descriptor as separate groups in order', async () => {
+      const { perps, signActions } = await mixedClient()
+      const executeCalls = stageBatch([
+        builderFeeStep,
+        placeOrderStep,
+        builderFeeStep,
+      ])
+
+      await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(signActions).toHaveBeenCalledTimes(3)
+      expect(signActions.mock.calls.map((call) => call[1])).toEqual([
+        [builderFeeStep],
+        [placeOrderStep],
+        [builderFeeStep],
+      ])
+      expect(signActions.mock.calls.map((call) => call[3]?.signers)).toEqual([
+        [PerpsSigner.USER],
+        [PerpsSigner.SDK],
+        [PerpsSigner.USER],
+      ])
+      expect(executeCalls[0].actions.map((step) => step.action)).toEqual([
+        ActionType.APPROVE_BUILDER_FEE,
+        ActionType.PLACE_ORDER,
+        ActionType.APPROVE_BUILDER_FEE,
+      ])
+    })
+
+    it('calls signActions once for a single-descriptor batch', async () => {
+      const { perps, signActions } = await mixedClient()
+      stageBatch([placeOrderStep, placeOrderStep])
+
+      await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(signActions).toHaveBeenCalledTimes(1)
+      expect(signActions.mock.calls[0][1]).toHaveLength(2)
+    })
+
+    it('throws SDKError naming a step action the provider does not declare', async () => {
+      const { perps, signActions } = await mixedClient()
+      stageBatch([
+        placeOrderStep,
+        { ...placeOrderStep, action: ActionType.REGISTER_API_KEY },
+      ])
+
+      await expect(
+        perps.placeOrder({
+          address: userAccount.address,
+          provider,
+          ...orderParams,
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining(ActionType.REGISTER_API_KEY),
+      })
+      expect(signActions).not.toHaveBeenCalled()
     })
   })
 
@@ -491,6 +702,7 @@ describe('PerpsClient', () => {
           provider: 'hyperliquid',
           abstractionMode: status,
           agents: [],
+          dexStates: [],
         },
       }
       stubGetAccount.mockResolvedValue(account)
@@ -1315,6 +1527,117 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // getAvailableToTrade — per-market read with an account-summary fallback
+  // ---------------------------------------------------------------------------
+
+  describe('getAvailableToTrade', () => {
+    const USDC_DISPLAY = {
+      providerId: 'hyperliquid',
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: 'https://example.com/usdc.png',
+    }
+
+    const clientWith = (plugin: Partial<PerpsProviderPlugin>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          createTestAgentProvider({
+            type: provider,
+            getAccount: async () => mockAccount,
+            getAccountSummary: () => ({
+              portfolioValue: '10000.00',
+              availableMargin: '9500.00',
+              marginUsed: '500.00',
+              unrealizedPnl: '125.50',
+            }),
+            ...plugin,
+          }),
+        ],
+      })
+
+    it('falls back to the account summary availableMargin on both sides', async () => {
+      await expect(
+        clientWith({}).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).resolves.toEqual({
+        providerId: 'hyperliquid',
+        marketId: 'BTC',
+        asset: USDC_DISPLAY,
+        buy: '9500.00',
+        sell: '9500.00',
+      })
+    })
+
+    it('reports the per-market figure when the plugin implements the read', async () => {
+      const perMarket = {
+        providerId: 'hyperliquid',
+        marketId: 'BTC',
+        asset: USDC_DISPLAY,
+        buy: '431.749348',
+        sell: '182.319517',
+      }
+      const getAvailableToTrade = vi.fn(async () => perMarket)
+      const getAccount = vi.fn(async () => mockAccount)
+      await expect(
+        clientWith({ getAvailableToTrade, getAccount }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).resolves.toEqual(perMarket)
+      expect(getAvailableToTrade).toHaveBeenCalledWith(
+        { address: userAddress, marketId: 'BTC' },
+        undefined
+      )
+      expect(getAccount).not.toHaveBeenCalled()
+    })
+
+    it('falls back when the plugin read resolves undefined for the market', async () => {
+      const getAvailableToTrade = vi.fn(async () => undefined)
+      await expect(
+        clientWith({ getAvailableToTrade }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'ETH',
+        })
+      ).resolves.toMatchObject({
+        marketId: 'ETH',
+        buy: '9500.00',
+        sell: '9500.00',
+      })
+    })
+
+    it('reports an unknown market against the provider registry', async () => {
+      await expect(
+        clientWith({}).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'NOPE',
+        })
+      ).rejects.toThrow(/No hyperliquid market found for marketId 'NOPE'/)
+    })
+
+    it('reports an unregistered provider plugin', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // getWithdrawableBalances — provider route split joined with core asset metadata
   // ---------------------------------------------------------------------------
 
@@ -1448,6 +1771,48 @@ describe('PerpsClient', () => {
           withRows([{ assetId: '2', route: 'spot', available: '6.00005017' }])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([])
+    })
+
+    it('applies the venue minimum to the recorded Hyperliquid unified rows', async () => {
+      const hyperliquidAssets: Asset[] = [
+        {
+          providerId: provider,
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: '',
+          decimals: 8,
+          l1Decimals: 6,
+          l1Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+          minWithdrawalAmount: '2',
+        },
+        {
+          providerId: provider,
+          id: '73',
+          displaySymbol: 'BRIDGE',
+          logoURI: '',
+        },
+        { providerId: provider, id: '150', displaySymbol: 'HYPE', logoURI: '' },
+      ]
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '0', route: 'spot', available: '102.54975228' },
+            { assetId: '73', route: 'spot', available: '6.15' },
+            { assetId: '150', route: 'spot', available: '2.10613124' },
+            { assetId: '339', route: 'spot', available: '40.230704' },
+            { assetId: '0', route: 'perps', available: '0.6975' },
+          ]),
+          hyperliquidAssets
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        {
+          asset: hyperliquidAssets[0],
+          route: 'spot',
+          available: '102.54975228',
+        },
+        { asset: hyperliquidAssets[1], route: 'spot', available: '6.15' },
+        { asset: hyperliquidAssets[2], route: 'spot', available: '2.10613124' },
+      ])
     })
 
     it('resolves undefined when the plugin declares no withdrawable read', async () => {
@@ -3504,6 +3869,72 @@ describe('PerpsClient', () => {
       })
 
       expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('switches per descriptor group so a USER-signed group gets its own chain', async () => {
+      const { wallet } = walletOnChain(1)
+      const switched = walletOnChain(ARBITRUM)
+      const hook = vi.fn(async () => switched.wallet)
+      const agentProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [agentProvider],
+      })
+      await agentProvider.createAgent(account.address)
+      client.setUserWallet(wallet)
+      client.setSwitchChain(hook)
+
+      server.use(
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [
+              {
+                action: ActionType.APPROVE_BUILDER_FEE,
+                typedData: {
+                  domain: { chainId: ARBITRUM },
+                  types: { X: [{ name: 'x', type: 'uint256' }] },
+                  primaryType: 'X',
+                  message: { x: 0 },
+                },
+              },
+              {
+                action: ActionType.PLACE_ORDER,
+                typedData: {
+                  domain: { chainId: 1337 },
+                  types: { X: [{ name: 'x', type: 'uint256' }] },
+                  primaryType: 'X',
+                  message: { x: 0 },
+                },
+              },
+            ],
+          } satisfies CreateActionResponse)
+        ),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: body.actions.map((step) => ({
+              action: step.action,
+              success: true,
+            })),
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      await client.placeOrder({
+        address: account.address,
+        provider: 'hyperliquid',
+        market: MARKET,
+        side: OrderSide.BUY,
+        type: OrderType.MARKET,
+        size: '0.1',
+        price: '95000.00',
+      })
+
+      // Only the USER-signed group carries a chain target; the SDK-signed
+      // PLACE_ORDER group signs with the agent keypair and asks for none.
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook).toHaveBeenCalledWith(ARBITRUM)
     })
 
     it('does not call the hook when the batch carries no domain.chainId', async () => {

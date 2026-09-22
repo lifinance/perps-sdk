@@ -6,7 +6,7 @@ import {
   createPerpsClient,
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
-import { getAssetRegistry } from './assetRegistry.js'
+import { getAssetRegistry, toAssetDisplay } from './assetRegistry.js'
 
 const asset = (id: string, displaySymbol: string): Asset => ({
   providerId: 'lighter',
@@ -195,5 +195,34 @@ describe('AssetRegistry', () => {
     const registry = getAssetRegistry(freshClient(), 'lighter')
     await expect(registry.sync()).rejects.toThrow(/duplicate l1Address/)
     expect(registry.assets).toEqual([])
+  })
+})
+
+describe('toAssetDisplay', () => {
+  it('keeps identity and display fields and drops the rest', () => {
+    expect(
+      toAssetDisplay({
+        ...USDC,
+        displayName: 'USD Coin',
+        decimals: 6,
+        l1Address: `0x${'ab'.repeat(20)}`,
+        minWithdrawalAmount: '1.0',
+      })
+    ).toEqual({
+      providerId: 'lighter',
+      id: '0',
+      displaySymbol: 'USDC',
+      logoURI: 'https://example.com/USDC.svg',
+      displayName: 'USD Coin',
+    })
+  })
+
+  it('omits displayName when the asset carries none', () => {
+    expect(toAssetDisplay(ETH)).toEqual({
+      providerId: 'lighter',
+      id: '1',
+      displaySymbol: 'ETH',
+      logoURI: 'https://example.com/ETH.svg',
+    })
   })
 })

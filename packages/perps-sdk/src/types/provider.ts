@@ -8,6 +8,7 @@ import type {
   ActionType,
   ActivitiesResponse,
   ActivityType,
+  AvailableToTrade,
   FillsResponse,
   Market,
   MarketRef,
@@ -214,6 +215,17 @@ export interface ProviderGetMarketSettingsParams {
   /** The market's `id` and `categoryId`; the category identifies spot
    * markets, which carry no venue leverage state. */
   market: MarketRef
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getAvailableToTrade}.
+ *
+ * @public
+ */
+export interface ProviderGetAvailableToTradeParams {
+  address: Address
+  /** The market's opaque `Market.id` (not a display symbol). */
+  marketId: string
 }
 
 /**
@@ -430,6 +442,19 @@ export interface PerpsProviderPlugin {
     params: ProviderGetMarketSettingsParams,
     options?: SDKRequestOptions
   ): Promise<MarketSettings | undefined>
+
+  /**
+   * The amounts the account can still buy and sell on one market, in that
+   * market's margin asset. Optional because venues expose this unevenly:
+   * Hyperliquid reads it directly (`activeAssetData`), other venues publish
+   * only an account-scoped figure. `undefined` means the venue has nothing
+   * to read for this market, and the caller falls back to the account
+   * summary.
+   */
+  getAvailableToTrade?(
+    params: ProviderGetAvailableToTradeParams,
+    options?: SDKRequestOptions
+  ): Promise<AvailableToTrade | undefined>
 
   getOrders(
     params: ProviderGetOrdersParams,

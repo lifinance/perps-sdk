@@ -494,6 +494,22 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('rejects availableToTrade which Ondo does not expose', async () => {
+      const p = makeProvider()
+      await expect(
+        p.subscribe(
+          {
+            channel: 'availableToTrade',
+            dex: 'ondo',
+            address: '0x1234567890123456789012345678901234567890',
+            marketId: 'AAPL-USD.P',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow(/does not support channel: availableToTrade/)
+      p.close()
+    })
+
     it('maps kline updates onto the candle event, recovering the interval from the bar span', () => {
       const p = makeProvider()
       const listener = vi.fn()
@@ -1141,7 +1157,7 @@ describe('OndoWsProvider', () => {
     })
   })
 
-  describe('accountSummary (REST-seeded, derived from positions and fills)', () => {
+  describe('accountSummary (venue balance, re-read on positions and fills)', () => {
     const BALANCE = {
       walletBalance: '1000',
       realizedPnl: '0',
@@ -1209,41 +1225,55 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('recomputes margin and unrealized PnL from positionsPerps frames', async () => {
-      stubFetch(() => BALANCE)
+    it('re-reads the venue balance on a positionsPerps frame', async () => {
+      let balance = BALANCE
+      stubFetch(() => balance)
       const p = makeProvider()
       stubSocket(p)
       const listener = vi.fn()
 
       await subscribeSummary(p, listener)
+      balance = {
+        ...BALANCE,
+        unrealizedPnl: '25',
+        marginBalance: '1025',
+        usedMargin: '1125',
+        availableMargin: '-100',
+      }
       feed(p, {
         type: 'update',
         channel: 'positionsPerps',
         data: [RAW_POSITION],
       })
 
-      // walletBalance (1000) is retained; positions supply margin/uPnL.
-      expect(listener).toHaveBeenLastCalledWith({
-        channel: 'accountSummary',
-        data: {
-          portfolioValue: '1025',
-          availableMargin: '-100',
-          marginUsed: '1125',
-          unrealizedPnl: '25',
-        },
-      })
+      await vi.waitFor(() =>
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '1025',
+            availableMargin: '-100',
+            marginUsed: '1125',
+            unrealizedPnl: '25',
+          },
+        })
+      )
       p.close()
     })
 
-    it('refreshes the wallet balance from REST on a fillsPerps frame', async () => {
-      let walletBalance = '1000'
-      stubFetch(() => ({ ...BALANCE, walletBalance }))
+    it('re-reads the venue balance on a fillsPerps frame', async () => {
+      let balance = BALANCE
+      stubFetch(() => balance)
       const p = makeProvider()
       stubSocket(p)
       const listener = vi.fn()
 
       await subscribeSummary(p, listener)
-      walletBalance = '1500'
+      balance = {
+        ...BALANCE,
+        walletBalance: '1500',
+        marginBalance: '1550',
+        availableMargin: '1350',
+      }
       feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
 
       await vi.waitFor(() =>
@@ -1257,6 +1287,123 @@ describe('OndoWsProvider', () => {
           },
         })
       )
+      p.close()
+    })
+
+    /**
+     * As {@link stubFetch}, but each `/v1/perps/balance` read takes the next
+     * scripted result and resolves after its own delay, so a later read can
+     * overtake an earlier one. The last entry serves every further read.
+     */
+    const stubBalanceQueue = (
+      reads: { delayMs: number; balance: unknown }[]
+    ) => {
+      let calls = 0
+      vi.stubGlobal(
+        'fetch',
+        async (input: RequestInfo | URL): Promise<Response> => {
+          const url = input.toString()
+          const json = (body: unknown) =>
+            new Response(JSON.stringify(body), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          if (url.includes('/markets')) {
+            return json({ markets: ONDO_MARKETS })
+          }
+          if (!url.includes('/v1/perps/balance')) {
+            throw new Error(`Unexpected fetch: ${url}`)
+          }
+          const read = reads[Math.min(calls, reads.length - 1)]
+          calls += 1
+          await new Promise((resolve) => setTimeout(resolve, read.delayMs))
+          return json({ success: true, result: read.balance })
+        }
+      )
+      return () => calls
+    }
+
+    it('coalesces same-tick fills and positions frames into one balance read', async () => {
+      const MOVED = {
+        ...BALANCE,
+        walletBalance: '1500',
+        marginBalance: '1550',
+        usedMargin: '300',
+        availableMargin: '1250',
+      }
+      const reads = stubBalanceQueue([
+        { delayMs: 0, balance: BALANCE },
+        { delayMs: 0, balance: MOVED },
+      ])
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await subscribeSummary(p, listener)
+      feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+      feed(p, {
+        type: 'update',
+        channel: 'positionsPerps',
+        data: [RAW_POSITION],
+      })
+
+      await vi.waitFor(() =>
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '1550',
+            availableMargin: '1250',
+            marginUsed: '300',
+            unrealizedPnl: '50',
+          },
+        })
+      )
+      expect(reads()).toBe(2)
+      p.close()
+    })
+
+    it('keeps the newest balance when an earlier read resolves last', async () => {
+      const STALE = {
+        ...BALANCE,
+        marginBalance: '1025',
+        availableMargin: '825',
+      }
+      const FRESH = {
+        ...BALANCE,
+        marginBalance: '1200',
+        availableMargin: '1000',
+      }
+      const reads = stubBalanceQueue([
+        { delayMs: 0, balance: BALANCE },
+        { delayMs: 100, balance: STALE },
+        { delayMs: 0, balance: FRESH },
+      ])
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await subscribeSummary(p, listener)
+      feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+      // Let the slow fills-driven read start — but not finish — before the
+      // positions frame lands, so the two reads genuinely overlap.
+      await vi.waitFor(() => expect(reads()).toBe(2), { interval: 1 })
+      feed(p, {
+        type: 'update',
+        channel: 'positionsPerps',
+        data: [RAW_POSITION],
+      })
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      expect(reads()).toBe(3)
+      expect(listener).toHaveBeenLastCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '1200',
+          availableMargin: '1000',
+          marginUsed: '200',
+          unrealizedPnl: '50',
+        },
+      })
       p.close()
     })
 

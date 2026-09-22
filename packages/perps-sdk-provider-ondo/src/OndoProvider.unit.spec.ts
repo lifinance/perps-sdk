@@ -9,9 +9,9 @@ import type {
   AccountResponse,
   HmacActionStep,
   HmacSignedActionStep,
+  OndoAccountBalance,
   PerpsMarket,
   PortfolioHistoryRange,
-  Position,
   Provider,
   SetupAction,
   SiweActionStep,
@@ -606,12 +606,77 @@ describe('OndoProvider — logged-out degrade paths', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 
+  it('getWithdrawableBalances returns no row without a venue call', async () => {
+    const provider = loggedOutProvider()
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([])
+    expect(recorded).toHaveLength(0)
+  })
+
   it('accountExists resolves false without a venue call', async () => {
     const provider = loggedOutProvider()
     await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
       false
     )
     expect(recorded).toHaveLength(0)
+  })
+})
+
+describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
+  it('returns one perps row of withdrawableMargin on the collateral asset', async () => {
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([
+      {
+        assetId: ONDO_COLLATERAL_ASSET.id,
+        route: 'perps',
+        available: BALANCE_RESULT.withdrawableMargin,
+      },
+    ])
+  })
+
+  it('omits the row when the withdrawable margin is zero', async () => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: '0' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([])
+  })
+
+  it('rejects when the provider metadata carries no collateral asset', async () => {
+    providersResult = [
+      {
+        ...ACCOUNT_PROVIDER_METADATA,
+        categories: [{ id: 'ondo', quoteAsset: null }],
+      },
+    ]
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: 'Ondo provider metadata is missing its collateral asset',
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects when the withdrawable margin is not a decimal', async () => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: 'n/a' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message:
+        "Ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
+      tool: 'ondo',
+    })
   })
 })
 
@@ -652,6 +717,14 @@ describe('OndoProvider — getAccount (logged in)', () => {
       apiKeyRegistered: false,
       referralSet: true,
       depositAddress: null,
+      balance: {
+        walletBalance: '1000',
+        unrealizedPnl: '15.5',
+        marginBalance: '1015.5',
+        usedMargin: '401',
+        availableMargin: '614.5',
+        withdrawableMargin: '599',
+      },
     })
     expect(account.positions).toEqual([
       {
@@ -790,6 +863,14 @@ describe('OndoProvider — getAccount (logged in)', () => {
       apiKeyRegistered: false,
       referralSet: false,
       depositAddress: null,
+      balance: {
+        walletBalance: '1000',
+        unrealizedPnl: '15.5',
+        marginBalance: '1015.5',
+        usedMargin: '401',
+        availableMargin: '614.5',
+        withdrawableMargin: '599',
+      },
     })
   })
 
@@ -1949,56 +2030,75 @@ describe('OndoProvider — server-revoked session', () => {
 })
 
 describe('OndoProvider — getAccountSummary', () => {
-  it('treats collateral rows as gross (locked margin included, uPnL from positions)', () => {
-    const provider = ondoProvider()
-    const account = {
+  const accountWith = (
+    balance: OndoAccountBalance | undefined
+  ): AccountResponse => ({
+    provider: 'ondo',
+    address: ADDRESS,
+    balances: [],
+    collateralBalances: [],
+    positions: [],
+    marginUsed: '401',
+    unrealizedPnl: '15.5',
+    feeTier: { maker: '0.0002', taker: '0.0005' },
+    config: {
       provider: 'ondo',
-      address: ADDRESS,
-      balances: [],
-      collateralBalances: [
-        {
-          categoryId: 'ondo',
-          asset: MARKETS_RESPONSE.markets[0].quoteAsset,
-          units: '1000',
-          valueUsd: '1000',
-        },
-      ],
-      positions: [],
-      marginUsed: '401',
-      unrealizedPnl: '15.5',
-      feeTier: { maker: '0.0002', taker: '0.0005' },
-      config: {
-        provider: 'ondo',
-        loggedIn: true,
-        termsAccepted: true,
-        apiKeyRegistered: true,
-        referralSet: true,
-        depositAddress: null,
-      } as const,
-    } satisfies AccountResponse
-    const positions: Position[] = [
-      {
-        market: PERPS_MARKET_DISPLAY,
-        side: PositionSide.LONG,
-        size: '10',
-        entryPrice: '200.5',
-        markPrice: '202.05',
-        liquidationPrice: '182.3',
-        unrealizedPnl: '15.5',
-        accruedFunding: '-0.12',
-        leverage: 5,
-        marginUsed: '401',
-        initialMarginRequirement: '401',
-        marginMode: MarginMode.CROSS,
-      },
-    ]
+      loggedIn: balance !== undefined,
+      termsAccepted: true,
+      apiKeyRegistered: true,
+      referralSet: true,
+      depositAddress: null,
+      balance,
+    },
+  })
 
-    expect(provider.getAccountSummary(account, positions)).toEqual({
+  const VENUE_BALANCE: OndoAccountBalance = {
+    walletBalance: '1000',
+    unrealizedPnl: '15.5',
+    marginBalance: '1015.5',
+    usedMargin: '401',
+    availableMargin: '614.5',
+    withdrawableMargin: '599',
+  }
+
+  it('reads the four figures from the venue balance', () => {
+    const provider = ondoProvider()
+    expect(provider.getAccountSummary(accountWith(VENUE_BALANCE), [])).toEqual({
       portfolioValue: '1015.5',
       availableMargin: '614.5',
       marginUsed: '401',
       unrealizedPnl: '15.5',
     })
+  })
+
+  it('does not recompute availableMargin from walletBalance and positions', () => {
+    // `availableMargin` is below `marginBalance - usedMargin` whenever the
+    // venue reserves more than the positions' margin.
+    const provider = ondoProvider()
+    const summary = provider.getAccountSummary(
+      accountWith({ ...VENUE_BALANCE, availableMargin: '500' }),
+      []
+    )
+    expect(summary.availableMargin).toBe('500')
+  })
+
+  it('summarizes a logged-out account as zero', () => {
+    const provider = ondoProvider()
+    expect(provider.getAccountSummary(accountWith(undefined), [])).toEqual({
+      portfolioValue: '0',
+      availableMargin: '0',
+      marginUsed: '0',
+      unrealizedPnl: '0',
+    })
+  })
+
+  it('rejects a non-Ondo account config', () => {
+    const provider = ondoProvider()
+    const foreign = {
+      ...accountWith(VENUE_BALANCE),
+      config: { provider: 'lighter' },
+    } as unknown as AccountResponse
+    expect(() => provider.getAccountSummary(foreign, [])).toThrow(PerpsError)
   })
 })
 
@@ -2200,7 +2300,12 @@ describe('OndoProvider — projectConfig', () => {
     const provider = ondoProvider()
     expect(() =>
       provider.projectConfig(
-        { provider: 'hyperliquid', abstractionMode: null, agents: [] },
+        {
+          provider: 'hyperliquid',
+          abstractionMode: null,
+          agents: [],
+          dexStates: [],
+        },
         [SIWE_DESCRIPTOR]
       )
     ).toThrowError(PerpsError)

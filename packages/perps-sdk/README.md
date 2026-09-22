@@ -74,6 +74,11 @@ Account-specific reads go directly to the venue. `getOrders()` returns the
 `Order` union with regular, trigger, and TWAP rows. Its default filter includes
 PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 
+`getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
+withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
+joins each row onto the registry `Asset` and drops a row below the per-asset
+venue minimum.
+
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
@@ -89,6 +94,28 @@ const { orders } = await client.getOrders({
   marketId: 'ETH',
 })
 const runningTwaps = orders.filter(isTwapOrder)
+```
+
+### Available balance reads
+
+`getAccountSummary()` rolls an account snapshot up into an `AccountSummary`.
+Its `availableMargin` is account-scoped. `getAvailableToTrade()` reads the
+per-market figure for one market, as separate `buy` and `sell` amounts in the
+market's margin asset. The order panel reads the per-market figure, and account
+displays read the account-scoped figure.
+
+Providers that publish a per-market figure answer it directly. Hyperliquid
+reads it from `activeAssetData`, and also streams it on the `availableToTrade`
+WebSocket channel. For every other provider the client falls back to the
+account summary, so `buy` and `sell` both equal `availableMargin`.
+
+```ts
+const availableToTrade = await client.getAvailableToTrade({
+  provider: 'hyperliquid',
+  address: '0xUser',
+  marketId: 'ETH',
+})
+console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
 ## WebSocket

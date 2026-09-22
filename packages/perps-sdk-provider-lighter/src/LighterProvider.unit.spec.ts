@@ -1287,20 +1287,19 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       displaySymbol: 'USDC',
       logoURI: USDC_LOGO,
     })
-    // Cross availability comes only from Lighter's cross pool:
-    // cross_asset_value (450) − cross_initial_margin_requirement (120).
+    // The collateral row carries the venue's own `available_balance` (100).
     // Top-level collateral (500) also includes isolated allocations.
-    expect(account.collateralBalances[0].units).toBe('330')
-    expect(account.collateralBalances[0].valueUsd).toBe('330')
+    expect(account.collateralBalances[0].units).toBe('100')
+    expect(account.collateralBalances[0].valueUsd).toBe('100')
   })
 
-  it('rejects malformed current cross-pool fields', async () => {
+  it('rejects a malformed available_balance', async () => {
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,
       accounts: [
         {
           ...ACCOUNT_WITH_SPOT.accounts[0],
-          cross_asset_value: 'not-a-decimal',
+          available_balance: 'not-a-decimal',
         },
       ],
     }
@@ -1308,7 +1307,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     provider.bind(STUB_CLIENT)
 
     await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
-      /cross_asset_value/
+      /available_balance/
     )
   })
 
@@ -1336,7 +1335,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       accounts: [
         {
           ...ACCOUNT_WITH_SPOT.accounts[0],
-          cross_asset_value: '120',
+          available_balance: '0',
         },
       ],
     }
@@ -1354,8 +1353,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       accounts: [
         {
           ...ACCOUNT_WITH_SPOT.accounts[0],
-          cross_asset_value: '100',
-          cross_initial_margin_requirement: '120',
+          available_balance: '-20',
         },
       ],
     }
