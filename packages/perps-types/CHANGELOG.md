@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 14.1.0
+
+### Minor Changes
+
+- [#489](https://github.com/lifinance/perps-sdk/pull/489) [`ef234d8`](https://github.com/lifinance/perps-sdk/commit/ef234d810be0e3e32674ca401ebbb0afd13fe53f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `PerpsErrorCode.Forbidden` (2014) for a caller credential that is valid but lacks the privilege a route requires, so a 403 privilege refusal no longer shares a code with the venue agent rejection `AgentUnauthorized` or the 401 credential rejection `Unauthorized`.
+
 ## 14.0.0
 
 ### Major Changes
