@@ -1,35 +1,80 @@
-import { type CollateralSemantics, summarizeAccount } from '@lifi/perps-sdk'
+import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
+  Balance,
+  HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
-import { HlAbstractionMode } from './types/index.js'
+import { PerpsErrorCode } from '@lifi/perps-types'
+import Big from 'big.js'
+import { isUnifiedAbstraction } from './utils/abstractionMode.js'
+import { toWireBig } from './utils/decimal.js'
+import { perpsTotals, sumUnrealizedPnl } from './utils/venueTotals.js'
+
+const sumValueUsd = (balances: readonly Balance[]): Big =>
+  balances.reduce(
+    (sum, balance) => sum.plus(toWireBig(balance.valueUsd, 'balance.valueUsd')),
+    new Big(0)
+  )
+
+const hyperliquidConfig = (
+  account: AccountResponse
+): HyperliquidAccountConfig => {
+  if (account.config.provider !== 'hyperliquid') {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Hyperliquid account summary received a '${account.config.provider}' account config`
+    )
+  }
+  return account.config
+}
+
+const getAvailableMargin = (
+  config: HyperliquidAccountConfig,
+  accountValue: Big,
+  marginUsed: Big
+): Big => {
+  if (!isUnifiedAbstraction(config.abstractionMode)) {
+    return accountValue.minus(marginUsed)
+  }
+  if (config.availableAfterMaintenance === undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Hyperliquid '${config.abstractionMode}' account carries no quote-asset entry in \`tokenToAvailableAfterMaintenance\``
+    )
+  }
+  return toWireBig(
+    config.availableAfterMaintenance,
+    'tokenToAvailableAfterMaintenance'
+  )
+}
 
 /**
- * In `unifiedAccount`/`portfolioMargin` the whole account lives in spot, so
- * the collateral rows are gross holdings: locked margin included, unrealized
- * PnL carried by the positions. In `disabled`/`dexAbstraction` (and the
- * unset/standard mode) the venue rows hold `accountValue`, Hyperliquid's
- * total equity — locked margin AND unrealized PnL already included.
- */
-const collateralSemantics = (account: AccountResponse): CollateralSemantics =>
-  account.config.provider === 'hyperliquid' &&
-  (account.config.abstractionMode === HlAbstractionMode.UNIFIED_ACCOUNT ||
-    account.config.abstractionMode === HlAbstractionMode.PORTFOLIO_MARGIN)
-    ? 'gross'
-    : 'equity'
-
-/**
- * Roll a Hyperliquid {@link AccountResponse} up into an {@link AccountSummary},
- * branching on the abstraction mode so the margin/PnL content of the
- * collateral rows is interpreted correctly.
+ * Roll a Hyperliquid account and its open positions up into an
+ * {@link AccountSummary}, from the venue figures the response carries.
  *
+ * @throws {PerpsError} `SDKError` when the account is not a Hyperliquid one,
+ * or when a unified/portfolio-margin account carries no venue buying power.
  * @public
  */
 export function getAccountSummary(
   account: AccountResponse,
   positions: Position[]
 ): AccountSummary {
-  return summarizeAccount(account, positions, collateralSemantics(account))
+  const config = hyperliquidConfig(account)
+  const { accountValue, marginUsed } = perpsTotals(config.dexStates)
+
+  return {
+    portfolioValue: sumValueUsd(account.collateralBalances)
+      .plus(sumValueUsd(account.balances))
+      .toFixed(),
+    availableMargin: getAvailableMargin(
+      config,
+      accountValue,
+      marginUsed
+    ).toFixed(),
+    marginUsed: marginUsed.toFixed(),
+    unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
+  }
 }

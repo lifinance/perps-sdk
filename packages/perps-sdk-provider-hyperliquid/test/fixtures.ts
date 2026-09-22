@@ -158,9 +158,18 @@ export const HL_SPOT_MARKET: Market = {
   szDecimals: 5,
 }
 
+const HL_MARGIN_SUMMARY = {
+  accountValue: '10000',
+  totalNtlPos: '9500',
+  totalRawUsd: '500',
+  totalMarginUsed: '940',
+}
+
 export const HL_CLEARINGHOUSE_STATE: HlClearinghouseState = {
-  marginSummary: { accountValue: '10000', totalMarginUsed: '500' },
-  crossMarginSummary: { accountValue: '10000', totalMarginUsed: '500' },
+  marginSummary: HL_MARGIN_SUMMARY,
+  crossMarginSummary: HL_MARGIN_SUMMARY,
+  crossMaintenanceMarginUsed: '470',
+  withdrawable: '9060',
   assetPositions: [
     {
       position: {
@@ -186,6 +195,19 @@ export const HL_SPOT_CLEARINGHOUSE_STATE: HlSpotClearinghouseState = {
   balances: [
     { coin: 'USDC', token: 0, total: '500', hold: '0', entryNtl: '0' },
   ],
+  tokenToAvailableAfterMaintenance: [[0, '500']],
+}
+
+/**
+ * Spot state of a unified account: the whole account lives in spot, so USDC
+ * `total` is {@link HL_CLEARINGHOUSE_STATE}'s `accountValue` and `hold` is the
+ * perps equity it backs.
+ */
+export const HL_UNIFIED_SPOT_CLEARINGHOUSE_STATE: HlSpotClearinghouseState = {
+  balances: [
+    { coin: 'USDC', token: 0, total: '10000', hold: '10000', entryNtl: '0' },
+  ],
+  tokenToAvailableAfterMaintenance: [[0, '9060']],
 }
 
 export const HL_USER_FEES: HlUserFees = {
