@@ -363,6 +363,134 @@ describe('HyperliquidWsProvider', () => {
     })
   })
 
+  describe('availableToTrade channel', () => {
+    const address = '0x3A18b8e1e653DF2a60e312e342084604F5E3e876'
+
+    const subscriptionFor = (marketId: string): Subscription => ({
+      channel: 'availableToTrade',
+      dex: 'hyperliquid',
+      address,
+      marketId,
+    })
+
+    const activeAssetDataFrame = (
+      coin: string,
+      availableToTrade: unknown = ['431.749348', '182.319517']
+    ) =>
+      JSON.stringify({
+        channel: 'activeAssetData',
+        data: {
+          user: address.toLowerCase(),
+          coin,
+          leverage: { type: 'cross', value: 10 },
+          maxTradeSzs: ['1.0', '2.0'],
+          availableToTrade,
+          markPx: '95000.0',
+        },
+      })
+
+    it('subscribes to activeAssetData for the selected market', async () => {
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(subscriptionFor('BTC'), vi.fn())
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: {
+          type: 'activeAssetData',
+          user: address.toLowerCase(),
+          coin: 'BTC',
+        },
+      })
+    })
+
+    it('emits both sides against the market margin asset', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC'))
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toEqual({
+        channel: 'availableToTrade',
+        data: {
+          providerId: 'hyperliquid',
+          marketId: 'BTC',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '0',
+            displaySymbol: 'USDC',
+            logoURI: '',
+          },
+          buy: '431.749348',
+          sell: '182.319517',
+        },
+      })
+    })
+
+    it('opens one wire subscription per selected market', async () => {
+      const provider = createEnrichingProvider()
+      const btcListener = vi.fn()
+      const ethListener = vi.fn()
+      await provider.subscribe(subscriptionFor('BTC'), btcListener)
+      await provider.subscribe(subscriptionFor('ETH'), ethListener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('ETH'))
+
+      expect(ethListener).toHaveBeenCalledOnce()
+      expect(btcListener).not.toHaveBeenCalled()
+      expect(
+        getMockRwsInstance().sent.map((s) => JSON.parse(s).subscription.coin)
+      ).toEqual(['BTC', 'ETH'])
+    })
+
+    it('rejects a subscription for a delisted market', async () => {
+      const provider = createEnrichingProvider([
+        ...HL_MARKETS,
+        HL_DELISTED_MARKET,
+      ])
+
+      await expect(
+        provider.subscribe(subscriptionFor('DELISTED'), vi.fn())
+      ).rejects.toThrow()
+    })
+
+    it.each([
+      ['a single amount', ['431.749348']],
+      ['an empty list', []],
+      ['three amounts', ['1', '2', '3']],
+    ])('drops a frame carrying %s and emits nothing', async (_name, amounts) => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC', amounts))
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      warnSpy.mockRestore()
+    })
+
+    it('skips a frame naming an unknown market and keeps the stream open', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('UNLISTED'))
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC'))
+
+      expect(errorSpy).toHaveBeenCalledOnce()
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject({ marketId: 'BTC' })
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+  })
+
   describe('subscribe', () => {
     it('subscribes to pac, sac, and the fastAssetCtxs feed', async () => {
       const provider = createProvider()
@@ -4254,6 +4382,105 @@ describe('accountSummary channel', () => {
       abstractionFetchMock.mockReset()
       spotStateFetchMock.mockReset()
     }
+  })
+
+  it('emits no summary and retries the REST read when it fails', async () => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    spotStateFetchMock.mockRejectedValue(new Error('info request failed'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      await vi.advanceTimersByTimeAsync(0)
+
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      // The transport retries a failed read to the policy limit, then gives up.
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(spotStateFetchMock).toHaveBeenCalledTimes(3)
+      expect(errorSpy).toHaveBeenCalled()
+      // Buying power stays unknown, so the channel reports nothing at all.
+      expect(listener).not.toHaveBeenCalled()
+
+      spotStateFetchMock.mockReset()
+      spotStateFetchMock.mockResolvedValue({
+        balances: [{ coin: 'USDC', token: 0, total: '1000', hold: '0' }],
+        tokenToAvailableAfterMaintenance: [[0, '160']],
+      })
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+        ])
+      )
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(spotStateFetchMock).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'accountSummary',
+        data: {
+          portfolioValue: '1000',
+          availableMargin: '160',
+          marginUsed: '940',
+          unrealizedPnl: '100',
+        },
+      })
+    } finally {
+      errorSpy.mockRestore()
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+      spotStateFetchMock.mockReset()
+    }
+  })
+
+  it('sums only the sub-dexes that carry a marginSummary', async () => {
+    const provider = createEnrichingProvider()
+    const listener = vi.fn()
+    await provider.subscribe(
+      { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+      listener
+    )
+
+    getMockRwsInstance().simulateMessage(
+      JSON.stringify({
+        channel: 'allDexsClearinghouseState',
+        data: {
+          user: '0xabc',
+          clearinghouseStates: [
+            [
+              '',
+              {
+                assetPositions: [assetPositionOf('BTC')],
+                marginSummary: {
+                  accountValue: '1000',
+                  totalMarginUsed: '940',
+                },
+              },
+            ],
+            ['xyz', { assetPositions: [] }],
+          ],
+        },
+      })
+    )
+    await flushMicrotasks()
+
+    expect(listener).toHaveBeenCalledWith({
+      channel: 'accountSummary',
+      data: {
+        portfolioValue: '1000',
+        availableMargin: '60',
+        marginUsed: '940',
+        unrealizedPnl: '100',
+      },
+    })
   })
 
   it('tears the spot pipeline down when a refresh resolves back to standard', async () => {

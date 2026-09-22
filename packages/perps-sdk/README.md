@@ -96,6 +96,28 @@ const { orders } = await client.getOrders({
 const runningTwaps = orders.filter(isTwapOrder)
 ```
 
+### Available balance reads
+
+`getAccountSummary()` rolls an account snapshot up into an `AccountSummary`.
+Its `availableMargin` is account-scoped. `getAvailableToTrade()` reads the
+per-market figure for one market, as separate `buy` and `sell` amounts in the
+market's margin asset. The order panel reads the per-market figure, and account
+displays read the account-scoped figure.
+
+Providers that publish a per-market figure answer it directly. Hyperliquid
+reads it from `activeAssetData`, and also streams it on the `availableToTrade`
+WebSocket channel. For every other provider the client falls back to the
+account summary, so `buy` and `sell` both equal `availableMargin`.
+
+```ts
+const availableToTrade = await client.getAvailableToTrade({
+  provider: 'hyperliquid',
+  address: '0xUser',
+  marketId: 'ETH',
+})
+console.log(availableToTrade.buy, availableToTrade.sell)
+```
+
 ## WebSocket
 
 `PerpsWsClient` streams prices, orderbook, and account events over WebSocket. Register a WS provider per DEX; `subscribe()` returns an unsubscribe function, and multiple listeners on the same channel share one wire subscription:

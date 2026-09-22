@@ -19,7 +19,11 @@ export { PerpsClient } from './client/PerpsClient.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 // Registries
-export { AssetRegistry, getAssetRegistry } from './registry/assetRegistry.js'
+export {
+  AssetRegistry,
+  getAssetRegistry,
+  toAssetDisplay,
+} from './registry/assetRegistry.js'
 export type { DefaultMarketProvider } from './registry/marketRegistry.js'
 export {
   DEFAULT_MARKET_ID,
@@ -152,6 +156,7 @@ export type {
   ProviderAccountExistsParams,
   ProviderGetAccountParams,
   ProviderGetActivityParams,
+  ProviderGetAvailableToTradeParams,
   ProviderGetDepositFlowParams,
   ProviderGetFillsParams,
   ProviderGetMarketSettingsParams,
@@ -255,6 +260,8 @@ export { createWarnOnce } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
 export { cachePromise } from './websocket/cachePromise.js'
+export type { DecodeChainMode } from './websocket/decodeChain.js'
+export { DecodeChain } from './websocket/decodeChain.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,

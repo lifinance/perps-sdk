@@ -1,4 +1,5 @@
 import {
+  DecodeChain,
   getMarketRegistry,
   localStorageAdapter,
   type MarketRegistry,
@@ -138,6 +139,15 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    */
   private accountSummary: OndoAccountBalance | undefined
 
+  /**
+   * Serializes the balance re-read: a single trade event emits a fills frame
+   * and a positions frame together, and two concurrent REST reads can resolve
+   * out of order. `'latest'` coalesces the backlog to one trailing refresh.
+   */
+  private readonly accountSummaryChain = new DecodeChain('latest', (err) =>
+    wsLog.handlerFailure(this.providerKey, err)
+  )
+
   /** Complete (mark-price-bearing) contexts, keyed by venue market symbol. */
   private contexts: Record<string, MarketContext> = {}
   /** Funding seen before the market's first mark price. */
@@ -214,6 +224,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       case 'accountSummary':
       case 'spotBalances':
         return `${sub.channel}:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        throw new Error(`Ondo WS does not support channel: ${sub.channel}.`)
     }
   }
 
@@ -268,6 +280,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return () => {
       if (sub.channel === 'accountSummary') {
         this.accountSummary = undefined
+        this.accountSummaryChain.reset()
       }
       for (const [key, state] of wireSubs) {
         this.releaseWire(key, state, needsLogin)
@@ -483,6 +496,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
           ],
         ]
       case 'spotBalances':
+      case 'availableToTrade':
         return []
     }
   }
@@ -789,8 +803,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
     if (this.accountSummary !== undefined) {
-      this.refreshAccountSummary(address as Address).catch((err) =>
-        wsLog.handlerFailure(this.providerKey, err)
+      this.accountSummaryChain.push(() =>
+        this.refreshAccountSummary(address as Address)
       )
     }
   }
@@ -815,8 +829,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       data: mapped,
     })
     if (this.accountSummary !== undefined) {
-      this.refreshAccountSummary(address as Address).catch((err) =>
-        wsLog.handlerFailure(this.providerKey, err)
+      this.accountSummaryChain.push(() =>
+        this.refreshAccountSummary(address as Address)
       )
     }
   }

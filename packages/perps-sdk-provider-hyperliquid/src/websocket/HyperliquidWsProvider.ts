@@ -1,4 +1,5 @@
 import {
+  DecodeChain,
   getMarketRegistry,
   isActiveMarket,
   isActiveOrderStatus,
@@ -10,6 +11,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type SubscriptionListener,
+  toAssetDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
@@ -35,6 +37,7 @@ import {
   SPOT_MARKET_ID,
 } from '../constants.js'
 import type {
+  HlActiveAssetData,
   HlAssetPosition,
   HlOrderDetail,
   HlOrderStatusResponse,
@@ -74,25 +77,19 @@ import {
   mapOrder,
   mapPosition,
   partitionSpotBalances,
+  perpsTotals,
   priceStepToAggregation,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
+  sumUnrealizedPnl,
 } from '../utils/index.js'
-import { DecodeChain } from './decodeChain.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
 
 const normalizeHlAddress = (address: string): string =>
   isAddress(address, { strict: false }) ? address.toLowerCase() : address
-
-const sumUnrealizedPnl = (positions: readonly Position[]): Big =>
-  positions.reduce(
-    (sum, position) =>
-      sum.plus(toWireBig(position.unrealizedPnl, 'positions.unrealizedPnl')),
-    new Big(0)
-  )
 
 /** Venue buying power for the asset the main perps dex settles in. */
 const availableAfterMaintenance = (
@@ -293,7 +290,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       (sub.channel === 'marketContext' ||
         sub.channel === 'orderbook' ||
         sub.channel === 'candle' ||
-        sub.channel === 'trades')
+        sub.channel === 'trades' ||
+        sub.channel === 'availableToTrade')
     ) {
       this.registry.requireActive(sub.marketId)
     }
@@ -526,6 +524,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return `accountSummary:${sub.address.toLowerCase()}`
       case 'spotBalances':
         return `spotState:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        return `activeAssetData:${sub.address.toLowerCase()}:${sub.marketId}`
     }
   }
 
@@ -601,6 +601,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
       case 'spotBalances':
         return { type: 'spotState', user: normalizeHlAddress(sub.address) }
+      case 'availableToTrade':
+        return {
+          type: 'activeAssetData',
+          user: normalizeHlAddress(sub.address),
+          coin: sub.marketId,
+        }
     }
   }
 
@@ -675,6 +681,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'spotState':
           this.handleSpotState(msg.data as HlWsSpotStateData)
+          break
+        case 'activeAssetData':
+          this.handleActiveAssetData(msg.data as HlActiveAssetData)
           break
       }
     } catch (error) {
@@ -1150,20 +1159,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       data: positions,
     })
 
-    let accountValue = new Big(0)
-    let marginUsed = new Big(0)
-    for (const [, state] of data.clearinghouseStates) {
-      const summary = state.marginSummary
-      if (summary === undefined) {
-        continue
-      }
-      accountValue = accountValue.plus(
-        toWireBig(summary.accountValue, 'marginSummary.accountValue')
-      )
-      marginUsed = marginUsed.plus(
-        toWireBig(summary.totalMarginUsed, 'marginSummary.totalMarginUsed')
-      )
-    }
+    const { accountValue, marginUsed } = perpsTotals(
+      data.clearinghouseStates.map(([, state]) => state)
+    )
 
     const key = data.user.toLowerCase()
     this.latestPerpsByUser.set(key, {
@@ -1367,6 +1365,27 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         wsLog.handlerFailure(this.providerKey, error)
       }
     )
+  }
+
+  private handleActiveAssetData(data: HlActiveAssetData) {
+    const market = this.registry?.get(data.coin)
+    if (market === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `[${this.providerKey}] activeAssetData frame names unknown market '${data.coin}'.`
+      )
+    }
+    const [buy, sell] = data.availableToTrade
+    this.emit(`activeAssetData:${data.user.toLowerCase()}:${data.coin}`, {
+      channel: 'availableToTrade',
+      data: {
+        providerId: market.providerId,
+        marketId: market.id,
+        asset: toAssetDisplay(market.quoteAsset),
+        buy,
+        sell,
+      },
+    })
   }
 
   private handleSpotState(data: HlWsSpotStateData) {
@@ -1679,6 +1698,13 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
         typeof data.user === 'string' &&
         isObject(data.spotState) &&
         Array.isArray(data.spotState.balances)
+      )
+    case 'activeAssetData':
+      return (
+        typeof data.user === 'string' &&
+        typeof data.coin === 'string' &&
+        Array.isArray(data.availableToTrade) &&
+        data.availableToTrade.length === 2
       )
     default:
       return true

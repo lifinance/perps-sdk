@@ -34,6 +34,7 @@ import {
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
+  sumUnrealizedPnl,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
@@ -208,11 +209,6 @@ export const getAccount = async (
     stateByDex.set(dexNames[i], state)
   })
 
-  const totalUnrealizedPnl = positions.reduce(
-    (sum, p) => sum + Number.parseFloat(p.unrealizedPnl),
-    0
-  )
-
   const dexStates: HyperliquidDexAccountState[] = stateResults.map(
     (state, i) => ({
       dex: dexNames[i],
@@ -254,7 +250,7 @@ export const getAccount = async (
     collateralBalances,
     positions,
     marginUsed: perpsTotals(dexStates).marginUsed.toFixed(),
-    unrealizedPnl: totalUnrealizedPnl.toString(),
+    unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
     feeTier: {
       maker: feesResult.userAddRate ?? '0',
       taker: feesResult.userCrossRate ?? '0',
