@@ -224,6 +224,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       case 'accountSummary':
       case 'spotBalances':
         return `${sub.channel}:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        throw new Error(`Ondo WS does not support channel: ${sub.channel}.`)
     }
   }
 
@@ -494,6 +496,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
           ],
         ]
       case 'spotBalances':
+      case 'availableToTrade':
         return []
     }
   }

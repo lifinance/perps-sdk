@@ -1,4 +1,4 @@
-import type { Asset, AssetsResponse } from '@lifi/perps-types'
+import type { Asset, AssetDisplay, AssetsResponse } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import { buildUrl, request } from '../transport/request.js'
@@ -58,6 +58,21 @@ export class AssetRegistry extends ReferenceDataRegistry<Asset> {
     return asset.id
   }
 }
+
+/**
+ * Project an {@link Asset} to the identity and labels a display needs.
+ *
+ * @public
+ */
+export const toAssetDisplay = (asset: Asset): AssetDisplay => ({
+  providerId: asset.providerId,
+  id: asset.id,
+  displaySymbol: asset.displaySymbol,
+  logoURI: asset.logoURI,
+  ...(asset.displayName === undefined
+    ? {}
+    : { displayName: asset.displayName }),
+})
 
 const registries = new WeakMap<PerpsSDKClient, Map<string, AssetRegistry>>()
 

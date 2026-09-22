@@ -374,6 +374,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         return `accountSummary:${sub.address.toLowerCase()}`
       case 'candle':
       case 'spotBalances':
+      case 'availableToTrade':
         throw new Error(`Lighter WS does not support channel: ${sub.channel}.`)
     }
   }

@@ -1,4 +1,4 @@
-import type { Asset } from './asset.js'
+import type { Asset, AssetDisplay } from './asset.js'
 import type {
   ActionType,
   ActivityType,
@@ -196,6 +196,25 @@ export interface AccountSummary {
   marginUsed: string
   /** Aggregate unrealized PnL in USD. */
   unrealizedPnl: string
+}
+
+/**
+ * The amount an account can still buy or sell on one market, in that market's
+ * margin asset. The order panel reads this per-market figure. It differs from
+ * {@link AccountSummary.availableMargin}, which stays account-scoped.
+ *
+ * @public
+ */
+export interface AvailableToTrade {
+  providerId: string
+  /** The market this figure applies to, equal to `Market.id`. */
+  marketId: string
+  /** The market's margin asset, which both amounts are denominated in. */
+  asset: AssetDisplay
+  /** Amount the account can still buy, represented as a decimal string. */
+  buy: string
+  /** Amount the account can still sell, represented as a decimal string. */
+  sell: string
 }
 
 /**
