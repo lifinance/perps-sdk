@@ -170,10 +170,6 @@ export type {
   WithdrawableBalance,
   WithdrawalRoute,
 } from './types/withdrawal.js'
-export {
-  type CollateralSemantics,
-  summarizeAccount,
-} from './utils/accountSummary.js'
 export { paginateActivity } from './utils/activityPaging.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {

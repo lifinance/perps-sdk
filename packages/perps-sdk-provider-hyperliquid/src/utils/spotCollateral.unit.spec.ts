@@ -27,7 +27,7 @@ describe('partitionSpotBalances', () => {
     )
     expect(balances).toHaveLength(0)
     expect(collateralBalances).toHaveLength(1)
-    expect(collateralBalances[0].collateralWeight).toBeUndefined()
+    expect(collateralBalances[0].valueUsd).toBe('1000')
   })
 
   it('keeps every non-quote token as a flat holding', () => {
@@ -37,7 +37,7 @@ describe('partitionSpotBalances', () => {
     )
     expect(collateralBalances).toHaveLength(0)
     expect(balances).toHaveLength(2)
-    expect(balances.every((b) => b.collateralWeight === undefined)).toBe(true)
+    expect(balances.map((b) => b.valueUsd)).toEqual(['6000', '4000'])
   })
 
   it('omits zero-unit rows from both partitions', () => {

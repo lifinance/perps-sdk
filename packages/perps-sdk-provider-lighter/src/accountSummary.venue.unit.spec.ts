@@ -518,12 +518,12 @@ describe('accountSummary.venue', () => {
     }
   }
 
-  it.fails('AccountSummary.availableMargin equals available_balance', async () => {
+  it('AccountSummary.availableMargin equals available_balance', async () => {
     const { summary } = await load()
     expect(summary.availableMargin).toBe(AVAILABLE_BALANCE)
   })
 
-  it.fails('AccountSummary.portfolioValue equals total_asset_value plus the value of non-settlement spot assets', async () => {
+  it('AccountSummary.portfolioValue equals total_asset_value plus the value of non-settlement spot assets', async () => {
     const { summary } = await load()
     // The recorded account holds only settlement (USDC) spot dust, so the
     // non-settlement contribution is `0`.

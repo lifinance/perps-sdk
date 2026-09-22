@@ -1141,7 +1141,7 @@ describe('OndoWsProvider', () => {
     })
   })
 
-  describe('accountSummary (REST-seeded, derived from positions and fills)', () => {
+  describe('accountSummary (venue balance, re-read on positions and fills)', () => {
     const BALANCE = {
       walletBalance: '1000',
       realizedPnl: '0',
@@ -1209,41 +1209,55 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('recomputes margin and unrealized PnL from positionsPerps frames', async () => {
-      stubFetch(() => BALANCE)
+    it('re-reads the venue balance on a positionsPerps frame', async () => {
+      let balance = BALANCE
+      stubFetch(() => balance)
       const p = makeProvider()
       stubSocket(p)
       const listener = vi.fn()
 
       await subscribeSummary(p, listener)
+      balance = {
+        ...BALANCE,
+        unrealizedPnl: '25',
+        marginBalance: '1025',
+        usedMargin: '1125',
+        availableMargin: '-100',
+      }
       feed(p, {
         type: 'update',
         channel: 'positionsPerps',
         data: [RAW_POSITION],
       })
 
-      // walletBalance (1000) is retained; positions supply margin/uPnL.
-      expect(listener).toHaveBeenLastCalledWith({
-        channel: 'accountSummary',
-        data: {
-          portfolioValue: '1025',
-          availableMargin: '-100',
-          marginUsed: '1125',
-          unrealizedPnl: '25',
-        },
-      })
+      await vi.waitFor(() =>
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '1025',
+            availableMargin: '-100',
+            marginUsed: '1125',
+            unrealizedPnl: '25',
+          },
+        })
+      )
       p.close()
     })
 
-    it('refreshes the wallet balance from REST on a fillsPerps frame', async () => {
-      let walletBalance = '1000'
-      stubFetch(() => ({ ...BALANCE, walletBalance }))
+    it('re-reads the venue balance on a fillsPerps frame', async () => {
+      let balance = BALANCE
+      stubFetch(() => balance)
       const p = makeProvider()
       stubSocket(p)
       const listener = vi.fn()
 
       await subscribeSummary(p, listener)
-      walletBalance = '1500'
+      balance = {
+        ...BALANCE,
+        walletBalance: '1500',
+        marginBalance: '1550',
+        availableMargin: '1350',
+      }
       feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
 
       await vi.waitFor(() =>
