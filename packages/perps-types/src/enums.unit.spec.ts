@@ -160,11 +160,11 @@ describe('PerpsErrorCode wire compatibility', () => {
     RouteNotFound: 2060,
     SetupRequired: 2070,
     FeatureUnavailable: 2080,
+    RateLimitExceeded: 2090,
   } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
 
-  const unreleased = [
-    'RateLimitExceeded',
-  ] as const satisfies readonly (keyof typeof PerpsErrorCode)[]
+  const unreleased =
+    [] as const satisfies readonly (keyof typeof PerpsErrorCode)[]
 
   it('keeps every previously published code on its published value', () => {
     for (const [name, value] of Object.entries(published)) {
