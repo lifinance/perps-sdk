@@ -11,17 +11,18 @@ import type {
   Asset,
   Balance,
   HyperliquidAccountConfig,
+  HyperliquidDexAccountState,
   Position,
 } from '@lifi/perps-types'
-import Big from 'big.js'
+import type Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import {
+import type {
   HlAbstractionMode,
-  type HlClearinghouseState,
-  type HlExtraAgents,
-  type HlSpotClearinghouseState,
-  type HlUserFees,
+  HlClearinghouseState,
+  HlExtraAgents,
+  HlSpotClearinghouseState,
+  HlUserFees,
 } from '../types/index.js'
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
 import { toWireBig } from '../utils/decimal.js'
@@ -29,6 +30,7 @@ import {
   assetIsOutcome,
   partitionSpotBalances,
   perpsDexNames,
+  perpsTotals,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
@@ -49,45 +51,14 @@ export type GetAccountParams = ProviderGetAccountParams
 const getAccountValue = (state: HlClearinghouseState): Big =>
   toWireBig(state.marginSummary.accountValue, 'marginSummary.accountValue')
 
-const getTotalMarginUsed = (state: HlClearinghouseState): Big =>
-  toWireBig(
-    state.marginSummary.totalMarginUsed,
-    'marginSummary.totalMarginUsed'
-  )
-
-const getMarginUsed = (
-  abstraction: HlAbstractionMode | null,
-  positions: Position[],
-  stateByDex: Map<string, HlClearinghouseState>
-): string => {
-  if (
-    abstraction === HlAbstractionMode.UNIFIED_ACCOUNT ||
-    abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
-  ) {
-    // Per HL docs, individual per-dex states are not meaningful for these
-    // modes; derive total margin from the already-mapped positions.
-    const total = positions.reduce(
-      (sum, position) =>
-        sum.plus(toWireBig(position.marginUsed, 'positions.marginUsed')),
-      new Big(0)
-    )
-    return total.toFixed()
-  }
-
-  if (abstraction === HlAbstractionMode.DEX_ABSTRACTION) {
-    let total = new Big(0)
-    for (const [, state] of stateByDex) {
-      total = total.plus(getTotalMarginUsed(state))
-    }
-    return total.toFixed()
-  }
-
-  const mainState = stateByDex.get('')
-  if (!mainState) {
-    return '0'
-  }
-  return getTotalMarginUsed(mainState).toFixed()
-}
+/** Venue buying power for the quote asset the perps dex settles in. */
+const getAvailableAfterMaintenance = (
+  spotState: HlSpotClearinghouseState,
+  quoteAssetId: string | undefined
+): string | undefined =>
+  spotState.tokenToAvailableAfterMaintenance.find(
+    ([token]) => String(token) === quoteAssetId
+  )?.[1]
 
 interface BalancePartition {
   balances: Balance[]
@@ -106,8 +77,7 @@ const buildBalances = (
     spotState.balances
       .filter((b) => !assetIsOutcome(b.coin))
       .map((b) => spotBalance(spotAssetFromToken(b), b.total, priceById)),
-    quoteAssetIds,
-    abstraction === HlAbstractionMode.PORTFOLIO_MARGIN
+    quoteAssetIds
   )
 
   // Unified/portfolio modes hold everything in spot — per-dex equity would
@@ -243,10 +213,29 @@ export const getAccount = async (
     0
   )
 
+  const dexStates: HyperliquidDexAccountState[] = stateResults.map(
+    (state, i) => ({
+      dex: dexNames[i],
+      marginSummary: state.marginSummary,
+      crossMarginSummary: state.crossMarginSummary,
+      crossMaintenanceMarginUsed: state.crossMaintenanceMarginUsed,
+      withdrawable: state.withdrawable,
+    })
+  )
+
   const config: HyperliquidAccountConfig = {
     provider: PROVIDER_KEY,
     abstractionMode: abstractionResult,
     agents: agentsResult,
+    dexStates,
+    ...(isUnifiedAbstraction(abstractionResult)
+      ? {
+          availableAfterMaintenance: getAvailableAfterMaintenance(
+            spotState,
+            quoteAssetByCategory.get(PROVIDER_KEY)?.id
+          ),
+        }
+      : {}),
   }
 
   const { balances, collateralBalances } = buildBalances(
@@ -264,7 +253,7 @@ export const getAccount = async (
     balances,
     collateralBalances,
     positions,
-    marginUsed: getMarginUsed(abstractionResult, positions, stateByDex),
+    marginUsed: perpsTotals(dexStates).marginUsed.toFixed(),
     unrealizedPnl: totalUnrealizedPnl.toString(),
     feeTier: {
       maker: feesResult.userAddRate ?? '0',

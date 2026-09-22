@@ -2220,7 +2220,12 @@ describe('OndoProvider — projectConfig', () => {
     const provider = ondoProvider()
     expect(() =>
       provider.projectConfig(
-        { provider: 'hyperliquid', abstractionMode: null, agents: [] },
+        {
+          provider: 'hyperliquid',
+          abstractionMode: null,
+          agents: [],
+          dexStates: [],
+        },
         [SIWE_DESCRIPTOR],
         []
       )

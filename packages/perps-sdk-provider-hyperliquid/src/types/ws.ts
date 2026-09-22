@@ -200,5 +200,9 @@ export type HlWsAllDexsClearinghouseStateData = {
 /** User spot clearinghouse event containing the current spot balances. @public */
 export type HlWsSpotStateData = {
   user: string
-  spotState: { balances: HlSpotBalance[] }
+  spotState: {
+    balances: HlSpotBalance[]
+    /** Absent on some frames; the REST `spotClearinghouseState` read covers it. */
+    tokenToAvailableAfterMaintenance?: [number, string][]
+  }
 }

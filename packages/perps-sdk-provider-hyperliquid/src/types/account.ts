@@ -52,6 +52,19 @@ export type HlAssetPosition = {
 }
 
 /**
+ * Margin totals block of a Hyperliquid clearinghouse state. Monetary fields
+ * are decimal strings in the account's quote asset.
+ * @public
+ */
+export type HlMarginSummary = {
+  /** Total equity: locked margin and unrealized PnL included. */
+  accountValue: string
+  totalNtlPos: string
+  totalRawUsd: string
+  totalMarginUsed: string
+}
+
+/**
  * Perpetual clearinghouse account state returned by Hyperliquid `/info`.
  * `assetPositions` includes zero-size rows that callers may discard. Monetary
  * fields are decimal strings in the account's quote asset; `marginSummary`
@@ -60,14 +73,10 @@ export type HlAssetPosition = {
  */
 export type HlClearinghouseState = {
   assetPositions: HlAssetPosition[]
-  marginSummary: {
-    accountValue: string
-    totalMarginUsed: string
-  }
-  crossMarginSummary: {
-    accountValue: string
-    totalMarginUsed: string
-  }
+  marginSummary: HlMarginSummary
+  crossMarginSummary: HlMarginSummary
+  crossMaintenanceMarginUsed: string
+  withdrawable: string
 }
 
 /**
@@ -90,6 +99,11 @@ export type HlSpotBalance = {
  */
 export type HlSpotClearinghouseState = {
   balances: HlSpotBalance[]
+  /**
+   * Venue buying power per spot token, as `[token index, amount]` pairs.
+   * The venue reports the amount after maintenance margin.
+   */
+  tokenToAvailableAfterMaintenance: [number, string][]
 }
 
 /**

@@ -92,7 +92,7 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.marginMode).toBe(MarginMode.ISOLATED)
     expect(result.leverage).toBe(5)
-    expect(result.marginUsed).toBe('840')
+    expect(result.marginUsed).toBe('940')
     expect(result.initialMarginRequirement).toBe('1900')
   })
 

@@ -65,7 +65,12 @@ const account = (
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },
-  config: { provider: 'hyperliquid', abstractionMode: null, agents: [] },
+  config: {
+    provider: 'hyperliquid',
+    abstractionMode: null,
+    agents: [],
+    dexStates: [],
+  },
 })
 
 describe('summarizeAccount', () => {

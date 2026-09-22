@@ -504,6 +504,36 @@ export interface HyperliquidBuilderFeeApproval {
 }
 
 /**
+ * Hyperliquid `marginSummary` block, copied from the venue wire response.
+ * Every member is a decimal string in quote-asset units.
+ *
+ * @public
+ */
+export interface HyperliquidMarginSummary {
+  /** Total equity: locked margin and unrealized PnL included. */
+  accountValue: string
+  totalNtlPos: string
+  totalRawUsd: string
+  totalMarginUsed: string
+}
+
+/**
+ * Venue account figures for one Hyperliquid perps sub-dex.
+ *
+ * @public
+ */
+export interface HyperliquidDexAccountState {
+  /** Sub-dex name; the empty string is the main perps dex. */
+  dex: string
+  /** Whole account, cross and isolated positions together. */
+  marginSummary: HyperliquidMarginSummary
+  /** Cross-margin subset of {@link HyperliquidDexAccountState.marginSummary}. */
+  crossMarginSummary: HyperliquidMarginSummary
+  crossMaintenanceMarginUsed: string
+  withdrawable: string
+}
+
+/**
  * Hyperliquid account configuration returned in {@link AccountResponse.config}.
  *
  * @public
@@ -514,6 +544,14 @@ export interface HyperliquidAccountConfig {
   abstractionMode: string | null
   agents: HyperliquidAgent[]
   builderFeeApproval?: HyperliquidBuilderFeeApproval
+  /** One entry per perps sub-dex that still has a live market. */
+  dexStates: HyperliquidDexAccountState[]
+  /**
+   * Venue buying power: the quote-asset entry of the spot
+   * `tokenToAvailableAfterMaintenance` list. Unified and portfolio-margin
+   * accounts only; other modes derive buying power from `marginSummary`.
+   */
+  availableAfterMaintenance?: string
 }
 
 /**

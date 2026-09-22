@@ -490,6 +490,7 @@ describe('PerpsClient', () => {
           provider: 'hyperliquid',
           abstractionMode: status,
           agents: [],
+          dexStates: [],
         },
       }
       stubGetAccount.mockResolvedValue(account)
