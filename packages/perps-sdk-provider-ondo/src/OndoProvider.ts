@@ -20,6 +20,8 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
@@ -111,7 +113,9 @@ import {
   mapOpenPositions,
   mapOrder,
   mapWithdrawalActivity,
+  ondoWithdrawableBalances,
   positionMarginConstraints,
+  requireOndoCollateralAsset,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
 import {
@@ -323,19 +327,7 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const collateralAsset = providers
-            .find((provider) => provider.key === ONDO_PROVIDER_KEY)
-            ?.categories.find(
-              (category) => category.id === ONDO_PROVIDER_KEY
-            )?.quoteAsset
-          if (collateralAsset === null || collateralAsset === undefined) {
-            const error = new PerpsError(
-              PerpsErrorCode.SDKError,
-              'Ondo provider metadata is missing its collateral asset'
-            )
-            error.tool = ONDO_PROVIDER_KEY
-            throw error
-          }
+          const collateralAsset = requireOndoCollateralAsset(providers)
 
           const positions: Position[] = mapOpenPositions(
             rawPositions ?? [],
@@ -383,6 +375,28 @@ export const ondoProvider = (
               },
             },
           }
+        }
+      )
+    },
+
+    async getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      return withSession(
+        params.address,
+        (): ProviderWithdrawableBalance[] => [],
+        async (token) => {
+          const [{ providers }, balance] = await Promise.all([
+            getProviders(requireClient(), opts),
+            apiClient(opts).get<OndoBalanceSummary>('/v1/perps/balance', {
+              authToken: token.token,
+            }),
+          ])
+          return ondoWithdrawableBalances(
+            requireOndoCollateralAsset(providers).id,
+            balance
+          )
         }
       )
     },

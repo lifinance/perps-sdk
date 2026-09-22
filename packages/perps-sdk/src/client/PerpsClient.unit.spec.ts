@@ -1453,6 +1453,48 @@ describe('PerpsClient', () => {
       ).resolves.toEqual([])
     })
 
+    it('applies the venue minimum to the recorded Hyperliquid unified rows', async () => {
+      const hyperliquidAssets: Asset[] = [
+        {
+          providerId: provider,
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: '',
+          decimals: 8,
+          l1Decimals: 6,
+          l1Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+          minWithdrawalAmount: '2',
+        },
+        {
+          providerId: provider,
+          id: '73',
+          displaySymbol: 'BRIDGE',
+          logoURI: '',
+        },
+        { providerId: provider, id: '150', displaySymbol: 'HYPE', logoURI: '' },
+      ]
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '0', route: 'spot', available: '102.54975228' },
+            { assetId: '73', route: 'spot', available: '6.15' },
+            { assetId: '150', route: 'spot', available: '2.10613124' },
+            { assetId: '339', route: 'spot', available: '40.230704' },
+            { assetId: '0', route: 'perps', available: '0.6975' },
+          ]),
+          hyperliquidAssets
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        {
+          asset: hyperliquidAssets[0],
+          route: 'spot',
+          available: '102.54975228',
+        },
+        { asset: hyperliquidAssets[1], route: 'spot', available: '6.15' },
+        { asset: hyperliquidAssets[2], route: 'spot', available: '2.10613124' },
+      ])
+    })
+
     it('resolves undefined when the plugin declares no withdrawable read', async () => {
       await expect(
         clientWith({}).getWithdrawableBalances({

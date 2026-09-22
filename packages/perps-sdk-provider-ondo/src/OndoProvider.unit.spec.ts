@@ -619,12 +619,45 @@ describe('OndoProvider — logged-out degrade paths', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 
+  it('getWithdrawableBalances returns no row without a venue call', async () => {
+    const provider = loggedOutProvider()
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([])
+    expect(recorded).toHaveLength(0)
+  })
+
   it('accountExists resolves false without a venue call', async () => {
     const provider = loggedOutProvider()
     await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
       false
     )
     expect(recorded).toHaveLength(0)
+  })
+})
+
+describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
+  it('returns one perps row of withdrawableMargin on the collateral asset', async () => {
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([
+      {
+        assetId: ONDO_COLLATERAL_ASSET.id,
+        route: 'perps',
+        available: BALANCE_RESULT.withdrawableMargin,
+      },
+    ])
+  })
+
+  it('omits the row when the withdrawable margin is zero', async () => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: '0' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([])
   })
 })
 

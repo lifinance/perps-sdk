@@ -58,3 +58,4 @@ export {
 export { partitionSpotBalances, type SpotPartition } from './spotCollateral.js'
 export { positionMarginConstraints } from './transferMargin.js'
 export { perpsTotals } from './venueTotals.js'
+export { hyperliquidWithdrawableBalances } from './withdrawableBalances.js'
