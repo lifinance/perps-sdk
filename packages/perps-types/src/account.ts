@@ -57,8 +57,10 @@ export interface Position {
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
-   * Margin allocated and reserved by this position as a decimal string,
-   * excluding unrealized PnL.
+   * Margin allocated and reserved by this position as a decimal string. Most
+   * venues report it without unrealized PnL. A Hyperliquid isolated position
+   * reports venue position equity instead, so its value includes the
+   * unrealized PnL of that position.
    */
   marginUsed: string
   /**

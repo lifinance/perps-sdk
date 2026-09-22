@@ -185,16 +185,25 @@ export type HlWsUserFillsData = {
 }
 
 /**
+ * One sub-dex slice of an `allDexsClearinghouseState` frame. `marginSummary`
+ * is absent on a frame that reports positions only, so a reader must treat it
+ * as optional.
+ * @public
+ */
+export type HlWsDexClearinghouseState = Pick<
+  HlClearinghouseState,
+  'assetPositions'
+> &
+  Partial<Pick<HlClearinghouseState, 'marginSummary'>>
+
+/**
  * Per-dex clearinghouse event for one user. Each tuple contains a wire DEX name
  * and the perp positions/equity fields supplied by that DEX.
  * @public
  */
 export type HlWsAllDexsClearinghouseStateData = {
   user: string
-  clearinghouseStates: [
-    string,
-    Pick<HlClearinghouseState, 'assetPositions' | 'marginSummary'>,
-  ][]
+  clearinghouseStates: [string, HlWsDexClearinghouseState][]
 }
 
 /** User spot clearinghouse event containing the current spot balances. @public */
