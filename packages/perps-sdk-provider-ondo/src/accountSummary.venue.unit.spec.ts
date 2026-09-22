@@ -205,11 +205,28 @@ describe('accountSummary.venue', () => {
     expect(summary.marginUsed).toBe(BALANCE.usedMargin)
   })
 
+  it('getWithdrawableBalances returns one perps row of withdrawableMargin', async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, AUTH_TOKEN)
+    const provider = ondoProvider({ apiUrl: API_URL, storage })
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([
+      {
+        assetId: ONDO_COLLATERAL_ASSET.id,
+        route: 'perps',
+        available: BALANCE.withdrawableMargin,
+      },
+    ])
+  })
+
   it('records walletBalance, unrealizedPnl, marginBalance, usedMargin, and availableMargin as named constants', () => {
     expect(BALANCE.walletBalance).toBe('5000')
     expect(BALANCE.unrealizedPnl).toBe('250')
     expect(BALANCE.marginBalance).toBe('5250')
     expect(BALANCE.usedMargin).toBe('900')
     expect(BALANCE.availableMargin).toBe('4350')
+    expect(BALANCE.withdrawableMargin).toBe('4350')
   })
 })

@@ -74,6 +74,11 @@ Account-specific reads go directly to the venue. `getOrders()` returns the
 `Order` union with regular, trigger, and TWAP rows. Its default filter includes
 PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 
+`getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
+withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
+joins each row onto the registry `Asset` and drops a row below the per-asset
+venue minimum.
+
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'

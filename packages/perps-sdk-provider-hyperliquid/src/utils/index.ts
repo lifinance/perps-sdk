@@ -62,3 +62,4 @@ export {
   perpsTotals,
   sumUnrealizedPnl,
 } from './venueTotals.js'
+export { hyperliquidWithdrawableBalances } from './withdrawableBalances.js'
