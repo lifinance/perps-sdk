@@ -18,6 +18,8 @@ import {
   type ProviderGetPortfolioHistoryParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   type SDKRequestOptions,
   type SignActionsContext,
@@ -68,6 +70,7 @@ import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
 import { getPortfolioHistory } from './services/getPortfolioHistory.js'
 import { getPositions } from './services/getPositions.js'
+import { getWithdrawableBalances } from './services/getWithdrawableBalances.js'
 import {
   type HyperliquidAgent,
   HyperliquidAgentStore,
@@ -298,6 +301,16 @@ export function hyperliquidProvider(
       kind: 'lifiSwap',
       destination: HYPERLIQUID_USDC,
     }),
+
+    getWithdrawableBalances: (
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> =>
+      getWithdrawableBalances(
+        contextRef.require(),
+        { address: params.address },
+        opts
+      ),
 
     getPositions: (
       params: ProviderGetPositionsParams,
