@@ -31,6 +31,8 @@ import { signTypedData } from '../src/utils/signTypedData.js'
  */
 export interface TestAgentProvider extends PerpsProviderPlugin {
   createAgent(address: Address): Promise<Address>
+  /** Always implemented here, so a spec can spy on it without a null check. */
+  signActions: NonNullable<PerpsProviderPlugin['signActions']>
 }
 
 export function createTestAgentProvider(

@@ -112,6 +112,32 @@ function findActionDescriptor(
 }
 
 /**
+ * Split an ordered `createAction` batch into consecutive runs of steps that
+ * share one descriptor. A batch is a chain and may mix descriptors — a
+ * Hyperliquid `placeOrder` can arrive with a USER-signed builder-fee approval
+ * ahead of the SDK-signed order — and each run must be signed by its own
+ * descriptor's signer.
+ *
+ * @throws {PerpsError} When a step's action is not declared by the provider.
+ */
+function groupStepsByDescriptor(
+  metadata: Provider,
+  steps: ActionStep[]
+): { descriptor: ProviderAction; steps: ActionStep[] }[] {
+  const groups: { descriptor: ProviderAction; steps: ActionStep[] }[] = []
+  for (const step of steps) {
+    const descriptor = findActionDescriptor(metadata, step.action)
+    const current = groups.at(-1)
+    if (current !== undefined && current.descriptor.type === descriptor.type) {
+      current.steps.push(step)
+      continue
+    }
+    groups.push({ descriptor, steps: [step] })
+  }
+  return groups
+}
+
+/**
  * The primary high-level perps API: wraps a {@link PerpsSDKClient} and owns the
  * end-to-end signing pipeline for provider setup, orders, and account-level
  * actions. Construct via `new PerpsClient(options)` or the SDK's higher-level
@@ -243,15 +269,21 @@ export class PerpsClient {
   }
 
   /**
-   * Delegate signing of `actions` to the provider plugin. The plugin owns
-   * every signing arm and branches on the descriptor's `signers` internally,
-   * reading the end-user's wallet from the {@link SignActionsContext} when an
-   * arm signs as the user.
+   * Delegate signing of `actions` to the provider plugin, one call per
+   * consecutive run of steps sharing a descriptor. Each call carries that
+   * descriptor's `signingMethod` and `signers`, so a mixed batch signs every
+   * step with the signer its own descriptor declares; the signed steps come
+   * back in the batch's original order. The plugin owns every signing arm and
+   * branches on `signers` internally, reading the end-user's wallet from the
+   * {@link SignActionsContext} when an arm signs as the user.
+   *
+   * @throws {PerpsError} When a step's action is not declared by the provider,
+   *   or the plugin implements no `signActions`.
    */
   private async delegateSignActions(
     provider: string,
     address: Address,
-    descriptor: ProviderAction,
+    metadata: Provider,
     actions: ActionStep[],
     onProgress?: (progress: SignActionProgress) => void
   ): Promise<SignedActionStep[]> {
@@ -259,17 +291,25 @@ export class PerpsClient {
     if (typeof plugin.signActions !== 'function') {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Provider '${provider}' does not implement signActions for ` +
-          `signingMethod '${descriptor.signingMethod}'.`
+        `Provider '${provider}' does not implement signActions.`
       )
     }
-    const userWallet = await this.resolveSigningWallet(descriptor, actions)
-    return plugin.signActions(
-      descriptor.signingMethod,
-      actions,
-      address,
-      this.buildSignActionsContext(descriptor, userWallet, onProgress)
-    )
+    const signed: SignedActionStep[] = []
+    for (const group of groupStepsByDescriptor(metadata, actions)) {
+      const userWallet = await this.resolveSigningWallet(
+        group.descriptor,
+        group.steps
+      )
+      signed.push(
+        ...(await plugin.signActions(
+          group.descriptor.signingMethod,
+          group.steps,
+          address,
+          this.buildSignActionsContext(group.descriptor, userWallet, onProgress)
+        ))
+      )
+    }
+    return signed
   }
 
   /**
@@ -411,11 +451,10 @@ export class PerpsClient {
     step: ActionStep
   ): Promise<SignedActionStep | undefined> {
     const metadata = await this.getProviderMetadata(provider)
-    const descriptor = findActionDescriptor(metadata, step.action)
     const [signed] = await this.delegateSignActions(
       provider,
       address,
-      descriptor,
+      metadata,
       [step]
     )
     return signed
@@ -1272,7 +1311,7 @@ export class PerpsClient {
     const signedActions = await this.delegateSignActions(
       provider,
       address,
-      descriptor,
+      metadata,
       actions,
       onProgress
     )
