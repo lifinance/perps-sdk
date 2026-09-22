@@ -659,6 +659,38 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([])
   })
+
+  it('rejects when the provider metadata carries no collateral asset', async () => {
+    providersResult = [
+      {
+        ...ACCOUNT_PROVIDER_METADATA,
+        categories: [{ id: 'ondo', quoteAsset: null }],
+      },
+    ]
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: 'Ondo provider metadata is missing its collateral asset',
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects when the withdrawable margin is not a decimal', async () => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: 'n/a' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message:
+        "Ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
+      tool: 'ondo',
+    })
+  })
 })
 
 describe('OndoProvider — getAccount (logged in)', () => {

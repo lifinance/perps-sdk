@@ -1,6 +1,6 @@
 import type { ProviderWithdrawableBalance } from '@lifi/perps-sdk'
-import Big from 'big.js'
 import type { OndoBalanceSummary } from '../types/wire.js'
+import { toWireBig } from './decimal.js'
 
 /**
  * The single route an Ondo withdrawal draws on: `withdrawableMargin`, the
@@ -15,7 +15,10 @@ export const ondoWithdrawableBalances = (
   assetId: string,
   balance: OndoBalanceSummary
 ): ProviderWithdrawableBalance[] => {
-  const available = new Big(balance.withdrawableMargin)
+  const available = toWireBig(
+    balance.withdrawableMargin,
+    'balance.withdrawableMargin'
+  )
   return available.gt(0)
     ? [{ assetId, route: 'perps', available: available.toFixed() }]
     : []

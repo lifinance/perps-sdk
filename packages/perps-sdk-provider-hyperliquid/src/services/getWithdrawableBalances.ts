@@ -67,10 +67,12 @@ export const getWithdrawableBalances = async (
     (market) => market.categoryId === MAIN_MARKET_ID
   )?.quoteAsset
   if (quoteAsset === undefined) {
-    throw new PerpsError(
+    const error = new PerpsError(
       PerpsErrorCode.SDKError,
       `Hyperliquid market registry carries no '${MAIN_MARKET_ID}' market to name the withdrawal quote asset`
     )
+    error.tool = PROVIDER_KEY
+    throw error
   }
 
   return hyperliquidWithdrawableBalances(

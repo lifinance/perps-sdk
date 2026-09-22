@@ -5,6 +5,7 @@ import type {
   HlSpotClearinghouseState,
 } from '../types/index.js'
 import { isUnifiedAbstraction } from './abstractionMode.js'
+import { assetIsOutcome } from './assetId.js'
 import { toWireBig } from './decimal.js'
 
 /**
@@ -27,6 +28,9 @@ export const hyperliquidWithdrawableBalances = (
 
   if (isUnifiedAbstraction(abstraction)) {
     for (const balance of spotState.balances) {
+      if (assetIsOutcome(balance.coin)) {
+        continue
+      }
       const spot = toWireBig(balance.total, 'spotBalance.total').minus(
         toWireBig(balance.hold, 'spotBalance.hold')
       )
