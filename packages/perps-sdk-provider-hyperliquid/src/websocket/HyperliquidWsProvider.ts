@@ -1703,7 +1703,8 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
       return (
         typeof data.user === 'string' &&
         typeof data.coin === 'string' &&
-        Array.isArray(data.availableToTrade)
+        Array.isArray(data.availableToTrade) &&
+        data.availableToTrade.length === 2
       )
     default:
       return true

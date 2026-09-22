@@ -373,7 +373,10 @@ describe('HyperliquidWsProvider', () => {
       marketId,
     })
 
-    const activeAssetDataFrame = (coin: string) =>
+    const activeAssetDataFrame = (
+      coin: string,
+      availableToTrade: unknown = ['431.749348', '182.319517']
+    ) =>
       JSON.stringify({
         channel: 'activeAssetData',
         data: {
@@ -381,7 +384,7 @@ describe('HyperliquidWsProvider', () => {
           coin,
           leverage: { type: 'cross', value: 10 },
           maxTradeSzs: ['1.0', '2.0'],
-          availableToTrade: ['431.749348', '182.319517'],
+          availableToTrade,
           markPx: '95000.0',
         },
       })
@@ -451,6 +454,40 @@ describe('HyperliquidWsProvider', () => {
       await expect(
         provider.subscribe(subscriptionFor('DELISTED'), vi.fn())
       ).rejects.toThrow()
+    })
+
+    it.each([
+      ['a single amount', ['431.749348']],
+      ['an empty list', []],
+      ['three amounts', ['1', '2', '3']],
+    ])('drops a frame carrying %s and emits nothing', async (_name, amounts) => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC', amounts))
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledOnce()
+      warnSpy.mockRestore()
+    })
+
+    it('skips a frame naming an unknown market and keeps the stream open', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('UNLISTED'))
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC'))
+
+      expect(errorSpy).toHaveBeenCalledOnce()
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject({ marketId: 'BTC' })
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
     })
   })
 
