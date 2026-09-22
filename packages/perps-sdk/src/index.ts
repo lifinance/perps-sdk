@@ -255,6 +255,8 @@ export { createWarnOnce } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
 export { cachePromise } from './websocket/cachePromise.js'
+export type { DecodeChainMode } from './websocket/decodeChain.js'
+export { DecodeChain } from './websocket/decodeChain.js'
 export type {
   PerpsWsClientOptions,
   WsProviderFactory,
