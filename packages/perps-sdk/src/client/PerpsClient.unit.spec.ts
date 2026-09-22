@@ -339,6 +339,38 @@ describe('PerpsClient', () => {
       expect(secondCall[3]?.signers).toEqual([PerpsSigner.SDK])
     })
 
+    it('keeps non-adjacent runs of one descriptor as separate groups in order', async () => {
+      const { perps, signActions } = await mixedClient()
+      const executeCalls = stageBatch([
+        builderFeeStep,
+        placeOrderStep,
+        builderFeeStep,
+      ])
+
+      await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(signActions).toHaveBeenCalledTimes(3)
+      expect(signActions.mock.calls.map((call) => call[1])).toEqual([
+        [builderFeeStep],
+        [placeOrderStep],
+        [builderFeeStep],
+      ])
+      expect(signActions.mock.calls.map((call) => call[3]?.signers)).toEqual([
+        [PerpsSigner.USER],
+        [PerpsSigner.SDK],
+        [PerpsSigner.USER],
+      ])
+      expect(executeCalls[0].actions.map((step) => step.action)).toEqual([
+        ActionType.APPROVE_BUILDER_FEE,
+        ActionType.PLACE_ORDER,
+        ActionType.APPROVE_BUILDER_FEE,
+      ])
+    })
+
     it('calls signActions once for a single-descriptor batch', async () => {
       const { perps, signActions } = await mixedClient()
       stageBatch([placeOrderStep, placeOrderStep])
@@ -354,10 +386,10 @@ describe('PerpsClient', () => {
     })
 
     it('throws SDKError naming a step action the provider does not declare', async () => {
-      const { perps } = await mixedClient()
+      const { perps, signActions } = await mixedClient()
       stageBatch([
-        { ...placeOrderStep, action: ActionType.REGISTER_API_KEY },
         placeOrderStep,
+        { ...placeOrderStep, action: ActionType.REGISTER_API_KEY },
       ])
 
       await expect(
@@ -370,6 +402,7 @@ describe('PerpsClient', () => {
         code: PerpsErrorCode.SDKError,
         message: expect.stringContaining(ActionType.REGISTER_API_KEY),
       })
+      expect(signActions).not.toHaveBeenCalled()
     })
   })
 
