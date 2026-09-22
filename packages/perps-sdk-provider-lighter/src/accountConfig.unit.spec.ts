@@ -83,6 +83,8 @@ const baseConfig: LighterAccountConfig = {
   apiKeyIndex: 1,
   apiKeyRegistered: true,
   accountType: 0,
+  availableBalance: '100',
+  totalAssetValue: '500',
   accountTradingMode: 0,
   assetCollateral: [],
   readOnlyTokenApproved: false,

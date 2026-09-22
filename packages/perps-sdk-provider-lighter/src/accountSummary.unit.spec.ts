@@ -1,3 +1,4 @@
+import { PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   Asset,
@@ -53,13 +54,14 @@ const position = (
 })
 
 const account = (
-  collateralBalances: Balance[],
+  availableBalance: string,
+  totalAssetValue: string,
   balances: Balance[] = []
 ): AccountResponse => ({
   provider: 'lighter',
   address: '0x0000000000000000000000000000000000000001',
   balances,
-  collateralBalances,
+  collateralBalances: [balance(availableBalance)],
   positions: [],
   marginUsed: '0',
   unrealizedPnl: '0',
@@ -70,6 +72,8 @@ const account = (
     apiKeyIndex: 0,
     apiKeyRegistered: true,
     accountType: 0,
+    availableBalance,
+    totalAssetValue,
     accountTradingMode: 0,
     assetCollateral: [],
     readOnlyTokenApproved: true,
@@ -78,51 +82,37 @@ const account = (
 })
 
 describe('getAccountSummary', () => {
-  it('does not count cross unrealized PnL twice', () => {
-    // Cross available margin is marked to market by Lighter already.
-    const summary = getAccountSummary(account([balance('800')]), [
+  it('reads availableMargin from available_balance and portfolioValue from total_asset_value', () => {
+    const summary = getAccountSummary(account('800', '1000'), [
       position('200', '50'),
     ])
     expect(summary.availableMargin).toBe('800')
+    expect(summary.portfolioValue).toBe('1000')
     expect(summary.marginUsed).toBe('200')
     expect(summary.unrealizedPnl).toBe('50')
-    expect(summary.portfolioValue).toBe('1000')
   })
 
-  it('adds isolated unrealized PnL to the isolated allocation', () => {
+  it('carries an isolated allocation in total_asset_value without re-adding it', () => {
     // Captured from a real account: free cross collateral 1.506802, one
     // isolated BTC position with allocated_margin 10.179731 and uPnL
-    // −0.006954; the venue's total_asset_value read 11.679579.
-    const summary = getAccountSummary(account([balance('1.506802')]), [
+    // -0.006954; the venue's total_asset_value read 11.679579.
+    const summary = getAccountSummary(account('1.506802', '11.679579'), [
       position('10.179731', '-0.006954', MarginMode.ISOLATED),
     ])
     expect(summary.availableMargin).toBe('1.506802')
     expect(summary.portfolioValue).toBe('11.679579')
   })
 
-  it('reconciles mixed cross and isolated positions without double-counting cross PnL', () => {
-    const summary = getAccountSummary(account([balance('800')]), [
-      position('200', '50'),
-      position('100', '-30', MarginMode.ISOLATED),
-    ])
-    expect(summary.availableMargin).toBe('800')
-    expect(summary.marginUsed).toBe('300')
-    expect(summary.unrealizedPnl).toBe('20')
-    expect(summary.portfolioValue).toBe('1070')
-  })
-
-  it('adds non-collateral balances to portfolio value only', () => {
+  it('does not add the spot balance rows to portfolio value', () => {
     const summary = getAccountSummary(
-      account([balance('800')], [balance('250')]),
+      account('800', '1000', [balance('250')]),
       [position('200', '0')]
     )
-    expect(summary.availableMargin).toBe('800')
-    // portfolio = balances 250 + collateral 800 + margin 200 + pnl 0
-    expect(summary.portfolioValue).toBe('1250')
+    expect(summary.portfolioValue).toBe('1000')
   })
 
   it('aggregates margin used and pnl across multiple positions', () => {
-    const summary = getAccountSummary(account([balance('1000')]), [
+    const summary = getAccountSummary(account('1000', '1250'), [
       position('100', '10'),
       position('150', '-30'),
     ])
@@ -132,12 +122,24 @@ describe('getAccountSummary', () => {
   })
 
   it('returns string scalars for an empty account', () => {
-    const summary = getAccountSummary(account([]), [])
-    expect(summary).toEqual({
+    expect(getAccountSummary(account('0', '0'), [])).toEqual({
       portfolioValue: '0',
       availableMargin: '0',
       marginUsed: '0',
       unrealizedPnl: '0',
     })
+  })
+
+  it('rejects a non-Lighter account config', () => {
+    const foreign = {
+      ...account('800', '1000'),
+      config: { provider: 'ondo' },
+    } as unknown as AccountResponse
+    expect(() => getAccountSummary(foreign, [])).toThrow(PerpsError)
+  })
+
+  it('rejects a non-decimal venue figure', () => {
+    const broken = account('800', 'n/a')
+    expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
   })
 })
