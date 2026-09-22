@@ -1,5 +1,33 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 16.0.0
+
+### Major Changes
+
+- [#493](https://github.com/lifinance/perps-sdk/pull/493) [`bb1a973`](https://github.com/lifinance/perps-sdk/commit/bb1a97350f9e7c7111b701174b9dbd722914a276) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read the Hyperliquid account summary from the venue figures instead of deriving it.
+
+  `AccountSummary.marginUsed` is now `marginSummary.totalMarginUsed`, summed over every perps sub-dex. `availableMargin` is `accountValue` minus `totalMarginUsed` in standard, disabled and `dexAbstraction` modes, and the venue `tokenToAvailableAfterMaintenance` entry for the quote asset in `unifiedAccount` and `portfolioMargin` modes. A unified or portfolio-margin account that carries no such entry now throws `PerpsErrorCode.SDKError`.
+
+  `Position.marginUsed` reports the venue value unchanged for an isolated position. The venue defines that value as position equity, so the previous subtraction of `unrealizedPnl` counted a loss twice.
+
+  `HyperliquidAccountConfig` gains a required `dexStates` array of `HyperliquidDexAccountState`, which carries each sub-dex `marginSummary`, `crossMarginSummary`, `crossMaintenanceMarginUsed` and `withdrawable`. It also gains an optional `availableAfterMaintenance` for the two spot-held modes.
+
+  `Balance.collateralWeight` is no longer populated. Hyperliquid reports borrow capacity directly, so the SDK no longer applies its own loan-to-value weight to portfolio-margin spot collateral. Non-quote spot tokens now appear in `AccountResponse.balances` instead of `collateralBalances`.
+
+  `@lifi/perps-sdk` re-exports the whole `@lifi/perps-types` surface, so it carries the same breaking change.
+
+### Minor Changes
+
+- [#494](https://github.com/lifinance/perps-sdk/pull/494) [`b49efcc`](https://github.com/lifinance/perps-sdk/commit/b49efcc12365bd16cf7837232fbfb17b69b3db6e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a per-market available-to-trade read. `PerpsClient.getAvailableToTrade` reports the amounts an account can still buy and sell on one market, in that market's margin asset. The Hyperliquid provider reads the figure from `activeAssetData` and streams it on the new `availableToTrade` WebSocket channel. Every other provider falls back to the account summary `availableMargin`. The Lighter and Ondo WebSocket providers reject the new channel, which they do not stream.
+
+- [#496](https://github.com/lifinance/perps-sdk/pull/496) [`8f94973`](https://github.com/lifinance/perps-sdk/commit/8f949730e0278d7d5d822ad77c601627419de047) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `getWithdrawableBalances` to the Hyperliquid and Ondo providers. Hyperliquid reads `clearinghouseState.withdrawable` for the perps route, and each spot balance's `total` minus `hold` for the spot route on a unified or portfolio-margin account. Ondo reads `withdrawableMargin`. The Ondo provider also exports `requireOndoCollateralAsset`, which resolves the collateral asset the backend publishes for Ondo's single category.
+
+### Patch Changes
+
+- Updated dependencies [[`bb1a973`](https://github.com/lifinance/perps-sdk/commit/bb1a97350f9e7c7111b701174b9dbd722914a276), [`320fad6`](https://github.com/lifinance/perps-sdk/commit/320fad69a055123912aff324da08f87134035a39), [`b49efcc`](https://github.com/lifinance/perps-sdk/commit/b49efcc12365bd16cf7837232fbfb17b69b3db6e), [`4e5744c`](https://github.com/lifinance/perps-sdk/commit/4e5744ce70d000ce568932823b27d1309bdd719c)]:
+  - @lifi/perps-sdk@16.0.0
+  - @lifi/perps-types@15.0.0
+
 ## 15.0.0
 
 ### Major Changes

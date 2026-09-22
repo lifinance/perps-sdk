@@ -1,5 +1,35 @@
 # @lifi/perps-types
 
+## 15.0.0
+
+### Major Changes
+
+- [#493](https://github.com/lifinance/perps-sdk/pull/493) [`bb1a973`](https://github.com/lifinance/perps-sdk/commit/bb1a97350f9e7c7111b701174b9dbd722914a276) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read the Hyperliquid account summary from the venue figures instead of deriving it.
+
+  `AccountSummary.marginUsed` is now `marginSummary.totalMarginUsed`, summed over every perps sub-dex. `availableMargin` is `accountValue` minus `totalMarginUsed` in standard, disabled and `dexAbstraction` modes, and the venue `tokenToAvailableAfterMaintenance` entry for the quote asset in `unifiedAccount` and `portfolioMargin` modes. A unified or portfolio-margin account that carries no such entry now throws `PerpsErrorCode.SDKError`.
+
+  `Position.marginUsed` reports the venue value unchanged for an isolated position. The venue defines that value as position equity, so the previous subtraction of `unrealizedPnl` counted a loss twice.
+
+  `HyperliquidAccountConfig` gains a required `dexStates` array of `HyperliquidDexAccountState`, which carries each sub-dex `marginSummary`, `crossMarginSummary`, `crossMaintenanceMarginUsed` and `withdrawable`. It also gains an optional `availableAfterMaintenance` for the two spot-held modes.
+
+  `Balance.collateralWeight` is no longer populated. Hyperliquid reports borrow capacity directly, so the SDK no longer applies its own loan-to-value weight to portfolio-margin spot collateral. Non-quote spot tokens now appear in `AccountResponse.balances` instead of `collateralBalances`.
+
+  `@lifi/perps-sdk` re-exports the whole `@lifi/perps-types` surface, so it carries the same breaking change.
+
+- [#495](https://github.com/lifinance/perps-sdk/pull/495) [`320fad6`](https://github.com/lifinance/perps-sdk/commit/320fad69a055123912aff324da08f87134035a39) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read the Ondo and Lighter account summaries from the venue figures, and delete the shared collateral calculator.
+
+  `summarizeAccount` and `CollateralSemantics` are removed from `@lifi/perps-sdk`. Every provider now reports the figures its venue publishes, so no caller needs the shared derivation. `Balance.collateralWeight` is removed from `@lifi/perps-types` because no provider populates it.
+
+  `OndoAccountConfig` gains an optional `balance` of the new `OndoAccountBalance` type, which carries the venue `walletBalance`, `unrealizedPnl`, `marginBalance`, `usedMargin`, `availableMargin` and `withdrawableMargin`. The Ondo `getAccountSummary` reads `portfolioValue` from `marginBalance`, `availableMargin` from `availableMargin`, `marginUsed` from `usedMargin` and `unrealizedPnl` from `unrealizedPnl`. A logged-out account carries no venue balance and summarizes as zero. The Ondo WebSocket `accountSummary` channel emits the same four figures and re-reads the venue balance on a fills or positions frame, instead of recomputing them from the positions.
+
+  `LighterAccountConfig` gains the required `availableBalance` and `totalAssetValue`, copied from the venue `available_balance` and `total_asset_value`. The Lighter `getAccountSummary` reads `availableMargin` from `availableBalance` and `portfolioValue` from `totalAssetValue`; the positions supply only `marginUsed` and `unrealizedPnl`. The previous `cross_asset_value` minus `cross_initial_margin_requirement` derivation is removed, and the Lighter collateral row now carries `available_balance`.
+
+  `@lifi/perps-sdk` exports the `DecodeChain` frame-ordering helper. The Ondo WebSocket provider pushes the account-summary balance re-read onto a `'latest'` chain, so a fills frame and a positions frame that arrive together coalesce to one read and cannot apply out of order.
+
+### Minor Changes
+
+- [#494](https://github.com/lifinance/perps-sdk/pull/494) [`b49efcc`](https://github.com/lifinance/perps-sdk/commit/b49efcc12365bd16cf7837232fbfb17b69b3db6e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add a per-market available-to-trade read. `PerpsClient.getAvailableToTrade` reports the amounts an account can still buy and sell on one market, in that market's margin asset. The Hyperliquid provider reads the figure from `activeAssetData` and streams it on the new `availableToTrade` WebSocket channel. Every other provider falls back to the account summary `availableMargin`. The Lighter and Ondo WebSocket providers reject the new channel, which they do not stream.
+
 ## 14.1.0
 
 ### Minor Changes
