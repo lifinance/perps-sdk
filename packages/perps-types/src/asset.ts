@@ -35,6 +35,17 @@ export interface Asset {
   minWithdrawalAmount?: string
 }
 
+/**
+ * The subset of {@link Asset} a consumer needs to label an amount: identity
+ * plus the symbol, name and logo a display shows.
+ *
+ * @public
+ */
+export type AssetDisplay = Pick<
+  Asset,
+  'providerId' | 'id' | 'displaySymbol' | 'logoURI' | 'displayName'
+>
+
 /** Response containing the provider's normalized asset registry. @public */
 export interface AssetsResponse {
   assets: Asset[]

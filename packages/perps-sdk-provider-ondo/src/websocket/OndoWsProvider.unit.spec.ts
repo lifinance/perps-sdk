@@ -494,6 +494,22 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('rejects availableToTrade which Ondo does not expose', async () => {
+      const p = makeProvider()
+      await expect(
+        p.subscribe(
+          {
+            channel: 'availableToTrade',
+            dex: 'ondo',
+            address: '0x1234567890123456789012345678901234567890',
+            marketId: 'AAPL-USD.P',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow(/does not support channel: availableToTrade/)
+      p.close()
+    })
+
     it('maps kline updates onto the candle event, recovering the interval from the bar span', () => {
       const p = makeProvider()
       const listener = vi.fn()

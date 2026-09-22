@@ -365,6 +365,22 @@ describe('LighterWsProvider', () => {
     provider.close()
   })
 
+  it('rejects availableToTrade which Lighter does not expose', async () => {
+    const provider = makeProvider()
+    await expect(
+      provider.subscribe(
+        {
+          channel: 'availableToTrade',
+          dex: 'lighter',
+          address: '0x1234567890123456789012345678901234567890',
+          marketId: '1',
+        },
+        () => {}
+      )
+    ).rejects.toThrow(/does not support channel: availableToTrade/)
+    provider.close()
+  })
+
   it('rejects orderbook subscription for unknown assets', async () => {
     const provider = makeProvider()
     await expect(
