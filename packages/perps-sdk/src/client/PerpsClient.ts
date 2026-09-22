@@ -4,6 +4,7 @@ import type {
   ActionParamsMap,
   ActionResult,
   ActionStep,
+  AvailableToTrade,
   CreateActionResponse,
   ExecuteActionResponse,
   MarketRef,
@@ -28,7 +29,8 @@ import {
 import Big from 'big.js'
 import type { Address } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
-import { getAssetRegistry } from '../registry/assetRegistry.js'
+import { getAssetRegistry, toAssetDisplay } from '../registry/assetRegistry.js'
+import { getMarketRegistry } from '../registry/marketRegistry.js'
 import { createAction } from '../services/createAction.js'
 import { executeAction } from '../services/executeAction.js'
 import { getAccount as fetchAccount } from '../services/getAccount.js'
@@ -496,6 +498,58 @@ export class PerpsClient {
       address: params.address,
       market: params.market,
     })
+  }
+
+  /**
+   * The amounts `params.address` can still buy and sell on one market, in
+   * that market's margin asset. The order panel reads this per-market figure;
+   * account displays read the account-scoped
+   * {@link AccountSummary.availableMargin} instead.
+   *
+   * Providers that read a per-market figure answer it directly. For every
+   * other provider this falls back to the account summary, so both sides
+   * equal `availableMargin` and the asset is the market's quote asset.
+   *
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   market is unknown to the provider's market registry.
+   * @public
+   */
+  async getAvailableToTrade(
+    params: {
+      provider: string
+      address: Address
+      marketId: string
+    },
+    options?: SDKRequestOptions
+  ): Promise<AvailableToTrade> {
+    const plugin = this.requireProvider(params.provider)
+    const perMarket = await plugin.getAvailableToTrade?.(
+      { address: params.address, marketId: params.marketId },
+      options
+    )
+    if (perMarket !== undefined) {
+      return perMarket
+    }
+
+    const registry = getMarketRegistry(this.sdkClient, params.provider)
+    await registry.sync()
+    const market = registry.require(params.marketId)
+    const account = await fetchAccount(
+      this.sdkClient,
+      { provider: params.provider, address: params.address },
+      options
+    )
+    const { availableMargin } = plugin.getAccountSummary(
+      account,
+      account.positions
+    )
+    return {
+      providerId: market.providerId,
+      marketId: market.id,
+      asset: toAssetDisplay(market.quoteAsset),
+      buy: availableMargin,
+      sell: availableMargin,
+    }
   }
 
   /**

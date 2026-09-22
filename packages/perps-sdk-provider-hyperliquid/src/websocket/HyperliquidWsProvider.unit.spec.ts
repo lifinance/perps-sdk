@@ -363,6 +363,97 @@ describe('HyperliquidWsProvider', () => {
     })
   })
 
+  describe('availableToTrade channel', () => {
+    const address = '0x3A18b8e1e653DF2a60e312e342084604F5E3e876'
+
+    const subscriptionFor = (marketId: string): Subscription => ({
+      channel: 'availableToTrade',
+      dex: 'hyperliquid',
+      address,
+      marketId,
+    })
+
+    const activeAssetDataFrame = (coin: string) =>
+      JSON.stringify({
+        channel: 'activeAssetData',
+        data: {
+          user: address.toLowerCase(),
+          coin,
+          leverage: { type: 'cross', value: 10 },
+          maxTradeSzs: ['1.0', '2.0'],
+          availableToTrade: ['431.749348', '182.319517'],
+          markPx: '95000.0',
+        },
+      })
+
+    it('subscribes to activeAssetData for the selected market', async () => {
+      const provider = createEnrichingProvider()
+
+      await provider.subscribe(subscriptionFor('BTC'), vi.fn())
+
+      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
+        method: 'subscribe',
+        subscription: {
+          type: 'activeAssetData',
+          user: address.toLowerCase(),
+          coin: 'BTC',
+        },
+      })
+    })
+
+    it('emits both sides against the market margin asset', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(subscriptionFor('BTC'), listener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('BTC'))
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0]).toEqual({
+        channel: 'availableToTrade',
+        data: {
+          providerId: 'hyperliquid',
+          marketId: 'BTC',
+          asset: {
+            providerId: 'hyperliquid',
+            id: '0',
+            displaySymbol: 'USDC',
+            logoURI: '',
+          },
+          buy: '431.749348',
+          sell: '182.319517',
+        },
+      })
+    })
+
+    it('opens one wire subscription per selected market', async () => {
+      const provider = createEnrichingProvider()
+      const btcListener = vi.fn()
+      const ethListener = vi.fn()
+      await provider.subscribe(subscriptionFor('BTC'), btcListener)
+      await provider.subscribe(subscriptionFor('ETH'), ethListener)
+
+      getMockRwsInstance().simulateMessage(activeAssetDataFrame('ETH'))
+
+      expect(ethListener).toHaveBeenCalledOnce()
+      expect(btcListener).not.toHaveBeenCalled()
+      expect(
+        getMockRwsInstance().sent.map((s) => JSON.parse(s).subscription.coin)
+      ).toEqual(['BTC', 'ETH'])
+    })
+
+    it('rejects a subscription for a delisted market', async () => {
+      const provider = createEnrichingProvider([
+        ...HL_MARKETS,
+        HL_DELISTED_MARKET,
+      ])
+
+      await expect(
+        provider.subscribe(subscriptionFor('DELISTED'), vi.fn())
+      ).rejects.toThrow()
+    })
+  })
+
   describe('subscribe', () => {
     it('subscribes to pac, sac, and the fastAssetCtxs feed', async () => {
       const provider = createProvider()

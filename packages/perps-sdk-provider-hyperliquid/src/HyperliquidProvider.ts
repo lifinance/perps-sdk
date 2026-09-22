@@ -10,6 +10,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
@@ -30,6 +31,7 @@ import {
   type ActionStep,
   ActionType,
   type ActivitiesResponse,
+  type AvailableToTrade,
   type FillsResponse,
   type Market,
   type MarketSettings,
@@ -59,6 +61,7 @@ import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
 import { getAccountExists } from './services/getAccountExists.js'
 import { getActivity } from './services/getActivity.js'
+import { getAvailableToTrade } from './services/getAvailableToTrade.js'
 import { getFills } from './services/getFills.js'
 import { getMarketSettings } from './services/getMarketSettings.js'
 import { getOrder } from './services/getOrder.js'
@@ -317,6 +320,16 @@ export function hyperliquidProvider(
       getMarketSettings(
         contextRef.require(),
         { address: params.address, market: params.market },
+        opts
+      ),
+
+    getAvailableToTrade: (
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> =>
+      getAvailableToTrade(
+        contextRef.require(),
+        { address: params.address, marketId: params.marketId },
         opts
       ),
 

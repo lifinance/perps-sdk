@@ -10,6 +10,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type SubscriptionListener,
+  toAssetDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
   type WsProviderFactory,
@@ -35,6 +36,7 @@ import {
   SPOT_MARKET_ID,
 } from '../constants.js'
 import type {
+  HlActiveAssetData,
   HlAssetPosition,
   HlOrderDetail,
   HlOrderStatusResponse,
@@ -293,7 +295,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       (sub.channel === 'marketContext' ||
         sub.channel === 'orderbook' ||
         sub.channel === 'candle' ||
-        sub.channel === 'trades')
+        sub.channel === 'trades' ||
+        sub.channel === 'availableToTrade')
     ) {
       this.registry.requireActive(sub.marketId)
     }
@@ -526,6 +529,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return `accountSummary:${sub.address.toLowerCase()}`
       case 'spotBalances':
         return `spotState:${sub.address.toLowerCase()}`
+      case 'availableToTrade':
+        return `activeAssetData:${sub.address.toLowerCase()}:${sub.marketId}`
     }
   }
 
@@ -601,6 +606,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
       case 'spotBalances':
         return { type: 'spotState', user: normalizeHlAddress(sub.address) }
+      case 'availableToTrade':
+        return {
+          type: 'activeAssetData',
+          user: normalizeHlAddress(sub.address),
+          coin: sub.marketId,
+        }
     }
   }
 
@@ -675,6 +686,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'spotState':
           this.handleSpotState(msg.data as HlWsSpotStateData)
+          break
+        case 'activeAssetData':
+          this.handleActiveAssetData(msg.data as HlActiveAssetData)
           break
       }
     } catch (error) {
@@ -1369,6 +1383,27 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
   }
 
+  private handleActiveAssetData(data: HlActiveAssetData) {
+    const market = this.registry?.get(data.coin)
+    if (market === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        `[${this.providerKey}] activeAssetData frame names unknown market '${data.coin}'.`
+      )
+    }
+    const [buy, sell] = data.availableToTrade
+    this.emit(`activeAssetData:${data.user.toLowerCase()}:${data.coin}`, {
+      channel: 'availableToTrade',
+      data: {
+        providerId: market.providerId,
+        marketId: market.id,
+        asset: toAssetDisplay(market.quoteAsset),
+        buy,
+        sell,
+      },
+    })
+  }
+
   private handleSpotState(data: HlWsSpotStateData) {
     const user = data.user.toLowerCase()
     const markets = this.registry?.activeMarkets ?? []
@@ -1679,6 +1714,12 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
         typeof data.user === 'string' &&
         isObject(data.spotState) &&
         Array.isArray(data.spotState.balances)
+      )
+    case 'activeAssetData':
+      return (
+        typeof data.user === 'string' &&
+        typeof data.coin === 'string' &&
+        Array.isArray(data.availableToTrade)
       )
     default:
       return true

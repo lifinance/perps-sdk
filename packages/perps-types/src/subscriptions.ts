@@ -1,5 +1,6 @@
 import type {
   AccountSummary,
+  AvailableToTrade,
   Balance,
   Fill,
   Order,
@@ -83,6 +84,14 @@ export type AccountSummarySubscription = {
   address: Address
 }
 
+/** Subscription for per-market available-to-trade updates for one account. @public */
+export type AvailableToTradeSubscription = {
+  channel: 'availableToTrade'
+  dex: string
+  address: Address
+  marketId: string
+}
+
 /**
  * Union of all websocket subscription request shapes.
  *
@@ -99,6 +108,7 @@ export type Subscription =
   | PositionsSubscription
   | SpotBalancesSubscription
   | AccountSummarySubscription
+  | AvailableToTradeSubscription
 
 /** Event containing the provider's aggregate market contexts. @public */
 export type MarketsContextEvent = {
@@ -157,6 +167,16 @@ export type AccountSummaryEvent = {
 }
 
 /**
+ * Per-market available-to-trade frame for the subscribed market. The venue
+ * recomputes both sides when the account's margin or position changes.
+ * @public
+ */
+export type AvailableToTradeEvent = {
+  channel: 'availableToTrade'
+  data: AvailableToTrade
+}
+
+/**
  * Union of all websocket event frame shapes emitted for subscriptions.
  *
  * @public
@@ -172,3 +192,4 @@ export type SubscriptionEvent =
   | PositionsEvent
   | SpotBalancesEvent
   | AccountSummaryEvent
+  | AvailableToTradeEvent
