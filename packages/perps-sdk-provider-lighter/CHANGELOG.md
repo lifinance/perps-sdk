@@ -1,5 +1,21 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 28.0.0
+
+### Major Changes
+
+- [#502](https://github.com/lifinance/perps-sdk/pull/502) [`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Each provider now calculates its own removable isolated margin through `positionRemovableMargin(position)`, read through `PerpsClient.getPositionRemovableMargin(position)`. It returns `undefined` for a position with no individual margin adjustment and `'0'` for a position that accepts no margin removal. Hyperliquid returns `marginUsed − max(initialMarginRequirement, 0.1 × size × markPrice)` and no longer counts the unrealized PnL twice. Lighter returns `marginUsed + unrealizedPnl − initialMarginRequirement`. Ondo returns `undefined`. The shared `removableIsolatedMargin` helper, its `RemovableIsolatedMarginParams` type, the provider `positionMarginConstraints` exports, `PerpsClient.getPositionMarginConstraints`, and the `PositionMarginConstraints` type are removed. `Position.marginUsed` is the venue figure of each provider, and its unrealized-PnL treatment differs by venue.
+
+### Patch Changes
+
+- [#499](https://github.com/lifinance/perps-sdk/pull/499) [`5c7e2c5`](https://github.com/lifinance/perps-sdk/commit/5c7e2c501cd4a2cc58455cea6564afb8e1ae1b97) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map an Ondo `pending` order to `PENDING` instead of failing the order read, and map a resting Lighter `pending` trigger order to `OPEN`.
+
+- [#504](https://github.com/lifinance/perps-sdk/pull/504) [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `getAccount` spot balance rows now carry a `price` and a USD value from the spot market's mark price, and `getAccountSummary` adds every spot row, the settlement row included, to `portfolioValue`. `getAccount` now also reads the backend `/marketsContext` and rejects when that read fails. The `LighterAccountConfig.totalAssetValue` doc now states that the figure is perps-route equity and excludes the spot-route balances.
+
+- Updated dependencies [[`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0), [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a), [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7)]:
+  - @lifi/perps-types@16.0.0
+  - @lifi/perps-sdk@17.0.0
+
 ## 27.0.0
 
 ### Major Changes
