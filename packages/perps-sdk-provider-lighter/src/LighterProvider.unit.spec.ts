@@ -2763,6 +2763,105 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
+describe('LighterProvider — getAccount margin and PnL totals', () => {
+  const isolatedPosition = (
+    allocatedMargin: string,
+    unrealizedPnl: string
+  ) => ({
+    market_id: 0,
+    symbol: 'BTC',
+    initial_margin_fraction: '5.00',
+    open_order_count: 0,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '0.001',
+    avg_entry_price: '50000',
+    position_value: '50',
+    unrealized_pnl: unrealizedPnl,
+    realized_pnl: '0',
+    liquidation_price: '40000',
+    total_funding_paid_out: '0',
+    margin_mode: 1,
+    allocated_margin: allocatedMargin,
+    total_discount: '0',
+  })
+
+  let positions: ReturnType<typeof isolatedPosition>[]
+
+  beforeEach(() => {
+    positions = [isolatedPosition('0.1', '0.1'), isolatedPosition('0.2', '0.2')]
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond({
+          ...ACCOUNT_PAYLOAD,
+          accounts: [
+            {
+              ...ACCOUNT_PAYLOAD.accounts[0],
+              positions,
+            },
+          ],
+        })
+      }
+      if (u.includes('/api/v1/apikeys')) {
+        return respond(APIKEYS_EMPTY)
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+  })
+
+  it('sums marginUsed and unrealizedPnl as exact decimals', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toHaveLength(2)
+    expect(account.marginUsed).toBe('0.3')
+    expect(account.unrealizedPnl).toBe('0.3')
+  })
+
+  it('renders a total below 1e-7 as a plain decimal', async () => {
+    positions = [
+      isolatedPosition('0.00000001', '0.00000001'),
+      isolatedPosition('0.00000002', '0.00000002'),
+    ]
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.marginUsed).toBe('0.00000003')
+    expect(account.unrealizedPnl).toBe('0.00000003')
+  })
+
+  it.each([
+    ['marginUsed', isolatedPosition('not-a-decimal', '0')],
+    ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
+  ])('rejects a malformed position %s', async (field, malformed) => {
+    positions = [malformed]
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      new RegExp(field)
+    )
+  })
+})
+
 describe('LighterProvider — getFills authed path', () => {
   it('forwards the read-only token to /api/v1/trades and maps fills', async () => {
     const provider = lighterProvider({ authToken: 'pre-created-token' })
