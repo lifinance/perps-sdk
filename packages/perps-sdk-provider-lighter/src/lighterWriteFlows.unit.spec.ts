@@ -429,6 +429,11 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
 
   let registeredPublicKey: string | null = null
   let accountLimits: () => Response = () => accountLimitsWith('premium')
+  const providersWith = (): Response =>
+    respond({
+      providers: [{ key: LIGHTER_PROVIDER_KEY, setup: [accountTypeSetup] }],
+    })
+  let providers: () => Response = providersWith
   let requests: string[] = []
   const requestsTo = (path: string): string[] =>
     requests.filter((url) => url.includes(path))
@@ -436,6 +441,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
   beforeEach(() => {
     registeredPublicKey = null
     accountLimits = () => accountLimitsWith('premium')
+    providers = providersWith
     requests = []
     vi.stubGlobal(
       'fetch',
@@ -458,11 +464,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
           return respond(ACCOUNT_PAYLOAD)
         }
         if (u.includes('/perps/providers')) {
-          return respond({
-            providers: [
-              { key: LIGHTER_PROVIDER_KEY, setup: [accountTypeSetup] },
-            ],
-          })
+          return providers()
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -587,6 +589,36 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
 
     expect(order.action).toBe(ActionType.PLACE_ORDER)
     expect(sign).toHaveBeenCalledTimes(1)
+  })
+
+  it('signs anyway when the setup descriptor read fails, and refetches on the next order', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    accountLimits = () => accountLimitsWith('standard')
+    providers = () => new Response('boom', { status: 400 })
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    const [order] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [createOrderStep],
+      ADDRESS as Address
+    )
+
+    expect(order.action).toBe(ActionType.PLACE_ORDER)
+    expect(sign).toHaveBeenCalledTimes(1)
+    expect(requestsTo('/api/v1/accountLimits')).toEqual([])
+    const failedReads = requestsTo('/perps/providers').length
+    expect(failedReads).toBeGreaterThan(0)
+
+    providers = providersWith
+    await expect(
+      provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [createOrderStep],
+        ADDRESS as Address
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(requestsTo('/perps/providers')).toHaveLength(failedReads + 1)
   })
 
   it('fetches the setup descriptors once across consecutive orders', async () => {

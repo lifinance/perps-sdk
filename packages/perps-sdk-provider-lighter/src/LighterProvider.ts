@@ -795,9 +795,10 @@ export const createLighterProvider = (
 
   /** The venue's own `Provider.setup` descriptor for an action, if declared. */
   const setupDescriptor = async (
+    client: PerpsSDKClient,
     action: ActionType
   ): Promise<SetupAction | undefined> => {
-    setupPromise ??= getProviders(requireClient()).then(
+    setupPromise ??= getProviders(client).then(
       ({ providers }) =>
         providers.find((provider) => provider.key === providerKey)?.setup ?? [],
       (err: unknown) => {
@@ -811,15 +812,25 @@ export const createLighterProvider = (
 
   /**
    * Refuse an order signature for a tier the ACCOUNT_TYPE descriptor does not
-   * accept. An unreadable tier fails open: the venue itself rejects an
-   * ineligible account with body code 21520.
+   * accept. An unreadable descriptor or tier fails open: the venue itself
+   * rejects an ineligible account with body code 21520.
    */
   const assertOrderTier = async (address: Address): Promise<void> => {
     const localKey = await keyStore.get(address)
     if (localKey === null) {
       return
     }
-    const descriptor = await setupDescriptor(ActionType.ACCOUNT_TYPE)
+    const client = requireClient()
+    let descriptor: SetupAction | undefined
+    try {
+      descriptor = await setupDescriptor(client, ActionType.ACCOUNT_TYPE)
+    } catch (err) {
+      console.debug(
+        '[lighter] setup descriptor read failed; skipping the pre-sign tier check.',
+        err
+      )
+      return
+    }
     const enumerated = descriptor?.params?.[0]?.values ?? []
     if (descriptor === undefined || enumerated.length === 0) {
       return
