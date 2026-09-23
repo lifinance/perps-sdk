@@ -1310,6 +1310,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     // Top-level collateral (500) also includes isolated allocations.
     expect(account.collateralBalances[0].units).toBe('100')
     expect(account.collateralBalances[0].valueUsd).toBe('100')
+    expect(account.collateralBalances[0].transferable).toBe('100')
   })
 
   it('rejects a malformed available_balance', async () => {

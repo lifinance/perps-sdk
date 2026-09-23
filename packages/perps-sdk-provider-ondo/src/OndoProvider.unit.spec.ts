@@ -983,6 +983,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         units: '1000',
         valueUsd: '1000',
         price: '1',
+        transferable: '614.5',
       },
     ])
     expect(account.marginUsed).toBe('401')

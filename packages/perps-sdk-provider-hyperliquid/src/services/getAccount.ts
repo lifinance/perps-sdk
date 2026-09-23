@@ -100,6 +100,10 @@ const buildBalances = (
         units: value.toFixed(),
         valueUsd: value.toFixed(),
         price: '1',
+        transferable: toWireBig(
+          state.withdrawable,
+          'clearinghouseState.withdrawable'
+        ).toFixed(),
       })
     }
   }

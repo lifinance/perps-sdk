@@ -113,6 +113,7 @@ describe('getAccount', () => {
         units: '10000',
         valueUsd: '10000',
         price: '1',
+        transferable: HL_CLEARINGHOUSE_STATE.withdrawable,
       },
     ])
     expect(result.marginUsed).toBe(
@@ -388,6 +389,67 @@ describe('getAccount', () => {
     const result = await getAccount(ctx, { address: ADDRESS })
 
     expect(result.marginUsed).toBe('0.3')
+  })
+
+  it('reports each sub-dex transferable amount, below the account-wide free margin', async () => {
+    const responses = defaultResponses()
+    const dexState = (
+      accountValue: string,
+      totalMarginUsed: string,
+      withdrawable: string
+    ) => ({
+      ...HL_CLEARINGHOUSE_STATE,
+      marginSummary: {
+        ...HL_CLEARINGHOUSE_STATE.marginSummary,
+        accountValue,
+        totalMarginUsed,
+      },
+      withdrawable,
+      assetPositions: [],
+    })
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/marketsContext')) {
+          return new Response(JSON.stringify({ prices: [] }))
+        }
+        if (url.includes('/markets')) {
+          return new Response(
+            JSON.stringify({ markets: [...HL_MARKETS, XYZ_MARKET] })
+          )
+        }
+        const body = JSON.parse((init?.body as string) ?? '{}') as {
+          type: keyof typeof responses
+          dex?: string
+        }
+        const state =
+          body.dex === 'xyz'
+            ? dexState('50', '0', '50')
+            : dexState('100', '60', '40')
+        const value =
+          body.type === 'clearinghouseState' ? state : responses[body.type]
+        return new Response(JSON.stringify(value))
+      })
+    restore = () => spy.mockRestore()
+
+    const account = await getAccount(ctx, { address: ADDRESS })
+    const transferable = new Map(
+      account.collateralBalances
+        .filter((b) => b.categoryId !== 'spot')
+        .map((b) => [b.categoryId, b.transferable])
+    )
+
+    expect(transferable).toEqual(
+      new Map([
+        ['hyperliquid', '40'],
+        ['xyz', '50'],
+      ])
+    )
+    expect(getAccountSummary(account, []).availableMargin).toBe('90')
+    expect(
+      account.collateralBalances.find((b) => b.categoryId === 'spot')
+    ).not.toHaveProperty('transferable')
   })
 
   it('throws a named error identifying a non-decimal totalMarginUsed', async () => {

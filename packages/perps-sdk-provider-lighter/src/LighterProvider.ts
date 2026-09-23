@@ -886,6 +886,7 @@ export const createLighterProvider = (
               units: availableBalance.toString(),
               valueUsd: availableBalance.toString(),
               price: '1',
+              transferable: availableBalance.toString(),
             },
           ]
         : []

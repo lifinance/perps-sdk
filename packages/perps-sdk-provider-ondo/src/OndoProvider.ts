@@ -355,6 +355,7 @@ export const ondoProvider = (
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
                     price: '1',
+                    transferable: balance.availableMargin,
                   },
                 ]
               : [],
