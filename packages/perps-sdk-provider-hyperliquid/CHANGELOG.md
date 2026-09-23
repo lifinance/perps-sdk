@@ -1,5 +1,23 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 17.0.0
+
+### Major Changes
+
+- [#502](https://github.com/lifinance/perps-sdk/pull/502) [`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Each provider now calculates its own removable isolated margin through `positionRemovableMargin(position)`, read through `PerpsClient.getPositionRemovableMargin(position)`. It returns `undefined` for a position with no individual margin adjustment and `'0'` for a position that accepts no margin removal. Hyperliquid returns `marginUsed − max(initialMarginRequirement, 0.1 × size × markPrice)` and no longer counts the unrealized PnL twice. Lighter returns `marginUsed + unrealizedPnl − initialMarginRequirement`. Ondo returns `undefined`. The shared `removableIsolatedMargin` helper, its `RemovableIsolatedMarginParams` type, the provider `positionMarginConstraints` exports, `PerpsClient.getPositionMarginConstraints`, and the `PositionMarginConstraints` type are removed. `Position.marginUsed` is the venue figure of each provider, and its unrealized-PnL treatment differs by venue.
+
+### Minor Changes
+
+- [#503](https://github.com/lifinance/perps-sdk/pull/503) [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawableBalances` rows now carry an optional `withdrawalFee` in the asset's own units: Hyperliquid sets it on USDC rows from the provider `withdrawalFeeUsd`, Ondo from the account `withdrawalFeeUSD`, and Lighter leaves it absent. The client rejects a row fee that is not a non-negative decimal.
+
+### Patch Changes
+
+- [#501](https://github.com/lifinance/perps-sdk/pull/501) [`71d5f8b`](https://github.com/lifinance/perps-sdk/commit/71d5f8b941bb0e9f7072ba2dd691f887211131c6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getOrder` now sets `explorerLink` on a Hyperliquid order whose placement transaction the explorer still holds, the same as `getOrders`. On both reads, a caller signal that fires during the explorer read now rejects the read instead of returning the orders unlinked.
+
+- Updated dependencies [[`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0), [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a), [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7)]:
+  - @lifi/perps-types@16.0.0
+  - @lifi/perps-sdk@17.0.0
+
 ## 16.0.0
 
 ### Major Changes
