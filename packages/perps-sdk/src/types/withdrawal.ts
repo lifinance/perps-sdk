@@ -24,7 +24,8 @@ export interface ProviderWithdrawableBalance {
   available: string
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
-   * Absent when the venue publishes no fee for the asset.
+   * Absent when the venue publishes no fee for the asset. The client rejects a
+   * value that is not a non-negative decimal.
    */
   withdrawalFee?: string
 }

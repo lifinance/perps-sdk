@@ -77,8 +77,18 @@ PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 `getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
 joins each row onto the registry `Asset` and drops a row below the per-asset
-venue minimum. A row carries `withdrawalFee`, in the asset's own units, when
-the venue publishes a flat withdrawal fee for that asset.
+venue minimum. A row carries `withdrawalFee`, in the asset's own units, when a
+fee source is known for that asset:
+
+- Hyperliquid: the backend `/providers` `withdrawalFeeUsd`, on USDC rows only.
+  This read also calls the backend. A missing descriptor value leaves the key
+  absent.
+- Ondo: the account's `/v1/account` `withdrawalFeeUSD`, on the collateral row.
+  The USD fee counts 1:1 as collateral units, because Ondo collateral is USDC.
+- Lighter: never set.
+
+An absent `withdrawalFee` means that no fee source is known. It does not prove
+that the venue charges no fee.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'

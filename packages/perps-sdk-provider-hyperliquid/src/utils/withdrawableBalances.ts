@@ -28,10 +28,12 @@ export const hyperliquidWithdrawableBalances = (
   withdrawalFee?: string
 ): ProviderWithdrawableBalance[] => {
   const rows: ProviderWithdrawableBalance[] = []
+  const fee =
+    withdrawalFee === undefined
+      ? undefined
+      : toWireBig(withdrawalFee, 'providers.withdrawalFeeUsd').toFixed()
   const feeFor = (assetId: string) =>
-    withdrawalFee === undefined || assetId !== quoteAssetId
-      ? {}
-      : { withdrawalFee }
+    fee === undefined || assetId !== quoteAssetId ? {} : { withdrawalFee: fee }
 
   if (isUnifiedAbstraction(abstraction)) {
     for (const balance of spotState.balances) {

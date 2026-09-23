@@ -7,7 +7,6 @@ import {
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { MAIN_MARKET_ID, PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -90,6 +89,6 @@ export const getWithdrawableBalances = async (
     state,
     spotState,
     quoteAsset.id,
-    feeUsd === undefined ? undefined : new Big(feeUsd).toFixed()
+    feeUsd === undefined ? undefined : String(feeUsd)
   )
 }

@@ -19,7 +19,7 @@ const jsonResponse = (value: unknown, status = 200): Response =>
  * `getMarket` filters by the `marketIds` query param — the `/marketsContext` GET
  * route from `prices`, the `/providers` GET route from `providers`, and
  * resolves each Hyperliquid POST from `responses` keyed by the body's `type`
- * field. A `Response` entry is served as-is, so a
+ * field. A `Response` entry or `providers` value is served as-is, so a
  * spec can drive a non-2xx status. POSTs are recorded in `requests`; the
  * reference-data GET routes are recorded separately in `referenceRequests`, so
  * a spec can assert a filtered read skipped one. Unknown `type` values raise so
@@ -30,7 +30,7 @@ export function installInfoFetchMock(
   markets: Market[] = [],
   prices: MarketContext[] = [],
   assets: Asset[] = [USDC_ASSET],
-  providers: Provider[] = [HYPERLIQUID_PROVIDER]
+  providers: Provider[] | Response = [HYPERLIQUID_PROVIDER]
 ): {
   requests: RecordedRequest[]
   referenceRequests: string[]
@@ -45,7 +45,9 @@ export function installInfoFetchMock(
 
       if (url.includes('/providers')) {
         referenceRequests.push(url)
-        return jsonResponse({ providers })
+        return providers instanceof Response
+          ? providers.clone()
+          : jsonResponse({ providers })
       }
 
       if (url.includes('/assets')) {

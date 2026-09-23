@@ -9,8 +9,8 @@ import { toWireBig } from './decimal.js'
  * venue minimum.
  *
  * @param assetId - `Asset.id` the row is keyed by.
- * @param withdrawalFeeUsd - The account's `withdrawalFeeUSD`. Ondo values its
- *   collateral at 1 USD, so it is the row fee in collateral units. Absent
+ * @param withdrawalFeeUsd - The account's `withdrawalFeeUSD`. Ondo collateral
+ *   is USDC, so the USD fee is the row fee 1:1 in collateral units. Absent
  *   leaves the row without a fee.
  * @public
  */

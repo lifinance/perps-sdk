@@ -1,5 +1,10 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
-import type { Market, MarketContext, Provider } from '@lifi/perps-types'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import {
+  type Market,
+  type MarketContext,
+  PerpsErrorCode,
+  type Provider,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HYPERLIQUID_PROVIDER, USDC_ASSET } from '../test/fixtures.js'
@@ -33,7 +38,7 @@ const load = async (
   snapshot: RecordedSnapshot,
   markets: Market[],
   prices: MarketContext[],
-  providers: Provider[] = [HYPERLIQUID_PROVIDER]
+  providers: Provider[] | Response = [HYPERLIQUID_PROVIDER]
 ) => {
   ;({ restore } = installInfoFetchMock(
     {
@@ -100,6 +105,47 @@ describe('getWithdrawableBalances.venue: withdrawal fee', () => {
     for (const row of rows) {
       expect(row).not.toHaveProperty('withdrawalFee')
     }
+  })
+
+  it('sets no fee when the providers list carries no hyperliquid entry', async () => {
+    const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES, [
+      { ...HYPERLIQUID_PROVIDER, key: 'lighter' },
+    ])
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('withdrawalFee')
+    }
+  })
+
+  it('rejects when the backend /providers read fails', async () => {
+    await expect(
+      load(
+        UNIFIED_SNAPSHOT,
+        UNIFIED_MARKETS,
+        UNIFIED_PRICES,
+        new Response('{}', { status: 503 })
+      )
+    ).rejects.toBeInstanceOf(PerpsError)
+  })
+
+  it('rejects a null descriptor fee with a PerpsError', async () => {
+    const body = {
+      providers: [{ ...HYPERLIQUID_PROVIDER, withdrawalFeeUsd: null }],
+    }
+    await expect(
+      load(
+        UNIFIED_SNAPSHOT,
+        UNIFIED_MARKETS,
+        UNIFIED_PRICES,
+        new Response(JSON.stringify(body), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message:
+        "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
+    })
   })
 })
 

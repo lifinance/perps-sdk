@@ -675,6 +675,21 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
     })
   })
 
+  it('rejects when the /v1/account read fails', async () => {
+    const { provider } = await loggedInProvider()
+    const venue = fetchMock.getMockImplementation()
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) =>
+        String(url).endsWith('/v1/account')
+          ? respond({ success: false, error: 'venue exploded' }, 500)
+          : venue!(url, init)
+    )
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toThrowError(/Ondo API request failed/)
+  })
+
   it('omits the row when the withdrawable margin is zero', async () => {
     balanceResult = { ...BALANCE_RESULT, withdrawableMargin: '0' }
     const { provider } = await loggedInProvider()

@@ -1739,6 +1739,44 @@ describe('PerpsClient', () => {
       expect(rows?.[1]).not.toHaveProperty('withdrawalFee')
     })
 
+    it('carries a zero withdrawal fee onto the row', async () => {
+      await expect(
+        clientWith(
+          withRows([
+            {
+              assetId: '3',
+              route: 'perps',
+              available: '11',
+              withdrawalFee: '0',
+            },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11',
+          withdrawalFee: '0',
+        },
+      ])
+    })
+
+    it.each([
+      '-1',
+      'not-a-decimal',
+    ])('rejects a row whose withdrawal fee is %s', async (withdrawalFee) => {
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '3', route: 'perps', available: '11', withdrawalFee },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: `Provider '${provider}' row for asset '3' has a \`withdrawalFee\` that is not a non-negative decimal: '${withdrawalFee}'.`,
+      })
+    })
+
     it('excludes rows below the asset minimum', async () => {
       await expect(
         clientWith(

@@ -17,6 +17,12 @@ describe('ondoWithdrawableBalances', () => {
     ])
   })
 
+  it('keeps a published zero fee as withdrawalFee "0"', () => {
+    expect(ondoWithdrawableBalances('usdc', balance('599'), '0.00')).toEqual([
+      { assetId: 'usdc', route: 'perps', available: '599', withdrawalFee: '0' },
+    ])
+  })
+
   it('sets no fee key when the venue fee is absent', () => {
     const [row] = ondoWithdrawableBalances('usdc', balance('599'))
     expect(row).toEqual({ assetId: 'usdc', route: 'perps', available: '599' })
