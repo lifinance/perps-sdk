@@ -27,9 +27,9 @@ const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
 /**
  * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
  * is perps-route equity and excludes the spot route, so `portfolioValue` adds
- * every spot `balances` row, settlement included; the `collateralBalances` row
- * is buying power already inside `totalAssetValue`. The positions supply only
- * the margin and PnL breakdown.
+ * every spot `balances` row, settlement included; the `collateralBalances` rows
+ * are the perps-route holding already inside `totalAssetValue`. The positions
+ * supply only the margin and PnL breakdown.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
