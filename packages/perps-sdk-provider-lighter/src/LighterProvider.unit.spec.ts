@@ -4962,6 +4962,109 @@ describe('LighterProvider — resolveExplorerLink', () => {
   })
 })
 
+describe('LighterProvider — getAvailableToTrade', () => {
+  const SPOT_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: '2048',
+    categoryId: 'spot',
+    positionMarginAdjustment: undefined,
+  }
+  const ACCOUNT_WITH_ISOLATED_LONG = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        available_balance: '5',
+        positions: [
+          {
+            market_id: 0,
+            symbol: 'BTC',
+            initial_margin_fraction: '10.00',
+            open_order_count: 0,
+            pending_order_count: 0,
+            position_tied_order_count: 0,
+            sign: 1,
+            position: '0.02',
+            avg_entry_price: '50000',
+            position_value: '1000',
+            unrealized_pnl: '0',
+            realized_pnl: '0',
+            liquidation_price: '0',
+            total_funding_paid_out: '0',
+            margin_mode: LT_MARGIN_MODE_ISOLATED,
+            allocated_margin: '100',
+            total_discount: '0',
+          },
+        ],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond({
+            markets: [...MARKETS_RESPONSE.markets, SPOT_MARKET],
+          })
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
+        recorded.push({ url: u, init })
+        if (u.includes('/api/v1/account?')) {
+          return respond(ACCOUNT_WITH_ISOLATED_LONG)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      }
+    )
+  })
+
+  it('adds the released margin and IMR to the side that closes the position', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '0' })
+    ).resolves.toEqual({
+      providerId: 'lighter',
+      marketId: '0',
+      asset: MARKETS_RESPONSE.markets[0].quoteAsset,
+      buy: '5',
+      sell: '205',
+    })
+  })
+
+  it('resolves undefined for a spot market without reading the account', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '2048' })
+    ).resolves.toBeUndefined()
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('throws for an unknown market', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '999' })
+    ).rejects.toBeInstanceOf(PerpsError)
+  })
+})
+
 describe('LighterProvider — getMarketSettings', () => {
   // Live capture of an isolated BTC position row: IMF 50% ⇒ 2x leverage.
   const ACCOUNT_WITH_ISOLATED_ROW = {
