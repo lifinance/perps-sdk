@@ -31,7 +31,7 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     formatOrderPrice: (_market, price) => price.toString(),
     formatOrderSize: (_market, size) => size.toString(),
     estimateLiquidationPrice: () => undefined,
-    positionMarginConstraints: () => undefined,
+    positionRemovableMargin: () => undefined,
     projectConfig: () => [],
   }
 }

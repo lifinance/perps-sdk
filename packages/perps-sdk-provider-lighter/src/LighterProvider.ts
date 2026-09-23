@@ -140,7 +140,7 @@ import {
   mapOpenPositions,
   mapOrder,
   mapPortfolioHistory,
-  positionMarginConstraints,
+  positionRemovableMargin,
   toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
@@ -1623,7 +1623,7 @@ export const createLighterProvider = (
 
     estimateLiquidationPrice,
 
-    positionMarginConstraints,
+    positionRemovableMargin,
 
     projectConfig(
       config: AccountConfig,

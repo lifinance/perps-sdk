@@ -1930,7 +1930,7 @@ describe('PerpsClient', () => {
         formatOrderPrice: vi.fn(),
         formatOrderSize: vi.fn(),
         estimateLiquidationPrice: vi.fn(),
-        positionMarginConstraints: vi.fn(),
+        positionRemovableMargin: vi.fn(),
         projectConfig: vi.fn(() => []),
         ...plugin,
       }
@@ -2006,7 +2006,7 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('getPositionMarginConstraints', () => {
+  describe('getPositionRemovableMargin', () => {
     const position: Position = {
       market: {
         providerId: provider,
@@ -2040,11 +2040,7 @@ describe('PerpsClient', () => {
     }
 
     it('delegates the complete position to its registered provider', () => {
-      const constraints = {
-        minimumMarginRequirement: '1000',
-        amountIncrement: '0.000001',
-      }
-      const positionMarginConstraints = vi.fn(() => constraints)
+      const positionRemovableMargin = vi.fn(() => '500')
       const client = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -2053,13 +2049,13 @@ describe('PerpsClient', () => {
             type: provider,
             bind: vi.fn(),
             projectConfig: vi.fn(() => []),
-            positionMarginConstraints,
+            positionRemovableMargin,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
-      expect(client.getPositionMarginConstraints(position)).toEqual(constraints)
-      expect(positionMarginConstraints).toHaveBeenCalledWith(position)
+      expect(client.getPositionRemovableMargin(position)).toBe('500')
+      expect(positionRemovableMargin).toHaveBeenCalledWith(position)
     })
   })
 

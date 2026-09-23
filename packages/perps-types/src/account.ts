@@ -57,10 +57,10 @@ export interface Position {
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
-   * Margin allocated and reserved by this position as a decimal string. Most
-   * venues report it without unrealized PnL. A Hyperliquid isolated position
-   * reports venue position equity instead, so its value includes the
-   * unrealized PnL of that position.
+   * Margin reserved by this position as a decimal string: the venue figure of
+   * each provider, unchanged. Its unrealized-PnL treatment differs by venue.
+   * Hyperliquid isolated `marginUsed` includes the unrealized PnL of the
+   * position; Lighter `allocated_margin` excludes it.
    */
   marginUsed: string
   /**
@@ -69,19 +69,6 @@ export interface Position {
    */
   initialMarginRequirement: string
   marginMode: MarginMode
-}
-
-/**
- * Exact provider-owned inputs for changing one position's dedicated margin.
- * `undefined` from the provider means the position has no individual margin
- * adjustment.
- * @public
- */
-export interface PositionMarginConstraints {
-  /** Exact margin the venue requires this position to retain. */
-  minimumMarginRequirement: string
-  /** Smallest accepted margin amount, as an exact decimal string. */
-  amountIncrement: string
 }
 
 /** Shared identity, quantities, and lifecycle of a venue order. */

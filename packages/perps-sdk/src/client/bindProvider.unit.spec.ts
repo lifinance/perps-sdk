@@ -48,7 +48,7 @@ const makePlugin = () => {
     formatOrderPrice: vi.fn((_market, price: number) => price.toString()),
     formatOrderSize: vi.fn((_market, size: number) => size.toString()),
     estimateLiquidationPrice: vi.fn(() => undefined),
-    positionMarginConstraints: vi.fn(() => undefined),
+    positionRemovableMargin: vi.fn(() => undefined),
     resolveAuthToken: vi.fn(async (): Promise<string | undefined> => 'token'),
     projectConfig: vi.fn(() => []),
   }
@@ -67,7 +67,7 @@ const makePlugin = () => {
     formatOrderPrice: calls.formatOrderPrice,
     formatOrderSize: calls.formatOrderSize,
     estimateLiquidationPrice: calls.estimateLiquidationPrice,
-    positionMarginConstraints: calls.positionMarginConstraints,
+    positionRemovableMargin: calls.positionRemovableMargin,
     projectConfig: calls.projectConfig,
     resolveAuthToken: calls.resolveAuthToken,
   }

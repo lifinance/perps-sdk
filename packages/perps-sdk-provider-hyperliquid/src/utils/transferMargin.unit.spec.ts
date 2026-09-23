@@ -1,6 +1,6 @@
-import { removableIsolatedMargin } from '@lifi/perps-sdk'
 import {
   MarginMode,
+  PerpsErrorCode,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import type { HlAssetPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
-import { positionMarginConstraints } from './transferMargin.js'
+import { positionRemovableMargin } from './transferMargin.js'
 
 const position = (overrides: Partial<Position> = {}): Position => ({
   market: {
@@ -43,12 +43,11 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   ...overrides,
 })
 
-describe('positionMarginConstraints', () => {
-  it('returns Hyperliquid exact requirements for an isolated position', () => {
-    expect(positionMarginConstraints(position())).toEqual({
-      minimumMarginRequirement: '1000',
-      amountIncrement: '0.000001',
-    })
+describe('positionRemovableMargin', () => {
+  it('retains the notional floor when it exceeds initial margin', () => {
+    expect(positionRemovableMargin(position({ marginUsed: '1500' }))).toBe(
+      '500'
+    )
   })
 
   const isolatedWithPnl = () =>
@@ -78,49 +77,59 @@ describe('positionMarginConstraints', () => {
     expect(isolatedWithPnl().marginUsed).toBe('1500')
   })
 
-  // `removableIsolatedMargin` adds `unrealizedPnl` to `marginUsed` to reach
-  // position equity. Hyperliquid already reports isolated equity in
-  // `marginUsed`, so the shared helper counts the PnL twice and returns '600'.
-  it.fails('removes isolated equity down to the venue minimum', () => {
-    const current = isolatedWithPnl()
-    const constraints = positionMarginConstraints(current)
-
-    expect(constraints).toBeDefined()
-    expect(
-      removableIsolatedMargin({ position: current, constraints: constraints! })
-    ).toBe('500')
+  it('removes isolated equity down to the venue minimum', () => {
+    expect(positionRemovableMargin(isolatedWithPnl())).toBe('500')
   })
 
   it('retains initial margin when it exceeds the notional floor', () => {
     expect(
-      positionMarginConstraints(
-        position({ initialMarginRequirement: '1500.0000001' })
+      positionRemovableMargin(
+        position({
+          marginUsed: '2000',
+          initialMarginRequirement: '1500.0000001',
+        })
       )
-    ).toEqual({
-      minimumMarginRequirement: '1500.0000001',
-      amountIncrement: '0.000001',
-    })
+    ).toBe('499.999999')
   })
 
-  it('keeps constraints available for an add-only strict-isolated market', () => {
+  it('rounds down to the six-decimal venue amount increment', () => {
     expect(
-      positionMarginConstraints(
+      positionRemovableMargin(position({ marginUsed: '1000.12345689' }))
+    ).toBe('0.123456')
+  })
+
+  it('returns zero when equity is at or below the retained requirement', () => {
+    expect(positionRemovableMargin(position({ marginUsed: '1000' }))).toBe('0')
+    expect(positionRemovableMargin(position({ marginUsed: '900' }))).toBe('0')
+  })
+
+  it.each([
+    '0',
+    '-50',
+  ])('returns zero when isolated equity marginUsed is %s', (marginUsed) => {
+    expect(positionRemovableMargin(position({ marginUsed }))).toBe('0')
+  })
+
+  it('returns zero for an add-only strict-isolated market', () => {
+    expect(
+      positionRemovableMargin(
         position({
+          marginUsed: '1500',
           market: {
             ...position().market,
             positionMarginAdjustment: PositionMarginAdjustment.ADD_ONLY,
           },
         })
       )
-    ).toBeDefined()
+    ).toBe('0')
   })
 
   it('returns undefined for cross positions and unsupported markets', () => {
     expect(
-      positionMarginConstraints(position({ marginMode: MarginMode.CROSS }))
+      positionRemovableMargin(position({ marginMode: MarginMode.CROSS }))
     ).toBeUndefined()
     expect(
-      positionMarginConstraints(
+      positionRemovableMargin(
         position({
           market: {
             ...position().market,
@@ -132,10 +141,13 @@ describe('positionMarginConstraints', () => {
   })
 
   it.each([
+    ['marginUsed', { marginUsed: 'n/a' }],
     ['size', { size: '0' }],
     ['markPrice', { markPrice: '-1' }],
     ['initialMarginRequirement', { initialMarginRequirement: 'n/a' }],
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
-    expect(() => positionMarginConstraints(position(overrides))).toThrowError()
+    expect(() => positionRemovableMargin(position(overrides))).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
