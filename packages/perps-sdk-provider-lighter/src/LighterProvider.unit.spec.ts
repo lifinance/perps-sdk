@@ -1426,14 +1426,31 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     },
     szDecimals: 4,
   }
+  // A spot market on the settlement asset: its mark must not reprice the
+  // settlement row away from 1.
+  const USDC_SPOT_MARKET = {
+    ...ETH_USDC_SPOT_MARKET,
+    id: '2049',
+    baseAsset: {
+      providerId: 'lighter',
+      id: '3',
+      displaySymbol: 'USDC',
+      logoURI: '',
+    },
+  }
   const MARKETS_WITH_SPOT = {
-    markets: [...MARKETS_RESPONSE.markets, ETH_USDC_SPOT_MARKET],
+    markets: [
+      ...MARKETS_RESPONSE.markets,
+      ETH_USDC_SPOT_MARKET,
+      USDC_SPOT_MARKET,
+    ],
   }
   // The perps BTC market '0' has baseAsset id '0', the same string as the BTC
   // spot asset_id, so a price it carries must not reach the BTC spot row.
   const CONTEXT: PricesResponse = {
     prices: [
       { marketId: '2048', midPrice: '2714.1', markPrice: '2714.1' },
+      { marketId: '2049', midPrice: '0.9998', markPrice: '0.9998' },
       { marketId: '0', midPrice: '50000', markPrice: '50000' },
     ],
   }
@@ -1502,6 +1519,22 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     await balanceOf('ETH')
     expect(contextUrls).toHaveLength(1)
     expect(new URL(contextUrls[0]).searchParams.get('provider')).toBe('lighter')
+  })
+
+  it('rejects the account read when the market context read fails', async () => {
+    overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        return new Response('boom', { status: 500 })
+      }
+      if (url.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_SPOT)
+      }
+      if (url.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_WITH_SPOT)
+      }
+      return undefined
+    })
+    await expect(balanceOf('ETH')).rejects.toBeInstanceOf(PerpsError)
   })
 })
 

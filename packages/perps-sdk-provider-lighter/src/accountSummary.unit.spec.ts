@@ -127,6 +127,19 @@ describe('getAccountSummary', () => {
     expect(summary.availableMargin).toBe('800')
   })
 
+  it('writes a dust total in plain decimal notation', () => {
+    const summary = getAccountSummary(
+      account('0.00000001', '0', [balance('0.00000001')]),
+      [position('0.00000001', '-0.00000001')]
+    )
+    expect(summary).toEqual({
+      portfolioValue: '0.00000001',
+      availableMargin: '0.00000001',
+      marginUsed: '0.00000001',
+      unrealizedPnl: '-0.00000001',
+    })
+  })
+
   it('rejects a non-decimal spot balance value', () => {
     const broken = account('800', '1000', [balance('n/a')])
     expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)

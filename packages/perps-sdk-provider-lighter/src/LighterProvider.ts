@@ -888,32 +888,38 @@ export const createLighterProvider = (
         : []
       // Spot token holdings — non-collateral. The instance's settlement asset
       // is valued 1:1; an asset no spot market prices keeps a zero USD value.
+      const heldAssets = account.assets.filter((asset) =>
+        toRequiredBig(asset.balance, 'balance').gt(0)
+      )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
         spotCategoryId,
-        prices
+        prices,
+        new Set(
+          heldAssets
+            .filter((a) => a.asset_id !== collateral.assetIndex)
+            .map((a) => String(a.asset_id))
+        )
       )
-      const balances: Balance[] = account.assets
-        .filter((asset) => toRequiredBig(asset.balance, 'balance').gt(0))
-        .map((a) => {
-          const assetId = String(a.asset_id)
-          const price =
-            a.asset_id === collateral.assetIndex
-              ? new Big(1)
-              : spotPrices.get(assetId)
-          return {
-            categoryId: spotCategoryId,
-            asset:
-              assetRegistry.get(assetId) ??
-              lighterAsset(assetId, a.symbol, providerKey),
-            units: a.balance,
-            valueUsd:
-              price === undefined
-                ? '0'
-                : toRequiredBig(a.balance, 'balance').times(price).toFixed(),
-            ...(price === undefined ? {} : { price: price.toFixed() }),
-          }
-        })
+      const balances: Balance[] = heldAssets.map((a) => {
+        const assetId = String(a.asset_id)
+        const price =
+          a.asset_id === collateral.assetIndex
+            ? new Big(1)
+            : spotPrices.get(assetId)
+        return {
+          categoryId: spotCategoryId,
+          asset:
+            assetRegistry.get(assetId) ??
+            lighterAsset(assetId, a.symbol, providerKey),
+          units: a.balance,
+          valueUsd:
+            price === undefined
+              ? '0'
+              : toRequiredBig(a.balance, 'balance').times(price).toFixed(),
+          ...(price === undefined ? {} : { price: price.toFixed() }),
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

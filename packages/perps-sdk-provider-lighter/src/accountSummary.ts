@@ -50,12 +50,12 @@ export function getAccountSummary(
   }
 
   return {
-    portfolioValue: portfolioValue.toString(),
+    portfolioValue: portfolioValue.toFixed(),
     availableMargin: toRequiredBig(
       config.availableBalance,
       'availableBalance'
-    ).toString(),
-    marginUsed: marginUsed.toString(),
-    unrealizedPnl: unrealizedPnl.toString(),
+    ).toFixed(),
+    marginUsed: marginUsed.toFixed(),
+    unrealizedPnl: unrealizedPnl.toFixed(),
   }
 }
