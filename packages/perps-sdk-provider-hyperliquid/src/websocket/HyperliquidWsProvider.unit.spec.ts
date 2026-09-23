@@ -352,6 +352,10 @@ describe('HyperliquidWsProvider', () => {
     it('reports streamsCandles true', () => {
       expect(hyperliquidWsProvider().streamsCandles).toBe(true)
     })
+
+    it('reports streamsAvailableToTrade true', () => {
+      expect(hyperliquidWsProvider().streamsAvailableToTrade).toBe(true)
+    })
   })
 
   describe('keepalive framing', () => {

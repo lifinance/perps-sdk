@@ -113,7 +113,7 @@ export const hyperliquidWsProvider = (): WsProviderFactory =>
   Object.assign(
     ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
       new HyperliquidWsProvider(wsUrl, provider, client),
-    { streamsCandles: true }
+    { streamsCandles: true, streamsAvailableToTrade: true }
   )
 
 /**
