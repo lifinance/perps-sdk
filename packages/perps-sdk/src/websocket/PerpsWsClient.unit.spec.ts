@@ -18,7 +18,10 @@ const mockSubscribeQuote = vi.fn().mockResolvedValue(() => {})
 const mockClose = vi.fn()
 const mockReconnect = vi.fn()
 
-const buildHlFactory = (streamsCandles = true) =>
+const buildHlFactory = ({
+  streamsCandles = true,
+  streamsAvailableToTrade = true,
+} = {}) =>
   Object.assign(
     vi.fn<(params: WsProviderFactoryParams) => WsProvider>((_params) => ({
       subscribe: mockSubscribe,
@@ -26,7 +29,7 @@ const buildHlFactory = (streamsCandles = true) =>
       subscribeQuote: mockSubscribeQuote,
       close: mockClose,
     })),
-    { streamsCandles }
+    { streamsCandles, streamsAvailableToTrade }
   )
 
 const providersWithWsUrl = {
@@ -73,7 +76,7 @@ describe('PerpsWsClient', () => {
     })
 
     it('reports false for a factory that does not stream candles', () => {
-      const ws = makeWs(buildHlFactory(false))
+      const ws = makeWs(buildHlFactory({ streamsCandles: false }))
 
       expect(ws.streamsCandles('hyperliquid')).toBe(false)
     })
@@ -82,6 +85,28 @@ describe('PerpsWsClient', () => {
       const ws = makeWs(buildHlFactory())
 
       expect(ws.streamsCandles('lighter')).toBe(false)
+    })
+  })
+
+  describe('streamsAvailableToTrade', () => {
+    it('reports the registered factory flag without instantiating the provider', () => {
+      const factory = buildHlFactory()
+      const ws = makeWs(factory)
+
+      expect(ws.streamsAvailableToTrade('hyperliquid')).toBe(true)
+      expect(factory).not.toHaveBeenCalled()
+    })
+
+    it('reports false for a factory that does not stream availableToTrade', () => {
+      const ws = makeWs(buildHlFactory({ streamsAvailableToTrade: false }))
+
+      expect(ws.streamsAvailableToTrade('hyperliquid')).toBe(false)
+    })
+
+    it('reports false when no factory is registered for the provider', () => {
+      const ws = makeWs(buildHlFactory())
+
+      expect(ws.streamsAvailableToTrade('lighter')).toBe(false)
     })
   })
 

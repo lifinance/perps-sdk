@@ -127,6 +127,11 @@ margin that the close releases. Without an Ondo session, for Lighter spot
 markets, and for every other provider, the client falls back to the account
 summary, so `buy` and `sell` both equal `availableMargin`.
 
+`PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
+first subscribe, whether the provider streams the `availableToTrade` channel.
+Hyperliquid streams it for perps markets only, and rejects a spot-market
+subscription with a `ValidationError`.
+
 ```ts
 const availableToTrade = await client.getAvailableToTrade({
   provider: 'hyperliquid',
