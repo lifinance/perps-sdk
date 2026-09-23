@@ -2,13 +2,13 @@ import { PerpsError } from '@lifi/perps-sdk'
 import {
   PerpsErrorCode,
   type Position,
-  type PositionMarginConstraints,
   positionSupportsMarginAdjustment,
+  positionSupportsMarginRemoval,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 
 const NOTIONAL_FLOOR_RATIO = '0.1'
-const AMOUNT_INCREMENT = '0.000001'
+const AMOUNT_DECIMALS = 6
 
 function positivePositionAmount(value: string, field: string): Big {
   let amount: Big
@@ -30,36 +30,40 @@ function positivePositionAmount(value: string, field: string): Big {
 }
 
 /**
- * Hyperliquid's exact documented transfer-margin requirement:
- * `max(initial_margin_required, 0.1 * total_position_value)`.
+ * Hyperliquid removable isolated margin:
+ * `marginUsed − max(initial_margin_required, 0.1 × total_position_value)`.
+ * Hyperliquid isolated `marginUsed` already includes the unrealized PnL of
+ * the position, so the PnL is not added again.
  *
- * Strict-isolated markets still return constraints because margin can be
- * added; their market capability prevents removal. Cross positions and
- * markets without individual margin adjustment return `undefined`.
- *
+ * @returns `undefined` for cross positions and markets without individual
+ *   margin adjustment; `'0'` for add-only strict-isolated markets.
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/trading/margining
  * @public
  */
-export function positionMarginConstraints(
+export function positionRemovableMargin(
   position: Position
-): PositionMarginConstraints | undefined {
+): string | undefined {
   if (!positionSupportsMarginAdjustment(position)) {
     return undefined
   }
+  if (!positionSupportsMarginRemoval(position)) {
+    return '0'
+  }
+  const marginUsed = positivePositionAmount(position.marginUsed, 'marginUsed')
   const initialMargin = positivePositionAmount(
     position.initialMarginRequirement,
     'initialMarginRequirement'
   )
-  const notional = positivePositionAmount(position.size, 'size').times(
-    positivePositionAmount(position.markPrice, 'markPrice')
-  )
-  const notionalFloor = notional.times(NOTIONAL_FLOOR_RATIO)
+  const notionalFloor = positivePositionAmount(position.size, 'size')
+    .times(positivePositionAmount(position.markPrice, 'markPrice'))
+    .times(NOTIONAL_FLOOR_RATIO)
   const minimumMargin = initialMargin.gt(notionalFloor)
     ? initialMargin
     : notionalFloor
 
-  return {
-    minimumMarginRequirement: minimumMargin.toFixed(),
-    amountIncrement: AMOUNT_INCREMENT,
+  const removable = marginUsed.minus(minimumMargin)
+  if (removable.lte(0)) {
+    return '0'
   }
+  return removable.round(AMOUNT_DECIMALS, Big.roundDown).toFixed()
 }

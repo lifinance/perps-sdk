@@ -21,7 +21,6 @@ import type {
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
-  PositionMarginConstraints,
   PositionsResponse,
   ProviderAction,
   Quote,
@@ -563,16 +562,15 @@ export interface PerpsProviderPlugin {
   ): number | undefined
 
   /**
-   * Exact venue-owned constraints for changing `position`'s dedicated margin.
-   * Pure — providers normalize raw venue quantities onto the position before
-   * returning these inputs.
+   * Margin that can be removed from `position` under the venue margin rules,
+   * as an exact decimal string rounded down to the venue amount increment.
+   * Pure — each provider reads its own venue meaning of `Position.marginUsed`.
    *
-   * @returns `undefined` when this position has no individual margin
-   *   adjustment (for example a cross position or a cross-only venue).
+   * @returns `undefined` when the position has no individual margin
+   *   adjustment (for example a cross position or a cross-only venue), and
+   *   `'0'` when the venue accepts no margin removal for it.
    */
-  positionMarginConstraints(
-    position: Position
-  ): PositionMarginConstraints | undefined
+  positionRemovableMargin(position: Position): string | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

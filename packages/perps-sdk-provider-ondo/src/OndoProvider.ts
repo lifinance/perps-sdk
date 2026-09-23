@@ -114,7 +114,7 @@ import {
   mapOrder,
   mapWithdrawalActivity,
   ondoWithdrawableBalances,
-  positionMarginConstraints,
+  positionRemovableMargin,
   requireOndoCollateralAsset,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
@@ -931,7 +931,7 @@ export const ondoProvider = (
 
     estimateLiquidationPrice,
 
-    positionMarginConstraints,
+    positionRemovableMargin,
 
     projectConfig(
       config: AccountConfig,
