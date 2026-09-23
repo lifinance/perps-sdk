@@ -595,6 +595,8 @@ export class PerpsClient {
    * provider's venue margin rules. Returns `undefined` when the position has
    * no individual margin adjustment and `'0'` when it accepts no removal.
    *
+   * @throws {PerpsError} `ValidationError` when a `Position` decimal that the
+   *   venue formula reads is malformed.
    * @public
    */
   getPositionRemovableMargin(position: Position): string | undefined {

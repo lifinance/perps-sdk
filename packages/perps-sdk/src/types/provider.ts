@@ -569,6 +569,8 @@ export interface PerpsProviderPlugin {
    * @returns `undefined` when the position has no individual margin
    *   adjustment (for example a cross position or a cross-only venue), and
    *   `'0'` when the venue accepts no margin removal for it.
+   * @throws {PerpsError} `ValidationError` when a `Position` decimal that the
+   *   venue formula reads is malformed.
    */
   positionRemovableMargin(position: Position): string | undefined
 

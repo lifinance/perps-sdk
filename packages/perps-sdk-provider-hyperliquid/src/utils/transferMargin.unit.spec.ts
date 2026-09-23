@@ -1,5 +1,6 @@
 import {
   MarginMode,
+  PerpsErrorCode,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
@@ -102,6 +103,13 @@ describe('positionRemovableMargin', () => {
     expect(positionRemovableMargin(position({ marginUsed: '900' }))).toBe('0')
   })
 
+  it.each([
+    '0',
+    '-50',
+  ])('returns zero when isolated equity marginUsed is %s', (marginUsed) => {
+    expect(positionRemovableMargin(position({ marginUsed }))).toBe('0')
+  })
+
   it('returns zero for an add-only strict-isolated market', () => {
     expect(
       positionRemovableMargin(
@@ -133,11 +141,13 @@ describe('positionRemovableMargin', () => {
   })
 
   it.each([
-    ['marginUsed', { marginUsed: '0' }],
+    ['marginUsed', { marginUsed: 'n/a' }],
     ['size', { size: '0' }],
     ['markPrice', { markPrice: '-1' }],
     ['initialMarginRequirement', { initialMarginRequirement: 'n/a' }],
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
-    expect(() => positionRemovableMargin(position(overrides))).toThrowError()
+    expect(() => positionRemovableMargin(position(overrides))).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })

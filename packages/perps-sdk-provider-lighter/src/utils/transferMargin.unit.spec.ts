@@ -1,5 +1,6 @@
 import {
   MarginMode,
+  PerpsErrorCode,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
@@ -48,6 +49,7 @@ describe('positionRemovableMargin', () => {
   it.each([
     ['profit', '400', '1449.999955'],
     ['loss', '-600', '449.999955'],
+    ['profit above allocated margin', '2000', '3049.999955'],
   ])('adds the unrealized PnL of a position with a %s to allocated margin', (_label, unrealizedPnl, expected) => {
     expect(positionRemovableMargin(position({ unrealizedPnl }))).toBe(expected)
   })
@@ -83,6 +85,19 @@ describe('positionRemovableMargin', () => {
     ).toBeUndefined()
   })
 
+  it('returns undefined for an isolated position on a market without margin adjustment', () => {
+    expect(
+      positionRemovableMargin(
+        position({
+          market: {
+            ...position().market,
+            positionMarginAdjustment: PositionMarginAdjustment.NONE,
+          },
+        })
+      )
+    ).toBeUndefined()
+  })
+
   it.each([
     '0',
     '-1',
@@ -90,13 +105,18 @@ describe('positionRemovableMargin', () => {
   ])('rejects invalid isolated minimum margin %s', (initialMarginRequirement) => {
     expect(() =>
       positionRemovableMargin(position({ initialMarginRequirement }))
-    ).toThrowError()
+    ).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 
   it.each([
     ['marginUsed', { marginUsed: '0' }],
+    ['marginUsed', { marginUsed: 'n/a' }],
     ['unrealizedPnl', { unrealizedPnl: 'n/a' }],
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
-    expect(() => positionRemovableMargin(position(overrides))).toThrowError()
+    expect(() => positionRemovableMargin(position(overrides))).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
