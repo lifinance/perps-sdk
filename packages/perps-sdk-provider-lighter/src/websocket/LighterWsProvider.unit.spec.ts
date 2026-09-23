@@ -272,6 +272,10 @@ describe('LighterWsProvider', () => {
     expect(lighterWsProvider().streamsCandles).toBe(false)
   })
 
+  it('reports streamsAvailableToTrade false on the factory', () => {
+    expect(lighterWsProvider().streamsAvailableToTrade).toBe(false)
+  })
+
   it('reports connection status to the subscriber onStatus and forwards transitions', async () => {
     const provider = makeProvider()
     ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
