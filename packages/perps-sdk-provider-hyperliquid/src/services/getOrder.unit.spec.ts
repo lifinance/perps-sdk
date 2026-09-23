@@ -209,4 +209,34 @@ describe('getOrder', () => {
     ])
     warn.mockRestore()
   })
+
+  it('rejects when the caller signal times out during the explorer read', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      { orderStatus: HL_ORDER_STATUS_FOUND_WITH_CLOID },
+      HL_MARKETS
+    ))
+    const controller = new AbortController()
+    const fetchMock = vi.mocked(globalThis.fetch)
+    const serve = fetchMock.getMockImplementation()
+    if (serve === undefined) {
+      throw new Error('installInfoFetchMock installed no implementation')
+    }
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(init?.body).includes('userDetails')) {
+        controller.abort(new DOMException('signal timed out', 'TimeoutError'))
+        throw controller.signal.reason
+      }
+      return serve(input, init)
+    })
+    await expect(
+      getOrder(
+        ctx,
+        { address: ADDRESS, id: '1' },
+        { signal: controller.signal }
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
 })

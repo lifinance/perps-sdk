@@ -105,7 +105,7 @@ const warn = createWarnOnce()
  * window still holds. One explorer read serves every order, and it is skipped
  * when no order carries a client order id to match on. The link is
  * supplementary, so an explorer failure warns and leaves the orders unlinked
- * instead of failing the order read.
+ * instead of failing the order read. A caller cancellation still rejects.
  */
 export const withExplorerLinks = async (
   orders: Order[],
@@ -119,7 +119,9 @@ export const withExplorerLinks = async (
   try {
     txs = await fetchUserTransactions(address, options)
   } catch (error) {
-    if (!(error instanceof PerpsError)) {
+    // `hlPostJson` wraps a signal timeout as a `ServerError`, so the signal,
+    // not the error type, tells a caller cancellation from an explorer failure.
+    if (!(error instanceof PerpsError) || options.signal?.aborted) {
       throw error
     }
     // The message stays out of the key: a transport failure names hosts and
