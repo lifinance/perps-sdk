@@ -848,12 +848,12 @@ export const createLighterProvider = (
       )
 
       const totalMarginUsed = positions.reduce(
-        (sum, p) => sum + Number.parseFloat(p.marginUsed),
-        0
+        (sum, p) => sum.plus(toRequiredBig(p.marginUsed, 'marginUsed')),
+        new Big(0)
       )
       const totalUnrealizedPnl = positions.reduce(
-        (sum, p) => sum + Number.parseFloat(p.unrealizedPnl),
-        0
+        (sum, p) => sum.plus(toRequiredBig(p.unrealizedPnl, 'unrealizedPnl')),
+        new Big(0)
       )
 
       const instanceMeta = providers.find((p) => p.key === providerKey)
@@ -961,8 +961,8 @@ export const createLighterProvider = (
         balances,
         collateralBalances,
         positions,
-        marginUsed: totalMarginUsed.toString(),
-        unrealizedPnl: totalUnrealizedPnl.toString(),
+        marginUsed: totalMarginUsed.toFixed(),
+        unrealizedPnl: totalUnrealizedPnl.toFixed(),
         feeTier:
           limitsResult === undefined
             ? ZERO_FEE_TIER
