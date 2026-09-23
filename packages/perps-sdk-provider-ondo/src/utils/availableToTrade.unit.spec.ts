@@ -36,6 +36,71 @@ describe('ondoAvailableToTrade', () => {
     ).toEqual({ buy: '0.00000001', sell: '10000000000000000000000' })
   })
 
+  it('truncates a non-terminating division toward zero', () => {
+    expect(
+      ondoAvailableToTrade(
+        { maxBidBaseSize: '2', maxAskBaseSize: '1' },
+        '3',
+        '1'
+      )
+    ).toEqual({
+      buy: '0.66666666666666666666',
+      sell: '0.33333333333333333333',
+    })
+  })
+
+  it.each([
+    ['0', 'positive'],
+    ['-5', 'positive'],
+  ])('rejects a leverage of %s', (leverage, bound) => {
+    expect(() =>
+      ondoAvailableToTrade(
+        { maxBidBaseSize: '1', maxAskBaseSize: '1' },
+        leverage,
+        '308.019994'
+      )
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message: `Ondo field \`leverage.leverage\` must be ${bound}: '${leverage}'`,
+        tool: 'ondo',
+      })
+    )
+  })
+
+  it('rejects a mark price that is not positive', () => {
+    expect(() =>
+      ondoAvailableToTrade(
+        { maxBidBaseSize: '1', maxAskBaseSize: '1' },
+        '10',
+        '0'
+      )
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message: "Ondo field `markPrice.markPrice` must be positive: '0'",
+        tool: 'ondo',
+      })
+    )
+  })
+
+  it('rejects a negative size', () => {
+    expect(() =>
+      ondoAvailableToTrade(
+        { maxBidBaseSize: '1', maxAskBaseSize: '-0.5' },
+        '10',
+        '308.019994'
+      )
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message:
+          "Ondo field `maxOrderSize.maxAskBaseSize` must be non-negative: '-0.5'",
+        tool: 'ondo',
+      })
+    )
+  })
+
   it('keeps a zero size as "0"', () => {
     expect(
       ondoAvailableToTrade(

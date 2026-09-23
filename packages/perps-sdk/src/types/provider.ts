@@ -457,9 +457,9 @@ export interface PerpsProviderPlugin {
    * The amounts the account can still buy and sell on one market, in that
    * market's margin asset. Optional because venues expose this unevenly:
    * Hyperliquid (`activeAssetData`) and Ondo (`max_order_size`) read it
-   * directly, other venues publish only an account-scoped figure. `undefined` means the venue has nothing
-   * to read for this market, and the caller falls back to the account
-   * summary.
+   * directly, other venues publish only an account-scoped figure. `undefined`
+   * means the venue has nothing to read for this market, and the caller falls
+   * back to the account summary.
    */
   getAvailableToTrade?(
     params: ProviderGetAvailableToTradeParams,

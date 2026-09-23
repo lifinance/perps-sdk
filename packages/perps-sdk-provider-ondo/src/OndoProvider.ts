@@ -425,31 +425,36 @@ export const ondoProvider = (
           await registry.sync()
           const market = registry.require(params.marketId)
           const client = apiClient(opts)
-          const [maxOrderSizes, leverages, markPrices] = await Promise.all([
-            client
-              .get<OndoMaxOrderSizesRes>('/v1/perps/max_order_size', {
-                params: { market: market.id, buffer: '1' },
+          const [maxOrderSizes, leveragesRead, markPricesRead] =
+            await Promise.allSettled([
+              client
+                .get<OndoMaxOrderSizesRes>('/v1/perps/max_order_size', {
+                  params: { market: market.id, buffer: '1' },
+                  authToken: token.token,
+                })
+                .catch((error: unknown) => {
+                  if (
+                    error instanceof OndoApiError &&
+                    error.errorCode === 'insufficient_margin'
+                  ) {
+                    return null
+                  }
+                  throw error
+                }),
+              client.get<OndoLeverage[]>('/v1/perps/leverage', {
+                params: { market: market.id },
                 authToken: token.token,
-              })
-              .catch((error: unknown) => {
-                if (
-                  error instanceof OndoApiError &&
-                  error.errorCode === 'insufficient_margin'
-                ) {
-                  return null
-                }
-                throw error
               }),
-            client.get<OndoLeverage[]>('/v1/perps/leverage', {
-              params: { market: market.id },
-              authToken: token.token,
-            }),
-            client.get<Record<string, OndoRestMarkPrice>>(
-              '/v1/perps/mark_prices'
-            ),
-          ])
+              client.get<Record<string, OndoRestMarkPrice>>(
+                '/v1/perps/mark_prices'
+              ),
+            ])
+          if (maxOrderSizes.status === 'rejected') {
+            throw maxOrderSizes.reason
+          }
           const asset = toAssetDisplay(market.quoteAsset)
-          if (maxOrderSizes === null) {
+          // The zero result reads neither companion, so their failures do not apply.
+          if (maxOrderSizes.value === null) {
             return {
               providerId: market.providerId,
               marketId: market.id,
@@ -458,8 +463,16 @@ export const ondoProvider = (
               sell: '0',
             }
           }
-          const leverage = leverages.find((row) => row.market === market.id)
-          const markPrice = markPrices[market.id]
+          if (leveragesRead.status === 'rejected') {
+            throw leveragesRead.reason
+          }
+          if (markPricesRead.status === 'rejected') {
+            throw markPricesRead.reason
+          }
+          const leverage = leveragesRead.value.find(
+            (row) => row.market === market.id
+          )
+          const markPrice = markPricesRead.value[market.id]
           if (leverage === undefined || markPrice === undefined) {
             const error = new PerpsError(
               PerpsErrorCode.SDKError,
@@ -473,7 +486,7 @@ export const ondoProvider = (
             marketId: market.id,
             asset,
             ...ondoAvailableToTrade(
-              maxOrderSizes.percent100,
+              maxOrderSizes.value.percent100,
               leverage.leverage,
               markPrice.markPrice
             ),

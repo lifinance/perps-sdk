@@ -139,7 +139,7 @@ upstream call.
 margin. The provider reads the `percent100` tier. `maxBidBaseSize` becomes
 `buy` and `maxAskBaseSize` becomes `sell`. The venue reports base-asset units,
 and the provider converts each side into margin-asset units as
-`baseSize × markPrice ÷ leverage`. `leverage` comes from `/v1/perps/leverage`
+`baseSize × markPrice ÷ leverage`, truncated toward zero. `leverage` comes from `/v1/perps/leverage`
 and `markPrice` from `/v1/perps/mark_prices`. A venue `insufficient_margin`
 rejection returns `"0"` on both sides. Without a session the method resolves
 `undefined`, and the client falls back to the account summary. Ondo does not
