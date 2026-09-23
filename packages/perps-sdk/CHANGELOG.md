@@ -1,5 +1,26 @@
 # @lifi/perps-sdk
 
+## 18.0.0
+
+### Major Changes
+
+- [#507](https://github.com/lifinance/perps-sdk/pull/507) [`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `availableToTrade` channel support on the WS provider factory.
+
+  `WsProviderFactory` has a new required `readonly streamsAvailableToTrade: boolean`.
+  `PerpsWsClient.streamsAvailableToTrade(provider)` returns that value
+  synchronously and does not create the provider. It returns `false` for a
+  provider with no registered factory. The Hyperliquid factory reports `true`.
+  The Lighter and Ondo factories report `false`, because their sockets reject the
+  `availableToTrade` channel.
+
+  The Hyperliquid socket now rejects an `availableToTrade` subscription for a spot
+  market with a `ValidationError` and sends no wire subscription. REST
+  `getAvailableToTrade` already resolves `undefined` for a spot market.
+
+  The bump is major for two reasons. The new required member breaks an external
+  `WsProviderFactory` author. Each provider package moves its `@lifi/perps-sdk`
+  peer range to the new major, so a host must upgrade the set together.
+
 ## 17.0.1
 
 ### Patch Changes
