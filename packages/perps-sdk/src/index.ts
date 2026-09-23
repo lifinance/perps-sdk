@@ -252,8 +252,6 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
-export type { RemovableIsolatedMarginParams } from './utils/transferMargin.js'
-export { removableIsolatedMargin } from './utils/transferMargin.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 export { createWarnOnce } from './utils/warnOnce.js'

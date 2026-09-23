@@ -14,7 +14,6 @@ import type {
   OrdersResponse,
   PortfolioHistoryResponse,
   Position,
-  PositionMarginConstraints,
   Provider,
   ProviderAction,
   SignedActionStep,
@@ -600,17 +599,18 @@ export class PerpsClient {
   }
 
   /**
-   * Resolve the exact venue-owned margin requirements for `position`.
-   * Returns `undefined` when the position has no individual margin adjustment.
+   * Resolve the margin that can be removed from `position`, from the owning
+   * provider's venue margin rules. Returns `undefined` when the position has
+   * no individual margin adjustment and `'0'` when it accepts no removal.
    *
+   * @throws {PerpsError} `ValidationError` when a `Position` decimal that the
+   *   venue formula reads is malformed.
    * @public
    */
-  getPositionMarginConstraints(
-    position: Position
-  ): PositionMarginConstraints | undefined {
+  getPositionRemovableMargin(position: Position): string | undefined {
     return this.requireProvider(
       position.market.providerId
-    ).positionMarginConstraints(position)
+    ).positionRemovableMargin(position)
   }
 
   /**
