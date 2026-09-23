@@ -8,6 +8,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   PositionMarginAdjustment,
   TriggerCondition,
 } from '@lifi/perps-types'
@@ -352,6 +353,10 @@ describe('HyperliquidWsProvider', () => {
     it('reports streamsCandles true', () => {
       expect(hyperliquidWsProvider().streamsCandles).toBe(true)
     })
+
+    it('reports streamsAvailableToTrade true', () => {
+      expect(hyperliquidWsProvider().streamsAvailableToTrade).toBe(true)
+    })
   })
 
   describe('keepalive framing', () => {
@@ -454,6 +459,18 @@ describe('HyperliquidWsProvider', () => {
       await expect(
         provider.subscribe(subscriptionFor('DELISTED'), vi.fn())
       ).rejects.toThrow()
+    })
+
+    it('rejects a spot market and sends no wire subscription', async () => {
+      const provider = createEnrichingProvider()
+
+      await expect(
+        provider.subscribe(subscriptionFor(HL_SPOT_MARKET.id), vi.fn())
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ValidationError,
+        tool: 'hyperliquid',
+      })
+      expect(getMockRwsInstance().sent).toHaveLength(0)
     })
 
     it.each([

@@ -7,16 +7,21 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
 const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
-  if (account.config.provider !== 'lighter') {
+  const { config } = account
+  if (
+    config.provider !== LIGHTER_PROVIDER_KEY &&
+    config.provider !== LIGHTER_RH_PROVIDER_KEY
+  ) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      `Lighter account summary received a '${account.config.provider}' account config`
+      `Lighter account summary received a '${config.provider}' account config`
     )
   }
-  return account.config
+  return config
 }
 
 /**

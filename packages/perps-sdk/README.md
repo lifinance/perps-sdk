@@ -115,12 +115,22 @@ per-market figure for one market, as separate `buy` and `sell` amounts in the
 market's margin asset. The order panel reads the per-market figure, and account
 displays read the account-scoped figure.
 
-Providers that publish a per-market figure answer it directly. Hyperliquid
-reads it from `activeAssetData`, and also streams it on the `availableToTrade`
-WebSocket channel. Ondo reads it from `/v1/perps/max_order_size` over REST
-only, and needs a session. Without an Ondo session, and for every other
-provider, the client falls back to the account summary, so `buy` and `sell`
-both equal `availableMargin`.
+Some providers answer it directly. Hyperliquid reads it from
+`activeAssetData`, and also streams it on the `availableToTrade` WebSocket
+channel. Ondo reads it from `/v1/perps/max_order_size` over REST only, and
+needs a session. Lighter publishes no per-market figure, so the Lighter
+provider calculates it over REST only, from `availableMargin` and the open
+position on each perps market. The side that adds to the position gets
+`availableMargin`. The side that reduces or flips the position gets the
+initial margin requirement of the position, plus `availableMargin` and the
+margin that the close releases. Without an Ondo session, for Lighter spot
+markets, and for every other provider, the client falls back to the account
+summary, so `buy` and `sell` both equal `availableMargin`.
+
+`PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
+first subscribe, whether the provider streams the `availableToTrade` channel.
+Hyperliquid streams it for perps markets only, and rejects a spot-market
+subscription with a `ValidationError`.
 
 ```ts
 const availableToTrade = await client.getAvailableToTrade({

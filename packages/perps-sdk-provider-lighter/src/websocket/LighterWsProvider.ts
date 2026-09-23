@@ -1008,5 +1008,5 @@ export const lighterWsProvider = (
   Object.assign(
     ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
       new LighterWsProvider(wsUrl, provider, options, client),
-    { streamsCandles: false }
+    { streamsCandles: false, streamsAvailableToTrade: false }
   )
