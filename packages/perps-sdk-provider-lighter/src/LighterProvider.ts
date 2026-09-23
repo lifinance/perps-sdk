@@ -5,6 +5,7 @@ import {
   explorerTxUrlFromBase,
   getAssetRegistry,
   getMarketRegistry,
+  getMarketsContext,
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
@@ -63,6 +64,7 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -148,6 +150,7 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
+import { spotPriceByAssetId } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
 
@@ -825,11 +828,12 @@ export const createLighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
-      const [{ providers }, , , limitsResult, storedReadOnlyToken] =
+      const [{ providers }, , , { prices }, limitsResult, storedReadOnlyToken] =
         await Promise.all([
           getProviders(requireClient()),
           registry.sync(),
           assetRegistry.sync(),
+          getMarketsContext(requireClient(), { provider: providerKey }, opts),
           token === undefined
             ? Promise.resolve(undefined)
             : retryOnRevoked(opts, params.address, token, (resolvedToken) =>
@@ -883,23 +887,39 @@ export const createLighterProvider = (
           ]
         : []
       // Spot token holdings — non-collateral. The instance's settlement asset
-      // is valued 1:1; other tokens have no price source at this boundary, so
-      // their price and USD value are unknown.
-      const balances: Balance[] = account.assets
-        .filter((asset) => toRequiredBig(asset.balance, 'balance').gt(0))
-        .map((a) => {
-          const assetId = String(a.asset_id)
-          const settlement = a.asset_id === collateral.assetIndex
-          return {
-            categoryId: spotCategoryId,
-            asset:
-              assetRegistry.get(assetId) ??
-              lighterAsset(assetId, a.symbol, providerKey),
-            units: a.balance,
-            valueUsd: settlement ? a.balance : '0',
-            ...(settlement ? { price: '1' } : {}),
-          }
-        })
+      // is valued 1:1; an asset no spot market prices keeps a zero USD value.
+      const heldAssets = account.assets.filter((asset) =>
+        toRequiredBig(asset.balance, 'balance').gt(0)
+      )
+      const spotPrices = spotPriceByAssetId(
+        registry.markets,
+        spotCategoryId,
+        prices,
+        new Set(
+          heldAssets
+            .filter((a) => a.asset_id !== collateral.assetIndex)
+            .map((a) => String(a.asset_id))
+        )
+      )
+      const balances: Balance[] = heldAssets.map((a) => {
+        const assetId = String(a.asset_id)
+        const price =
+          a.asset_id === collateral.assetIndex
+            ? new Big(1)
+            : spotPrices.get(assetId)
+        return {
+          categoryId: spotCategoryId,
+          asset:
+            assetRegistry.get(assetId) ??
+            lighterAsset(assetId, a.symbol, providerKey),
+          units: a.balance,
+          valueUsd:
+            price === undefined
+              ? '0'
+              : toRequiredBig(a.balance, 'balance').times(price).toFixed(),
+          ...(price === undefined ? {} : { price: price.toFixed() }),
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

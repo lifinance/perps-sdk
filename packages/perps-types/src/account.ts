@@ -606,8 +606,9 @@ export interface LighterAccountConfig {
    */
   availableBalance: string
   /**
-   * Lighter `total_asset_value`: total account equity, isolated allocations
-   * and unrealized PnL included. A decimal string in quote-asset units.
+   * Lighter `total_asset_value`: perps-route equity, isolated allocations and
+   * unrealized PnL included. It excludes the spot-route balances. A decimal
+   * string in quote-asset units.
    */
   totalAssetValue: string
   /**

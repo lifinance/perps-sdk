@@ -409,6 +409,7 @@ const CROSS_ASSET_VALUE = ACCOUNT_PAYLOAD.accounts[0].cross_asset_value
 const CROSS_INITIAL_MARGIN_REQUIREMENT =
   ACCOUNT_PAYLOAD.accounts[0].cross_initial_margin_requirement
 const COLLATERAL = ACCOUNT_PAYLOAD.accounts[0].collateral
+const SPOT_USDC_BALANCE = ASSETS[0].balance
 
 const marketFixture = (marketId: number, symbol: string) => ({
   providerId: 'lighter',
@@ -437,6 +438,10 @@ const marketFixture = (marketId: number, symbol: string) => ({
 const MARKETS_RESPONSE = {
   markets: POSITIONS.map((p) => marketFixture(p.market_id, p.symbol)),
 }
+
+// The account holds only the settlement token on the spot route, which is
+// priced at 1 without a market context row.
+const MARKETS_CONTEXT_RESPONSE = { prices: [] }
 
 const PROVIDERS_RESPONSE = {
   providers: [
@@ -485,6 +490,9 @@ describe('accountSummary.venue', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
@@ -523,11 +531,11 @@ describe('accountSummary.venue', () => {
     expect(summary.availableMargin).toBe(AVAILABLE_BALANCE)
   })
 
-  it('AccountSummary.portfolioValue equals total_asset_value plus the value of non-settlement spot assets', async () => {
+  it('AccountSummary.portfolioValue equals total_asset_value plus the spot-route USDC balance', async () => {
     const { summary } = await load()
-    // The recorded account holds only settlement (USDC) spot dust, so the
-    // non-settlement contribution is `0`.
-    expect(summary.portfolioValue).toBe(TOTAL_ASSET_VALUE)
+    expect(SPOT_USDC_BALANCE).toBe('103.00085138124')
+    // 390173.303079 + 103.00085138124
+    expect(summary.portfolioValue).toBe('390276.30393038124')
   })
 
   it('records available_balance, total_asset_value, cross_asset_value, cross_initial_margin_requirement, and collateral as named constants', () => {
