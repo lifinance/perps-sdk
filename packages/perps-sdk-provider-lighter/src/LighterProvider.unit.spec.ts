@@ -2786,7 +2786,10 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
     total_discount: '0',
   })
 
+  let positions: ReturnType<typeof isolatedPosition>[]
+
   beforeEach(() => {
+    positions = [isolatedPosition('0.1', '0.1'), isolatedPosition('0.2', '0.2')]
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       if (u.includes('backend.test/v1/perps/marketsContext')) {
@@ -2807,10 +2810,7 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
           accounts: [
             {
               ...ACCOUNT_PAYLOAD.accounts[0],
-              positions: [
-                isolatedPosition('0.1', '0.1'),
-                isolatedPosition('0.2', '0.2'),
-              ],
+              positions,
             },
           ],
         })
@@ -2831,6 +2831,33 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
     expect(account.positions).toHaveLength(2)
     expect(account.marginUsed).toBe('0.3')
     expect(account.unrealizedPnl).toBe('0.3')
+  })
+
+  it('renders a total below 1e-7 as a plain decimal', async () => {
+    positions = [
+      isolatedPosition('0.00000001', '0.00000001'),
+      isolatedPosition('0.00000002', '0.00000002'),
+    ]
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.marginUsed).toBe('0.00000003')
+    expect(account.unrealizedPnl).toBe('0.00000003')
+  })
+
+  it.each([
+    ['marginUsed', isolatedPosition('not-a-decimal', '0')],
+    ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
+  ])('rejects a malformed position %s', async (field, malformed) => {
+    positions = [malformed]
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      new RegExp(field)
+    )
   })
 })
 
