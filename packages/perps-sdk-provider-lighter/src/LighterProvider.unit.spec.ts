@@ -3,6 +3,7 @@ import {
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
   LIGHTER_USDC,
+  PerpsClient,
   PerpsError,
   type PerpsSDKClient,
   ROBINHOOD_USDG,
@@ -4959,6 +4960,156 @@ describe('LighterProvider — resolveExplorerLink', () => {
 
   it('returns undefined for an empty hash', () => {
     expect(lighterProvider().resolveExplorerLink?.('')).toBeUndefined()
+  })
+})
+
+describe('LighterProvider — getAvailableToTrade', () => {
+  const SPOT_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: '2048',
+    categoryId: 'spot',
+    positionMarginAdjustment: undefined,
+  }
+  const BTC_POSITION_ROW = {
+    market_id: 0,
+    symbol: 'BTC',
+    initial_margin_fraction: '10.00',
+    open_order_count: 0,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '0.02',
+    avg_entry_price: '50000',
+    position_value: '1000',
+    unrealized_pnl: '0',
+    realized_pnl: '0',
+    liquidation_price: '0',
+    total_funding_paid_out: '0',
+    margin_mode: LT_MARGIN_MODE_ISOLATED,
+    allocated_margin: '100',
+    total_discount: '0',
+  }
+  const accountWith = (
+    availableBalance: string,
+    position: Partial<typeof BTC_POSITION_ROW>
+  ) => ({
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        available_balance: availableBalance,
+        positions: [{ ...BTC_POSITION_ROW, ...position }],
+      },
+    ],
+  })
+
+  let accountPayload: unknown
+
+  beforeEach(() => {
+    accountPayload = accountWith('5', {})
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond({
+            markets: [...MARKETS_RESPONSE.markets, SPOT_MARKET],
+          })
+        }
+        if (u.includes('backend.test/v1/perps/assets')) {
+          return respond(ASSETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
+        recorded.push({ url: u, init })
+        if (u.includes('/api/v1/account?')) {
+          return respond(accountPayload)
+        }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond(APIKEYS_EMPTY)
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      }
+    )
+  })
+
+  const availableToTradeOn = (
+    marketId: string,
+    provider: LighterPerpsProvider = lighterProvider()
+  ) => {
+    provider.bind(STUB_CLIENT)
+    return provider.getAvailableToTrade?.({ address: ADDRESS, marketId })
+  }
+
+  it('adds the released margin and IMR to the side that closes the position', async () => {
+    await expect(availableToTradeOn('0')).resolves.toEqual({
+      providerId: 'lighter',
+      marketId: '0',
+      asset: MARKETS_RESPONSE.markets[0].quoteAsset,
+      buy: '5',
+      sell: '205',
+    })
+  })
+
+  it('releases only the equity of an isolated position below its IMR', async () => {
+    accountPayload = accountWith('5', { unrealized_pnl: '-20' })
+    await expect(availableToTradeOn('0')).resolves.toMatchObject({
+      buy: '5',
+      sell: '185',
+    })
+  })
+
+  it('adds the cross margin and IMR to the buy side of a cross short', async () => {
+    accountPayload = accountWith('40', {
+      sign: -1,
+      margin_mode: LT_MARGIN_MODE_CROSS,
+      allocated_margin: '0',
+      position_value: '2000',
+      initial_margin_fraction: '5.00',
+      unrealized_pnl: '-30',
+    })
+    await expect(availableToTradeOn('0')).resolves.toMatchObject({
+      buy: '240',
+      sell: '40',
+    })
+  })
+
+  it('answers on the Robinhood-chain deployment', async () => {
+    await expect(
+      availableToTradeOn('0', lighterRhProvider())
+    ).resolves.toMatchObject({ buy: '5', sell: '205' })
+  })
+
+  it('answers PerpsClient.getAvailableToTrade instead of the account fallback', async () => {
+    const client = new PerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+      apiUrl: STUB_CLIENT.config.apiUrl,
+      providers: [lighterProvider()],
+    })
+
+    await expect(
+      client.getAvailableToTrade({
+        provider: LIGHTER_PROVIDER_KEY,
+        address: ADDRESS,
+        marketId: '0',
+      })
+    ).resolves.toMatchObject({ buy: '5', sell: '205' })
+  })
+
+  it('resolves undefined for a spot market without reading the account', async () => {
+    await expect(availableToTradeOn('2048')).resolves.toBeUndefined()
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('throws MarketNotFound for an unknown market without reading the account', async () => {
+    await expect(availableToTradeOn('999')).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+    })
+    expect(recorded).toHaveLength(0)
   })
 })
 

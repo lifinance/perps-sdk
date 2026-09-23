@@ -15,6 +15,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
@@ -41,6 +42,7 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  AvailableToTrade,
   Balance,
   Fill,
   FillsResponse,
@@ -68,6 +70,7 @@ import Big from 'big.js'
 import type { Address } from 'viem'
 import { projectLighterConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
+import { lighterAvailableToTrade } from './availableToTrade.js'
 import {
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
@@ -784,7 +787,7 @@ export const createLighterProvider = (
     }
   }
 
-  return {
+  const plugin: LighterPerpsProvider = {
     type: providerKey,
 
     internalSetupActions: [ActionType.SET_REFERRAL],
@@ -1023,6 +1026,25 @@ export const createLighterProvider = (
         positions,
         pagination: { limit: params.limit ?? positions.length, hasMore: false },
       }
+    },
+
+    /**
+     * Lighter publishes no per-market figure, so this derives one from the
+     * account's `available_balance` and its open position on the market.
+     */
+    async getAvailableToTrade(
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> {
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      await registry.sync()
+      const market = registry.require(params.marketId)
+      if (market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        return undefined
+      }
+      const account = await plugin.getAccount({ address: params.address }, opts)
+      const { availableMargin } = getAccountSummary(account, account.positions)
+      return lighterAvailableToTrade(market, availableMargin, account.positions)
     },
 
     /**
@@ -1695,6 +1717,7 @@ export const createLighterProvider = (
       )
     },
   }
+  return plugin
 }
 
 /**
