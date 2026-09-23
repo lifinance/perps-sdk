@@ -13,6 +13,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
@@ -28,6 +29,7 @@ import {
   type SDKRequestOptions,
   type SignActionsContext,
   type StorageAdapter,
+  toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
@@ -40,6 +42,7 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  AvailableToTrade,
   Fill,
   FillsResponse,
   FundingActivity,
@@ -80,11 +83,14 @@ import type {
   OndoBalanceSummary,
   OndoFill,
   OndoFundingFeeTransfer,
+  OndoLeverage,
   OndoLiquidationEvent,
+  OndoMaxOrderSizesRes,
   OndoOrder,
   OndoPortfolioGraphPoint,
   OndoPortfolioSummary,
   OndoPosition,
+  OndoRestMarkPrice,
   OndoTwapOrder,
   OndoWalletDeposit,
   OndoWalletWithdrawal,
@@ -113,6 +119,7 @@ import {
   mapOpenPositions,
   mapOrder,
   mapWithdrawalActivity,
+  ondoAvailableToTrade,
   ondoWithdrawableBalances,
   positionRemovableMargin,
   requireOndoCollateralAsset,
@@ -402,6 +409,75 @@ export const ondoProvider = (
             balance,
             account.withdrawalFeeUSD
           )
+        }
+      )
+    },
+
+    async getAvailableToTrade(
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> {
+      return withSession(
+        params.address,
+        () => undefined,
+        async (token) => {
+          const registry = marketRegistry()
+          await registry.sync()
+          const market = registry.require(params.marketId)
+          const client = apiClient(opts)
+          const [maxOrderSizes, leverages, markPrices] = await Promise.all([
+            client
+              .get<OndoMaxOrderSizesRes>('/v1/perps/max_order_size', {
+                params: { market: market.id, buffer: '1' },
+                authToken: token.token,
+              })
+              .catch((error: unknown) => {
+                if (
+                  error instanceof OndoApiError &&
+                  error.errorCode === 'insufficient_margin'
+                ) {
+                  return null
+                }
+                throw error
+              }),
+            client.get<OndoLeverage[]>('/v1/perps/leverage', {
+              params: { market: market.id },
+              authToken: token.token,
+            }),
+            client.get<Record<string, OndoRestMarkPrice>>(
+              '/v1/perps/mark_prices'
+            ),
+          ])
+          const asset = toAssetDisplay(market.quoteAsset)
+          if (maxOrderSizes === null) {
+            return {
+              providerId: market.providerId,
+              marketId: market.id,
+              asset,
+              buy: '0',
+              sell: '0',
+            }
+          }
+          const leverage = leverages.find((row) => row.market === market.id)
+          const markPrice = markPrices[market.id]
+          if (leverage === undefined || markPrice === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo returned no ${leverage === undefined ? 'leverage' : 'mark price'} for market '${market.id}'`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          return {
+            providerId: market.providerId,
+            marketId: market.id,
+            asset,
+            ...ondoAvailableToTrade(
+              maxOrderSizes.percent100,
+              leverage.leverage,
+              markPrice.markPrice
+            ),
+          }
         }
       )
     },

@@ -16,6 +16,7 @@ export {
   type OndoRequestOptions,
   OndoSessionExpiredError,
 } from './apiClient.js'
+export { ondoAvailableToTrade } from './availableToTrade.js'
 export { requireOndoCollateralAsset } from './collateralAsset.js'
 export {
   buildOndoProvisionPayload,

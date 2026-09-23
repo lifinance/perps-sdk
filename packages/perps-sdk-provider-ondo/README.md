@@ -132,6 +132,20 @@ moves value between the `main` and `margin` wallets of one account, and
 request that filters for `TRANSFER` alone returns an empty page and makes no
 upstream call.
 
+## Available to trade
+
+`getAvailableToTrade` reads the per-market figure from
+`/v1/perps/max_order_size` with `buffer=1`, so the SDK applies no safety
+margin. The provider reads the `percent100` tier. `maxBidBaseSize` becomes
+`buy` and `maxAskBaseSize` becomes `sell`. The venue reports base-asset units,
+and the provider converts each side into margin-asset units as
+`baseSize × markPrice ÷ leverage`. `leverage` comes from `/v1/perps/leverage`
+and `markPrice` from `/v1/perps/mark_prices`. A venue `insufficient_margin`
+rejection returns `"0"` on both sides. Without a session the method resolves
+`undefined`, and the client falls back to the account summary. Ondo does not
+stream this figure, so the `availableToTrade` WebSocket channel stays
+unsupported.
+
 ## Environments
 
 Production `https://api.ondoperps.xyz` is the default; the sandbox `https://api.ondoperps-sandbox.xyz` can be selected by passing its base URL.

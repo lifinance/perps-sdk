@@ -117,8 +117,9 @@ displays read the account-scoped figure.
 
 Providers that publish a per-market figure answer it directly. Hyperliquid
 reads it from `activeAssetData`, and also streams it on the `availableToTrade`
-WebSocket channel. For every other provider the client falls back to the
-account summary, so `buy` and `sell` both equal `availableMargin`.
+WebSocket channel. Ondo reads it from `/v1/perps/max_order_size` over REST
+only. For every other provider the client falls back to the account summary,
+so `buy` and `sell` both equal `availableMargin`.
 
 ```ts
 const availableToTrade = await client.getAvailableToTrade({
