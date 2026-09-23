@@ -20,10 +20,11 @@ const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
 }
 
 /**
- * Roll a Lighter account up into an {@link AccountSummary}, from the venue
- * figures the response carries. `totalAssetValue` is total equity and
- * `availableBalance` is buying power, so neither needs reconciling against the
- * positions; the positions supply only the margin and PnL breakdown.
+ * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
+ * is perps-route equity and excludes the spot route, so `portfolioValue` adds
+ * every spot `balances` row, settlement included; the `collateralBalances` row
+ * is buying power already inside `totalAssetValue`. The positions supply only
+ * the margin and PnL breakdown.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
@@ -41,13 +42,15 @@ export function getAccountSummary(
     unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl)
   }
 
+  let portfolioValue = toRequiredBig(config.totalAssetValue, 'totalAssetValue')
+  for (const balance of account.balances) {
+    portfolioValue = portfolioValue.plus(
+      toRequiredBig(balance.valueUsd, 'valueUsd')
+    )
+  }
+
   return {
-    // `total_asset_value` already covers every asset the venue prices, so the
-    // spot `balances` rows must not be added on top of it.
-    portfolioValue: toRequiredBig(
-      config.totalAssetValue,
-      'totalAssetValue'
-    ).toString(),
+    portfolioValue: portfolioValue.toString(),
     availableMargin: toRequiredBig(
       config.availableBalance,
       'availableBalance'

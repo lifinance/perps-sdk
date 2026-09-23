@@ -22,6 +22,7 @@ import {
   PerpsErrorCode,
   type PortfolioHistoryRange,
   PositionMarginAdjustment,
+  type PricesResponse,
   SigningMethod,
   type WasmBlobActionStep,
   type WasmBlobSignedActionStep,
@@ -224,6 +225,8 @@ const MARKETS_RESPONSE = {
     },
   ],
 }
+
+const MARKETS_CONTEXT_RESPONSE: PricesResponse = { prices: [] }
 
 const PROVIDERS_RESPONSE = {
   providers: [
@@ -450,6 +453,9 @@ beforeEach(() => {
         recorded.push({ url: u, init })
       }
       return overridden
+    }
+    if (u.includes('backend.test/v1/perps/marketsContext')) {
+      return respond(MARKETS_CONTEXT_RESPONSE)
     }
     if (u.includes('backend.test/v1/perps/markets')) {
       return respond(MARKETS_RESPONSE)
@@ -1046,6 +1052,9 @@ describe('LighterProvider — assetCollateral projection', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
@@ -1259,6 +1268,9 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
@@ -1326,7 +1338,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     const btc = account.balances.find((b) => b.asset.displaySymbol === 'BTC')
     expect(usdc?.asset.logoURI).toBe(USDC_LOGO)
     expect(btc?.asset.logoURI).toBe(BTC_LOGO)
-    // AC5: USDC spot is valued 1:1; other tokens have no price source here.
+    // USDC spot is valued 1:1; BTC has no spot market, so it stays unpriced.
     expect(usdc?.units).toBe('10')
     expect(usdc?.valueUsd).toBe('10')
     expect(usdc?.price).toBe('1')
@@ -1392,6 +1404,104 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(
       account.balances.map((balance) => balance.asset.displaySymbol)
     ).toEqual(['BTC'])
+  })
+})
+
+describe('LighterProvider — getAccount spot balance pricing', () => {
+  const ETH_USDC_SPOT_MARKET = {
+    providerId: 'lighter',
+    id: '2048',
+    categoryId: 'spot',
+    baseAsset: {
+      providerId: 'lighter',
+      id: '1',
+      displaySymbol: 'ETH',
+      logoURI: '',
+    },
+    quoteAsset: {
+      providerId: 'lighter',
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: '',
+    },
+    szDecimals: 4,
+  }
+  const MARKETS_WITH_SPOT = {
+    markets: [...MARKETS_RESPONSE.markets, ETH_USDC_SPOT_MARKET],
+  }
+  // The perps BTC market '0' has baseAsset id '0', the same string as the BTC
+  // spot asset_id, so a price it carries must not reach the BTC spot row.
+  const CONTEXT: PricesResponse = {
+    prices: [
+      { marketId: '2048', midPrice: '2714.1', markPrice: '2714.1' },
+      { marketId: '0', midPrice: '50000', markPrice: '50000' },
+    ],
+  }
+  const ACCOUNT_WITH_SPOT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...ACCOUNT_PAYLOAD.accounts[0],
+        assets: [
+          { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
+          { symbol: 'ETH', asset_id: 1, balance: '0.3', locked_balance: '0' },
+          { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
+        ],
+      },
+    ],
+  }
+
+  let contextUrls: string[] = []
+
+  beforeEach(() => {
+    contextUrls = []
+    overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        contextUrls.push(url)
+        return respond(CONTEXT)
+      }
+      if (url.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_SPOT)
+      }
+      if (url.includes('/api/v1/account?')) {
+        return respond(ACCOUNT_WITH_SPOT)
+      }
+      return undefined
+    })
+  })
+
+  const balanceOf = async (symbol: string) => {
+    const provider = lighterProvider()
+    provider.bind({
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient)
+    const account = await provider.getAccount({ address: ADDRESS })
+    return account.balances.find((b) => b.asset.displaySymbol === symbol)
+  }
+
+  it('prices a spot row from the mark of the spot market whose base asset is the row asset_id', async () => {
+    const eth = await balanceOf('ETH')
+    expect(eth?.price).toBe('2714.1')
+    // 0.3 * 2714.1 is 814.2299999999999 in float math.
+    expect(eth?.valueUsd).toBe('814.23')
+  })
+
+  it('leaves a spot asset unpriced when only a perps market shares its id', async () => {
+    const btc = await balanceOf('BTC')
+    expect(btc?.valueUsd).toBe('0')
+    expect(btc?.price).toBeUndefined()
+  })
+
+  it('keeps the settlement row at a price of 1', async () => {
+    const usdc = await balanceOf('USDC')
+    expect(usdc?.price).toBe('1')
+    expect(usdc?.valueUsd).toBe('10')
+  })
+
+  it('reads the market context for its own provider', async () => {
+    await balanceOf('ETH')
+    expect(contextUrls).toHaveLength(1)
+    expect(new URL(contextUrls[0]).searchParams.get('provider')).toBe('lighter')
   })
 })
 
@@ -1544,6 +1654,9 @@ describe('LighterProvider — getAccount balance categoryId', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
@@ -2281,6 +2394,9 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
   it('surfaces a 200-with-error-code authed response as a PerpsError, not a TypeError', async () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -2422,6 +2538,9 @@ describe('LighterProvider — getOrders pagination contract', () => {
     )
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -2553,6 +2672,9 @@ describe('LighterProvider — getAccount carries positions', () => {
     fetchMock.mockImplementation(
       async (url: string | URL, init?: RequestInit) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/marketsContext')) {
+          return respond(MARKETS_CONTEXT_RESPONSE)
+        }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond(MARKETS_RESPONSE)
         }
@@ -2869,6 +2991,9 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('/api/v1/transfer/history')) {
         return respond({ code: 0, transfers: [] })
       }
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -3069,6 +3194,9 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -3205,6 +3333,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -3393,6 +3524,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_RESPONSE)
       }
@@ -3860,6 +3994,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(history.markets ?? MARKETS_RESPONSE)
       }
@@ -4091,6 +4228,9 @@ describe('LighterProvider — one-call order reads', () => {
 
   it('reads every market through a single wildcard accountActiveOrders request', async () => {
     overrideFetch((u) => {
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(TWO_MARKETS_RESPONSE)
       }
@@ -4124,6 +4264,9 @@ describe('LighterProvider — one-call order reads', () => {
 
   it('keeps a single filtered request when a marketId is given', async () => {
     overrideFetch((u) => {
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(TWO_MARKETS_RESPONSE)
       }
@@ -4358,6 +4501,9 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(MARKETS_WITH_LOGO)
       }
@@ -4417,6 +4563,9 @@ describe('LighterProvider — getFills unresolvable market rows', () => {
     fetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url)
       recorded.push({ url: u })
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (u.includes('backend.test/v1/perps/markets')) {
         return respond(stub.markets ?? MARKETS_RESPONSE)
       }
@@ -4712,6 +4861,9 @@ describe('LighterProvider — two deployments on one client', () => {
   it('namespaces the backend markets fetch by provider key per deployment', async () => {
     const backendUrls: string[] = []
     overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
       if (url.includes('backend.test/v1/perps/markets')) {
         backendUrls.push(url)
       }
