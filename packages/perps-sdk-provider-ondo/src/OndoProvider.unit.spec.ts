@@ -46,14 +46,18 @@ import type {
   OndoCreatedApiKey,
   OndoFill,
   OndoFundingFeeTransfer,
+  OndoLeverage,
   OndoLiquidationEvent,
+  OndoMaxOrderSizesRes,
   OndoOrder,
   OndoPortfolioGraphPoint,
   OndoPortfolioSummary,
   OndoPosition,
+  OndoRestMarkPrice,
   OndoWalletDeposit,
   OndoWalletWithdrawal,
 } from './types/wire.js'
+import { OndoApiError } from './utils/apiClient.js'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -313,6 +317,39 @@ const WITHDRAWAL_RESULT: OndoWalletWithdrawal = {
   from: { id: 'acct-1', wallet: 'margin' },
 }
 
+// `MaxOrderSizesRes` with asymmetric sides, as an open long reports them.
+const MAX_ORDER_SIZES_RESULT: OndoMaxOrderSizesRes = {
+  percent100: { maxBidBaseSize: '3', maxAskBaseSize: '12.5' },
+  percent75: { maxBidBaseSize: '2.25', maxAskBaseSize: '9.375' },
+  percent50: { maxBidBaseSize: '1.5', maxAskBaseSize: '6.25' },
+  percent25: { maxBidBaseSize: '0.75', maxAskBaseSize: '3.125' },
+}
+
+const LEVERAGE_RESULT: OndoLeverage[] = [
+  { market: 'AAPL-USD.P', leverage: '5' },
+]
+
+const MARK_PRICES_RESULT: Record<string, OndoRestMarkPrice> = {
+  'AAPL-USD.P': {
+    market: 'AAPL-USD.P',
+    pair: { base: 'AAPL', quote: 'USD' },
+    price: '202.1',
+    markPrice: '202.05',
+    oraclePrice: '202.04999999999999',
+    lastExternalPrice: '202.04999999999999',
+    lastUpdatedTime: '2026-07-01T12:00:00.000000000Z',
+  },
+  'TSLA-USD.P': {
+    market: 'TSLA-USD.P',
+    pair: { base: 'TSLA', quote: 'USD' },
+    price: '180.25',
+    markPrice: '180.25',
+    oraclePrice: '180.24500000000000001',
+    lastExternalPrice: '180.24500000000000001',
+    lastUpdatedTime: '2026-07-01T12:00:00.000000000Z',
+  },
+}
+
 const DEPOSIT_ADDRESS = '0x2222222222222222222222222222222222222222'
 
 const ACCOUNT_INFO_RESULT = {
@@ -350,6 +387,12 @@ let positionsResult: OndoPosition[] | null
 let providersResult: Provider[]
 /** `GET /v1/perps/balance` result. */
 let balanceResult: OndoBalanceSummary
+/** `GET /v1/perps/max_order_size` response body and HTTP status. */
+let maxOrderSizeResponse: { body: unknown; status: number }
+/** `GET /v1/perps/leverage` result. */
+let leverageResult: OndoLeverage[]
+/** `GET /v1/perps/mark_prices` response body and HTTP status. */
+let markPricesResponse: { body: unknown; status: number }
 
 const PORTFOLIO_GRAPH_RESULT: OndoPortfolioGraphPoint[] = [
   {
@@ -400,6 +443,9 @@ beforeEach(() => {
   positionsResult = [POSITION_RESULT]
   providersResult = [ACCOUNT_PROVIDER_METADATA]
   balanceResult = BALANCE_RESULT
+  maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
+  leverageResult = LEVERAGE_RESULT
+  markPricesResponse = { body: envelope(MARK_PRICES_RESULT), status: 200 }
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -414,6 +460,15 @@ beforeEach(() => {
     recorded.push({ url: u, init })
     if (u.includes('/v1/perps/balance')) {
       return respond(envelope(balanceResult))
+    }
+    if (u.includes('/v1/perps/max_order_size')) {
+      return respond(maxOrderSizeResponse.body, maxOrderSizeResponse.status)
+    }
+    if (u.includes('/v1/perps/leverage')) {
+      return respond(envelope(leverageResult))
+    }
+    if (u.includes('/v1/perps/mark_prices')) {
+      return respond(markPricesResponse.body, markPricesResponse.status)
     }
     if (u.includes('/v1/perps/positions')) {
       return respond(envelope(positionsResult))
@@ -627,6 +682,17 @@ describe('OndoProvider — logged-out degrade paths', () => {
     expect(recorded).toHaveLength(0)
   })
 
+  it('getAvailableToTrade resolves undefined without a venue call', async () => {
+    const provider = loggedOutProvider()
+    await expect(
+      provider.getAvailableToTrade!({
+        address: ADDRESS,
+        marketId: 'AAPL-USD.P',
+      })
+    ).resolves.toBeUndefined()
+    expect(recorded).toHaveLength(0)
+  })
+
   it('accountExists resolves false without a venue call', async () => {
     const provider = loggedOutProvider()
     await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
@@ -729,6 +795,167 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         "Ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
       tool: 'ondo',
     })
+  })
+})
+
+describe('OndoProvider — getAvailableToTrade (logged in)', () => {
+  const read = async () => {
+    const { provider } = await loggedInProvider()
+    return provider.getAvailableToTrade!({
+      address: ADDRESS,
+      marketId: 'AAPL-USD.P',
+    })
+  }
+
+  it('converts the percent100 tier into margin at the market leverage', async () => {
+    // buy: 3 × 202.05 ÷ 5; sell: 12.5 × 202.05 ÷ 5.
+    await expect(read()).resolves.toEqual({
+      providerId: 'ondo',
+      marketId: 'AAPL-USD.P',
+      asset: {
+        providerId: 'ondo',
+        id: ONDO_COLLATERAL_ASSET.id,
+        displaySymbol: ONDO_COLLATERAL_ASSET.displaySymbol,
+        displayName: 'USD Coin from market metadata',
+        logoURI: ONDO_COLLATERAL_ASSET.logoURI,
+      },
+      buy: '121.23',
+      sell: '505.125',
+    })
+  })
+
+  it('sends buffer=1 and the market on the max-order-size read', async () => {
+    await read()
+    const call = recorded.find((r) =>
+      r.url.includes('/v1/perps/max_order_size')
+    )
+    const url = new URL(call!.url)
+    expect(url.searchParams.get('market')).toBe('AAPL-USD.P')
+    expect(url.searchParams.get('buffer')).toBe('1')
+    expect(authHeaderOf(call!)).toBe(`Bearer ${AUTH_TOKEN.token}`)
+  })
+
+  it('reads the leverage for the requested market', async () => {
+    await read()
+    const call = recorded.find((r) => r.url.includes('/v1/perps/leverage'))
+    expect(new URL(call!.url).searchParams.get('market')).toBe('AAPL-USD.P')
+    expect(authHeaderOf(call!)).toBe(`Bearer ${AUTH_TOKEN.token}`)
+  })
+
+  it('returns zero on both sides on a venue insufficient_margin rejection', async () => {
+    maxOrderSizeResponse = {
+      body: {
+        success: false,
+        error: 'insufficient margin',
+        error_code: 'insufficient_margin',
+      },
+      status: 400,
+    }
+    await expect(read()).resolves.toEqual({
+      providerId: 'ondo',
+      marketId: 'AAPL-USD.P',
+      asset: {
+        providerId: 'ondo',
+        id: ONDO_COLLATERAL_ASSET.id,
+        displaySymbol: ONDO_COLLATERAL_ASSET.displaySymbol,
+        displayName: 'USD Coin from market metadata',
+        logoURI: ONDO_COLLATERAL_ASSET.logoURI,
+      },
+      buy: '0',
+      sell: '0',
+    })
+  })
+
+  it('returns zero on insufficient_margin even when the companion reads fail', async () => {
+    maxOrderSizeResponse = {
+      body: {
+        success: false,
+        error: 'insufficient margin',
+        error_code: 'insufficient_margin',
+      },
+      status: 400,
+    }
+    markPricesResponse = {
+      body: { success: false, error: 'forbidden', error_code: 'forbidden' },
+      status: 403,
+    }
+    await expect(read()).resolves.toMatchObject({ buy: '0', sell: '0' })
+  })
+
+  it('rejects when the mark-price read fails on a non-zero result', async () => {
+    markPricesResponse = {
+      body: { success: false, error: 'forbidden', error_code: 'forbidden' },
+      status: 403,
+    }
+    const error = await read().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OndoApiError)
+    expect(error).toMatchObject({ errorCode: 'forbidden' })
+  })
+
+  it('rejects any other venue error as an OndoApiError', async () => {
+    maxOrderSizeResponse = {
+      body: {
+        success: false,
+        error: 'unknown market',
+        error_code: 'invalid_market',
+      },
+      status: 400,
+    }
+    const error = await read().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OndoApiError)
+    expect(error).toMatchObject({ errorCode: 'invalid_market' })
+  })
+
+  it('rejects when the venue returns no leverage row for the market', async () => {
+    leverageResult = [{ market: 'TSLA-USD.P', leverage: '5' }]
+    await expect(read()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: "Ondo returned no leverage for market 'AAPL-USD.P'",
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects when the venue returns no mark price for the market', async () => {
+    markPricesResponse = {
+      body: envelope({ 'TSLA-USD.P': MARK_PRICES_RESULT['TSLA-USD.P'] }),
+      status: 200,
+    }
+    await expect(read()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: "Ondo returned no mark price for market 'AAPL-USD.P'",
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects an unknown market before any venue read', async () => {
+    const { provider } = await loggedInProvider()
+    await expect(
+      provider.getAvailableToTrade!({ address: ADDRESS, marketId: 'NOPE' })
+    ).rejects.toBeInstanceOf(PerpsError)
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('answers PerpsClient.getAvailableToTrade instead of the account fallback', async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(ADDRESS, AUTH_TOKEN)
+    const client = new PerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+      apiUrl: STUB_CLIENT.config.apiUrl,
+      providers: [ondoProvider({ apiUrl: API_URL, storage })],
+    })
+
+    const result = await client.getAvailableToTrade({
+      provider: 'ondo',
+      address: ADDRESS,
+      marketId: 'AAPL-USD.P',
+    })
+
+    expect(result).toMatchObject({ buy: '121.23', sell: '505.125' })
+    expect(result.buy).not.toBe(BALANCE_RESULT.availableMargin)
+    expect(recorded.some((r) => r.url.includes('/v1/perps/balance'))).toBe(
+      false
+    )
   })
 })
 
