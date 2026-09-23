@@ -304,6 +304,18 @@ export const HL_ORDER_STATUS_FOUND: HlOrderStatusResponse = {
   order: HL_ORDER_DETAIL_FOUND,
 }
 
+/** `orderStatus` for the found order placed with a client order id. */
+export const HL_ORDER_STATUS_FOUND_WITH_CLOID: HlOrderStatusResponse = {
+  status: 'order',
+  order: {
+    ...HL_ORDER_DETAIL_FOUND,
+    order: {
+      ...HL_ORDER_DETAIL_FOUND.order,
+      cloid: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+  },
+}
+
 /** `orderStatus` for an order on an HIP-4 outcome market. */
 export const HL_ORDER_STATUS_OUTCOME: HlOrderStatusResponse = {
   status: 'order',
