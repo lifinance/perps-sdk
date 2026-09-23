@@ -1426,8 +1426,8 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     },
     szDecimals: 4,
   }
-  // A spot market on the settlement asset: its mark must not reprice the
-  // settlement row away from 1.
+  // An unparsable mark on the settlement asset's spot market: getAccount
+  // rejects if the settlement asset is ever requested for pricing.
   const USDC_SPOT_MARKET = {
     ...ETH_USDC_SPOT_MARKET,
     id: '2049',
@@ -1438,11 +1438,23 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
       logoURI: '',
     },
   }
+  // An unparsable mark on a spot market the account holds zero of.
+  const LINK_SPOT_MARKET = {
+    ...ETH_USDC_SPOT_MARKET,
+    id: '2050',
+    baseAsset: {
+      providerId: 'lighter',
+      id: '5',
+      displaySymbol: 'LINK',
+      logoURI: '',
+    },
+  }
   const MARKETS_WITH_SPOT = {
     markets: [
       ...MARKETS_RESPONSE.markets,
       ETH_USDC_SPOT_MARKET,
       USDC_SPOT_MARKET,
+      LINK_SPOT_MARKET,
     ],
   }
   // The perps BTC market '0' has baseAsset id '0', the same string as the BTC
@@ -1450,7 +1462,8 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
   const CONTEXT: PricesResponse = {
     prices: [
       { marketId: '2048', midPrice: '2714.1', markPrice: '2714.1' },
-      { marketId: '2049', midPrice: '0.9998', markPrice: '0.9998' },
+      { marketId: '2049', midPrice: 'n/a', markPrice: 'n/a' },
+      { marketId: '2050', midPrice: 'n/a', markPrice: 'n/a' },
       { marketId: '0', midPrice: '50000', markPrice: '50000' },
     ],
   }
@@ -1463,6 +1476,7 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
           { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
           { symbol: 'ETH', asset_id: 1, balance: '0.3', locked_balance: '0' },
           { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
+          { symbol: 'LINK', asset_id: 5, balance: '0', locked_balance: '0' },
         ],
       },
     ],
@@ -1507,6 +1521,12 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     const btc = await balanceOf('BTC')
     expect(btc?.valueUsd).toBe('0')
     expect(btc?.price).toBeUndefined()
+  })
+
+  it('prices held spot rows when an unheld spot market carries an unparsable mark', async () => {
+    const eth = await balanceOf('ETH')
+    expect(eth?.price).toBe('2714.1')
+    expect(await balanceOf('LINK')).toBeUndefined()
   })
 
   it('keeps the settlement row at a price of 1', async () => {
