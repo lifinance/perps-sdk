@@ -1,6 +1,12 @@
-import type { OrderBase } from '@lifi/perps-types'
+import {
+  createWarnOnce,
+  ExplorerChainId,
+  explorerTxUrl,
+  PerpsError,
+} from '@lifi/perps-sdk'
+import type { Order, OrderBase } from '@lifi/perps-types'
 import { isHex } from 'viem'
-import { HYPERLIQUID_EXPLORER_RPC_URL } from '../constants.js'
+import { HYPERLIQUID_EXPLORER_RPC_URL, PROVIDER_KEY } from '../constants.js'
 import { type HlExplorerTx, isHlExplorerTx } from '../types/explorer.js'
 import { hlPostJson, type InfoRequestOptions } from './infoClient.js'
 
@@ -90,4 +96,45 @@ export const matchOrderActionHash = (
       getClientOrderIds(tx.action).some((id) => id.toLowerCase() === wanted)
   )
   return match?.hash
+}
+
+const warn = createWarnOnce()
+
+/**
+ * Set `explorerLink` on each order whose placement transaction the explorer
+ * window still holds. One explorer read serves every order, and it is skipped
+ * when no order carries a client order id to match on. The link is
+ * supplementary, so an explorer failure warns and leaves the orders unlinked
+ * instead of failing the order read.
+ */
+export const withExplorerLinks = async (
+  orders: Order[],
+  address: string,
+  options: InfoRequestOptions
+): Promise<Order[]> => {
+  if (!orders.some((order) => order.clientOrderId !== undefined)) {
+    return orders
+  }
+  let txs: HlExplorerTx[]
+  try {
+    txs = await fetchUserTransactions(address, options)
+  } catch (error) {
+    if (!(error instanceof PerpsError)) {
+      throw error
+    }
+    // The message stays out of the key: a transport failure names hosts and
+    // ports, so keying on it would let the dedupe set grow without bound.
+    warn(
+      'explorer link lookup failed',
+      `[${PROVIDER_KEY}] explorer link lookup failed: ${error.message}`
+    )
+    return orders
+  }
+  return orders.map((order) => {
+    const explorerLink = explorerTxUrl(
+      ExplorerChainId.HYPERLIQUID,
+      matchOrderActionHash(txs, order)
+    )
+    return explorerLink === undefined ? order : { ...order, explorerLink }
+  })
 }

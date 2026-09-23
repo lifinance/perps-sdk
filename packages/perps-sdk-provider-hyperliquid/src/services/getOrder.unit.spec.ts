@@ -1,9 +1,10 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { OrderStatus, OrderType, PerpsErrorCode } from '@lifi/perps-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_MARKETS,
   HL_ORDER_STATUS_FOUND,
+  HL_ORDER_STATUS_FOUND_WITH_CLOID,
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
 } from '../../test/fixtures.js'
@@ -21,6 +22,16 @@ const client = createPerpsClient({
 const baseResponses = {}
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
+
+const CLOID = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const explorerTx = (hash: string, cloids: string[]) => ({
+  time: 1_704_067_200_000,
+  user: ADDRESS,
+  action: { type: 'order', orders: cloids.map((c) => ({ a: 0, b: true, c })) },
+  block: 100,
+  hash,
+  error: null,
+})
 
 describe('getOrder', () => {
   let restore: () => void
@@ -144,5 +155,58 @@ describe('getOrder', () => {
       status: OrderStatus.OPEN,
       durationSeconds: 300,
     })
+  })
+
+  it('sets explorerLink from the placement transaction that names the cloid', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_FOUND_WITH_CLOID,
+        userDetails: {
+          txs: [
+            explorerTx('0xunrelated', ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb']),
+            explorerTx('0xplacement', [CLOID]),
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+    expect(await getOrder(ctx, { address: ADDRESS, id: '1' })).toMatchObject({
+      orderId: '1',
+      clientOrderId: CLOID,
+      explorerLink: 'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+    })
+  })
+
+  it('makes no explorer read when the order carries no client order id', async () => {
+    const installed = installInfoFetchMock(
+      { orderStatus: HL_ORDER_STATUS_FOUND },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const order = await getOrder(ctx, { address: ADDRESS, id: '1' })
+    expect(
+      installed.requests.filter(
+        (request) => request.body.type === 'userDetails'
+      )
+    ).toHaveLength(0)
+    expect(order).not.toHaveProperty('explorerLink')
+  })
+
+  it('returns the order unlinked when the explorer read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_FOUND_WITH_CLOID,
+        userDetails: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    ))
+    const order = await getOrder(ctx, { address: ADDRESS, id: '1' })
+    expect(order).toMatchObject({ orderId: '1', clientOrderId: CLOID })
+    expect(order).not.toHaveProperty('explorerLink')
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[hyperliquid] explorer link lookup failed: Hyperliquid explorer userDetails failed: 503',
+    ])
+    warn.mockRestore()
   })
 })
