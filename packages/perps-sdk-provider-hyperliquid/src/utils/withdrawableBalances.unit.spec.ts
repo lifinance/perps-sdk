@@ -65,4 +65,67 @@ describe('hyperliquidWithdrawableBalances', () => {
     )
     expect(rows).toEqual([{ assetId: '0', route: 'perps', available: '2.5' }])
   })
+
+  it('sets the fee on every quote-asset row and on no other asset', () => {
+    const rows = hyperliquidWithdrawableBalances(
+      HlAbstractionMode.UNIFIED_ACCOUNT,
+      perpsState('2.5'),
+      spotState([
+        spotBalance('USDC', 0, '10', '4'),
+        spotBalance('HYPE', 150, '3', '0'),
+      ]),
+      '0',
+      '1'
+    )
+    expect(rows).toEqual([
+      { assetId: '0', route: 'spot', available: '6', withdrawalFee: '1' },
+      { assetId: '150', route: 'spot', available: '3' },
+      { assetId: '0', route: 'perps', available: '2.5', withdrawalFee: '1' },
+    ])
+    expect(rows[1]).not.toHaveProperty('withdrawalFee')
+  })
+
+  it('sets no fee key on any row when the fee is undefined', () => {
+    const rows = hyperliquidWithdrawableBalances(
+      HlAbstractionMode.UNIFIED_ACCOUNT,
+      perpsState('2.5'),
+      spotState([spotBalance('USDC', 0, '10', '4')]),
+      '0'
+    )
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('withdrawalFee')
+    }
+  })
+
+  it('normalises the fee to a plain decimal', () => {
+    const rows = hyperliquidWithdrawableBalances(
+      HlAbstractionMode.DEFAULT,
+      perpsState('2.5'),
+      spotState([]),
+      '0',
+      '1e-7'
+    )
+    expect(rows).toEqual([
+      {
+        assetId: '0',
+        route: 'perps',
+        available: '2.5',
+        withdrawalFee: '0.0000001',
+      },
+    ])
+  })
+
+  it('rejects a fee that is not a decimal', () => {
+    expect(() =>
+      hyperliquidWithdrawableBalances(
+        HlAbstractionMode.DEFAULT,
+        perpsState('2.5'),
+        spotState([]),
+        '0',
+        'abc'
+      )
+    ).toThrowError(
+      "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'abc'"
+    )
+  })
 })

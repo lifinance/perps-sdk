@@ -1,7 +1,13 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
-import type { Market, MarketContext } from '@lifi/perps-types'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import {
+  type Market,
+  type MarketContext,
+  PerpsErrorCode,
+  type Provider,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
+import { HYPERLIQUID_PROVIDER, USDC_ASSET } from '../test/fixtures.js'
 import { installInfoFetchMock } from '../test/mockFetch.js'
 import {
   PM_MARKETS,
@@ -31,7 +37,8 @@ afterEach(() => restore?.())
 const load = async (
   snapshot: RecordedSnapshot,
   markets: Market[],
-  prices: MarketContext[]
+  prices: MarketContext[],
+  providers: Provider[] | Response = [HYPERLIQUID_PROVIDER]
 ) => {
   ;({ restore } = installInfoFetchMock(
     {
@@ -40,7 +47,9 @@ const load = async (
       spotClearinghouseState: snapshot.spotClearinghouseState,
     },
     markets,
-    prices
+    prices,
+    [USDC_ASSET],
+    providers
   ))
   return getWithdrawableBalances(ctx, {
     address: snapshot.address as Address,
@@ -51,12 +60,22 @@ describe('getWithdrawableBalances.venue: unified account', () => {
   it('returns a spot row per held token and the perps withdrawable row', async () => {
     const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES)
     expect(rows).toEqual([
-      { assetId: '0', route: 'spot', available: '102.54975228' },
+      {
+        assetId: '0',
+        route: 'spot',
+        available: '102.54975228',
+        withdrawalFee: '1',
+      },
       { assetId: '73', route: 'spot', available: '6.15' },
       { assetId: '150', route: 'spot', available: '2.10613124' },
       { assetId: '339', route: 'spot', available: '40.230704' },
       { assetId: '734', route: 'spot', available: '68598.161692' },
-      { assetId: '0', route: 'perps', available: '0.6975' },
+      {
+        assetId: '0',
+        route: 'perps',
+        available: '0.6975',
+        withdrawalFee: '1',
+      },
     ])
   })
 
@@ -65,6 +84,68 @@ describe('getWithdrawableBalances.venue: unified account', () => {
     expect(rows.find((row) => row.route === 'perps')?.available).toBe(
       UNIFIED_SNAPSHOT.clearinghouseState.withdrawable
     )
+  })
+})
+
+describe('getWithdrawableBalances.venue: withdrawal fee', () => {
+  it('sets the backend withdrawalFeeUsd on the USDC rows only', async () => {
+    const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES)
+    expect(
+      rows
+        .filter((row) => row.withdrawalFee !== undefined)
+        .map((row) => row.assetId)
+    ).toEqual(['0', '0'])
+  })
+
+  it('sets no fee when the provider descriptor advertises none', async () => {
+    const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES, [
+      { ...HYPERLIQUID_PROVIDER, withdrawalFeeUsd: undefined },
+    ])
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('withdrawalFee')
+    }
+  })
+
+  it('sets no fee when the providers list carries no hyperliquid entry', async () => {
+    const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES, [
+      { ...HYPERLIQUID_PROVIDER, key: 'lighter' },
+    ])
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('withdrawalFee')
+    }
+  })
+
+  it('rejects when the backend /providers read fails', async () => {
+    await expect(
+      load(
+        UNIFIED_SNAPSHOT,
+        UNIFIED_MARKETS,
+        UNIFIED_PRICES,
+        new Response('{}', { status: 503 })
+      )
+    ).rejects.toBeInstanceOf(PerpsError)
+  })
+
+  it('rejects a null descriptor fee with a PerpsError', async () => {
+    const body = {
+      providers: [{ ...HYPERLIQUID_PROVIDER, withdrawalFeeUsd: null }],
+    }
+    await expect(
+      load(
+        UNIFIED_SNAPSHOT,
+        UNIFIED_MARKETS,
+        UNIFIED_PRICES,
+        new Response(JSON.stringify(body), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message:
+        "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
+    })
   })
 })
 
@@ -84,7 +165,12 @@ describe('getWithdrawableBalances.venue: portfolio margin account', () => {
   it('returns a spot row per held token and no perps row', async () => {
     const rows = await load(PM_SNAPSHOT, PM_MARKETS, PM_PRICES)
     expect(rows).toEqual([
-      { assetId: '0', route: 'spot', available: '3573826.69076083' },
+      {
+        assetId: '0',
+        route: 'spot',
+        available: '3573826.69076083',
+        withdrawalFee: '1',
+      },
       { assetId: '146', route: 'spot', available: '7.43118' },
       { assetId: '150', route: 'spot', available: '0.00338262' },
       { assetId: '154', route: 'spot', available: '0.01435139' },
