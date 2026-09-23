@@ -191,12 +191,15 @@ describe('mapOrder', () => {
       mapOrder(orderFixture({ triggerPrice: '190' }), MARKET)
     ).toThrow(PerpsError)
   })
-  it.each([
-    'pending',
-    'unknown',
-  ])('rejects unsupported order status %s', (status) => {
+  it('maps a pending order to PENDING', () => {
+    expect(
+      mapOrder(orderFixture({ status: 'pending', filledSize: '0' }), MARKET)
+        .status
+    ).toBe(OrderStatus.PENDING)
+  })
+  it('rejects an unsupported order status', () => {
     const raw: OndoOrder = JSON.parse(
-      JSON.stringify({ ...orderFixture(), status })
+      JSON.stringify({ ...orderFixture(), status: 'unknown' })
     )
     expect(() => mapOrder(raw, MARKET)).toThrow(PerpsError)
   })
@@ -315,10 +318,16 @@ describe('mapOrderUpdates', () => {
     ).toEqual({ orders: [], terminated: ['cancelled'] })
   })
   it('drops an unmappable row and keeps the rest of the frame', () => {
+    const unmappable: OndoOrder = JSON.parse(
+      JSON.stringify({
+        ...orderFixture({ orderId: 'unmappable' }),
+        status: 'unknown',
+      })
+    )
     expect(
       mapOrderUpdates(
         [
-          orderFixture({ orderId: 'unmappable', status: 'pending' }),
+          unmappable,
           orderFixture({ orderId: 'cancelled', status: 'canceled' }),
         ],
         () => MARKET

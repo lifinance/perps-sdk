@@ -22,6 +22,8 @@ export const mapOrderStatus = (status: string): OrderStatus => {
     case 'open':
     case 'untriggered':
       return OrderStatus.OPEN
+    case 'pending':
+      return OrderStatus.PENDING
     case 'fullyfilled':
       return OrderStatus.FILLED
     case 'canceled':

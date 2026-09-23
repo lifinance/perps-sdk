@@ -461,12 +461,16 @@ describe('Ondo getOrders', () => {
   })
   it('drops an unmappable row and keeps the rest of the page', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const unmappable = (orderId: string): OndoOrder =>
+      JSON.parse(
+        JSON.stringify({ ...orderFixture({ orderId }), status: 'unknown' })
+      )
     const { provider } = await setup((url) => ({
       result:
         url.pathname === '/v1/perps/orders'
           ? [
-              orderFixture({ orderId: 'unmappable', status: 'pending' }),
-              orderFixture({ orderId: 'unmappable-2', status: 'pending' }),
+              unmappable('unmappable'),
+              unmappable('unmappable-2'),
               orderFixture(),
             ]
           : [],
