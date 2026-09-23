@@ -293,7 +293,18 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         sub.channel === 'trades' ||
         sub.channel === 'availableToTrade')
     ) {
-      this.registry.requireActive(sub.marketId)
+      const market = this.registry.requireActive(sub.marketId)
+      if (
+        sub.channel === 'availableToTrade' &&
+        market.categoryId === SPOT_MARKET_ID
+      ) {
+        const error = new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `Hyperliquid spot market '${sub.marketId}' carries no availableToTrade state.`
+        )
+        error.tool = this.providerKey
+        throw error
+      }
     }
 
     // Markets context aggregates slower asset-context feeds with fast mid/mark
