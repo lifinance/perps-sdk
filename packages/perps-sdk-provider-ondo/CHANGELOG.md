@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 19.1.0
+
+### Minor Changes
+
+- [#505](https://github.com/lifinance/perps-sdk/pull/505) [`0c2936b`](https://github.com/lifinance/perps-sdk/commit/0c2936b7b73aa75679bafad9ce747f204d7fc400) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Ondo answers `getAvailableToTrade` with per-market buy and sell margin from `/v1/perps/max_order_size`, so the client no longer falls back to the account-scoped `availableMargin` for Ondo.
+
 ## 19.0.0
 
 ### Major Changes
