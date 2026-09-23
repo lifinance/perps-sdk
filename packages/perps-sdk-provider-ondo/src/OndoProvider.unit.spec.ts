@@ -647,8 +647,47 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         assetId: ONDO_COLLATERAL_ASSET.id,
         route: 'perps',
         available: BALANCE_RESULT.withdrawableMargin,
+        withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,
       },
     ])
+  })
+
+  it('sets the account withdrawalFeeUSD as the row fee in collateral units', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, withdrawalFeeUSD: '1.50' }
+    const { provider } = await loggedInProvider()
+
+    const rows = await provider.getWithdrawableBalances!({ address: ADDRESS })
+    expect(rows.map((row) => row.withdrawalFee)).toEqual(['1.5'])
+    expect(recorded.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
+  })
+
+  it('rejects when the account withdrawalFeeUSD is not a decimal', async () => {
+    accountInfoResult = { ...ACCOUNT_INFO_RESULT, withdrawalFeeUSD: 'n/a' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message:
+        "Ondo field `account.withdrawalFeeUSD` is not a valid decimal: 'n/a'",
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects when the /v1/account read fails', async () => {
+    const { provider } = await loggedInProvider()
+    const venue = fetchMock.getMockImplementation()
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) =>
+        String(url).endsWith('/v1/account')
+          ? respond({ success: false, error: 'venue exploded' }, 500)
+          : venue!(url, init)
+    )
+
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toThrowError(/Ondo API request failed/)
   })
 
   it('omits the row when the withdrawable margin is zero', async () => {

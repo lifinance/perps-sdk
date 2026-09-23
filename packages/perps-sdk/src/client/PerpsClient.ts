@@ -88,6 +88,14 @@ import {
 import { createPerpsClient } from './createPerpsClient.js'
 import { requireProvider as resolveProvider } from './requireProvider.js'
 
+function isNonNegativeDecimal(value: string): boolean {
+  try {
+    return new Big(value).gte(0)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Look up an action's descriptor in the provider's metadata. Throws if the
  * action isn't declared — defensive: better to fail loudly than to mis-sign.
@@ -663,8 +671,9 @@ export class PerpsClient {
    *
    * @returns `undefined` when the registered plugin declares no withdrawable
    *   read.
-   * @throws {PerpsError} When the provider plugin is not registered, or either
-   *   the plugin read or the asset sync fails.
+   * @throws {PerpsError} When the provider plugin is not registered, when
+   *   either the plugin read or the asset sync fails, or when a row's
+   *   `withdrawalFee` is not a non-negative decimal.
    * @public
    */
   async getWithdrawableBalances(
@@ -700,7 +709,23 @@ export class PerpsClient {
           return []
         }
       }
-      return [{ asset, route: row.route, available: row.available }]
+      if (row.withdrawalFee === undefined) {
+        return [{ asset, route: row.route, available: row.available }]
+      }
+      if (!isNonNegativeDecimal(row.withdrawalFee)) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `Provider '${params.provider}' row for asset '${asset.id}' has a \`withdrawalFee\` that is not a non-negative decimal: '${row.withdrawalFee}'.`
+        )
+      }
+      return [
+        {
+          asset,
+          route: row.route,
+          available: row.available,
+          withdrawalFee: row.withdrawalFee,
+        },
+      ]
     })
   }
 

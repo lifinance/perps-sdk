@@ -387,15 +387,20 @@ export const ondoProvider = (
         params.address,
         (): ProviderWithdrawableBalance[] => [],
         async (token) => {
-          const [{ providers }, balance] = await Promise.all([
+          const client = apiClient(opts)
+          const [{ providers }, balance, account] = await Promise.all([
             getProviders(requireClient(), opts),
-            apiClient(opts).get<OndoBalanceSummary>('/v1/perps/balance', {
+            client.get<OndoBalanceSummary>('/v1/perps/balance', {
+              authToken: token.token,
+            }),
+            client.get<OndoAccountInfo>('/v1/account', {
               authToken: token.token,
             }),
           ])
           return ondoWithdrawableBalances(
             requireOndoCollateralAsset(providers).id,
-            balance
+            balance,
+            account.withdrawalFeeUSD
           )
         }
       )
