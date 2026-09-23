@@ -1718,6 +1718,27 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('carries the provider withdrawal fee onto the row, and no fee key where the provider sets none', async () => {
+      const plugin = withRows([
+        { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
+        { assetId: '3', route: 'spot', available: '5' },
+      ])
+      const rows = await clientWith(plugin).getWithdrawableBalances({
+        provider,
+        address: userAddress,
+      })
+      expect(rows).toEqual([
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11',
+          withdrawalFee: '1',
+        },
+        { asset: ASSETS[1], route: 'spot', available: '5' },
+      ])
+      expect(rows?.[1]).not.toHaveProperty('withdrawalFee')
+    })
+
     it('excludes rows below the asset minimum', async () => {
       await expect(
         clientWith(

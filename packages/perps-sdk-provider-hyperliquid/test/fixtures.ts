@@ -1,4 +1,9 @@
-import { type Market, PositionMarginAdjustment } from '@lifi/perps-types'
+import {
+  type Market,
+  PositionMarginAdjustment,
+  type Provider,
+  SigningMethod,
+} from '@lifi/perps-types'
 import type {
   HlClearinghouseState,
   HlExtraAgents,
@@ -86,6 +91,21 @@ export const USDC_ASSET = {
   id: '0',
   displaySymbol: 'USDC',
   logoURI: '',
+}
+
+/** Backend `/providers` descriptor with the live `withdrawalFeeUsd: 1`. */
+export const HYPERLIQUID_PROVIDER: Provider = {
+  key: 'hyperliquid',
+  name: 'Hyperliquid',
+  logoURI: '',
+  signingMethod: SigningMethod.EIP712,
+  active: true,
+  setup: [],
+  options: [],
+  actions: [],
+  categories: [],
+  supportedIntervals: [],
+  withdrawalFeeUsd: 1,
 }
 
 const baseAsset = (symbol: string) => ({

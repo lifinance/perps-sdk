@@ -16,15 +16,22 @@ import { toWireBig } from './decimal.js'
  * per-asset venue minimum.
  *
  * @param quoteAssetId - `Asset.id` the perps-route row is keyed by.
+ * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
+ *   quote-asset row. Absent leaves every row without a fee.
  * @public
  */
 export const hyperliquidWithdrawableBalances = (
   abstraction: HlAbstractionMode | null,
   state: HlClearinghouseState,
   spotState: HlSpotClearinghouseState,
-  quoteAssetId: string
+  quoteAssetId: string,
+  withdrawalFee?: string
 ): ProviderWithdrawableBalance[] => {
   const rows: ProviderWithdrawableBalance[] = []
+  const feeFor = (assetId: string) =>
+    withdrawalFee === undefined || assetId !== quoteAssetId
+      ? {}
+      : { withdrawalFee }
 
   if (isUnifiedAbstraction(abstraction)) {
     for (const balance of spotState.balances) {
@@ -35,10 +42,12 @@ export const hyperliquidWithdrawableBalances = (
         toWireBig(balance.hold, 'spotBalance.hold')
       )
       if (spot.gt(0)) {
+        const assetId = String(balance.token)
         rows.push({
-          assetId: String(balance.token),
+          assetId,
           route: 'spot',
           available: spot.toFixed(),
+          ...feeFor(assetId),
         })
       }
     }
@@ -50,6 +59,7 @@ export const hyperliquidWithdrawableBalances = (
       assetId: quoteAssetId,
       route: 'perps',
       available: perps.toFixed(),
+      ...feeFor(quoteAssetId),
     })
   }
 

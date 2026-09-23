@@ -77,7 +77,8 @@ PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 `getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
 joins each row onto the registry `Asset` and drops a row below the per-asset
-venue minimum.
+venue minimum. A row carries `withdrawalFee`, in the asset's own units, when
+the venue publishes a flat withdrawal fee for that asset.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'

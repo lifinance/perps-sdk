@@ -700,7 +700,16 @@ export class PerpsClient {
           return []
         }
       }
-      return [{ asset, route: row.route, available: row.available }]
+      return [
+        {
+          asset,
+          route: row.route,
+          available: row.available,
+          ...(row.withdrawalFee === undefined
+            ? {}
+            : { withdrawalFee: row.withdrawalFee }),
+        },
+      ]
     })
   }
 
