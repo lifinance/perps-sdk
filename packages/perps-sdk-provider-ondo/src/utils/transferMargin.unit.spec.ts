@@ -5,7 +5,7 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { positionMarginConstraints } from './transferMargin.js'
+import { positionRemovableMargin } from './transferMargin.js'
 
 const position: Position = {
   market: {
@@ -39,8 +39,8 @@ const position: Position = {
   marginMode: MarginMode.CROSS,
 }
 
-describe('positionMarginConstraints', () => {
+describe('positionRemovableMargin', () => {
   it('reports no per-position margin adjustment', () => {
-    expect(positionMarginConstraints(position)).toBeUndefined()
+    expect(positionRemovableMargin(position)).toBeUndefined()
   })
 })
