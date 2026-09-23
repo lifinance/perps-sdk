@@ -1,5 +1,39 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 29.0.0
+
+### Major Changes
+
+- [#507](https://github.com/lifinance/perps-sdk/pull/507) [`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `availableToTrade` channel support on the WS provider factory.
+
+  `WsProviderFactory` has a new required `readonly streamsAvailableToTrade: boolean`.
+  `PerpsWsClient.streamsAvailableToTrade(provider)` returns that value
+  synchronously and does not create the provider. It returns `false` for a
+  provider with no registered factory. The Hyperliquid factory reports `true`.
+  The Lighter and Ondo factories report `false`, because their sockets reject the
+  `availableToTrade` channel.
+
+  The Hyperliquid socket now rejects an `availableToTrade` subscription for a spot
+  market with a `ValidationError` and sends no wire subscription. REST
+  `getAvailableToTrade` already resolves `undefined` for a spot market.
+
+  The bump is major for two reasons. The new required member breaks an external
+  `WsProviderFactory` author. Each provider package moves its `@lifi/perps-sdk`
+  peer range to the new major, so a host must upgrade the set together.
+
+### Minor Changes
+
+- [#508](https://github.com/lifinance/perps-sdk/pull/508) [`262232a`](https://github.com/lifinance/perps-sdk/commit/262232a2a1f040593ad024aa4af1e1de8829c279) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter provider now answers `getAvailableToTrade` for each perps market, so the client no longer falls back to the account summary for these markets. The side that adds to an open position gets `availableMargin`. The side that reduces or flips the position gets the initial margin requirement of the position, plus `availableMargin` and the margin that the close releases, floored at 0. Spot markets resolve `undefined`, and the client keeps its fallback for them. The figure is REST only: `LighterWsProvider` still rejects the `availableToTrade` channel.
+
+  `getAccountSummary` now accepts an account from the Robinhood-chain deployment (`lighter-rh`), so `getAccountSummary` and `getAvailableToTrade` work on `lighterRhProvider()`.
+
+### Patch Changes
+
+- [#509](https://github.com/lifinance/perps-sdk/pull/509) [`528fea0`](https://github.com/lifinance/perps-sdk/commit/528fea0067e366bbae761d7ce7f63661ee0b91ed) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter `getAccount` now sums `marginUsed` and `unrealizedPnl` as exact decimals, so the account totals show no float drift. A position whose `marginUsed` or `unrealizedPnl` is not a decimal now makes `getAccount` reject with a `PerpsError` (`SDKError`) that names the field, in place of a `'NaN'` total. The WebSocket `accountSummary` channel now renders its four values as plain decimals, never in exponent notation.
+
+- Updated dependencies [[`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8)]:
+  - @lifi/perps-sdk@18.0.0
+
 ## 28.0.0
 
 ### Major Changes
