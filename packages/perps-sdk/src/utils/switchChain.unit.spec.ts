@@ -1,5 +1,6 @@
 import type { ActionStep, ProviderAction } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   PerpsErrorCode,
   PerpsSigner,
@@ -57,7 +58,8 @@ function eip712Step(chainId?: number): ActionStep {
 
 const userEip712: ProviderAction = {
   type: ActionType.WITHDRAWAL,
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
 }
 
@@ -71,7 +73,8 @@ describe('userEip712TargetChainId', () => {
   it('returns undefined for an AGENT-signed batch', () => {
     const agent: ProviderAction = {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.EIP712,
     }
     expect(userEip712TargetChainId(agent, [eip712Step(42161)])).toBeUndefined()
@@ -80,7 +83,8 @@ describe('userEip712TargetChainId', () => {
   it('returns undefined for a non-EIP-712 signing method', () => {
     const wasm: ProviderAction = {
       type: ActionType.REGISTER_API_KEY,
-      signers: [PerpsSigner.USER],
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.WASM_BLOB,
     }
     expect(userEip712TargetChainId(wasm, [eip712Step(42161)])).toBeUndefined()

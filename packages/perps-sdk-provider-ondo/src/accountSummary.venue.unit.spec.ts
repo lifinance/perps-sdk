@@ -39,7 +39,6 @@ const PROVIDER_METADATA: Provider = {
   signingMethod: SigningMethod.HMAC,
   active: true,
   setup: [],
-  options: [],
   actions: [],
   supportedIntervals: [],
   categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],

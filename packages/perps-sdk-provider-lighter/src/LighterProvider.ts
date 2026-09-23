@@ -52,8 +52,8 @@ import type {
   PortfolioHistoryResponse,
   Position,
   PositionsResponse,
-  ProviderAction,
   Quote,
+  SetupAction,
   SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
@@ -64,7 +64,11 @@ import {
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { projectLighterConfigSettings } from './accountConfig.js'
+import {
+  boundAccountTiers,
+  projectLighterConfigSettings,
+  resolveAccountTier,
+} from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
   DEFAULT_TRADES_LIMIT,
@@ -197,6 +201,13 @@ const PNL_WINDOWS: Record<PortfolioHistoryRange, PnlWindow> = {
   '30d': { resolution: '1d', bucketMs: DAY_MS, countBack: 30 },
   all: { resolution: '1d', bucketMs: DAY_MS, countBack: 1000 },
 }
+
+/** Batches that get the pre-sign account tier check. */
+const ORDER_PLACEMENT_ACTIONS: ReadonlySet<ActionType> = new Set([
+  ActionType.PLACE_ORDER,
+  ActionType.PLACE_TRIGGER_ORDER,
+  ActionType.PLACE_TWAP_ORDER,
+])
 
 /** Activity surfaces whose rows name a market, so they need the market registry. */
 const MARKET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
@@ -781,10 +792,91 @@ export const createLighterProvider = (
     }
   }
 
+  let setupPromise: Promise<SetupAction[]> | undefined
+
+  /** The venue's own `Provider.setup` descriptor for an action, if declared. */
+  const setupDescriptor = async (
+    client: PerpsSDKClient,
+    action: ActionType
+  ): Promise<SetupAction | undefined> => {
+    setupPromise ??= getProviders(client).then(
+      ({ providers }) =>
+        providers.find((provider) => provider.key === providerKey)?.setup ?? [],
+      (err: unknown) => {
+        setupPromise = undefined
+        throw err
+      }
+    )
+    const setup = await setupPromise
+    return setup.find((descriptor) => descriptor.type === action)
+  }
+
+  /**
+   * Refuse an order signature for a tier no ACCOUNT_TYPE option binds. An
+   * unreadable descriptor or tier fails open: the venue itself
+   * rejects an ineligible account with body code 21520.
+   */
+  const assertOrderTier = async (address: Address): Promise<void> => {
+    const localKey = await keyStore.get(address)
+    if (localKey === null) {
+      return
+    }
+    const client = requireClient()
+    let descriptor: SetupAction | undefined
+    try {
+      descriptor = await setupDescriptor(client, ActionType.ACCOUNT_TYPE)
+    } catch (err) {
+      console.debug(
+        '[lighter] setup descriptor read failed; skipping the pre-sign tier check.',
+        err
+      )
+      return
+    }
+    if (
+      descriptor === undefined ||
+      boundAccountTiers(descriptor).length === 0
+    ) {
+      return
+    }
+    let userTierName: string | undefined
+    try {
+      const token = await resolveAuthToken(undefined, address, localKey)
+      const limits =
+        token === undefined
+          ? undefined
+          : await retryOnRevoked(undefined, address, token, (resolvedToken) =>
+              fetchAccountLimits(
+                apiClient(),
+                localKey.accountIndex,
+                resolvedToken
+              )
+            )
+      userTierName = limits?.user_tier_name
+    } catch (err) {
+      console.debug(
+        '[lighter] account tier read failed; skipping the pre-sign tier check.',
+        err
+      )
+      return
+    }
+    if (userTierName === undefined) {
+      console.debug(
+        '[lighter] account tier unavailable; skipping the pre-sign tier check.'
+      )
+      return
+    }
+    if (resolveAccountTier(descriptor, userTierName) === null) {
+      throw new PerpsError(
+        PerpsErrorCode.SetupRequired,
+        `Lighter account tier '${userTierName}' is not one the ` +
+          `'${ActionType.ACCOUNT_TYPE}' setup step accepts. Complete the ` +
+          `account tier setup step before placing an order.`
+      )
+    }
+  }
+
   return {
     type: providerKey,
-
-    internalSetupActions: [ActionType.SET_REFERRAL],
 
     bind(client: PerpsSDKClient): void {
       boundClient = client
@@ -1607,8 +1699,7 @@ export const createLighterProvider = (
 
     projectConfig(
       config: AccountConfig,
-      setup: ProviderAction[],
-      options: ProviderAction[]
+      setup: SetupAction[]
     ): AccountConfigSetting[] {
       if (config.provider !== providerKey) {
         throw new PerpsError(
@@ -1617,7 +1708,7 @@ export const createLighterProvider = (
             `'${config.provider}'.`
         )
       }
-      return projectLighterConfigSettings(config, setup, options)
+      return projectLighterConfigSettings(config, setup)
     },
 
     /**
@@ -1653,6 +1744,9 @@ export const createLighterProvider = (
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> {
+      if (steps.some((step) => ORDER_PLACEMENT_ACTIONS.has(step.action))) {
+        await assertOrderTier(address)
+      }
       return lighterSignActions(
         {
           signer,

@@ -11,9 +11,11 @@ import type {
   ExecuteActionResponse,
   HmacSignedActionStep,
   Position,
+  SetupAction,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   acceptTermsTypeFields,
   createReferralCodeTypeFields,
@@ -333,10 +335,10 @@ describe('PerpsClient', () => {
       const [firstCall, secondCall] = signActions.mock.calls
       expect(firstCall[0]).toBe(SigningMethod.EIP712)
       expect(firstCall[1]).toEqual([builderFeeStep])
-      expect(firstCall[3]?.signers).toEqual([PerpsSigner.USER])
+      expect(firstCall[3]?.signer).toBe(PerpsSigner.USER)
       expect(secondCall[0]).toBe(SigningMethod.EIP712)
       expect(secondCall[1]).toEqual([placeOrderStep])
-      expect(secondCall[3]?.signers).toEqual([PerpsSigner.SDK])
+      expect(secondCall[3]?.signer).toBe(PerpsSigner.SDK)
     })
 
     it('keeps non-adjacent runs of one descriptor as separate groups in order', async () => {
@@ -359,10 +361,10 @@ describe('PerpsClient', () => {
         [placeOrderStep],
         [builderFeeStep],
       ])
-      expect(signActions.mock.calls.map((call) => call[3]?.signers)).toEqual([
-        [PerpsSigner.USER],
-        [PerpsSigner.SDK],
-        [PerpsSigner.USER],
+      expect(signActions.mock.calls.map((call) => call[3]?.signer)).toEqual([
+        PerpsSigner.USER,
+        PerpsSigner.SDK,
+        PerpsSigner.USER,
       ])
       expect(executeCalls[0].actions.map((step) => step.action)).toEqual([
         ActionType.APPROVE_BUILDER_FEE,
@@ -1070,10 +1072,26 @@ describe('PerpsClient', () => {
   describe('executeProviderOption — mandatory option failure throws', () => {
     const BASE_URL = DEFAULT_API_URL
 
-    // ACCOUNT_MODE is a Provider.options tunable dispatched through `execute`.
-    // The backend rejects the selected value with a 200 OK carrying a
-    // per-action `{ success: false, error }`; executeProviderOption must turn
+    // ACCOUNT_MODE is a USER-signed choice setup step dispatched through
+    // `execute`. The backend rejects the selected value with a 200 OK carrying
+    // a per-action `{ success: false, error }`; executeProviderOption must turn
     // that into a throw rather than silently resolving.
+    const unifiedAccountOption = {
+      title: 'Unified account',
+      type: ActionType.ACCOUNT_MODE,
+      params: { mode: 'unifiedAccount' },
+    }
+
+    beforeEach(() => {
+      client.setUserWallet(
+        createWalletClient({
+          account: privateKeyToAccount(`0x${'55'.repeat(32)}` as Hex),
+          chain: mainnet,
+          transport: viemHttp(),
+        })
+      )
+    })
+
     function respondAccountMode(result: {
       success: boolean
       error?: string
@@ -1090,7 +1108,7 @@ describe('PerpsClient', () => {
                   domain: { name: 'Test', chainId: 1 },
                   types: { Mode: [{ name: 'mode', type: 'string' }] },
                   primaryType: 'Mode',
-                  message: { mode: 'dexAbstraction' },
+                  message: { mode: 'unifiedAccount' },
                 },
               },
             ],
@@ -1114,8 +1132,7 @@ describe('PerpsClient', () => {
         client.executeProviderOption({
           provider,
           address: userAddress,
-          action: ActionType.ACCOUNT_MODE,
-          params: { mode: 'dexAbstraction' },
+          option: unifiedAccountOption,
         })
       ).rejects.toMatchObject({
         code: PerpsErrorCode.ExchangeRejected,
@@ -1136,8 +1153,7 @@ describe('PerpsClient', () => {
         client.executeProviderOption({
           provider,
           address: userAddress,
-          action: ActionType.ACCOUNT_MODE,
-          params: { mode: 'dexAbstraction' },
+          option: unifiedAccountOption,
         })
       ).rejects.toMatchObject({
         code: PerpsErrorCode.SetupRequired,
@@ -1153,10 +1169,140 @@ describe('PerpsClient', () => {
         client.executeProviderOption({
           provider,
           address: userAddress,
-          action: ActionType.ACCOUNT_MODE,
-          params: { mode: 'dexAbstraction' },
+          option: unifiedAccountOption,
         })
       ).resolves.toBeUndefined()
+    })
+  })
+
+  describe('executeProviderRevoke', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const revokerAccount = privateKeyToAccount(`0x${'66'.repeat(32)}` as Hex)
+    const REVOKE_TYPED_DATA = {
+      domain: { name: 'Test', chainId: 1 },
+      types: { Revoke: [{ name: 'builder', type: 'string' }] },
+      primaryType: 'Revoke' as const,
+      message: { builder: 'lifi' },
+    }
+
+    const setupStep = async (type: ActionType): Promise<SetupAction> => {
+      const { checklist } = await client.checkSetup({
+        provider,
+        address: revokerAccount.address,
+      })
+      const item = checklist.find((entry) => entry.descriptor.type === type)
+      if (item === undefined) {
+        throw new Error(`no ${type} step on the checklist`)
+      }
+      return item.descriptor
+    }
+
+    const recordRevoke = () => {
+      const createCalls: CreateActionRequest[] = []
+      const executed: ExecuteActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          return HttpResponse.json({
+            actions:
+              body.action === ActionType.REVOKE_BUILDER_FEE
+                ? [{ action: body.action, typedData: REVOKE_TYPED_DATA }]
+                : [],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executed.push(body)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      return { createCalls, executed }
+    }
+
+    beforeEach(() => {
+      client.setUserWallet(
+        createWalletClient({
+          account: revokerAccount,
+          chain: mainnet,
+          transport: viemHttp(),
+        })
+      )
+    })
+
+    it('executes the step revoke action, signed by the user wallet its Provider.actions descriptor names', async () => {
+      const { createCalls, executed } = recordRevoke()
+      const step = await setupStep(ActionType.APPROVE_BUILDER_FEE)
+      createCalls.length = 0
+
+      await expect(
+        client.executeProviderRevoke({
+          provider,
+          address: revokerAccount.address,
+          step,
+        })
+      ).resolves.toBeUndefined()
+
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.REVOKE_BUILDER_FEE,
+      ])
+      expect(createCalls[0].params).toEqual({})
+      expect(executed.map((call) => call.action)).toEqual([
+        ActionType.REVOKE_BUILDER_FEE,
+      ])
+      const [signed] = executed[0].actions as Eip712SignedActionStep[]
+      await expect(
+        recoverTypedDataAddress({
+          ...REVOKE_TYPED_DATA,
+          signature: signed.signature,
+        })
+      ).resolves.toBe(revokerAccount.address)
+    })
+
+    it('throws the venue error when the revoke is rejected', async () => {
+      recordRevoke()
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [
+              { action: body.action, success: false, error: 'not approved' },
+            ],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      const step = await setupStep(ActionType.APPROVE_BUILDER_FEE)
+
+      await expect(
+        client.executeProviderRevoke({
+          provider,
+          address: revokerAccount.address,
+          step,
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: 'not approved',
+      })
+    })
+
+    it('rejects a step that declares no revoke, before any createAction', async () => {
+      const { createCalls } = recordRevoke()
+      const step = await setupStep(ActionType.APPROVE_AGENT)
+      createCalls.length = 0
+
+      await expect(
+        client.executeProviderRevoke({
+          provider,
+          address: revokerAccount.address,
+          step,
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(/declares no revoke/),
+      })
+      expect(createCalls).toEqual([])
     })
   })
 
@@ -1297,6 +1443,13 @@ describe('PerpsClient', () => {
         apiKey: 'test-key',
         providers: [lighter],
       })
+      lighterClient.setUserWallet(
+        createWalletClient({
+          account: privateKeyToAccount(`0x${'55'.repeat(32)}` as Hex),
+          chain: mainnet,
+          transport: viemHttp(),
+        })
+      )
       await lighter.createAgent(userAddress)
       respondExecute({ txHash: TX_HASH })
 
@@ -1376,14 +1529,11 @@ describe('PerpsClient', () => {
         address: userAddress,
       })
 
-      // projectConfig was invoked with (config, setup, options) drawn from
-      // the /account response and the /providers metadata.
       const hlMeta = mockProviders.providers.find((d) => d.key === provider)!
       expect(stub.projectConfig).toHaveBeenCalledOnce()
       expect(stub.projectConfig).toHaveBeenCalledWith(
         mockAccount.config,
-        hlMeta.setup,
-        hlMeta.options
+        hlMeta.setup
       )
       // The dispatcher merges projectConfig's output into the AccountResponse.
       expect(result.settings).toEqual(sentinelSettings)
@@ -2159,20 +2309,25 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SET_REFERRAL,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.HMAC,
                     sequence: 10,
                     params: [],
                   },
                   {
                     type: ActionType.SIWE_LOGIN,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.SIWE,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -2265,20 +2420,25 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SIWE_LOGIN,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.SIWE,
                     sequence: 10,
                     params: [],
                   },
                   {
                     type: ActionType.SET_REFERRAL,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -2341,20 +2501,25 @@ describe('PerpsClient', () => {
                 setup: [
                   {
                     type: ActionType.SIWE_LOGIN,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.SIWE,
                     sequence: 10,
                     params: [],
                   },
                   {
                     type: ActionType.SET_REFERRAL,
-                    signers: [PerpsSigner.USER],
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
                     signingMethod: SigningMethod.HMAC,
                     sequence: 20,
                     params: [],
                   },
                 ],
-                options: [],
                 actions: [],
                 categories: [],
               },
@@ -2384,11 +2549,11 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // checkSetup — provider-declared internal setup steps are drained in place
-  // and never surface in the returned setup list.
+  // checkSetup — SDK-signed non-choice setup steps are drained in place and never
+  // surface in the returned setup list.
   // ---------------------------------------------------------------------------
 
-  describe('checkSetup — internal setup steps', () => {
+  describe('checkSetup — SDK non-choice setup steps', () => {
     const BASE_URL = DEFAULT_API_URL
     const key = 'venue'
 
@@ -2403,7 +2568,6 @@ describe('PerpsClient', () => {
               signingMethod: SigningMethod.EIP712,
               active: true,
               setup,
-              options: [],
               actions: [],
               categories: [],
             },
@@ -2411,15 +2575,18 @@ describe('PerpsClient', () => {
         })
       )
 
-    const internalStep = (signers: PerpsSigner[]) => ({
+    const internalStep = (signer: PerpsSigner) => ({
       type: ActionType.SET_REFERRAL,
-      signers,
+      signer,
+      relay: ActionRelay.API,
+      options: null,
+      revoke: null,
       signingMethod: SigningMethod.EIP712,
       sequence: 10,
       params: [],
     })
 
-    it('drains a backend-executed internal step and omits it from setup', async () => {
+    it('drains a backend-executed SDK non-choice step and omits it from setup', async () => {
       const signActions = vi.fn(
         async (
           _method: SigningMethod,
@@ -2445,7 +2612,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2454,7 +2620,7 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep(PerpsSigner.SDK)]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           createCalls.push(body.action)
@@ -2497,7 +2663,7 @@ describe('PerpsClient', () => {
       expect(executeCount).toBe(1)
     })
 
-    it('drains a client-executed internal step with no executeAction hop', async () => {
+    it('drains a client-executed SDK non-choice step with no executeAction hop', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2508,7 +2674,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2516,7 +2681,7 @@ describe('PerpsClient', () => {
 
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep(PerpsSigner.SDK)]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2544,7 +2709,7 @@ describe('PerpsClient', () => {
       expect(executeCount).toBe(0)
     })
 
-    it('never drains an internal step the provider config already reports satisfied', async () => {
+    it('never drains an SDK non-choice step the provider config already reports satisfied', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2558,7 +2723,6 @@ describe('PerpsClient', () => {
             projectConfig: vi.fn(() => [
               { type: ActionType.SET_REFERRAL, values: [], satisfied: true },
             ]),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2566,7 +2730,7 @@ describe('PerpsClient', () => {
 
       let createCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep(PerpsSigner.SDK)]),
         http.post(`${BASE_URL}/createAction`, () => {
           createCount++
           return HttpResponse.json({ actions: [] })
@@ -2588,7 +2752,7 @@ describe('PerpsClient', () => {
       expect(createCount).toBe(0)
     })
 
-    it('never blocks setup when a silent internal step fails; the step stays hidden', async () => {
+    it('never blocks setup when an SDK non-choice step fails; the step stays hidden', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => {
         throw new Error('venue rejected the silent step')
       })
@@ -2601,14 +2765,13 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
       server.use(
-        providersHandler([internalStep([PerpsSigner.SDK])]),
+        providersHandler([internalStep(PerpsSigner.SDK)]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2631,7 +2794,7 @@ describe('PerpsClient', () => {
       expect(signActions).toHaveBeenCalledOnce()
     })
 
-    it('never hides a step whose signers include USER, even when declared internal', async () => {
+    it('never hides a USER step, even when the provider drains others', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -2642,7 +2805,6 @@ describe('PerpsClient', () => {
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
             projectConfig: vi.fn(() => []),
-            internalSetupActions: [ActionType.SET_REFERRAL],
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
@@ -2650,7 +2812,7 @@ describe('PerpsClient', () => {
 
       let executeCount = 0
       server.use(
-        providersHandler([internalStep([PerpsSigner.USER])]),
+        providersHandler([internalStep(PerpsSigner.USER)]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
@@ -2680,16 +2842,19 @@ describe('PerpsClient', () => {
     const sequencedStep = (
       type: ActionType,
       sequence: number,
-      signers: PerpsSigner[]
+      signer: PerpsSigner
     ) => ({
       type,
-      signers,
+      signer,
+      relay: ActionRelay.API,
+      options: null,
+      revoke: null,
       signingMethod: SigningMethod.EIP712,
       sequence,
       params: [],
     })
 
-    const internalReferralPlugin = (
+    const sdkReferralPlugin = (
       signActions: ReturnType<typeof vi.fn>,
       overrides: Record<string, unknown> = {}
     ) =>
@@ -2698,24 +2863,23 @@ describe('PerpsClient', () => {
         bind: vi.fn(),
         accountExists: vi.fn(async () => true),
         projectConfig: vi.fn(() => []),
-        internalSetupActions: [ActionType.SET_REFERRAL],
         signActions,
         ...overrides,
       }) as unknown as PerpsProviderPlugin
 
-    it('defers an internal step while a staged visible step has a lower sequence', async () => {
+    it('defers an SDK non-choice step while a staged visible step has a lower sequence', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [sdkReferralPlugin(signActions)],
       })
 
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, PerpsSigner.USER),
+          sequencedStep(ActionType.SET_REFERRAL, 20, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2742,13 +2906,13 @@ describe('PerpsClient', () => {
       expect(signActions).not.toHaveBeenCalled()
     })
 
-    it('drains the internal step once the lower-sequence step is satisfied', async () => {
+    it('drains the SDK non-choice step once the lower-sequence step is satisfied', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          sdkReferralPlugin(signActions, {
             getAccount: vi.fn(async () => mockAccount),
             projectConfig: vi.fn(() => [
               {
@@ -2764,8 +2928,8 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, PerpsSigner.USER),
+          sequencedStep(ActionType.SET_REFERRAL, 20, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2790,18 +2954,18 @@ describe('PerpsClient', () => {
       expect(signActions).toHaveBeenCalledOnce()
     })
 
-    it('drains the internal step when the lower-sequence visible step stages nothing', async () => {
+    it('drains the SDK non-choice step when the lower-sequence visible step stages nothing', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [sdkReferralPlugin(signActions)],
       })
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REGISTER_API_KEY, 10, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 20, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REGISTER_API_KEY, 10, PerpsSigner.USER),
+          sequencedStep(ActionType.SET_REFERRAL, 20, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2833,7 +2997,7 @@ describe('PerpsClient', () => {
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          sdkReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2841,8 +3005,8 @@ describe('PerpsClient', () => {
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 15, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, PerpsSigner.USER),
+          sequencedStep(ActionType.SET_REFERRAL, 15, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2872,7 +3036,7 @@ describe('PerpsClient', () => {
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          sdkReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2880,7 +3044,7 @@ describe('PerpsClient', () => {
 
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, PerpsSigner.USER),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2902,13 +3066,13 @@ describe('PerpsClient', () => {
       expect(checklistView(result)).toEqual([[ActionType.REVOKE_AGENT, false]])
     })
 
-    it('defers the internal step while a staged conditional step has a lower sequence', async () => {
+    it('defers the SDK non-choice step while a staged conditional step has a lower sequence', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
-          internalReferralPlugin(signActions, {
+          sdkReferralPlugin(signActions, {
             conditionalSetupActions: [ActionType.REVOKE_AGENT],
           }),
         ],
@@ -2917,8 +3081,8 @@ describe('PerpsClient', () => {
       const createCalls: ActionType[] = []
       server.use(
         providersHandler([
-          sequencedStep(ActionType.REVOKE_AGENT, 5, [PerpsSigner.USER]),
-          sequencedStep(ActionType.SET_REFERRAL, 15, [PerpsSigner.SDK]),
+          sequencedStep(ActionType.REVOKE_AGENT, 5, PerpsSigner.USER),
+          sequencedStep(ActionType.SET_REFERRAL, 15, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2943,24 +3107,27 @@ describe('PerpsClient', () => {
       expect(signActions).not.toHaveBeenCalled()
     })
 
-    it('defers a sequence-less internal step while a sequence-less visible step is staged', async () => {
+    it('defers a sequence-less SDK non-choice step while a sequence-less visible step is staged', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [internalReferralPlugin(signActions)],
+        providers: [sdkReferralPlugin(signActions)],
       })
 
-      const unsequencedStep = (type: ActionType, signers: PerpsSigner[]) => ({
+      const unsequencedStep = (type: ActionType, signer: PerpsSigner) => ({
         type,
-        signers,
+        signer,
+        relay: ActionRelay.API,
+        options: null,
+        revoke: null,
         signingMethod: SigningMethod.EIP712,
         params: [],
       })
       server.use(
         providersHandler([
-          unsequencedStep(ActionType.REGISTER_API_KEY, [PerpsSigner.USER]),
-          unsequencedStep(ActionType.SET_REFERRAL, [PerpsSigner.SDK]),
+          unsequencedStep(ActionType.REGISTER_API_KEY, PerpsSigner.USER),
+          unsequencedStep(ActionType.SET_REFERRAL, PerpsSigner.SDK),
         ]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -2982,6 +3149,773 @@ describe('PerpsClient', () => {
         [ActionType.REGISTER_API_KEY, false],
       ])
       expect(signActions).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // checkSetup — a choice step is shown and never staged. The SDK executes an
+  // SDK-signed choice's default option verbatim while it stays unsatisfied.
+  // ---------------------------------------------------------------------------
+
+  describe('checkSetup — choice setup steps', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const simpleOption = {
+      title: 'Simple',
+      type: ActionType.ACCOUNT_MODE,
+      params: { mode: 'simple' },
+    }
+    const unifiedOption = {
+      title: 'Unified',
+      type: ActionType.ACCOUNT_MODE,
+      params: { mode: 'unified' },
+    }
+
+    const choiceStep = (
+      withDefault: boolean,
+      signer: PerpsSigner = PerpsSigner.SDK
+    ) => ({
+      type: ActionType.ACCOUNT_MODE,
+      signer,
+      relay: ActionRelay.API,
+      signingMethod: SigningMethod.EIP712,
+      sequence: 10,
+      params: [],
+      options: [
+        simpleOption,
+        withDefault ? { ...unifiedOption, default: true } : unifiedOption,
+      ],
+      revoke: null,
+    })
+
+    const providersHandler = (setup: unknown[]) =>
+      http.get(`${BASE_URL}/providers`, () =>
+        HttpResponse.json({
+          providers: [
+            {
+              key,
+              name: 'Venue',
+              logoURI: 'https://example.com/venue.png',
+              signingMethod: SigningMethod.EIP712,
+              active: true,
+              setup,
+              actions: [],
+              categories: [],
+            },
+          ],
+        })
+      )
+
+    const venueClientFor = (
+      setting: { satisfied: boolean; mode?: string },
+      signActions: ReturnType<typeof vi.fn>,
+      plugin: Partial<PerpsProviderPlugin> = {}
+    ) =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              {
+                type: ActionType.ACCOUNT_MODE,
+                values:
+                  setting.mode === undefined
+                    ? []
+                    : [{ name: 'mode', value: setting.mode }],
+                satisfied: setting.satisfied,
+              },
+            ]),
+            signActions,
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    const recordCreateCalls = (): CreateActionRequest[] => {
+      const createCalls: CreateActionRequest[] = []
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+      return createCalls
+    }
+
+    it('executes an unsatisfied SDK choice default option verbatim, and never stages it', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const resolveSetupParams = vi.fn(async () => ({ mode: 'simple' }))
+      const venueClient = venueClientFor({ satisfied: false }, signActions, {
+        resolveSetupParams,
+      })
+
+      server.use(providersHandler([choiceStep(true)]))
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.ACCOUNT_MODE,
+      ])
+      expect(createCalls[0].params).toEqual({ mode: 'unified' })
+      expect(resolveSetupParams).not.toHaveBeenCalled()
+      expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    it('shows but never executes a USER choice, even with a default', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor({ satisfied: false }, signActions)
+
+      server.use(providersHandler([choiceStep(true, PerpsSigner.USER)]))
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('shows an unsatisfied choice that marks no default, and neither stages nor executes it', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor({ satisfied: false }, signActions)
+
+      server.use(providersHandler([choiceStep(false)]))
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('never touches a satisfied choice', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(
+        { satisfied: true, mode: 'simple' },
+        signActions
+      )
+
+      server.use(providersHandler([choiceStep(true)]))
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(true)
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, true]])
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('resolves `selected` to the option whose bound params match the projection', async () => {
+      const venueClient = venueClientFor(
+        { satisfied: true, mode: 'simple' },
+        vi.fn(async () => [])
+      )
+      server.use(providersHandler([choiceStep(true)]))
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.checklist[0].selected).toEqual(simpleOption)
+    })
+
+    it('resolves `selected` to null when no option matches the projection', async () => {
+      const venueClient = venueClientFor(
+        { satisfied: false, mode: 'portfolio' },
+        vi.fn(async () => [])
+      )
+      server.use(providersHandler([choiceStep(false)]))
+      recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.checklist[0].selected).toBeNull()
+    })
+
+    it('resolves `selected` to null on a non-choice step', async () => {
+      const venueClient = venueClientFor(
+        { satisfied: false },
+        vi.fn(async () => [])
+      )
+      server.use(
+        providersHandler([
+          {
+            ...choiceStep(false, PerpsSigner.USER),
+            type: ActionType.APPROVE_BUILDER_FEE,
+            options: null,
+          },
+        ])
+      )
+      recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(result.checklist.map((item) => item.selected)).toEqual([null])
+    })
+  })
+
+  describe('provider metadata — setup contract validation', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const validStep = {
+      type: ActionType.APPROVE_BUILDER_FEE,
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
+      signingMethod: SigningMethod.EIP712,
+      sequence: 10,
+      params: [],
+      options: null,
+      revoke: null,
+    }
+
+    const venueWith = (setup: unknown[], actions: unknown[] = []) => {
+      let createCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup,
+                actions,
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => []),
+            signActions: vi.fn(async () => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+      return { client, createCount: () => createCount }
+    }
+
+    const withoutKey = (field: string) =>
+      Object.fromEntries(
+        Object.entries(validStep).filter(([name]) => name !== field)
+      )
+
+    it.each([
+      ['a missing signer', withoutKey('signer'), /declares no known signer/],
+      [
+        'the retired signers array',
+        { ...withoutKey('signer'), signers: [PerpsSigner.USER] },
+        /declares no known signer/,
+      ],
+      [
+        'an unknown signer',
+        { ...validStep, signer: 'ROBOT' },
+        /declares no known signer/,
+      ],
+      ['a missing relay', withoutKey('relay'), /declares no known relay/],
+      [
+        'an unknown relay',
+        { ...validStep, relay: 'CARRIER_PIGEON' },
+        /declares no known relay/,
+      ],
+      ['a missing options field', withoutKey('options'), /declares no options/],
+      ['a missing revoke field', withoutKey('revoke'), /declares no revoke/],
+      [
+        'a revoke that Provider.actions does not declare',
+        { ...validStep, revoke: ActionType.REVOKE_BUILDER_FEE },
+        new RegExp(
+          `revokes with '${ActionType.REVOKE_BUILDER_FEE}', which Provider.actions does not declare`
+        ),
+      ],
+      [
+        'more than one default option',
+        {
+          ...validStep,
+          type: ActionType.ACCOUNT_MODE,
+          options: [
+            {
+              title: 'Simple',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'simple' },
+              default: true,
+            },
+            {
+              title: 'Unified',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'unified' },
+              default: true,
+            },
+          ],
+        },
+        /marks more than one option default/,
+      ],
+    ])('rejects a setup step with %s instead of reporting the account ready', async (_case, step, message) => {
+      const { client, createCount } = venueWith([step])
+
+      await expect(
+        client.checkSetup({ provider: key, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(message),
+      })
+      expect(createCount()).toBe(0)
+    })
+
+    it('rejects an action descriptor with no relay', async () => {
+      const { client } = venueWith(
+        [],
+        [
+          {
+            type: ActionType.PLACE_ORDER,
+            signer: PerpsSigner.SDK,
+            signingMethod: SigningMethod.EIP712,
+            params: [],
+          },
+        ]
+      )
+
+      await expect(
+        client.checkSetup({ provider: key, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(
+          new RegExp(`'${ActionType.PLACE_ORDER}' declares no known relay`)
+        ),
+      })
+    })
+
+    it('accepts a revoke that Provider.actions declares', async () => {
+      const { client } = venueWith(
+        [{ ...validStep, revoke: ActionType.REVOKE_BUILDER_FEE }],
+        [
+          {
+            type: ActionType.REVOKE_BUILDER_FEE,
+            signer: PerpsSigner.USER,
+            relay: ActionRelay.API,
+            signingMethod: SigningMethod.EIP712,
+            params: [],
+          },
+        ]
+      )
+
+      await expect(
+        client.checkSetup({ provider: key, address: userAddress })
+      ).resolves.toMatchObject({ accountExists: true })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // executeProviderSetupAction — a step whose predecessor is unsatisfied is
+  // rejected before any signature is requested.
+  // ---------------------------------------------------------------------------
+
+  describe('executeProviderSetupAction — sequence gating', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const approvalStep = (type: ActionType, sequence: number) => ({
+      type,
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
+      signingMethod: SigningMethod.EIP712,
+      sequence,
+      params: [],
+      options: null,
+      revoke: null,
+    })
+
+    it('rejects a step while a lower-sequence step is unsatisfied, naming the blocking step', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup: [
+                  approvalStep(ActionType.REGISTER_API_KEY, 10),
+                  approvalStep(ActionType.SET_REFERRAL, 20),
+                ],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          return HttpResponse.json({
+            actions: [{ action: body.action, wasmSignParams: {} }],
+          } as unknown as CreateActionResponse)
+        })
+      )
+
+      await expect(
+        venueClient.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action: ActionType.SET_REFERRAL } as ActionStep,
+        })
+      ).rejects.toThrow(
+        /is blocked: 'registerApiKey' runs first and is not satisfied/
+      )
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('runs the lowest-sequence step with nothing before it', async () => {
+      const signActions = vi.fn(
+        async (): Promise<SignedActionStep[]> => [
+          {
+            action: ActionType.REGISTER_API_KEY,
+            wasmSignParams: {},
+          } as unknown as SignedActionStep,
+        ]
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            projectConfig: vi.fn(() => []),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      let createCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup: [
+                  approvalStep(ActionType.REGISTER_API_KEY, 10),
+                  approvalStep(ActionType.SET_REFERRAL, 20),
+                ],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      await expect(
+        venueClient.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action: ActionType.REGISTER_API_KEY } as ActionStep,
+        })
+      ).resolves.toBeUndefined()
+      expect(createCount).toBe(0)
+      expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    const tierChoice = (withDefault: boolean) => ({
+      type: ActionType.ACCOUNT_TYPE,
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.CLIENT,
+      signingMethod: SigningMethod.WASM_BLOB,
+      sequence: 20,
+      params: [],
+      options: [
+        {
+          title: 'Premium',
+          type: ActionType.ACCOUNT_TYPE,
+          params: { tier: 'premium' },
+          ...(withDefault ? { default: true } : {}),
+        },
+      ],
+      revoke: null,
+    })
+
+    // `satisfied` is the plugin projection; `staged` names the approvals the
+    // backend still stages. ACCOUNT_TYPE executes client-side during signing.
+    const gatedVenue = (options: {
+      setup: unknown[]
+      satisfied: Set<ActionType>
+      staged: Set<ActionType>
+      tierDrainSatisfies?: boolean
+    }) => {
+      const { setup, satisfied, staged, tierDrainSatisfies = true } = options
+      const createCalls: CreateActionRequest[] = []
+      const executed: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup,
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          const stages =
+            staged.has(body.action) || body.action === ActionType.ACCOUNT_TYPE
+          return HttpResponse.json({
+            actions: stages
+              ? [{ action: body.action, wasmSignParams: {} }]
+              : [],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executed.push(body.action)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      const signActions = vi.fn(
+        async (
+          _method: SigningMethod,
+          steps: ActionStep[]
+        ): Promise<SignedActionStep[]> => {
+          if (steps[0]?.action === ActionType.ACCOUNT_TYPE) {
+            if (tierDrainSatisfies) {
+              satisfied.add(ActionType.ACCOUNT_TYPE)
+            }
+            return []
+          }
+          return steps.map(
+            (step) =>
+              ({
+                action: step.action,
+                wasmSignParams: {},
+              }) as unknown as SignedActionStep
+          )
+        }
+      )
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() =>
+              [...satisfied].map((type) => ({
+                type,
+                values: [],
+                satisfied: true,
+              }))
+            ),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+      const run = (action: ActionType) =>
+        client.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action } as ActionStep,
+        })
+      return { run, createCalls, executed, signActions }
+    }
+
+    it('executes an earlier SDK choice default option in place, then runs the step', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          tierChoice(true),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set([ActionType.REGISTER_API_KEY]),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.ACCOUNT_TYPE,
+      ])
+      expect(createCalls[0].params).toEqual({ tier: 'premium' })
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
+    })
+
+    it('rejects, naming the choice, when its default option does not satisfy it', async () => {
+      const { run, executed, signActions } = gatedVenue({
+        setup: [
+          tierChoice(true),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+        tierDrainSatisfies: false,
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toThrow(
+        `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
+      )
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executed).toEqual([])
+    })
+
+    it('rejects, naming the choice, when an earlier choice marks no default', async () => {
+      const { run, createCalls, signActions } = gatedVenue({
+        setup: [
+          tierChoice(false),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toThrow(
+        `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
+      )
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('does not block on an earlier USER step the provider stages nothing for', async () => {
+      const { run, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          approvalStep(ActionType.SET_REFERRAL, 20),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.SET_REFERRAL]),
+      })
+
+      await expect(run(ActionType.SET_REFERRAL)).resolves.toBeUndefined()
+      expect(executed).toEqual([ActionType.SET_REFERRAL])
+    })
+
+    it('never blocks on an earlier SDK non-choice step', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          {
+            ...approvalStep(ActionType.SET_REFERRAL, 10),
+            signer: PerpsSigner.SDK,
+          },
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 20),
+        ],
+        satisfied: new Set(),
+        staged: new Set([
+          ActionType.SET_REFERRAL,
+          ActionType.APPROVE_INTEGRATOR,
+        ]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls).toEqual([])
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
+    })
+
+    it('does not block on, or stage, an earlier step the projection reports satisfied', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 20),
+        ],
+        satisfied: new Set([ActionType.REGISTER_API_KEY]),
+        staged: new Set([ActionType.REGISTER_API_KEY]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls).toEqual([])
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
     })
   })
 
@@ -3121,8 +4055,11 @@ describe('PerpsClient', () => {
         lighterClient.executeProviderOption({
           provider: 'lighter',
           address: lighterAddress,
-          action: ActionType.ACCOUNT_TYPE,
-          params: { tier: 'premium' },
+          option: {
+            title: 'Premium',
+            type: ActionType.ACCOUNT_TYPE,
+            params: { tier: 'premium' },
+          },
         })
       ).resolves.toBeUndefined()
 
@@ -3143,7 +4080,7 @@ describe('PerpsClient', () => {
       const hlAgent = await hl.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         userAddress,
-        [PerpsSigner.SDK]
+        PerpsSigner.SDK
       )
 
       const executeCalls: ExecuteActionRequest[] = []
@@ -3221,11 +4158,11 @@ describe('PerpsClient', () => {
       signingMethod: SigningMethod.HMAC,
       active: true,
       setup: [],
-      options: [],
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
+          relay: ActionRelay.API,
           signingMethod: SigningMethod.HMAC,
         },
       ],

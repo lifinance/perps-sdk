@@ -25,7 +25,7 @@ import { signTypedData } from '../src/utils/signTypedData.js'
  * PerpsClient unit tests can exercise core's delegation without importing the
  * real provider package (which would create a dev-time cyclic dependency).
  *
- * Branches on the descriptor `signers` core forwards: `AGENT`-signed actions
+ * Branches on the descriptor `signer` core forwards: `SDK`-signed actions
  * resolve + sign with the in-memory agent keypair; `USER`-signed actions sign
  * with `ctx.userWallet` and contribute no `signerAddress`.
  */
@@ -67,7 +67,7 @@ export function createTestAgentProvider(
     resolveActionRequest: async (
       action: ActionType,
       address: Address,
-      signers: PerpsSignerType[]
+      signer: PerpsSignerType
     ): Promise<ActionSignerContribution> => {
       // Mirror the real Hyperliquid plugin: APPROVE_AGENT is user-signed and
       // contributes the agent address as a param; other SDK-signed actions
@@ -78,7 +78,7 @@ export function createTestAgentProvider(
         }
         return { params: { agentAddress: agentAddress(address) } }
       }
-      if (signers.includes(PerpsSigner.SDK)) {
+      if (signer === PerpsSigner.SDK) {
         return { signerAddress: agentAddress(address) }
       }
       return {}
@@ -89,25 +89,26 @@ export function createTestAgentProvider(
       address: Address,
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> => {
-      const signEip712 = ctx?.signers?.includes(PerpsSigner.USER)
-        ? (step: Eip712ActionStep): Promise<Hex> => {
-            const wallet = ctx.userWallet
-            if (!wallet) {
-              throw new PerpsError(
-                PerpsErrorCode.SDKError,
-                'USER-signed action requires userWallet'
-              )
+      const signEip712 =
+        ctx?.signer === PerpsSigner.USER
+          ? (step: Eip712ActionStep): Promise<Hex> => {
+              const wallet = ctx.userWallet
+              if (!wallet) {
+                throw new PerpsError(
+                  PerpsErrorCode.SDKError,
+                  'USER-signed action requires userWallet'
+                )
+              }
+              return wallet.signTypedData({
+                account: wallet.account,
+                domain: step.typedData.domain,
+                types: step.typedData.types,
+                primaryType: step.typedData.primaryType,
+                message: step.typedData.message,
+              })
             }
-            return wallet.signTypedData({
-              account: wallet.account,
-              domain: step.typedData.domain,
-              types: step.typedData.types,
-              primaryType: step.typedData.primaryType,
-              message: step.typedData.message,
-            })
-          }
-        : (step: Eip712ActionStep): Promise<Hex> =>
-            signTypedData(requireAgent(address), step.typedData)
+          : (step: Eip712ActionStep): Promise<Hex> =>
+              signTypedData(requireAgent(address), step.typedData)
       return Promise.all(
         (steps as Eip712ActionStep[]).map(
           async (step): Promise<Eip712SignedActionStep> => ({

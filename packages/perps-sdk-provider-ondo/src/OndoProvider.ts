@@ -52,8 +52,8 @@ import type {
   PortfolioHistoryResponse,
   Position,
   PositionsResponse,
-  ProviderAction,
   Quote,
+  SetupAction,
   SignedActionStep,
   SigningMethod,
   WithdrawalActivity,
@@ -279,8 +279,6 @@ export const ondoProvider = (
 
   return {
     type: ONDO_PROVIDER_KEY,
-
-    internalSetupActions: [ActionType.SET_REFERRAL],
 
     bind(client: PerpsSDKClient): void {
       boundClient = client
@@ -935,10 +933,9 @@ export const ondoProvider = (
 
     projectConfig(
       config: AccountConfig,
-      setup: ProviderAction[],
-      configOptions: ProviderAction[]
+      setup: SetupAction[]
     ): AccountConfigSetting[] {
-      return projectOndoConfigSettings(config, setup, configOptions)
+      return projectOndoConfigSettings(config, setup)
     },
 
     async signActions(

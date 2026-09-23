@@ -23,9 +23,9 @@ import type {
   Position,
   PositionMarginConstraints,
   PositionsResponse,
-  ProviderAction,
   Quote,
   QuoteSide,
+  SetupAction,
   SignedActionStep,
   SigningMethod,
   TradeType,
@@ -87,12 +87,12 @@ export interface SignActionsContext {
   /** End-user wallet used for USER-signed or EVM transaction legs. */
   userWallet?: PerpsClientSigner
   /**
-   * The signing batch's declared signers, from the action's `ProviderAction`
+   * The signing batch's declared signer, from the action's `ProviderAction`
    * descriptor. The plugin branches on this to pick WHO signs (e.g.
-   * Hyperliquid: `USER` → end-user wallet, `AGENT` → session keypair). Core
-   * forwards the descriptor's `signers` as data; it does not branch on them.
+   * Hyperliquid: `USER` → end-user wallet, `SDK` → session keypair). Core
+   * forwards the descriptor's `signer` as data; it does not branch on it.
    */
-  signers?: PerpsSigner[]
+  signer?: PerpsSigner
   /**
    * Switch `userWallet` to `chainId` and resolve the client to broadcast with.
    * Bound by core to the consumer's `switchChain` hook and the resolved
@@ -362,17 +362,6 @@ export interface PerpsProviderPlugin {
   readonly type: string
 
   /**
-   * Setup actions the provider completes on its own, without surfacing a card
-   * to the caller. `PerpsClient.checkSetup` drains each such pending step in
-   * place — building, signing, and executing it with the provider's own
-   * credentials — and omits it from the returned `setup` list. A descriptor
-   * whose `signers` include {@link PerpsSigner.USER} is never treated as
-   * internal, even when named here. Omit when the provider has no
-   * self-completed setup steps.
-   */
-  readonly internalSetupActions?: readonly ActionType[]
-
-  /**
    * Setup actions that stage work only when the account needs remediation
    * (e.g. Hyperliquid's REVOKE_AGENT frees an agent slot only when every
    * named slot is taken). When such a step stages no actions,
@@ -576,9 +565,12 @@ export interface PerpsProviderPlugin {
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`
-   * + `options` descriptors into `AccountConfigSetting[]`. Used by
+   * descriptors into `AccountConfigSetting[]`. Used by
    * `PerpsClient.getAccount` to attach a `settings` array to the response —
-   * one entry per descriptor, in `setup`-then-`options` order.
+   * one entry per descriptor, in `setup` order. Every choice descriptor
+   * (`options` is not `null`) carries a boolean `satisfied`, because
+   * `PerpsClient.checkSetup` reads a choice's satisfied state and `selected`
+   * option from this projection alone.
    *
    * Implementations receive the union-typed `AccountConfig` and narrow on
    * `config.provider` themselves; the dispatcher in `PerpsClient` does not
@@ -586,8 +578,7 @@ export interface PerpsProviderPlugin {
    */
   projectConfig(
     config: AccountConfig,
-    setup: ProviderAction[],
-    options: ProviderAction[]
+    setup: SetupAction[]
   ): AccountConfigSetting[]
 
   /**
@@ -595,7 +586,8 @@ export interface PerpsProviderPlugin {
    * when staging the provider setup. Used for plugin-side state the backend
    * needs to make a correct idempotency decision (e.g. Lighter's known local
    * API public key). Returns an empty object when the plugin has no params
-   * to contribute for the action. Optional — providers without local state
+   * to contribute for the action. A choice option runs with its bound params
+   * alone and never reads these. Optional — providers without local state
    * can omit it entirely.
    */
   resolveSetupParams?(
@@ -606,7 +598,7 @@ export interface PerpsProviderPlugin {
   /**
    * Contribute the signer-bearing wire fields for an action — the plugin owns
    * signer identity (WHO signs), so core asks the plugin rather than resolving
-   * a `signerAddress` itself. The descriptor's `signers` are forwarded so the
+   * a `signerAddress` itself. The descriptor's `signer` is forwarded so the
    * plugin can branch on signer role: a provider that signs on the user's
    * behalf with a session keypair (Hyperliquid's agent) resolves — provisioning
    * one if needed — and returns the agent address as `signerAddress`; for
@@ -622,7 +614,7 @@ export interface PerpsProviderPlugin {
   resolveActionRequest?(
     action: ActionType,
     address: Address,
-    signers: PerpsSigner[]
+    signer: PerpsSigner
   ): Promise<ActionSignerContribution>
 
   /**
@@ -637,7 +629,7 @@ export interface PerpsProviderPlugin {
    * provider has no `signActions`.
    *
    * `method` mirrors the descriptor's `signingMethod`. The plugin owns every
-   * arm, branching on the descriptor's `signers` internally: the EIP712 arm
+   * arm, branching on the descriptor's `signer` internally: the EIP712 arm
    * signs with the user's wallet (read from `ctx.userWallet`) or the provider's
    * session keypair (Hyperliquid's agent), and `WASM_BLOB` / `EVM_TX` sign with
    * the provider's local credential (Lighter).

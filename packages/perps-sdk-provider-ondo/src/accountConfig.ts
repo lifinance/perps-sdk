@@ -4,6 +4,7 @@ import type {
   AccountConfigSetting,
   OndoAccountConfig,
   ProviderAction,
+  SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 
@@ -25,7 +26,7 @@ function assertNever(value: never): never {
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
- * `Provider.setup` / `Provider.options` throw at runtime.
+ * `Provider.setup` throw at runtime.
  */
 function projectOndoDescriptor(
   descriptor: ProviderAction,
@@ -95,11 +96,12 @@ function projectOndoDescriptor(
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
+    case ActionType.REVOKE_BUILDER_FEE:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Ondo account-config mapper has no projection for descriptor type ` +
           `'${descriptor.type}' — this ActionType is not valid on ` +
-          `Provider.setup / Provider.options for Ondo.`
+          `Provider.setup for Ondo.`
       )
 
     default:
@@ -108,19 +110,16 @@ function projectOndoDescriptor(
 }
 
 /**
- * Project the union of Ondo setup + options descriptors against the typed
- * `OndoAccountConfig`. Produces exactly one `AccountConfigSetting` per
- * descriptor, in `setup`-then-`options` order.
+ * Project the Ondo setup descriptors against the typed `OndoAccountConfig`.
+ * Produces exactly one `AccountConfigSetting` per descriptor, in
+ * `Provider.setup` order.
  *
  * @param config Typed account state; a non-`ondo` config throws `SDKError`.
- * @param setup  `Provider.setup` array as emitted by `/providers`.
- * @param options `Provider.options` array as emitted by `/providers`.
  * @public
  */
 export function projectOndoConfigSettings(
   config: AccountConfig,
-  setup: ProviderAction[],
-  options: ProviderAction[]
+  setup: SetupAction[]
 ): AccountConfigSetting[] {
   if (config.provider !== 'ondo') {
     throw new PerpsError(
@@ -128,7 +127,5 @@ export function projectOndoConfigSettings(
       `Ondo account-config mapper received a '${config.provider}' config.`
     )
   }
-  return [...setup, ...options].map((descriptor) =>
-    projectOndoDescriptor(descriptor, config)
-  )
+  return setup.map((descriptor) => projectOndoDescriptor(descriptor, config))
 }
