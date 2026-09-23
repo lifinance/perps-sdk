@@ -6,6 +6,9 @@ import {
 } from '@lifi/perps-sdk'
 import {
   ActionType,
+  PerpsErrorCode,
+  PerpsSigner,
+  type SetupAction,
   SigningMethod,
   type WasmBlobActionStep,
   type WasmBlobSignedActionStep,
@@ -21,6 +24,7 @@ import {
   LIGHTER_RH_PROVIDER_KEY,
 } from './constants.js'
 import { lighterProvider, lighterRhProvider } from './LighterProvider.js'
+import { LighterSigner } from './signers/LighterSigner.js'
 
 // No WASM mock here: these flows drive the real Go signer shipped with the
 // package through a real `PerpsClient`, so a broken loader, a wrong signing
@@ -382,5 +386,221 @@ describe('lighterProvider() — custom generic storage', () => {
     expect(
       JSON.parse(backing.get(writes[0]) as string).apiKeyPrivateKey
     ).toMatch(/^0x[0-9a-f]+$/i)
+  })
+})
+
+describe('lighterProvider() — pre-sign account tier gate', () => {
+  const accountTypeSetup: SetupAction = {
+    kind: 'preference',
+    type: ActionType.ACCOUNT_TYPE,
+    signers: [PerpsSigner.SDK],
+    signingMethod: SigningMethod.WASM_BLOB,
+    params: [
+      {
+        name: 'tier',
+        type: 'string',
+        values: [
+          { value: 'premium', label: 'Premium' },
+          { value: 'plus', label: 'Plus' },
+        ],
+        default: { value: 'premium', label: 'Premium' },
+      },
+    ],
+  }
+
+  const cancelOrderStep: WasmBlobActionStep = {
+    action: ActionType.CANCEL_ORDER,
+    wasmSignParams: { market_index: 0, order_index: 900, nonce: 4 },
+  }
+
+  const accountLimitsWith = (userTierName?: string): Response =>
+    respond({
+      code: 0,
+      max_llp_percentage: 0,
+      max_llp_amount: '0',
+      user_tier: 'STANDARD',
+      can_create_public_pool: false,
+      current_maker_fee_tick: 100,
+      current_taker_fee_tick: 280,
+      leased_lit: '0',
+      effective_lit_stakes: '0',
+      ...(userTierName === undefined ? {} : { user_tier_name: userTierName }),
+    })
+
+  let registeredPublicKey: string | null = null
+  let accountLimits: () => Response = () => accountLimitsWith('premium')
+  let requests: string[] = []
+  const requestsTo = (path: string): string[] =>
+    requests.filter((url) => url.includes(path))
+
+  beforeEach(() => {
+    registeredPublicKey = null
+    accountLimits = () => accountLimitsWith('premium')
+    requests = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        const u = String(url)
+        requests.push(u)
+        if (u.includes('/api/v1/apikeys')) {
+          return respond({
+            code: 200,
+            api_keys:
+              registeredPublicKey === null
+                ? []
+                : [{ api_key_index: 42, public_key: registeredPublicKey }],
+          })
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          return accountLimits()
+        }
+        if (u.includes('/api/v1/account')) {
+          return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/perps/providers')) {
+          return respond({
+            providers: [
+              { key: LIGHTER_PROVIDER_KEY, setup: [accountTypeSetup] },
+            ],
+          })
+        }
+        throw new Error(`Unhandled URL in test: ${u}`)
+      })
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  /** A provider holding a registered local API key, with the request log cleared. */
+  const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
+    const provider = lighterProvider({
+      storage: createMemoryStorage(),
+      authToken: 'tier-read-token',
+    })
+    clientFor(provider)
+    const [registered] = (await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [registerApiKeyStep],
+      ADDRESS as Address,
+      { userWallet }
+    )) as WasmBlobSignedActionStep[]
+    const newPublicKey = registered.wasmSignParams.new_public_key
+    registeredPublicKey = typeof newPublicKey === 'string' ? newPublicKey : null
+    requests = []
+    return provider
+  }
+
+  it('refuses an order for a tier the descriptor does not enumerate, before any signature', async () => {
+    accountLimits = () => accountLimitsWith('standard')
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    await expect(
+      provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [createOrderStep],
+        ADDRESS as Address
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(sign).not.toHaveBeenCalled()
+  })
+
+  it('signs an order for an enumerated tier', async () => {
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    const [order] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [createOrderStep],
+      ADDRESS as Address
+    )
+
+    expect(order.action).toBe(ActionType.PLACE_ORDER)
+    expect(sign).toHaveBeenCalledTimes(1)
+    expect(requestsTo('/api/v1/accountLimits')).toHaveLength(1)
+  })
+
+  it('reads neither the descriptors nor the tier for a non-placement batch', async () => {
+    accountLimits = () => accountLimitsWith('standard')
+    const provider = await registeredProvider()
+
+    const [cancel] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [cancelOrderStep],
+      ADDRESS as Address
+    )
+
+    expect(cancel.action).toBe(ActionType.CANCEL_ORDER)
+    expect(requestsTo('/perps/providers')).toEqual([])
+    expect(requestsTo('/api/v1/accountLimits')).toEqual([])
+  })
+
+  it('reads neither the descriptors nor the tier without a local API key', async () => {
+    const provider = lighterProvider({
+      storage: createMemoryStorage(),
+      authToken: 'tier-read-token',
+    })
+    clientFor(provider)
+
+    await expect(
+      provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [createOrderStep],
+        ADDRESS as Address
+      )
+    ).rejects.toThrow(/No Lighter API key registered/)
+    expect(requestsTo('/perps/providers')).toEqual([])
+    expect(requestsTo('/api/v1/accountLimits')).toEqual([])
+  })
+
+  it('signs anyway when the tier read fails', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    accountLimits = () => new Response('boom', { status: 500 })
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    const [order] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [createOrderStep],
+      ADDRESS as Address
+    )
+
+    expect(order.action).toBe(ActionType.PLACE_ORDER)
+    expect(sign).toHaveBeenCalledTimes(1)
+    expect(requestsTo('/api/v1/accountLimits')).toHaveLength(1)
+  })
+
+  it('signs anyway when the venue reports no tier name', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    accountLimits = () => accountLimitsWith(undefined)
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    const [order] = await provider.signActions!(
+      SigningMethod.WASM_BLOB,
+      [createOrderStep],
+      ADDRESS as Address
+    )
+
+    expect(order.action).toBe(ActionType.PLACE_ORDER)
+    expect(sign).toHaveBeenCalledTimes(1)
+  })
+
+  it('fetches the setup descriptors once across consecutive orders', async () => {
+    const provider = await registeredProvider()
+
+    for (let i = 0; i < 2; i++) {
+      await provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [createOrderStep],
+        ADDRESS as Address
+      )
+    }
+
+    expect(requestsTo('/perps/providers')).toHaveLength(1)
+    expect(requestsTo('/api/v1/accountLimits')).toHaveLength(2)
   })
 })

@@ -17,6 +17,7 @@ import {
 } from '../constants.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
+import { lighterErrorCodeFromBody } from '../utils/lighterErrorCode.js'
 import {
   fetchRegisteredApiKey,
   type LighterRegisteredApiKey,
@@ -472,7 +473,8 @@ async function signTransfer(
  * skips the POST when the account carries one, and a
  * {@link LIGHTER_REFERRAL_ALREADY_USED_CODE} verdict from the POST settles the
  * step the same way. Every other non-success verdict surfaces Lighter's
- * `code`/`message` verbatim as an {@link PerpsErrorCode.ExchangeRejected}.
+ * `code`/`message` verbatim, under the `PerpsErrorCode` the body code names
+ * ({@link lighterErrorCodeFromBody}) or {@link PerpsErrorCode.ExchangeRejected}.
  */
 async function executeTokenAuthMutation(
   deps: LighterSignActionsDeps,
@@ -517,7 +519,7 @@ async function executeTokenAuthMutation(
   ) {
     const suffix = data?.message ? `: ${data.message}` : ''
     throw new PerpsError(
-      PerpsErrorCode.ExchangeRejected,
+      lighterErrorCodeFromBody(code) ?? PerpsErrorCode.ExchangeRejected,
       `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`
     )
   }

@@ -12,18 +12,21 @@ import type {
   MetaActionType,
   Order,
   OrdersResponse,
+  Param,
   PortfolioHistoryResponse,
   Position,
   PositionMarginConstraints,
   Provider,
   ProviderAction,
   SetupAction,
+  SetupKind,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
   ActionType,
   META_PROVIDER,
   PerpsErrorCode,
+  PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
 import Big from 'big.js'
@@ -94,16 +97,85 @@ function sequenceOf(descriptor: ProviderAction): number {
   return descriptor.sequence ?? Number.MAX_SAFE_INTEGER
 }
 
+const SETUP_KINDS: Record<SetupKind, true> = {
+  approval: true,
+  automatic: true,
+  preference: true,
+}
+
+/**
+ * Reject provider metadata whose setup steps the SDK cannot classify. A step
+ * without a known `kind` would otherwise read as satisfied and report a
+ * not-onboarded account as ready.
+ */
+function assertSetupKinds(metadata: Provider): void {
+  for (const descriptor of metadata.setup) {
+    if (!Object.hasOwn(SETUP_KINDS, descriptor.kind)) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Provider '${metadata.key}' setup step '${descriptor.type}' declares no known kind ` +
+          `(got '${String(descriptor.kind)}'); this SDK needs a backend that emits SetupAction.kind.`
+      )
+    }
+    if (
+      descriptor.kind === 'automatic' &&
+      descriptor.signers.includes(PerpsSigner.USER)
+    ) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Provider '${metadata.key}' setup step '${descriptor.type}' is 'automatic' but USER-signed; ` +
+          `the SDK never signs a USER-signed step on the user's behalf.`
+      )
+    }
+  }
+}
+
 /**
  * Whether the SDK can apply a preference without user input. Every declared
- * parameter must carry a `default`, since the action's params object is only
- * complete when each one has a value.
+ * parameter must carry a `default`, and a default must be one of the
+ * parameter's enumerated `values` when it has any — otherwise applying it can
+ * never satisfy the preference and every `checkSetup` would re-apply it.
  */
 function declaresDefault(descriptor: ProviderAction): boolean {
   const params = descriptor.params ?? []
   return (
-    params.length > 0 && params.every((param) => param.default !== undefined)
+    params.length > 0 &&
+    params.every(
+      ({ default: fallback, values }) =>
+        fallback !== undefined &&
+        (values === undefined ||
+          values.some((option) => option.value === fallback.value))
+    )
   )
+}
+
+/**
+ * Whether the SDK fulfils a pending setup step itself. A USER-signed step is
+ * never drained: it would prompt the user's wallet from inside `checkSetup`.
+ */
+function isDrainable(descriptor: SetupAction): boolean {
+  if (descriptor.signers.includes(PerpsSigner.USER)) {
+    return false
+  }
+  return (
+    descriptor.kind === 'automatic' ||
+    (descriptor.kind === 'preference' && declaresDefault(descriptor))
+  )
+}
+
+/** `ParamOption.value` is always a string on the wire; parse it per `Param.type`. */
+function parseParamValue(
+  type: Param['type'],
+  value: string
+): string | boolean | number {
+  switch (type) {
+    case 'boolean':
+      return value === 'true'
+    case 'number':
+      return Number(value)
+    case 'string':
+      return value
+  }
 }
 
 /**
@@ -212,17 +284,15 @@ export class PerpsClient {
   }
 
   private async getProviderMetadata(provider: string): Promise<Provider> {
-    const cached = this.providerMetadataCache.get(provider)
-    if (cached) {
-      return cached
+    let metadata = this.providerMetadataCache.get(provider)
+    if (!metadata) {
+      const { providers } = await getProviders(this.sdkClient)
+      for (const d of providers) {
+        this.providerMetadataCache.set(d.key, d)
+      }
+      metadata = this.providerMetadataCache.get(provider)
     }
 
-    const { providers } = await getProviders(this.sdkClient)
-    for (const d of providers) {
-      this.providerMetadataCache.set(d.key, d)
-    }
-
-    const metadata = this.providerMetadataCache.get(provider)
     if (!metadata) {
       const error = new PerpsError(
         PerpsErrorCode.SDKError,
@@ -231,6 +301,7 @@ export class PerpsClient {
       error.tool = '@lifi/perps-sdk'
       throw error
     }
+    assertSetupKinds(metadata)
     return metadata
   }
 
@@ -823,11 +894,7 @@ export class PerpsClient {
     await this.drainSetup(
       provider,
       address,
-      pendingSetup.filter(
-        (descriptor) =>
-          descriptor.kind === 'automatic' ||
-          (descriptor.kind === 'preference' && declaresDefault(descriptor))
-      ),
+      pendingSetup.filter(isDrainable),
       stageable.filter((descriptor) => stagedTypes.has(descriptor.type))
     )
 
@@ -865,7 +932,8 @@ export class PerpsClient {
   /**
    * Drain the pending setup steps the SDK fulfils without user input: every
    * `automatic` step, and every unsatisfied `preference` whose descriptor
-   * declares a parameter default. Each step is built, signed, and executed in
+   * declares an admissible default for each parameter; a USER-signed step is
+   * never drained. Each step is built, signed, and executed in
    * place with the provider's own credentials. A step is deferred while any
    * staged user-facing step with a lower `sequence` is outstanding — it cannot
    * succeed before its prerequisite (e.g. SET_REFERRAL authenticates with the
@@ -923,7 +991,7 @@ export class PerpsClient {
   private async buildProviderSetupActions(
     provider: string,
     address: Address,
-    descriptors: ProviderAction[]
+    descriptors: SetupAction[]
   ): Promise<ActionStep[]> {
     const setupPriority = (descriptor: ProviderAction): number =>
       descriptor.signingMethod === SigningMethod.SIWE ? 0 : 1
@@ -940,6 +1008,22 @@ export class PerpsClient {
       const action = descriptor.type
       const { signerAddress, params: signerParams } =
         await this.resolveActionRequest(provider, descriptor, address)
+      // A preference is only ever built to apply its declared default.
+      const defaults =
+        descriptor.kind === 'preference'
+          ? Object.fromEntries(
+              (descriptor.params ?? []).flatMap((param) =>
+                param.default === undefined
+                  ? []
+                  : [
+                      [
+                        param.name,
+                        parseParamValue(param.type, param.default.value),
+                      ],
+                    ]
+              )
+            )
+          : {}
       const localParams = plugin?.resolveSetupParams
         ? await plugin.resolveSetupParams(action, address)
         : {}
@@ -949,6 +1033,7 @@ export class PerpsClient {
         signerAddress,
         action,
         params: {
+          ...defaults,
           ...signerParams,
           ...localParams,
         } as Record<string, never>,
@@ -1083,9 +1168,13 @@ export class PerpsClient {
    * conflict that the caller invalidates on, refetches `checkSetup`, and
    * retries with a fresh step.
    *
+   * A lower-`sequence` step the SDK fulfils itself (a `preference` with an
+   * admissible default) is applied in place first, so a step `checkSetup`
+   * returned behind such a preference stays executable from the cache.
+   *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors, or when a lower-`sequence` step on the same
-   *   checklist is still unsatisfied.
+   *   checklist is still unsatisfied after that.
    * @public
    */
   async executeProviderSetupAction(params: {
@@ -1104,11 +1193,21 @@ export class PerpsClient {
       )
     }
 
-    const blocking = await this.findBlockingSetupStep(
+    const drained = new Set<ActionType>()
+    let blocking = await this.findBlockingSetupStep(
       provider,
       address,
       descriptor
     )
+    while (
+      blocking !== undefined &&
+      isDrainable(blocking) &&
+      !drained.has(blocking.type)
+    ) {
+      drained.add(blocking.type)
+      await this.drainSetup(provider, address, [blocking], [])
+      blocking = await this.findBlockingSetupStep(provider, address, descriptor)
+    }
     if (blocking) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,

@@ -2680,7 +2680,7 @@ describe('PerpsClient', () => {
     ) => ({
       type,
       kind,
-      signers: [PerpsSigner.USER],
+      signers: [kind === 'automatic' ? PerpsSigner.SDK : PerpsSigner.USER],
       signingMethod: SigningMethod.EIP712,
       sequence,
       params: [],
@@ -2950,7 +2950,7 @@ describe('PerpsClient', () => {
       const unsequencedStep = (type: ActionType, kind: SetupKind) => ({
         type,
         kind,
-        signers: [PerpsSigner.USER],
+        signers: [kind === 'automatic' ? PerpsSigner.SDK : PerpsSigner.USER],
         signingMethod: SigningMethod.EIP712,
         params: [],
       })
@@ -3032,7 +3032,8 @@ describe('PerpsClient', () => {
 
     const venueClientFor = (
       satisfied: boolean,
-      signActions: ReturnType<typeof vi.fn>
+      signActions: ReturnType<typeof vi.fn>,
+      plugin: Partial<PerpsProviderPlugin> = {}
     ) =>
       new PerpsClient({
         integrator: 'test-app',
@@ -3046,19 +3047,15 @@ describe('PerpsClient', () => {
             projectConfig: vi.fn(() => [
               { type: ActionType.ACCOUNT_MODE, values: [], satisfied },
             ]),
-            resolveSetupParams: vi.fn(async () => ({ mode: 'unified' })),
             signActions,
+            ...plugin,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
-    it('drains an unsatisfied preference that declares a default, and never stages it', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
-      const venueClient = venueClientFor(false, signActions)
-
+    const recordCreateCalls = (): CreateActionRequest[] => {
       const createCalls: CreateActionRequest[] = []
       server.use(
-        providersHandler([preferenceStep(true)]),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
           createCalls.push(body)
@@ -3067,6 +3064,16 @@ describe('PerpsClient', () => {
           } as unknown as CreateActionResponse)
         })
       )
+      return createCalls
+    }
+
+    it('drains an unsatisfied preference with its declared default, and never stages it', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      // No resolveSetupParams: the default must come from the descriptor alone.
+      const venueClient = venueClientFor(false, signActions)
+
+      server.use(providersHandler([preferenceStep(true)]))
+      const createCalls = recordCreateCalls()
 
       const result = await venueClient.checkSetup({
         provider: key,
@@ -3081,6 +3088,105 @@ describe('PerpsClient', () => {
       ])
       expect(createCalls[0].params).toMatchObject({ mode: 'unified' })
       expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    it('lets plugin setup params override the declared default', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions, {
+        resolveSetupParams: vi.fn(async () => ({ mode: 'simple' })),
+      })
+
+      server.use(providersHandler([preferenceStep(true)]))
+      const createCalls = recordCreateCalls()
+
+      await venueClient.checkSetup({ provider: key, address: userAddress })
+
+      expect(createCalls[0].params).toMatchObject({ mode: 'simple' })
+    })
+
+    it('sends a declared default parsed to its param type', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions)
+
+      server.use(
+        providersHandler([
+          {
+            ...preferenceStep(true),
+            params: [
+              {
+                name: 'enabled',
+                type: 'boolean',
+                values: [
+                  { value: 'true', label: 'On' },
+                  { value: 'false', label: 'Off' },
+                ],
+                default: { value: 'true', label: 'On' },
+              },
+              {
+                name: 'level',
+                type: 'number',
+                default: { value: '3', label: '3' },
+              },
+            ],
+          },
+        ])
+      )
+      const createCalls = recordCreateCalls()
+
+      await venueClient.checkSetup({ provider: key, address: userAddress })
+
+      expect(createCalls[0].params).toMatchObject({ enabled: true, level: 3 })
+    })
+
+    it('shows but never drains a preference whose default is not one of its values', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions)
+
+      const step = preferenceStep(true)
+      server.use(
+        providersHandler([
+          {
+            ...step,
+            params: [
+              {
+                ...step.params[0],
+                default: { value: 'portfolio', label: 'Portfolio' },
+              },
+            ],
+          },
+        ])
+      )
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('shows but never drains a USER-signed preference, even with a default', async () => {
+      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const venueClient = venueClientFor(false, signActions)
+
+      server.use(
+        providersHandler([
+          { ...preferenceStep(true), signers: [PerpsSigner.USER] },
+        ])
+      )
+      const createCalls = recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
     })
 
     it('shows an unsatisfied preference that declares no default, and neither stages nor drains it', async () => {
@@ -3131,6 +3237,95 @@ describe('PerpsClient', () => {
       expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, true]])
       expect(createCount).toBe(0)
       expect(signActions).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('provider metadata — setup kind validation', () => {
+    const BASE_URL = DEFAULT_API_URL
+    const key = 'venue'
+
+    const venueWithSetup = (setup: unknown[]) => {
+      let createCount = 0
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup,
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          createCount++
+          return HttpResponse.json({ actions: [] })
+        })
+      )
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => []),
+            signActions: vi.fn(async () => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+      return { client, createCount: () => createCount }
+    }
+
+    it('rejects a setup step with no kind instead of reporting the account ready', async () => {
+      const { client, createCount } = venueWithSetup([
+        {
+          type: ActionType.REGISTER_API_KEY,
+          signers: [PerpsSigner.SDK],
+          signingMethod: SigningMethod.WASM_BLOB,
+          sequence: 10,
+          params: [],
+        },
+      ])
+
+      await expect(
+        client.checkSetup({ provider: key, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(
+          new RegExp(`'${ActionType.REGISTER_API_KEY}' declares no known kind`)
+        ),
+      })
+      expect(createCount()).toBe(0)
+    })
+
+    it('rejects an automatic setup step that names the USER signer', async () => {
+      const { client, createCount } = venueWithSetup([
+        {
+          type: ActionType.SET_REFERRAL,
+          kind: 'automatic',
+          signers: [PerpsSigner.USER],
+          signingMethod: SigningMethod.EIP712,
+          sequence: 10,
+          params: [],
+        },
+      ])
+
+      await expect(
+        client.checkSetup({ provider: key, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(/'automatic' but USER-signed/),
+      })
+      expect(createCount()).toBe(0)
     })
   })
 
@@ -3273,6 +3468,225 @@ describe('PerpsClient', () => {
       ).resolves.toBeUndefined()
       expect(createCount).toBe(0)
       expect(signActions).toHaveBeenCalledOnce()
+    })
+
+    const tierPreference = (withDefault: boolean) => ({
+      type: ActionType.ACCOUNT_TYPE,
+      kind: 'preference' as SetupKind,
+      signers: [PerpsSigner.SDK],
+      signingMethod: SigningMethod.WASM_BLOB,
+      sequence: 20,
+      params: [
+        {
+          name: 'tier',
+          type: 'string',
+          values: [{ value: 'premium', label: 'Premium' }],
+          ...(withDefault
+            ? { default: { value: 'premium', label: 'Premium' } }
+            : {}),
+        },
+      ],
+    })
+
+    // `satisfied` is the plugin projection; `staged` names the approvals the
+    // backend still stages. ACCOUNT_TYPE executes client-side during signing.
+    const gatedVenue = (options: {
+      setup: unknown[]
+      satisfied: Set<ActionType>
+      staged: Set<ActionType>
+      tierDrainSatisfies?: boolean
+    }) => {
+      const { setup, satisfied, staged, tierDrainSatisfies = true } = options
+      const createCalls: CreateActionRequest[] = []
+      const executed: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              {
+                key,
+                name: 'Venue',
+                logoURI: 'https://example.com/venue.png',
+                signingMethod: SigningMethod.EIP712,
+                active: true,
+                setup,
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          const stages =
+            staged.has(body.action) || body.action === ActionType.ACCOUNT_TYPE
+          return HttpResponse.json({
+            actions: stages
+              ? [{ action: body.action, wasmSignParams: {} }]
+              : [],
+          } as unknown as CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          executed.push(body.action)
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      const signActions = vi.fn(
+        async (
+          _method: SigningMethod,
+          steps: ActionStep[]
+        ): Promise<SignedActionStep[]> => {
+          if (steps[0]?.action === ActionType.ACCOUNT_TYPE) {
+            if (tierDrainSatisfies) {
+              satisfied.add(ActionType.ACCOUNT_TYPE)
+            }
+            return []
+          }
+          return steps.map(
+            (step) =>
+              ({
+                action: step.action,
+                wasmSignParams: {},
+              }) as unknown as SignedActionStep
+          )
+        }
+      )
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() =>
+              [...satisfied].map((type) => ({
+                type,
+                values: [],
+                satisfied: true,
+              }))
+            ),
+            signActions,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+      const run = (action: ActionType) =>
+        client.executeProviderSetupAction({
+          provider: key,
+          address: userAddress,
+          step: { action } as ActionStep,
+        })
+      return { run, createCalls, executed, signActions }
+    }
+
+    it('applies an earlier preference default in place, then runs the step', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          tierPreference(true),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set([ActionType.REGISTER_API_KEY]),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.ACCOUNT_TYPE,
+      ])
+      expect(createCalls[0].params).toMatchObject({ tier: 'premium' })
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
+    })
+
+    it('rejects, naming the preference, when applying its default does not satisfy it', async () => {
+      const { run, executed, signActions } = gatedVenue({
+        setup: [
+          tierPreference(true),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+        tierDrainSatisfies: false,
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toThrow(
+        `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
+      )
+      expect(signActions).toHaveBeenCalledOnce()
+      expect(executed).toEqual([])
+    })
+
+    it('rejects, naming the preference, when an earlier preference declares no default', async () => {
+      const { run, createCalls, signActions } = gatedVenue({
+        setup: [
+          tierPreference(false),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toThrow(
+        `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
+      )
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('does not block on an earlier approval the provider stages nothing for', async () => {
+      const { run, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          approvalStep(ActionType.SET_REFERRAL, 20),
+        ],
+        satisfied: new Set(),
+        staged: new Set([ActionType.SET_REFERRAL]),
+      })
+
+      await expect(run(ActionType.SET_REFERRAL)).resolves.toBeUndefined()
+      expect(executed).toEqual([ActionType.SET_REFERRAL])
+    })
+
+    it('never blocks on an earlier automatic step', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          {
+            ...approvalStep(ActionType.SET_REFERRAL, 10),
+            kind: 'automatic' as SetupKind,
+            signers: [PerpsSigner.SDK],
+          },
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 20),
+        ],
+        satisfied: new Set(),
+        staged: new Set([
+          ActionType.SET_REFERRAL,
+          ActionType.APPROVE_INTEGRATOR,
+        ]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls).toEqual([])
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
+    })
+
+    it('does not block on, or stage, an earlier step the projection reports satisfied', async () => {
+      const { run, createCalls, executed } = gatedVenue({
+        setup: [
+          approvalStep(ActionType.REGISTER_API_KEY, 10),
+          approvalStep(ActionType.APPROVE_INTEGRATOR, 20),
+        ],
+        satisfied: new Set([ActionType.REGISTER_API_KEY]),
+        staged: new Set([ActionType.REGISTER_API_KEY]),
+      })
+
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      expect(createCalls).toEqual([])
+      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
     })
   })
 

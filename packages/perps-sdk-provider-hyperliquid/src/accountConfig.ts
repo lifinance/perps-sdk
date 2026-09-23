@@ -33,7 +33,7 @@ function assertNever(value: never): never {
  * | REVOKE_AGENT          | []                  (no parameters)
  * | APPROVE_BUILDER_FEE   | []                  (no parameters)
  * | SET_REFERRAL          | []                  (no parameters)
- * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }]
+ * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }] (off → offered off spelling)
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
@@ -52,16 +52,19 @@ function projectHyperliquidDescriptor(
 
     case ActionType.ACCOUNT_MODE: {
       const mode = config.abstractionMode
-      const isOff = mode === null || ABSTRACTION_OFF_VALUES.has(mode)
       const enumerated = descriptor.params?.[0]?.values ?? []
+      // The off state projects as whichever off spelling the descriptor offers,
+      // so the value always matches one of the options it is satisfied by.
+      const matched =
+        mode === null || ABSTRACTION_OFF_VALUES.has(mode)
+          ? enumerated.find((option) =>
+              ABSTRACTION_OFF_VALUES.has(option.value)
+            )
+          : enumerated.find((option) => option.value === mode)
       return {
         type: descriptor.type,
-        values: [{ name: 'mode', value: mode }],
-        satisfied: enumerated.some((option) =>
-          isOff
-            ? ABSTRACTION_OFF_VALUES.has(option.value)
-            : option.value === mode
-        ),
+        values: [{ name: 'mode', value: matched?.value ?? mode }],
+        satisfied: matched !== undefined,
       }
     }
 

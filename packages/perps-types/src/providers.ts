@@ -75,15 +75,17 @@ export interface ProviderAction {
  * offers the user nothing further to do.
  *
  * `automatic`: the SDK fulfils it on the account's behalf, with no user
- * signature. The step is never shown. It is satisfied once the provider stages
- * no action for it, and it is not re-enterable.
+ * signature, so its `signers` never include `USER`. The step is never shown.
+ * It is satisfied once the provider stages no action for it, and it is not
+ * re-enterable.
  *
  * `preference`: the user owns the value. The step is always shown, with the
  * current selection. Satisfaction comes from the account state the provider
  * plugin projects, not from staging. It is re-enterable: the user may change a
- * satisfied preference at any time. While it stays unsatisfied and the
- * descriptor declares a parameter default, the SDK applies that default
- * without user input.
+ * satisfied preference at any time. While it stays unsatisfied, the SDK
+ * applies the descriptor's defaults without user input when every parameter
+ * declares a `default` (one of its `values`, when it enumerates any) and
+ * `signers` omit `USER`.
  *
  * @public
  */

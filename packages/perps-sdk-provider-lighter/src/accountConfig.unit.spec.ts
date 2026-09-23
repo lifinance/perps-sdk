@@ -164,6 +164,32 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
+  it('reads ACCOUNT_TYPE unsatisfied when the descriptor does not enumerate the tier', () => {
+    expect(
+      projectLighterConfigSettings({ ...baseConfig, userTierName: 'plus' }, [
+        accountTypeSetup,
+      ])
+    ).toEqual([
+      {
+        type: ActionType.ACCOUNT_TYPE,
+        values: [{ name: 'tier', value: null }],
+        satisfied: false,
+      },
+    ])
+  })
+
+  it('reads ACCOUNT_TYPE unsatisfied when no tier string was read', () => {
+    expect(
+      projectLighterConfigSettings(baseConfig, [accountTypeSetupWithPlus])
+    ).toEqual([
+      {
+        type: ActionType.ACCOUNT_TYPE,
+        values: [{ name: 'tier', value: null }],
+        satisfied: false,
+      },
+    ])
+  })
+
   // `account_type` is Lighter's SubAccountType (Main = 0, Sub = 1, Public = 2,
   // LighterPublic = 3, Staking = 4), not a tier, so no integer projects a tier.
   it.each([
@@ -203,6 +229,31 @@ describe('projectLighterConfigSettings', () => {
       [accountModeSetup]
     )
     expect(result[0].values[0].value).toBeNull()
+  })
+
+  it('reads ACCOUNT_MODE unsatisfied when the descriptor does not enumerate the mode', () => {
+    const simpleOnlyModeSetup: SetupAction = {
+      ...accountModeSetup,
+      params: [
+        {
+          name: 'mode',
+          type: 'string',
+          values: [{ value: 'simpleTradingAccount', label: 'Simple' }],
+          default: { value: 'simpleTradingAccount', label: 'Simple' },
+        },
+      ],
+    }
+    expect(
+      projectLighterConfigSettings({ ...baseConfig, accountTradingMode: 1 }, [
+        simpleOnlyModeSetup,
+      ])
+    ).toEqual([
+      {
+        type: ActionType.ACCOUNT_MODE,
+        values: [{ name: 'mode', value: 'unifiedTradingAccount' }],
+        satisfied: false,
+      },
+    ])
   })
 
   it('preserves the order of the setup descriptors', () => {

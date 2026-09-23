@@ -26,19 +26,16 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
 
 /**
  * Resolve the account tier to the wire string `changeAccountTier` accepts.
- * `userTierName` decides it, but only when the descriptor enumerates the
- * string: Lighter owns that vocabulary, so an unrecognised value projects
- * `null` instead of a mis-reported tier. A descriptor whose parameter carries
- * no `values` array enumerates nothing, so it also projects `null`. The
- * unauthenticated read reaches no `/accountLimits` and so carries no tier
- * string, which projects `null` as well: `config.accountType` is Lighter's
- * `SubAccountType`, not a tier, so nothing else in the config decides it.
+ * `userTierName` decides it, but only when the ACCOUNT_TYPE descriptor
+ * enumerates the string: Lighter owns that vocabulary, so an unrecognised
+ * value resolves `null` instead of a mis-reported tier. A descriptor whose
+ * parameter carries no `values` array enumerates nothing, so it also resolves
+ * `null`. An absent `userTierName` (no `/accountLimits` read) resolves `null`.
  */
-function resolveAccountTier(
+export function resolveAccountTier(
   descriptor: ProviderAction,
-  config: LighterAccountConfig
+  userTierName: string | undefined
 ): string | null {
-  const { userTierName } = config
   if (userTierName === undefined) {
     return null
   }
@@ -120,10 +117,11 @@ function projectLighterDescriptor(
       }
     }
 
-    // An unresolved `tier` projects to `null` (surfaces as "tier not
-    // detected" — the widget still lets the user pick a value).
+    // An unresolved `tier` projects `null` and reads unsatisfied; while it
+    // stays so the SDK applies the descriptor's declared default, and the user
+    // can still pick a tier.
     case ActionType.ACCOUNT_TYPE: {
-      const tier = resolveAccountTier(descriptor, config)
+      const tier = resolveAccountTier(descriptor, config.userTierName)
       return {
         type: descriptor.type,
         values: [{ name: 'tier', value: tier }],

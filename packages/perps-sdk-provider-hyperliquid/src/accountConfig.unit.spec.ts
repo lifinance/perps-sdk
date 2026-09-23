@@ -109,7 +109,7 @@ describe('projectHyperliquidConfigSettings', () => {
     ])
   })
 
-  it('projects ACCOUNT_MODE with value: null, satisfied by the offered off value, when abstraction has never been set', () => {
+  it('projects a never-set abstraction (null) as the offered off value, satisfied', () => {
     const config: HyperliquidAccountConfig = {
       ...baseConfig,
       abstractionMode: null,
@@ -117,7 +117,7 @@ describe('projectHyperliquidConfigSettings', () => {
     const result = projectHyperliquidConfigSettings(config, [accountModeSetup])
     expect(result[0]).toEqual({
       type: ActionType.ACCOUNT_MODE,
-      values: [{ name: 'mode', value: null }],
+      values: [{ name: 'mode', value: 'disabled' }],
       satisfied: true,
     })
   })
@@ -156,23 +156,52 @@ describe('projectHyperliquidConfigSettings', () => {
         },
       ],
     }
-    const satisfiedFor = (
-      abstractionMode: string | null
-    ): boolean | undefined =>
+    const projectFor = (abstractionMode: string | null) =>
       projectHyperliquidConfigSettings({ ...baseConfig, abstractionMode }, [
         offeredDefault,
-      ])[0]?.satisfied
+      ])[0]
 
     it.each([
       null,
       'default',
       'disabled',
-    ])('reads abstractionMode %s as satisfied when the descriptor offers `default`', (abstractionMode) => {
-      expect(satisfiedFor(abstractionMode)).toBe(true)
+    ])('reads abstractionMode %s as the offered `default`, satisfied', (abstractionMode) => {
+      expect(projectFor(abstractionMode)).toEqual({
+        type: ActionType.ACCOUNT_MODE,
+        values: [{ name: 'mode', value: 'default' }],
+        satisfied: true,
+      })
     })
 
-    it('reads dexAbstraction as unsatisfied when the descriptor does not offer it', () => {
-      expect(satisfiedFor('dexAbstraction')).toBe(false)
+    it('reads dexAbstraction as unsatisfied, keeping its own value, when the descriptor does not offer it', () => {
+      expect(projectFor('dexAbstraction')).toEqual({
+        type: ActionType.ACCOUNT_MODE,
+        values: [{ name: 'mode', value: 'dexAbstraction' }],
+        satisfied: false,
+      })
+    })
+
+    it('keeps a null abstraction unsatisfied when the descriptor offers no off value', () => {
+      const onlyUnified: SetupAction = {
+        ...offeredDefault,
+        params: [
+          {
+            name: 'mode',
+            type: 'string',
+            values: [{ value: 'unifiedAccount', label: 'Unified account' }],
+          },
+        ],
+      }
+      expect(
+        projectHyperliquidConfigSettings(
+          { ...baseConfig, abstractionMode: null },
+          [onlyUnified]
+        )[0]
+      ).toEqual({
+        type: ActionType.ACCOUNT_MODE,
+        values: [{ name: 'mode', value: null }],
+        satisfied: false,
+      })
     })
   })
 
