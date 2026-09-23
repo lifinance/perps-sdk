@@ -3,6 +3,7 @@ import {
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
   LIGHTER_USDC,
+  PerpsClient,
   PerpsError,
   type PerpsSDKClient,
   ROBINHOOD_USDG,
@@ -4969,38 +4970,43 @@ describe('LighterProvider — getAvailableToTrade', () => {
     categoryId: 'spot',
     positionMarginAdjustment: undefined,
   }
-  const ACCOUNT_WITH_ISOLATED_LONG = {
+  const BTC_POSITION_ROW = {
+    market_id: 0,
+    symbol: 'BTC',
+    initial_margin_fraction: '10.00',
+    open_order_count: 0,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '0.02',
+    avg_entry_price: '50000',
+    position_value: '1000',
+    unrealized_pnl: '0',
+    realized_pnl: '0',
+    liquidation_price: '0',
+    total_funding_paid_out: '0',
+    margin_mode: LT_MARGIN_MODE_ISOLATED,
+    allocated_margin: '100',
+    total_discount: '0',
+  }
+  const accountWith = (
+    availableBalance: string,
+    position: Partial<typeof BTC_POSITION_ROW>
+  ) => ({
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
-        available_balance: '5',
-        positions: [
-          {
-            market_id: 0,
-            symbol: 'BTC',
-            initial_margin_fraction: '10.00',
-            open_order_count: 0,
-            pending_order_count: 0,
-            position_tied_order_count: 0,
-            sign: 1,
-            position: '0.02',
-            avg_entry_price: '50000',
-            position_value: '1000',
-            unrealized_pnl: '0',
-            realized_pnl: '0',
-            liquidation_price: '0',
-            total_funding_paid_out: '0',
-            margin_mode: LT_MARGIN_MODE_ISOLATED,
-            allocated_margin: '100',
-            total_discount: '0',
-          },
-        ],
+        available_balance: availableBalance,
+        positions: [{ ...BTC_POSITION_ROW, ...position }],
       },
     ],
-  }
+  })
+
+  let accountPayload: unknown
 
   beforeEach(() => {
+    accountPayload = accountWith('5', {})
     fetchMock.mockImplementation(
       async (url: string | URL, init?: RequestInit) => {
         const u = String(url)
@@ -5020,7 +5026,7 @@ describe('LighterProvider — getAvailableToTrade', () => {
         }
         recorded.push({ url: u, init })
         if (u.includes('/api/v1/account?')) {
-          return respond(ACCOUNT_WITH_ISOLATED_LONG)
+          return respond(accountPayload)
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
@@ -5030,13 +5036,16 @@ describe('LighterProvider — getAvailableToTrade', () => {
     )
   })
 
-  it('adds the released margin and IMR to the side that closes the position', async () => {
-    const provider = lighterProvider()
+  const availableToTradeOn = (
+    marketId: string,
+    provider: LighterPerpsProvider = lighterProvider()
+  ) => {
     provider.bind(STUB_CLIENT)
+    return provider.getAvailableToTrade?.({ address: ADDRESS, marketId })
+  }
 
-    await expect(
-      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '0' })
-    ).resolves.toEqual({
+  it('adds the released margin and IMR to the side that closes the position', async () => {
+    await expect(availableToTradeOn('0')).resolves.toEqual({
       providerId: 'lighter',
       marketId: '0',
       asset: MARKETS_RESPONSE.markets[0].quoteAsset,
@@ -5045,23 +5054,62 @@ describe('LighterProvider — getAvailableToTrade', () => {
     })
   })
 
-  it('resolves undefined for a spot market without reading the account', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+  it('releases only the equity of an isolated position below its IMR', async () => {
+    accountPayload = accountWith('5', { unrealized_pnl: '-20' })
+    await expect(availableToTradeOn('0')).resolves.toMatchObject({
+      buy: '5',
+      sell: '185',
+    })
+  })
+
+  it('adds the cross margin and IMR to the buy side of a cross short', async () => {
+    accountPayload = accountWith('40', {
+      sign: -1,
+      margin_mode: LT_MARGIN_MODE_CROSS,
+      allocated_margin: '0',
+      position_value: '2000',
+      initial_margin_fraction: '5.00',
+      unrealized_pnl: '-30',
+    })
+    await expect(availableToTradeOn('0')).resolves.toMatchObject({
+      buy: '240',
+      sell: '40',
+    })
+  })
+
+  it('answers on the Robinhood-chain deployment', async () => {
+    await expect(
+      availableToTradeOn('0', lighterRhProvider())
+    ).resolves.toMatchObject({ buy: '5', sell: '205' })
+  })
+
+  it('answers PerpsClient.getAvailableToTrade instead of the account fallback', async () => {
+    const client = new PerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+      apiUrl: STUB_CLIENT.config.apiUrl,
+      providers: [lighterProvider()],
+    })
 
     await expect(
-      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '2048' })
-    ).resolves.toBeUndefined()
+      client.getAvailableToTrade({
+        provider: LIGHTER_PROVIDER_KEY,
+        address: ADDRESS,
+        marketId: '0',
+      })
+    ).resolves.toMatchObject({ buy: '5', sell: '205' })
+  })
+
+  it('resolves undefined for a spot market without reading the account', async () => {
+    await expect(availableToTradeOn('2048')).resolves.toBeUndefined()
     expect(recorded).toHaveLength(0)
   })
 
-  it('throws for an unknown market', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-
-    await expect(
-      provider.getAvailableToTrade?.({ address: ADDRESS, marketId: '999' })
-    ).rejects.toBeInstanceOf(PerpsError)
+  it('throws MarketNotFound for an unknown market without reading the account', async () => {
+    await expect(availableToTradeOn('999')).rejects.toMatchObject({
+      code: PerpsErrorCode.MarketNotFound,
+    })
+    expect(recorded).toHaveLength(0)
   })
 })
 

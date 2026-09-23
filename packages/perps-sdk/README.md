@@ -119,11 +119,12 @@ Some providers answer it directly. Hyperliquid reads it from
 `activeAssetData`, and also streams it on the `availableToTrade` WebSocket
 channel. Ondo reads it from `/v1/perps/max_order_size` over REST only, and
 needs a session. Lighter publishes no per-market figure, so the Lighter
-provider calculates it over REST from `availableMargin` and the open position
-on the market. The side that adds to the position gets `availableMargin`. The
-side that reduces or flips the position also gets the margin that the close
-releases, plus the initial margin requirement of the position. Without an Ondo
-session, and for every other provider, the client falls back to the account
+provider calculates it over REST only, from `availableMargin` and the open
+position on each perps market. The side that adds to the position gets
+`availableMargin`. The side that reduces or flips the position gets the
+initial margin requirement of the position, plus `availableMargin` and the
+margin that the close releases. Without an Ondo session, for Lighter spot
+markets, and for every other provider, the client falls back to the account
 summary, so `buy` and `sell` both equal `availableMargin`.
 
 ```ts

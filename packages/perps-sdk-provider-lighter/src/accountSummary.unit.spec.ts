@@ -3,6 +3,7 @@ import type {
   AccountResponse,
   Asset,
   Balance,
+  LighterProviderKey,
   Position,
 } from '@lifi/perps-types'
 import {
@@ -56,9 +57,10 @@ const position = (
 const account = (
   availableBalance: string,
   totalAssetValue: string,
-  balances: Balance[] = []
+  balances: Balance[] = [],
+  provider: LighterProviderKey = 'lighter'
 ): AccountResponse => ({
-  provider: 'lighter',
+  provider,
   address: '0x0000000000000000000000000000000000000001',
   balances,
   collateralBalances: [balance(availableBalance)],
@@ -67,7 +69,7 @@ const account = (
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },
   config: {
-    provider: 'lighter',
+    provider,
     accountIndex: 0,
     apiKeyIndex: 0,
     apiKeyRegistered: true,
@@ -162,6 +164,11 @@ describe('getAccountSummary', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
     })
+  })
+
+  it('accepts the Robinhood-chain deployment config', () => {
+    const rh = account('800', '1000', [], 'lighter-rh')
+    expect(getAccountSummary(rh, []).availableMargin).toBe('800')
   })
 
   it('rejects a non-Lighter account config', () => {

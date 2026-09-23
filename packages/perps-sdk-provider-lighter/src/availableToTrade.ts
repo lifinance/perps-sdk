@@ -26,9 +26,10 @@ const releasedOnClose = (position: Position): Big => {
 /**
  * The amounts the account can still buy and sell on one Lighter perps
  * market. The side that adds to an open position on `market` gets
- * `availableMargin`. The side that reduces or flips it also gets the margin
- * that closing releases plus the position's initial margin requirement,
- * which the closing part of the order consumes. Both amounts are at least 0.
+ * `availableMargin`. The side that reduces or flips it gets the position's
+ * initial margin requirement, which the closing part of the order consumes,
+ * plus `availableMargin` and the margin that closing releases, floored at 0.
+ * A deficit therefore never cuts the closing part. Both amounts are at least 0.
  *
  * @param availableMargin - The account's {@link AccountSummary.availableMargin}.
  * @throws {PerpsError} `SDKError` when a decimal the formula reads is malformed.
@@ -45,16 +46,10 @@ export const lighterAvailableToTrade = (
   const reducing =
     position === undefined
       ? adding
-      : atLeastZero(
-          available
-            .plus(releasedOnClose(position))
-            .plus(
-              toRequiredBig(
-                position.initialMarginRequirement,
-                'initialMarginRequirement'
-              )
-            )
-        )
+      : toRequiredBig(
+          position.initialMarginRequirement,
+          'initialMarginRequirement'
+        ).plus(atLeastZero(available.plus(releasedOnClose(position))))
   const isShort = position?.side === PositionSide.SHORT
   return {
     providerId: market.providerId,

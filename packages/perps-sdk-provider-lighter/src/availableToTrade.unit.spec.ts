@@ -138,7 +138,32 @@ describe('lighterAvailableToTrade', () => {
     expect(result).toMatchObject({ buy: '240', sell: '40' })
   })
 
-  it('clamps a losing isolated position whose loss exceeds its margin at 0', () => {
+  it('isolated short: buy adds allocated margin, uPnL and IMR', () => {
+    const result = lighterAvailableToTrade(MARKET, '50', [
+      positionOn(MARKET, {
+        sign: -1,
+        margin_mode: LT_MARGIN_MODE_ISOLATED,
+        allocated_margin: '100',
+        unrealized_pnl: '-20',
+      }),
+    ])
+    expect(result).toMatchObject({ buy: '230', sell: '50' })
+  })
+
+  it('cross long: sell adds the cross IMR twice, buy stays available', () => {
+    const result = lighterAvailableToTrade(MARKET, '40', [
+      positionOn(MARKET, {
+        position: '0.02',
+        position_value: '2000',
+        initial_margin_fraction: '5.00',
+        unrealized_pnl: '30',
+      }),
+    ])
+    expect(result).toMatchObject({ buy: '40', sell: '240' })
+  })
+
+  it('keeps the IMR for a losing isolated position whose loss exceeds its margin', () => {
+    // 3 free − 40 negative equity clamps at 0; the 10 IMR still closes it.
     const result = lighterAvailableToTrade(MARKET, '3', [
       positionOn(MARKET, {
         margin_mode: LT_MARGIN_MODE_ISOLATED,
@@ -147,7 +172,18 @@ describe('lighterAvailableToTrade', () => {
         position_value: '100',
       }),
     ])
-    expect(result).toMatchObject({ buy: '3', sell: '0' })
+    expect(result).toMatchObject({ buy: '3', sell: '10' })
+  })
+
+  it('keeps the IMR when a margin deficit exceeds the released margin', () => {
+    const result = lighterAvailableToTrade(MARKET, '-150', [
+      positionOn(MARKET, {
+        position: '0.02',
+        position_value: '2000',
+        initial_margin_fraction: '5.00',
+      }),
+    ])
+    expect(result).toMatchObject({ buy: '0', sell: '100' })
   })
 
   it('clamps a negative available margin at 0 on the adding side', () => {
