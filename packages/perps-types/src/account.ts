@@ -727,8 +727,7 @@ export interface AccountConfigSetting {
   values: AccountConfigValue[]
   /**
    * `undefined` means the account state carries no answer, so satisfaction is
-   * decided from staging instead. Every `preference` setup step carries a
-   * boolean.
+   * decided from staging instead. Every choice setup step carries a boolean.
    */
   satisfied?: boolean
 }

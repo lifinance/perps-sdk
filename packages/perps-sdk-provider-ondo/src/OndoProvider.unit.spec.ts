@@ -17,6 +17,7 @@ import type {
   SiweActionStep,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   ActivityType,
   FillClassification,
@@ -2105,33 +2106,43 @@ describe('OndoProvider — getAccountSummary', () => {
 describe('OndoProvider — projectConfig', () => {
   const SIWE_DESCRIPTOR: SetupAction = {
     type: ActionType.SIWE_LOGIN,
-    kind: 'approval',
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.API,
     signingMethod: SigningMethod.SIWE,
   }
   const REFERRAL_DESCRIPTOR: SetupAction = {
     type: ActionType.SET_REFERRAL,
-    kind: 'automatic',
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.API,
     signingMethod: SigningMethod.HMAC,
   }
   const TERMS_DESCRIPTOR: SetupAction = {
     type: ActionType.ACCEPT_PROVIDER_TERMS,
-    kind: 'approval',
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.API,
     signingMethod: SigningMethod.SESSION,
   }
   const REGISTER_KEY_DESCRIPTOR: SetupAction = {
     type: ActionType.REGISTER_API_KEY,
-    kind: 'approval',
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.API,
     signingMethod: SigningMethod.SESSION,
   }
 
   const DEPOSIT_DESCRIPTOR: SetupAction = {
     type: ActionType.CREATE_DEPOSIT_ADDRESS,
-    kind: 'approval',
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.API,
     signingMethod: SigningMethod.SESSION,
   }
 
@@ -2505,8 +2516,10 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     setup: [
       {
         type: ActionType.SIWE_LOGIN,
-        kind: 'approval',
-        signers: [PerpsSigner.USER],
+        options: null,
+        revoke: null,
+        signer: PerpsSigner.USER,
+        relay: ActionRelay.API,
         signingMethod: SigningMethod.SIWE,
       },
     ],

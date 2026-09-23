@@ -8,19 +8,19 @@ import type {
   LighterAccountConfig,
   LighterProviderKey,
 } from './account.js'
+import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
-import { ActionType, PerpsSigner, SigningMethod } from './enums.js'
+import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
 import type {
   Param,
-  ParamOption,
   Provider,
   ProviderAction,
   ProviderCategory,
   ProviderFunding,
   SetupAction,
-  SetupKind,
+  SetupOption,
   TradeNotice,
 } from './providers.js'
 
@@ -44,98 +44,100 @@ const usdcAsset: Asset = {
 // the widget renders a single sign-and-submit button.
 const approveAgentSetup: SetupAction = {
   type: ActionType.APPROVE_AGENT,
-  kind: 'approval',
   title: 'Approve agent wallet',
   description:
     'Lets the LI.FI session signer place orders on your behalf without further wallet prompts.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
   signingMethod: SigningMethod.EIP712,
+  relay: ActionRelay.API,
   params: [],
+  options: null,
+  revoke: null,
 }
 
 const approveBuilderFeeSetup: SetupAction = {
   type: ActionType.APPROVE_BUILDER_FEE,
-  kind: 'approval',
   title: 'Approve builder fee',
   description: 'Authorises the builder fee for this provider.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
   signingMethod: SigningMethod.EIP712,
+  relay: ActionRelay.API,
   params: [],
+  options: null,
+  revoke: ActionType.REVOKE_BUILDER_FEE,
 }
 
-// Lighter: REGISTER_API_KEY is the sole setup descriptor — once a session API
-// key is registered, the WASM signer can produce signatures for the rest.
+// Lighter: REGISTER_API_KEY — once a session API key is registered, the WASM
+// signer can produce signatures for the rest.
 const registerApiKeySetup: SetupAction = {
   type: ActionType.REGISTER_API_KEY,
-  kind: 'approval',
   title: 'Register session API key',
   description:
     'Registers a Lighter API key so the session signer can place orders.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
   signingMethod: SigningMethod.WASM_BLOB,
+  relay: ActionRelay.API,
   params: [],
+  options: null,
+  revoke: null,
 }
 
-const dexAbstractionOption: ParamOption = {
-  value: 'dexAbstraction',
-  label: 'Dex abstraction',
+const manualModeOption: SetupOption<ActionType.ACCOUNT_MODE> = {
+  title: 'Manual',
+  type: ActionType.ACCOUNT_MODE,
+  params: { mode: 'disabled' },
 }
 
-// Hyperliquid: ACCOUNT_MODE is a preference descriptor — the user can toggle
-// abstraction variants but trading is never blocked on the selection.
+// Hyperliquid: ACCOUNT_MODE is a USER-signed choice with no default — the SDK
+// never executes it on the user's behalf.
 const hlAccountModeSetup: SetupAction = {
   type: ActionType.ACCOUNT_MODE,
-  kind: 'preference',
   title: 'Account mode',
-  description:
-    'Choose how this account interacts with Hyperliquid. Defaults to dexAbstraction.',
-  signers: [PerpsSigner.SDK],
+  description: 'Choose how this account interacts with Hyperliquid.',
+  signer: PerpsSigner.USER,
   signingMethod: SigningMethod.EIP712,
-  params: [
+  relay: ActionRelay.API,
+  sequence: 12,
+  options: [
+    manualModeOption,
     {
-      name: 'mode',
-      type: 'string',
-      values: [
-        { value: 'disabled', label: 'Standard' },
-        dexAbstractionOption,
-        { value: 'unifiedAccount', label: 'Unified account' },
-      ],
-      default: dexAbstractionOption,
+      title: 'Unified account',
+      type: ActionType.ACCOUNT_MODE,
+      params: { mode: 'unifiedAccount' },
     },
   ],
+  revoke: null,
 }
 
-const lighterStandardTierOption: ParamOption = {
-  value: 'standard',
-  label: 'Standard',
-}
-
-// Lighter: ACCOUNT_TYPE — fee/latency tier selector. `readOnly: true`
-// demonstrates the disabled-control branch (selection happens elsewhere).
+// Lighter: ACCOUNT_TYPE is an SDK-signed choice the client relays itself; the
+// SDK executes the default option while the step is unsatisfied.
 const lighterAccountTypeSetup: SetupAction = {
   type: ActionType.ACCOUNT_TYPE,
-  kind: 'preference',
   title: 'Account tier',
   description:
     'Premium tier reduces fees and improves matching priority on Lighter.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.SDK,
   signingMethod: SigningMethod.WASM_BLOB,
-  params: [
+  relay: ActionRelay.CLIENT,
+  sequence: 25,
+  options: [
     {
-      name: 'tier',
-      type: 'string',
-      values: [
-        lighterStandardTierOption,
-        { value: 'premium', label: 'Premium' },
-      ],
-      default: lighterStandardTierOption,
-      readOnly: true,
+      title: 'Plus',
+      type: ActionType.ACCOUNT_TYPE,
+      params: { tier: 'plus' },
+      default: true,
+    },
+    {
+      title: 'Premium',
+      type: ActionType.ACCOUNT_TYPE,
+      params: { tier: 'premium' },
     },
   ],
+  revoke: null,
 }
 
 // Provider exercising the setup array with real-world entries: Hyperliquid has
-// two approval gates and one preference.
+// two approval gates and one choice.
 const hyperliquidProvider: Provider = {
   key: 'hyperliquid',
   name: 'Hyperliquid',
@@ -146,8 +148,15 @@ const hyperliquidProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
       signingMethod: SigningMethod.EIP712,
+      relay: ActionRelay.API,
+    },
+    {
+      type: ActionType.REVOKE_BUILDER_FEE,
+      signer: PerpsSigner.USER,
+      signingMethod: SigningMethod.EIP712,
+      relay: ActionRelay.API,
     },
   ],
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
@@ -157,7 +166,7 @@ const hyperliquidProvider: Provider = {
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
 
-// Provider exercising the Lighter mapping: one approval gate, one preference.
+// Provider exercising the Lighter mapping: one approval gate, one choice.
 const lighterProvider: Provider = {
   key: 'lighter',
   name: 'Lighter',
@@ -169,8 +178,9 @@ const lighterProvider: Provider = {
   actions: [
     {
       type: ActionType.PLACE_ORDER,
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
       signingMethod: SigningMethod.WASM_BLOB,
+      relay: ActionRelay.API,
     },
   ],
   categories: [
@@ -383,17 +393,36 @@ type Equals<X, Y> =
     ? true
     : false
 
-// `Provider.setup` carries the `kind` discriminator; `Provider.actions` stays a
-// plain `ProviderAction[]` with no `kind`.
+// `Provider.setup` carries `options` and `revoke`; `Provider.actions` stays a
+// plain `ProviderAction[]` without them.
 type _SetupFieldShape = Expect<Equals<Provider['setup'], SetupAction[]>>
 type _ActionsFieldShape = Expect<Equals<Provider['actions'], ProviderAction[]>>
-type _SetupKindValues = Expect<
-  Equals<SetupKind, 'approval' | 'automatic' | 'preference'>
+type _SetupOptionsShape = Expect<
+  Equals<SetupAction['options'], SetupOption[] | null>
 >
-type _SetupActionKind = Expect<Equals<SetupAction['kind'], SetupKind>>
-type _ActionsCarryNoKind = Expect<
-  Equals<Extract<keyof Provider['actions'][number], 'kind'>, never>
+type _SetupRevokeShape = Expect<
+  Equals<SetupAction['revoke'], ActionType | null>
 >
+type _SetupOptionsAreRequired = Expect<
+  Equals<
+    Extract<RequiredKeys<SetupAction>, 'options' | 'revoke'>,
+    'options' | 'revoke'
+  >
+>
+type _ActionsCarryNoOptions = Expect<
+  Equals<
+    Extract<keyof Provider['actions'][number], 'options' | 'revoke' | 'kind'>,
+    never
+  >
+>
+type _SetupOptionBindsParams = Expect<
+  Equals<
+    SetupOption<ActionType.ACCOUNT_TYPE>['params'],
+    ActionParamsMap[ActionType.ACCOUNT_TYPE]
+  >
+>
+type _SignerIsSingle = Expect<Equals<ProviderAction['signer'], PerpsSigner>>
+type _RelayShape = Expect<Equals<ProviderAction['relay'], ActionRelay>>
 type _NoOptionsField = Expect<Equals<Extract<keyof Provider, 'options'>, never>>
 
 type _ProviderFundingKeys = Expect<
@@ -461,8 +490,9 @@ type _ProviderActionKeys = Expect<
   Equals<
     keyof ProviderAction,
     | 'type'
-    | 'signers'
+    | 'signer'
     | 'signingMethod'
+    | 'relay'
     | 'title'
     | 'description'
     | 'params'
@@ -555,9 +585,13 @@ export const _fixtures = {
 export type _TypeAssertions = [
   _SetupFieldShape,
   _ActionsFieldShape,
-  _SetupKindValues,
-  _SetupActionKind,
-  _ActionsCarryNoKind,
+  _SetupOptionsShape,
+  _SetupRevokeShape,
+  _SetupOptionsAreRequired,
+  _ActionsCarryNoOptions,
+  _SetupOptionBindsParams,
+  _SignerIsSingle,
+  _RelayShape,
   _NoOptionsField,
   _ProviderFundingKeys,
   _ProviderFundingRatePeriod,
@@ -592,43 +626,52 @@ describe('Provider setup descriptors', () => {
   it('hyperliquid setup gates trading on agent + builder fee approval', () => {
     expect(
       hyperliquidProvider.setup
-        .filter((d) => d.kind === 'approval')
+        .filter((d) => d.options === null)
         .map((d) => d.type)
     ).toEqual([ActionType.APPROVE_AGENT, ActionType.APPROVE_BUILDER_FEE])
   })
 
-  it('hyperliquid carries ACCOUNT_MODE as the only preference step', () => {
+  it('hyperliquid carries ACCOUNT_MODE as the only choice step', () => {
     expect(
       hyperliquidProvider.setup
-        .filter((d) => d.kind === 'preference')
+        .filter((d) => d.options !== null)
         .map((d) => d.type)
     ).toEqual([ActionType.ACCOUNT_MODE])
   })
 
+  it('hyperliquid builder fee revokes through a declared action', () => {
+    const actionTypes = hyperliquidProvider.actions.map((d) => d.type)
+    expect(approveBuilderFeeSetup.revoke).toBe(ActionType.REVOKE_BUILDER_FEE)
+    expect(actionTypes).toContain(approveBuilderFeeSetup.revoke)
+  })
+
   it('lighter setup gates trading on API key registration only', () => {
     expect(
-      lighterProvider.setup
-        .filter((d) => d.kind === 'approval')
-        .map((d) => d.type)
+      lighterProvider.setup.filter((d) => d.options === null).map((d) => d.type)
     ).toEqual([ActionType.REGISTER_API_KEY])
   })
 
-  it('hl ACCOUNT_MODE param wires the descriptor through to AccountModeParams.mode', () => {
-    const param = hlAccountModeSetup.params?.[0]
-    expect(param?.name).toBe('mode')
-    expect(param?.default?.value).toBe('dexAbstraction')
-    expect(param?.values?.map((o) => o.value)).toEqual([
-      'disabled',
-      'dexAbstraction',
-      'unifiedAccount',
+  it('hl ACCOUNT_MODE options bind AccountModeParams.mode and declare no default', () => {
+    expect(hlAccountModeSetup.params).toBeUndefined()
+    expect(hlAccountModeSetup.options?.map((o) => o.params)).toEqual([
+      { mode: 'disabled' },
+      { mode: 'unifiedAccount' },
     ])
+    expect(hlAccountModeSetup.options?.some((o) => o.default)).toBe(false)
   })
 
-  it('lighter ACCOUNT_TYPE param wires through to AccountTypeParams.tier and is read-only', () => {
-    const param = lighterAccountTypeSetup.params?.[0]
-    expect(param?.name).toBe('tier')
-    expect(param?.readOnly).toBe(true)
-    expect(param?.values?.map((o) => o.value)).toEqual(['standard', 'premium'])
+  it('lighter ACCOUNT_TYPE options bind AccountTypeParams.tier with one default', () => {
+    expect(lighterAccountTypeSetup.relay).toBe(ActionRelay.CLIENT)
+    expect(
+      lighterAccountTypeSetup.options?.filter((o) => o.default === true)
+    ).toEqual([
+      {
+        title: 'Plus',
+        type: ActionType.ACCOUNT_TYPE,
+        params: { tier: 'plus' },
+        default: true,
+      },
+    ])
   })
 
   it('admits providers with an empty setup array', () => {

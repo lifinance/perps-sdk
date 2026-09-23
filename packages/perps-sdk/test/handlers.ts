@@ -19,6 +19,7 @@ import type {
   TermsAcceptanceStatus,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   ActivityType,
   FillClassification,
@@ -72,80 +73,104 @@ export const mockProviders: ProvidersResponse = {
       logoURI: 'https://example.com/hl.png',
       signingMethod: SigningMethod.EIP712,
       active: true,
-      // `setup` gates trading — Hyperliquid requires the user to authorise
-      // the SDK session signer and the LI.FI builder fee before placing
-      // orders, and offers the account mode as a preference.
+      // Mirrors the backend descriptors: the user authorises the SDK session
+      // signer and the LI.FI builder fee, and picks the account mode.
       setup: [
         {
           type: ActionType.APPROVE_AGENT,
-          kind: 'approval',
           title: 'Approve agent wallet',
           description:
             'Authorises the SDK session signer to place orders on your behalf.',
-          signers: [PerpsSigner.USER],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
+          sequence: 10,
           params: [],
+          options: null,
+          revoke: null,
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
-          kind: 'approval',
           title: 'Approve builder fee',
           description: 'Authorises the LI.FI builder fee for this provider.',
-          signers: [PerpsSigner.USER],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
+          sequence: 20,
           params: [],
+          options: null,
+          revoke: ActionType.REVOKE_BUILDER_FEE,
         },
         {
           type: ActionType.ACCOUNT_MODE,
-          kind: 'preference',
           title: 'Account mode',
           description: 'Choose how this account interacts with Hyperliquid.',
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
-          params: [
+          relay: ActionRelay.API,
+          sequence: 12,
+          options: [
             {
-              name: 'mode',
-              type: 'string',
-              values: [
-                { value: 'disabled', label: 'Standard' },
-                { value: 'dexAbstraction', label: 'Dex abstraction' },
-                { value: 'unifiedAccount', label: 'Unified account' },
-              ],
-              default: { value: 'dexAbstraction', label: 'Dex abstraction' },
+              title: 'Manual',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'disabled' },
+            },
+            {
+              title: 'Unified account',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'unifiedAccount' },
+            },
+            {
+              title: 'Portfolio margin',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'portfolioMargin' },
             },
           ],
+          revoke: null,
         },
       ],
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
         {
           type: ActionType.CANCEL_ORDER,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
         {
           type: ActionType.MODIFY_ORDER,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
         {
           type: ActionType.UPDATE_POSITION_MARGIN,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
         {
           type: ActionType.WITHDRAWAL,
-          signers: [PerpsSigner.USER],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
         {
           type: ActionType.SEND_ASSET,
-          signers: [PerpsSigner.USER],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
+        },
+        {
+          type: ActionType.REVOKE_BUILDER_FEE,
+          signer: PerpsSigner.USER,
+          signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
         },
       ],
       categories: [],
@@ -158,30 +183,70 @@ export const mockProviders: ProvidersResponse = {
       signingMethod: SigningMethod.WASM_BLOB,
       active: true,
       // Lighter registers an API key via a WASM blob whose user-consent leg is
-      // an EIP-191 message — no agent, no EIP712. Self-describing setup step.
+      // an EIP-191 message — no agent, no EIP712. The SDK then applies the
+      // default account tier itself.
       setup: [
         {
           type: ActionType.REGISTER_API_KEY,
-          kind: 'approval',
           title: 'Register API key',
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.USER,
           signingMethod: SigningMethod.WASM_BLOB,
+          relay: ActionRelay.API,
+          sequence: 10,
           params: [],
+          options: null,
+          revoke: null,
+        },
+        {
+          type: ActionType.ACCOUNT_MODE,
+          title: 'Account mode',
+          signer: PerpsSigner.SDK,
+          signingMethod: SigningMethod.WASM_BLOB,
+          relay: ActionRelay.API,
+          sequence: 22,
+          options: [
+            {
+              title: 'Simple',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'simpleTradingAccount' },
+            },
+            {
+              title: 'Unified',
+              type: ActionType.ACCOUNT_MODE,
+              params: { mode: 'unifiedTradingAccount' },
+            },
+          ],
+          revoke: null,
         },
         {
           type: ActionType.ACCOUNT_TYPE,
-          kind: 'preference',
           title: 'Account tier',
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.WASM_BLOB,
-          params: [],
+          relay: ActionRelay.CLIENT,
+          sequence: 25,
+          options: [
+            {
+              title: 'Plus',
+              type: ActionType.ACCOUNT_TYPE,
+              params: { tier: 'plus' },
+              default: true,
+            },
+            {
+              title: 'Premium',
+              type: ActionType.ACCOUNT_TYPE,
+              params: { tier: 'premium' },
+            },
+          ],
+          revoke: null,
         },
       ],
       actions: [
         {
           type: ActionType.PLACE_ORDER,
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.WASM_BLOB,
+          relay: ActionRelay.API,
         },
       ],
       categories: [],

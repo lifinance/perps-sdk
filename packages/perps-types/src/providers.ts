@@ -1,5 +1,11 @@
+import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
-import type { ActionType, PerpsSigner, SigningMethod } from './enums.js'
+import type {
+  ActionRelay,
+  ActionType,
+  PerpsSigner,
+  SigningMethod,
+} from './enums.js'
 import type { OhlcvInterval } from './market.js'
 
 /** A fixed option value presented for a provider action parameter. @public */
@@ -32,17 +38,18 @@ export interface Param {
 /**
  * A single provider action. The same shape backs `Provider.setup` and
  * `Provider.actions` — categorisation lives in which array it sits in, not in
- * the type. The core three fields are always present; the rest are
- * presentation/ordering hints provided per-action in the provider's hardcoded
- * metadata.
+ * the type. `type`, `signer`, `signingMethod` and `relay` are always present;
+ * the rest are presentation/ordering hints provided per-action in the
+ * provider's hardcoded metadata.
  * @public
  */
 export interface ProviderAction {
   type: ActionType
-  signers: PerpsSigner[]
+  signer: PerpsSigner
   signingMethod: SigningMethod
+  relay: ActionRelay
   /**
-   * Human label. Drives the card heading in the setup/options modals, and may
+   * Human label. Drives the card heading in the setup modal, and may
    * also front an in-flight trading action ("{title} is working…").
    */
   title?: string
@@ -67,38 +74,33 @@ export interface ProviderAction {
 }
 
 /**
- * How a `Provider.setup` step is fulfilled.
- *
- * `approval`: the user fulfils it by signing the action the SDK stages for it.
- * The step is shown in the setup checklist. It is satisfied once the provider
- * stages no action for it, and it is not re-enterable — a satisfied approval
- * offers the user nothing further to do.
- *
- * `automatic`: the SDK fulfils it on the account's behalf, with no user
- * signature, so its `signers` never include `USER`. The step is never shown.
- * It is satisfied once the provider stages no action for it, and it is not
- * re-enterable.
- *
- * `preference`: the user owns the value. The step is always shown, with the
- * current selection. Satisfaction comes from the account state the provider
- * plugin projects, not from staging. It is re-enterable: the user may change a
- * satisfied preference at any time. While it stays unsatisfied, the SDK
- * applies the descriptor's defaults without user input when every parameter
- * declares a `default` (one of its `values`, when it enumerates any) and
- * `signers` omit `USER`.
+ * One selectable value of a choice setup step, bound to the action that
+ * applies it.
  *
  * @public
  */
-export type SetupKind = 'approval' | 'automatic' | 'preference'
+export interface SetupOption<T extends ActionType = ActionType> {
+  /** Display title, e.g. `'Plus'`. */
+  title: string
+  /** The action executed when the option is chosen. */
+  type: T
+  /** The action's sole param, bound, e.g. `{ tier: 'plus' }`. */
+  params: ActionParamsMap[T]
+  /** Executed by the SDK while the step is unsatisfied and `signer` is `SDK`. */
+  default?: true
+}
 
 /**
- * One `Provider.setup` step: a provider action plus the `kind` that states how
- * the step is fulfilled.
+ * One `Provider.setup` step. A choice step (`options !== null`) declares no
+ * `params`: each option carries its own bound params.
  *
  * @public
  */
 export interface SetupAction extends ProviderAction {
-  kind: SetupKind
+  /** `null` when the step is not a choice. */
+  options: SetupOption[] | null
+  /** A `Provider.actions` entry that undoes the satisfied step, or `null`. */
+  revoke: ActionType | null
 }
 
 /**

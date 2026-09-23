@@ -1,4 +1,5 @@
 import type {
+  AccountConfigSetting,
   AccountResponse,
   AccountSummary,
   ActionParamsMap,
@@ -12,17 +13,17 @@ import type {
   MetaActionType,
   Order,
   OrdersResponse,
-  Param,
   PortfolioHistoryResponse,
   Position,
   PositionMarginConstraints,
   Provider,
   ProviderAction,
   SetupAction,
-  SetupKind,
+  SetupOption,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   META_PROVIDER,
   PerpsErrorCode,
@@ -83,6 +84,7 @@ import type {
   SignActionsContext,
 } from '../types/provider.js'
 import type { WithdrawableBalance } from '../types/withdrawal.js'
+import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
   eip712DomainChainId,
@@ -97,84 +99,111 @@ function sequenceOf(descriptor: ProviderAction): number {
   return descriptor.sequence ?? Number.MAX_SAFE_INTEGER
 }
 
-const SETUP_KINDS: Record<SetupKind, true> = {
-  approval: true,
-  automatic: true,
-  preference: true,
-}
+const SIGNERS: ReadonlySet<string> = new Set(Object.values(PerpsSigner))
+const RELAYS: ReadonlySet<string> = new Set(Object.values(ActionRelay))
 
 /**
- * Reject provider metadata whose setup steps the SDK cannot classify. A step
- * without a known `kind` would otherwise read as satisfied and report a
- * not-onboarded account as ready.
+ * Reject provider metadata whose steps the SDK cannot classify. A step with no
+ * known `signer`, `relay`, `options` or `revoke` would otherwise read as
+ * satisfied and report a not-onboarded account as ready.
  */
-function assertSetupKinds(metadata: Provider): void {
+function assertSetupContract(metadata: Provider): void {
+  const reject = (step: ActionType, problem: string): never => {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Provider '${metadata.key}' step '${step}' ${problem}; this SDK needs a ` +
+        `backend that emits signer, relay, options and revoke.`
+    )
+  }
+  for (const descriptor of [...metadata.setup, ...metadata.actions]) {
+    if (!SIGNERS.has(descriptor.signer)) {
+      reject(descriptor.type, 'declares no known signer')
+    }
+    if (!RELAYS.has(descriptor.relay)) {
+      reject(descriptor.type, 'declares no known relay')
+    }
+  }
+  const actionTypes = new Set(metadata.actions.map((d) => d.type))
   for (const descriptor of metadata.setup) {
-    if (!Object.hasOwn(SETUP_KINDS, descriptor.kind)) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider '${metadata.key}' setup step '${descriptor.type}' declares no known kind ` +
-          `(got '${String(descriptor.kind)}'); this SDK needs a backend that emits SetupAction.kind.`
+    if (descriptor.options === undefined) {
+      reject(descriptor.type, 'declares no options')
+    }
+    if (descriptor.revoke === undefined) {
+      reject(descriptor.type, 'declares no revoke')
+    }
+    if (descriptor.revoke !== null && !actionTypes.has(descriptor.revoke)) {
+      reject(
+        descriptor.type,
+        `revokes with '${descriptor.revoke}', which Provider.actions does not declare`
       )
     }
-    if (
-      descriptor.kind === 'automatic' &&
-      descriptor.signers.includes(PerpsSigner.USER)
-    ) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `Provider '${metadata.key}' setup step '${descriptor.type}' is 'automatic' but USER-signed; ` +
-          `the SDK never signs a USER-signed step on the user's behalf.`
-      )
+    const defaults = (descriptor.options ?? []).filter(
+      (option) => option.default === true
+    )
+    if (defaults.length > 1) {
+      reject(descriptor.type, 'marks more than one option default')
     }
   }
 }
 
-/**
- * Whether the SDK can apply a preference without user input. Every declared
- * parameter must carry a `default`, and a default must be one of the
- * parameter's enumerated `values` when it has any — otherwise applying it can
- * never satisfy the preference and every `checkSetup` would re-apply it.
- */
-function declaresDefault(descriptor: ProviderAction): boolean {
-  const params = descriptor.params ?? []
-  return (
-    params.length > 0 &&
-    params.every(
-      ({ default: fallback, values }) =>
-        fallback !== undefined &&
-        (values === undefined ||
-          values.some((option) => option.value === fallback.value))
-    )
-  )
+function defaultOption(descriptor: SetupAction): SetupOption | undefined {
+  return descriptor.options?.find((option) => option.default === true)
 }
 
 /**
  * Whether the SDK fulfils a pending setup step itself. A USER-signed step is
  * never drained: it would prompt the user's wallet from inside `checkSetup`.
+ * A choice drains only through its `default` option.
  */
 function isDrainable(descriptor: SetupAction): boolean {
-  if (descriptor.signers.includes(PerpsSigner.USER)) {
-    return false
-  }
   return (
-    descriptor.kind === 'automatic' ||
-    (descriptor.kind === 'preference' && declaresDefault(descriptor))
+    descriptor.signer === PerpsSigner.SDK &&
+    (descriptor.options === null || defaultOption(descriptor) !== undefined)
   )
 }
 
-/** `ParamOption.value` is always a string on the wire; parse it per `Param.type`. */
-function parseParamValue(
-  type: Param['type'],
-  value: string
-): string | boolean | number {
-  switch (type) {
-    case 'boolean':
-      return value === 'true'
-    case 'number':
-      return Number(value)
-    case 'string':
-      return value
+/** Only a USER-signed non-choice step is staged for the user to sign. */
+function isStageable(descriptor: SetupAction): boolean {
+  return descriptor.options === null && descriptor.signer === PerpsSigner.USER
+}
+
+function satisfiedTypes(settings: AccountConfigSetting[]): Set<ActionType> {
+  return new Set(
+    settings.filter((setting) => setting.satisfied).map((s) => s.type)
+  )
+}
+
+/** The choice option whose every bound param equals the projected value. */
+function selectedOption(
+  descriptor: SetupAction,
+  settings: AccountConfigSetting[]
+): SetupOption | null {
+  if (descriptor.options === null) {
+    return null
+  }
+  const values =
+    settings.find((setting) => setting.type === descriptor.type)?.values ?? []
+  return (
+    descriptor.options.find((option) => {
+      const bound = Object.entries(option.params)
+      return (
+        bound.length > 0 &&
+        bound.every(([name, value]) =>
+          values.some((v) => v.name === name && v.value === value)
+        )
+      )
+    }) ?? null
+  )
+}
+
+/** Throw the first per-action failure a 200 OK `/executeAction` carried. */
+function assertAllSucceeded(results: ActionResult[]): void {
+  const failure = results.find((r) => !r.success)
+  if (failure) {
+    throw new PerpsError(
+      failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
+      failure.error
+    )
   }
 }
 
@@ -250,7 +279,7 @@ export class PerpsClient {
 
   /**
    * Set or update the end-user's wallet. Used whenever an action's descriptor
-   * names the user wallet in its `signers` list. Pass undefined to clear.
+   * names `PerpsSigner.USER` as its `signer`. Pass undefined to clear.
    *
    * @public
    */
@@ -301,7 +330,7 @@ export class PerpsClient {
       error.tool = '@lifi/perps-sdk'
       throw error
     }
-    assertSetupKinds(metadata)
+    assertSetupContract(metadata)
     return metadata
   }
 
@@ -334,7 +363,7 @@ export class PerpsClient {
    * Ask the provider plugin for the signer-bearing wire fields of `action` —
    * the on-wire `signerAddress` and any signer-derived params (e.g.
    * Hyperliquid's `agentAddress` for `APPROVE_AGENT`). Forwards the descriptor's
-   * `signers` so the plugin can branch on signer role. Returns empty when the
+   * `signer` so the plugin can branch on signer role. Returns empty when the
    * plugin signs as the user or with a non-EVM credential. Core constructs no
    * `signerAddress` itself; signer identity is plugin-owned.
    */
@@ -350,17 +379,17 @@ export class PerpsClient {
     return plugin.resolveActionRequest(
       descriptor.type,
       address,
-      descriptor.signers
+      descriptor.signer
     )
   }
 
   /**
    * Delegate signing of `actions` to the provider plugin, one call per
    * consecutive run of steps sharing a descriptor. Each call carries that
-   * descriptor's `signingMethod` and `signers`, so a mixed batch signs every
+   * descriptor's `signingMethod` and `signer`, so a mixed batch signs every
    * step with the signer its own descriptor declares; the signed steps come
    * back in the batch's original order. The plugin owns every signing arm and
-   * branches on `signers` internally, reading the end-user's wallet from the
+   * branches on `signer` internally, reading the end-user's wallet from the
    * {@link SignActionsContext} when an arm signs as the user.
    *
    * @throws {PerpsError} When a step's action is not declared by the provider,
@@ -483,9 +512,9 @@ export class PerpsClient {
 
   /**
    * Assemble the per-call context the provider plugin needs in order to sign:
-   * the end-user's wallet and the descriptor's declared `signers`. Core
-   * forwards `signers` as data so the plugin can pick WHO signs; it does not
-   * branch on them. Provider-owned session credentials (the Hyperliquid agent
+   * the end-user's wallet and the descriptor's declared `signer`. Core
+   * forwards `signer` as data so the plugin can pick WHO signs; it does not
+   * branch on it. Provider-owned session credentials (the Hyperliquid agent
    * keypair, Lighter's API key) are resolved inside the provider's
    * `signActions`, not threaded through here.
    *
@@ -503,7 +532,7 @@ export class PerpsClient {
     userWallet?: PerpsClientSigner,
     onProgress?: (progress: SignActionProgress) => void
   ): SignActionsContext {
-    const ctx: SignActionsContext = { signers: descriptor.signers }
+    const ctx: SignActionsContext = { signer: descriptor.signer }
     if (onProgress !== undefined) {
       ctx.onProgress = onProgress
     }
@@ -814,14 +843,15 @@ export class PerpsClient {
   /**
    * Return the setup steps this account must still sign as a flat,
    * self-describing list. Trading is gated on `isReady === true`.
-   * `checklist` carries the renderable onboarding list: every `approval` and
-   * `preference` descriptor with its satisfied state, with not-required
+   * `checklist` carries the renderable onboarding list: every choice step and
+   * every `USER`-signed step with its satisfied state, with not-required
    * conditional steps omitted.
    *
-   * `automatic` descriptors are NEVER returned here — the SDK drains them with
-   * the provider's own credentials. A `preference` is listed but never staged:
-   * the user re-enters it through {@link executeProviderOption}, and the SDK
-   * applies the descriptor's declared default while it stays unsatisfied.
+   * A non-choice `SDK`-signed step is NEVER returned here — the SDK drains it
+   * with the provider's own credentials. A choice is listed but never staged:
+   * the user picks an option through {@link executeProviderOption}. While an
+   * `SDK`-signed choice stays unsatisfied, the SDK executes its `default`
+   * option; a `USER`-signed choice is never executed on the user's behalf.
    *
    * @public
    */
@@ -847,19 +877,15 @@ export class PerpsClient {
       }
     }
 
-    const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
+    const settings = await this.resolveSetupSettings(provider, address)
+    const satisfiedSetup = satisfiedTypes(settings)
     const pendingSetup = metadata.setup.filter(
       (descriptor) => !satisfiedSetup.has(descriptor.type)
     )
 
     const plugin = this.sdkClient.getProvider(provider)
 
-    // Only an `approval` is staged by the generic loop: an `automatic` step is
-    // drained below, and a `preference` is re-entered by the user through
-    // `executeProviderOption` rather than signed off a staged step.
-    const stageable = pendingSetup.filter(
-      (descriptor) => descriptor.kind === 'approval'
-    )
+    const stageable = pendingSetup.filter(isStageable)
 
     // The backend filters already-satisfied setup actions and returns typed
     // data for those still outstanding; each plugin contributes its own
@@ -876,7 +902,7 @@ export class PerpsClient {
     const stagedTypes = new Set(actions.map((step) => step.action))
     const conditionalTypes = new Set(plugin?.conditionalSetupActions ?? [])
     const checklist = metadata.setup
-      .filter((descriptor) => descriptor.kind !== 'automatic')
+      .filter(isUserFacingSetupStep)
       .filter(
         (descriptor) =>
           !conditionalTypes.has(descriptor.type) ||
@@ -886,9 +912,10 @@ export class PerpsClient {
       .map((descriptor) => ({
         descriptor,
         satisfied:
-          descriptor.kind === 'preference'
+          descriptor.options !== null
             ? satisfiedSetup.has(descriptor.type)
             : !stagedTypes.has(descriptor.type),
+        selected: selectedOption(descriptor, settings),
       }))
 
     await this.drainSetup(
@@ -907,33 +934,28 @@ export class PerpsClient {
   }
 
   /**
-   * Resolve setup descriptors already satisfied from the provider's own typed
-   * account config projection. This catches client-held auth state (e.g. Ondo
-   * SIWE/JWT) that the backend cannot observe.
+   * Project the provider's own typed account config onto its setup steps. This
+   * catches client-held auth state (e.g. Ondo SIWE/JWT) that the backend
+   * cannot observe, and carries the current value of each choice.
    */
-  private async resolveSatisfiedSetup(
+  private async resolveSetupSettings(
     provider: string,
     address: Address
-  ): Promise<Set<ActionType>> {
+  ): Promise<AccountConfigSetting[]> {
     const metadata = await this.getProviderMetadata(provider)
     const plugin = this.sdkClient.getProvider(provider)
     if (!plugin || typeof plugin.getAccount !== 'function') {
-      return new Set()
+      return []
     }
     const account = await plugin.getAccount({ address })
-    const settings = plugin.projectConfig(account.config, metadata.setup)
-    return new Set(
-      settings
-        .filter((setting) => setting.satisfied)
-        .map((setting) => setting.type)
-    )
+    return plugin.projectConfig(account.config, metadata.setup)
   }
 
   /**
    * Drain the pending setup steps the SDK fulfils without user input: every
-   * `automatic` step, and every unsatisfied `preference` whose descriptor
-   * declares an admissible default for each parameter; a USER-signed step is
-   * never drained. Each step is built, signed, and executed in
+   * `SDK`-signed non-choice step, and every unsatisfied `SDK`-signed choice
+   * through its `default` option. A choice executes the option's `{ type,
+   * params }` verbatim; a non-choice step is built, signed, and executed in
    * place with the provider's own credentials. A step is deferred while any
    * staged user-facing step with a lower `sequence` is outstanding — it cannot
    * succeed before its prerequisite (e.g. SET_REFERRAL authenticates with the
@@ -957,6 +979,11 @@ export class PerpsClient {
         continue
       }
       try {
+        const option = defaultOption(descriptor)
+        if (option !== undefined) {
+          await this.executeProviderOption({ provider, address, option })
+          continue
+        }
         const steps = await this.buildProviderSetupActions(provider, address, [
           descriptor,
         ])
@@ -1008,22 +1035,6 @@ export class PerpsClient {
       const action = descriptor.type
       const { signerAddress, params: signerParams } =
         await this.resolveActionRequest(provider, descriptor, address)
-      // A preference is only ever built to apply its declared default.
-      const defaults =
-        descriptor.kind === 'preference'
-          ? Object.fromEntries(
-              (descriptor.params ?? []).flatMap((param) =>
-                param.default === undefined
-                  ? []
-                  : [
-                      [
-                        param.name,
-                        parseParamValue(param.type, param.default.value),
-                      ],
-                    ]
-              )
-            )
-          : {}
       const localParams = plugin?.resolveSetupParams
         ? await plugin.resolveSetupParams(action, address)
         : {}
@@ -1033,7 +1044,6 @@ export class PerpsClient {
         signerAddress,
         action,
         params: {
-          ...defaults,
           ...signerParams,
           ...localParams,
         } as Record<string, never>,
@@ -1046,9 +1056,9 @@ export class PerpsClient {
 
   /**
    * Build the unsigned setup `ActionStep`s still outstanding for an account,
-   * ordered by descriptor `sequence`. Only an `approval` step is staged: an
-   * `automatic` step drains inside {@link checkSetup} and a `preference`
-   * carries the user's own selection. The backend filters already-satisfied
+   * ordered by descriptor `sequence`. Only a `USER`-signed non-choice step is
+   * staged: an `SDK`-signed step drains inside {@link checkSetup} and a choice
+   * executes the option the user picks. The backend filters already-satisfied
    * setup; each plugin contributes its own signer-bearing request fields and
    * any local-state params (e.g. Lighter's known pubkey).
    *
@@ -1063,7 +1073,7 @@ export class PerpsClient {
     const actions = await this.buildProviderSetupActions(
       provider,
       address,
-      metadata.setup.filter((descriptor) => descriptor.kind === 'approval')
+      metadata.setup.filter(isStageable)
     )
     return { actions }
   }
@@ -1106,23 +1116,17 @@ export class PerpsClient {
 
     await this.notifyExecuteResults(provider, address, results)
 
-    const failure = results.find((r) => !r.success)
-    if (failure) {
-      throw new PerpsError(
-        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
-        failure.error
-      )
-    }
+    assertAllSucceeded(results)
 
     return { results: { results } }
   }
 
   /**
    * The lowest-`sequence` visible setup step that runs before `descriptor` and
-   * is not satisfied, or `undefined` when nothing blocks it. A `preference`
-   * reads its satisfied state from the plugin projection; an `approval` is
-   * satisfied once the provider stages no action for it, so only the earlier
-   * steps are staged here.
+   * is not satisfied, or `undefined` when nothing blocks it. A choice reads its
+   * satisfied state from the plugin projection; a non-choice step is satisfied
+   * once the provider stages no action for it, so only the earlier steps are
+   * staged here.
    */
   private async findBlockingSetupStep(
     provider: string,
@@ -1132,28 +1136,29 @@ export class PerpsClient {
     const metadata = await this.getProviderMetadata(provider)
     const earlier = metadata.setup
       .filter(
-        (d) => d.kind !== 'automatic' && sequenceOf(d) < sequenceOf(descriptor)
+        (d) =>
+          isUserFacingSetupStep(d) && sequenceOf(d) < sequenceOf(descriptor)
       )
       .sort((a, b) => sequenceOf(a) - sequenceOf(b))
     if (earlier.length === 0) {
       return undefined
     }
 
-    const satisfiedSetup = await this.resolveSatisfiedSetup(provider, address)
+    const satisfiedSetup = satisfiedTypes(
+      await this.resolveSetupSettings(provider, address)
+    )
     const pending = earlier.filter((d) => !satisfiedSetup.has(d.type))
     if (pending.length === 0) {
       return undefined
     }
 
-    const stageable = pending.filter((d) => d.kind === 'approval')
+    const stageable = pending.filter(isStageable)
     const staged =
       stageable.length === 0
         ? []
         : await this.buildProviderSetupActions(provider, address, stageable)
     const stagedTypes = new Set(staged.map((action) => action.action))
-    return pending.find(
-      (d) => d.kind === 'preference' || stagedTypes.has(d.type)
-    )
+    return pending.find((d) => d.options !== null || stagedTypes.has(d.type))
   }
 
   /**
@@ -1168,9 +1173,9 @@ export class PerpsClient {
    * conflict that the caller invalidates on, refetches `checkSetup`, and
    * retries with a fresh step.
    *
-   * A lower-`sequence` step the SDK fulfils itself (a `preference` with an
-   * admissible default) is applied in place first, so a step `checkSetup`
-   * returned behind such a preference stays executable from the cache.
+   * A lower-`sequence` `SDK`-signed choice with a `default` option is executed
+   * in place first, so a step `checkSetup` returned behind such a choice stays
+   * executable from the cache.
    *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors, or when a lower-`sequence` step on the same
@@ -1233,22 +1238,13 @@ export class PerpsClient {
   }
 
   /**
-   * Sign and submit a single preference change (a `preference` setup step such
-   * as Lighter `ACCOUNT_TYPE` or Hyperliquid `ACCOUNT_MODE`) end-to-end,
+   * Execute one option of a choice setup step (Lighter `ACCOUNT_TYPE`,
+   * Hyperliquid `ACCOUNT_MODE`) end-to-end with its bound `{ type, params }`,
    * throwing on a venue rejection.
    *
-   * Preferences are dispatched through the same {@link execute} pipeline as
-   * trades, but unlike a trade a preference change is a single mandatory
-   * action: a per-action `success: false` (returned as a 200 OK) means the
-   * user's selection was rejected and must surface, not be silently dropped.
-   * This wrapper inspects the result and throws a {@link PerpsError} carrying
-   * the venue `error`, giving a preference the same throw contract that setup
-   * has via {@link executeProviderSetupAction}. The only structural difference
-   * is that a preference carries `params` (the selected value) rather than a
-   * pre-staged step.
-   *
-   * `execute` itself is unchanged — it still returns results without throwing,
-   * which the trade hooks rely on for partial-fill handling.
+   * The option runs through the same {@link execute} pipeline as a trade, but
+   * a per-action `success: false` (returned as a 200 OK) means the user's
+   * selection was rejected and must surface, not be silently dropped.
    *
    * @throws {PerpsError} Carrying the venue error when any returned result has
    *   `success: false`, under that result's `errorCode` when the backend
@@ -1257,20 +1253,49 @@ export class PerpsClient {
    *   signer, signing failure).
    * @public
    */
-  async executeProviderOption<T extends ActionType>(params: {
+  async executeProviderOption(params: {
     provider: string
     address: Address
-    action: T
-    params: ActionParamsMap[T]
+    option: SetupOption
   }): Promise<void> {
-    const { results } = await this.execute(params)
-    const failure = results.find((r) => !r.success)
-    if (failure) {
+    const { provider, address, option } = params
+    const { results } = await this.execute({
+      provider,
+      address,
+      action: option.type,
+      params: option.params,
+    })
+    assertAllSucceeded(results)
+  }
+
+  /**
+   * Undo a satisfied setup step by executing its `revoke` action through
+   * create, sign and execute, signed with that action's `Provider.actions`
+   * descriptor. The step stages again on the next {@link checkSetup}.
+   *
+   * @throws {PerpsError} `SDKError` when `step.revoke` is `null`; otherwise
+   *   the errors {@link executeProviderOption} throws.
+   * @public
+   */
+  async executeProviderRevoke(params: {
+    provider: string
+    address: Address
+    step: SetupAction
+  }): Promise<void> {
+    const { provider, address, step } = params
+    if (step.revoke === null) {
       throw new PerpsError(
-        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
-        failure.error
+        PerpsErrorCode.SDKError,
+        `Setup step '${step.type}' for '${provider}' declares no revoke.`
       )
     }
+    const { results } = await this.execute({
+      provider,
+      address,
+      action: step.revoke,
+      params: {},
+    })
+    assertAllSucceeded(results)
   }
 
   /**

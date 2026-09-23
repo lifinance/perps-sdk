@@ -1,8 +1,7 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { isSetupOptionFor, PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   LighterAccountConfig,
-  ProviderAction,
   SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
@@ -17,8 +16,8 @@ function assertNever(value: never): never {
   )
 }
 
-// Wire strings match the backend descriptor's ParamOption values. An unmapped
-// int projects to null.
+// Wire strings match the modes the backend's ACCOUNT_MODE options bind. An
+// unmapped int projects to null.
 const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LT_ACCOUNT_TRADING_MODE_SIMPLE]: 'simpleTradingAccount',
   [LT_ACCOUNT_TRADING_MODE_UNIFIED]: 'unifiedTradingAccount',
@@ -26,23 +25,30 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
 
 /**
  * Resolve the account tier to the wire string `changeAccountTier` accepts.
- * `userTierName` decides it, but only when the ACCOUNT_TYPE descriptor
- * enumerates the string: Lighter owns that vocabulary, so an unrecognised
- * value resolves `null` instead of a mis-reported tier. A descriptor whose
- * parameter carries no `values` array enumerates nothing, so it also resolves
- * `null`. An absent `userTierName` (no `/accountLimits` read) resolves `null`.
+ * `userTierName` decides it, but only when an ACCOUNT_TYPE option binds that
+ * tier: Lighter owns that vocabulary, so an unrecognised value resolves `null`
+ * instead of a mis-reported tier. An absent `userTierName` (no
+ * `/accountLimits` read) resolves `null`.
  */
 export function resolveAccountTier(
-  descriptor: ProviderAction,
+  descriptor: SetupAction,
   userTierName: string | undefined
 ): string | null {
   if (userTierName === undefined) {
     return null
   }
-  const enumerated = descriptor.params?.[0]?.values ?? []
-  return enumerated.some((option) => option.value === userTierName)
+  return boundAccountTiers(descriptor).includes(userTierName)
     ? userTierName
     : null
+}
+
+/** The tiers the ACCOUNT_TYPE step's options bind. */
+export function boundAccountTiers(descriptor: SetupAction): string[] {
+  return (descriptor.options ?? []).flatMap((option) =>
+    isSetupOptionFor(option, ActionType.ACCOUNT_TYPE)
+      ? [option.params.tier]
+      : []
+  )
 }
 
 /**
@@ -65,7 +71,7 @@ export function resolveAccountTier(
  * `Provider.setup` throw at runtime.
  */
 function projectLighterDescriptor(
-  descriptor: ProviderAction,
+  descriptor: SetupAction,
   config: LighterAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
@@ -104,22 +110,25 @@ function projectLighterDescriptor(
     case ActionType.APPROVE_INTEGRATOR:
       return { type: descriptor.type, values: [] }
 
-    // `mode` decodes the raw `account_trading_mode` integer to the descriptor's
-    // wire strings (`unifiedTradingAccount` / `simpleTradingAccount`).
+    // `mode` decodes the raw `account_trading_mode` integer to the wire strings
+    // the options bind (`unifiedTradingAccount` / `simpleTradingAccount`).
     // Unrecognised integers project to `null`.
     case ActionType.ACCOUNT_MODE: {
       const mode = ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null
-      const enumerated = descriptor.params?.[0]?.values ?? []
       return {
         type: descriptor.type,
         values: [{ name: 'mode', value: mode }],
-        satisfied: enumerated.some((option) => option.value === mode),
+        satisfied: (descriptor.options ?? []).some(
+          (option) =>
+            isSetupOptionFor(option, ActionType.ACCOUNT_MODE) &&
+            option.params.mode === mode
+        ),
       }
     }
 
     // An unresolved `tier` projects `null` and reads unsatisfied; while it
-    // stays so the SDK applies the descriptor's declared default, and the user
-    // can still pick a tier.
+    // stays so the SDK executes the default option, and the user can still
+    // pick a tier.
     case ActionType.ACCOUNT_TYPE: {
       const tier = resolveAccountTier(descriptor, config.userTierName)
       return {
@@ -153,6 +162,7 @@ function projectLighterDescriptor(
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
+    case ActionType.REVOKE_BUILDER_FEE:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +

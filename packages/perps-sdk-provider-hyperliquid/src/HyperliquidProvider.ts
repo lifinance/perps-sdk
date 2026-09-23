@@ -252,7 +252,7 @@ export function hyperliquidProvider(
     resolveActionRequest: async (
       action: ActionType,
       address: Address,
-      signers: PerpsSigner[]
+      signer: PerpsSigner
     ): Promise<ActionSignerContribution> => {
       // APPROVE_AGENT is user-signed: the user authorises the agent, so the
       // agent address rides as a param (not signerAddress). The agent is
@@ -262,10 +262,11 @@ export function hyperliquidProvider(
         const agentAddress = await resolveApproveAgentAddress(address)
         return { params: { agentAddress } }
       }
-      // SDK-signed actions (trades, account-mode) carry the agent as the
-      // on-wire signerAddress. User-signed actions (builder-fee, withdrawal)
-      // contribute nothing — core submits under the user's own address.
-      if (signers.includes(PerpsSigner.SDK)) {
+      // SDK-signed actions (trades) carry the agent as the on-wire
+      // signerAddress. User-signed actions (builder-fee, account mode,
+      // withdrawal) contribute nothing — core submits under the user's own
+      // address.
+      if (signer === PerpsSigner.SDK) {
         const agent = await agentStore.get(address)
         return { signerAddress: agent.address }
       }

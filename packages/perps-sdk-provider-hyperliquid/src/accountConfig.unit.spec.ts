@@ -1,5 +1,10 @@
 import type { HyperliquidAccountConfig, SetupAction } from '@lifi/perps-types'
-import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionRelay,
+  ActionType,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
 
@@ -8,64 +13,73 @@ import { projectHyperliquidConfigSettings } from './accountConfig.js'
 // ---------------------------------------------------------------------------
 
 const approveAgentSetup: SetupAction = {
-  kind: 'approval',
+  options: null,
+  revoke: null,
   type: ActionType.APPROVE_AGENT,
   title: 'Approve agent wallet',
   description: 'Authorise the SDK session signer.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
   params: [],
 }
 
 const revokeAgentSetup: SetupAction = {
-  kind: 'approval',
+  options: null,
+  revoke: null,
   type: ActionType.REVOKE_AGENT,
   title: 'Revoke agent wallet',
   description: 'Remove the SDK session signer.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
   params: [],
 }
 
 const approveBuilderFeeSetup: SetupAction = {
-  kind: 'approval',
+  options: null,
+  revoke: null,
   type: ActionType.APPROVE_BUILDER_FEE,
   title: 'Approve builder fee',
   description: 'Authorise the LI.FI builder fee.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
   params: [],
 }
 
 const setReferralSetup: SetupAction = {
-  kind: 'automatic',
+  options: null,
+  revoke: null,
   type: ActionType.SET_REFERRAL,
   title: 'Initialize account via LI.FI',
   description: 'Enable the LI.FI referral code.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
   params: [],
 }
 
+const modeOption = (title: string, mode: string) => ({
+  title,
+  type: ActionType.ACCOUNT_MODE,
+  params: { mode },
+})
+
 const accountModeSetup: SetupAction = {
-  kind: 'preference',
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description: 'Choose how this account interacts with Hyperliquid.',
-  signers: [PerpsSigner.SDK],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
-  params: [
-    {
-      name: 'mode',
-      type: 'string',
-      values: [
-        { value: 'disabled', label: 'Standard' },
-        { value: 'dexAbstraction', label: 'Dex abstraction' },
-        { value: 'unifiedAccount', label: 'Unified account' },
-      ],
-      default: { value: 'dexAbstraction', label: 'Dex abstraction' },
-    },
+  params: [],
+  options: [
+    modeOption('Manual', 'disabled'),
+    modeOption('Dex abstraction', 'dexAbstraction'),
+    modeOption('Unified account', 'unifiedAccount'),
   ],
+  revoke: null,
 }
 
 const baseConfig: HyperliquidAccountConfig = {
@@ -144,16 +158,9 @@ describe('projectHyperliquidConfigSettings', () => {
     // the other two spellings of the same account state.
     const offeredDefault: SetupAction = {
       ...accountModeSetup,
-      params: [
-        {
-          name: 'mode',
-          type: 'string',
-          values: [
-            { value: 'default', label: 'Standard' },
-            { value: 'unifiedAccount', label: 'Unified account' },
-          ],
-          default: { value: 'default', label: 'Standard' },
-        },
+      options: [
+        modeOption('Manual', 'default'),
+        modeOption('Unified account', 'unifiedAccount'),
       ],
     }
     const projectFor = (abstractionMode: string | null) =>
@@ -184,13 +191,7 @@ describe('projectHyperliquidConfigSettings', () => {
     it('keeps a null abstraction unsatisfied when the descriptor offers no off value', () => {
       const onlyUnified: SetupAction = {
         ...offeredDefault,
-        params: [
-          {
-            name: 'mode',
-            type: 'string',
-            values: [{ value: 'unifiedAccount', label: 'Unified account' }],
-          },
-        ],
+        options: [modeOption('Unified account', 'unifiedAccount')],
       }
       expect(
         projectHyperliquidConfigSettings(
@@ -210,11 +211,13 @@ describe('projectHyperliquidConfigSettings', () => {
     // throws rather than silently mis-projecting — this catches descriptor
     // emission bugs loudly.
     const badDescriptor: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.PLACE_ORDER,
       title: 'Place order',
       description: 'Trading action — should not appear here.',
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.EIP712,
       params: [],
     }
@@ -225,9 +228,11 @@ describe('projectHyperliquidConfigSettings', () => {
 
   it('throws for SYNC_FEE_ATTRIBUTION — never a setup descriptor', () => {
     const badDescriptor: SetupAction = {
-      kind: 'automatic',
+      options: null,
+      revoke: null,
       type: ActionType.SYNC_FEE_ATTRIBUTION,
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.HMAC,
       params: [],
     }
@@ -238,11 +243,13 @@ describe('projectHyperliquidConfigSettings', () => {
 
   it('throws for UPDATE_ASSET_COLLATERAL — Lighter-only per-asset action, no Hyperliquid projection', () => {
     const badDescriptor: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.UPDATE_ASSET_COLLATERAL,
       title: 'Update asset collateral',
       description: 'Lighter-only — should not appear here.',
-      signers: [PerpsSigner.USER],
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
@@ -253,11 +260,13 @@ describe('projectHyperliquidConfigSettings', () => {
 
   it('throws for APPROVE_INTEGRATOR — Lighter-only signing action, no Hyperliquid projection', () => {
     const approveIntegratorSetup: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.APPROVE_INTEGRATOR,
       title: 'Approve integrator',
       description: 'Lighter-only — should not appear here.',
-      signers: [PerpsSigner.USER],
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.EIP712,
       params: [],
     }

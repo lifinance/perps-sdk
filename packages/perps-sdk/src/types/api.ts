@@ -16,6 +16,7 @@ import type {
   OrderType,
   PortfolioHistoryRange,
   SetupAction,
+  SetupOption,
   SignedActionStep,
   TimeInForce,
   TriggerOrderInput,
@@ -71,8 +72,8 @@ export interface PerpsConfig {
    */
   providers?: PerpsProviderPlugin[] | ProviderConfigs
   /**
-   * The end-user's wallet, used whenever an action's descriptor names the user
-   * wallet in its `signers` list. Accepts any viem-compatible WalletClient:
+   * The end-user's wallet, used whenever an action's descriptor names
+   * `PerpsSigner.USER` as its `signer`. Accepts any viem-compatible WalletClient:
    *   - Browser wallet: wagmi's useWalletClient() result
    *   - Private key:    createWalletClient({ account: privateKeyToAccount('0x...'), transport: http() })
    *   - Mnemonic:       createWalletClient({ account: mnemonicToAccount('word1 ...'), transport: http() })
@@ -321,6 +322,11 @@ export interface SetupChecklistItem {
   descriptor: SetupAction
   /** Whether the step is already satisfied for this account. */
   satisfied: boolean
+  /**
+   * For a choice step, the option whose bound params match the projected
+   * account value. `null` when none matches or the step is not a choice.
+   */
+  selected: SetupOption | null
 }
 
 /**
@@ -331,10 +337,9 @@ export interface SetupChecklistItem {
  * to the provider's `setup` descriptor, which declares the step's signer and
  * scheme), so no signer-role partition is exposed here.
  *
- * `automatic` setup steps are NEVER included here — the SDK drains them
- * itself. A `preference` step is listed on `checklist` but never staged: it
- * does not gate trading, and the user re-enters it through
- * `PerpsClient.executeProviderOption`.
+ * A non-choice step with `signer: SDK` is NEVER included here — the SDK
+ * drains it itself. A choice step is listed on `checklist` but never staged:
+ * the user picks an option through `PerpsClient.executeProviderOption`.
  *
  * @public
  */
@@ -351,8 +356,8 @@ export interface ProviderSetup {
   /** Whether all setup items are already satisfied (ready to trade) */
   isReady: boolean
   /**
-   * The renderable onboarding list: every `approval` and `preference` setup
-   * descriptor with its satisfied state, ordered by `sequence`. `automatic`
+   * The renderable onboarding list: every choice step and every `USER`-signed
+   * setup step with its satisfied state, ordered by `sequence`. SDK-drained
    * steps and conditional steps that staged no work for this account (see
    * `PerpsProviderPlugin.conditionalSetupActions`) are omitted. Consumers
    * render this list directly instead of joining `Provider.setup` metadata

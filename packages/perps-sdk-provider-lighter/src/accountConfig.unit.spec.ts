@@ -1,5 +1,10 @@
 import type { LighterAccountConfig, SetupAction } from '@lifi/perps-types'
-import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionRelay,
+  ActionType,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { projectLighterConfigSettings } from './accountConfig.js'
 
@@ -8,76 +13,72 @@ import { projectLighterConfigSettings } from './accountConfig.js'
 // ---------------------------------------------------------------------------
 
 const registerApiKeySetup: SetupAction = {
-  kind: 'approval',
+  options: null,
+  revoke: null,
   type: ActionType.REGISTER_API_KEY,
   title: 'Register session API key',
   description: 'Register a Lighter API key.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.USER,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.WASM_BLOB,
   params: [],
 }
 
-// Descriptor with only standard and premium enumerated (plus absent from params).
+const tierOption = (title: string, tier: string) => ({
+  title,
+  type: ActionType.ACCOUNT_TYPE,
+  params: { tier },
+})
+
+const modeOption = (title: string, mode: string) => ({
+  title,
+  type: ActionType.ACCOUNT_MODE,
+  params: { mode },
+})
+
+// Options bind only standard and premium; plus is absent.
 const accountTypeSetup: SetupAction = {
-  kind: 'preference',
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',
   description: 'Select the account tier.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.SDK,
+  relay: ActionRelay.CLIENT,
   signingMethod: SigningMethod.WASM_BLOB,
-  params: [
-    {
-      name: 'tier',
-      type: 'string',
-      values: [
-        { value: 'standard', label: 'Standard' },
-        { value: 'premium', label: 'Premium' },
-      ],
-      default: { value: 'standard', label: 'Standard' },
-    },
+  params: [],
+  options: [
+    { ...tierOption('Standard', 'standard'), default: true },
+    tierOption('Premium', 'premium'),
   ],
+  revoke: null,
 }
 
-// Descriptor with all three tiers enumerated: standard, plus, premium.
 const accountTypeSetupWithPlus: SetupAction = {
   ...accountTypeSetup,
-  params: [
-    {
-      name: 'tier',
-      type: 'string',
-      values: [
-        { value: 'standard', label: 'Standard' },
-        { value: 'plus', label: 'Plus' },
-        { value: 'premium', label: 'Premium' },
-      ],
-      default: { value: 'standard', label: 'Standard' },
-    },
+  options: [
+    { ...tierOption('Standard', 'standard'), default: true },
+    tierOption('Plus', 'plus'),
+    tierOption('Premium', 'premium'),
   ],
 }
 
-const accountTypeSetupWithoutValues: SetupAction = {
+const accountTypeSetupWithoutOptions: SetupAction = {
   ...accountTypeSetup,
-  params: [{ name: 'tier', type: 'string' }],
+  options: [],
 }
 
 const accountModeSetup: SetupAction = {
-  kind: 'preference',
   type: ActionType.ACCOUNT_MODE,
   title: 'Account mode',
   description: 'Unified vs Simple trading account.',
-  signers: [PerpsSigner.USER],
+  signer: PerpsSigner.SDK,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.WASM_BLOB,
-  params: [
-    {
-      name: 'mode',
-      type: 'string',
-      values: [
-        { value: 'simpleTradingAccount', label: 'Simple' },
-        { value: 'unifiedTradingAccount', label: 'Unified' },
-      ],
-      default: { value: 'simpleTradingAccount', label: 'Simple' },
-    },
+  params: [],
+  options: [
+    modeOption('Simple', 'simpleTradingAccount'),
+    modeOption('Unified', 'unifiedTradingAccount'),
   ],
+  revoke: null,
 }
 
 const baseConfig: LighterAccountConfig = {
@@ -110,7 +111,7 @@ describe('projectLighterConfigSettings', () => {
     ])
   })
 
-  it('projects the "plus" tier string once the descriptor enumerates it', () => {
+  it('projects the "plus" tier string once an option binds it', () => {
     const result = projectLighterConfigSettings(
       { ...baseConfig, userTierName: 'plus' },
       [accountTypeSetupWithPlus]
@@ -140,7 +141,7 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBe('standard')
   })
 
-  it('projects a tier string the descriptor does not enumerate to null', () => {
+  it('projects a tier string no option binds to null', () => {
     const result = projectLighterConfigSettings(
       { ...baseConfig, userTierName: 'plus' },
       [accountTypeSetup]
@@ -148,10 +149,10 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
-  it('projects a tier string to null when the descriptor parameter carries no values array', () => {
+  it('projects a tier string to null when the descriptor binds no tier options', () => {
     const result = projectLighterConfigSettings(
       { ...baseConfig, userTierName: 'plus' },
-      [accountTypeSetupWithoutValues]
+      [accountTypeSetupWithoutOptions]
     )
     expect(result[0].values[0].value).toBeNull()
   })
@@ -164,7 +165,7 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
-  it('reads ACCOUNT_TYPE unsatisfied when the descriptor does not enumerate the tier', () => {
+  it('reads ACCOUNT_TYPE unsatisfied when no option binds the tier', () => {
     expect(
       projectLighterConfigSettings({ ...baseConfig, userTierName: 'plus' }, [
         accountTypeSetup,
@@ -231,17 +232,10 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBeNull()
   })
 
-  it('reads ACCOUNT_MODE unsatisfied when the descriptor does not enumerate the mode', () => {
+  it('reads ACCOUNT_MODE unsatisfied when no option binds the mode', () => {
     const simpleOnlyModeSetup: SetupAction = {
       ...accountModeSetup,
-      params: [
-        {
-          name: 'mode',
-          type: 'string',
-          values: [{ value: 'simpleTradingAccount', label: 'Simple' }],
-          default: { value: 'simpleTradingAccount', label: 'Simple' },
-        },
-      ],
+      options: [modeOption('Simple', 'simpleTradingAccount')],
     }
     expect(
       projectLighterConfigSettings({ ...baseConfig, accountTradingMode: 1 }, [
@@ -274,11 +268,13 @@ describe('projectLighterConfigSettings', () => {
   it('throws when a descriptor type is not valid on Lighter setup', () => {
     // APPROVE_AGENT is HL-only; on Lighter it's a descriptor-emission bug.
     const badDescriptor: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.APPROVE_AGENT,
       title: 'Approve agent',
       description: 'HL-only — should not appear here.',
-      signers: [PerpsSigner.USER],
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.EIP712,
       params: [],
     }
@@ -289,9 +285,11 @@ describe('projectLighterConfigSettings', () => {
 
   it('throws for SYNC_FEE_ATTRIBUTION — never a setup descriptor', () => {
     const badDescriptor: SetupAction = {
-      kind: 'automatic',
+      options: null,
+      revoke: null,
       type: ActionType.SYNC_FEE_ATTRIBUTION,
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.HMAC,
       params: [],
     }
@@ -302,11 +300,13 @@ describe('projectLighterConfigSettings', () => {
 
   it('throws for UPDATE_ASSET_COLLATERAL — a runtime per-asset action, never a setup descriptor', () => {
     const badDescriptor: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.UPDATE_ASSET_COLLATERAL,
       title: 'Update asset collateral',
       description: 'Runtime toggle — should not appear here.',
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
@@ -317,11 +317,13 @@ describe('projectLighterConfigSettings', () => {
 
   it('projects SET_REFERRAL satisfaction from config.referralPresent', () => {
     const setReferralSetup: SetupAction = {
-      kind: 'automatic',
+      options: null,
+      revoke: null,
       type: ActionType.SET_REFERRAL,
       title: 'Apply LI.FI Referral',
       description: "Applies LI.FI's referral code to your Lighter account.",
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }
@@ -339,11 +341,13 @@ describe('projectLighterConfigSettings', () => {
 
   it('projects APPROVE_INTEGRATOR setup gate with empty values and no local satisfaction', () => {
     const approveIntegratorSetup: SetupAction = {
-      kind: 'approval',
+      options: null,
+      revoke: null,
       type: ActionType.APPROVE_INTEGRATOR,
       title: 'Authorise LI.FI Fees',
       description: "Authorises LI.FI's integrator account to collect fees.",
-      signers: [PerpsSigner.SDK],
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.API,
       signingMethod: SigningMethod.WASM_BLOB,
       params: [],
     }

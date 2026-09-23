@@ -35,7 +35,7 @@ export function userEip712TargetChainId(
 ): number | undefined {
   if (
     descriptor.signingMethod !== SigningMethod.EIP712 ||
-    !descriptor.signers.includes(PerpsSigner.USER)
+    descriptor.signer !== PerpsSigner.USER
   ) {
     return undefined
   }

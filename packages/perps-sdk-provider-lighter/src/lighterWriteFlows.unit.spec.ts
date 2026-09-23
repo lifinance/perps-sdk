@@ -5,6 +5,7 @@ import {
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
+  ActionRelay,
   ActionType,
   PerpsErrorCode,
   PerpsSigner,
@@ -180,7 +181,7 @@ describe.each([
           return respond(ACCOUNT_PAYLOAD)
         }
         // The pre-order tier assert reads the backend setup descriptors; this
-        // deployment enumerates no account tier, so it asserts nothing.
+        // deployment binds no account tier, so it asserts nothing.
         if (u.includes('/perps/providers')) {
           return respond({ providers: [] })
         }
@@ -346,7 +347,7 @@ describe('lighterProvider() — custom generic storage', () => {
           return respond(ACCOUNT_PAYLOAD)
         }
         // The pre-order tier assert reads the backend setup descriptors; this
-        // deployment enumerates no account tier, so it asserts nothing.
+        // deployment binds no account tier, so it asserts nothing.
         if (u.includes('/perps/providers')) {
           return respond({ providers: [] })
         }
@@ -391,21 +392,25 @@ describe('lighterProvider() — custom generic storage', () => {
 
 describe('lighterProvider() — pre-sign account tier gate', () => {
   const accountTypeSetup: SetupAction = {
-    kind: 'preference',
     type: ActionType.ACCOUNT_TYPE,
-    signers: [PerpsSigner.SDK],
+    signer: PerpsSigner.SDK,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.WASM_BLOB,
-    params: [
+    params: [],
+    options: [
       {
-        name: 'tier',
-        type: 'string',
-        values: [
-          { value: 'premium', label: 'Premium' },
-          { value: 'plus', label: 'Plus' },
-        ],
-        default: { value: 'premium', label: 'Premium' },
+        title: 'Premium',
+        type: ActionType.ACCOUNT_TYPE,
+        params: { tier: 'premium' },
+        default: true,
+      },
+      {
+        title: 'Plus',
+        type: ActionType.ACCOUNT_TYPE,
+        params: { tier: 'plus' },
       },
     ],
+    revoke: null,
   }
 
   const cancelOrderStep: WasmBlobActionStep = {
@@ -495,7 +500,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     return provider
   }
 
-  it('refuses an order for a tier the descriptor does not enumerate, before any signature', async () => {
+  it('refuses an order for a tier no ACCOUNT_TYPE option binds, before any signature', async () => {
     accountLimits = () => accountLimitsWith('standard')
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
@@ -510,7 +515,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     expect(sign).not.toHaveBeenCalled()
   })
 
-  it('signs an order for an enumerated tier', async () => {
+  it('signs an order for an option-bound tier', async () => {
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
 

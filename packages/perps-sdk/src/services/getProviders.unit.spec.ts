@@ -25,10 +25,10 @@ describe('getProviders', () => {
 
     expect(result.providers[0].setup).toBeDefined()
     expect(result.providers[0].setup).toHaveLength(3)
-    expect(result.providers[0].setup.map((d) => d.kind)).toEqual([
-      'approval',
-      'approval',
-      'preference',
+    expect(result.providers[0].setup.map((d) => d.options !== null)).toEqual([
+      false,
+      false,
+      true,
     ])
   })
 

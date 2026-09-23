@@ -1,5 +1,10 @@
 import type { OndoAccountConfig, SetupAction } from '@lifi/perps-types'
-import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionRelay,
+  ActionType,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { projectOndoConfigSettings } from './accountConfig.js'
 
@@ -14,8 +19,10 @@ const baseConfig: OndoAccountConfig = {
 
 const syncFeeAttributionDescriptor: SetupAction = {
   type: ActionType.SYNC_FEE_ATTRIBUTION,
-  kind: 'automatic',
-  signers: [PerpsSigner.SDK],
+  options: null,
+  revoke: null,
+  signer: PerpsSigner.SDK,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.HMAC,
   params: [],
 }

@@ -247,7 +247,10 @@ export {
 } from './utils/positionMath.js'
 export type { ScaleToIntegerPolicy } from './utils/scaleToInteger.js'
 export { scaleToInteger } from './utils/scaleToInteger.js'
-export { selectUserSetupActions } from './utils/setupActions.js'
+export {
+  isSetupOptionFor,
+  selectUserSetupActions,
+} from './utils/setupActions.js'
 export {
   signTypedData,
   signTypedDataWithSigner,

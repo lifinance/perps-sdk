@@ -65,6 +65,7 @@ import {
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
+  boundAccountTiers,
   projectLighterConfigSettings,
   resolveAccountTier,
 } from './accountConfig.js'
@@ -811,8 +812,8 @@ export const createLighterProvider = (
   }
 
   /**
-   * Refuse an order signature for a tier the ACCOUNT_TYPE descriptor does not
-   * accept. An unreadable descriptor or tier fails open: the venue itself
+   * Refuse an order signature for a tier no ACCOUNT_TYPE option binds. An
+   * unreadable descriptor or tier fails open: the venue itself
    * rejects an ineligible account with body code 21520.
    */
   const assertOrderTier = async (address: Address): Promise<void> => {
@@ -831,8 +832,10 @@ export const createLighterProvider = (
       )
       return
     }
-    const enumerated = descriptor?.params?.[0]?.values ?? []
-    if (descriptor === undefined || enumerated.length === 0) {
+    if (
+      descriptor === undefined ||
+      boundAccountTiers(descriptor).length === 0
+    ) {
       return
     }
     let userTierName: string | undefined
