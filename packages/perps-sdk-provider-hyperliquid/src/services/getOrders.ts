@@ -1,8 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
   createWarnOnce,
-  ExplorerChainId,
-  explorerTxUrl,
   getMarketRegistry,
   isActiveOrderStatus,
   type MarketRegistry,
@@ -14,34 +12,21 @@ import type { MarketDisplay, Order, OrdersResponse } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
-  HlExplorerTx,
   HlFrontendOpenOrders,
   HlHistoricalOrders,
   HlTwapHistoryEntry,
 } from '../types/index.js'
-import {
-  assetIsOutcome,
-  fetchUserTransactions,
-  mapOrder,
-  matchOrderActionHash,
-  perpsDexNames,
-} from '../utils/index.js'
-import {
-  hlInfoOptions,
-  type InfoRequestOptions,
-  infoRequest,
-} from '../utils/infoClient.js'
+import { withExplorerLinks } from '../utils/explorer.js'
+import { assetIsOutcome, mapOrder, perpsDexNames } from '../utils/index.js'
+import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
 
 const warn = createWarnOnce()
 
-const warnOnce = (key: string, detail?: string): void => {
-  warn(
-    key,
-    `[${PROVIDER_KEY}] ${detail === undefined ? key : `${key}: ${detail}`}`
-  )
+const warnOnce = (key: string): void => {
+  warn(key, `[${PROVIDER_KEY}] ${key}`)
 }
 
 /**
@@ -71,42 +56,6 @@ const mapRow = (
     warnOnce(`dropped order row: ${error.message}`)
     return undefined
   }
-}
-
-/**
- * Set `explorerLink` on each row whose placement transaction the explorer
- * window still holds. One explorer read serves the whole page, and it is
- * skipped when no row carries a client order id to match on. The link is
- * supplementary, so an explorer failure warns and leaves the rows unlinked
- * instead of failing the order read.
- */
-const withExplorerLinks = async (
-  orders: Order[],
-  address: string,
-  options: InfoRequestOptions
-): Promise<Order[]> => {
-  if (!orders.some((order) => order.clientOrderId !== undefined)) {
-    return orders
-  }
-  let txs: HlExplorerTx[]
-  try {
-    txs = await fetchUserTransactions(address, options)
-  } catch (error) {
-    if (!(error instanceof PerpsError)) {
-      throw error
-    }
-    // The message stays out of the key: a transport failure names hosts and
-    // ports, so keying on it would let the dedupe set grow without bound.
-    warnOnce('explorer link lookup failed', error.message)
-    return orders
-  }
-  return orders.map((order) => {
-    const explorerLink = explorerTxUrl(
-      ExplorerChainId.HYPERLIQUID,
-      matchOrderActionHash(txs, order)
-    )
-    return explorerLink === undefined ? order : { ...order, explorerLink }
-  })
 }
 
 /** Read regular, trigger, and TWAP orders from the requested lifecycle feeds. */

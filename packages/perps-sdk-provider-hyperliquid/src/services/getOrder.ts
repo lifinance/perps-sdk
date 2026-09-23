@@ -12,6 +12,7 @@ import type {
   HlOrderStatusResponse,
   HlTwapHistoryEntry,
 } from '../types/index.js'
+import { withExplorerLinks } from '../utils/explorer.js'
 import { assetIsOutcome, mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 
@@ -47,17 +48,18 @@ export const getOrder = async (
     throw err
   }
 
+  const infoOpts = hlInfoOptions(client, options)
   const status = await infoRequest<HlOrderStatusResponse>(
     apiUrl,
     { type: 'orderStatus', user: params.address, oid },
-    hlInfoOptions(client, options)
+    infoOpts
   )
 
   if (status.status !== 'order') {
     const history = await infoRequest<HlTwapHistoryEntry[]>(
       apiUrl,
       { type: 'twapHistory', user: params.address },
-      hlInfoOptions(client, options)
+      infoOpts
     )
     const twap = history.find(
       (entry) =>
@@ -81,5 +83,10 @@ export const getOrder = async (
 
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   await registry.sync()
-  return mapOrder(status.order, registry.require(status.order.order.coin))
+  const order = mapOrder(
+    status.order,
+    registry.require(status.order.order.coin)
+  )
+  const [linked] = await withExplorerLinks([order], params.address, infoOpts)
+  return linked
 }
