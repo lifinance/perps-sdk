@@ -134,7 +134,9 @@ on every other row, and no WebSocket channel updates it.
 
 - Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
   sub-dex.
-- Lighter: the account's `available_balance`.
+- Lighter: the account's `available_balance` on the settlement-asset row, and
+  `0` on every other asset's row, since a category transfer moves only the
+  settlement asset.
 - Ondo: the `/v1/perps/balance` `withdrawableMargin`.
 
 `PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
