@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 20.1.0
+
+### Minor Changes
+
+- [#512](https://github.com/lifinance/perps-sdk/pull/512) [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `transferable` field to `Balance`, set on each perps-category collateral row: the amount the venue releases from that category in a category transfer. Hyperliquid reads it per sub-dex from `clearinghouseState.withdrawable`, Lighter from `available_balance` on the settlement-asset row (`0` on every other asset's row, since a category transfer moves only the settlement asset), and Ondo from `withdrawableMargin`. The value is always from `0` to the row's `units`.
+
+### Patch Changes
+
+- Updated dependencies [[`1c0cd4a`](https://github.com/lifinance/perps-sdk/commit/1c0cd4abb7755c07a0e485ffa86eaafc551ea4c7), [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f)]:
+  - @lifi/perps-types@16.1.0
+
 ## 20.0.0
 
 ### Major Changes

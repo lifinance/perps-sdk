@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 29.1.0
+
+### Minor Changes
+
+- [#512](https://github.com/lifinance/perps-sdk/pull/512) [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `transferable` field to `Balance`, set on each perps-category collateral row: the amount the venue releases from that category in a category transfer. Hyperliquid reads it per sub-dex from `clearinghouseState.withdrawable`, Lighter from `available_balance` on the settlement-asset row (`0` on every other asset's row, since a category transfer moves only the settlement asset), and Ondo from `withdrawableMargin`. The value is always from `0` to the row's `units`.
+
+### Patch Changes
+
+- [#511](https://github.com/lifinance/perps-sdk/pull/511) [`1293239`](https://github.com/lifinance/perps-sdk/commit/1293239e7d55eb6a5463002fc28a108c7403681a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter `getAccount` perps `collateralBalances` rows now report the perps-route holding: one row for each asset with a `margin_balance` above zero, priced like the spot rows. An account whose open positions use all the free margin now shows its collateral. Previously the single row carried `available_balance` (free margin). A row can now be larger than the free margin, and a non-settlement row carries the asset-registry descriptor (`id` is the venue `asset_id`). For buying power, or a transfer or withdraw maximum, read `AccountSummary.availableMargin`.
+
+- Updated dependencies [[`1c0cd4a`](https://github.com/lifinance/perps-sdk/commit/1c0cd4abb7755c07a0e485ffa86eaafc551ea4c7), [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f)]:
+  - @lifi/perps-types@16.1.0
+
 ## 29.0.0
 
 ### Major Changes
