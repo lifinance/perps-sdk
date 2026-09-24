@@ -63,7 +63,7 @@ const account = (
   provider,
   address: '0x0000000000000000000000000000000000000001',
   balances,
-  collateralBalances: [balance(availableBalance)],
+  collateralBalances: [balance(totalAssetValue)],
   positions: [],
   marginUsed: '0',
   unrealizedPnl: '0',

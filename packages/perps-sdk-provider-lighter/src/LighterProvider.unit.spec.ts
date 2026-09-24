@@ -1339,6 +1339,33 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     )
   })
 
+  it.each([
+    '',
+    'n/a',
+  ])('rejects a malformed margin_balance (%j)', async (marginBalance) => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              ...ACCOUNT_WITH_SPOT.accounts[0].assets[0],
+              margin_balance: marginBalance,
+            },
+            ACCOUNT_WITH_SPOT.accounts[0].assets[1],
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /margin_balance/
+    )
+  })
+
   it('resolves spot balance assets from the backend asset registry by asset_id, carrying their logoURI', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
@@ -1447,6 +1474,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       },
     ])
     expect(account.balances).toEqual([])
+    expect(account.config).toMatchObject({ availableBalance: '0.000000' })
   })
 
   it('omits zero-unit spot holdings', async () => {
@@ -1647,6 +1675,46 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     await expect(balanceOf('ETH')).rejects.toBeInstanceOf(PerpsError)
   })
 
+  it('rejects the account read when a margin-only asset has an unparsable spot mark', async () => {
+    const LINK_MARGIN_ACCOUNT = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              symbol: 'LINK',
+              asset_id: 5,
+              balance: '0',
+              locked_balance: '0',
+              margin_balance: '4',
+            },
+          ],
+        },
+      ],
+    }
+    overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(CONTEXT)
+      }
+      if (url.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_SPOT)
+      }
+      if (url.includes('/api/v1/account?')) {
+        return respond(LINK_MARGIN_ACCOUNT)
+      }
+      return undefined
+    })
+    const provider = lighterProvider()
+    provider.bind({
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /markPrice/
+    )
+  })
+
   it('gives each asset with a margin_balance its own collateral row, priced like the spot rows', async () => {
     const MARGIN_ACCOUNT = {
       ...ACCOUNT_WITH_SPOT,
@@ -1729,7 +1797,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
             balance: '10',
             locked_balance: '0',
             margin_balance: '10',
-            margin_mode: 0,
+            margin_mode: 'disabled',
           },
           {
             symbol: 'AAPL',
@@ -1737,7 +1805,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
             balance: '2',
             locked_balance: '0',
             margin_balance: '0',
-            margin_mode: 1,
+            margin_mode: 'enabled',
           },
         ],
       },
