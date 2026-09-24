@@ -155,7 +155,9 @@ export interface AccountResponse {
   balances: Balance[]
   /**
    * SDK-determined collateral subset; non-zero `units` only. An entry is a
-   * held quote-asset balance, or a provider-computed available-margin figure.
+   * held collateral balance: it can be a non-quote asset and can be unpriced
+   * (`price` absent, `valueUsd` `'0'`). It is not buying power; read
+   * {@link AccountSummary.availableMargin} for that.
    */
   collateralBalances: Balance[]
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */

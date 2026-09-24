@@ -63,7 +63,7 @@ const account = (
   provider,
   address: '0x0000000000000000000000000000000000000001',
   balances,
-  collateralBalances: [balance(availableBalance)],
+  collateralBalances: [balance(totalAssetValue)],
   positions: [],
   marginUsed: '0',
   unrealizedPnl: '0',
@@ -119,7 +119,7 @@ describe('getAccountSummary', () => {
 
   it('counts the settlement token once per route and never adds the collateral row', () => {
     // total_asset_value carries the perps-route USDC; the spot row carries the
-    // spot-route USDC; the collateral row (800) is buying power inside
+    // spot-route USDC; the collateral row is the perps-route holding inside
     // total_asset_value.
     const summary = getAccountSummary(
       account('800', '1000', [balance('103.00085138124')]),

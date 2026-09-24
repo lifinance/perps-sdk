@@ -42,6 +42,7 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  Asset,
   AvailableToTrade,
   Balance,
   Fill,
@@ -97,6 +98,7 @@ import {
 } from './signers/signActions.js'
 import type {
   LtAccount,
+  LtAccountAsset,
   LtAccountLimits,
   LtAccountOrdersResponse,
   LtAccountPnL,
@@ -866,63 +868,71 @@ export const createLighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      const availableBalance = toRequiredBig(
-        account.available_balance,
-        'available_balance'
-      )
-      // An underwater account reports no buying power. That is a margin
-      // deficit, not a holding, so it carries no collateral row either.
-      const collateralBalances: Balance[] = availableBalance.gt(0)
-        ? [
-            {
-              categoryId: perpsCategory?.id ?? providerKey,
-              asset:
-                perpsCategory?.quoteAsset ??
-                lighterAsset(
-                  collateral.displaySymbol,
-                  collateral.displaySymbol,
-                  providerKey
-                ),
-              units: availableBalance.toString(),
-              valueUsd: availableBalance.toString(),
-              price: '1',
-            },
-          ]
-        : []
-      // Spot token holdings — non-collateral. The instance's settlement asset
-      // is valued 1:1; an asset no spot market prices keeps a zero USD value.
+      // Rejects a malformed wire value before `config` carries it verbatim.
+      toRequiredBig(account.available_balance, 'available_balance')
+      // Each asset has a spot route (`balance`) and a perps route
+      // (`margin_balance`). The instance's settlement asset is valued 1:1; an
+      // asset no spot market prices keeps a zero USD value.
       const heldAssets = account.assets.filter((asset) =>
         toRequiredBig(asset.balance, 'balance').gt(0)
+      )
+      const marginAssets = account.assets.filter((asset) =>
+        toRequiredBig(asset.margin_balance, 'margin_balance').gt(0)
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
         spotCategoryId,
         prices,
         new Set(
-          heldAssets
+          [...heldAssets, ...marginAssets]
             .filter((a) => a.asset_id !== collateral.assetIndex)
             .map((a) => String(a.asset_id))
         )
       )
-      const balances: Balance[] = heldAssets.map((a) => {
-        const assetId = String(a.asset_id)
+      const toBalance = (
+        a: LtAccountAsset,
+        categoryId: string,
+        asset: Asset,
+        units: string
+      ): Balance => {
         const price =
           a.asset_id === collateral.assetIndex
             ? new Big(1)
-            : spotPrices.get(assetId)
+            : spotPrices.get(String(a.asset_id))
         return {
-          categoryId: spotCategoryId,
-          asset:
-            assetRegistry.get(assetId) ??
-            lighterAsset(assetId, a.symbol, providerKey),
-          units: a.balance,
+          categoryId,
+          asset,
+          units,
           valueUsd:
-            price === undefined
-              ? '0'
-              : toRequiredBig(a.balance, 'balance').times(price).toFixed(),
+            price === undefined ? '0' : new Big(units).times(price).toFixed(),
           ...(price === undefined ? {} : { price: price.toFixed() }),
         }
-      })
+      }
+      const registryAsset = (a: LtAccountAsset): Asset =>
+        assetRegistry.get(String(a.asset_id)) ??
+        lighterAsset(String(a.asset_id), a.symbol, providerKey)
+      // The perps category names the settlement asset by its quote asset, so
+      // the settlement row carries that descriptor rather than the spot one.
+      const settlementAsset =
+        perpsCategory?.quoteAsset ??
+        lighterAsset(
+          collateral.displaySymbol,
+          collateral.displaySymbol,
+          providerKey
+        )
+      const collateralBalances: Balance[] = marginAssets.map((a) =>
+        toBalance(
+          a,
+          perpsCategory?.id ?? providerKey,
+          a.asset_id === collateral.assetIndex
+            ? settlementAsset
+            : registryAsset(a),
+          a.margin_balance
+        )
+      )
+      const balances: Balance[] = heldAssets.map((a) =>
+        toBalance(a, spotCategoryId, registryAsset(a), a.balance)
+      )
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

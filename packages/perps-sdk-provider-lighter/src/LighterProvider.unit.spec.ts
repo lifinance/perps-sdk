@@ -1247,14 +1247,16 @@ describe('LighterProvider — getAccount balance asset identity', () => {
             asset_id: 3,
             balance: '10',
             locked_balance: '0',
-            margin_mode: 0,
+            margin_balance: '60',
+            margin_mode: 'disabled',
           },
           {
             symbol: 'BTC',
             asset_id: 0,
             balance: '2',
             locked_balance: '0',
-            margin_mode: 1,
+            margin_balance: '0',
+            margin_mode: 'enabled',
           },
         ],
       },
@@ -1306,10 +1308,17 @@ describe('LighterProvider — getAccount balance asset identity', () => {
       displaySymbol: 'USDC',
       logoURI: USDC_LOGO,
     })
-    // The collateral row carries the venue's own `available_balance` (100).
-    // Top-level collateral (500) also includes isolated allocations.
-    expect(account.collateralBalances[0].units).toBe('100')
-    expect(account.collateralBalances[0].valueUsd).toBe('100')
+    expect(account.collateralBalances[0].price).toBe('1')
+  })
+
+  it('reports the perps-route margin_balance, not the free margin, when available_balance is positive', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    // available_balance is 100 in the fixture; margin_balance is 60.
+    expect(account.collateralBalances[0].units).toBe('60')
+    expect(account.collateralBalances[0].valueUsd).toBe('60')
   })
 
   it('rejects a malformed available_balance', async () => {
@@ -1327,6 +1336,33 @@ describe('LighterProvider — getAccount balance asset identity', () => {
 
     await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
       /available_balance/
+    )
+  })
+
+  it.each([
+    '',
+    'n/a',
+  ])('rejects a malformed margin_balance (%j)', async (marginBalance) => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              ...ACCOUNT_WITH_SPOT.accounts[0].assets[0],
+              margin_balance: marginBalance,
+            },
+            ACCOUNT_WITH_SPOT.accounts[0].assets[1],
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /margin_balance/
     )
   })
 
@@ -1348,13 +1384,40 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(btc?.price).toBeUndefined()
   })
 
-  it('omits a collateral row when available margin is zero', async () => {
+  it.each([
+    '0',
+    '-20',
+  ])('keeps the margin_balance row when available_balance is %s', async (available) => {
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,
       accounts: [
         {
           ...ACCOUNT_WITH_SPOT.accounts[0],
-          available_balance: '0',
+          available_balance: available,
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances.map((b) => b.units)).toEqual(['60'])
+  })
+
+  it('omits a collateral row for an asset whose margin_balance is zero', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              ...ACCOUNT_WITH_SPOT.accounts[0].assets[0],
+              margin_balance: '0.000000',
+            },
+            ACCOUNT_WITH_SPOT.accounts[0].assets[1],
+          ],
         },
       ],
     }
@@ -1366,13 +1429,28 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(account.collateralBalances).toEqual([])
   })
 
-  it('omits a collateral row when available margin is negative', async () => {
+  it('reports the margin of an account whose open position uses all the free margin', async () => {
+    // `assets` and balance fields captured from live
+    // `GET https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=0x86DBd094BC7436BD106C53a6a137Ab0Ab810A6A9`.
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,
       accounts: [
         {
           ...ACCOUNT_WITH_SPOT.accounts[0],
-          available_balance: '-20',
+          available_balance: '0.000000',
+          collateral: '8.227924',
+          total_asset_value: '7.146448',
+          cross_initial_margin_requirement: '10.997579',
+          assets: [
+            {
+              symbol: 'USDC',
+              asset_id: 3,
+              balance: '0.000000',
+              locked_balance: '0.000000',
+              margin_mode: 'enabled',
+              margin_balance: '8.227924674749',
+            },
+          ],
         },
       ],
     }
@@ -1381,7 +1459,22 @@ describe('LighterProvider — getAccount balance asset identity', () => {
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    expect(account.collateralBalances).toEqual([])
+    expect(account.collateralBalances).toEqual([
+      {
+        categoryId: 'lighter',
+        asset: {
+          providerId: 'lighter',
+          id: 'USDC',
+          displaySymbol: 'USDC',
+          logoURI: USDC_LOGO,
+        },
+        units: '8.227924674749',
+        valueUsd: '8.227924674749',
+        price: '1',
+      },
+    ])
+    expect(account.balances).toEqual([])
+    expect(account.config).toMatchObject({ availableBalance: '0.000000' })
   })
 
   it('omits zero-unit spot holdings', async () => {
@@ -1474,10 +1567,34 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
         assets: [
-          { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
-          { symbol: 'ETH', asset_id: 1, balance: '0.3', locked_balance: '0' },
-          { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
-          { symbol: 'LINK', asset_id: 5, balance: '0', locked_balance: '0' },
+          {
+            symbol: 'USDC',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_balance: '0',
+          },
+          {
+            symbol: 'ETH',
+            asset_id: 1,
+            balance: '0.3',
+            locked_balance: '0',
+            margin_balance: '0',
+          },
+          {
+            symbol: 'BTC',
+            asset_id: 0,
+            balance: '2',
+            locked_balance: '0',
+            margin_balance: '0',
+          },
+          {
+            symbol: 'LINK',
+            asset_id: 5,
+            balance: '0',
+            locked_balance: '0',
+            margin_balance: '0',
+          },
         ],
       },
     ],
@@ -1557,6 +1674,111 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     })
     await expect(balanceOf('ETH')).rejects.toBeInstanceOf(PerpsError)
   })
+
+  it('rejects the account read when a margin-only asset has an unparsable spot mark', async () => {
+    const LINK_MARGIN_ACCOUNT = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              symbol: 'LINK',
+              asset_id: 5,
+              balance: '0',
+              locked_balance: '0',
+              margin_balance: '4',
+            },
+          ],
+        },
+      ],
+    }
+    overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(CONTEXT)
+      }
+      if (url.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_SPOT)
+      }
+      if (url.includes('/api/v1/account?')) {
+        return respond(LINK_MARGIN_ACCOUNT)
+      }
+      return undefined
+    })
+    const provider = lighterProvider()
+    provider.bind({
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient)
+
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
+      /markPrice/
+    )
+  })
+
+  it('gives each asset with a margin_balance its own collateral row, priced like the spot rows', async () => {
+    const MARGIN_ACCOUNT = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              symbol: 'USDC',
+              asset_id: 3,
+              balance: '0',
+              locked_balance: '0',
+              margin_balance: '25.5',
+            },
+            {
+              symbol: 'ETH',
+              asset_id: 1,
+              balance: '0',
+              locked_balance: '0',
+              margin_balance: '0.3',
+            },
+            {
+              symbol: 'BTC',
+              asset_id: 0,
+              balance: '0',
+              locked_balance: '0',
+              margin_balance: '2',
+            },
+          ],
+        },
+      ],
+    }
+    overrideFetch((url) => {
+      if (url.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(CONTEXT)
+      }
+      if (url.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_WITH_SPOT)
+      }
+      if (url.includes('/api/v1/account?')) {
+        return respond(MARGIN_ACCOUNT)
+      }
+      return undefined
+    })
+    const provider = lighterProvider()
+    provider.bind({
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(
+      account.collateralBalances.map(({ asset, units, valueUsd, price }) => ({
+        id: asset.id,
+        units,
+        valueUsd,
+        price,
+      }))
+    ).toEqual([
+      { id: 'USDC', units: '25.5', valueUsd: '25.5', price: '1' },
+      { id: '1', units: '0.3', valueUsd: '814.23', price: '2714.1' },
+      { id: '0', units: '2', valueUsd: '0', price: undefined },
+    ])
+    expect(account.balances).toEqual([])
+  })
 })
 
 describe('LighterProvider — deployment-aware collateral display', () => {
@@ -1574,14 +1796,16 @@ describe('LighterProvider — deployment-aware collateral display', () => {
             asset_id: 3,
             balance: '10',
             locked_balance: '0',
-            margin_mode: 0,
+            margin_balance: '10',
+            margin_mode: 'disabled',
           },
           {
             symbol: 'AAPL',
             asset_id: 4,
             balance: '2',
             locked_balance: '0',
-            margin_mode: 1,
+            margin_balance: '0',
+            margin_mode: 'enabled',
           },
         ],
       },
@@ -1696,8 +1920,20 @@ describe('LighterProvider — getAccount balance categoryId', () => {
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
         assets: [
-          { symbol: 'USDC', asset_id: 3, balance: '10', locked_balance: '0' },
-          { symbol: 'BTC', asset_id: 0, balance: '2', locked_balance: '0' },
+          {
+            symbol: 'USDC',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_balance: '10',
+          },
+          {
+            symbol: 'BTC',
+            asset_id: 0,
+            balance: '2',
+            locked_balance: '0',
+            margin_balance: '0',
+          },
         ],
       },
     ],
