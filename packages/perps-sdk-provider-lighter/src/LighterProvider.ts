@@ -164,6 +164,13 @@ const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 const tickToFeeString = (tick: number): string =>
   String(tick / LIGHTER_FEE_TICK_SCALE)
 
+const transferableWithin = (venueFigure: Big, units: Big): string => {
+  if (venueFigure.lt(0)) {
+    return '0'
+  }
+  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
+}
+
 const projectFeeTier = (
   limits: LtAccountLimits
 ): { maker: string; taker: string } => ({
@@ -868,8 +875,10 @@ export const createLighterProvider = (
         categories.find((c) => c.quoteAsset === null)?.id ??
         LIGHTER_SPOT_CATEGORY_ID
 
-      // Rejects a malformed wire value before `config` carries it verbatim.
-      toRequiredBig(account.available_balance, 'available_balance')
+      const availableBalance = toRequiredBig(
+        account.available_balance,
+        'available_balance'
+      )
       // Each asset has a spot route (`balance`) and a perps route
       // (`margin_balance`). The instance's settlement asset is valued 1:1; an
       // asset no spot market prices keeps a zero USD value.
@@ -920,16 +929,22 @@ export const createLighterProvider = (
           collateral.displaySymbol,
           providerKey
         )
-      const collateralBalances: Balance[] = marginAssets.map((a) =>
-        toBalance(
-          a,
-          perpsCategory?.id ?? providerKey,
-          a.asset_id === collateral.assetIndex
-            ? settlementAsset
-            : registryAsset(a),
-          a.margin_balance
-        )
-      )
+      // A category transfer moves only the settlement asset, capped by the
+      // account's free margin; every other perps-route asset releases none.
+      const collateralBalances: Balance[] = marginAssets.map((a) => {
+        const isSettlement = a.asset_id === collateral.assetIndex
+        return {
+          ...toBalance(
+            a,
+            perpsCategory?.id ?? providerKey,
+            isSettlement ? settlementAsset : registryAsset(a),
+            a.margin_balance
+          ),
+          transferable: isSettlement
+            ? transferableWithin(availableBalance, new Big(a.margin_balance))
+            : '0',
+        }
+      })
       const balances: Balance[] = heldAssets.map((a) =>
         toBalance(a, spotCategoryId, registryAsset(a), a.balance)
       )

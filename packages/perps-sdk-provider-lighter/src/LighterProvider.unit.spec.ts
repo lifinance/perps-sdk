@@ -1319,6 +1319,27 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     // available_balance is 100 in the fixture; margin_balance is 60.
     expect(account.collateralBalances[0].units).toBe('60')
     expect(account.collateralBalances[0].valueUsd).toBe('60')
+    expect(account.collateralBalances[0].transferable).toBe('60')
+  })
+
+  it('caps the settlement row transferable at a smaller available_balance, in fixed-point notation', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          available_balance: '0.0000001',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances[0]).toMatchObject({
+      units: '60',
+      transferable: '0.0000001',
+    })
   })
 
   it('rejects a malformed available_balance', async () => {
@@ -1402,7 +1423,12 @@ describe('LighterProvider — getAccount balance asset identity', () => {
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    expect(account.collateralBalances.map((b) => b.units)).toEqual(['60'])
+    expect(
+      account.collateralBalances.map(({ units, transferable }) => ({
+        units,
+        transferable,
+      }))
+    ).toEqual([{ units: '60', transferable: '0' }])
   })
 
   it('omits a collateral row for an asset whose margin_balance is zero', async () => {
@@ -1471,6 +1497,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
         units: '8.227924674749',
         valueUsd: '8.227924674749',
         price: '1',
+        transferable: '0',
       },
     ])
     expect(account.balances).toEqual([])
@@ -1766,16 +1793,37 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     const account = await provider.getAccount({ address: ADDRESS })
 
     expect(
-      account.collateralBalances.map(({ asset, units, valueUsd, price }) => ({
-        id: asset.id,
-        units,
-        valueUsd,
-        price,
-      }))
+      account.collateralBalances.map(
+        ({ asset, units, valueUsd, price, transferable }) => ({
+          id: asset.id,
+          units,
+          valueUsd,
+          price,
+          transferable,
+        })
+      )
     ).toEqual([
-      { id: 'USDC', units: '25.5', valueUsd: '25.5', price: '1' },
-      { id: '1', units: '0.3', valueUsd: '814.23', price: '2714.1' },
-      { id: '0', units: '2', valueUsd: '0', price: undefined },
+      {
+        id: 'USDC',
+        units: '25.5',
+        valueUsd: '25.5',
+        price: '1',
+        transferable: '25.5',
+      },
+      {
+        id: '1',
+        units: '0.3',
+        valueUsd: '814.23',
+        price: '2714.1',
+        transferable: '0',
+      },
+      {
+        id: '0',
+        units: '2',
+        valueUsd: '0',
+        price: undefined,
+        transferable: '0',
+      },
     ])
     expect(account.balances).toEqual([])
   })

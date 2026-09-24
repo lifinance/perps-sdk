@@ -113,6 +113,7 @@ describe('getAccount', () => {
         units: '10000',
         valueUsd: '10000',
         price: '1',
+        transferable: HL_CLEARINGHOUSE_STATE.withdrawable,
       },
     ])
     expect(result.marginUsed).toBe(
@@ -388,6 +389,111 @@ describe('getAccount', () => {
     const result = await getAccount(ctx, { address: ADDRESS })
 
     expect(result.marginUsed).toBe('0.3')
+  })
+
+  it('reports each sub-dex transferable amount, below the account-wide free margin', async () => {
+    const responses = defaultResponses()
+    const dexState = (
+      accountValue: string,
+      totalMarginUsed: string,
+      withdrawable: string
+    ) => ({
+      ...HL_CLEARINGHOUSE_STATE,
+      marginSummary: {
+        ...HL_CLEARINGHOUSE_STATE.marginSummary,
+        accountValue,
+        totalMarginUsed,
+      },
+      withdrawable,
+      assetPositions: [],
+    })
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/marketsContext')) {
+          return new Response(JSON.stringify({ prices: [] }))
+        }
+        if (url.includes('/markets')) {
+          return new Response(
+            JSON.stringify({ markets: [...HL_MARKETS, XYZ_MARKET] })
+          )
+        }
+        const body = JSON.parse((init?.body as string) ?? '{}') as {
+          type: keyof typeof responses
+          dex?: string
+        }
+        const state =
+          body.dex === 'xyz'
+            ? dexState('50', '0', '50')
+            : dexState('100', '60', '35.50')
+        const value =
+          body.type === 'clearinghouseState' ? state : responses[body.type]
+        return new Response(JSON.stringify(value))
+      })
+    restore = () => spy.mockRestore()
+
+    const account = await getAccount(ctx, { address: ADDRESS })
+    const transferable = new Map(
+      account.collateralBalances
+        .filter((b) => b.categoryId !== 'spot')
+        .map((b) => [b.categoryId, b.transferable])
+    )
+
+    expect(transferable).toEqual(
+      new Map([
+        ['hyperliquid', '35.5'],
+        ['xyz', '50'],
+      ])
+    )
+    expect(getAccountSummary(account, []).availableMargin).toBe('90')
+    expect(
+      account.collateralBalances.find((b) => b.categoryId === 'spot')
+    ).not.toHaveProperty('transferable')
+  })
+
+  it('bounds a withdrawable above the sub-dex account value to the row units', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          withdrawable: '20000',
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const account = await getAccount(ctx, { address: ADDRESS })
+    const row = account.collateralBalances.find(
+      (b) => b.categoryId === 'hyperliquid'
+    )
+
+    expect(row?.transferable).toBe(row?.units)
+  })
+
+  it('throws a named error identifying a non-decimal withdrawable', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          withdrawable: 'n/a',
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const error = await getAccount(ctx, { address: ADDRESS }).catch(
+      (cause: unknown) => cause
+    )
+
+    expect(error).toBeInstanceOf(PerpsError)
+    if (!(error instanceof PerpsError)) {
+      expect.unreachable('getAccount must throw PerpsError')
+    }
+    expect(error.code).toBe(PerpsErrorCode.SDKError)
+    expect(error.message).toContain('clearinghouseState.withdrawable')
   })
 
   it('throws a named error identifying a non-decimal totalMarginUsed', async () => {
