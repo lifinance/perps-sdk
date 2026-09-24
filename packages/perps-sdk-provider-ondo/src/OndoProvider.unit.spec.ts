@@ -960,6 +960,33 @@ describe('OndoProvider — getAvailableToTrade (logged in)', () => {
 })
 
 describe('OndoProvider — getAccount (logged in)', () => {
+  it.each([
+    ['above the wallet balance', '1200', '1000'],
+    ['below zero', '-60', '0'],
+  ])('bounds a withdrawableMargin %s to the collateral row units', async (_case, withdrawableMargin, transferable) => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin }
+    const { provider } = await loggedInProvider()
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances[0]).toMatchObject({
+      units: '1000',
+      transferable,
+    })
+  })
+
+  it('rejects a malformed withdrawableMargin with a named error', async () => {
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: 'n/a' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('balance.withdrawableMargin'),
+    })
+  })
+
   it('omits the collateral row when the wallet balance is zero', async () => {
     balanceResult = { ...BALANCE_RESULT, walletBalance: '0' }
     const { provider } = await loggedInProvider()
@@ -983,7 +1010,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         units: '1000',
         valueUsd: '1000',
         price: '1',
-        transferable: '614.5',
+        transferable: '599',
       },
     ])
     expect(account.marginUsed).toBe('401')

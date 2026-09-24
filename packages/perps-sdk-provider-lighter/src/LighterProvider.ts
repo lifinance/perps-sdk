@@ -883,10 +883,10 @@ export const createLighterProvider = (
                   collateral.displaySymbol,
                   providerKey
                 ),
-              units: availableBalance.toString(),
-              valueUsd: availableBalance.toString(),
+              units: availableBalance.toFixed(),
+              valueUsd: availableBalance.toFixed(),
               price: '1',
-              transferable: availableBalance.toString(),
+              transferable: availableBalance.toFixed(),
             },
           ]
         : []

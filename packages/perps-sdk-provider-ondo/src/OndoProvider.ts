@@ -62,7 +62,7 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
+import type Big from 'big.js'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -107,6 +107,7 @@ import {
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
+import { toWireBig } from './utils/decimal.js'
 import {
   estimateLiquidationPrice,
   formatOrderPrice,
@@ -131,6 +132,13 @@ import {
   type OndoOrderCursor,
   type OrderSource,
 } from './utils/orderCursor.js'
+
+const transferableWithin = (venueFigure: Big, units: Big): string => {
+  if (venueFigure.lt(0)) {
+    return '0'
+  }
+  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
+}
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -341,13 +349,18 @@ export const ondoProvider = (
             requirePerpsMarketDisplay
           )
 
+          const walletBalance = toWireBig(
+            balance.walletBalance,
+            'balance.walletBalance'
+          )
+
           // The backend owns the collateral identity; the venue supplies its
           // wallet balance (locked margin in, unrealized PnL out).
           return {
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
             balances: [],
-            collateralBalances: new Big(balance.walletBalance).gt(0)
+            collateralBalances: walletBalance.gt(0)
               ? [
                   {
                     categoryId: ONDO_PROVIDER_KEY,
@@ -355,7 +368,13 @@ export const ondoProvider = (
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
                     price: '1',
-                    transferable: balance.availableMargin,
+                    transferable: transferableWithin(
+                      toWireBig(
+                        balance.withdrawableMargin,
+                        'balance.withdrawableMargin'
+                      ),
+                      walletBalance
+                    ),
                   },
                 ]
               : [],

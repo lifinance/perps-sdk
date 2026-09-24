@@ -1313,6 +1313,27 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     expect(account.collateralBalances[0].transferable).toBe('100')
   })
 
+  it('prints a small available_balance in fixed-point notation', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          available_balance: '0.0000001',
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.collateralBalances[0]).toMatchObject({
+      units: '0.0000001',
+      valueUsd: '0.0000001',
+      transferable: '0.0000001',
+    })
+  })
+
   it('rejects a malformed available_balance', async () => {
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,

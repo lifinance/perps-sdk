@@ -66,6 +66,13 @@ interface BalancePartition {
   collateralBalances: Balance[]
 }
 
+const transferableWithin = (venueFigure: Big, units: Big): string => {
+  if (venueFigure.lt(0)) {
+    return '0'
+  }
+  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
+}
+
 const buildBalances = (
   abstraction: HlAbstractionMode | null,
   spotState: HlSpotClearinghouseState,
@@ -100,10 +107,10 @@ const buildBalances = (
         units: value.toFixed(),
         valueUsd: value.toFixed(),
         price: '1',
-        transferable: toWireBig(
-          state.withdrawable,
-          'clearinghouseState.withdrawable'
-        ).toFixed(),
+        transferable: transferableWithin(
+          toWireBig(state.withdrawable, 'clearinghouseState.withdrawable'),
+          value
+        ),
       })
     }
   }

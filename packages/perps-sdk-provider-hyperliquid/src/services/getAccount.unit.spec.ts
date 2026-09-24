@@ -426,7 +426,7 @@ describe('getAccount', () => {
         const state =
           body.dex === 'xyz'
             ? dexState('50', '0', '50')
-            : dexState('100', '60', '40')
+            : dexState('100', '60', '35.50')
         const value =
           body.type === 'clearinghouseState' ? state : responses[body.type]
         return new Response(JSON.stringify(value))
@@ -442,7 +442,7 @@ describe('getAccount', () => {
 
     expect(transferable).toEqual(
       new Map([
-        ['hyperliquid', '40'],
+        ['hyperliquid', '35.5'],
         ['xyz', '50'],
       ])
     )
@@ -450,6 +450,50 @@ describe('getAccount', () => {
     expect(
       account.collateralBalances.find((b) => b.categoryId === 'spot')
     ).not.toHaveProperty('transferable')
+  })
+
+  it('bounds a withdrawable above the sub-dex account value to the row units', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          withdrawable: '20000',
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const account = await getAccount(ctx, { address: ADDRESS })
+    const row = account.collateralBalances.find(
+      (b) => b.categoryId === 'hyperliquid'
+    )
+
+    expect(row?.transferable).toBe(row?.units)
+  })
+
+  it('throws a named error identifying a non-decimal withdrawable', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          withdrawable: 'n/a',
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const error = await getAccount(ctx, { address: ADDRESS }).catch(
+      (cause: unknown) => cause
+    )
+
+    expect(error).toBeInstanceOf(PerpsError)
+    if (!(error instanceof PerpsError)) {
+      expect.unreachable('getAccount must throw PerpsError')
+    }
+    expect(error.code).toBe(PerpsErrorCode.SDKError)
+    expect(error.message).toContain('clearinghouseState.withdrawable')
   })
 
   it('throws a named error identifying a non-decimal totalMarginUsed', async () => {
