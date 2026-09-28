@@ -13,10 +13,11 @@ import type {
   PerpsMarket,
   PortfolioHistoryRange,
   Provider,
-  ProviderAction,
+  SetupAction,
   SiweActionStep,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   ActivityType,
   FillClassification,
@@ -86,7 +87,6 @@ const ACCOUNT_PROVIDER_METADATA: Provider = {
   signingMethod: SigningMethod.HMAC,
   active: true,
   setup: [],
-  options: [],
   actions: [],
   supportedIntervals: [],
   categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
@@ -587,18 +587,6 @@ describe('OndoProvider — `type` field', () => {
   it('reports `ondo` as the provider key', () => {
     const provider = ondoProvider()
     expect(provider.type).toBe('ondo')
-  })
-
-  it('declares SET_REFERRAL as an internal setup action', () => {
-    expect(ondoProvider().internalSetupActions).toContain(
-      ActionType.SET_REFERRAL
-    )
-  })
-
-  it('does not declare SYNC_FEE_ATTRIBUTION as an internal setup action', () => {
-    expect(ondoProvider().internalSetupActions).not.toContain(
-      ActionType.SYNC_FEE_ATTRIBUTION
-    )
   })
 })
 
@@ -1546,9 +1534,11 @@ describe('OndoProvider — resolveActionRequest', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.resolveActionRequest!(ActionType.WITHDRAWAL, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      provider.resolveActionRequest!(
+        ActionType.WITHDRAWAL,
+        ADDRESS,
+        PerpsSigner.USER
+      )
     ).resolves.toEqual({ params: { accountId: 'acct-1' } })
   })
 
@@ -1557,7 +1547,7 @@ describe('OndoProvider — resolveActionRequest', () => {
       loggedOutProvider().resolveActionRequest!(
         ActionType.WITHDRAWAL,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
     ).rejects.toBeInstanceOf(OndoSessionExpiredError)
   })
@@ -1570,12 +1560,14 @@ describe('OndoProvider — resolveActionRequest', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.resolveActionRequest!(action, ADDRESS, [PerpsSigner.USER])
+      provider.resolveActionRequest!(action, ADDRESS, PerpsSigner.USER)
     ).resolves.toEqual({})
     await expect(
-      loggedOutProvider().resolveActionRequest!(action, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      loggedOutProvider().resolveActionRequest!(
+        action,
+        ADDRESS,
+        PerpsSigner.USER
+      )
     ).resolves.toEqual({})
   })
 
@@ -1602,8 +1594,9 @@ describe('OndoProvider — resolveActionRequest', () => {
                   actions: [
                     {
                       type: ActionType.WITHDRAWAL,
-                      signers: [PerpsSigner.USER],
+                      signer: PerpsSigner.SDK,
                       signingMethod: SigningMethod.HMAC,
+                      relay: ActionRelay.API,
                       params: [],
                     },
                   ],
@@ -2658,30 +2651,45 @@ describe('OndoProvider — getAccountSummary', () => {
 })
 
 describe('OndoProvider — projectConfig', () => {
-  const SIWE_DESCRIPTOR: ProviderAction = {
+  const SIWE_DESCRIPTOR: SetupAction = {
     type: ActionType.SIWE_LOGIN,
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SIWE,
   }
-  const REFERRAL_DESCRIPTOR: ProviderAction = {
+  const REFERRAL_DESCRIPTOR: SetupAction = {
     type: ActionType.SET_REFERRAL,
-    signers: [PerpsSigner.USER],
-    signingMethod: SigningMethod.HMAC,
-  }
-  const TERMS_DESCRIPTOR: ProviderAction = {
-    type: ActionType.ACCEPT_PROVIDER_TERMS,
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.SDK,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
-  const REGISTER_KEY_DESCRIPTOR: ProviderAction = {
+  const TERMS_DESCRIPTOR: SetupAction = {
+    type: ActionType.ACCEPT_PROVIDER_TERMS,
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.CLIENT,
+    signingMethod: SigningMethod.SESSION,
+  }
+  const REGISTER_KEY_DESCRIPTOR: SetupAction = {
     type: ActionType.REGISTER_API_KEY,
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
 
-  const DEPOSIT_DESCRIPTOR: ProviderAction = {
+  const DEPOSIT_DESCRIPTOR: SetupAction = {
     type: ActionType.CREATE_DEPOSIT_ADDRESS,
-    signers: [PerpsSigner.USER],
+    options: null,
+    revoke: null,
+    signer: PerpsSigner.USER,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
 
@@ -2701,8 +2709,7 @@ describe('OndoProvider — projectConfig', () => {
         ...loggedOutConfig,
         depositAddress: null,
       },
-      [DEPOSIT_DESCRIPTOR],
-      []
+      [DEPOSIT_DESCRIPTOR]
     )
     expect(unsatisfied[0]).toEqual({
       type: ActionType.CREATE_DEPOSIT_ADDRESS,
@@ -2716,8 +2723,7 @@ describe('OndoProvider — projectConfig', () => {
           ...loggedOutConfig,
           depositAddress: '',
         },
-        [DEPOSIT_DESCRIPTOR],
-        []
+        [DEPOSIT_DESCRIPTOR]
       )
     ).toEqual([
       {
@@ -2733,8 +2739,7 @@ describe('OndoProvider — projectConfig', () => {
           ...loggedOutConfig,
           depositAddress: DEPOSIT_ADDRESS,
         },
-        [DEPOSIT_DESCRIPTOR],
-        []
+        [DEPOSIT_DESCRIPTOR]
       )
     ).toEqual([
       {
@@ -2758,8 +2763,7 @@ describe('OndoProvider — projectConfig', () => {
           referralSet: false,
           depositAddress: null,
         },
-        [SIWE_DESCRIPTOR],
-        []
+        [SIWE_DESCRIPTOR]
       )
     ).toEqual([
       {
@@ -2772,9 +2776,7 @@ describe('OndoProvider — projectConfig', () => {
 
   it('projects SIWE_LOGIN as unsatisfied with a null expiry when logged out', () => {
     const provider = ondoProvider()
-    expect(
-      provider.projectConfig(loggedOutConfig, [SIWE_DESCRIPTOR], [])
-    ).toEqual([
+    expect(provider.projectConfig(loggedOutConfig, [SIWE_DESCRIPTOR])).toEqual([
       {
         type: ActionType.SIWE_LOGIN,
         values: [{ name: 'authTokenExpiry', value: null }],
@@ -2788,32 +2790,27 @@ describe('OndoProvider — projectConfig', () => {
     expect(
       provider.projectConfig(
         { ...loggedOutConfig, loggedIn: true, termsAccepted: true },
-        [TERMS_DESCRIPTOR],
-        []
+        [TERMS_DESCRIPTOR]
       )
     ).toEqual([
       { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: true },
     ])
-    expect(
-      provider.projectConfig(loggedOutConfig, [TERMS_DESCRIPTOR], [])
-    ).toEqual([
-      { type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: false },
-    ])
+    expect(provider.projectConfig(loggedOutConfig, [TERMS_DESCRIPTOR])).toEqual(
+      [{ type: ActionType.ACCEPT_PROVIDER_TERMS, values: [], satisfied: false }]
+    )
   })
 
   it('projects REGISTER_API_KEY satisfaction from apiKeyRegistered', () => {
     const provider = ondoProvider()
     expect(
-      provider.projectConfig(
-        { ...loggedOutConfig, apiKeyRegistered: true },
-        [REGISTER_KEY_DESCRIPTOR],
-        []
-      )
+      provider.projectConfig({ ...loggedOutConfig, apiKeyRegistered: true }, [
+        REGISTER_KEY_DESCRIPTOR,
+      ])
     ).toEqual([
       { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
     ])
     expect(
-      provider.projectConfig(loggedOutConfig, [REGISTER_KEY_DESCRIPTOR], [])
+      provider.projectConfig(loggedOutConfig, [REGISTER_KEY_DESCRIPTOR])
     ).toEqual([
       { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
     ])
@@ -2832,8 +2829,7 @@ describe('OndoProvider — projectConfig', () => {
           referralSet: true,
           depositAddress: null,
         },
-        [SIWE_DESCRIPTOR, REFERRAL_DESCRIPTOR],
-        []
+        [SIWE_DESCRIPTOR, REFERRAL_DESCRIPTOR]
       )
     ).toEqual([
       {
@@ -2848,7 +2844,7 @@ describe('OndoProvider — projectConfig', () => {
       },
     ])
     expect(
-      provider.projectConfig(loggedOutConfig, [REFERRAL_DESCRIPTOR], [])
+      provider.projectConfig(loggedOutConfig, [REFERRAL_DESCRIPTOR])
     ).toEqual([
       {
         type: ActionType.SET_REFERRAL,
@@ -2868,16 +2864,13 @@ describe('OndoProvider — projectConfig', () => {
           agents: [],
           dexStates: [],
         },
-        [SIWE_DESCRIPTOR],
-        []
+        [SIWE_DESCRIPTOR]
       )
     ).toThrowError(PerpsError)
     expect(() =>
-      provider.projectConfig(
-        loggedOutConfig,
-        [{ ...SIWE_DESCRIPTOR, type: ActionType.PLACE_ORDER }],
-        []
-      )
+      provider.projectConfig(loggedOutConfig, [
+        { ...SIWE_DESCRIPTOR, type: ActionType.PLACE_ORDER },
+      ])
     ).toThrowError(PerpsError)
   })
 })
@@ -3070,11 +3063,13 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     setup: [
       {
         type: ActionType.SIWE_LOGIN,
-        signers: [PerpsSigner.USER],
+        options: null,
+        revoke: null,
+        signer: PerpsSigner.USER,
+        relay: ActionRelay.CLIENT,
         signingMethod: SigningMethod.SIWE,
       },
     ],
-    options: [],
     actions: [],
     categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
     supportedIntervals: [],
@@ -3135,6 +3130,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
       provider: 'ondo',
       address: siweAccount.address,
       step: SIWE_STEP,
+      checklist: [],
     })
 
     expect(backendCalls).toEqual(['/providers'])
@@ -3163,6 +3159,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
       provider: 'ondo',
       address: siweAccount.address,
       step: SIWE_STEP,
+      checklist: [],
     })
     const account = await client.getAccount({
       provider: 'ondo',

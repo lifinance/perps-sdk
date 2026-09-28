@@ -30,6 +30,7 @@ import {
   type AccountConfigSetting,
   type AccountResponse,
   type AccountSummary,
+  type ActionResult,
   type ActionStep,
   ActionType,
   type ActivitiesResponse,
@@ -45,8 +46,8 @@ import {
   type PortfolioHistoryResponse,
   type Position,
   type PositionsResponse,
-  type ProviderAction,
   type Quote,
+  type SetupAction,
   type SignedActionStep,
   type SigningMethod,
 } from '@lifi/perps-types'
@@ -229,8 +230,6 @@ export function hyperliquidProvider(
   return {
     type: PROVIDER_KEY,
 
-    internalSetupActions: [ActionType.SET_REFERRAL],
-
     // REVOKE_AGENT stages a step only when every named agent slot is taken,
     // so `checkSetup` omits it from `ProviderSetup.checklist` instead of
     // rendering it as a satisfied step.
@@ -254,7 +253,7 @@ export function hyperliquidProvider(
     resolveActionRequest: async (
       action: ActionType,
       address: Address,
-      signers: PerpsSigner[]
+      signer: PerpsSigner
     ): Promise<ActionSignerContribution> => {
       // APPROVE_AGENT is user-signed: the user authorises the agent, so the
       // agent address rides as a param (not signerAddress). The agent is
@@ -264,10 +263,30 @@ export function hyperliquidProvider(
         const agentAddress = await resolveApproveAgentAddress(address)
         return { params: { agentAddress } }
       }
-      // SDK-signed actions (trades, account-mode) carry the agent as the
-      // on-wire signerAddress. User-signed actions (builder-fee, withdrawal)
-      // contribute nothing — core submits under the user's own address.
-      if (signers.includes(PerpsSigner.SDK)) {
+      // REVOKE_SESSION_AGENT targets the stored agent by address and never
+      // provisions one: with no stored agent there is nothing to revoke.
+      if (action === ActionType.REVOKE_SESSION_AGENT) {
+        try {
+          const agent = await agentStore.get(address)
+          return { params: { agentAddress: agent.address } }
+        } catch (error) {
+          if (
+            error instanceof PerpsError &&
+            error.message === PerpsErrorMessage.AgentNotFound
+          ) {
+            throw new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Nothing to revoke for '${action}' on '${PROVIDER_KEY}': no session agent is stored for ${address}.`
+            )
+          }
+          throw error
+        }
+      }
+      // SDK-signed actions (trades) carry the agent as the on-wire
+      // signerAddress. User-signed actions (builder-fee, account mode,
+      // withdrawal) contribute nothing — core submits under the user's own
+      // address.
+      if (signer === PerpsSigner.SDK) {
         const agent = await agentStore.get(address)
         return { signerAddress: agent.address }
       }
@@ -281,6 +300,21 @@ export function hyperliquidProvider(
       ctx?: SignActionsContext
     ): Promise<SignedActionStep[]> =>
       hyperliquidSignActions(agentStore, method, steps, address, ctx),
+
+    // A confirmed session-agent revoke leaves the stored key unusable.
+    onExecuteResults: async (
+      address: Address,
+      results: ActionResult[]
+    ): Promise<void> => {
+      if (
+        results.some(
+          (result) =>
+            result.success && result.action === ActionType.REVOKE_SESSION_AGENT
+        )
+      ) {
+        await agentStore.remove(address)
+      }
+    },
 
     getAccount: (
       params: ProviderGetAccountParams,
@@ -456,8 +490,7 @@ export function hyperliquidProvider(
 
     projectConfig: (
       config: AccountConfig,
-      setup: ProviderAction[],
-      options: ProviderAction[]
+      setup: SetupAction[]
     ): AccountConfigSetting[] => {
       if (config.provider !== PROVIDER_KEY) {
         throw new PerpsError(
@@ -466,7 +499,7 @@ export function hyperliquidProvider(
             `'${config.provider}'.`
         )
       }
-      return projectHyperliquidConfigSettings(config, setup, options)
+      return projectHyperliquidConfigSettings(config, setup)
     },
   }
 }

@@ -16,6 +16,8 @@ const LIGHTER_BODY_ERROR_CODES: ReadonlyMap<number, PerpsErrorCode> = new Map([
   [21507, PerpsErrorCode.InsufficientMargin],
   // account is below initial margin
   [21508, PerpsErrorCode.InsufficientMargin],
+  // account is not eligible for this operation
+  [21520, PerpsErrorCode.SetupRequired],
   // not enough margin to create the order
   [21739, PerpsErrorCode.InsufficientMargin],
 ])
