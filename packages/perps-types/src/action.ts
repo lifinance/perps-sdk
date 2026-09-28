@@ -559,9 +559,11 @@ export interface ApproveReadOnlyTokenParams {
 export interface ActionParamsMap {
   [ActionType.APPROVE_AGENT]: ApproveAgentParams
   [ActionType.REVOKE_AGENT]: RevokeAgentParams
+  [ActionType.REVOKE_SESSION_AGENT]: Record<string, never>
   [ActionType.APPROVE_BUILDER_FEE]: Record<string, never>
   [ActionType.REVOKE_BUILDER_FEE]: Record<string, never>
   [ActionType.APPROVE_INTEGRATOR]: Record<string, never>
+  [ActionType.REVOKE_INTEGRATOR]: Record<string, never>
   [ActionType.SET_REFERRAL]: Record<string, never>
   [ActionType.ACCOUNT_MODE]: AccountModeParams
   [ActionType.ACCOUNT_TYPE]: AccountTypeParams

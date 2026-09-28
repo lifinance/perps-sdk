@@ -95,6 +95,8 @@ function projectHyperliquidDescriptor(
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
     case ActionType.REVOKE_BUILDER_FEE:
+    case ActionType.REVOKE_SESSION_AGENT:
+    case ActionType.REVOKE_INTEGRATOR:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +

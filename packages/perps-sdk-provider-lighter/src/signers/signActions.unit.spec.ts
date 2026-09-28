@@ -886,6 +886,46 @@ describe('lighterSignActions', () => {
       expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
       expect(signer.sign).toHaveBeenCalledTimes(1)
     })
+
+    it('signs REVOKE_INTEGRATOR on the L2 path with the step params as given, and never prompts the wallet', async () => {
+      const { deps, signer, keyStore } = makeDeps()
+      await setStoredKey(keyStore)
+      const revokeStep: WasmBlobActionStep = {
+        action: ActionType.REVOKE_INTEGRATOR,
+        wasmSignParams: {
+          ...approveStep.wasmSignParams,
+          max_perps_taker_fee: 0,
+          max_perps_maker_fee: 0,
+          max_spot_taker_fee: 0,
+          max_spot_maker_fee: 0,
+          approval_expiry: 0,
+        },
+      }
+      const walletStub = {
+        account: { address: ADDRESS },
+        signMessage: vi.fn(async () => '0xapprovesig'),
+      }
+
+      const result = (await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [revokeStep],
+        ADDRESS,
+        { userWallet: walletStub as never }
+      )) as WasmBlobSignedActionStep[]
+
+      expect(result.map((step) => step.action)).toEqual([
+        ActionType.REVOKE_INTEGRATOR,
+      ])
+      expect(signer.sign).toHaveBeenCalledWith(
+        ActionType.REVOKE_INTEGRATOR,
+        revokeStep.wasmSignParams,
+        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 }
+      )
+      expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
+      expect(signer.embedL1Signature).not.toHaveBeenCalled()
+      expect(walletStub.signMessage).not.toHaveBeenCalled()
+    })
   })
 
   describe('WASM_BLOB — TRANSFER hybrid flow', () => {

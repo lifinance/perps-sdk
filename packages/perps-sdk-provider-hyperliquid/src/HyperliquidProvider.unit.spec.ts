@@ -14,6 +14,10 @@ import {
   PositionMarginAdjustment,
   SigningMethod,
 } from '@lifi/perps-types'
+import type { Account, Hex, WalletClient } from 'viem'
+import { createWalletClient, http, recoverTypedDataAddress } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
@@ -236,6 +240,66 @@ describe('hyperliquidProvider', () => {
           PerpsSigner.SDK
         )
       ).rejects.toThrow()
+    })
+
+    it('signs REVOKE_SESSION_AGENT with the user wallet, never the session agent, like REVOKE_AGENT', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      const { params } = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
+      const agentAddress = params?.agentAddress as string
+      const userAccount = privateKeyToAccount(`0x${'22'.repeat(32)}` as Hex)
+      const userWallet = createWalletClient({
+        account: userAccount,
+        chain: mainnet,
+        transport: http(),
+      }) as WalletClient<never, never, Account>
+      // The backend's approveAgent typed data with the zero address and the
+      // session agent's name.
+      const revokeStep = (action: ActionType): Eip712ActionStep => ({
+        action,
+        typedData: {
+          domain: { name: 'HyperliquidSignTransaction', chainId: 42161 },
+          types: {
+            'HyperliquidTransaction:ApproveAgent': [
+              { name: 'agentAddress', type: 'address' },
+              { name: 'agentName', type: 'string' },
+            ],
+          },
+          primaryType: 'HyperliquidTransaction:ApproveAgent',
+          message: {
+            agentAddress: '0x0000000000000000000000000000000000000000',
+            agentName: 'session valid_until 1800000000000',
+          },
+        },
+      })
+
+      for (const action of [
+        ActionType.REVOKE_AGENT,
+        ActionType.REVOKE_SESSION_AGENT,
+      ]) {
+        await expect(
+          provider.resolveActionRequest!(action, ADDRESS, PerpsSigner.USER)
+        ).resolves.toEqual({})
+        const step = revokeStep(action)
+        const [signed] = await provider.signActions!(
+          SigningMethod.EIP712,
+          [step],
+          ADDRESS,
+          { signer: PerpsSigner.USER, userWallet }
+        )
+        if (!('signature' in signed)) {
+          throw new Error('expected an EIP-712 signed step')
+        }
+        const recovered = await recoverTypedDataAddress({
+          ...step.typedData,
+          signature: signed.signature,
+        } as Parameters<typeof recoverTypedDataAddress>[0])
+        expect(recovered).toBe(userAccount.address)
+        expect(recovered).not.toBe(agentAddress)
+      }
     })
 
     it('rotates the local agent when the matching remote extra-agent is expired', async () => {
