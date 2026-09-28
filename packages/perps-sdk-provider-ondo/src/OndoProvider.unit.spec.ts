@@ -110,7 +110,7 @@ const API_KEY: OndoApiKey = {
   apiSecret: 'super-secret',
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
 }
 
 // Real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`.
@@ -118,7 +118,7 @@ const CREATED_API_KEY: OndoCreatedApiKey = {
   keyId: 'ondoKeyId_abc',
   name: 'lifi-perps',
   createdAt: '2026-07-15T12:31:55.781433839Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
   secretKey: 'ondoApiSecret_xyz',
 }
 
@@ -1203,6 +1203,18 @@ describe('OndoProvider — getAccount (logged in)', () => {
       loggedIn: false,
       apiKeyRegistered: true,
     })
+  })
+
+  it('reports apiKeyRegistered: false for a stored key without the transfer scope', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, {
+      ...API_KEY,
+      scopes: ['trade'],
+    })
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({ apiKeyRegistered: false })
   })
 
   it('reports termsAccepted: false when the account terms version is stale', async () => {

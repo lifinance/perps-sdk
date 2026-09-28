@@ -52,7 +52,7 @@ const apiKeyFixture = (overrides?: Partial<OndoApiKey>): OndoApiKey => ({
   apiSecret: 'super-secret',
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
   ...overrides,
 })
 
@@ -64,7 +64,7 @@ const createdApiKeyFixture = (
   keyId: 'ondoKeyId_abc',
   name: 'lifi-perps',
   createdAt: '2026-07-15T12:31:55.781433839Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
   secretKey: 'ondoApiSecret_xyz',
   ...overrides,
 })
@@ -320,7 +320,7 @@ describe('ondoSignActions — HMAC', () => {
     expect(createInit.method).toBe('POST')
     expect(JSON.parse(createInit.body as string)).toEqual({
       name: 'lifi-perps',
-      scopes: ['trade'],
+      scopes: ['trade', 'transfer'],
     })
     expect(new Headers(createInit.headers).get('authorization')).toBe(
       'Bearer ondo-jwt-token'
@@ -349,6 +349,134 @@ describe('ondoSignActions — HMAC', () => {
     )
 
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('revokes a stored API key that lacks the transfer scope before it creates a replacement', async () => {
+    const created = createdApiKeyFixture({ keyId: 'created-key' })
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: [
+            listedApiKeyFixture(0, {
+              keyId: 'trade-only-key',
+              name: 'lifi-perps',
+            }),
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: created }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+    await deps.apiKeyStore.set(
+      account.address,
+      apiKeyFixture({ keyId: 'trade-only-key', scopes: ['trade'] })
+    )
+
+    const signed = (await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )) as HmacSignedActionStep[]
+
+    const [revokeUrl, revokeInit] = fetchImpl.mock.calls[1] as [
+      string,
+      RequestInit,
+    ]
+    expect(revokeUrl).toBe(`${BASE_URL}/v1/api_keys/trade-only-key`)
+    expect(revokeInit.method).toBe('DELETE')
+    const [, createInit] = fetchImpl.mock.calls[2] as [string, RequestInit]
+    expect(JSON.parse(createInit.body as string)).toEqual({
+      name: 'lifi-perps',
+      scopes: ['trade', 'transfer'],
+    })
+    expect(signed[0].hmac.keyId).toBe('created-key')
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toMatchObject({
+      keyId: 'created-key',
+    })
+  })
+
+  it('does not revoke a stored key without the transfer scope that the venue no longer lists', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+    await deps.apiKeyStore.set(
+      account.address,
+      apiKeyFixture({ keyId: 'trade-only-key', scopes: ['trade'] })
+    )
+
+    await ondoSignActions(
+      deps,
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      account.address
+    )
+
+    expect(fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual([
+      'GET',
+      'POST',
+    ])
+  })
+
+  it('throws and persists nothing when the venue grants fewer scopes than requested', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: createdApiKeyFixture({ scopes: ['trade'] }),
+        })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).rejects.toBeInstanceOf(OndoApiError)
+    await expect(deps.apiKeyStore.get(account.address)).resolves.toBeNull()
+  })
+
+  it('creates one API key for concurrent signing calls on one address', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: createdApiKeyFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const [first, second] = (await Promise.all([
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      ),
+      ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      ),
+    ])) as HmacSignedActionStep[][]
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(first[0].hmac.keyId).toBe(second[0].hmac.keyId)
   })
 
   it('throws OndoSessionExpiredError when key creation is required but no session token is stored', async () => {
