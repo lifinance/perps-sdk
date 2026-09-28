@@ -200,21 +200,21 @@ const CLIENT_ORDER_INDEX_PATTERN = /^\d+$/
 const INACTIVE_ORDERS_LOOKUP_LIMIT = 100
 
 interface PnlWindow {
-  resolution: '1h' | '4h' | '1d'
-  bucketMs: number
+  resolution: '1h' | '1d'
+  bucketSeconds: number
   countBack: number
 }
 
-const HOUR_MS = 60 * 60 * 1000
-const DAY_MS = 24 * HOUR_MS
+const HOUR_SECONDS = 60 * 60
+const DAY_SECONDS = 24 * HOUR_SECONDS
 
 // `all` has no natural bucket count; 1000 daily buckets reach back past the
 // venue's launch for every account.
 const PNL_WINDOWS: Record<PortfolioHistoryRange, PnlWindow> = {
-  '24h': { resolution: '1h', bucketMs: HOUR_MS, countBack: 24 },
-  '7d': { resolution: '4h', bucketMs: 4 * HOUR_MS, countBack: 42 },
-  '30d': { resolution: '1d', bucketMs: DAY_MS, countBack: 30 },
-  all: { resolution: '1d', bucketMs: DAY_MS, countBack: 1000 },
+  '24h': { resolution: '1h', bucketSeconds: HOUR_SECONDS, countBack: 24 },
+  '7d': { resolution: '1h', bucketSeconds: HOUR_SECONDS, countBack: 168 },
+  '30d': { resolution: '1d', bucketSeconds: DAY_SECONDS, countBack: 30 },
+  all: { resolution: '1d', bucketSeconds: DAY_SECONDS, countBack: 1000 },
 }
 
 /** Batches that get the pre-sign account tier check. */
@@ -1495,7 +1495,7 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const account = await fetchDetailedAccount(client, params.address)
       const window = PNL_WINDOWS[params.range]
-      const endTimestamp = Date.now()
+      const endTimestampSeconds = Math.floor(Date.now() / 1_000)
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
         value: String(account.index),
@@ -1503,8 +1503,8 @@ export const createLighterProvider = (
         start_timestamp:
           params.range === 'all'
             ? 0
-            : endTimestamp - window.countBack * window.bucketMs,
-        end_timestamp: endTimestamp,
+            : endTimestampSeconds - window.countBack * window.bucketSeconds,
+        end_timestamp: endTimestampSeconds,
         count_back: window.countBack,
         ignore_transfers: false,
       }
