@@ -20,15 +20,16 @@ describe('getProviders', () => {
     ])
   })
 
-  it('should include setup + options descriptors for each provider', async () => {
+  it('should include setup descriptors for each provider', async () => {
     const result = await getProviders(client)
 
-    // Hyperliquid: two setup gates (APPROVE_AGENT + APPROVE_BUILDER_FEE)
-    // and one option (ACCOUNT_MODE).
     expect(result.providers[0].setup).toBeDefined()
-    expect(result.providers[0].setup).toHaveLength(2)
-    expect(result.providers[0].options).toBeDefined()
-    expect(result.providers[0].options).toHaveLength(1)
+    expect(result.providers[0].setup).toHaveLength(3)
+    expect(result.providers[0].setup.map((d) => d.options !== null)).toEqual([
+      false,
+      false,
+      true,
+    ])
   })
 
   it('should support AbortSignal', async () => {

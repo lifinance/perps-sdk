@@ -10,10 +10,15 @@ import type {
 } from '@lifi/perps-types'
 import {
   ActionType,
+  PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
   SigningMethod,
 } from '@lifi/perps-types'
+import type { Account, Hex, WalletClient } from 'viem'
+import { createWalletClient, http, recoverTypedDataAddress } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
@@ -81,12 +86,6 @@ describe('hyperliquidProvider', () => {
 
   it('declares type=hyperliquid', () => {
     expect(hyperliquidProvider().type).toBe('hyperliquid')
-  })
-
-  it('declares SET_REFERRAL as an internal setup action', () => {
-    expect(hyperliquidProvider().internalSetupActions).toContain(
-      ActionType.SET_REFERRAL
-    )
   })
 
   it('exposes no explorer hook — HyperCore assigns its hash at block inclusion, so execute results carry none', () => {
@@ -213,7 +212,7 @@ describe('hyperliquidProvider', () => {
       const contribution = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       // APPROVE_AGENT is user-signed: agent rides as a param, not signerAddress.
       expect(contribution.signerAddress).toBeUndefined()
@@ -228,7 +227,7 @@ describe('hyperliquidProvider', () => {
       const place = await provider.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         ADDRESS,
-        [PerpsSigner.SDK]
+        PerpsSigner.SDK
       )
       expect(place.signerAddress).toBe(agentAddress)
     })
@@ -236,10 +235,123 @@ describe('hyperliquidProvider', () => {
     it('resolveActionRequest throws for an agent-signed action when no agent exists', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       await expect(
-        provider.resolveActionRequest!(ActionType.PLACE_ORDER, ADDRESS, [
-          PerpsSigner.SDK,
-        ])
+        provider.resolveActionRequest!(
+          ActionType.PLACE_ORDER,
+          ADDRESS,
+          PerpsSigner.SDK
+        )
       ).rejects.toThrow()
+    })
+
+    it('resolveActionRequest targets REVOKE_SESSION_AGENT at the stored agent address and provisions nothing', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      const { params } = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
+      const stored = params?.agentAddress
+
+      await expect(
+        provider.resolveActionRequest!(
+          ActionType.REVOKE_SESSION_AGENT,
+          ADDRESS,
+          PerpsSigner.USER
+        )
+      ).resolves.toEqual({ params: { agentAddress: stored } })
+      expect(await provider.getAgentAddress(ADDRESS)).toBe(stored)
+    })
+
+    it('rejects REVOKE_SESSION_AGENT with nothing to revoke when no agent is stored, and provisions none', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+
+      await expect(
+        provider.resolveActionRequest!(
+          ActionType.REVOKE_SESSION_AGENT,
+          ADDRESS,
+          PerpsSigner.USER
+        )
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(/^Nothing to revoke/),
+      })
+      expect(await provider.hasAgent(ADDRESS)).toBe(false)
+    })
+
+    it('clears the stored agent only once a REVOKE_SESSION_AGENT result succeeds', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
+
+      await provider.onExecuteResults!(ADDRESS, [
+        { action: ActionType.REVOKE_SESSION_AGENT, success: false, error: 'x' },
+        { action: ActionType.REVOKE_AGENT, success: true },
+      ])
+      expect(await provider.hasAgent(ADDRESS)).toBe(true)
+
+      await provider.onExecuteResults!(ADDRESS, [
+        { action: ActionType.REVOKE_SESSION_AGENT, success: true },
+      ])
+      expect(await provider.hasAgent(ADDRESS)).toBe(false)
+    })
+
+    it('signs REVOKE_SESSION_AGENT with the user wallet, never the session agent, like REVOKE_AGENT', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      const { params } = await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
+      const agentAddress = params?.agentAddress as string
+      const userAccount = privateKeyToAccount(`0x${'22'.repeat(32)}` as Hex)
+      const userWallet = createWalletClient({
+        account: userAccount,
+        chain: mainnet,
+        transport: http(),
+      }) as WalletClient<never, never, Account>
+      // The backend's approveAgent typed data naming the agent it revokes.
+      const revokeStep = (action: ActionType): Eip712ActionStep => ({
+        action,
+        typedData: {
+          domain: { name: 'HyperliquidSignTransaction', chainId: 42161 },
+          types: {
+            'HyperliquidTransaction:ApproveAgent': [
+              { name: 'agentAddress', type: 'address' },
+              { name: 'agentName', type: 'string' },
+            ],
+          },
+          primaryType: 'HyperliquidTransaction:ApproveAgent',
+          message: {
+            agentAddress: '0x0000000000000000000000000000000000000000',
+            agentName: 'session valid_until 1800000000000',
+          },
+        },
+      })
+
+      for (const action of [
+        ActionType.REVOKE_AGENT,
+        ActionType.REVOKE_SESSION_AGENT,
+      ]) {
+        const step = revokeStep(action)
+        const [signed] = await provider.signActions!(
+          SigningMethod.EIP712,
+          [step],
+          ADDRESS,
+          { signer: PerpsSigner.USER, userWallet }
+        )
+        if (!('signature' in signed)) {
+          throw new Error('expected an EIP-712 signed step')
+        }
+        const recovered = await recoverTypedDataAddress({
+          ...step.typedData,
+          signature: signed.signature,
+        } as Parameters<typeof recoverTypedDataAddress>[0])
+        expect(recovered).toBe(userAccount.address)
+        expect(recovered).not.toBe(agentAddress)
+      }
     })
 
     it('rotates the local agent when the matching remote extra-agent is expired', async () => {
@@ -254,7 +366,7 @@ describe('hyperliquidProvider', () => {
       const first = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       const firstAgent = first.params?.agentAddress as string
 
@@ -278,7 +390,7 @@ describe('hyperliquidProvider', () => {
       const second = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       const secondAgent = second.params?.agentAddress as string
 
@@ -290,15 +402,17 @@ describe('hyperliquidProvider', () => {
     it('signActions signs the EIP712 agent arm and removeAgent revokes it', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       // Provision the agent via the user-signed APPROVE_AGENT path.
-      await provider.resolveActionRequest!(ActionType.APPROVE_AGENT, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
 
       const [signed] = await provider.signActions!(
         SigningMethod.EIP712,
         [eip712Step()],
         ADDRESS,
-        { signers: [PerpsSigner.SDK] }
+        { signer: PerpsSigner.SDK }
       )
       expect(signed.action).toBe(ActionType.PLACE_ORDER)
       expect('signature' in signed && signed.signature).toMatch(

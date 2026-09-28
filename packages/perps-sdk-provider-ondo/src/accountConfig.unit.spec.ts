@@ -1,5 +1,10 @@
-import type { OndoAccountConfig, ProviderAction } from '@lifi/perps-types'
-import { ActionType, PerpsSigner, SigningMethod } from '@lifi/perps-types'
+import type { OndoAccountConfig, SetupAction } from '@lifi/perps-types'
+import {
+  ActionRelay,
+  ActionType,
+  PerpsSigner,
+  SigningMethod,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { projectOndoConfigSettings } from './accountConfig.js'
 
@@ -12,43 +17,35 @@ const baseConfig: OndoAccountConfig = {
   depositAddress: null,
 }
 
-const syncFeeAttributionDescriptor: ProviderAction = {
+const syncFeeAttributionDescriptor: SetupAction = {
   type: ActionType.SYNC_FEE_ATTRIBUTION,
-  signers: [PerpsSigner.SDK],
+  options: null,
+  revoke: null,
+  signer: PerpsSigner.SDK,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.HMAC,
   params: [],
 }
 
 describe('projectOndoConfigSettings', () => {
-  it('throws for ADD_WITHDRAWAL_ADDRESS — a withdraw-flow step, never a setup or options descriptor', () => {
-    const addWithdrawalAddressDescriptor: ProviderAction = {
+  it('throws for ADD_WITHDRAWAL_ADDRESS — a withdraw-flow step, never a setup descriptor', () => {
+    const addWithdrawalAddressDescriptor: SetupAction = {
+      options: null,
+      revoke: null,
       type: ActionType.ADD_WITHDRAWAL_ADDRESS,
-      signers: [PerpsSigner.USER],
+      signer: PerpsSigner.USER,
+      relay: ActionRelay.CLIENT,
       signingMethod: SigningMethod.SESSION,
       params: [],
     }
     expect(() =>
-      projectOndoConfigSettings(
-        baseConfig,
-        [addWithdrawalAddressDescriptor],
-        []
-      )
-    ).toThrow(/no projection for descriptor type/)
-    expect(() =>
-      projectOndoConfigSettings(
-        baseConfig,
-        [],
-        [addWithdrawalAddressDescriptor]
-      )
+      projectOndoConfigSettings(baseConfig, [addWithdrawalAddressDescriptor])
     ).toThrow(/no projection for descriptor type/)
   })
 
-  it('throws for SYNC_FEE_ATTRIBUTION — never a setup or options descriptor', () => {
+  it('throws for SYNC_FEE_ATTRIBUTION — never a setup descriptor', () => {
     expect(() =>
-      projectOndoConfigSettings(baseConfig, [syncFeeAttributionDescriptor], [])
-    ).toThrow(/no projection for descriptor type/)
-    expect(() =>
-      projectOndoConfigSettings(baseConfig, [], [syncFeeAttributionDescriptor])
+      projectOndoConfigSettings(baseConfig, [syncFeeAttributionDescriptor])
     ).toThrow(/no projection for descriptor type/)
   })
 })

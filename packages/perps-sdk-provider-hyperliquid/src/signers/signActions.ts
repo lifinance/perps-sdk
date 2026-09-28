@@ -39,9 +39,10 @@ export async function hyperliquidSignActions(
     )
   }
 
-  const sign = ctx?.signers?.includes(PerpsSigner.USER)
-    ? await userWalletSigner(ctx)
-    : await agentSigner(agentStore, address)
+  const sign =
+    ctx?.signer === PerpsSigner.USER
+      ? await userWalletSigner(ctx)
+      : await agentSigner(agentStore, address)
 
   return Promise.all(
     (steps as Eip712ActionStep[]).map(

@@ -11,6 +11,7 @@ describe('lighterErrorCodeFromBody', () => {
     [21305, PerpsErrorCode.InsufficientBalance],
     [21507, PerpsErrorCode.InsufficientMargin],
     [21508, PerpsErrorCode.InsufficientMargin],
+    [21520, PerpsErrorCode.SetupRequired],
     [21739, PerpsErrorCode.InsufficientMargin],
   ])('maps venue code %i to PerpsErrorCode %i', (venueCode, code) => {
     expect(lighterErrorCodeFromBody(venueCode)).toBe(code)

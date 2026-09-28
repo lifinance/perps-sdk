@@ -35,7 +35,7 @@ describe('hyperliquidSignActions', () => {
       SigningMethod.EIP712,
       [step],
       ADDRESS,
-      { signers: [PerpsSigner.SDK] }
+      { signer: PerpsSigner.SDK }
     )) as Eip712SignedActionStep[]
 
     expect(signed.action).toBe(step.action)
@@ -69,7 +69,7 @@ describe('hyperliquidSignActions', () => {
       SigningMethod.EIP712,
       [step],
       ADDRESS,
-      { signers: [PerpsSigner.USER], userWallet }
+      { signer: PerpsSigner.USER, userWallet }
     )) as Eip712SignedActionStep[]
 
     const recovered = await recoverTypedDataAddress({
@@ -91,7 +91,7 @@ describe('hyperliquidSignActions', () => {
         [eip712Step()],
         ADDRESS,
         {
-          signers: [PerpsSigner.USER],
+          signer: PerpsSigner.USER,
         }
       )
     ).rejects.toThrow(/end-user wallet/)
@@ -106,7 +106,7 @@ describe('hyperliquidSignActions', () => {
         [eip712Step()],
         ADDRESS,
         {
-          signers: [PerpsSigner.SDK],
+          signer: PerpsSigner.SDK,
         }
       )
     ).rejects.toThrow('Agent not found')
@@ -118,7 +118,7 @@ describe('hyperliquidSignActions', () => {
 
     await expect(
       hyperliquidSignActions(store, SigningMethod.WASM_BLOB, [], ADDRESS, {
-        signers: [PerpsSigner.SDK],
+        signer: PerpsSigner.SDK,
       })
     ).rejects.toThrow(/only signs EIP712 actions/)
   })

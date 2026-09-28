@@ -101,7 +101,6 @@ export const HYPERLIQUID_PROVIDER: Provider = {
   signingMethod: SigningMethod.EIP712,
   active: true,
   setup: [],
-  options: [],
   actions: [],
   categories: [],
   supportedIntervals: [],
