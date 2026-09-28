@@ -308,8 +308,14 @@ export interface OndoWalletDeposit {
   logIndex?: string
 }
 
-/** @public */
+/**
+ * The REST spec lists the lowercase values. The live API sends the
+ * `WITHDRAWAL_`-prefixed values.
+ * @public
+ */
 export type OndoWithdrawalStatus =
+  | 'WITHDRAWAL_PENDING'
+  | 'WITHDRAWAL_SUCCESS'
   | 'complete'
   | 'failure'
   | 'pending'
