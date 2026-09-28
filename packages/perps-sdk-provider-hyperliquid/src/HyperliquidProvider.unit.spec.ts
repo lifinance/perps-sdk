@@ -83,12 +83,6 @@ describe('hyperliquidProvider', () => {
     expect(hyperliquidProvider().type).toBe('hyperliquid')
   })
 
-  it('declares SET_REFERRAL as an internal setup action', () => {
-    expect(hyperliquidProvider().internalSetupActions).toContain(
-      ActionType.SET_REFERRAL
-    )
-  })
-
   it('exposes no explorer hook — HyperCore assigns its hash at block inclusion, so execute results carry none', () => {
     expect(hyperliquidProvider().resolveExplorerLink).toBeUndefined()
   })
@@ -213,7 +207,7 @@ describe('hyperliquidProvider', () => {
       const contribution = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       // APPROVE_AGENT is user-signed: agent rides as a param, not signerAddress.
       expect(contribution.signerAddress).toBeUndefined()
@@ -228,7 +222,7 @@ describe('hyperliquidProvider', () => {
       const place = await provider.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         ADDRESS,
-        [PerpsSigner.SDK]
+        PerpsSigner.SDK
       )
       expect(place.signerAddress).toBe(agentAddress)
     })
@@ -236,9 +230,11 @@ describe('hyperliquidProvider', () => {
     it('resolveActionRequest throws for an agent-signed action when no agent exists', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       await expect(
-        provider.resolveActionRequest!(ActionType.PLACE_ORDER, ADDRESS, [
-          PerpsSigner.SDK,
-        ])
+        provider.resolveActionRequest!(
+          ActionType.PLACE_ORDER,
+          ADDRESS,
+          PerpsSigner.SDK
+        )
       ).rejects.toThrow()
     })
 
@@ -254,7 +250,7 @@ describe('hyperliquidProvider', () => {
       const first = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       const firstAgent = first.params?.agentAddress as string
 
@@ -278,7 +274,7 @@ describe('hyperliquidProvider', () => {
       const second = await provider.resolveActionRequest!(
         ActionType.APPROVE_AGENT,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
       const secondAgent = second.params?.agentAddress as string
 
@@ -290,15 +286,17 @@ describe('hyperliquidProvider', () => {
     it('signActions signs the EIP712 agent arm and removeAgent revokes it', async () => {
       const provider = hyperliquidProvider({ storage: createMemoryStorage() })
       // Provision the agent via the user-signed APPROVE_AGENT path.
-      await provider.resolveActionRequest!(ActionType.APPROVE_AGENT, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
 
       const [signed] = await provider.signActions!(
         SigningMethod.EIP712,
         [eip712Step()],
         ADDRESS,
-        { signers: [PerpsSigner.SDK] }
+        { signer: PerpsSigner.SDK }
       )
       expect(signed.action).toBe(ActionType.PLACE_ORDER)
       expect('signature' in signed && signed.signature).toMatch(

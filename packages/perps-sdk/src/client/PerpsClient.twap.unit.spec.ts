@@ -6,6 +6,7 @@ import type {
   Provider,
 } from '@lifi/perps-types'
 import {
+  ActionRelay,
   ActionType,
   OrderSide,
   PerpsSigner,
@@ -28,7 +29,8 @@ const MARKET = { marketId: 'BTC', categoryId: PROVIDER }
 
 const twapDescriptor = (type: ActionType): Provider['actions'][number] => ({
   type,
-  signers: [PerpsSigner.SDK],
+  signer: PerpsSigner.SDK,
+  relay: ActionRelay.API,
   signingMethod: SigningMethod.EIP712,
 })
 

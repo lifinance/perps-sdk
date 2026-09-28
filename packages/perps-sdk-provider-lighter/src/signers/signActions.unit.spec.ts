@@ -1144,7 +1144,35 @@ describe('lighterSignActions', () => {
           [accountTypeStep],
           ADDRESS
         )
-      ).rejects.toThrow(/account has open positions/)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ExchangeRejected,
+        message: expect.stringContaining('account has open positions'),
+      })
+    })
+
+    it('surfaces venue code 21520 as a SetupRequired error', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => ({
+        status: 400,
+        data: {
+          code: 21520,
+          message: 'account is not eligible for this operation',
+        },
+      }))
+      await setStoredKey(keyStore)
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [accountTypeStep],
+          ADDRESS
+        )
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: expect.stringContaining(
+          'account is not eligible for this operation'
+        ),
+      })
     })
 
     it('rejects code 41003 — the referral settle rule is not shared', async () => {

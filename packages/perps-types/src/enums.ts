@@ -157,6 +157,7 @@ export enum ActionType {
   /** Deregisters an agent (API wallet) to free one of the account's agent slots. HyperCore performs it through the approve-agent typed data with a matching name, so it carries no distinct primary type. */
   REVOKE_AGENT = 'revokeAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
+  REVOKE_BUILDER_FEE = 'revokeBuilderFee',
   APPROVE_INTEGRATOR = 'approveIntegrator',
   SET_REFERRAL = 'setReferrer',
   ACCOUNT_MODE = 'accountMode',
@@ -187,7 +188,7 @@ export enum ActionType {
   META_ONBOARD = 'metaOnboard',
   /** Provider-independent: reserves the shareable internal referral code an address owns. */
   META_CREATE_REFERRAL_CODE = 'metaCreateReferralCode',
-  /** Never projected on `Provider.setup` or `Provider.options`, and never offered as a user-facing trading action. */
+  /** Never projected on `Provider.setup`, and never offered as a user-facing trading action. */
   SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }
 
@@ -258,6 +259,20 @@ export type ActivityClassification =
 export enum PerpsSigner {
   USER = 'USER',
   SDK = 'SDK',
+}
+
+/**
+ * Where a signed step is submitted. For `EVM_TX`, signing broadcasts each leg
+ * from the user's wallet and the signed step carries `txHash`, which `API`
+ * then acknowledges to `/executeAction`.
+ *
+ * @public
+ */
+export enum ActionRelay {
+  /** Submit the signed step to `POST /executeAction`. */
+  API = 'API',
+  /** The client submits to the venue itself; nothing reaches LI.FI. */
+  CLIENT = 'CLIENT',
 }
 
 /**

@@ -1,8 +1,8 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { isSetupOptionFor, PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   LighterAccountConfig,
-  ProviderAction,
+  SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import {
@@ -16,8 +16,8 @@ function assertNever(value: never): never {
   )
 }
 
-// Wire strings match the backend descriptor's ParamOption values. An unmapped
-// int projects to null.
+// Wire strings match the modes the backend's ACCOUNT_MODE options bind. An
+// unmapped int projects to null.
 const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
   [LT_ACCOUNT_TRADING_MODE_SIMPLE]: 'simpleTradingAccount',
   [LT_ACCOUNT_TRADING_MODE_UNIFIED]: 'unifiedTradingAccount',
@@ -25,26 +25,30 @@ const ACCOUNT_MODE_INT_TO_WIRE: Readonly<Record<number, string>> = {
 
 /**
  * Resolve the account tier to the wire string `changeAccountTier` accepts.
- * `userTierName` decides it, but only when the descriptor enumerates the
- * string: Lighter owns that vocabulary, so an unrecognised value projects
- * `null` instead of a mis-reported tier. A descriptor whose parameter carries
- * no `values` array enumerates nothing, so it also projects `null`. The
- * unauthenticated read reaches no `/accountLimits` and so carries no tier
- * string, which projects `null` as well: `config.accountType` is Lighter's
- * `SubAccountType`, not a tier, so nothing else in the config decides it.
+ * `userTierName` decides it, but only when an ACCOUNT_TYPE option binds that
+ * tier: Lighter owns that vocabulary, so an unrecognised value resolves `null`
+ * instead of a mis-reported tier. An absent `userTierName` (no
+ * `/accountLimits` read) resolves `null`.
  */
-function resolveAccountTier(
-  descriptor: ProviderAction,
-  config: LighterAccountConfig
+export function resolveAccountTier(
+  descriptor: SetupAction,
+  userTierName: string | undefined
 ): string | null {
-  const { userTierName } = config
   if (userTierName === undefined) {
     return null
   }
-  const enumerated = descriptor.params?.[0]?.values ?? []
-  return enumerated.some((option) => option.value === userTierName)
+  return boundAccountTiers(descriptor).includes(userTierName)
     ? userTierName
     : null
+}
+
+/** The tiers the ACCOUNT_TYPE step's options bind. */
+export function boundAccountTiers(descriptor: SetupAction): string[] {
+  return (descriptor.options ?? []).flatMap((option) =>
+    isSetupOptionFor(option, ActionType.ACCOUNT_TYPE)
+      ? [option.params.tier]
+      : []
+  )
 }
 
 /**
@@ -64,10 +68,10 @@ function resolveAccountTier(
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
- * `Provider.setup` / `Provider.options` throw at runtime.
+ * `Provider.setup` throw at runtime.
  */
 function projectLighterDescriptor(
-  descriptor: ProviderAction,
+  descriptor: SetupAction,
   config: LighterAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
@@ -106,29 +110,33 @@ function projectLighterDescriptor(
     case ActionType.APPROVE_INTEGRATOR:
       return { type: descriptor.type, values: [] }
 
-    // `mode` decodes the raw `account_trading_mode` integer to the descriptor's
-    // wire strings (`unifiedTradingAccount` / `simpleTradingAccount`).
+    // `mode` decodes the raw `account_trading_mode` integer to the wire strings
+    // the options bind (`unifiedTradingAccount` / `simpleTradingAccount`).
     // Unrecognised integers project to `null`.
-    case ActionType.ACCOUNT_MODE:
+    case ActionType.ACCOUNT_MODE: {
+      const mode = ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null
       return {
         type: descriptor.type,
-        values: [
-          {
-            name: 'mode',
-            value: ACCOUNT_MODE_INT_TO_WIRE[config.accountTradingMode] ?? null,
-          },
-        ],
+        values: [{ name: 'mode', value: mode }],
+        satisfied: (descriptor.options ?? []).some(
+          (option) =>
+            isSetupOptionFor(option, ActionType.ACCOUNT_MODE) &&
+            option.params.mode === mode
+        ),
       }
+    }
 
-    // An unresolved `tier` projects to `null` (surfaces as "tier not
-    // detected" — the widget still lets the user pick a value).
-    case ActionType.ACCOUNT_TYPE:
+    // An unresolved `tier` projects `null` and reads unsatisfied; while it
+    // stays so the SDK executes the default option, and the user can still
+    // pick a tier.
+    case ActionType.ACCOUNT_TYPE: {
+      const tier = resolveAccountTier(descriptor, config.userTierName)
       return {
         type: descriptor.type,
-        values: [
-          { name: 'tier', value: resolveAccountTier(descriptor, config) },
-        ],
+        values: [{ name: 'tier', value: tier }],
+        satisfied: tier !== null,
       }
+    }
 
     case ActionType.APPROVE_AGENT:
     case ActionType.REVOKE_AGENT:
@@ -154,11 +162,12 @@ function projectLighterDescriptor(
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
+    case ActionType.REVOKE_BUILDER_FEE:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +
           `descriptor type '${descriptor.type}' — this ActionType is not ` +
-          `valid on Provider.setup / Provider.options for Lighter.`
+          `valid on Provider.setup for Lighter.`
       )
 
     default:
@@ -167,22 +176,15 @@ function projectLighterDescriptor(
 }
 
 /**
- * Project the union of Lighter setup + options descriptors against the typed
+ * Project the Lighter setup descriptors against the typed
  * `LighterAccountConfig`. Produces exactly one `AccountConfigSetting` per
- * descriptor, in `setup`-then-`options` order (preserving the order in which
- * the backend emits them).
+ * descriptor, preserving the order in which the backend emits them.
  *
- * @param config Typed account state for the Lighter account.
- * @param setup  `Provider.setup` array as emitted by `/providers`.
- * @param options `Provider.options` array as emitted by `/providers`.
  * @public
  */
 export function projectLighterConfigSettings(
   config: LighterAccountConfig,
-  setup: ProviderAction[],
-  options: ProviderAction[]
+  setup: SetupAction[]
 ): AccountConfigSetting[] {
-  return [...setup, ...options].map((descriptor) =>
-    projectLighterDescriptor(descriptor, config)
-  )
+  return setup.map((descriptor) => projectLighterDescriptor(descriptor, config))
 }

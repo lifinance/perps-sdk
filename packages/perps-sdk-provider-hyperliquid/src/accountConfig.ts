@@ -1,10 +1,18 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { isSetupOptionFor, PerpsError } from '@lifi/perps-sdk'
 import type {
   AccountConfigSetting,
   HyperliquidAccountConfig,
-  ProviderAction,
+  SetupAction,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
+import { HlAbstractionMode } from './types/account.js'
+
+// `null`, `'default'` and `'disabled'` are the same off state; an option may
+// bind either spelling of it.
+const ABSTRACTION_OFF_VALUES: ReadonlySet<string> = new Set([
+  HlAbstractionMode.DEFAULT,
+  HlAbstractionMode.DISABLED,
+])
 
 function assertNever(value: never): never {
   throw new Error(
@@ -24,14 +32,14 @@ function assertNever(value: never): never {
  * | REVOKE_AGENT          | []                  (no parameters)
  * | APPROVE_BUILDER_FEE   | []                  (no parameters)
  * | SET_REFERRAL          | []                  (no parameters)
- * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }]
+ * | ACCOUNT_MODE          | [{ name: 'mode', value: config.abstractionMode }] (off → bound off spelling)
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
- * `Provider.setup` / `Provider.options` for Hyperliquid throw at runtime.
+ * `Provider.setup` for Hyperliquid throw at runtime.
  */
 function projectHyperliquidDescriptor(
-  descriptor: ProviderAction,
+  descriptor: SetupAction,
   config: HyperliquidAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
@@ -41,11 +49,25 @@ function projectHyperliquidDescriptor(
     case ActionType.SET_REFERRAL:
       return { type: descriptor.type, values: [] }
 
-    case ActionType.ACCOUNT_MODE:
+    case ActionType.ACCOUNT_MODE: {
+      const mode = config.abstractionMode
+      const bound = (descriptor.options ?? []).flatMap((option) =>
+        isSetupOptionFor(option, ActionType.ACCOUNT_MODE)
+          ? [option.params.mode]
+          : []
+      )
+      // The off state projects as whichever off spelling an option binds, so
+      // the value always matches the option it is satisfied by.
+      const matched =
+        mode === null || ABSTRACTION_OFF_VALUES.has(mode)
+          ? bound.find((value) => ABSTRACTION_OFF_VALUES.has(value))
+          : bound.find((value) => value === mode)
       return {
         type: descriptor.type,
-        values: [{ name: 'mode', value: config.abstractionMode }],
+        values: [{ name: 'mode', value: matched ?? mode }],
+        satisfied: matched !== undefined,
       }
+    }
 
     case ActionType.APPROVE_INTEGRATOR:
     case ActionType.ACCOUNT_TYPE:
@@ -72,11 +94,12 @@ function projectHyperliquidDescriptor(
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
+    case ActionType.REVOKE_BUILDER_FEE:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Hyperliquid account-config mapper has no projection for ` +
           `descriptor type '${descriptor.type}' — this ActionType is not ` +
-          `valid on Provider.setup / Provider.options for Hyperliquid.`
+          `valid on Provider.setup for Hyperliquid.`
       )
 
     default:
@@ -85,18 +108,17 @@ function projectHyperliquidDescriptor(
 }
 
 /**
- * Project the union of Hyperliquid setup + options descriptors against the
- * typed `HyperliquidAccountConfig`. Produces exactly one
- * `AccountConfigSetting` per descriptor, in `setup`-then-`options` order.
+ * Project the Hyperliquid setup descriptors against the typed
+ * `HyperliquidAccountConfig`. Produces exactly one `AccountConfigSetting` per
+ * descriptor, in `Provider.setup` order.
  *
  * @public
  */
 export function projectHyperliquidConfigSettings(
   config: HyperliquidAccountConfig,
-  setup: ProviderAction[],
-  options: ProviderAction[]
+  setup: SetupAction[]
 ): AccountConfigSetting[] {
-  return [...setup, ...options].map((descriptor) =>
+  return setup.map((descriptor) =>
     projectHyperliquidDescriptor(descriptor, config)
   )
 }
