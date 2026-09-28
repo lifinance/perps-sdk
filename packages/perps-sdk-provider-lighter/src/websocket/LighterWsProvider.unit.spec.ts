@@ -272,6 +272,10 @@ describe('LighterWsProvider', () => {
     expect(lighterWsProvider().streamsCandles).toBe(false)
   })
 
+  it('reports streamsAvailableToTrade false on the factory', () => {
+    expect(lighterWsProvider().streamsAvailableToTrade).toBe(false)
+  })
+
   it('reports connection status to the subscriber onStatus and forwards transitions', async () => {
     const provider = makeProvider()
     ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
@@ -1754,6 +1758,37 @@ describe('LighterWsProvider', () => {
       // the emitted strings carry no float artifacts.
       expect(event.data.marginUsed).toBe('10.179731')
       expect(event.data.unrealizedPnl).toBe('-0.008797')
+      p.close()
+    })
+
+    it('renders values below 1e-7 as plain decimals', () => {
+      const p = makeProvider()
+      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'update/user_stats',
+          channel: `user_stats:${ACCOUNT_IDX}`,
+          stats: {
+            collateral: '0.00000001',
+            portfolio_value: '0.00000003',
+            available_balance: '0.00000002',
+            cross_stats: {
+              collateral: '0.00000001',
+              portfolio_value: '0.00000003',
+              available_balance: '0.00000002',
+            },
+          },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data.portfolioValue).toBe('0.00000003')
+      expect(event.data.availableMargin).toBe('0.00000002')
+      expect(event.data.marginUsed).toBe('0.00000001')
+      expect(event.data.unrealizedPnl).toBe('0.00000002')
       p.close()
     })
 

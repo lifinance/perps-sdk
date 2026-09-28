@@ -77,7 +77,18 @@ PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 `getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
 joins each row onto the registry `Asset` and drops a row below the per-asset
-venue minimum.
+venue minimum. A row carries `withdrawalFee`, in the asset's own units, when a
+fee source is known for that asset:
+
+- Hyperliquid: the backend `/providers` `withdrawalFeeUsd`, on USDC rows only.
+  This read also calls the backend. A missing descriptor value leaves the key
+  absent.
+- Ondo: the account's `/v1/account` `withdrawalFeeUSD`, on the collateral row.
+  The USD fee counts 1:1 as collateral units, because Ondo collateral is USDC.
+- Lighter: never set.
+
+An absent `withdrawalFee` means that no fee source is known. It does not prove
+that the venue charges no fee.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
@@ -104,10 +115,34 @@ per-market figure for one market, as separate `buy` and `sell` amounts in the
 market's margin asset. The order panel reads the per-market figure, and account
 displays read the account-scoped figure.
 
-Providers that publish a per-market figure answer it directly. Hyperliquid
-reads it from `activeAssetData`, and also streams it on the `availableToTrade`
-WebSocket channel. For every other provider the client falls back to the
-account summary, so `buy` and `sell` both equal `availableMargin`.
+Some providers answer it directly. Hyperliquid reads it from
+`activeAssetData`, and also streams it on the `availableToTrade` WebSocket
+channel. Ondo reads it from `/v1/perps/max_order_size` over REST only, and
+needs a session. Lighter publishes no per-market figure, so the Lighter
+provider calculates it over REST only, from `availableMargin` and the open
+position on each perps market. The side that adds to the position gets
+`availableMargin`. The side that reduces or flips the position gets the
+initial margin requirement of the position, plus `availableMargin` and the
+margin that the close releases. Without an Ondo session, for Lighter spot
+markets, and for every other provider, the client falls back to the account
+summary, so `buy` and `sell` both equal `availableMargin`.
+
+Each perps-category row in `Account.collateralBalances` carries
+`transferable`: the part of `units` that the venue releases from that category
+in a category transfer. The value is always from `0` to `units`. It is absent
+on every other row, and no WebSocket channel updates it.
+
+- Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
+  sub-dex.
+- Lighter: the account's `available_balance` on the settlement-asset row, and
+  `0` on every other asset's row, since a category transfer moves only the
+  settlement asset.
+- Ondo: the `/v1/perps/balance` `withdrawableMargin`.
+
+`PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
+first subscribe, whether the provider streams the `availableToTrade` channel.
+Hyperliquid streams it for perps markets only, and rejects a spot-market
+subscription with a `ValidationError`.
 
 ```ts
 const availableToTrade = await client.getAvailableToTrade({

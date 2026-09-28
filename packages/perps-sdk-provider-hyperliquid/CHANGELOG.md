@@ -1,5 +1,60 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 18.1.0
+
+### Minor Changes
+
+- [#512](https://github.com/lifinance/perps-sdk/pull/512) [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `transferable` field to `Balance`, set on each perps-category collateral row: the amount the venue releases from that category in a category transfer. Hyperliquid reads it per sub-dex from `clearinghouseState.withdrawable`, Lighter from `available_balance` on the settlement-asset row (`0` on every other asset's row, since a category transfer moves only the settlement asset), and Ondo from `withdrawableMargin`. The value is always from `0` to the row's `units`.
+
+### Patch Changes
+
+- Updated dependencies [[`1c0cd4a`](https://github.com/lifinance/perps-sdk/commit/1c0cd4abb7755c07a0e485ffa86eaafc551ea4c7), [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f)]:
+  - @lifi/perps-types@16.1.0
+
+## 18.0.0
+
+### Major Changes
+
+- [#507](https://github.com/lifinance/perps-sdk/pull/507) [`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `availableToTrade` channel support on the WS provider factory.
+
+  `WsProviderFactory` has a new required `readonly streamsAvailableToTrade: boolean`.
+  `PerpsWsClient.streamsAvailableToTrade(provider)` returns that value
+  synchronously and does not create the provider. It returns `false` for a
+  provider with no registered factory. The Hyperliquid factory reports `true`.
+  The Lighter and Ondo factories report `false`, because their sockets reject the
+  `availableToTrade` channel.
+
+  The Hyperliquid socket now rejects an `availableToTrade` subscription for a spot
+  market with a `ValidationError` and sends no wire subscription. REST
+  `getAvailableToTrade` already resolves `undefined` for a spot market.
+
+  The bump is major for two reasons. The new required member breaks an external
+  `WsProviderFactory` author. Each provider package moves its `@lifi/perps-sdk`
+  peer range to the new major, so a host must upgrade the set together.
+
+### Patch Changes
+
+- Updated dependencies [[`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8)]:
+  - @lifi/perps-sdk@18.0.0
+
+## 17.0.0
+
+### Major Changes
+
+- [#502](https://github.com/lifinance/perps-sdk/pull/502) [`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Each provider now calculates its own removable isolated margin through `positionRemovableMargin(position)`, read through `PerpsClient.getPositionRemovableMargin(position)`. It returns `undefined` for a position with no individual margin adjustment and `'0'` for a position that accepts no margin removal. Hyperliquid returns `marginUsed − max(initialMarginRequirement, 0.1 × size × markPrice)` and no longer counts the unrealized PnL twice. Lighter returns `marginUsed + unrealizedPnl − initialMarginRequirement`. Ondo returns `undefined`. The shared `removableIsolatedMargin` helper, its `RemovableIsolatedMarginParams` type, the provider `positionMarginConstraints` exports, `PerpsClient.getPositionMarginConstraints`, and the `PositionMarginConstraints` type are removed. `Position.marginUsed` is the venue figure of each provider, and its unrealized-PnL treatment differs by venue.
+
+### Minor Changes
+
+- [#503](https://github.com/lifinance/perps-sdk/pull/503) [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawableBalances` rows now carry an optional `withdrawalFee` in the asset's own units: Hyperliquid sets it on USDC rows from the provider `withdrawalFeeUsd`, Ondo from the account `withdrawalFeeUSD`, and Lighter leaves it absent. The client rejects a row fee that is not a non-negative decimal.
+
+### Patch Changes
+
+- [#501](https://github.com/lifinance/perps-sdk/pull/501) [`71d5f8b`](https://github.com/lifinance/perps-sdk/commit/71d5f8b941bb0e9f7072ba2dd691f887211131c6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getOrder` now sets `explorerLink` on a Hyperliquid order whose placement transaction the explorer still holds, the same as `getOrders`. On both reads, a caller signal that fires during the explorer read now rejects the read instead of returning the orders unlinked.
+
+- Updated dependencies [[`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0), [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a), [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7)]:
+  - @lifi/perps-types@16.0.0
+  - @lifi/perps-sdk@17.0.0
+
 ## 16.0.0
 
 ### Major Changes

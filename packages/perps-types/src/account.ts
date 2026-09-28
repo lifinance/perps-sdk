@@ -57,10 +57,10 @@ export interface Position {
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
-   * Margin allocated and reserved by this position as a decimal string. Most
-   * venues report it without unrealized PnL. A Hyperliquid isolated position
-   * reports venue position equity instead, so its value includes the
-   * unrealized PnL of that position.
+   * Margin reserved by this position as a decimal string: the venue figure of
+   * each provider, unchanged. Its unrealized-PnL treatment differs by venue.
+   * Hyperliquid isolated `marginUsed` includes the unrealized PnL of the
+   * position; Lighter `allocated_margin` excludes it.
    */
   marginUsed: string
   /**
@@ -69,19 +69,6 @@ export interface Position {
    */
   initialMarginRequirement: string
   marginMode: MarginMode
-}
-
-/**
- * Exact provider-owned inputs for changing one position's dedicated margin.
- * `undefined` from the provider means the position has no individual margin
- * adjustment.
- * @public
- */
-export interface PositionMarginConstraints {
-  /** Exact margin the venue requires this position to retain. */
-  minimumMarginRequirement: string
-  /** Smallest accepted margin amount, as an exact decimal string. */
-  amountIncrement: string
 }
 
 /** Shared identity, quantities, and lifecycle of a venue order. */
@@ -153,6 +140,12 @@ export interface Balance {
   valueUsd: string
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
+  /**
+   * Part of `units` the venue releases from this category in a category
+   * transfer, as a decimal string from `0` to `units`. Set on each
+   * perps-category collateral row; absent on every other row.
+   */
+  transferable?: string
 }
 
 /**
@@ -168,7 +161,9 @@ export interface AccountResponse {
   balances: Balance[]
   /**
    * SDK-determined collateral subset; non-zero `units` only. An entry is a
-   * held quote-asset balance, or a provider-computed available-margin figure.
+   * held collateral balance: it can be a non-quote asset and can be unpriced
+   * (`price` absent, `valueUsd` `'0'`). It is not buying power; read
+   * {@link AccountSummary.availableMargin} for that.
    */
   collateralBalances: Balance[]
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
@@ -619,8 +614,9 @@ export interface LighterAccountConfig {
    */
   availableBalance: string
   /**
-   * Lighter `total_asset_value`: total account equity, isolated allocations
-   * and unrealized PnL included. A decimal string in quote-asset units.
+   * Lighter `total_asset_value`: perps-route equity, isolated allocations and
+   * unrealized PnL included. It excludes the spot-route balances. A decimal
+   * string in quote-asset units.
    */
   totalAssetValue: string
   /**

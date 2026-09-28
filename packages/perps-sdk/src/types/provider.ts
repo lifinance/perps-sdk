@@ -21,7 +21,6 @@ import type {
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
-  PositionMarginConstraints,
   PositionsResponse,
   Quote,
   QuoteSide,
@@ -446,10 +445,10 @@ export interface PerpsProviderPlugin {
   /**
    * The amounts the account can still buy and sell on one market, in that
    * market's margin asset. Optional because venues expose this unevenly:
-   * Hyperliquid reads it directly (`activeAssetData`), other venues publish
-   * only an account-scoped figure. `undefined` means the venue has nothing
-   * to read for this market, and the caller falls back to the account
-   * summary.
+   * Hyperliquid (`activeAssetData`) and Ondo (`max_order_size`) read it
+   * directly, other venues publish only an account-scoped figure. `undefined`
+   * means the venue has nothing to read for this market, and the caller falls
+   * back to the account summary.
    */
   getAvailableToTrade?(
     params: ProviderGetAvailableToTradeParams,
@@ -552,16 +551,17 @@ export interface PerpsProviderPlugin {
   ): number | undefined
 
   /**
-   * Exact venue-owned constraints for changing `position`'s dedicated margin.
-   * Pure — providers normalize raw venue quantities onto the position before
-   * returning these inputs.
+   * Margin that can be removed from `position` under the venue margin rules,
+   * as an exact decimal string rounded down to the venue amount increment.
+   * Pure — each provider reads its own venue meaning of `Position.marginUsed`.
    *
-   * @returns `undefined` when this position has no individual margin
-   *   adjustment (for example a cross position or a cross-only venue).
+   * @returns `undefined` when the position has no individual margin
+   *   adjustment (for example a cross position or a cross-only venue), and
+   *   `'0'` when the venue accepts no margin removal for it.
+   * @throws {PerpsError} `ValidationError` when a `Position` decimal that the
+   *   venue formula reads is malformed.
    */
-  positionMarginConstraints(
-    position: Position
-  ): PositionMarginConstraints | undefined
+  positionRemovableMargin(position: Position): string | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

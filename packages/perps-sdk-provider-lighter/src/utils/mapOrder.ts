@@ -61,9 +61,10 @@ const mapOrderStatus = (
   filledSize = new Big(order.filled_base_amount)
 ): OrderStatus => {
   switch (order.status) {
-    case 'pending':
     case 'in-progress':
       return OrderStatus.ACCEPTED
+    case 'pending':
+      return OrderStatus.OPEN
     case 'open':
       if (order.trigger_status === 'parent-order') {
         return OrderStatus.PENDING

@@ -5,6 +5,7 @@ import {
   explorerTxUrlFromBase,
   getAssetRegistry,
   getMarketRegistry,
+  getMarketsContext,
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
@@ -14,6 +15,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
@@ -40,6 +42,8 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  Asset,
+  AvailableToTrade,
   Balance,
   Fill,
   FillsResponse,
@@ -63,6 +67,7 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import {
   boundAccountTiers,
@@ -70,6 +75,7 @@ import {
   resolveAccountTier,
 } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
+import { lighterAvailableToTrade } from './availableToTrade.js'
 import {
   DEFAULT_TRADES_LIMIT,
   LIGHTER_ALL_MARKETS_WILDCARD,
@@ -96,6 +102,7 @@ import {
 } from './signers/signActions.js'
 import type {
   LtAccount,
+  LtAccountAsset,
   LtAccountLimits,
   LtAccountOrdersResponse,
   LtAccountPnL,
@@ -142,7 +149,7 @@ import {
   mapOpenPositions,
   mapOrder,
   mapPortfolioHistory,
-  positionMarginConstraints,
+  positionRemovableMargin,
   toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
@@ -152,6 +159,7 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
+import { spotPriceByAssetId } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
 
@@ -159,6 +167,13 @@ const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
 const tickToFeeString = (tick: number): string =>
   String(tick / LIGHTER_FEE_TICK_SCALE)
+
+const transferableWithin = (venueFigure: Big, units: Big): string => {
+  if (venueFigure.lt(0)) {
+    return '0'
+  }
+  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
+}
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -875,7 +890,7 @@ export const createLighterProvider = (
     }
   }
 
-  return {
+  const plugin: LighterPerpsProvider = {
     type: providerKey,
 
     bind(client: PerpsSDKClient): void {
@@ -917,11 +932,12 @@ export const createLighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
-      const [{ providers }, , , limitsResult, storedReadOnlyToken] =
+      const [{ providers }, , , { prices }, limitsResult, storedReadOnlyToken] =
         await Promise.all([
           getProviders(requireClient()),
           registry.sync(),
           assetRegistry.sync(),
+          getMarketsContext(requireClient(), { provider: providerKey }, opts),
           token === undefined
             ? Promise.resolve(undefined)
             : retryOnRevoked(opts, params.address, token, (resolvedToken) =>
@@ -936,12 +952,12 @@ export const createLighterProvider = (
       )
 
       const totalMarginUsed = positions.reduce(
-        (sum, p) => sum + Number.parseFloat(p.marginUsed),
-        0
+        (sum, p) => sum.plus(toRequiredBig(p.marginUsed, 'marginUsed')),
+        new Big(0)
       )
       const totalUnrealizedPnl = positions.reduce(
-        (sum, p) => sum + Number.parseFloat(p.unrealizedPnl),
-        0
+        (sum, p) => sum.plus(toRequiredBig(p.unrealizedPnl, 'unrealizedPnl')),
+        new Big(0)
       )
 
       const instanceMeta = providers.find((p) => p.key === providerKey)
@@ -955,43 +971,75 @@ export const createLighterProvider = (
         account.available_balance,
         'available_balance'
       )
-      // An underwater account reports no buying power. That is a margin
-      // deficit, not a holding, so it carries no collateral row either.
-      const collateralBalances: Balance[] = availableBalance.gt(0)
-        ? [
-            {
-              categoryId: perpsCategory?.id ?? providerKey,
-              asset:
-                perpsCategory?.quoteAsset ??
-                lighterAsset(
-                  collateral.displaySymbol,
-                  collateral.displaySymbol,
-                  providerKey
-                ),
-              units: availableBalance.toString(),
-              valueUsd: availableBalance.toString(),
-              price: '1',
-            },
-          ]
-        : []
-      // Spot token holdings — non-collateral. The instance's settlement asset
-      // is valued 1:1; other tokens have no price source at this boundary, so
-      // their price and USD value are unknown.
-      const balances: Balance[] = account.assets
-        .filter((asset) => toRequiredBig(asset.balance, 'balance').gt(0))
-        .map((a) => {
-          const assetId = String(a.asset_id)
-          const settlement = a.asset_id === collateral.assetIndex
-          return {
-            categoryId: spotCategoryId,
-            asset:
-              assetRegistry.get(assetId) ??
-              lighterAsset(assetId, a.symbol, providerKey),
-            units: a.balance,
-            valueUsd: settlement ? a.balance : '0',
-            ...(settlement ? { price: '1' } : {}),
-          }
-        })
+      // Each asset has a spot route (`balance`) and a perps route
+      // (`margin_balance`). The instance's settlement asset is valued 1:1; an
+      // asset no spot market prices keeps a zero USD value.
+      const heldAssets = account.assets.filter((asset) =>
+        toRequiredBig(asset.balance, 'balance').gt(0)
+      )
+      const marginAssets = account.assets.filter((asset) =>
+        toRequiredBig(asset.margin_balance, 'margin_balance').gt(0)
+      )
+      const spotPrices = spotPriceByAssetId(
+        registry.markets,
+        spotCategoryId,
+        prices,
+        new Set(
+          [...heldAssets, ...marginAssets]
+            .filter((a) => a.asset_id !== collateral.assetIndex)
+            .map((a) => String(a.asset_id))
+        )
+      )
+      const toBalance = (
+        a: LtAccountAsset,
+        categoryId: string,
+        asset: Asset,
+        units: string
+      ): Balance => {
+        const price =
+          a.asset_id === collateral.assetIndex
+            ? new Big(1)
+            : spotPrices.get(String(a.asset_id))
+        return {
+          categoryId,
+          asset,
+          units,
+          valueUsd:
+            price === undefined ? '0' : new Big(units).times(price).toFixed(),
+          ...(price === undefined ? {} : { price: price.toFixed() }),
+        }
+      }
+      const registryAsset = (a: LtAccountAsset): Asset =>
+        assetRegistry.get(String(a.asset_id)) ??
+        lighterAsset(String(a.asset_id), a.symbol, providerKey)
+      // The perps category names the settlement asset by its quote asset, so
+      // the settlement row carries that descriptor rather than the spot one.
+      const settlementAsset =
+        perpsCategory?.quoteAsset ??
+        lighterAsset(
+          collateral.displaySymbol,
+          collateral.displaySymbol,
+          providerKey
+        )
+      // A category transfer moves only the settlement asset, capped by the
+      // account's free margin; every other perps-route asset releases none.
+      const collateralBalances: Balance[] = marginAssets.map((a) => {
+        const isSettlement = a.asset_id === collateral.assetIndex
+        return {
+          ...toBalance(
+            a,
+            perpsCategory?.id ?? providerKey,
+            isSettlement ? settlementAsset : registryAsset(a),
+            a.margin_balance
+          ),
+          transferable: isSettlement
+            ? transferableWithin(availableBalance, new Big(a.margin_balance))
+            : '0',
+        }
+      })
+      const balances: Balance[] = heldAssets.map((a) =>
+        toBalance(a, spotCategoryId, registryAsset(a), a.balance)
+      )
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined
@@ -1033,8 +1081,8 @@ export const createLighterProvider = (
         balances,
         collateralBalances,
         positions,
-        marginUsed: totalMarginUsed.toString(),
-        unrealizedPnl: totalUnrealizedPnl.toString(),
+        marginUsed: totalMarginUsed.toFixed(),
+        unrealizedPnl: totalUnrealizedPnl.toFixed(),
         feeTier:
           limitsResult === undefined
             ? ZERO_FEE_TIER
@@ -1095,6 +1143,25 @@ export const createLighterProvider = (
         positions,
         pagination: { limit: params.limit ?? positions.length, hasMore: false },
       }
+    },
+
+    /**
+     * Lighter publishes no per-market figure, so this derives one from the
+     * account's `available_balance` and its open position on the market.
+     */
+    async getAvailableToTrade(
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> {
+      const registry = getMarketRegistry(requireClient(), providerKey)
+      await registry.sync()
+      const market = registry.require(params.marketId)
+      if (market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        return undefined
+      }
+      const account = await plugin.getAccount({ address: params.address }, opts)
+      const { availableMargin } = getAccountSummary(account, account.positions)
+      return lighterAvailableToTrade(market, availableMargin, account.positions)
     },
 
     /**
@@ -1695,7 +1762,7 @@ export const createLighterProvider = (
 
     estimateLiquidationPrice,
 
-    positionMarginConstraints,
+    positionRemovableMargin,
 
     projectConfig(
       config: AccountConfig,
@@ -1769,6 +1836,7 @@ export const createLighterProvider = (
       )
     },
   }
+  return plugin
 }
 
 /**

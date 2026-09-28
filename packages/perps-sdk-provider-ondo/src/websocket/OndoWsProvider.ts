@@ -853,5 +853,5 @@ export const ondoWsProvider = (
   Object.assign(
     ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
       new OndoWsProvider(wsUrl, provider, options, client),
-    { streamsCandles: true }
+    { streamsCandles: true, streamsAvailableToTrade: false }
   )

@@ -1,5 +1,68 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 29.1.0
+
+### Minor Changes
+
+- [#512](https://github.com/lifinance/perps-sdk/pull/512) [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `transferable` field to `Balance`, set on each perps-category collateral row: the amount the venue releases from that category in a category transfer. Hyperliquid reads it per sub-dex from `clearinghouseState.withdrawable`, Lighter from `available_balance` on the settlement-asset row (`0` on every other asset's row, since a category transfer moves only the settlement asset), and Ondo from `withdrawableMargin`. The value is always from `0` to the row's `units`.
+
+### Patch Changes
+
+- [#511](https://github.com/lifinance/perps-sdk/pull/511) [`1293239`](https://github.com/lifinance/perps-sdk/commit/1293239e7d55eb6a5463002fc28a108c7403681a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter `getAccount` perps `collateralBalances` rows now report the perps-route holding: one row for each asset with a `margin_balance` above zero, priced like the spot rows. An account whose open positions use all the free margin now shows its collateral. Previously the single row carried `available_balance` (free margin). A row can now be larger than the free margin, and a non-settlement row carries the asset-registry descriptor (`id` is the venue `asset_id`). For buying power, or a transfer or withdraw maximum, read `AccountSummary.availableMargin`.
+
+- Updated dependencies [[`1c0cd4a`](https://github.com/lifinance/perps-sdk/commit/1c0cd4abb7755c07a0e485ffa86eaafc551ea4c7), [`af14546`](https://github.com/lifinance/perps-sdk/commit/af14546383ec13201db9c5899fcc1719a16ab75f)]:
+  - @lifi/perps-types@16.1.0
+
+## 29.0.0
+
+### Major Changes
+
+- [#507](https://github.com/lifinance/perps-sdk/pull/507) [`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `availableToTrade` channel support on the WS provider factory.
+
+  `WsProviderFactory` has a new required `readonly streamsAvailableToTrade: boolean`.
+  `PerpsWsClient.streamsAvailableToTrade(provider)` returns that value
+  synchronously and does not create the provider. It returns `false` for a
+  provider with no registered factory. The Hyperliquid factory reports `true`.
+  The Lighter and Ondo factories report `false`, because their sockets reject the
+  `availableToTrade` channel.
+
+  The Hyperliquid socket now rejects an `availableToTrade` subscription for a spot
+  market with a `ValidationError` and sends no wire subscription. REST
+  `getAvailableToTrade` already resolves `undefined` for a spot market.
+
+  The bump is major for two reasons. The new required member breaks an external
+  `WsProviderFactory` author. Each provider package moves its `@lifi/perps-sdk`
+  peer range to the new major, so a host must upgrade the set together.
+
+### Minor Changes
+
+- [#508](https://github.com/lifinance/perps-sdk/pull/508) [`262232a`](https://github.com/lifinance/perps-sdk/commit/262232a2a1f040593ad024aa4af1e1de8829c279) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter provider now answers `getAvailableToTrade` for each perps market, so the client no longer falls back to the account summary for these markets. The side that adds to an open position gets `availableMargin`. The side that reduces or flips the position gets the initial margin requirement of the position, plus `availableMargin` and the margin that the close releases, floored at 0. Spot markets resolve `undefined`, and the client keeps its fallback for them. The figure is REST only: `LighterWsProvider` still rejects the `availableToTrade` channel.
+
+  `getAccountSummary` now accepts an account from the Robinhood-chain deployment (`lighter-rh`), so `getAccountSummary` and `getAvailableToTrade` work on `lighterRhProvider()`.
+
+### Patch Changes
+
+- [#509](https://github.com/lifinance/perps-sdk/pull/509) [`528fea0`](https://github.com/lifinance/perps-sdk/commit/528fea0067e366bbae761d7ce7f63661ee0b91ed) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter `getAccount` now sums `marginUsed` and `unrealizedPnl` as exact decimals, so the account totals show no float drift. A position whose `marginUsed` or `unrealizedPnl` is not a decimal now makes `getAccount` reject with a `PerpsError` (`SDKError`) that names the field, in place of a `'NaN'` total. The WebSocket `accountSummary` channel now renders its four values as plain decimals, never in exponent notation.
+
+- Updated dependencies [[`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8)]:
+  - @lifi/perps-sdk@18.0.0
+
+## 28.0.0
+
+### Major Changes
+
+- [#502](https://github.com/lifinance/perps-sdk/pull/502) [`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Each provider now calculates its own removable isolated margin through `positionRemovableMargin(position)`, read through `PerpsClient.getPositionRemovableMargin(position)`. It returns `undefined` for a position with no individual margin adjustment and `'0'` for a position that accepts no margin removal. Hyperliquid returns `marginUsed − max(initialMarginRequirement, 0.1 × size × markPrice)` and no longer counts the unrealized PnL twice. Lighter returns `marginUsed + unrealizedPnl − initialMarginRequirement`. Ondo returns `undefined`. The shared `removableIsolatedMargin` helper, its `RemovableIsolatedMarginParams` type, the provider `positionMarginConstraints` exports, `PerpsClient.getPositionMarginConstraints`, and the `PositionMarginConstraints` type are removed. `Position.marginUsed` is the venue figure of each provider, and its unrealized-PnL treatment differs by venue.
+
+### Patch Changes
+
+- [#499](https://github.com/lifinance/perps-sdk/pull/499) [`5c7e2c5`](https://github.com/lifinance/perps-sdk/commit/5c7e2c501cd4a2cc58455cea6564afb8e1ae1b97) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map an Ondo `pending` order to `PENDING` instead of failing the order read, and map a resting Lighter `pending` trigger order to `OPEN`.
+
+- [#504](https://github.com/lifinance/perps-sdk/pull/504) [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `getAccount` spot balance rows now carry a `price` and a USD value from the spot market's mark price, and `getAccountSummary` adds every spot row, the settlement row included, to `portfolioValue`. `getAccount` now also reads the backend `/marketsContext` and rejects when that read fails. The `LighterAccountConfig.totalAssetValue` doc now states that the figure is perps-route equity and excludes the spot-route balances.
+
+- Updated dependencies [[`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0), [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a), [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7)]:
+  - @lifi/perps-types@16.0.0
+  - @lifi/perps-sdk@17.0.0
+
 ## 27.0.0
 
 ### Major Changes

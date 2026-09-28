@@ -1,5 +1,47 @@
 # @lifi/perps-sdk
 
+## 18.0.0
+
+### Major Changes
+
+- [#507](https://github.com/lifinance/perps-sdk/pull/507) [`36a9b5e`](https://github.com/lifinance/perps-sdk/commit/36a9b5ecfadfea49e52728d001b84b2ae0fa4ba8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report `availableToTrade` channel support on the WS provider factory.
+
+  `WsProviderFactory` has a new required `readonly streamsAvailableToTrade: boolean`.
+  `PerpsWsClient.streamsAvailableToTrade(provider)` returns that value
+  synchronously and does not create the provider. It returns `false` for a
+  provider with no registered factory. The Hyperliquid factory reports `true`.
+  The Lighter and Ondo factories report `false`, because their sockets reject the
+  `availableToTrade` channel.
+
+  The Hyperliquid socket now rejects an `availableToTrade` subscription for a spot
+  market with a `ValidationError` and sends no wire subscription. REST
+  `getAvailableToTrade` already resolves `undefined` for a spot market.
+
+  The bump is major for two reasons. The new required member breaks an external
+  `WsProviderFactory` author. Each provider package moves its `@lifi/perps-sdk`
+  peer range to the new major, so a host must upgrade the set together.
+
+## 17.0.1
+
+### Patch Changes
+
+- [#505](https://github.com/lifinance/perps-sdk/pull/505) [`0c2936b`](https://github.com/lifinance/perps-sdk/commit/0c2936b7b73aa75679bafad9ce747f204d7fc400) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Ondo answers `getAvailableToTrade` with per-market buy and sell margin from `/v1/perps/max_order_size`, so the client no longer falls back to the account-scoped `availableMargin` for Ondo.
+
+## 17.0.0
+
+### Major Changes
+
+- [#502](https://github.com/lifinance/perps-sdk/pull/502) [`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Each provider now calculates its own removable isolated margin through `positionRemovableMargin(position)`, read through `PerpsClient.getPositionRemovableMargin(position)`. It returns `undefined` for a position with no individual margin adjustment and `'0'` for a position that accepts no margin removal. Hyperliquid returns `marginUsed − max(initialMarginRequirement, 0.1 × size × markPrice)` and no longer counts the unrealized PnL twice. Lighter returns `marginUsed + unrealizedPnl − initialMarginRequirement`. Ondo returns `undefined`. The shared `removableIsolatedMargin` helper, its `RemovableIsolatedMarginParams` type, the provider `positionMarginConstraints` exports, `PerpsClient.getPositionMarginConstraints`, and the `PositionMarginConstraints` type are removed. `Position.marginUsed` is the venue figure of each provider, and its unrealized-PnL treatment differs by venue.
+
+### Minor Changes
+
+- [#503](https://github.com/lifinance/perps-sdk/pull/503) [`2138c36`](https://github.com/lifinance/perps-sdk/commit/2138c36df2d37b26f25d159da527dcb69c121a7a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawableBalances` rows now carry an optional `withdrawalFee` in the asset's own units: Hyperliquid sets it on USDC rows from the provider `withdrawalFeeUsd`, Ondo from the account `withdrawalFeeUSD`, and Lighter leaves it absent. The client rejects a row fee that is not a non-negative decimal.
+
+### Patch Changes
+
+- Updated dependencies [[`f6e392f`](https://github.com/lifinance/perps-sdk/commit/f6e392fd207ce3a9bc5e7f3f9410f7704dcbd7c0), [`383e96c`](https://github.com/lifinance/perps-sdk/commit/383e96cc2038095160e2f1b6542c8655dff48ed7)]:
+  - @lifi/perps-types@16.0.0
+
 ## 16.0.0
 
 ### Major Changes

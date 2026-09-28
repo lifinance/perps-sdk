@@ -1472,6 +1472,10 @@ describe('OndoWsProvider', () => {
       expect(ondoWsProvider().streamsCandles).toBe(true)
     })
 
+    it('reports streamsAvailableToTrade false', () => {
+      expect(ondoWsProvider().streamsAvailableToTrade).toBe(false)
+    })
+
     it('defaults the API URL to production for session lookups', () => {
       const p = makeProvider()
       expect((p as any).tokenStore).toBeDefined()

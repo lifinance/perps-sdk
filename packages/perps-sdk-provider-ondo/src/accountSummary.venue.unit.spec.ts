@@ -216,6 +216,7 @@ describe('accountSummary.venue', () => {
         assetId: ONDO_COLLATERAL_ASSET.id,
         route: 'perps',
         available: BALANCE.withdrawableMargin,
+        withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,
       },
     ])
   })

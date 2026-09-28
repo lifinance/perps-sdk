@@ -16,6 +16,7 @@ export {
   type OndoRequestOptions,
   OndoSessionExpiredError,
 } from './apiClient.js'
+export { ondoAvailableToTrade } from './availableToTrade.js'
 export { requireOndoCollateralAsset } from './collateralAsset.js'
 export {
   buildOndoProvisionPayload,
@@ -38,5 +39,5 @@ export { mapOpenPositions, mapPosition } from './mapPosition.js'
 export { intervalFromBarSpan, mapInterval } from './ohlcvInterval.js'
 export { ondoAsset } from './ondoAsset.js'
 export { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
-export { positionMarginConstraints } from './transferMargin.js'
+export { positionRemovableMargin } from './transferMargin.js'
 export { ondoWithdrawableBalances } from './withdrawableBalances.js'

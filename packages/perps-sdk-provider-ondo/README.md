@@ -117,6 +117,11 @@ consumer that formats the fee must read `fee.asset` and never reuse the
 withdrawal's own `asset`. A withdrawal Ondo reports as
 `failure` or `cancelled` moved no value and is dropped.
 
+`getWithdrawableBalances` reads the account's `/v1/account` `withdrawalFeeUSD`
+and sets it as `withdrawalFee` on the collateral row. That row is in collateral
+units, not USD. The provider uses the USD fee 1:1 because the Ondo collateral
+is USDC.
+
 Activity cursors with overflow rows use format version `2`. The provider rejects
 older overflow formats instead of treating a display symbol as asset identity.
 Restart pagination when the SDK reports this `ValidationError`.
@@ -126,6 +131,20 @@ moves value between the `main` and `margin` wallets of one account, and
 `TransferActivity` reports movements between two distinct accounts only. A
 request that filters for `TRANSFER` alone returns an empty page and makes no
 upstream call.
+
+## Available to trade
+
+`getAvailableToTrade` reads the per-market figure from
+`/v1/perps/max_order_size` with `buffer=1`, so the SDK applies no safety
+margin. The provider reads the `percent100` tier. `maxBidBaseSize` becomes
+`buy` and `maxAskBaseSize` becomes `sell`. The venue reports base-asset units,
+and the provider converts each side into margin-asset units as
+`baseSize × markPrice ÷ leverage`, truncated toward zero. `leverage` comes from `/v1/perps/leverage`
+and `markPrice` from `/v1/perps/mark_prices`. A venue `insufficient_margin`
+rejection returns `"0"` on both sides. Without a session the method resolves
+`undefined`, and the client falls back to the account summary. Ondo does not
+stream this figure, so the `availableToTrade` WebSocket channel stays
+unsupported.
 
 ## Environments
 

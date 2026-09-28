@@ -378,3 +378,37 @@ export interface OndoPortfolioSummary {
   volume30d: string
   volumeAllTime: string
 }
+
+/** Mirrors Ondo's `OrderSizes`: one `MaxOrderSizesRes` tier, in base-asset units. @public */
+export interface OndoOrderSizes {
+  maxBidBaseSize: string
+  maxAskBaseSize: string
+}
+
+/**
+ * Mirrors Ondo's `MaxOrderSizesRes` (the `/v1/perps/max_order_size` result).
+ * The request `buffer` scales every tier. @public
+ */
+export interface OndoMaxOrderSizesRes {
+  percent100: OndoOrderSizes
+  percent75: OndoOrderSizes
+  percent50: OndoOrderSizes
+  percent25: OndoOrderSizes
+}
+
+/** Mirrors Ondo's `ApiLeverage` (a `/v1/perps/leverage` result row). @public */
+export interface OndoLeverage {
+  market: string
+  leverage: string
+}
+
+/** Mirrors Ondo's `MarkPrice` (a `/v1/perps/mark_prices` result value). @public */
+export interface OndoRestMarkPrice {
+  market: string
+  pair: { base: string; quote: string }
+  price: string
+  markPrice: string
+  oraclePrice: string
+  lastExternalPrice: string
+  lastUpdatedTime: string
+}

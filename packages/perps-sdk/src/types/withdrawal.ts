@@ -22,6 +22,12 @@ export interface ProviderWithdrawableBalance {
   route: WithdrawalRoute
   /** Withdrawable amount in the asset's own units. Always greater than zero. */
   available: string
+  /**
+   * Flat venue fee on a withdrawal from this row, in the asset's own units.
+   * Absent when the venue publishes no fee for the asset. The client rejects a
+   * value that is not a non-negative decimal.
+   */
+  withdrawalFee?: string
 }
 
 /**
@@ -36,4 +42,10 @@ export interface WithdrawableBalance {
   route: WithdrawalRoute
   /** Withdrawable amount in the asset's own units. */
   available: string
+  /**
+   * Flat venue fee on a withdrawal from this row, in the asset's own units. An
+   * amount at or below it delivers nothing. Absent when the venue publishes no
+   * fee for the asset.
+   */
+  withdrawalFee?: string
 }

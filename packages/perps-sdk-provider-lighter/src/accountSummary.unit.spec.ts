@@ -3,6 +3,7 @@ import type {
   AccountResponse,
   Asset,
   Balance,
+  LighterProviderKey,
   Position,
 } from '@lifi/perps-types'
 import {
@@ -56,18 +57,19 @@ const position = (
 const account = (
   availableBalance: string,
   totalAssetValue: string,
-  balances: Balance[] = []
+  balances: Balance[] = [],
+  provider: LighterProviderKey = 'lighter'
 ): AccountResponse => ({
-  provider: 'lighter',
+  provider,
   address: '0x0000000000000000000000000000000000000001',
   balances,
-  collateralBalances: [balance(availableBalance)],
+  collateralBalances: [balance(totalAssetValue)],
   positions: [],
   marginUsed: '0',
   unrealizedPnl: '0',
   feeTier: { maker: '0', taker: '0' },
   config: {
-    provider: 'lighter',
+    provider,
     accountIndex: 0,
     apiKeyIndex: 0,
     apiKeyRegistered: true,
@@ -103,12 +105,46 @@ describe('getAccountSummary', () => {
     expect(summary.portfolioValue).toBe('11.679579')
   })
 
-  it('does not add the spot balance rows to portfolio value', () => {
+  it('adds every spot balance row value to total_asset_value', () => {
     const summary = getAccountSummary(
-      account('800', '1000', [balance('250')]),
+      account('800', '1000', [
+        balance('250'),
+        { ...balance('814.23'), asset: { ...USDC, id: '1' } },
+        { ...balance('0'), asset: { ...USDC, id: '0' } },
+      ]),
       [position('200', '0')]
     )
-    expect(summary.portfolioValue).toBe('1000')
+    expect(summary.portfolioValue).toBe('2064.23')
+  })
+
+  it('counts the settlement token once per route and never adds the collateral row', () => {
+    // total_asset_value carries the perps-route USDC; the spot row carries the
+    // spot-route USDC; the collateral row is the perps-route holding inside
+    // total_asset_value.
+    const summary = getAccountSummary(
+      account('800', '1000', [balance('103.00085138124')]),
+      []
+    )
+    expect(summary.portfolioValue).toBe('1103.00085138124')
+    expect(summary.availableMargin).toBe('800')
+  })
+
+  it('writes a dust total in plain decimal notation', () => {
+    const summary = getAccountSummary(
+      account('0.00000001', '0', [balance('0.00000001')]),
+      [position('0.00000001', '-0.00000001')]
+    )
+    expect(summary).toEqual({
+      portfolioValue: '0.00000001',
+      availableMargin: '0.00000001',
+      marginUsed: '0.00000001',
+      unrealizedPnl: '-0.00000001',
+    })
+  })
+
+  it('rejects a non-decimal spot balance value', () => {
+    const broken = account('800', '1000', [balance('n/a')])
+    expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
   })
 
   it('aggregates margin used and pnl across multiple positions', () => {
@@ -128,6 +164,11 @@ describe('getAccountSummary', () => {
       marginUsed: '0',
       unrealizedPnl: '0',
     })
+  })
+
+  it('accepts the Robinhood-chain deployment config', () => {
+    const rh = account('800', '1000', [], 'lighter-rh')
+    expect(getAccountSummary(rh, []).availableMargin).toBe('800')
   })
 
   it('rejects a non-Lighter account config', () => {

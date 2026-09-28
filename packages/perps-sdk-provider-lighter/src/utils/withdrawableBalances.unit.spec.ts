@@ -98,6 +98,14 @@ describe('lighterWithdrawableBalances', () => {
   it('returns nothing for an account holding no assets', () => {
     expect(lighterWithdrawableBalances([])).toEqual([])
   })
+
+  it('sets no withdrawal fee on any row, since Lighter publishes none', () => {
+    const rows = lighterWithdrawableBalances(MULTI_ASSET_ROWS)
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row).not.toHaveProperty('withdrawalFee')
+    }
+  })
 })
 
 describe('utils public barrel', () => {

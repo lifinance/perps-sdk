@@ -13,6 +13,7 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetOrderParams,
@@ -28,6 +29,7 @@ import {
   type SDKRequestOptions,
   type SignActionsContext,
   type StorageAdapter,
+  toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
@@ -40,6 +42,7 @@ import type {
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
+  AvailableToTrade,
   Fill,
   FillsResponse,
   FundingActivity,
@@ -59,7 +62,7 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
+import type Big from 'big.js'
 import type { Address } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -80,11 +83,14 @@ import type {
   OndoBalanceSummary,
   OndoFill,
   OndoFundingFeeTransfer,
+  OndoLeverage,
   OndoLiquidationEvent,
+  OndoMaxOrderSizesRes,
   OndoOrder,
   OndoPortfolioGraphPoint,
   OndoPortfolioSummary,
   OndoPosition,
+  OndoRestMarkPrice,
   OndoTwapOrder,
   OndoWalletDeposit,
   OndoWalletWithdrawal,
@@ -101,6 +107,7 @@ import {
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
+import { toWireBig } from './utils/decimal.js'
 import {
   estimateLiquidationPrice,
   formatOrderPrice,
@@ -113,8 +120,9 @@ import {
   mapOpenPositions,
   mapOrder,
   mapWithdrawalActivity,
+  ondoAvailableToTrade,
   ondoWithdrawableBalances,
-  positionMarginConstraints,
+  positionRemovableMargin,
   requireOndoCollateralAsset,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
@@ -124,6 +132,13 @@ import {
   type OndoOrderCursor,
   type OrderSource,
 } from './utils/orderCursor.js'
+
+const transferableWithin = (venueFigure: Big, units: Big): string => {
+  if (venueFigure.lt(0)) {
+    return '0'
+  }
+  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
+}
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -332,13 +347,18 @@ export const ondoProvider = (
             requirePerpsMarketDisplay
           )
 
+          const walletBalance = toWireBig(
+            balance.walletBalance,
+            'balance.walletBalance'
+          )
+
           // The backend owns the collateral identity; the venue supplies its
           // wallet balance (locked margin in, unrealized PnL out).
           return {
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
             balances: [],
-            collateralBalances: new Big(balance.walletBalance).gt(0)
+            collateralBalances: walletBalance.gt(0)
               ? [
                   {
                     categoryId: ONDO_PROVIDER_KEY,
@@ -346,6 +366,13 @@ export const ondoProvider = (
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
                     price: '1',
+                    transferable: transferableWithin(
+                      toWireBig(
+                        balance.withdrawableMargin,
+                        'balance.withdrawableMargin'
+                      ),
+                      walletBalance
+                    ),
                   },
                 ]
               : [],
@@ -385,16 +412,103 @@ export const ondoProvider = (
         params.address,
         (): ProviderWithdrawableBalance[] => [],
         async (token) => {
-          const [{ providers }, balance] = await Promise.all([
+          const client = apiClient(opts)
+          const [{ providers }, balance, account] = await Promise.all([
             getProviders(requireClient(), opts),
-            apiClient(opts).get<OndoBalanceSummary>('/v1/perps/balance', {
+            client.get<OndoBalanceSummary>('/v1/perps/balance', {
+              authToken: token.token,
+            }),
+            client.get<OndoAccountInfo>('/v1/account', {
               authToken: token.token,
             }),
           ])
           return ondoWithdrawableBalances(
             requireOndoCollateralAsset(providers).id,
-            balance
+            balance,
+            account.withdrawalFeeUSD
           )
+        }
+      )
+    },
+
+    async getAvailableToTrade(
+      params: ProviderGetAvailableToTradeParams,
+      opts?: SDKRequestOptions
+    ): Promise<AvailableToTrade | undefined> {
+      return withSession(
+        params.address,
+        () => undefined,
+        async (token) => {
+          const registry = marketRegistry()
+          await registry.sync()
+          const market = registry.require(params.marketId)
+          const client = apiClient(opts)
+          const [maxOrderSizes, leveragesRead, markPricesRead] =
+            await Promise.allSettled([
+              client
+                .get<OndoMaxOrderSizesRes>('/v1/perps/max_order_size', {
+                  params: { market: market.id, buffer: '1' },
+                  authToken: token.token,
+                })
+                .catch((error: unknown) => {
+                  if (
+                    error instanceof OndoApiError &&
+                    error.errorCode === 'insufficient_margin'
+                  ) {
+                    return null
+                  }
+                  throw error
+                }),
+              client.get<OndoLeverage[]>('/v1/perps/leverage', {
+                params: { market: market.id },
+                authToken: token.token,
+              }),
+              client.get<Record<string, OndoRestMarkPrice>>(
+                '/v1/perps/mark_prices'
+              ),
+            ])
+          if (maxOrderSizes.status === 'rejected') {
+            throw maxOrderSizes.reason
+          }
+          const asset = toAssetDisplay(market.quoteAsset)
+          // The zero result reads neither companion, so their failures do not apply.
+          if (maxOrderSizes.value === null) {
+            return {
+              providerId: market.providerId,
+              marketId: market.id,
+              asset,
+              buy: '0',
+              sell: '0',
+            }
+          }
+          if (leveragesRead.status === 'rejected') {
+            throw leveragesRead.reason
+          }
+          if (markPricesRead.status === 'rejected') {
+            throw markPricesRead.reason
+          }
+          const leverage = leveragesRead.value.find(
+            (row) => row.market === market.id
+          )
+          const markPrice = markPricesRead.value[market.id]
+          if (leverage === undefined || markPrice === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo returned no ${leverage === undefined ? 'leverage' : 'mark price'} for market '${market.id}'`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          return {
+            providerId: market.providerId,
+            marketId: market.id,
+            asset,
+            ...ondoAvailableToTrade(
+              maxOrderSizes.value.percent100,
+              leverage.leverage,
+              markPrice.markPrice
+            ),
+          }
         }
       )
     },
@@ -929,7 +1043,7 @@ export const ondoProvider = (
 
     estimateLiquidationPrice,
 
-    positionMarginConstraints,
+    positionRemovableMargin,
 
     projectConfig(
       config: AccountConfig,

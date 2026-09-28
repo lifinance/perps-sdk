@@ -45,6 +45,8 @@ export interface WsProviderFactory {
   (params: WsProviderFactoryParams): WsProvider
   /** `true` when the venue socket serves the `candle` channel. */
   readonly streamsCandles: boolean
+  /** `true` when the venue socket serves the `availableToTrade` channel. */
+  readonly streamsAvailableToTrade: boolean
 }
 
 /**
@@ -92,6 +94,19 @@ export class PerpsWsClient {
    */
   streamsCandles(provider: string): boolean {
     return this.options.wsProviders?.[provider]?.streamsCandles ?? false
+  }
+
+  /**
+   * Whether `provider`'s socket serves the `availableToTrade` channel, as
+   * reported by its registered factory. Returns `false` when no factory is
+   * registered. Synchronous, with the same contract as {@link streamsCandles}.
+   *
+   * @public
+   */
+  streamsAvailableToTrade(provider: string): boolean {
+    return (
+      this.options.wsProviders?.[provider]?.streamsAvailableToTrade ?? false
+    )
   }
 
   /**

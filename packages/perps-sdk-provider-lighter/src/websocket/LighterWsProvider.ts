@@ -660,10 +660,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
       data: {
-        portfolioValue: portfolio.toString(),
-        availableMargin: available.toString(),
-        marginUsed: marginUsed.toString(),
-        unrealizedPnl: portfolio.minus(collateral).toString(),
+        portfolioValue: portfolio.toFixed(),
+        availableMargin: available.toFixed(),
+        marginUsed: marginUsed.toFixed(),
+        unrealizedPnl: portfolio.minus(collateral).toFixed(),
       },
     })
   }
@@ -1008,5 +1008,5 @@ export const lighterWsProvider = (
   Object.assign(
     ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
       new LighterWsProvider(wsUrl, provider, options, client),
-    { streamsCandles: false }
+    { streamsCandles: false, streamsAvailableToTrade: false }
   )

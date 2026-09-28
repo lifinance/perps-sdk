@@ -7,23 +7,29 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
 const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
-  if (account.config.provider !== 'lighter') {
+  const { config } = account
+  if (
+    config.provider !== LIGHTER_PROVIDER_KEY &&
+    config.provider !== LIGHTER_RH_PROVIDER_KEY
+  ) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      `Lighter account summary received a '${account.config.provider}' account config`
+      `Lighter account summary received a '${config.provider}' account config`
     )
   }
-  return account.config
+  return config
 }
 
 /**
- * Roll a Lighter account up into an {@link AccountSummary}, from the venue
- * figures the response carries. `totalAssetValue` is total equity and
- * `availableBalance` is buying power, so neither needs reconciling against the
- * positions; the positions supply only the margin and PnL breakdown.
+ * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
+ * is perps-route equity and excludes the spot route, so `portfolioValue` adds
+ * every spot `balances` row, settlement included; the `collateralBalances` rows
+ * are the perps-route holding already inside `totalAssetValue`. The positions
+ * supply only the margin and PnL breakdown.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
@@ -41,18 +47,20 @@ export function getAccountSummary(
     unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl)
   }
 
+  let portfolioValue = toRequiredBig(config.totalAssetValue, 'totalAssetValue')
+  for (const balance of account.balances) {
+    portfolioValue = portfolioValue.plus(
+      toRequiredBig(balance.valueUsd, 'valueUsd')
+    )
+  }
+
   return {
-    // `total_asset_value` already covers every asset the venue prices, so the
-    // spot `balances` rows must not be added on top of it.
-    portfolioValue: toRequiredBig(
-      config.totalAssetValue,
-      'totalAssetValue'
-    ).toString(),
+    portfolioValue: portfolioValue.toFixed(),
     availableMargin: toRequiredBig(
       config.availableBalance,
       'availableBalance'
-    ).toString(),
-    marginUsed: marginUsed.toString(),
-    unrealizedPnl: unrealizedPnl.toString(),
+    ).toFixed(),
+    marginUsed: marginUsed.toFixed(),
+    unrealizedPnl: unrealizedPnl.toFixed(),
   }
 }

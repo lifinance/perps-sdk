@@ -1868,6 +1868,65 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('carries the provider withdrawal fee onto the row, and no fee key where the provider sets none', async () => {
+      const plugin = withRows([
+        { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
+        { assetId: '3', route: 'spot', available: '5' },
+      ])
+      const rows = await clientWith(plugin).getWithdrawableBalances({
+        provider,
+        address: userAddress,
+      })
+      expect(rows).toEqual([
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11',
+          withdrawalFee: '1',
+        },
+        { asset: ASSETS[1], route: 'spot', available: '5' },
+      ])
+      expect(rows?.[1]).not.toHaveProperty('withdrawalFee')
+    })
+
+    it('carries a zero withdrawal fee onto the row', async () => {
+      await expect(
+        clientWith(
+          withRows([
+            {
+              assetId: '3',
+              route: 'perps',
+              available: '11',
+              withdrawalFee: '0',
+            },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11',
+          withdrawalFee: '0',
+        },
+      ])
+    })
+
+    it.each([
+      '-1',
+      'not-a-decimal',
+    ])('rejects a row whose withdrawal fee is %s', async (withdrawalFee) => {
+      await expect(
+        clientWith(
+          withRows([
+            { assetId: '3', route: 'perps', available: '11', withdrawalFee },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: `Provider '${provider}' row for asset '3' has a \`withdrawalFee\` that is not a non-negative decimal: '${withdrawalFee}'.`,
+      })
+    })
+
     it('excludes rows below the asset minimum', async () => {
       await expect(
         clientWith(
@@ -2080,7 +2139,7 @@ describe('PerpsClient', () => {
         formatOrderPrice: vi.fn(),
         formatOrderSize: vi.fn(),
         estimateLiquidationPrice: vi.fn(),
-        positionMarginConstraints: vi.fn(),
+        positionRemovableMargin: vi.fn(),
         projectConfig: vi.fn(() => []),
         ...plugin,
       }
@@ -2156,7 +2215,7 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('getPositionMarginConstraints', () => {
+  describe('getPositionRemovableMargin', () => {
     const position: Position = {
       market: {
         providerId: provider,
@@ -2190,11 +2249,7 @@ describe('PerpsClient', () => {
     }
 
     it('delegates the complete position to its registered provider', () => {
-      const constraints = {
-        minimumMarginRequirement: '1000',
-        amountIncrement: '0.000001',
-      }
-      const positionMarginConstraints = vi.fn(() => constraints)
+      const positionRemovableMargin = vi.fn(() => '500')
       const client = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -2203,13 +2258,13 @@ describe('PerpsClient', () => {
             type: provider,
             bind: vi.fn(),
             projectConfig: vi.fn(() => []),
-            positionMarginConstraints,
+            positionRemovableMargin,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
-      expect(client.getPositionMarginConstraints(position)).toEqual(constraints)
-      expect(positionMarginConstraints).toHaveBeenCalledWith(position)
+      expect(client.getPositionRemovableMargin(position)).toBe('500')
+      expect(positionRemovableMargin).toHaveBeenCalledWith(position)
     })
   })
 
