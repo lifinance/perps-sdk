@@ -1,5 +1,61 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 19.0.0
+
+### Major Changes
+
+- [#521](https://github.com/lifinance/perps-sdk/pull/521) [`fd0eb69`](https://github.com/lifinance/perps-sdk/commit/fd0eb6994662b037a9cde06a7d8944c33201be29) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Describe every setup step and action by `signer`, `relay`, `options` and `revoke`, and remove `Provider.options`.
+
+  Backend requirement: this release needs a `/providers` response that emits a single `signer` and a `relay` on every `Provider.setup` and `Provider.actions` descriptor, and `options` and `revoke` on every setup step. The former options (Lighter `ACCOUNT_TYPE` and `ACCOUNT_MODE`, Hyperliquid `ACCOUNT_MODE`) are choice setup steps. Against an older backend, every `PerpsClient` call that reads provider metadata throws `PerpsErrorCode.SDKError` that names the step, instead of reporting a not-onboarded account as ready. The SDK also rejects a `revoke` that `Provider.actions` does not declare, an empty choice, and a step with more than one `default` option.
+
+  Breaking changes:
+
+  - `ProviderAction.signers: PerpsSigner[]` is now `ProviderAction.signer: PerpsSigner`.
+  - `ProviderAction.relay: ActionRelay` (`API` or `CLIENT`) is new and required.
+  - `Provider.setup` is now `SetupAction[]`. A `SetupAction` carries `options: SetupOption[] | null` and `revoke: ActionType | null`. A `SetupOption` binds `{ title, type, params }` and can mark `default: true`, the recommended option a UI pre-selects.
+  - `Provider.options` is deleted. A former option is a choice setup step.
+  - `ActionType.REVOKE_BUILDER_FEE` is new.
+  - `SignActionsContext.signers` is now `SignActionsContext.signer`, and `PerpsProviderPlugin.resolveActionRequest` takes one `PerpsSigner`.
+  - `PerpsProviderPlugin.projectConfig(config, setup)` takes two arguments. The `options` argument is gone.
+  - `PerpsProviderPlugin.internalSetupActions` is removed. An `SDK`-signed non-choice step states the same fact.
+  - `PerpsClient.executeProviderOption` takes `{ provider, address, option }` and executes the option's bound `type` and `params`.
+  - `selectUserSetupActions` takes `SetupAction[]`.
+  - `PerpsClient.buildProviderSetup` stages only a `USER`-signed non-choice step.
+
+  Migration:
+
+  - Read `descriptor.signer` in place of `descriptor.signers`.
+  - Read former options from `Provider.setup` where `options !== null`, not from `Provider.options`.
+  - Pass the option the user taps to `executeProviderOption`. The SDK never executes a choice on its own, so a UI pre-selects the `default` option and waits for the tap.
+  - Drop `internalSetupActions` from a custom plugin.
+  - Call `projectConfig(config, setup)` with two arguments.
+  - Pass the `checklist` returned by `checkSetup` to `executeProviderSetupAction` with its staged `step`; sequence validation uses that same snapshot without staging any action again.
+
+  New behaviour:
+
+  - `PerpsClient.checkSetup` shows every choice step and a `USER`-signed non-choice step on the checklist, and hides and executes an `SDK`-signed non-choice step. A choice step is never staged, and the SDK never executes it on its own, whatever its `signer` or `default`: the user taps an option and `executeProviderOption` executes it. Its satisfied state comes from the plugin projection.
+  - `ProviderSetup.isReady` is `true` only when nothing is staged and every choice step on `checklist` is satisfied. An unsatisfied choice, such as a Lighter `ACCOUNT_TYPE` whose tier projects `null`, keeps the account not ready until the user picks an option.
+  - `SetupChecklistItem.selected` is the option whose bound params equal the projected values, or `null`.
+  - `PerpsClient.executeProviderRevoke({ provider, address, step })` executes the step's `revoke` action, signed by that action's `Provider.actions` descriptor. It throws `PerpsErrorCode.SDKError` when `revoke` is `null`.
+  - `isSetupOptionFor(option, type)` narrows a `SetupOption` to its bound `ActionType`.
+  - `PerpsClient.executeProviderSetupAction({ provider, address, step, checklist })` rejects a step with `PerpsErrorCode.SDKError` while a lower-`sequence` visible checklist item, a choice included, is unsatisfied, names that step, and executes nothing.
+  - The Lighter plugin maps venue error code `21520` to `PerpsErrorCode.SetupRequired`, including on its client-executed `/changeAccountTier` and `/referral/use` calls.
+  - The Lighter plugin reads the account tier before it signs an order batch and throws `PerpsErrorCode.SetupRequired` when the venue reports a tier no `ACCOUNT_TYPE` option binds. An unreadable tier or setup descriptor does not block the order.
+  - The Hyperliquid `ACCOUNT_MODE` projection reads `null`, `default` and `disabled` as the off option, and reads a mode no option binds, such as `dexAbstraction`, as unsatisfied.
+
+### Patch Changes
+
+- [#517](https://github.com/lifinance/perps-sdk/pull/517) [`912e402`](https://github.com/lifinance/perps-sdk/commit/912e40278666a58c5652c20db7f4a56c876968af) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - - `@lifi/perps-types`: `ActionType.REVOKE_SESSION_AGENT` (`revokeSessionAgent`) and `ActionType.REVOKE_INTEGRATOR` (`revokeIntegrator`) are new. `REVOKE_INTEGRATOR` takes no params (`Record<string, never>`).
+
+  - `@lifi/perps-sdk-provider-lighter`: `REVOKE_INTEGRATOR` is signed as Lighter's approve-integrator transaction (tx type 45) with the API key alone, using the step's `wasmSignParams` as given (every max fee and `approval_expiry` 0). No L1 signature is collected and the user wallet is never prompted.
+  - `@lifi/perps-sdk-provider-hyperliquid`: `REVOKE_SESSION_AGENT` is signed with the user wallet, the same way as `REVOKE_AGENT`, and is not a setup step in the account-config projection.
+
+- [#517](https://github.com/lifinance/perps-sdk/pull/517) [`25084e4`](https://github.com/lifinance/perps-sdk/commit/25084e400328e7b30a3a58db1b1267e74eb4d891) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - - `@lifi/perps-types`: `REVOKE_SESSION_AGENT` takes `RevokeSessionAgentParams` (`{ agentAddress: Address }`), so a revoke targets the session agent by address rather than by name.
+  - `@lifi/perps-sdk-provider-hyperliquid`: `resolveActionRequest` fills `REVOKE_SESSION_AGENT`'s `agentAddress` from the stored session agent and never provisions a new one. With no stored agent it throws `PerpsErrorCode.SDKError` ("Nothing to revoke"). Once the venue confirms the revoke, the plugin clears the stored agent key.
+- Updated dependencies [[`05d22e5`](https://github.com/lifinance/perps-sdk/commit/05d22e53ba60434b6bd8b3e0de9642db9b8ddf80), [`912e402`](https://github.com/lifinance/perps-sdk/commit/912e40278666a58c5652c20db7f4a56c876968af), [`25084e4`](https://github.com/lifinance/perps-sdk/commit/25084e400328e7b30a3a58db1b1267e74eb4d891), [`7a2f9b1`](https://github.com/lifinance/perps-sdk/commit/7a2f9b1d1debafaaa9330eed23897dcf4d6ae6ac), [`fd0eb69`](https://github.com/lifinance/perps-sdk/commit/fd0eb6994662b037a9cde06a7d8944c33201be29), [`126d85a`](https://github.com/lifinance/perps-sdk/commit/126d85a8f8a580607be61cfd6f3f65d1720b9f06)]:
+  - @lifi/perps-types@17.0.0
+  - @lifi/perps-sdk@19.0.0
+
 ## 18.1.1
 
 ### Patch Changes
