@@ -3169,55 +3169,60 @@ describe('LighterProvider — getFills authed path', () => {
 })
 
 describe('LighterProvider — getPortfolioHistory', () => {
-  const NOW_MS = 1_741_100_000_000
-  const HOUR_MS = 3_600_000
-  const pnlBucket = (
+  const HOUR_SECONDS = 60 * 60
+  const HOUR_MS = HOUR_SECONDS * 1_000
+  const NOW_SECONDS = 1_741_100_000
+  const NOW_MS = NOW_SECONDS * 1_000
+  function pnlSnapshot(
     overrides: Partial<LtPnLEntry> & Pick<LtPnLEntry, 'timestamp'>
-  ): LtPnLEntry => ({
-    trade_pnl: 0,
-    inflow: 0,
-    outflow: 0,
-    pool_pnl: 0,
-    pool_inflow: 0,
-    pool_outflow: 0,
-    pool_total_shares: 0,
-    spot_inflow: 0,
-    spot_outflow: 0,
-    staked_lit: 0,
-    staking_inflow: 0,
-    staking_outflow: 0,
-    staking_pnl: 0,
-    trade_spot_pnl: 0,
-    volume: 0,
-    ...overrides,
-  })
-  /** Two buckets ending at the fixture account's `total_asset_value` of 500. */
+  ): LtPnLEntry {
+    return {
+      trade_pnl: 0,
+      inflow: 0,
+      outflow: 0,
+      pool_pnl: 0,
+      pool_inflow: 0,
+      pool_outflow: 0,
+      pool_total_shares: 0,
+      spot_inflow: 0,
+      spot_outflow: 0,
+      staked_lit: 0,
+      staking_inflow: 0,
+      staking_outflow: 0,
+      staking_pnl: 0,
+      trade_spot_pnl: 0,
+      volume: 0,
+      ...overrides,
+    }
+  }
+  /** Two cumulative snapshots ending at `total_asset_value` 500. */
   const PNL_PAYLOAD: LtAccountPnL = {
     code: 200,
     resolution: '1h',
     pnl: [
-      pnlBucket({
-        timestamp: NOW_MS - 2 * HOUR_MS,
+      pnlSnapshot({
+        timestamp: NOW_SECONDS - 2 * HOUR_SECONDS,
         trade_pnl: 12.5,
         inflow: 100,
-        volume: 2000,
+        volume: 2_000,
       }),
-      pnlBucket({
-        timestamp: NOW_MS - HOUR_MS,
-        trade_pnl: -3,
+      pnlSnapshot({
+        timestamp: NOW_SECONDS - HOUR_SECONDS,
+        trade_pnl: 9.5,
         trade_spot_pnl: 1.25,
+        inflow: 100,
         outflow: 40,
-        volume: 500,
+        volume: 2_500,
       }),
     ],
   }
   const EXPECTED_HISTORY = {
     points: [
-      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '541.75', pnl: '12.5' },
-      { timestamp: NOW_MS - HOUR_MS, accountValue: '500', pnl: '10.75' },
+      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '541.75', pnl: '0' },
+      { timestamp: NOW_MS - HOUR_MS, accountValue: '500', pnl: '-1.75' },
     ],
-    volume: '2500',
-    totalPnl: '10.75',
+    volume: '500',
+    totalPnl: '-1.75',
   }
   const pnlCalls = () => recorded.filter((r) => r.url.includes('/api/v1/pnl'))
 
@@ -3230,9 +3235,9 @@ describe('LighterProvider — getPortfolioHistory', () => {
   })
 
   it.each<[PortfolioHistoryRange, string, number, number]>([
-    ['24h', '1h', 24, NOW_MS - 24 * HOUR_MS],
-    ['7d', '4h', 42, NOW_MS - 7 * 24 * HOUR_MS],
-    ['30d', '1d', 30, NOW_MS - 30 * 24 * HOUR_MS],
+    ['24h', '1h', 24, NOW_SECONDS - 24 * HOUR_SECONDS],
+    ['7d', '1h', 168, NOW_SECONDS - 7 * 24 * HOUR_SECONDS],
+    ['30d', '1d', 30, NOW_SECONDS - 30 * 24 * HOUR_SECONDS],
     ['all', '1d', 1000, 0],
   ])('reads /api/v1/pnl for %s at resolution %s and derives the account value', async (range, resolution, countBack, startTimestamp) => {
     overrideFetch((url) =>
@@ -3256,7 +3261,7 @@ describe('LighterProvider — getPortfolioHistory', () => {
       value: '42',
       resolution,
       start_timestamp: String(startTimestamp),
-      end_timestamp: String(NOW_MS),
+      end_timestamp: String(NOW_SECONDS),
       count_back: String(countBack),
       ignore_transfers: 'false',
     })

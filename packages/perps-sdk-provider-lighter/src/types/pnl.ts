@@ -2,9 +2,8 @@
 // Lighter serializes an empty list as JSON `null`, so list members are nullable.
 
 /**
- * One PnL bucket. `timestamp` is Unix milliseconds. Every other field is a
- * JSON number in USD for that bucket alone; the endpoint reports no account
- * value.
+ * One cumulative PnL snapshot. `timestamp` is Unix seconds; PnL, flow, and
+ * volume fields are cumulative totals as of that timestamp.
  *
  * @public
  */

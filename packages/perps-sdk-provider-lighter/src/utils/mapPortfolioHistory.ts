@@ -5,48 +5,58 @@ import type {
 import Big from 'big.js'
 import type { LtPnLEntry } from '../types/pnl.js'
 
+function getCumulativePnl(snapshot: LtPnLEntry): Big {
+  return new Big(snapshot.trade_pnl).plus(snapshot.trade_spot_pnl)
+}
+
 /**
- * Build the portfolio series from Lighter PnL buckets and the account's
- * current value. Lighter reports no historical account value, so each
- * point's `accountValue` is `currentValue` with every later bucket's
- * `trade_pnl + trade_spot_pnl + inflow - outflow` removed. `pnl` is the
- * running `trade_pnl + trade_spot_pnl`, so both series unwind the same PnL.
+ * Derive window-relative history from Lighter's cumulative PnL snapshots.
+ * Historical account values are anchored to the current account value.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
-  entries: LtPnLEntry[],
+  snapshots: LtPnLEntry[],
   currentValue: Big
 ): PortfolioHistoryResponse => {
-  const ordered = [...entries].sort((a, b) => a.timestamp - b.timestamp)
-
-  const accountValues: Big[] = []
-  let value = currentValue
-  for (let i = ordered.length - 1; i >= 0; i -= 1) {
-    accountValues[i] = value
-    const entry = ordered[i]
-    value = value
-      .minus(new Big(entry.trade_pnl))
-      .minus(new Big(entry.trade_spot_pnl))
-      .minus(new Big(entry.inflow))
-      .plus(new Big(entry.outflow))
+  const orderedSnapshots = [...snapshots].sort(
+    (a, b) => a.timestamp - b.timestamp
+  )
+  const firstSnapshot = orderedSnapshots[0]
+  const latestSnapshot = orderedSnapshots.at(-1)
+  if (!firstSnapshot || !latestSnapshot) {
+    return {
+      range,
+      points: [],
+      volume: '0',
+      totalPnl: undefined,
+    }
   }
 
-  let pnl = new Big(0)
-  let volume = new Big(0)
-  const points = ordered.map((entry, i) => {
-    pnl = pnl.plus(new Big(entry.trade_pnl)).plus(new Big(entry.trade_spot_pnl))
-    volume = volume.plus(new Big(entry.volume))
+  const firstPnl = getCumulativePnl(firstSnapshot)
+  const latestPnl = getCumulativePnl(latestSnapshot)
+  const accountValueOffset = currentValue
+    .minus(latestPnl)
+    .minus(latestSnapshot.inflow)
+    .plus(latestSnapshot.outflow)
+  const points = orderedSnapshots.map((snapshot) => {
+    const pnl = getCumulativePnl(snapshot)
     return {
-      timestamp: entry.timestamp,
-      accountValue: accountValues[i].toFixed(),
-      pnl: pnl.toFixed(),
+      timestamp: snapshot.timestamp * 1_000,
+      accountValue: accountValueOffset
+        .plus(pnl)
+        .plus(snapshot.inflow)
+        .minus(snapshot.outflow)
+        .toFixed(),
+      pnl: pnl.minus(firstPnl).toFixed(),
     }
   })
 
   return {
     range,
     points,
-    volume: volume.toFixed(),
+    volume: new Big(latestSnapshot.volume)
+      .minus(firstSnapshot.volume)
+      .toFixed(),
     totalPnl: points.at(-1)?.pnl,
   }
 }
