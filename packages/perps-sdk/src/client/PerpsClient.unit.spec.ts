@@ -3618,6 +3618,134 @@ describe('PerpsClient', () => {
 
       expect(result.checklist.map((item) => item.selected)).toEqual([null])
     })
+
+    const plusOption = {
+      title: 'Plus',
+      type: ActionType.ACCOUNT_TYPE,
+      params: { tier: 'plus' },
+      default: true as const,
+    }
+    const tierStep = {
+      type: ActionType.ACCOUNT_TYPE,
+      signer: PerpsSigner.SDK,
+      relay: ActionRelay.CLIENT,
+      signingMethod: SigningMethod.WASM_BLOB,
+      sequence: 25,
+      params: [],
+      options: [
+        plusOption,
+        {
+          title: 'Premium',
+          type: ActionType.ACCOUNT_TYPE,
+          params: { tier: 'premium' },
+        },
+      ],
+      revoke: null,
+    }
+    const hlModeStep = {
+      ...choiceStep(false, PerpsSigner.USER),
+      options: [
+        {
+          title: 'Manual',
+          type: ActionType.ACCOUNT_MODE,
+          params: { mode: 'disabled' },
+        },
+        {
+          title: 'Unified account',
+          type: ActionType.ACCOUNT_MODE,
+          params: { mode: 'unifiedAccount' },
+        },
+      ],
+    }
+    const builderFeeStep = {
+      ...choiceStep(false, PerpsSigner.USER),
+      type: ActionType.APPROVE_BUILDER_FEE,
+      options: null,
+    }
+
+    it.each([
+      {
+        name: 'a Lighter tier no option binds',
+        step: tierStep,
+        setting: { name: 'tier', value: 'standard', satisfied: false },
+        expected: {
+          currentValue: 'standard',
+          selected: null,
+          satisfied: false,
+        },
+      },
+      {
+        name: 'a Lighter tier an option binds',
+        step: tierStep,
+        setting: { name: 'tier', value: 'plus', satisfied: true },
+        expected: {
+          currentValue: 'plus',
+          selected: plusOption,
+          satisfied: true,
+        },
+      },
+      {
+        name: 'a Hyperliquid mode no option binds',
+        step: hlModeStep,
+        setting: { name: 'mode', value: 'dexAbstraction', satisfied: false },
+        expected: {
+          currentValue: 'dexAbstraction',
+          selected: null,
+          satisfied: false,
+        },
+      },
+      {
+        name: 'an unreadable tier',
+        step: tierStep,
+        setting: { name: 'tier', value: null, satisfied: false },
+        expected: { currentValue: null, selected: null, satisfied: false },
+      },
+      {
+        name: 'a non-choice step, even when its projection carries a value',
+        step: builderFeeStep,
+        setting: { name: 'mode', value: 'unifiedAccount', satisfied: false },
+        expected: { currentValue: null, selected: null, satisfied: false },
+      },
+    ])('reports currentValue for $name', async ({
+      step,
+      setting,
+      expected,
+    }) => {
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: key,
+            bind: vi.fn(),
+            accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
+            projectConfig: vi.fn(() => [
+              {
+                type: step.type,
+                values: [{ name: setting.name, value: setting.value }],
+                satisfied: setting.satisfied,
+              },
+            ]),
+            signActions: vi.fn(async () => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+      server.use(providersHandler([step]))
+      recordCreateCalls()
+
+      const { checklist } = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(checklist).toHaveLength(1)
+      expect({
+        currentValue: checklist[0].currentValue,
+        selected: checklist[0].selected,
+        satisfied: checklist[0].satisfied,
+      }).toEqual(expected)
+    })
   })
 
   describe('provider metadata — setup contract validation', () => {

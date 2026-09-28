@@ -179,6 +179,27 @@ function selectedOption(
   )
 }
 
+/**
+ * The projected value of the param a choice's options bind, as the venue
+ * names it, whether or not an option binds that value.
+ */
+function currentChoiceValue(
+  descriptor: SetupAction,
+  settings: AccountConfigSetting[]
+): string | null {
+  if (descriptor.options === null) {
+    return null
+  }
+  const names = new Set(
+    descriptor.options.flatMap((option) => Object.keys(option.params))
+  )
+  const value =
+    settings
+      .find((setting) => setting.type === descriptor.type)
+      ?.values.find((v) => names.has(v.name))?.value ?? null
+  return value === null ? null : String(value)
+}
+
 /** Throw the first per-action failure a 200 OK `/executeAction` carried. */
 function assertAllSucceeded(results: ActionResult[]): void {
   const failure = results.find((r) => !r.success)
@@ -925,6 +946,7 @@ export class PerpsClient {
             ? satisfiedSetup.has(descriptor.type)
             : !stagedTypes.has(descriptor.type),
         selected: selectedOption(descriptor, settings),
+        currentValue: currentChoiceValue(descriptor, settings),
       }))
 
     await this.drainSetup(

@@ -141,31 +141,7 @@ describe('projectLighterConfigSettings', () => {
     expect(result[0].values[0].value).toBe('standard')
   })
 
-  it('projects a tier string no option binds to null', () => {
-    const result = projectLighterConfigSettings(
-      { ...baseConfig, userTierName: 'plus' },
-      [accountTypeSetup]
-    )
-    expect(result[0].values[0].value).toBeNull()
-  })
-
-  it('projects a tier string to null when the descriptor binds no tier options', () => {
-    const result = projectLighterConfigSettings(
-      { ...baseConfig, userTierName: 'plus' },
-      [accountTypeSetupWithoutOptions]
-    )
-    expect(result[0].values[0].value).toBeNull()
-  })
-
-  it('projects an unknown tier string to null rather than guessing a tier', () => {
-    const result = projectLighterConfigSettings(
-      { ...baseConfig, userTierName: 'diamond' },
-      [accountTypeSetupWithPlus]
-    )
-    expect(result[0].values[0].value).toBeNull()
-  })
-
-  it('reads ACCOUNT_TYPE unsatisfied when no option binds the tier', () => {
+  it('projects the raw tier string, unsatisfied, when no option binds it', () => {
     expect(
       projectLighterConfigSettings({ ...baseConfig, userTierName: 'plus' }, [
         accountTypeSetup,
@@ -173,10 +149,47 @@ describe('projectLighterConfigSettings', () => {
     ).toEqual([
       {
         type: ActionType.ACCOUNT_TYPE,
-        values: [{ name: 'tier', value: null }],
+        values: [{ name: 'tier', value: 'plus' }],
         satisfied: false,
       },
     ])
+  })
+
+  it('projects the raw "standard" tier, unsatisfied, when the options bind only plus and premium', () => {
+    const plusOrPremium: SetupAction = {
+      ...accountTypeSetup,
+      options: [tierOption('Plus', 'plus'), tierOption('Premium', 'premium')],
+    }
+    expect(
+      projectLighterConfigSettings(
+        { ...baseConfig, userTierName: 'standard' },
+        [plusOrPremium]
+      )
+    ).toEqual([
+      {
+        type: ActionType.ACCOUNT_TYPE,
+        values: [{ name: 'tier', value: 'standard' }],
+        satisfied: false,
+      },
+    ])
+  })
+
+  it('projects the raw tier string, unsatisfied, when the descriptor binds no tier options', () => {
+    const [setting] = projectLighterConfigSettings(
+      { ...baseConfig, userTierName: 'plus' },
+      [accountTypeSetupWithoutOptions]
+    )
+    expect(setting.values[0].value).toBe('plus')
+    expect(setting.satisfied).toBe(false)
+  })
+
+  it('projects an unknown tier string as reported, unsatisfied', () => {
+    const [setting] = projectLighterConfigSettings(
+      { ...baseConfig, userTierName: 'diamond' },
+      [accountTypeSetupWithPlus]
+    )
+    expect(setting.values[0].value).toBe('diamond')
+    expect(setting.satisfied).toBe(false)
   })
 
   it('reads ACCOUNT_TYPE unsatisfied when no tier string was read', () => {
