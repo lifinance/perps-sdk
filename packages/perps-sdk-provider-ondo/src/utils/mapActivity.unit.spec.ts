@@ -214,6 +214,24 @@ const WITHDRAWAL: OndoWalletWithdrawal = {
   from: { id: '10458932786832481', wallet: 'margin' },
 }
 
+// A live `GET /v1/wallet/withdrawals` row. The live API sends
+// `WITHDRAWAL_`-prefixed statuses that the REST spec does not list.
+const LIVE_WITHDRAWAL: OndoWalletWithdrawal = {
+  coin: 'USDC',
+  size: '3',
+  status: 'WITHDRAWAL_PENDING',
+  address: '0x86DBd094BC7436BD106C53a6a137Ab0Ab810A6A9',
+  withdrawal_id:
+    '31409051b20126ff068dc554da91f6a03b9ca8c558cf342f7efefabf1ac56775omni213210',
+  txid: '0x0c65e3fc3f5225b835d8ac685d3dfe8655e94835ada61d3d8368e3424fdf6ed1',
+  customer_withdrawal_id: 'margin-1790613192268',
+  time: '2026-09-28T16:33:23.895466126Z',
+  chainId: 'eth-mainnet',
+  usdValue: '3',
+  usdFee: '1',
+  from: { id: '17240086850015432720', wallet: 'margin' },
+}
+
 // Every wire `chainId` Ondo's REST spec enumerates that names no EVM mainnet.
 const UNLINKED_ONDO_CHAIN_IDS = [
   'avax-fuji-c-chain',
@@ -366,6 +384,29 @@ describe('mapWithdrawalActivity', () => {
     expect(
       mapWithdrawalActivity({ ...WITHDRAWAL, chainId }, assetRegistry)
     ).not.toHaveProperty('explorerLink')
+  })
+
+  it('maps a live pending withdrawal with its explorer link', () => {
+    expect(mapWithdrawalActivity(LIVE_WITHDRAWAL, assetRegistry)).toEqual({
+      id: '31409051b20126ff068dc554da91f6a03b9ca8c558cf342f7efefabf1ac56775omni213210',
+      provider: 'ondo',
+      timestamp: '2026-09-28T16:33:23.895Z',
+      type: ActivityType.WITHDRAWAL,
+      asset: USDC,
+      amount: '3',
+      fee: { amount: '1', asset: 'USD' },
+      explorerLink:
+        'https://etherscan.io/tx/0x0c65e3fc3f5225b835d8ac685d3dfe8655e94835ada61d3d8368e3424fdf6ed1',
+    })
+  })
+
+  it('keeps a live settled withdrawal', () => {
+    expect(
+      mapWithdrawalActivity(
+        { ...LIVE_WITHDRAWAL, status: 'WITHDRAWAL_SUCCESS' },
+        assetRegistry
+      )
+    ).not.toBe(null)
   })
 
   it('keeps a pending withdrawal', () => {
