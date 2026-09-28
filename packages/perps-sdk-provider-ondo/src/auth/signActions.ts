@@ -8,12 +8,13 @@ import type {
   SiweActionStep,
 } from '@lifi/perps-types'
 import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
-import type { Address } from 'viem'
+import { type Address, getAddress } from 'viem'
 import {
   ONDO_API_KEY_NAME,
   ONDO_API_KEY_SCOPES,
   ONDO_PRIVACY_VERSION,
   ONDO_TERMS_VERSION,
+  ONDO_WITHDRAWAL_ADDRESS_LABEL,
 } from '../constants.js'
 import type { OndoApiKey } from '../types/auth.js'
 import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
@@ -26,7 +27,10 @@ import {
   buildOndoProvisionPayload,
   listOndoDepositAddress,
 } from '../utils/depositAddress.js'
-import { completeSiweLogin } from './completeSiweLogin.js'
+import {
+  completeSiweLogin,
+  type OndoSiweChallenge,
+} from './completeSiweLogin.js'
 import { hmacSignRequest } from './hmac.js'
 import { isOndoApiKey, type OndoApiKeyStore } from './OndoApiKeyStore.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
@@ -44,6 +48,18 @@ const isSiweStep = (step: ActionStep): step is SiweActionStep => 'siwe' in step
 
 const isSessionStep = (step: ActionStep): step is SessionActionStep =>
   'session' in step
+
+const requireUserWallet = (ctx: SignActionsContext | undefined) => {
+  const userWallet = ctx?.userWallet
+  if (userWallet === undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'Ondo SIWE login requires the user wallet. Pass `userWallet` when ' +
+        'creating the perps client.'
+    )
+  }
+  return userWallet
+}
 
 const hasRequest = (
   step: ActionStep
@@ -140,6 +156,45 @@ async function ensureApiKey(
 }
 
 /**
+ * Add the login address to the Ondo address book, the only withdrawal
+ * destination the SDK offers. Ondo requires a wallet signature over its own
+ * challenge for each new entry.
+ */
+async function addWithdrawalAddress(
+  deps: OndoSignActionsDeps,
+  address: Address,
+  ctx: SignActionsContext | undefined
+): Promise<void> {
+  const token = await deps.tokenStore.get(address)
+  if (token === null) {
+    throw new OndoSessionExpiredError(
+      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+    )
+  }
+  const userWallet = requireUserWallet(ctx)
+  const withdrawalAddress = getAddress(address)
+  const challenge = await deps.client.post<OndoSiweChallenge>(
+    '/v1/auth/erc-4361/address_book/get_challenge',
+    { walletAddress: withdrawalAddress, chainId: '1', withdrawalAddress },
+    { authToken: token.token }
+  )
+  const signature = await userWallet.signMessage({
+    account: userWallet.account,
+    message: challenge.message,
+  })
+  await deps.client.post(
+    '/v1/auth/erc-4361/address_book/complete_challenge',
+    {
+      id: challenge.id,
+      signature,
+      withdrawalAddress,
+      addressLabel: ONDO_WITHDRAWAL_ADDRESS_LABEL,
+    },
+    { authToken: token.token }
+  )
+}
+
+/**
  * Execute a backend-authored session request directly against the venue with
  * the stored session JWT. The pre-serialized wire body is parsed back to an
  * object and re-sent by the client; no signature covers the bytes. An absent
@@ -191,14 +246,7 @@ export async function ondoSignActions(
 ): Promise<SignedActionStep[]> {
   switch (method) {
     case SigningMethod.SIWE: {
-      const userWallet = ctx?.userWallet
-      if (userWallet === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'Ondo SIWE login requires the user wallet. Pass `userWallet` when ' +
-            'creating the perps client.'
-        )
-      }
+      const userWallet = requireUserWallet(ctx)
       for (const step of steps) {
         if (!isSiweStep(step)) {
           throw new PerpsError(
@@ -302,6 +350,9 @@ export async function ondoSignActions(
           }
           case ActionType.REGISTER_API_KEY:
             await ensureApiKey(deps, address)
+            break
+          case ActionType.ADD_WITHDRAWAL_ADDRESS:
+            await addWithdrawalAddress(deps, address, ctx)
             break
           default:
             throw new PerpsError(

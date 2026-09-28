@@ -337,6 +337,22 @@ export interface OndoWalletWithdrawal {
   from?: OndoAccountWalletKey
 }
 
+/** Mirrors Ondo's `AddressBookEntry` (one `GET /v1/wallet/address_book` row). @public */
+export interface OndoAddressBookEntry {
+  withdrawalAddress: string
+  label: string
+  lastUpdated: string
+}
+
+/**
+ * Mirrors Ondo's `AddressBookResult`. The venue sends `null` for an empty
+ * address book.
+ * @public
+ */
+export interface OndoAddressBookResult {
+  addressBook: OndoAddressBookEntry[] | null
+}
+
 /**
  * One side of an Ondo value movement: an account id plus which of that
  * account's two wallets held the value.

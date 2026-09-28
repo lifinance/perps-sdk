@@ -94,6 +94,7 @@ function projectOndoDescriptor(
     case ActionType.META_ACCEPT_TERMS:
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
+    case ActionType.ADD_WITHDRAWAL_ADDRESS:
     case ActionType.SYNC_FEE_ATTRIBUTION:
       throw new PerpsError(
         PerpsErrorCode.SDKError,

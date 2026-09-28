@@ -64,3 +64,10 @@ export const ONDO_TERMS_VERSION = 1
  * @public
  */
 export const ONDO_PRIVACY_VERSION = 1
+
+/**
+ * Label Ondo shows on the address book entry the SDK adds for withdrawals.
+ *
+ * @public
+ */
+export const ONDO_WITHDRAWAL_ADDRESS_LABEL = 'LI.FI'

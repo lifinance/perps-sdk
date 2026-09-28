@@ -178,6 +178,8 @@ export enum ActionType {
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
   CREATE_DEPOSIT_ADDRESS = 'createDepositAddress',
+  /** Adds the login address to the venue's withdrawal address book, executed client-side with the provider session credential. */
+  ADD_WITHDRAWAL_ADDRESS = 'addWithdrawalAddress',
   /** Provider-level (venue) terms acceptance, executed client-side with the provider session credential. Distinct from `META_ACCEPT_TERMS`, which covers LI.FI's own app-wide terms. */
   ACCEPT_PROVIDER_TERMS = 'acceptProviderTerms',
   DEPOSIT = 'deposit',

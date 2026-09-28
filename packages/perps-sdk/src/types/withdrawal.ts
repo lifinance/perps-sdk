@@ -1,4 +1,5 @@
-import type { Asset } from '@lifi/perps-types'
+import type { ActionType, Asset } from '@lifi/perps-types'
+import type { Address } from 'viem'
 
 /**
  * Which of a venue's two balance routes a withdrawal is drawn from. Lighter's
@@ -49,3 +50,34 @@ export interface WithdrawableBalance {
    */
   withdrawalFee?: string
 }
+
+/**
+ * The venue accepts a withdrawal to `destination` now.
+ *
+ * @public
+ */
+export interface WithdrawFlowReady {
+  kind: 'ready'
+  destination: Address
+}
+
+/**
+ * The venue cannot accept a withdrawal until the listed setup actions are
+ * satisfied — Ondo sends funds only to an address in its address book, behind
+ * a signed-in session.
+ *
+ * @public
+ */
+export interface WithdrawFlowSetupRequired {
+  kind: 'setupRequired'
+  /** Setup action types that must be completed, in execution order. */
+  setup: ActionType[]
+}
+
+/**
+ * The single withdrawal flow a venue offers one address, resolved from the
+ * venue's account and setup state.
+ *
+ * @public
+ */
+export type WithdrawFlow = WithdrawFlowReady | WithdrawFlowSetupRequired
