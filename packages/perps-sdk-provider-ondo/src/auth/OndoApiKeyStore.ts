@@ -26,10 +26,13 @@ export const isOndoApiKey = (value: unknown): value is OndoApiKey => {
     typeof name === 'string' &&
     typeof createdAt === 'string' &&
     Array.isArray(scopes) &&
-    scopes.every((scope) => typeof scope === 'string') &&
-    ONDO_API_KEY_SCOPES.every((scope) => scopes.includes(scope))
+    scopes.every((scope) => typeof scope === 'string')
   )
 }
+
+/** @internal */
+export const hasOndoApiKeyScopes = (apiKey: OndoApiKey): boolean =>
+  ONDO_API_KEY_SCOPES.every((scope) => apiKey.scopes.includes(scope))
 
 /**
  * Persists the Ondo trading API key per wallet address and environment via a

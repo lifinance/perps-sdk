@@ -32,7 +32,11 @@ import {
   type OndoSiweChallenge,
 } from './completeSiweLogin.js'
 import { hmacSignRequest } from './hmac.js'
-import { isOndoApiKey, type OndoApiKeyStore } from './OndoApiKeyStore.js'
+import {
+  hasOndoApiKeyScopes,
+  isOndoApiKey,
+  type OndoApiKeyStore,
+} from './OndoApiKeyStore.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 
 /** @internal */
@@ -80,7 +84,7 @@ function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
     createdAt: created.createdAt,
     scopes: created.scopes,
   }
-  if (!isOndoApiKey(record)) {
+  if (!isOndoApiKey(record) || !hasOndoApiKeyScopes(record)) {
     throw new OndoApiError(
       `Ondo POST /v1/api_keys returned an unusable key record: ${JSON.stringify({ ...created, secretKey: '[REDACTED]' }).slice(0, 200)}`
     )
@@ -88,17 +92,45 @@ function toStoredApiKey(created: OndoCreatedApiKey): OndoApiKey {
   return record
 }
 
+const pendingApiKeys = new WeakMap<
+  OndoApiKeyStore,
+  Map<string, Promise<OndoApiKey>>
+>()
+
 /**
- * Fetch the stored trading API key. When no valid key exists, list the venue
- * registry and reclaim the oldest LI.FI-owned slot if the account is at
- * capacity. The replacement secret is stored immediately after creation.
+ * Fetch the stored trading API key, or create one. Concurrent calls for one
+ * address share one creation, so the venue never holds a duplicate key.
  */
-async function ensureApiKey(
+function ensureApiKey(
+  deps: OndoSignActionsDeps,
+  address: Address
+): Promise<OndoApiKey> {
+  const pending = pendingApiKeys.get(deps.apiKeyStore) ?? new Map()
+  pendingApiKeys.set(deps.apiKeyStore, pending)
+  const pendingKey = address.toLowerCase()
+  const inFlight = pending.get(pendingKey)
+  if (inFlight !== undefined) {
+    return inFlight
+  }
+  const request = resolveApiKey(deps, address).finally(() => {
+    pending.delete(pendingKey)
+  })
+  pending.set(pendingKey, request)
+  return request
+}
+
+/**
+ * Return the stored key when it holds every required scope. Otherwise list
+ * the venue registry, revoke the stored key when the venue still lists it,
+ * and reclaim the oldest LI.FI-owned slot if the account is at capacity. The
+ * replacement secret is stored immediately after creation.
+ */
+async function resolveApiKey(
   deps: OndoSignActionsDeps,
   address: Address
 ): Promise<OndoApiKey> {
   const existing = await deps.apiKeyStore.get(address)
-  if (existing !== null) {
+  if (existing !== null && hasOndoApiKeyScopes(existing)) {
     return existing
   }
   const token = await deps.tokenStore.get(address)
@@ -107,10 +139,22 @@ async function ensureApiKey(
       `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
     )
   }
-  const configuredKeys =
+  const listedKeys =
     (await deps.client.get<OndoApiKeyInfo[] | null>('/v1/api_keys', {
       authToken: token.token,
     })) ?? []
+  const superseded =
+    existing === null
+      ? undefined
+      : listedKeys.find((key) => key.keyId === existing.keyId)
+  if (superseded !== undefined) {
+    await deps.client.send(
+      'DELETE',
+      `/v1/api_keys/${encodeURIComponent(superseded.keyId)}`,
+      { authToken: token.token }
+    )
+  }
+  const configuredKeys = listedKeys.filter((key) => key !== superseded)
   if (configuredKeys.length >= ONDO_API_KEY_LIMIT) {
     let staleKey: OndoApiKeyInfo | undefined
     let staleKeyCreatedAtMs = Number.POSITIVE_INFINITY

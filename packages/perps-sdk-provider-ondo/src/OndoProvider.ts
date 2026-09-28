@@ -69,7 +69,7 @@ import type Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
-import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
+import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoSignActions } from './auth/signActions.js'
 import {
@@ -309,7 +309,8 @@ export const ondoProvider = (
       params: ProviderGetAccountParams,
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
-      const apiKeyRegistered = (await apiKeyStore.get(params.address)) !== null
+      const apiKey = await apiKeyStore.get(params.address)
+      const apiKeyRegistered = apiKey !== null && hasOndoApiKeyScopes(apiKey)
       return withSession(
         params.address,
         () => {

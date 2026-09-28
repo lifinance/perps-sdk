@@ -1205,6 +1205,18 @@ describe('OndoProvider — getAccount (logged in)', () => {
     })
   })
 
+  it('reports apiKeyRegistered: false for a stored key without the transfer scope', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, {
+      ...API_KEY,
+      scopes: ['trade'],
+    })
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({ apiKeyRegistered: false })
+  })
+
   it('reports termsAccepted: false when the account terms version is stale', async () => {
     accountInfoResult = { ...ACCOUNT_INFO_RESULT, termsVersion: 2 }
     const { provider } = await loggedInProvider()

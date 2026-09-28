@@ -46,7 +46,7 @@ export const ONDO_API_KEY_NAME = 'lifi-perps'
 
 /**
  * Scopes requested when creating the trading API key. `POST /v1/withdraw`
- * needs `transfer`; a stored key without every scope reads back as absent.
+ * needs `transfer`; the SDK replaces a stored key without every scope.
  *
  * @public
  */
