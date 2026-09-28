@@ -82,6 +82,11 @@ export interface ProviderAction {
 export interface SetupOption<T extends ActionType = ActionType> {
   /** Display title, e.g. `'Plus'`. */
   title: string
+  /**
+   * Option-specific prose a UI shows beside the option in its selector.
+   * `SetupAction.description` stays the general prose for the whole choice.
+   */
+  description?: string
   /** The action executed when the option is chosen. */
   type: T
   /** The action's sole param, bound, e.g. `{ tier: 'plus' }`. */
