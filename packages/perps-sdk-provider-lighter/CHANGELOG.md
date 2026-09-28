@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 30.0.1
+
+### Patch Changes
+
+- [#522](https://github.com/lifinance/perps-sdk/pull/522) [`5145809`](https://github.com/lifinance/perps-sdk/commit/5145809dadb1d627201387d7e8411476ae155d12) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Fix Lighter portfolio history by deriving window changes from cumulative PnL snapshots, normalizing timestamps to milliseconds, and using a supported hourly resolution for the seven-day range.
+
 ## 30.0.0
 
 ### Major Changes
