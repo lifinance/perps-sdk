@@ -1306,6 +1306,36 @@ describe('PerpsClient', () => {
       expect(createCalls).toEqual([])
     })
 
+    it('rejects when createAction stages nothing to revoke, and submits nothing', async () => {
+      const { createCalls, executed } = recordRevoke()
+      const step = await setupStep(ActionType.APPROVE_BUILDER_FEE)
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body)
+          return HttpResponse.json({
+            actions: [],
+          } satisfies CreateActionResponse)
+        })
+      )
+      createCalls.length = 0
+
+      await expect(
+        client.executeProviderRevoke({
+          provider,
+          address: revokerAccount.address,
+          step,
+        })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: `Nothing to revoke for setup step '${ActionType.APPROVE_BUILDER_FEE}' on '${provider}'.`,
+      })
+      expect(createCalls.map((call) => call.action)).toEqual([
+        ActionType.REVOKE_BUILDER_FEE,
+      ])
+      expect(executed).toEqual([])
+    })
+
     it('stages the approval again on the next checkSetup after a revoke', async () => {
       let revoked = false
       server.use(

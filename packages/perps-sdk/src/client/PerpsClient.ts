@@ -1265,8 +1265,9 @@ export class PerpsClient {
    * create, sign and execute, signed with that action's `Provider.actions`
    * descriptor. The step stages again on the next {@link checkSetup}.
    *
-   * @throws {PerpsError} `SDKError` when `step.revoke` is `null`; otherwise
-   *   the errors {@link executeProviderOption} throws.
+   * @throws {PerpsError} `SDKError` when `step.revoke` is `null` or when
+   *   `createAction` stages nothing to revoke; otherwise the errors
+   *   {@link executeProviderOption} throws.
    * @public
    */
   async executeProviderRevoke(params: {
@@ -1281,12 +1282,18 @@ export class PerpsClient {
         `Setup step '${step.type}' for '${provider}' declares no revoke.`
       )
     }
-    const { results } = await this.execute({
+    const { staged, results } = await this.runAction({
       provider,
       address,
       action: step.revoke,
       params: {},
     })
+    if (staged.length === 0) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Nothing to revoke for setup step '${step.type}' on '${provider}'.`
+      )
+    }
     assertAllSucceeded(results)
   }
 
@@ -1468,6 +1475,18 @@ export class PerpsClient {
      * deposit); called as each leg is submitted and confirmed. */
     onProgress?: (progress: SignActionProgress) => void
   }): Promise<ExecuteActionResponse> {
+    const { results } = await this.runAction(params)
+    return { results }
+  }
+
+  /** {@link execute}, also returning the steps `createAction` staged. */
+  private async runAction<T extends ActionType>(params: {
+    provider: string
+    address: Address
+    action: T
+    params: ActionParamsMap[T]
+    onProgress?: (progress: SignActionProgress) => void
+  }): Promise<{ staged: ActionStep[]; results: ActionResult[] }> {
     const { provider, address, action, onProgress } = params
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = findActionDescriptor(metadata, action)
@@ -1498,7 +1517,7 @@ export class PerpsClient {
     // token-authenticated venue mutations), leaving no backend-bound step. With
     // nothing to submit, skip the `/executeAction` hop.
     if (signedActions.length === 0) {
-      return { results: [] }
+      return { staged: actions, results: [] }
     }
 
     const response = await executeAction(this.sdkClient, {
@@ -1515,7 +1534,7 @@ export class PerpsClient {
 
     await this.notifyExecuteResults(provider, address, results)
 
-    return { results }
+    return { staged: actions, results }
   }
 
   /**
