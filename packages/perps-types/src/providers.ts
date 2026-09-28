@@ -71,6 +71,11 @@ export interface ProviderAction {
    * nothing, so a consumer tests `=== true` rather than truthiness.
    */
   gatesAccountReads?: boolean
+  /**
+   * A link to the venue's own documentation for this action, which a UI can
+   * show as a "Documentation" link.
+   */
+  docsUrl?: string
 }
 
 /**

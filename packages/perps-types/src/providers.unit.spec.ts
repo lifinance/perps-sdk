@@ -504,6 +504,7 @@ type _ProviderActionKeys = Expect<
     | 'params'
     | 'sequence'
     | 'gatesAccountReads'
+    | 'docsUrl'
   >
 >
 
@@ -512,6 +513,12 @@ type _GatesAccountReadsShape = Expect<
 >
 type _GatesAccountReadsIsOptional = Expect<
   Equals<Extract<RequiredKeys<ProviderAction>, 'gatesAccountReads'>, never>
+>
+type _DocsUrlShape = Expect<
+  Equals<ProviderAction['docsUrl'], string | undefined>
+>
+type _DocsUrlIsOptional = Expect<
+  Equals<Extract<RequiredKeys<ProviderAction>, 'docsUrl'>, never>
 >
 
 // Param.type is the closed three-member primitive union.
@@ -616,6 +623,8 @@ export type _TypeAssertions = [
   _ReferralCodeShape,
   _ReferralCodeIsOptional,
   _ProviderActionKeys,
+  _DocsUrlShape,
+  _DocsUrlIsOptional,
   _ParamTypeIsString,
   _TradeNoticeLevel,
   _TradeNoticeOptional,
