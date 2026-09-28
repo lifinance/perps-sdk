@@ -370,12 +370,12 @@ export interface PerpsProviderPlugin {
   readonly type: string
 
   /**
-   * Setup actions that stage work only when the account needs remediation
-   * (e.g. Hyperliquid's REVOKE_AGENT frees an agent slot only when every
-   * named slot is taken). When such a step stages no actions,
+   * Non-choice setup actions that stage work only when the account needs
+   * remediation (e.g. Hyperliquid's REVOKE_AGENT frees an agent slot only
+   * when every named slot is taken). When such a step stages no actions,
    * `PerpsClient.checkSetup` omits it from `ProviderSetup.checklist` instead
-   * of rendering it as satisfied. Omit when every setup step is
-   * unconditional.
+   * of rendering it as satisfied. Choices are always rendered because they
+   * are never staged. Omit when every setup step is unconditional.
    */
   readonly conditionalSetupActions?: readonly ActionType[]
 

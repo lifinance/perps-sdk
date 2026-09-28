@@ -1,6 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
@@ -609,6 +609,45 @@ describe('LighterSigner', () => {
     })
     expect(parsed.L1Sig ?? '').toBe('')
     expect(parsed.Sig).toBeTruthy()
+  })
+
+  it.each([
+    'max_perps_taker_fee',
+    'max_perps_maker_fee',
+    'max_spot_taker_fee',
+    'max_spot_maker_fee',
+    'approval_expiry',
+  ])('rejects REVOKE_INTEGRATOR when %s is non-zero', async (field) => {
+    const freshSigner = new LighterSigner({
+      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+    })
+    const initialize = vi
+      .spyOn(freshSigner, 'initialize')
+      .mockRejectedValue(new Error('WASM initialized'))
+
+    await expect(
+      freshSigner.sign(
+        ActionType.REVOKE_INTEGRATOR,
+        {
+          integrator_account_index: 5,
+          max_perps_taker_fee: 0,
+          max_perps_maker_fee: 0,
+          max_spot_taker_fee: 0,
+          max_spot_maker_fee: 0,
+          approval_expiry: 0,
+          nonce: 3,
+          [field]: 1,
+        },
+        {
+          apiKeyPrivateKey: 'not-read',
+          apiKeyIndex: 1,
+          accountIndex: 42,
+        }
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(initialize).not.toHaveBeenCalled()
   })
 
   it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {

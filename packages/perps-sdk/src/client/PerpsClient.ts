@@ -67,6 +67,7 @@ import type {
   PlaceTwapOrderParams,
   ProviderSetup,
   SendAssetActionParams,
+  SetupChecklistItem,
   SubmitOnboardingParams,
   WithdrawParams,
 } from '../types/api.js'
@@ -127,6 +128,9 @@ function assertSetupContract(metadata: Provider): void {
   for (const descriptor of metadata.setup) {
     if (descriptor.options === undefined) {
       reject(descriptor.type, 'declares no options')
+    }
+    if (descriptor.options !== null && descriptor.options.length === 0) {
+      reject(descriptor.type, 'declares an empty options list')
     }
     if (descriptor.revoke === undefined) {
       reject(descriptor.type, 'declares no revoke')
@@ -953,6 +957,7 @@ export class PerpsClient {
       .filter(isUserFacingSetupStep)
       .filter(
         (descriptor) =>
+          descriptor.options !== null ||
           !conditionalTypes.has(descriptor.type) ||
           stagedTypes.has(descriptor.type)
       )
@@ -1168,56 +1173,12 @@ export class PerpsClient {
   }
 
   /**
-   * The lowest-`sequence` visible setup step that runs before `descriptor` and
-   * is not satisfied, or `undefined` when nothing blocks it. A choice reads its
-   * satisfied state from the plugin projection; a non-choice step is satisfied
-   * once the provider stages no action for it, so only the earlier steps are
-   * staged here.
-   */
-  private async findBlockingSetupStep(
-    provider: string,
-    address: Address,
-    descriptor: SetupAction
-  ): Promise<SetupAction | undefined> {
-    const metadata = await this.getProviderMetadata(provider)
-    const earlier = metadata.setup
-      .filter(
-        (d) =>
-          isUserFacingSetupStep(d) && sequenceOf(d) < sequenceOf(descriptor)
-      )
-      .sort((a, b) => sequenceOf(a) - sequenceOf(b))
-    if (earlier.length === 0) {
-      return undefined
-    }
-
-    const satisfiedSetup = satisfiedTypes(
-      await this.resolveSetupSettings(provider, address)
-    )
-    const pending = earlier.filter((d) => !satisfiedSetup.has(d.type))
-    if (pending.length === 0) {
-      return undefined
-    }
-
-    const stageable = pending.filter(isStageable)
-    const staged =
-      stageable.length === 0
-        ? []
-        : await this.buildProviderSetupActions(provider, address, stageable)
-    const stagedTypes = new Set(staged.map((action) => action.action))
-    return pending.find((d) => d.options !== null || stagedTypes.has(d.type))
-  }
-
-  /**
    * Sign and submit one pre-staged setup `ActionStep` end-to-end.
    *
-   * The caller is expected to have already obtained the step from a prior
-   * {@link checkSetup} call (typically cached by the widget's react-query) —
-   * we do NOT refetch. This avoids the double `createAction` round-trip and
-   * keeps the nonce that was allocated at staging time committed all the way
-   * through submit. If the cached step has gone stale (Lighter's `/nextNonce`
-   * advanced underneath us), `executeProviderSetup` will surface a nonce
-   * conflict that the caller invalidates on, refetches `checkSetup`, and
-   * retries with a fresh step.
+   * `step` and `checklist` must come from the same {@link checkSetup} result.
+   * This preserves the nonce allocated while staging and validates sequence
+   * prerequisites against that same snapshot, without another `createAction`
+   * round-trip.
    *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors, or when a lower-`sequence` step on the same
@@ -1228,8 +1189,9 @@ export class PerpsClient {
     provider: string
     address: Address
     step: ActionStep
+    checklist: SetupChecklistItem[]
   }): Promise<void> {
-    const { provider, address, step } = params
+    const { provider, address, step, checklist } = params
 
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = metadata.setup.find((d) => d.type === step.action)
@@ -1240,15 +1202,14 @@ export class PerpsClient {
       )
     }
 
-    const blocking = await this.findBlockingSetupStep(
-      provider,
-      address,
-      descriptor
+    const blockingStep = checklist.find(
+      (item) =>
+        !item.satisfied && sequenceOf(item.descriptor) < sequenceOf(descriptor)
     )
-    if (blocking) {
+    if (blockingStep) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Setup step '${step.action}' for '${provider}' is blocked: '${blocking.type}' runs first and is not satisfied.`
+        `Setup step '${step.action}' for '${provider}' is blocked: '${blockingStep.descriptor.type}' runs first and is not satisfied.`
       )
     }
 

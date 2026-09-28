@@ -214,10 +214,43 @@ export class LighterSigner {
           'required L1 user wallet signature.'
       )
     }
+    if (action === ActionType.REVOKE_INTEGRATOR) {
+      return this.signRevokeIntegrator(wasmSignParams, context)
+    }
     const wasm = await this.ensureLoaded()
     await this.ensureClient(context)
     const result = this.dispatch(wasm, action, wasmSignParams, context)
     return unwrap(result, action)
+  }
+
+  private async signRevokeIntegrator(
+    p: Record<string, unknown>,
+    ctx: LighterSignerContext
+  ): Promise<LighterSignedBlob> {
+    const integratorAccountIndex = numberField(p, 'integrator_account_index')
+    const maxPerpsTakerFee = revokeIntegratorZeroField(p, 'max_perps_taker_fee')
+    const maxPerpsMakerFee = revokeIntegratorZeroField(p, 'max_perps_maker_fee')
+    const maxSpotTakerFee = revokeIntegratorZeroField(p, 'max_spot_taker_fee')
+    const maxSpotMakerFee = revokeIntegratorZeroField(p, 'max_spot_maker_fee')
+    const approvalExpiry = revokeIntegratorZeroField(p, 'approval_expiry')
+    const nonce = numberField(p, 'nonce')
+    const wasm = await this.ensureLoaded()
+    await this.ensureClient(ctx)
+    return unwrap(
+      wasm.SignApproveIntegrator(
+        integratorAccountIndex,
+        maxPerpsTakerFee,
+        maxPerpsMakerFee,
+        maxSpotTakerFee,
+        maxSpotMakerFee,
+        approvalExpiry,
+        SKIP_NONCE_DISABLED,
+        nonce,
+        ctx.apiKeyIndex,
+        ctx.accountIndex
+      ),
+      ActionType.REVOKE_INTEGRATOR
+    )
   }
 
   /**
@@ -658,10 +691,6 @@ export class LighterSigner {
           ctx.accountIndex
         )
       }
-      // A revoke is the same tx type 45 with every max fee and the expiry 0.
-      // Lighter accepts it on the L2 signature alone, so it rides sign() and
-      // its `L1Sig` stays empty.
-      case ActionType.REVOKE_INTEGRATOR:
       case ActionType.APPROVE_INTEGRATOR:
         return wasm.SignApproveIntegrator(
           numberField(p, 'integrator_account_index'),
@@ -740,6 +769,20 @@ function numberField(p: Record<string, unknown>, key: string): number {
     PerpsErrorCode.ValidationError,
     `Lighter sign params missing numeric field '${key}' (got ${typeof v})`
   )
+}
+
+function revokeIntegratorZeroField(
+  p: Record<string, unknown>,
+  key: string
+): number {
+  const value = numberField(p, key)
+  if (value !== 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Lighter REVOKE_INTEGRATOR requires '${key}' to be zero`
+    )
+  }
+  return value
 }
 
 function optionalNumberField(

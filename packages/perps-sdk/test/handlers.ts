@@ -87,7 +87,7 @@ export const mockProviders: ProvidersResponse = {
           sequence: 10,
           params: [],
           options: null,
-          revoke: null,
+          revoke: ActionType.REVOKE_SESSION_AGENT,
         },
         {
           type: ActionType.APPROVE_BUILDER_FEE,
@@ -167,6 +167,12 @@ export const mockProviders: ProvidersResponse = {
           relay: ActionRelay.API,
         },
         {
+          type: ActionType.REVOKE_SESSION_AGENT,
+          signer: PerpsSigner.USER,
+          signingMethod: SigningMethod.EIP712,
+          relay: ActionRelay.API,
+        },
+        {
           type: ActionType.REVOKE_BUILDER_FEE,
           signer: PerpsSigner.USER,
           signingMethod: SigningMethod.EIP712,
@@ -182,9 +188,8 @@ export const mockProviders: ProvidersResponse = {
       logoURI: 'https://example.com/lighter.png',
       signingMethod: SigningMethod.WASM_BLOB,
       active: true,
-      // Lighter registers an API key via a WASM blob whose user-consent leg is
-      // an EIP-191 message — no agent, no EIP712. The SDK then applies the
-      // default account tier itself.
+      // Lighter registers an API key through a WASM blob with an EIP-191
+      // user-consent leg. Choice defaults are UI recommendations only.
       setup: [
         {
           type: ActionType.REGISTER_API_KEY,
@@ -240,10 +245,29 @@ export const mockProviders: ProvidersResponse = {
           ],
           revoke: null,
         },
+        {
+          type: ActionType.APPROVE_INTEGRATOR,
+          title: 'Authorise integrator allowance',
+          description:
+            'Authorises the LI.FI integrator account to collect trading fees.',
+          signer: PerpsSigner.USER,
+          signingMethod: SigningMethod.WASM_BLOB,
+          relay: ActionRelay.API,
+          sequence: 30,
+          params: [],
+          options: null,
+          revoke: ActionType.REVOKE_INTEGRATOR,
+        },
       ],
       actions: [
         {
           type: ActionType.PLACE_ORDER,
+          signer: PerpsSigner.SDK,
+          signingMethod: SigningMethod.WASM_BLOB,
+          relay: ActionRelay.API,
+        },
+        {
+          type: ActionType.REVOKE_INTEGRATOR,
           signer: PerpsSigner.SDK,
           signingMethod: SigningMethod.WASM_BLOB,
           relay: ActionRelay.API,

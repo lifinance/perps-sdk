@@ -3130,6 +3130,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
       provider: 'ondo',
       address: siweAccount.address,
       step: SIWE_STEP,
+      checklist: [],
     })
 
     expect(backendCalls).toEqual(['/providers'])
@@ -3158,6 +3159,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
       provider: 'ondo',
       address: siweAccount.address,
       step: SIWE_STEP,
+      checklist: [],
     })
     const account = await client.getAccount({
       provider: 'ondo',

@@ -992,6 +992,7 @@ describe('PerpsClient', () => {
           provider: 'hyperliquid',
           address: account.address,
           step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+          checklist: [],
         })
       ).rejects.toMatchObject({
         code: PerpsErrorCode.ExchangeRejected,
@@ -1290,7 +1291,7 @@ describe('PerpsClient', () => {
 
     it('rejects a step that declares no revoke, before any createAction', async () => {
       const { createCalls } = recordRevoke()
-      const step = await setupStep(ActionType.APPROVE_AGENT)
+      const step = await setupStep(ActionType.ACCOUNT_MODE)
       createCalls.length = 0
 
       await expect(
@@ -1552,6 +1553,7 @@ describe('PerpsClient', () => {
         provider: 'lighter',
         address: userAddress,
         step: { action: ActionType.REGISTER_API_KEY, typedData: TYPED_DATA },
+        checklist: [],
       })
 
       expect(onExecuteResults.mock.calls[0][1]).toEqual([
@@ -3408,7 +3410,8 @@ describe('PerpsClient', () => {
 
     const venueClientFor = (
       setting: { satisfied: boolean; mode?: string },
-      signActions: ReturnType<typeof vi.fn>
+      signActions: ReturnType<typeof vi.fn>,
+      overrides: Record<string, unknown> = {}
     ) =>
       new PerpsClient({
         integrator: 'test-app',
@@ -3430,6 +3433,7 @@ describe('PerpsClient', () => {
               },
             ]),
             signActions,
+            ...overrides,
           } as unknown as PerpsProviderPlugin,
         ],
       })
@@ -3589,6 +3593,24 @@ describe('PerpsClient', () => {
       expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
       expect(createCalls).toEqual([])
       expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('keeps a conditional choice visible because choices cannot stage applicability', async () => {
+      const venueClient = venueClientFor(
+        { satisfied: false },
+        vi.fn(async () => []),
+        { conditionalSetupActions: [ActionType.ACCOUNT_MODE] }
+      )
+      server.use(providersHandler([choiceStep(false)]))
+      recordCreateCalls()
+
+      const result = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
+      expect(result.isReady).toBe(false)
     })
 
     it('never touches a satisfied choice', async () => {
@@ -3877,6 +3899,11 @@ describe('PerpsClient', () => {
         /declares no known relay/,
       ],
       ['a missing options field', withoutKey('options'), /declares no options/],
+      [
+        'an empty options list',
+        { ...validStep, type: ActionType.ACCOUNT_MODE, options: [] },
+        /declares an empty options list/,
+      ],
       ['a missing revoke field', withoutKey('revoke'), /declares no revoke/],
       [
         'a revoke that Provider.actions does not declare',
@@ -3971,7 +3998,7 @@ describe('PerpsClient', () => {
     const BASE_URL = DEFAULT_API_URL
     const key = 'venue'
 
-    const approvalStep = (type: ActionType, sequence: number) => ({
+    const approvalStep = (type: ActionType, sequence: number): SetupAction => ({
       type,
       signer: PerpsSigner.USER,
       relay: ActionRelay.API,
@@ -3982,7 +4009,7 @@ describe('PerpsClient', () => {
       revoke: null,
     })
 
-    it('rejects a step while a lower-sequence step is unsatisfied, naming the blocking step', async () => {
+    it('rejects from the original checklist without staging the blocker again', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -3992,12 +4019,14 @@ describe('PerpsClient', () => {
             type: key,
             bind: vi.fn(),
             accountExists: vi.fn(async () => true),
+            getAccount: vi.fn(async () => mockAccount),
             projectConfig: vi.fn(() => []),
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
       })
 
+      let createCount = 0
       server.use(
         http.get(`${BASE_URL}/providers`, () =>
           HttpResponse.json({
@@ -4019,6 +4048,7 @@ describe('PerpsClient', () => {
           })
         ),
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          createCount++
           const body = (await request.json()) as CreateActionRequest
           return HttpResponse.json({
             actions: [{ action: body.action, wasmSignParams: {} }],
@@ -4026,15 +4056,27 @@ describe('PerpsClient', () => {
         })
       )
 
+      const setup = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+      const step = setup.setup.find(
+        ({ action }) => action === ActionType.SET_REFERRAL
+      )
+      expect(step).toBeDefined()
+      createCount = 0
+
       await expect(
         venueClient.executeProviderSetupAction({
           provider: key,
           address: userAddress,
-          step: { action: ActionType.SET_REFERRAL } as ActionStep,
+          step: step!,
+          checklist: setup.checklist,
         })
       ).rejects.toThrow(
         /is blocked: 'registerApiKey' runs first and is not satisfied/
       )
+      expect(createCount).toBe(0)
       expect(signActions).not.toHaveBeenCalled()
     })
 
@@ -4099,13 +4141,14 @@ describe('PerpsClient', () => {
           provider: key,
           address: userAddress,
           step: { action: ActionType.REGISTER_API_KEY } as ActionStep,
+          checklist: [],
         })
       ).resolves.toBeUndefined()
       expect(createCount).toBe(0)
       expect(signActions).toHaveBeenCalledOnce()
     })
 
-    const tierChoice = (withDefault: boolean) => ({
+    const tierChoice = (withDefault: boolean): SetupAction => ({
       type: ActionType.ACCOUNT_TYPE,
       signer: PerpsSigner.SDK,
       relay: ActionRelay.CLIENT,
@@ -4117,7 +4160,7 @@ describe('PerpsClient', () => {
           title: 'Premium',
           type: ActionType.ACCOUNT_TYPE,
           params: { tier: 'premium' },
-          ...(withDefault ? { default: true } : {}),
+          ...(withDefault ? { default: true as const } : {}),
         },
       ],
       revoke: null,
@@ -4126,7 +4169,7 @@ describe('PerpsClient', () => {
     // `satisfied` is the plugin projection; `staged` names the approvals the
     // backend still stages. ACCOUNT_TYPE executes client-side during signing.
     const gatedVenue = (options: {
-      setup: unknown[]
+      setup: SetupAction[]
       satisfied: Set<ActionType>
       staged: Set<ActionType>
     }) => {
@@ -4197,21 +4240,36 @@ describe('PerpsClient', () => {
             accountExists: vi.fn(async () => true),
             getAccount: vi.fn(async () => mockAccount),
             projectConfig: vi.fn(() =>
-              [...satisfied].map((type) => ({
-                type,
+              setup.map((descriptor) => ({
+                type: descriptor.type,
                 values: [],
-                satisfied: true,
+                satisfied: satisfied.has(descriptor.type),
               }))
             ),
             signActions,
           } as unknown as PerpsProviderPlugin,
         ],
       })
+      const checklist = setup
+        .filter(
+          (descriptor) =>
+            descriptor.options !== null ||
+            descriptor.signer === PerpsSigner.USER
+        )
+        .map((descriptor) => ({
+          descriptor,
+          satisfied:
+            satisfied.has(descriptor.type) ||
+            (descriptor.options === null && !staged.has(descriptor.type)),
+          selected: null,
+          currentValue: null,
+        }))
       const run = (action: ActionType) =>
         client.executeProviderSetupAction({
           provider: key,
           address: userAddress,
           step: { action } as ActionStep,
+          checklist,
         })
       return { run, createCalls, executed, signActions }
     }
@@ -4377,8 +4435,10 @@ describe('PerpsClient', () => {
         address: lighterAddress,
       })
       expect(isReady).toBe(false)
-      expect(setup).toHaveLength(1)
-      expect(setup[0].action).toBe(ActionType.REGISTER_API_KEY)
+      expect(setup.map(({ action }) => action)).toEqual([
+        ActionType.REGISTER_API_KEY,
+        ActionType.APPROVE_INTEGRATOR,
+      ])
 
       // No signerAddress is constructed by core for an API_KEY signer.
       expect(createCalls[0].signerAddress).toBeUndefined()
@@ -4392,7 +4452,7 @@ describe('PerpsClient', () => {
       const result = await (lighterClient as any).executeProviderSetup({
         provider: 'lighter',
         address: lighterAddress,
-        setup,
+        setup: [setup[0]],
         signedActions: signed ? [signed] : [],
       })
 
@@ -5065,6 +5125,7 @@ describe('PerpsClient', () => {
             message: { x: 0 },
           },
         },
+        checklist: [],
       })
 
       expect(hook).toHaveBeenCalledOnce()
