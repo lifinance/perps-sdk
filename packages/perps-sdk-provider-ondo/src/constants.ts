@@ -45,11 +45,12 @@ export const ONDO_BASE_FEE_TIER = {
 export const ONDO_API_KEY_NAME = 'lifi-perps'
 
 /**
- * Scopes requested when minting the trading API key.
+ * Scopes requested when creating the trading API key. `POST /v1/withdraw`
+ * needs `transfer`; a stored key without every scope reads back as absent.
  *
  * @public
  */
-export const ONDO_API_KEY_SCOPES = ['trade']
+export const ONDO_API_KEY_SCOPES = ['trade', 'transfer']
 
 /**
  * Terms-of-Service version accepted at first login. Venue-owned; current value.

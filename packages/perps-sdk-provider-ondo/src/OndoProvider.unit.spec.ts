@@ -110,7 +110,7 @@ const API_KEY: OndoApiKey = {
   apiSecret: 'super-secret',
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
 }
 
 // Real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`.
@@ -118,7 +118,7 @@ const CREATED_API_KEY: OndoCreatedApiKey = {
   keyId: 'ondoKeyId_abc',
   name: 'lifi-perps',
   createdAt: '2026-07-15T12:31:55.781433839Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
   secretKey: 'ondoApiSecret_xyz',
 }
 

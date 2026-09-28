@@ -1,5 +1,6 @@
 import { readValidatedRecord, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address } from 'viem'
+import { ONDO_API_KEY_SCOPES } from '../constants.js'
 import type { OndoApiKey } from '../types/auth.js'
 
 // Keys are namespaced by environment host as well as address: a production
@@ -25,7 +26,8 @@ export const isOndoApiKey = (value: unknown): value is OndoApiKey => {
     typeof name === 'string' &&
     typeof createdAt === 'string' &&
     Array.isArray(scopes) &&
-    scopes.every((scope) => typeof scope === 'string')
+    scopes.every((scope) => typeof scope === 'string') &&
+    ONDO_API_KEY_SCOPES.every((scope) => scopes.includes(scope))
   )
 }
 
