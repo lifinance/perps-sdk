@@ -64,7 +64,7 @@ export function boundAccountTiers(descriptor: SetupAction): string[] {
  * | SET_REFERRAL              | []                  (no parameters)
  * | APPROVE_INTEGRATOR        | []                  (no parameters)
  * | ACCOUNT_MODE              | [{ name: 'mode', value: config.accountTradingMode }]
- * | ACCOUNT_TYPE              | [{ name: 'tier', value: resolveAccountTier(…) }]
+ * | ACCOUNT_TYPE              | [{ name: 'tier', value: config.userTierName ?? null }]
  *
  * The switch is exhaustive over `ActionType` so enum additions force a
  * compile error in the `default` arm. ActionTypes that are not valid on
@@ -126,16 +126,14 @@ function projectLighterDescriptor(
       }
     }
 
-    // An unresolved `tier` projects `null` and reads unsatisfied until the
-    // user picks a tier.
-    case ActionType.ACCOUNT_TYPE: {
-      const tier = resolveAccountTier(descriptor, config.userTierName)
+    // `tier` carries the venue's raw tier name even when no option binds it;
+    // only a bound tier reads satisfied.
+    case ActionType.ACCOUNT_TYPE:
       return {
         type: descriptor.type,
-        values: [{ name: 'tier', value: tier }],
-        satisfied: tier !== null,
+        values: [{ name: 'tier', value: config.userTierName ?? null }],
+        satisfied: resolveAccountTier(descriptor, config.userTierName) !== null,
       }
-    }
 
     case ActionType.APPROVE_AGENT:
     case ActionType.REVOKE_AGENT:
@@ -162,6 +160,8 @@ function projectLighterDescriptor(
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
     case ActionType.REVOKE_BUILDER_FEE:
+    case ActionType.REVOKE_SESSION_AGENT:
+    case ActionType.REVOKE_INTEGRATOR:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Lighter account-config mapper has no projection for ` +

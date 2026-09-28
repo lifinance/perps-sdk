@@ -327,6 +327,13 @@ export interface SetupChecklistItem {
    * account value. `null` when none matches or the step is not a choice.
    */
   selected: SetupOption | null
+  /**
+   * For a choice step, the account's current value as the venue names it
+   * (the raw projected value, e.g. `standard` or `dexAbstraction`), even when
+   * no option binds it. `null` when the venue reports none or the value is
+   * unreadable, and always `null` for a non-choice step.
+   */
+  currentValue: string | null
 }
 
 /**

@@ -71,6 +71,11 @@ export interface ProviderAction {
    * nothing, so a consumer tests `=== true` rather than truthiness.
    */
   gatesAccountReads?: boolean
+  /**
+   * A link to the venue's own documentation for this action, which a UI can
+   * show as a "Documentation" link.
+   */
+  docsUrl?: string
 }
 
 /**
@@ -82,6 +87,11 @@ export interface ProviderAction {
 export interface SetupOption<T extends ActionType = ActionType> {
   /** Display title, e.g. `'Plus'`. */
   title: string
+  /**
+   * Option-specific prose a UI shows beside the option in its selector.
+   * `SetupAction.description` stays the general prose for the whole choice.
+   */
+  description?: string
   /** The action executed when the option is chosen. */
   type: T
   /** The action's sole param, bound, e.g. `{ tier: 'plus' }`. */

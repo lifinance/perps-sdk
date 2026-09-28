@@ -421,6 +421,12 @@ type _SetupOptionBindsParams = Expect<
     ActionParamsMap[ActionType.ACCOUNT_TYPE]
   >
 >
+type _SetupOptionDescriptionShape = Expect<
+  Equals<SetupOption['description'], string | undefined>
+>
+type _SetupOptionDescriptionIsOptional = Expect<
+  Equals<Extract<RequiredKeys<SetupOption>, 'description'>, never>
+>
 type _SignerIsSingle = Expect<Equals<ProviderAction['signer'], PerpsSigner>>
 type _RelayShape = Expect<Equals<ProviderAction['relay'], ActionRelay>>
 type _NoOptionsField = Expect<Equals<Extract<keyof Provider, 'options'>, never>>
@@ -498,6 +504,7 @@ type _ProviderActionKeys = Expect<
     | 'params'
     | 'sequence'
     | 'gatesAccountReads'
+    | 'docsUrl'
   >
 >
 
@@ -506,6 +513,12 @@ type _GatesAccountReadsShape = Expect<
 >
 type _GatesAccountReadsIsOptional = Expect<
   Equals<Extract<RequiredKeys<ProviderAction>, 'gatesAccountReads'>, never>
+>
+type _DocsUrlShape = Expect<
+  Equals<ProviderAction['docsUrl'], string | undefined>
+>
+type _DocsUrlIsOptional = Expect<
+  Equals<Extract<RequiredKeys<ProviderAction>, 'docsUrl'>, never>
 >
 
 // Param.type is the closed three-member primitive union.
@@ -590,6 +603,8 @@ export type _TypeAssertions = [
   _SetupOptionsAreRequired,
   _ActionsCarryNoOptions,
   _SetupOptionBindsParams,
+  _SetupOptionDescriptionShape,
+  _SetupOptionDescriptionIsOptional,
   _SignerIsSingle,
   _RelayShape,
   _NoOptionsField,
@@ -608,6 +623,8 @@ export type _TypeAssertions = [
   _ReferralCodeShape,
   _ReferralCodeIsOptional,
   _ProviderActionKeys,
+  _DocsUrlShape,
+  _DocsUrlIsOptional,
   _ParamTypeIsString,
   _TradeNoticeLevel,
   _TradeNoticeOptional,

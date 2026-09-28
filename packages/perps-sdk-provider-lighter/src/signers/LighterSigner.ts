@@ -658,6 +658,10 @@ export class LighterSigner {
           ctx.accountIndex
         )
       }
+      // A revoke is the same tx type 45 with every max fee and the expiry 0.
+      // Lighter accepts it on the L2 signature alone, so it rides sign() and
+      // its `L1Sig` stays empty.
+      case ActionType.REVOKE_INTEGRATOR:
       case ActionType.APPROVE_INTEGRATOR:
         return wasm.SignApproveIntegrator(
           numberField(p, 'integrator_account_index'),

@@ -579,6 +579,38 @@ describe('LighterSigner', () => {
     expect(parsed.Nonce).toBe(3)
   })
 
+  it('signs REVOKE_INTEGRATOR through sign() into an L2-only type-45 blob with zero fees and expiry', async () => {
+    const signed = await signer.sign(
+      ActionType.REVOKE_INTEGRATOR,
+      {
+        integrator_account_index: 5,
+        max_perps_taker_fee: 0,
+        max_perps_maker_fee: 0,
+        max_spot_taker_fee: 0,
+        max_spot_maker_fee: 0,
+        approval_expiry: 0,
+        nonce: 3,
+      },
+      ctx()
+    )
+    expect(signed.txType).toBe(45)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed).toMatchObject({
+      AccountIndex: 42,
+      ApiKeyIndex: 1,
+      IntegratorAccountIndex: 5,
+      MaxPerpsTakerFee: 0,
+      MaxPerpsMakerFee: 0,
+      MaxSpotTakerFee: 0,
+      MaxSpotMakerFee: 0,
+      ApprovalExpiry: 0,
+      Nonce: 3,
+    })
+    expect(parsed.L1Sig ?? '').toBe('')
+    expect(parsed.Sig).toBeTruthy()
+  })
+
   it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {
     await expect(
       signer.signApproveIntegrator(
