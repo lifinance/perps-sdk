@@ -118,6 +118,7 @@ export type {
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
+  GetWithdrawFlowParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PerpsConfig,
@@ -166,6 +167,7 @@ export type {
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
   ProviderGetWithdrawableBalancesParams,
+  ProviderGetWithdrawFlowParams,
   QuoteListener,
   SignActionProgress,
   SignActionsContext,
@@ -174,6 +176,9 @@ export type {
   ProviderWithdrawableBalance,
   WithdrawableBalance,
   WithdrawalRoute,
+  WithdrawFlow,
+  WithdrawFlowReady,
+  WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
 export type { ExpectedPnl } from './utils/calculations.js'

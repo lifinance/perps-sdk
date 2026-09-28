@@ -137,6 +137,8 @@ export const mapDepositActivity = (
 }
 
 const SETTLING_WITHDRAWAL_STATUSES = new Set<string>([
+  'WITHDRAWAL_PENDING',
+  'WITHDRAWAL_SUCCESS',
   'complete',
   'pending',
   'unknown',

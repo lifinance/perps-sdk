@@ -291,6 +291,16 @@ export interface GetDepositFlowParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getWithdrawFlow}.
+ *
+ * @public
+ */
+export interface GetWithdrawFlowParams {
+  provider: string
+  address: Address
+}
+
+/**
  * Parameters for {@link PerpsClient.getWithdrawableBalances}.
  *
  * @public

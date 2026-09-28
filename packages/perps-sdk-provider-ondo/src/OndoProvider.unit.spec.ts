@@ -58,7 +58,7 @@ import type {
   OndoWalletDeposit,
   OndoWalletWithdrawal,
 } from './types/wire.js'
-import { OndoApiError } from './utils/apiClient.js'
+import { OndoApiError, OndoSessionExpiredError } from './utils/apiClient.js'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -110,7 +110,7 @@ const API_KEY: OndoApiKey = {
   apiSecret: 'super-secret',
   name: 'lifi-perps',
   createdAt: '2026-07-14T00:00:00.000Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
 }
 
 // Real `POST /v1/api_keys` result: the HMAC secret arrives as `secretKey`.
@@ -118,7 +118,7 @@ const CREATED_API_KEY: OndoCreatedApiKey = {
   keyId: 'ondoKeyId_abc',
   name: 'lifi-perps',
   createdAt: '2026-07-15T12:31:55.781433839Z',
-  scopes: ['trade'],
+  scopes: ['trade', 'transfer'],
   secretKey: 'ondoApiSecret_xyz',
 }
 
@@ -382,6 +382,8 @@ let referralResult: { code: string; rebate?: number } | null
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
 let depositAddressResult: unknown
+/** `GET /v1/wallet/address_book` result. */
+let addressBookResult: unknown
 /** `GET /v1/perps/positions` result; `null` mirrors an empty venue collection. */
 let positionsResult: OndoPosition[] | null
 let providersResult: Provider[]
@@ -440,6 +442,7 @@ beforeEach(() => {
   referralResult = { code: 'K04HBJ', rebate: 0.1 }
   accountInfoResult = { ...ACCOUNT_INFO_RESULT }
   depositAddressResult = []
+  addressBookResult = { addressBook: [] }
   positionsResult = [POSITION_RESULT]
   providersResult = [ACCOUNT_PROVIDER_METADATA]
   balanceResult = BALANCE_RESULT
@@ -531,6 +534,9 @@ beforeEach(() => {
     }
     if (u.includes('/v1/wallet/deposit_address/list')) {
       return respond(envelope(depositAddressResult))
+    }
+    if (u.includes('/v1/wallet/address_book')) {
+      return respond(envelope(addressBookResult))
     }
     if (u.includes('/v1/account/referral')) {
       return respond(envelope(referralResult))
@@ -1187,6 +1193,18 @@ describe('OndoProvider — getAccount (logged in)', () => {
     })
   })
 
+  it('reports apiKeyRegistered: false for a stored key without the transfer scope', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, {
+      ...API_KEY,
+      scopes: ['trade'],
+    })
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.config).toMatchObject({ apiKeyRegistered: false })
+  })
+
   it('reports termsAccepted: false when the account terms version is stale', async () => {
     accountInfoResult = { ...ACCOUNT_INFO_RESULT, termsVersion: 2 }
     const { provider } = await loggedInProvider()
@@ -1401,6 +1419,236 @@ describe('OndoProvider — getDepositFlow', () => {
       setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
     })
     await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+})
+
+describe('OndoProvider — getWithdrawFlow', () => {
+  const MIXED_CASE_ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
+
+  const addressBookEntry = (withdrawalAddress: string) => ({
+    withdrawalAddress,
+    label: 'LI.FI',
+    lastUpdated: '2026-09-20T10:00:00Z',
+  })
+
+  it('is ready to the login address when the address book lists it', async () => {
+    addressBookResult = {
+      addressBook: [
+        addressBookEntry('0x2222222222222222222222222222222222222222'),
+        addressBookEntry(ADDRESS),
+      ],
+    }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawFlow!({ address: ADDRESS })
+    ).resolves.toEqual({ kind: 'ready', destination: ADDRESS })
+    const addressBookCall = recorded.find((r) =>
+      r.url.includes('/v1/wallet/address_book')
+    )
+    expect(addressBookCall?.url).toBe(`${API_URL}/v1/wallet/address_book`)
+    expect(authHeaderOf(addressBookCall!)).toBe('Bearer ondo-jwt-token')
+  })
+
+  it('matches the address book entry to the login address without regard to case', async () => {
+    const storage = createMemoryStorage()
+    await new OndoTokenStore(storage, API_URL).set(MIXED_CASE_ADDRESS, {
+      ...AUTH_TOKEN,
+      identifier: MIXED_CASE_ADDRESS.toLowerCase(),
+    })
+    const provider = ondoProvider({ apiUrl: API_URL, storage })
+    provider.bind(STUB_CLIENT)
+    addressBookResult = {
+      addressBook: [addressBookEntry(MIXED_CASE_ADDRESS)],
+    }
+
+    await expect(
+      provider.getWithdrawFlow!({
+        address: `0x${MIXED_CASE_ADDRESS.slice(2).toLowerCase()}`,
+      })
+    ).resolves.toEqual({ kind: 'ready', destination: MIXED_CASE_ADDRESS })
+  })
+
+  it('reports the withdrawal-address setup gate when the address book lists only other addresses', async () => {
+    addressBookResult = {
+      addressBook: [
+        addressBookEntry('0x2222222222222222222222222222222222222222'),
+      ],
+    }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawFlow!({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.ADD_WITHDRAWAL_ADDRESS],
+    })
+  })
+
+  it.each([
+    ['an empty', { addressBook: [] }],
+    ['a null', { addressBook: null }],
+  ])('reports the withdrawal-address setup gate on %s address book', async (_label, result) => {
+    addressBookResult = result
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getWithdrawFlow!({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.ADD_WITHDRAWAL_ADDRESS],
+    })
+  })
+
+  it('reports the login gate without a session', async () => {
+    await expect(
+      loggedOutProvider().getWithdrawFlow!({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.SIWE_LOGIN, ActionType.ADD_WITHDRAWAL_ADDRESS],
+    })
+  })
+
+  it('reports the login gate and evicts the token when the venue rejects it', async () => {
+    const { provider, store } = await loggedInProvider()
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      return respond({ success: false, error: 'token expired' }, 401)
+    })
+
+    await expect(
+      provider.getWithdrawFlow!({ address: ADDRESS })
+    ).resolves.toEqual({
+      kind: 'setupRequired',
+      setup: [ActionType.SIWE_LOGIN, ActionType.ADD_WITHDRAWAL_ADDRESS],
+    })
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
+})
+
+describe('OndoProvider — resolveActionRequest', () => {
+  it('contributes the stored session accountId to a withdrawal', async () => {
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.resolveActionRequest!(ActionType.WITHDRAWAL, ADDRESS, [
+        PerpsSigner.USER,
+      ])
+    ).resolves.toEqual({ params: { accountId: 'acct-1' } })
+  })
+
+  it('throws OndoSessionExpiredError for a withdrawal without a session', async () => {
+    await expect(
+      loggedOutProvider().resolveActionRequest!(
+        ActionType.WITHDRAWAL,
+        ADDRESS,
+        [PerpsSigner.USER]
+      )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+  })
+
+  it.each([
+    ActionType.PLACE_ORDER,
+    ActionType.SIWE_LOGIN,
+    ActionType.ADD_WITHDRAWAL_ADDRESS,
+  ])('contributes nothing to %s', async (action) => {
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.resolveActionRequest!(action, ADDRESS, [PerpsSigner.USER])
+    ).resolves.toEqual({})
+    await expect(
+      loggedOutProvider().resolveActionRequest!(action, ADDRESS, [
+        PerpsSigner.USER,
+      ])
+    ).resolves.toEqual({})
+  })
+
+  describe('through PerpsClient', () => {
+    const BACKEND_URL = 'https://backend.test/v1/perps'
+    const withdrawal = {
+      destination: ADDRESS,
+      amount: '25',
+    }
+
+    const withdrawalClient = async () => {
+      const storage = createMemoryStorage()
+      await new OndoTokenStore(storage, API_URL).set(ADDRESS, AUTH_TOKEN)
+      const createActionBodies: unknown[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string | URL, init?: RequestInit) => {
+          const u = String(url)
+          if (u === `${BACKEND_URL}/providers`) {
+            return respond({
+              providers: [
+                {
+                  ...ACCOUNT_PROVIDER_METADATA,
+                  actions: [
+                    {
+                      type: ActionType.WITHDRAWAL,
+                      signers: [PerpsSigner.USER],
+                      signingMethod: SigningMethod.HMAC,
+                      params: [],
+                    },
+                  ],
+                },
+              ],
+            })
+          }
+          if (u === `${BACKEND_URL}/createAction`) {
+            createActionBodies.push(JSON.parse(String(init?.body)))
+            return respond({ actions: [] })
+          }
+          return fetchMock(u, init)
+        })
+      )
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        apiUrl: BACKEND_URL,
+        providers: [ondoProvider({ apiUrl: API_URL, storage })],
+      })
+      return { client, createActionBodies }
+    }
+
+    it('execute merges the accountId into the createAction params', async () => {
+      const { client, createActionBodies } = await withdrawalClient()
+
+      await client.execute({
+        provider: 'ondo',
+        address: ADDRESS,
+        action: ActionType.WITHDRAWAL,
+        params: withdrawal,
+      })
+
+      expect(createActionBodies).toEqual([
+        expect.objectContaining({
+          action: ActionType.WITHDRAWAL,
+          params: { ...withdrawal, accountId: 'acct-1' },
+        }),
+      ])
+    })
+
+    it('buildAction merges the accountId into the createAction params', async () => {
+      const { client, createActionBodies } = await withdrawalClient()
+
+      await client.buildAction(ActionType.WITHDRAWAL, {
+        provider: 'ondo',
+        address: ADDRESS,
+        params: withdrawal,
+      })
+
+      expect(createActionBodies).toEqual([
+        expect.objectContaining({
+          action: ActionType.WITHDRAWAL,
+          params: { ...withdrawal, accountId: 'acct-1' },
+        }),
+      ])
+    })
   })
 })
 

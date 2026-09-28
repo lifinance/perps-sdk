@@ -308,8 +308,14 @@ export interface OndoWalletDeposit {
   logIndex?: string
 }
 
-/** @public */
+/**
+ * The REST spec lists the lowercase values. The live API sends the
+ * `WITHDRAWAL_`-prefixed values.
+ * @public
+ */
 export type OndoWithdrawalStatus =
+  | 'WITHDRAWAL_PENDING'
+  | 'WITHDRAWAL_SUCCESS'
   | 'complete'
   | 'failure'
   | 'pending'
@@ -335,6 +341,22 @@ export interface OndoWalletWithdrawal {
   /** Fee in USD, not in the withdrawn asset. */
   usdFee?: string
   from?: OndoAccountWalletKey
+}
+
+/** Mirrors Ondo's `AddressBookEntry` (one `GET /v1/wallet/address_book` row). @public */
+export interface OndoAddressBookEntry {
+  withdrawalAddress: string
+  label: string
+  lastUpdated: string
+}
+
+/**
+ * Mirrors Ondo's `AddressBookResult`. The venue sends `null` for an empty
+ * address book.
+ * @public
+ */
+export interface OndoAddressBookResult {
+  addressBook: OndoAddressBookEntry[] | null
 }
 
 /**

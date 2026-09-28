@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 29.1.1
+
+### Patch Changes
+
+- [#514](https://github.com/lifinance/perps-sdk/pull/514) [`c69c4cc`](https://github.com/lifinance/perps-sdk/commit/c69c4cc15a5fa3212b640a15c4a21aaf8a04e989) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the Ondo withdrawal flow. `ActionType.ADD_WITHDRAWAL_ADDRESS` adds the login address to the Ondo address book. `PerpsClient.getWithdrawFlow` returns the withdrawal destination or the setup actions that must come first. `WithdrawalParams` gets an optional `accountId`, which the Ondo plugin supplies. The Ondo error classifier maps the address book error codes. The Hyperliquid and Lighter account-config mappers reject the new action type on setup and options. A consumer that reads `ActionType` exhaustively must handle the new member.
+
+- Updated dependencies [[`c69c4cc`](https://github.com/lifinance/perps-sdk/commit/c69c4cc15a5fa3212b640a15c4a21aaf8a04e989)]:
+  - @lifi/perps-types@16.2.0
+
 ## 29.1.0
 
 ### Minor Changes

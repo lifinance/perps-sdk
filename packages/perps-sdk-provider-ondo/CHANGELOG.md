@@ -1,5 +1,24 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 20.2.1
+
+### Patch Changes
+
+- [#518](https://github.com/lifinance/perps-sdk/pull/518) [`587de17`](https://github.com/lifinance/perps-sdk/commit/587de1701833c99d5c6e4d26a04e4a3e2ef82e29) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Ondo ledger now shows live withdrawals. The live `GET /v1/wallet/withdrawals` API sends the `WITHDRAWAL_PENDING` and `WITHDRAWAL_SUCCESS` statuses, which the REST spec does not list, and the activity mapper dropped each row with one of those statuses. `OndoWithdrawalStatus` now includes both values. Each row now reaches the ledger with its explorer link from `txid`.
+
+- [#520](https://github.com/lifinance/perps-sdk/pull/520) [`cc747d0`](https://github.com/lifinance/perps-sdk/commit/cc747d00cdbdd7427aaf4983266a7ec8ea21601f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Request the `transfer` scope on the Ondo trading API key, so that `WITHDRAWAL` succeeds. On the next HMAC-signed action, the SDK revokes a stored key without the `transfer` scope and creates a replacement key. Concurrent signing calls for one address share one key creation.
+
+## 20.2.0
+
+### Minor Changes
+
+- [#514](https://github.com/lifinance/perps-sdk/pull/514) [`c69c4cc`](https://github.com/lifinance/perps-sdk/commit/c69c4cc15a5fa3212b640a15c4a21aaf8a04e989) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the Ondo withdrawal flow. `ActionType.ADD_WITHDRAWAL_ADDRESS` adds the login address to the Ondo address book. `PerpsClient.getWithdrawFlow` returns the withdrawal destination or the setup actions that must come first. `WithdrawalParams` gets an optional `accountId`, which the Ondo plugin supplies. The Ondo error classifier maps the address book error codes. The Hyperliquid and Lighter account-config mappers reject the new action type on setup and options. A consumer that reads `ActionType` exhaustively must handle the new member.
+
+### Patch Changes
+
+- Updated dependencies [[`c69c4cc`](https://github.com/lifinance/perps-sdk/commit/c69c4cc15a5fa3212b640a15c4a21aaf8a04e989)]:
+  - @lifi/perps-types@16.2.0
+
 ## 20.1.0
 
 ### Minor Changes

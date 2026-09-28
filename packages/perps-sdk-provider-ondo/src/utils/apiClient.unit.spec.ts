@@ -239,6 +239,28 @@ describe('OndoApiClient', () => {
     })
   })
 
+  it('replaces the venue text with the classifier message for an address book error_code', async () => {
+    const { client } = createClient([
+      jsonResponse(
+        {
+          success: false,
+          error: 'not found',
+          error_code: 'withdrawal_address_not_found',
+        },
+        400
+      ),
+    ])
+
+    await expect(
+      client.post('/v1/auth/erc-4361/address_book/complete_challenge', {})
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SetupRequired,
+      errorCode: 'withdrawal_address_not_found',
+      message:
+        'Ondo API error for /v1/auth/erc-4361/address_book/complete_challenge: withdrawal_address_not_found — The withdrawal destination is not in the Ondo address book. Add the withdrawal address first.',
+    })
+  })
+
   it('keeps the status-resolved code for an unrecognised error_code on a non-2xx status', async () => {
     const { client } = createClient([
       jsonResponse(

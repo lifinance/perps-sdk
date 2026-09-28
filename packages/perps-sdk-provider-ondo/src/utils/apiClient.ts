@@ -8,7 +8,7 @@ import {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { OndoGenericResponse } from '../types/auth.js'
 import type { OndoPageInfo } from '../types/wire.js'
-import { ondoErrorCodeFromBody } from './ondoErrorCode.js'
+import { ondoErrorFromBody } from './ondoErrorCode.js'
 
 /** @internal */
 export type ApiParams = Record<string, string | number | boolean>
@@ -246,12 +246,12 @@ export class OndoApiClient {
       )
     }
     if (isGenericResponse(data) && !data.success) {
-      const bodyCode = ondoErrorCodeFromBody(data.error_code)
-      if (bodyCode !== undefined) {
+      const bodyError = ondoErrorFromBody(data.error_code)
+      if (bodyError !== undefined) {
         throw new OndoApiError(
-          `Ondo API error for ${path}: ${data.error_code} — ${data.error ?? 'no error message'}`,
+          `Ondo API error for ${path}: ${data.error_code} — ${bodyError.message ?? data.error ?? 'no error message'}`,
           data.error_code,
-          bodyCode
+          bodyError.code
         )
       }
     }

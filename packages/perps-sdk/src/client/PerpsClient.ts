@@ -59,6 +59,7 @@ import type {
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
+  GetWithdrawFlowParams,
   ModifyOrdersParams,
   PerpsClientOptions,
   PlaceOrderParams,
@@ -82,7 +83,7 @@ import type {
   SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
-import type { WithdrawableBalance } from '../types/withdrawal.js'
+import type { WithdrawableBalance, WithdrawFlow } from '../types/withdrawal.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -775,6 +776,23 @@ export class PerpsClient {
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getDepositFlow?.({ address: params.address })
+  }
+
+  /**
+   * The withdrawal flow for `params.address` at `params.provider`, delegated to
+   * the provider plugin — the withdrawal destination and any setup gate before
+   * it are venue-owned.
+   *
+   * @returns `undefined` when the registered plugin declares no withdrawal flow.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   plugin's flow resolution fails.
+   * @public
+   */
+  async getWithdrawFlow(
+    params: GetWithdrawFlowParams
+  ): Promise<WithdrawFlow | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getWithdrawFlow?.({ address: params.address })
   }
 
   /**
