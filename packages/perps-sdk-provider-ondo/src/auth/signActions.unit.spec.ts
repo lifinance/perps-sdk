@@ -117,6 +117,11 @@ const CREATE_DEPOSIT_STEP: SessionActionStep = {
   },
 }
 
+const ADD_WITHDRAWAL_ADDRESS_STEP: SessionActionStep = {
+  action: ActionType.ADD_WITHDRAWAL_ADDRESS,
+  session: {},
+}
+
 const PLACE_ORDER_STEP: HmacActionStep = {
   action: ActionType.PLACE_ORDER,
   request: {
@@ -1102,6 +1107,119 @@ describe('ondoSignActions — SESSION', () => {
     await expect(
       ondoSignActions(deps, SigningMethod.SESSION, [WASM_STEP], account.address)
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+  })
+
+  it('adds the login address to the address book with a signed challenge', async () => {
+    const challengeMessage =
+      'app.ondo.finance wants you to add a withdrawal address.\nNonce: abc123'
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          result: { id: 'challenge-wd-1', message: challengeMessage },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const signed = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [ADD_WITHDRAWAL_ADDRESS_STEP],
+      `0x${account.address.slice(2).toLowerCase()}`,
+      { userWallet }
+    )
+
+    expect(signed).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    const [challengeUrl, challengeInit] = fetchImpl.mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(challengeUrl).toBe(
+      `${BASE_URL}/v1/auth/erc-4361/address_book/get_challenge`
+    )
+    expect(challengeInit.method).toBe('POST')
+    expect(new Headers(challengeInit.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    expect(JSON.parse(challengeInit.body as string)).toEqual({
+      walletAddress: account.address,
+      chainId: '1',
+      withdrawalAddress: account.address,
+    })
+
+    const [completeUrl, completeInit] = fetchImpl.mock.calls[1] as [
+      string,
+      RequestInit,
+    ]
+    expect(completeUrl).toBe(
+      `${BASE_URL}/v1/auth/erc-4361/address_book/complete_challenge`
+    )
+    expect(completeInit.method).toBe('POST')
+    expect(new Headers(completeInit.headers).get('authorization')).toBe(
+      'Bearer ondo-jwt-token'
+    )
+    const completeBody = JSON.parse(completeInit.body as string)
+    expect(completeBody).toEqual({
+      id: 'challenge-wd-1',
+      signature: expect.stringMatching(/^0x[0-9a-f]+$/),
+      withdrawalAddress: account.address,
+      addressLabel: 'LI.FI',
+    })
+    await expect(
+      verifyMessage({
+        address: account.address,
+        message: challengeMessage,
+        signature: completeBody.signature,
+      })
+    ).resolves.toBe(true)
+  })
+
+  it('throws OndoSessionExpiredError for the withdrawal-address step without a stored session token', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [ADD_WITHDRAWAL_ADDRESS_STEP],
+        account.address,
+        { userWallet }
+      )
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('throws the SIWE user-wallet SDKError for the withdrawal-address step without a user wallet', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const withoutWallet = ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [ADD_WITHDRAWAL_ADDRESS_STEP],
+      account.address
+    )
+    const siweWithoutWallet = ondoSignActions(
+      deps,
+      SigningMethod.SIWE,
+      [SIWE_STEP],
+      account.address
+    )
+
+    const expected = {
+      code: PerpsErrorCode.SDKError,
+      message:
+        'Ondo SIWE login requires the user wallet. Pass `userWallet` when creating the perps client.',
+    }
+    await expect(siweWithoutWallet).rejects.toMatchObject(expected)
+    await expect(withoutWallet).rejects.toMatchObject(expected)
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('rejects a bare session marker with an action it has no executor for', async () => {

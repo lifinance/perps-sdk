@@ -1529,6 +1529,55 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // getWithdrawFlow — optional plugin method, undefined when unimplemented
+  // ---------------------------------------------------------------------------
+
+  describe('getWithdrawFlow', () => {
+    const flow = { kind: 'ready', destination: userAddress } as const
+
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: 'hyperliquid',
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates to the plugin with the address and returns its flow', async () => {
+      const getWithdrawFlow = vi.fn(async () => flow)
+      await expect(
+        clientWith({ getWithdrawFlow }).getWithdrawFlow({
+          provider,
+          address: userAddress,
+        })
+      ).resolves.toEqual(flow)
+      expect(getWithdrawFlow).toHaveBeenCalledWith({ address: userAddress })
+    })
+
+    it('resolves undefined when the plugin does not implement discovery', async () => {
+      await expect(
+        clientWith({}).getWithdrawFlow({ provider, address: userAddress })
+      ).resolves.toBeUndefined()
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getWithdrawFlow({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // getAvailableToTrade — per-market read with an account-summary fallback
   // ---------------------------------------------------------------------------
 

@@ -36,7 +36,7 @@ import type {
   SDKRequestOptions,
 } from './config.js'
 import type { DepositFlow } from './deposit.js'
-import type { ProviderWithdrawableBalance } from './withdrawal.js'
+import type { ProviderWithdrawableBalance, WithdrawFlow } from './withdrawal.js'
 
 /**
  * Low-level SDK client: resolved config, the optional end-user wallet, and the
@@ -177,6 +177,15 @@ export interface ProviderAccountExistsParams {
  * @public
  */
 export interface ProviderGetDepositFlowParams {
+  address: Address
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getWithdrawFlow}.
+ *
+ * @public
+ */
+export interface ProviderGetWithdrawFlowParams {
   address: Address
 }
 
@@ -420,6 +429,19 @@ export interface PerpsProviderPlugin {
     params: ProviderGetDepositFlowParams,
     options?: SDKRequestOptions
   ): Promise<DepositFlow>
+
+  /**
+   * The withdrawal flow this venue offers `params.address`, resolved from the
+   * venue's own account and setup state — the destination a withdrawal goes
+   * to, or the venue setup that must come first.
+   *
+   * Optional: a provider without a gated withdrawal destination omits it, and
+   * `PerpsClient.getWithdrawFlow` then resolves `undefined`.
+   */
+  getWithdrawFlow?(
+    params: ProviderGetWithdrawFlowParams,
+    options?: SDKRequestOptions
+  ): Promise<WithdrawFlow>
 
   /**
    * The `(asset, route)` pairs `params.address` currently has something to

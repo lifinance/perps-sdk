@@ -437,6 +437,12 @@ export interface UpdateAssetCollateralParams {
 export interface WithdrawalParams {
   destination: Address
   amount: string
+  /**
+   * The venue-native account identifier, as a string. The provider plugin
+   * supplies it; callers omit it. A string because Ondo's 20-digit accountID
+   * exceeds `Number.MAX_SAFE_INTEGER`.
+   */
+  accountId?: string
 }
 
 /**
@@ -581,6 +587,7 @@ export interface ActionParamsMap {
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
   [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
+  [ActionType.ADD_WITHDRAWAL_ADDRESS]: Record<string, never>
   [ActionType.ACCEPT_PROVIDER_TERMS]: Record<string, never>
   [ActionType.DEPOSIT]: DepositParams
   [ActionType.META_ACCEPT_TERMS]: AcceptTermsParams

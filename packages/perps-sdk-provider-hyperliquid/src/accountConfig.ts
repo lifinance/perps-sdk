@@ -66,6 +66,7 @@ function projectHyperliquidDescriptor(
     case ActionType.APPROVE_READ_ONLY_TOKEN:
     case ActionType.SIWE_LOGIN:
     case ActionType.CREATE_DEPOSIT_ADDRESS:
+    case ActionType.ADD_WITHDRAWAL_ADDRESS:
     case ActionType.ACCEPT_PROVIDER_TERMS:
     case ActionType.DEPOSIT:
     case ActionType.META_ACCEPT_TERMS:

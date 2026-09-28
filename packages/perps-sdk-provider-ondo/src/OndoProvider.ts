@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  type ActionSignerContribution,
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
@@ -22,6 +23,7 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetWithdrawableBalancesParams,
+  type ProviderGetWithdrawFlowParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
   resolveQuote,
@@ -32,6 +34,7 @@ import {
   toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
+  type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -63,7 +66,7 @@ import type {
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type Big from 'big.js'
-import type { Address } from 'viem'
+import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
@@ -80,6 +83,7 @@ import type { OndoAuthToken } from './types/auth.js'
 import type {
   OndoAccountInfo,
   OndoAccountReferral,
+  OndoAddressBookResult,
   OndoBalanceSummary,
   OndoFill,
   OndoFundingFeeTransfer,
@@ -558,6 +562,39 @@ export const ondoProvider = (
             destination: ETHEREUM_USDC,
             toAddress: depositAddress,
           }
+        }
+      )
+    },
+
+    async getWithdrawFlow(
+      params: ProviderGetWithdrawFlowParams,
+      opts?: SDKRequestOptions
+    ): Promise<WithdrawFlow> {
+      // Ondo sends a withdrawal only to an address-book entry, and the SDK
+      // offers one destination: the login address.
+      return withSession<WithdrawFlow>(
+        params.address,
+        () => ({
+          kind: 'setupRequired',
+          setup: [ActionType.SIWE_LOGIN, ActionType.ADD_WITHDRAWAL_ADDRESS],
+        }),
+        async (token) => {
+          const { addressBook } = await apiClient(
+            opts
+          ).get<OndoAddressBookResult>('/v1/wallet/address_book', {
+            authToken: token.token,
+          })
+          const loginAddress = params.address.toLowerCase()
+          const listed = (addressBook ?? []).some(
+            (entry) => entry.withdrawalAddress.toLowerCase() === loginAddress
+          )
+          if (!listed) {
+            return {
+              kind: 'setupRequired',
+              setup: [ActionType.ADD_WITHDRAWAL_ADDRESS],
+            }
+          }
+          return { kind: 'ready', destination: getAddress(params.address) }
         }
       )
     },
@@ -1053,6 +1090,22 @@ export const ondoProvider = (
       configOptions: ProviderAction[]
     ): AccountConfigSetting[] {
       return projectOndoConfigSettings(config, setup, configOptions)
+    },
+
+    async resolveActionRequest(
+      action: ActionType,
+      address: Address
+    ): Promise<ActionSignerContribution> {
+      if (action !== ActionType.WITHDRAWAL) {
+        return {}
+      }
+      const token = await tokenStore.get(address)
+      if (token === null) {
+        throw new OndoSessionExpiredError(
+          `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
+        )
+      }
+      return { params: { accountId: token.accountId } }
     },
 
     async signActions(
