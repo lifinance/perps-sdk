@@ -145,22 +145,6 @@ function assertSetupContract(metadata: Provider): void {
   }
 }
 
-function defaultOption(descriptor: SetupAction): SetupOption | undefined {
-  return descriptor.options?.find((option) => option.default === true)
-}
-
-/**
- * Whether the SDK fulfils a pending setup step itself. A USER-signed step is
- * never drained: it would prompt the user's wallet from inside `checkSetup`.
- * A choice drains only through its `default` option.
- */
-function isDrainable(descriptor: SetupAction): boolean {
-  return (
-    descriptor.signer === PerpsSigner.SDK &&
-    (descriptor.options === null || defaultOption(descriptor) !== undefined)
-  )
-}
-
 /** Only a USER-signed non-choice step is staged for the user to sign. */
 function isStageable(descriptor: SetupAction): boolean {
   return descriptor.options === null && descriptor.signer === PerpsSigner.USER
@@ -873,10 +857,10 @@ export class PerpsClient {
    * conditional steps omitted.
    *
    * A non-choice `SDK`-signed step is NEVER returned here — the SDK drains it
-   * with the provider's own credentials. A choice is listed but never staged:
-   * the user picks an option through {@link executeProviderOption}. While an
-   * `SDK`-signed choice stays unsatisfied, the SDK executes its `default`
-   * option; a `USER`-signed choice is never executed on the user's behalf.
+   * with the provider's own credentials. A choice is listed but never staged
+   * or executed, whatever its `signer`: the user picks an option through
+   * {@link executeProviderOption}, and `isReady` stays `false` until every
+   * choice on `checklist` is satisfied.
    *
    * @public
    */
@@ -946,14 +930,18 @@ export class PerpsClient {
     await this.drainSetup(
       provider,
       address,
-      pendingSetup.filter(isDrainable),
+      pendingSetup.filter(
+        (descriptor) =>
+          descriptor.options === null && descriptor.signer === PerpsSigner.SDK
+      ),
       stageable.filter((descriptor) => stagedTypes.has(descriptor.type))
     )
 
     return {
       accountExists: true,
       setup: actions,
-      isReady: actions.length === 0,
+      isReady:
+        actions.length === 0 && checklist.every((item) => item.satisfied),
       checklist,
     }
   }
@@ -977,16 +965,14 @@ export class PerpsClient {
   }
 
   /**
-   * Drain the pending setup steps the SDK fulfils without user input: every
-   * `SDK`-signed non-choice step, and every unsatisfied `SDK`-signed choice
-   * through its `default` option. A choice executes the option's `{ type,
-   * params }` verbatim; a non-choice step is built, signed, and executed in
-   * place with the provider's own credentials. A step is deferred while any
-   * staged user-facing step with a lower `sequence` is outstanding — it cannot
-   * succeed before its prerequisite (e.g. SET_REFERRAL authenticates with the
-   * credential REGISTER_API_KEY installs) and each doomed attempt is venue
-   * traffic. A drain failure is swallowed so it never blocks setup — the step
-   * stays unsatisfied and is retried on a later `checkSetup`.
+   * Drain the pending `SDK`-signed non-choice steps: each is built, signed,
+   * and executed in place with the provider's own credentials. A step is
+   * deferred while any staged user-facing step with a lower `sequence` is
+   * outstanding — it cannot succeed before its prerequisite (e.g. SET_REFERRAL
+   * authenticates with the credential REGISTER_API_KEY installs) and each
+   * doomed attempt is venue traffic. A drain failure is swallowed so it never
+   * blocks setup — the step stays unsatisfied and is retried on a later
+   * `checkSetup`.
    */
   private async drainSetup(
     provider: string,
@@ -1004,11 +990,6 @@ export class PerpsClient {
         continue
       }
       try {
-        const option = defaultOption(descriptor)
-        if (option !== undefined) {
-          await this.executeProviderOption({ provider, address, option })
-          continue
-        }
         const steps = await this.buildProviderSetupActions(provider, address, [
           descriptor,
         ])
@@ -1082,10 +1063,10 @@ export class PerpsClient {
   /**
    * Build the unsigned setup `ActionStep`s still outstanding for an account,
    * ordered by descriptor `sequence`. Only a `USER`-signed non-choice step is
-   * staged: an `SDK`-signed step drains inside {@link checkSetup} and a choice
-   * executes the option the user picks. The backend filters already-satisfied
-   * setup; each plugin contributes its own signer-bearing request fields and
-   * any local-state params (e.g. Lighter's known pubkey).
+   * staged: an `SDK`-signed non-choice step drains inside {@link checkSetup}
+   * and a choice executes the option the user picks. The backend filters
+   * already-satisfied setup; each plugin contributes its own signer-bearing
+   * request fields and any local-state params (e.g. Lighter's known pubkey).
    *
    * @public
    */
@@ -1198,13 +1179,9 @@ export class PerpsClient {
    * conflict that the caller invalidates on, refetches `checkSetup`, and
    * retries with a fresh step.
    *
-   * A lower-`sequence` `SDK`-signed choice with a `default` option is executed
-   * in place first, so a step `checkSetup` returned behind such a choice stays
-   * executable from the cache.
-   *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors, or when a lower-`sequence` step on the same
-   *   checklist is still unsatisfied after that.
+   *   checklist, a choice included, is still unsatisfied.
    * @public
    */
   async executeProviderSetupAction(params: {
@@ -1223,21 +1200,11 @@ export class PerpsClient {
       )
     }
 
-    const drained = new Set<ActionType>()
-    let blocking = await this.findBlockingSetupStep(
+    const blocking = await this.findBlockingSetupStep(
       provider,
       address,
       descriptor
     )
-    while (
-      blocking !== undefined &&
-      isDrainable(blocking) &&
-      !drained.has(blocking.type)
-    ) {
-      drained.add(blocking.type)
-      await this.drainSetup(provider, address, [blocking], [])
-      blocking = await this.findBlockingSetupStep(provider, address, descriptor)
-    }
     if (blocking) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,

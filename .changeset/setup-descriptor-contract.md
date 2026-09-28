@@ -14,7 +14,7 @@ Breaking changes:
 
 - `ProviderAction.signers: PerpsSigner[]` is now `ProviderAction.signer: PerpsSigner`.
 - `ProviderAction.relay: ActionRelay` (`API` or `CLIENT`) is new and required.
-- `Provider.setup` is now `SetupAction[]`. A `SetupAction` carries `options: SetupOption[] | null` and `revoke: ActionType | null`. A `SetupOption` binds `{ title, type, params }` and can mark `default: true`.
+- `Provider.setup` is now `SetupAction[]`. A `SetupAction` carries `options: SetupOption[] | null` and `revoke: ActionType | null`. A `SetupOption` binds `{ title, type, params }` and can mark `default: true`, the recommended option a UI pre-selects.
 - `Provider.options` is deleted. A former option is a choice setup step.
 - `ActionType.REVOKE_BUILDER_FEE` is new.
 - `SignActionsContext.signers` is now `SignActionsContext.signer`, and `PerpsProviderPlugin.resolveActionRequest` takes one `PerpsSigner`.
@@ -28,17 +28,18 @@ Migration:
 
 - Read `descriptor.signer` in place of `descriptor.signers`.
 - Read former options from `Provider.setup` where `options !== null`, not from `Provider.options`.
-- Pass the chosen `SetupOption` to `executeProviderOption`.
+- Pass the option the user taps to `executeProviderOption`. The SDK never executes a choice on its own, so a UI pre-selects the `default` option and waits for the tap.
 - Drop `internalSetupActions` from a custom plugin.
 - Call `projectConfig(config, setup)` with two arguments.
 
 New behaviour:
 
-- `PerpsClient.checkSetup` shows every choice step and a `USER`-signed non-choice step on the checklist, and hides and executes an `SDK`-signed non-choice step. A choice step is never staged; its satisfied state comes from the plugin projection. While an `SDK`-signed choice is unsatisfied, the SDK executes its `default` option verbatim. The SDK never executes a `USER`-signed choice.
+- `PerpsClient.checkSetup` shows every choice step and a `USER`-signed non-choice step on the checklist, and hides and executes an `SDK`-signed non-choice step. A choice step is never staged, and the SDK never executes it on its own, whatever its `signer` or `default`: the user taps an option and `executeProviderOption` executes it. Its satisfied state comes from the plugin projection.
+- `ProviderSetup.isReady` is `true` only when nothing is staged and every choice step on `checklist` is satisfied. An unsatisfied choice, such as a Lighter `ACCOUNT_TYPE` whose tier projects `null`, keeps the account not ready until the user picks an option.
 - `SetupChecklistItem.selected` is the option whose bound params equal the projected values, or `null`.
 - `PerpsClient.executeProviderRevoke({ provider, address, step })` executes the step's `revoke` action, signed by that action's `Provider.actions` descriptor. It throws `PerpsErrorCode.SDKError` when `revoke` is `null`.
 - `isSetupOptionFor(option, type)` narrows a `SetupOption` to its bound `ActionType`.
-- `PerpsClient.executeProviderSetupAction` rejects a step while a lower-`sequence` visible step is unsatisfied, and names that step. A lower-`sequence` `SDK`-signed choice with a `default` option is executed first, so a cached step from `checkSetup` stays executable.
+- `PerpsClient.executeProviderSetupAction` rejects a step with `PerpsErrorCode.SDKError` while a lower-`sequence` visible step, a choice included, is unsatisfied, names that step, and executes nothing.
 - The Lighter plugin maps venue error code `21520` to `PerpsErrorCode.SetupRequired`, including on its client-executed `/changeAccountTier` and `/referral/use` calls.
 - The Lighter plugin reads the account tier before it signs an order batch and throws `PerpsErrorCode.SetupRequired` when the venue reports a tier no `ACCOUNT_TYPE` option binds. An unreadable tier or setup descriptor does not block the order.
 - The Hyperliquid `ACCOUNT_MODE` projection reads `null`, `default` and `disabled` as the off option, and reads a mode no option binds, such as `dexAbstraction`, as unsatisfied.

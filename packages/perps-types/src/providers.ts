@@ -86,7 +86,10 @@ export interface SetupOption<T extends ActionType = ActionType> {
   type: T
   /** The action's sole param, bound, e.g. `{ tier: 'plus' }`. */
   params: ActionParamsMap[T]
-  /** Executed by the SDK while the step is unsatisfied and `signer` is `SDK`. */
+  /**
+   * The recommended option a UI pre-selects. The SDK never executes it on its
+   * own; at most one option per step marks it.
+   */
   default?: true
 }
 

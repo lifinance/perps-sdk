@@ -126,9 +126,8 @@ function projectLighterDescriptor(
       }
     }
 
-    // An unresolved `tier` projects `null` and reads unsatisfied; while it
-    // stays so the SDK executes the default option, and the user can still
-    // pick a tier.
+    // An unresolved `tier` projects `null` and reads unsatisfied until the
+    // user picks a tier.
     case ActionType.ACCOUNT_TYPE: {
       const tier = resolveAccountTier(descriptor, config.userTierName)
       return {
