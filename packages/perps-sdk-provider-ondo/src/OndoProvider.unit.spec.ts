@@ -1534,9 +1534,11 @@ describe('OndoProvider — resolveActionRequest', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.resolveActionRequest!(ActionType.WITHDRAWAL, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      provider.resolveActionRequest!(
+        ActionType.WITHDRAWAL,
+        ADDRESS,
+        PerpsSigner.USER
+      )
     ).resolves.toEqual({ params: { accountId: 'acct-1' } })
   })
 
@@ -1545,7 +1547,7 @@ describe('OndoProvider — resolveActionRequest', () => {
       loggedOutProvider().resolveActionRequest!(
         ActionType.WITHDRAWAL,
         ADDRESS,
-        [PerpsSigner.USER]
+        PerpsSigner.USER
       )
     ).rejects.toBeInstanceOf(OndoSessionExpiredError)
   })
@@ -1558,12 +1560,14 @@ describe('OndoProvider — resolveActionRequest', () => {
     const { provider } = await loggedInProvider()
 
     await expect(
-      provider.resolveActionRequest!(action, ADDRESS, [PerpsSigner.USER])
+      provider.resolveActionRequest!(action, ADDRESS, PerpsSigner.USER)
     ).resolves.toEqual({})
     await expect(
-      loggedOutProvider().resolveActionRequest!(action, ADDRESS, [
-        PerpsSigner.USER,
-      ])
+      loggedOutProvider().resolveActionRequest!(
+        action,
+        ADDRESS,
+        PerpsSigner.USER
+      )
     ).resolves.toEqual({})
   })
 
