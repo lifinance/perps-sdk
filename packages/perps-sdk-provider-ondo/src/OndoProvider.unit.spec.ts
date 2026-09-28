@@ -1594,8 +1594,9 @@ describe('OndoProvider — resolveActionRequest', () => {
                   actions: [
                     {
                       type: ActionType.WITHDRAWAL,
-                      signers: [PerpsSigner.USER],
+                      signer: PerpsSigner.SDK,
                       signingMethod: SigningMethod.HMAC,
+                      relay: ActionRelay.API,
                       params: [],
                     },
                   ],
