@@ -109,8 +109,8 @@ const hlAccountModeSetup: SetupAction = {
   revoke: null,
 }
 
-// Lighter: ACCOUNT_TYPE is an SDK-signed choice the client relays itself; the
-// SDK executes the default option while the step is unsatisfied.
+// Lighter: ACCOUNT_TYPE is an SDK-signed choice the client relays itself, with
+// one recommended default option.
 const lighterAccountTypeSetup: SetupAction = {
   type: ActionType.ACCOUNT_TYPE,
   title: 'Account tier',

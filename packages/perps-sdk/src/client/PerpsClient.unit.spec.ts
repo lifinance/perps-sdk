@@ -12,6 +12,7 @@ import type {
   HmacSignedActionStep,
   Position,
   SetupAction,
+  SetupOption,
   SignedActionStep,
 } from '@lifi/perps-types'
 import {
@@ -3272,8 +3273,8 @@ describe('PerpsClient', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // checkSetup — a choice step is shown and never staged. The SDK executes an
-  // SDK-signed choice's default option verbatim while it stays unsatisfied.
+  // checkSetup — a choice step is shown and never staged or executed, whatever
+  // its signer or default. The user executes the option they pick.
   // ---------------------------------------------------------------------------
 
   describe('checkSetup — choice setup steps', () => {
@@ -3328,8 +3329,7 @@ describe('PerpsClient', () => {
 
     const venueClientFor = (
       setting: { satisfied: boolean; mode?: string },
-      signActions: ReturnType<typeof vi.fn>,
-      plugin: Partial<PerpsProviderPlugin> = {}
+      signActions: ReturnType<typeof vi.fn>
     ) =>
       new PerpsClient({
         integrator: 'test-app',
@@ -3351,7 +3351,6 @@ describe('PerpsClient', () => {
               },
             ]),
             signActions,
-            ...plugin,
           } as unknown as PerpsProviderPlugin,
         ],
       })
@@ -3370,12 +3369,9 @@ describe('PerpsClient', () => {
       return createCalls
     }
 
-    it('executes an unsatisfied SDK choice default option verbatim, and never stages it', async () => {
+    it('shows an unsatisfied SDK choice with a default, and neither stages nor executes it', async () => {
       const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
-      const resolveSetupParams = vi.fn(async () => ({ mode: 'simple' }))
-      const venueClient = venueClientFor({ satisfied: false }, signActions, {
-        resolveSetupParams,
-      })
+      const venueClient = venueClientFor({ satisfied: false }, signActions)
 
       server.use(providersHandler([choiceStep(true)]))
       const createCalls = recordCreateCalls()
@@ -3386,14 +3382,96 @@ describe('PerpsClient', () => {
       })
 
       expect(result.setup).toEqual([])
-      expect(result.isReady).toBe(true)
+      expect(result.isReady).toBe(false)
       expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
-      expect(createCalls.map((call) => call.action)).toEqual([
-        ActionType.ACCOUNT_MODE,
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
+    })
+
+    it('keeps isReady false while a choice is unsatisfied, and reports ready once it is satisfied', async () => {
+      const setting: { satisfied: boolean; mode?: string } = {
+        satisfied: false,
+      }
+      const venueClient = venueClientFor(
+        setting,
+        vi.fn(async () => [])
+      )
+      server.use(providersHandler([choiceStep(true)]))
+      recordCreateCalls()
+
+      const before = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+      setting.satisfied = true
+      setting.mode = 'simple'
+      const after = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect([before.setup, before.isReady]).toEqual([[], false])
+      expect([after.setup, after.isReady]).toEqual([[], true])
+    })
+
+    it('reports the choice satisfied on the next checkSetup once the user executes its default option', async () => {
+      const venue: { satisfied: boolean; mode?: string } = { satisfied: false }
+      const signActions = vi.fn(
+        async (
+          _method: SigningMethod,
+          steps: ActionStep[]
+        ): Promise<SignedActionStep[]> =>
+          steps.map(
+            (step) =>
+              ({
+                action: step.action,
+                wasmSignParams: {},
+              }) as unknown as SignedActionStep
+          )
+      )
+      const venueClient = venueClientFor(venue, signActions)
+      const recommended: SetupOption = { ...unifiedOption, default: true }
+      server.use(providersHandler([choiceStep(true)]))
+      const createCalls = recordCreateCalls()
+      // The venue applies the mode the backend staged once the step executes.
+      server.use(
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          const staged = createCalls.at(-1)
+          if (staged?.action === ActionType.ACCOUNT_MODE) {
+            venue.mode = staged.params.mode
+            venue.satisfied = true
+          }
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+
+      const before = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+      expect(before.checklist[0].descriptor.options).toContainEqual(recommended)
+      expect(before.isReady).toBe(false)
+      expect(createCalls).toEqual([])
+
+      await venueClient.executeProviderOption({
+        provider: key,
+        address: userAddress,
+        option: recommended,
+      })
+      const after = await venueClient.checkSetup({
+        provider: key,
+        address: userAddress,
+      })
+
+      expect(createCalls.map((call) => call.params)).toEqual([
+        { mode: 'unified' },
       ])
-      expect(createCalls[0].params).toEqual({ mode: 'unified' })
-      expect(resolveSetupParams).not.toHaveBeenCalled()
-      expect(signActions).toHaveBeenCalledOnce()
+      expect(checklistView(after)).toEqual([[ActionType.ACCOUNT_MODE, true]])
+      expect(after.checklist[0].selected).toEqual(recommended)
+      expect(after.isReady).toBe(true)
     })
 
     it('shows but never executes a USER choice, even with a default', async () => {
@@ -3409,6 +3487,7 @@ describe('PerpsClient', () => {
       })
 
       expect(result.setup).toEqual([])
+      expect(result.isReady).toBe(false)
       expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
       expect(createCalls).toEqual([])
       expect(signActions).not.toHaveBeenCalled()
@@ -3427,7 +3506,7 @@ describe('PerpsClient', () => {
       })
 
       expect(result.setup).toEqual([])
-      expect(result.isReady).toBe(true)
+      expect(result.isReady).toBe(false)
       expect(checklistView(result)).toEqual([[ActionType.ACCOUNT_MODE, false]])
       expect(createCalls).toEqual([])
       expect(signActions).not.toHaveBeenCalled()
@@ -3843,9 +3922,8 @@ describe('PerpsClient', () => {
       setup: unknown[]
       satisfied: Set<ActionType>
       staged: Set<ActionType>
-      tierDrainSatisfies?: boolean
     }) => {
-      const { setup, satisfied, staged, tierDrainSatisfies = true } = options
+      const { setup, satisfied, staged } = options
       const createCalls: CreateActionRequest[] = []
       const executed: ActionType[] = []
       server.use(
@@ -3890,9 +3968,7 @@ describe('PerpsClient', () => {
           steps: ActionStep[]
         ): Promise<SignedActionStep[]> => {
           if (steps[0]?.action === ActionType.ACCOUNT_TYPE) {
-            if (tierDrainSatisfies) {
-              satisfied.add(ActionType.ACCOUNT_TYPE)
-            }
+            satisfied.add(ActionType.ACCOUNT_TYPE)
             return []
           }
           return steps.map(
@@ -3933,8 +4009,8 @@ describe('PerpsClient', () => {
       return { run, createCalls, executed, signActions }
     }
 
-    it('executes an earlier SDK choice default option in place, then runs the step', async () => {
-      const { run, createCalls, executed } = gatedVenue({
+    it('rejects behind an unsatisfied SDK choice with a default, naming it, and executes nothing', async () => {
+      const { run, createCalls, executed, signActions } = gatedVenue({
         setup: [
           approvalStep(ActionType.REGISTER_API_KEY, 10),
           tierChoice(true),
@@ -3944,29 +4020,14 @@ describe('PerpsClient', () => {
         staged: new Set([ActionType.APPROVE_INTEGRATOR]),
       })
 
-      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
-      expect(createCalls.map((call) => call.action)).toEqual([
-        ActionType.ACCOUNT_TYPE,
-      ])
-      expect(createCalls[0].params).toEqual({ tier: 'premium' })
-      expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
-    })
-
-    it('rejects, naming the choice, when its default option does not satisfy it', async () => {
-      const { run, executed, signActions } = gatedVenue({
-        setup: [
-          tierChoice(true),
-          approvalStep(ActionType.APPROVE_INTEGRATOR, 30),
-        ],
-        satisfied: new Set(),
-        staged: new Set([ActionType.APPROVE_INTEGRATOR]),
-        tierDrainSatisfies: false,
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining(
+          `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
+        ),
       })
-
-      await expect(run(ActionType.APPROVE_INTEGRATOR)).rejects.toThrow(
-        `is blocked: '${ActionType.ACCOUNT_TYPE}' runs first and is not satisfied`
-      )
-      expect(signActions).toHaveBeenCalledOnce()
+      expect(createCalls).toEqual([])
+      expect(signActions).not.toHaveBeenCalled()
       expect(executed).toEqual([])
     })
 

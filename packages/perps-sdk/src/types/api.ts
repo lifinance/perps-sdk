@@ -338,8 +338,9 @@ export interface SetupChecklistItem {
  * scheme), so no signer-role partition is exposed here.
  *
  * A non-choice step with `signer: SDK` is NEVER included here — the SDK
- * drains it itself. A choice step is listed on `checklist` but never staged:
- * the user picks an option through `PerpsClient.executeProviderOption`.
+ * drains it itself. A choice step is listed on `checklist` but never staged or
+ * executed: the user picks an option through
+ * `PerpsClient.executeProviderOption`.
  *
  * @public
  */
@@ -353,7 +354,10 @@ export interface ProviderSetup {
   accountExists: boolean
   /** Unsatisfied setup steps, ordered by descriptor `sequence`. */
   setup: ActionStep[]
-  /** Whether all setup items are already satisfied (ready to trade) */
+  /**
+   * `true` only when nothing is staged and every choice on `checklist` is
+   * satisfied: the account is ready to trade.
+   */
   isReady: boolean
   /**
    * The renderable onboarding list: every choice step and every `USER`-signed
