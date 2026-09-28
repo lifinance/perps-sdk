@@ -1304,6 +1304,70 @@ describe('PerpsClient', () => {
       })
       expect(createCalls).toEqual([])
     })
+
+    it('stages the approval again on the next checkSetup after a revoke', async () => {
+      let revoked = false
+      server.use(
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          const stages =
+            body.action === ActionType.REVOKE_BUILDER_FEE ||
+            (body.action === ActionType.APPROVE_BUILDER_FEE && revoked)
+          return HttpResponse.json({
+            actions: stages
+              ? [{ action: body.action, typedData: REVOKE_TYPED_DATA }]
+              : [],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
+          const body = (await request.json()) as ExecuteActionRequest
+          if (body.action === ActionType.REVOKE_BUILDER_FEE) {
+            revoked = true
+          }
+          return HttpResponse.json({
+            results: [{ action: body.action, success: true }],
+          } satisfies ExecuteActionResponse)
+        })
+      )
+      const builderFeeItem = async () => {
+        const result = await client.checkSetup({
+          provider,
+          address: revokerAccount.address,
+        })
+        return {
+          result,
+          item: result.checklist.find(
+            (entry) => entry.descriptor.type === ActionType.APPROVE_BUILDER_FEE
+          ),
+        }
+      }
+
+      const before = await builderFeeItem()
+      if (before.item === undefined) {
+        throw new Error('no APPROVE_BUILDER_FEE step on the checklist')
+      }
+      expect(before.item.satisfied).toBe(true)
+      expect(
+        before.result.setup.some(
+          (step) => step.action === ActionType.APPROVE_BUILDER_FEE
+        )
+      ).toBe(false)
+
+      await client.executeProviderRevoke({
+        provider,
+        address: revokerAccount.address,
+        step: before.item.descriptor,
+      })
+
+      const after = await builderFeeItem()
+      expect(after.item?.satisfied).toBe(false)
+      expect(after.result.isReady).toBe(false)
+      expect(
+        after.result.setup.some(
+          (step) => step.action === ActionType.APPROVE_BUILDER_FEE
+        )
+      ).toBe(true)
+    })
   })
 
   describe('venue txHash → explorer link on execute results', () => {

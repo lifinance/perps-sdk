@@ -2403,23 +2403,23 @@ describe('OndoProvider — projectConfig', () => {
     options: null,
     revoke: null,
     signer: PerpsSigner.USER,
-    relay: ActionRelay.API,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SIWE,
   }
   const REFERRAL_DESCRIPTOR: SetupAction = {
     type: ActionType.SET_REFERRAL,
     options: null,
     revoke: null,
-    signer: PerpsSigner.USER,
-    relay: ActionRelay.API,
-    signingMethod: SigningMethod.HMAC,
+    signer: PerpsSigner.SDK,
+    relay: ActionRelay.CLIENT,
+    signingMethod: SigningMethod.SESSION,
   }
   const TERMS_DESCRIPTOR: SetupAction = {
     type: ActionType.ACCEPT_PROVIDER_TERMS,
     options: null,
     revoke: null,
     signer: PerpsSigner.USER,
-    relay: ActionRelay.API,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
   const REGISTER_KEY_DESCRIPTOR: SetupAction = {
@@ -2427,7 +2427,7 @@ describe('OndoProvider — projectConfig', () => {
     options: null,
     revoke: null,
     signer: PerpsSigner.USER,
-    relay: ActionRelay.API,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
 
@@ -2436,7 +2436,7 @@ describe('OndoProvider — projectConfig', () => {
     options: null,
     revoke: null,
     signer: PerpsSigner.USER,
-    relay: ActionRelay.API,
+    relay: ActionRelay.CLIENT,
     signingMethod: SigningMethod.SESSION,
   }
 
@@ -2813,7 +2813,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
         options: null,
         revoke: null,
         signer: PerpsSigner.USER,
-        relay: ActionRelay.API,
+        relay: ActionRelay.CLIENT,
         signingMethod: SigningMethod.SIWE,
       },
     ],
