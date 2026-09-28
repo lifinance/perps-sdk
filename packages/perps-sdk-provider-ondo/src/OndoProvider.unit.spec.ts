@@ -1459,7 +1459,7 @@ describe('OndoProvider — getWithdrawFlow', () => {
     const provider = ondoProvider({ apiUrl: API_URL, storage })
     provider.bind(STUB_CLIENT)
     addressBookResult = {
-      addressBook: [addressBookEntry(MIXED_CASE_ADDRESS.toLowerCase())],
+      addressBook: [addressBookEntry(MIXED_CASE_ADDRESS)],
     }
 
     await expect(
