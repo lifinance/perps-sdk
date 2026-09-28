@@ -156,7 +156,7 @@ export enum ActionType {
   APPROVE_AGENT = 'approveAgent',
   /** Deregisters an agent (API wallet) to free one of the account's agent slots. HyperCore performs it through the approve-agent typed data with a matching name, so it carries no distinct primary type. */
   REVOKE_AGENT = 'revokeAgent',
-  /** Removes the session agent the SDK signs with. Signed by the user wallet as the approve-agent typed data with the zero address and the agent's name. */
+  /** Removes the session agent the SDK signs with, targeted by its `agentAddress`. Signed by the user wallet. */
   REVOKE_SESSION_AGENT = 'revokeSessionAgent',
   APPROVE_BUILDER_FEE = 'approveBuilderFee',
   REVOKE_BUILDER_FEE = 'revokeBuilderFee',
