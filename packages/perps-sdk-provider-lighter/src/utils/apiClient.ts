@@ -16,6 +16,15 @@ import { lighterErrorCodeFromBody } from './lighterErrorCode.js'
 export type ApiParams = Record<string, string | number | boolean>
 
 /**
+ * Short excerpt of a parsed Lighter body for an error message. `undefined`
+ * stands for a body that did not parse as JSON.
+ *
+ * @internal
+ */
+export const lighterBodyExcerpt = (data: unknown): string =>
+  data === undefined ? 'non-JSON body' : JSON.stringify(data).slice(0, 200)
+
+/**
  * Lighter signals errors on two channels: a non-2xx HTTP status, or an HTTP 200
  * carrying an error `code` in the JSON body. Returns the body error `code` when
  * the body advertises one that is not a success code, else `undefined`.
@@ -269,7 +278,7 @@ export class LighterApiClient {
   async getWithStatus<T>(
     path: string,
     params?: ApiParams
-  ): Promise<{ status: number; data: T }> {
+  ): Promise<{ status: number; data: T | undefined }> {
     return this.sendGet<T>(path, params)
   }
 
@@ -277,7 +286,7 @@ export class LighterApiClient {
     path: string,
     params?: ApiParams,
     headers?: Record<string, string>
-  ): Promise<{ status: number; data: T }> {
+  ): Promise<{ status: number; data: T | undefined }> {
     this.assertRequestAllowed()
     const url = this.buildUrl(path, params)
     const response = await fetchWithRetry(
@@ -290,7 +299,7 @@ export class LighterApiClient {
       }
     )
     this.assertNotRateLimited(response)
-    const data = (await response.json().catch(() => undefined)) as T
+    const data = (await response.json().catch(() => undefined)) as T | undefined
     return { status: response.status, data }
   }
 
@@ -305,7 +314,7 @@ export class LighterApiClient {
     path: string,
     authToken: string,
     params: ApiParams
-  ): Promise<{ status: number; data: T }> {
+  ): Promise<{ status: number; data: T | undefined }> {
     const body = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) {
       body.set(k, String(v))
@@ -320,7 +329,7 @@ export class LighterApiClient {
       signal: this.signal,
     })
     this.assertNotRateLimited(response)
-    const data = (await response.json().catch(() => undefined)) as T
+    const data = (await response.json().catch(() => undefined)) as T | undefined
     return { status: response.status, data }
   }
 
@@ -344,13 +353,13 @@ export class LighterApiClient {
     if (status < 200 || status >= 300) {
       throw new PerpsError(
         code,
-        `Lighter API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
+        `Lighter API request failed: ${status} — ${lighterBodyExcerpt(data)}`
       )
     }
     if (errorCode !== undefined) {
       throw new PerpsError(
         code,
-        `Lighter API error for ${path}: code ${errorCode} — ${JSON.stringify(data).slice(0, 200)}`
+        `Lighter API error for ${path}: code ${errorCode} — ${lighterBodyExcerpt(data)}`
       )
     }
   }
