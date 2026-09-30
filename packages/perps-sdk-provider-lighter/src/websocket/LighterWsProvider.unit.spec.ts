@@ -1928,7 +1928,6 @@ describe('LighterWsProvider', () => {
       const provider = lighterWsProvider()({
         provider: 'lighter',
         wsUrl: 'ws://127.0.0.1:1',
-        markets: [],
         client,
       }) as LighterWsProvider
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)

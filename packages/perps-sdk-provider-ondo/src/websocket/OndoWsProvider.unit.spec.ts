@@ -1461,7 +1461,6 @@ describe('OndoWsProvider', () => {
       const provider = factory({
         provider: 'ondo',
         wsUrl: 'ws://127.0.0.1:1',
-        markets: [],
         client: freshClient(),
       })
       expect(provider).toBeInstanceOf(OndoWsProvider)
