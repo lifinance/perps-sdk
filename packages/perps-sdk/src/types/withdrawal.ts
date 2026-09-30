@@ -1,15 +1,7 @@
-import type { ActionType, Asset } from '@lifi/perps-types'
+import type { ActionType, Asset, WithdrawalRoute } from '@lifi/perps-types'
 import type { Address } from 'viem'
 
-/**
- * Which of a venue's two balance routes a withdrawal is drawn from. Lighter's
- * own vocabulary, carried in the signed tx as `AssetRouteType` (`perps` = 0,
- * `spot` = 1); an account's mode changes what the two balances mean, never
- * which route the tx names.
- *
- * @public
- */
-export type WithdrawalRoute = 'perps' | 'spot'
+export type { WithdrawalRoute }
 
 /**
  * One withdrawable `(asset, route)` selection as the provider reports it, keyed

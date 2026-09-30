@@ -305,7 +305,10 @@ export interface PlaceOrderParams {
   size: string
   price?: string
   leverage?: number
-  /** Omitted falls back to the provider's default (currently CROSS). */
+  /**
+   * Hyperliquid: requires `leverage`. Omitted leaves the market's current
+   * margin mode unchanged.
+   */
   marginMode?: MarginMode
   reduceOnly?: boolean
   timeInForce?: TimeInForce
@@ -345,7 +348,7 @@ export interface PlaceTwapOrderParams {
   /** Total execution window in seconds. */
   durationSeconds: number
   reduceOnly?: boolean
-  /** Hyperliquid: randomize sub-order timing within the execution window. */
+  /** Hyperliquid: randomize each sub-order size by up to 20 percent. */
   randomize?: boolean
   /** Ondo: interval between child orders in seconds. */
   frequencySeconds?: number
@@ -401,7 +404,7 @@ export interface ModifyOrderParams {
 export interface UpdateLeverageParams {
   market: MarketRef
   leverage: number
-  /** Omitted falls back to the provider's default (currently CROSS). */
+  /** Hyperliquid: omitted is sent as isolated. */
   marginMode?: MarginMode
 }
 
@@ -430,6 +433,16 @@ export interface UpdateAssetCollateralParams {
 }
 
 /**
+ * Which of a venue's two balance routes a withdrawal is drawn from. Lighter's
+ * own vocabulary, carried in the signed tx as `AssetRouteType` (`perps` = 0,
+ * `spot` = 1); an account's mode changes what the two balances mean, never
+ * which route the tx names.
+ *
+ * @public
+ */
+export type WithdrawalRoute = 'perps' | 'spot'
+
+/**
  * Parameters for withdrawing a decimal-string amount to an EVM address.
  *
  * @public
@@ -437,6 +450,10 @@ export interface UpdateAssetCollateralParams {
 export interface WithdrawalParams {
   destination: Address
   amount: string
+  /** Lighter: provider-native `Asset.id` to withdraw. Omitted withdraws the quote asset. */
+  assetId?: string
+  /** Lighter: balance route to draw from. Omitted is `perps`. */
+  route?: WithdrawalRoute
   /**
    * The venue-native account identifier, as a string. The provider plugin
    * supplies it; callers omit it. A string because Ondo's 20-digit accountID
@@ -451,7 +468,7 @@ export interface WithdrawalParams {
  * @public
  */
 export interface DepositParams {
-  /** Amount of the token to deposit (human-readable, e.g. "100.5"). */
+  /** Amount of the token to deposit, as an integer string in the token's base units (e.g. "100500000" for 100.5 USDC). */
   amount: string
   /** ERC-20 token address on the source chain. */
   tokenAddress: Address
@@ -471,17 +488,12 @@ export interface ApproveAgentParams {
 }
 
 /**
- * Parameters for deregistering an account agent.
+ * Parameters for deregistering an account agent. The action takes no
+ * parameters: the backend picks the agent to revoke and the user confirms it.
  *
  * @public
  */
-export interface RevokeAgentParams {
-  address: Address
-  /** The name the venue holds for the agent. HyperCore identifies a named API
-   * wallet by name, not by address, so a revoke that omits the exact stored
-   * name leaves the slot occupied. */
-  name: string
-}
+export type RevokeAgentParams = Record<string, never>
 
 /**
  * Parameters for removing the session agent the SDK signs with, targeted by

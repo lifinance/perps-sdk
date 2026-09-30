@@ -217,8 +217,7 @@ export interface OnboardTypedData extends PerpsTypedData {
  * @public
  */
 export interface CreateReferralCodeParams {
-  /** Desired code; omit to let the backend generate one. */
-  code?: string
+  code: string
 }
 
 /**

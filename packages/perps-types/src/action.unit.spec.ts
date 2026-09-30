@@ -17,6 +17,7 @@ import type {
   SiweSignedActionStep,
   TriggerOrderInput,
   UpdateLeverageParams,
+  WithdrawalParams,
 } from './action.js'
 import {
   ActionType,
@@ -151,32 +152,48 @@ describe('ApproveReadOnlyTokenParams', () => {
 })
 
 describe('RevokeAgentParams', () => {
-  it('carries the agent address and the name the venue holds for it', () => {
-    const params: RevokeAgentParams = {
-      address: '0x1234567890123456789012345678901234567890',
-      name: 'third-party-terminal',
-    }
+  it('takes no parameters', () => {
+    const params: RevokeAgentParams = {}
+
+    expect(params).toEqual({})
+  })
+
+  it('rejects the address and name the backend strips', () => {
+    // @ts-expect-error — the backend revoke action accepts no params
+    const params: RevokeAgentParams = { name: 'third-party-terminal' }
 
     expect(params.name).toBe('third-party-terminal')
   })
 
-  it('requires the name — an address alone does not identify a named API wallet', () => {
-    // @ts-expect-error — name is required; HyperCore revokes by name
-    const params: RevokeAgentParams = {
-      address: '0x1234567890123456789012345678901234567890',
-    }
-
-    expect(params.address).toBe('0x1234567890123456789012345678901234567890')
-  })
-
   it('is wired through ActionParamsMap on REVOKE_AGENT', () => {
     type Resolved = ActionParamsMap[ActionType.REVOKE_AGENT]
-    const params: Resolved = {
-      address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-      name: 'lifi-agent valid_until 1800000000000',
+    const params: Resolved = {}
+
+    expect(params).toEqual({})
+  })
+})
+
+describe('WithdrawalParams', () => {
+  it('accepts the Lighter assetId and route', () => {
+    const params: WithdrawalParams = {
+      destination: '0x1234567890123456789012345678901234567890',
+      amount: '10',
+      assetId: '3',
+      route: 'spot',
     }
 
-    expect(params.address).toBe('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd')
+    expect(params.route).toBe('spot')
+  })
+
+  it('rejects a route other than perps or spot', () => {
+    const params: WithdrawalParams = {
+      destination: '0x1234567890123456789012345678901234567890',
+      amount: '10',
+      // @ts-expect-error — route is 'perps' | 'spot'
+      route: 'margin',
+    }
+
+    expect(params.amount).toBe('10')
   })
 })
 
