@@ -22,7 +22,6 @@ import {
 import type {
   Balance,
   MarketContext,
-  Order,
   OrderbookLevel,
   OrderbookResponse,
   Position,
@@ -65,6 +64,7 @@ import type {
 } from '../types/index.js'
 import { HlAbstractionMode } from '../types/index.js'
 import { toWireBig } from '../utils/decimal.js'
+import { withExplorerLinks } from '../utils/explorer.js'
 import {
   assetIsOutcome,
   decodeCompressedJson,
@@ -1061,6 +1061,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     if (key === undefined || client === undefined) {
       return
     }
+    const user = key.slice('orderUpdates:'.length)
     this.orderUpdateChain.push(async () => {
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
@@ -1079,7 +1080,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             this.orderApiUrl,
             {
               type: 'orderStatus',
-              user: key.slice('orderUpdates:'.length),
+              user,
               oid: basic.oid,
             },
             hlInfoOptions(client)
@@ -1112,17 +1113,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
-      const orders: Order[] = []
-      const terminated: string[] = []
-      for (const order of mapped) {
-        if (order === undefined) {
-          continue
-        }
-        orders.push(order)
-        if (!isActiveOrderStatus(order.status)) {
-          terminated.push(order.orderId)
-        }
+      const orders = await withExplorerLinks(
+        mapped.filter((order) => order !== undefined),
+        user,
+        hlInfoOptions(client)
+      )
+      if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
+        return
       }
+      const terminated = orders
+        .filter((order) => !isActiveOrderStatus(order.status))
+        .map((order) => order.orderId)
       this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })
   }

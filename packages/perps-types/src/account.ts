@@ -89,7 +89,7 @@ export interface OrderBase {
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
   parentOrderId?: string
-  /** Set only when the venue row carries a transaction hash. */
+  /** Explorer URL of the placement transaction; absent when the provider cannot find that transaction. */
   explorerLink?: string
   createdAt: string
   updatedAt: string

@@ -3,7 +3,7 @@ import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Market, Subscription } from '@lifi/perps-types'
+import type { Market, Order, Subscription } from '@lifi/perps-types'
 import {
   OrderSide,
   OrderStatus,
@@ -18,6 +18,7 @@ import {
   HL_MARKETS,
   HL_SPOT_MARKET,
 } from '../../test/fixtures.js'
+import { HYPERLIQUID_EXPLORER_RPC_URL } from '../constants.js'
 import type {
   HlOrderDetail,
   HlOrderStatusFound,
@@ -243,6 +244,8 @@ const marketsFailureResponse = () =>
 const abstractionFetchMock = vi.fn()
 const orderStatusFetchMock = vi.fn()
 const spotStateFetchMock = vi.fn()
+// Unset resolves an explorer window with no transactions.
+const explorerFetchMock = vi.fn()
 
 const orderMetadata = (
   overrides: Partial<HlOrderDetail['order']> = {}
@@ -288,10 +291,26 @@ const sparseOrderUpdate = (
   statusTimestamp: 1704067200000,
 })
 
+const CLOID_A = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const CLOID_B = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const explorerTx = (hash: string, cloids: string[]) => ({
+  time: 1704067200000,
+  user: '0xuser1',
+  action: { type: 'order', orders: cloids.map((c) => ({ a: 0, b: true, c })) },
+  block: 100,
+  hash,
+  error: null,
+})
+
 vi.stubGlobal(
   'fetch',
   async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = input.toString()
+    if (url === HYPERLIQUID_EXPLORER_RPC_URL) {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      const result = (await explorerFetchMock(body)) ?? { txs: [] }
+      return result instanceof Response ? result : Response.json(result)
+    }
     if (url.includes('/info')) {
       const body = JSON.parse(String(init?.body ?? '{}'))
       if (body.type === 'orderStatus') {
@@ -2609,6 +2628,135 @@ describe('HyperliquidWsProvider', () => {
         })
       )
       finish(orderMetadata())
+      await vi.waitFor(() => expect(newListener).toHaveBeenCalledOnce())
+      expect(oldListener).not.toHaveBeenCalled()
+      expect(newListener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
+    })
+
+    it('sets explorerLink on each order from one explorer read per frame', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      explorerFetchMock.mockReset().mockResolvedValue({
+        txs: [explorerTx('0xplacement', [CLOID_A, CLOID_B])],
+      })
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            sparseOrderUpdate({ cloid: CLOID_A }),
+            sparseOrderUpdate({ oid: 101, cloid: CLOID_B }),
+          ],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(explorerFetchMock).toHaveBeenCalledOnce()
+      expect(explorerFetchMock).toHaveBeenCalledWith({
+        type: 'userDetails',
+        user: '0xuser1',
+      })
+      expect(
+        listener.mock.calls[0][0].data.orders.map(
+          (order: Order) => order.explorerLink
+        )
+      ).toEqual([
+        'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+        'https://app.hyperliquid.xyz/explorer/tx/0xplacement',
+      ])
+    })
+
+    it('makes no explorer read for a frame with no client order id', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      explorerFetchMock.mockReset()
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({ channel: 'orderUpdates', data: [sparseOrderUpdate()] })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(explorerFetchMock).not.toHaveBeenCalled()
+      expect(listener.mock.calls[0][0].data.orders[0]).not.toHaveProperty(
+        'explorerLink'
+      )
+    })
+
+    it('emits the orders unlinked when the explorer read fails', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      explorerFetchMock
+        .mockReset()
+        .mockResolvedValue(new Response('{}', { status: 400 }))
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ cloid: CLOID_A }, 'filled')],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      const { orders, terminated } = listener.mock.calls[0][0].data
+      expect(orders[0]).toMatchObject({
+        orderId: '100',
+        clientOrderId: CLOID_A,
+      })
+      expect(orders[0]).not.toHaveProperty('explorerLink')
+      expect(terminated).toEqual(['100'])
+      warnSpy.mockRestore()
+    })
+
+    it('discards a frame whose explorer read outlives its subscription', async () => {
+      const provider = createEnrichingProvider()
+      const oldListener = vi.fn()
+      const newListener = vi.fn()
+      let finish!: (body: { txs: unknown[] }) => void
+      const pending = new Promise<{ txs: unknown[] }>((resolve) => {
+        finish = resolve
+      })
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      explorerFetchMock.mockReset().mockReturnValueOnce(pending)
+      const unsubscribeOld = await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        oldListener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ cloid: CLOID_A })],
+        })
+      )
+      await vi.waitFor(() => expect(explorerFetchMock).toHaveBeenCalledOnce())
+      unsubscribeOld()
+      // A round trip through another address ends the old subscription, so
+      // the same key comes back under a new subscription.
+      const unsubscribeOther = await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser2' },
+        vi.fn()
+      )
+      unsubscribeOther()
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        newListener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ oid: 101 })],
+        })
+      )
+      finish({ txs: [explorerTx('0xplacement', [CLOID_A])] })
       await vi.waitFor(() => expect(newListener).toHaveBeenCalledOnce())
       expect(oldListener).not.toHaveBeenCalled()
       expect(newListener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
