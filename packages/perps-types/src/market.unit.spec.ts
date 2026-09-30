@@ -70,6 +70,19 @@ describe('PerpsMarket', () => {
   })
 })
 
+describe('PerpsMarket.defaultLeverage', () => {
+  it('carries the venue default leverage when the venue publishes one', () => {
+    const market: PerpsMarket = { ...perpsMarket, defaultLeverage: 10 }
+    expect(market.defaultLeverage).toBe(10)
+    expect(JSON.parse(JSON.stringify(market)).defaultLeverage).toBe(10)
+  })
+
+  it('omits the venue default leverage when the venue publishes none', () => {
+    expect('defaultLeverage' in perpsMarket).toBe(false)
+    expect(perpsMarket.defaultLeverage).toBeUndefined()
+  })
+})
+
 describe('SpotMarket', () => {
   it('carries a non-null quote leg and no perps fields', () => {
     expect(spotMarket.quoteAsset.displaySymbol).toBe('USDC')
