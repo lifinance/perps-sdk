@@ -11,7 +11,14 @@ import { atLeastZero } from './availableToTrade.js'
 import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
-const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
+/**
+ * The Lighter arm of `account.config`.
+ *
+ * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
+ */
+export const lighterConfig = (
+  account: AccountResponse
+): LighterAccountConfig => {
   const { config } = account
   if (
     config.provider !== LIGHTER_PROVIDER_KEY &&
