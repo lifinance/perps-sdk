@@ -3,6 +3,7 @@ import type {
   AccountResponse,
   Asset,
   Balance,
+  LighterAccountConfig,
   LighterProviderKey,
   Position,
 } from '@lifi/perps-types'
@@ -55,10 +56,11 @@ const position = (
 })
 
 const account = (
-  availableBalance: string,
+  crossAssetValue: string,
   totalAssetValue: string,
   balances: Balance[] = [],
-  provider: LighterProviderKey = 'lighter'
+  provider: LighterProviderKey = 'lighter',
+  configOverrides: Partial<LighterAccountConfig> = {}
 ): AccountResponse => ({
   provider,
   address: '0x0000000000000000000000000000000000000001',
@@ -74,17 +76,20 @@ const account = (
     apiKeyIndex: 0,
     apiKeyRegistered: true,
     accountType: 0,
-    availableBalance,
+    availableBalance: crossAssetValue,
+    crossAssetValue,
+    crossInitialMarginRequirement: '0',
     totalAssetValue,
     accountTradingMode: 0,
     assetCollateral: [],
     readOnlyTokenApproved: true,
     referralPresent: false,
+    ...configOverrides,
   },
 })
 
 describe('getAccountSummary', () => {
-  it('reads availableMargin from available_balance and portfolioValue from total_asset_value', () => {
+  it('reads availableMargin from the cross figures and portfolioValue from total_asset_value', () => {
     const summary = getAccountSummary(account('800', '1000'), [
       position('200', '50'),
     ])
@@ -92,6 +97,34 @@ describe('getAccountSummary', () => {
     expect(summary.portfolioValue).toBe('1000')
     expect(summary.marginUsed).toBe('200')
     expect(summary.unrealizedPnl).toBe('50')
+  })
+
+  it('reads availableMargin as cross_asset_value minus the cross IMR, not available_balance', () => {
+    const summary = getAccountSummary(
+      account('1000', '1300', [], 'lighter', {
+        availableBalance: '900',
+        crossInitialMarginRequirement: '200',
+      }),
+      []
+    )
+    expect(summary.availableMargin).toBe('800')
+  })
+
+  it('floors availableMargin at 0 when the cross IMR exceeds cross_asset_value', () => {
+    const summary = getAccountSummary(
+      account('100', '100', [], 'lighter', {
+        crossInitialMarginRequirement: '150.5',
+      }),
+      []
+    )
+    expect(summary.availableMargin).toBe('0')
+  })
+
+  it('rejects a non-decimal cross IMR', () => {
+    const broken = account('100', '100', [], 'lighter', {
+      crossInitialMarginRequirement: 'n/a',
+    })
+    expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
   })
 
   it('carries an isolated allocation in total_asset_value without re-adding it', () => {
