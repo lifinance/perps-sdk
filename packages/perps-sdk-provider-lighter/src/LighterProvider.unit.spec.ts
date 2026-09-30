@@ -3041,6 +3041,97 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
+describe('LighterProvider — per-user reads without a Lighter account', () => {
+  const accountNotFound: FetchOverride = (url) =>
+    url.includes('/api/v1/account?')
+      ? respond({ code: 21100, message: 'account not found' }, 400)
+      : undefined
+
+  it.each([
+    ['lighter', lighterProvider],
+    ['lighter-rh', lighterRhProvider],
+  ])('%s returns an empty list for the account-not-found body', async (key, create) => {
+    overrideFetch(accountNotFound)
+    const provider = create()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getPositions({ address: ADDRESS, limit: 50 })
+    ).resolves.toEqual({
+      provider: key,
+      positions: [],
+      pagination: { limit: 50, hasMore: false },
+    })
+  })
+
+  it('reports a zero limit when the caller passes none', async () => {
+    overrideFetch(accountNotFound)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const { pagination } = await provider.getPositions({ address: ADDRESS })
+    expect(pagination).toEqual({ limit: 0, hasMore: false })
+  })
+
+  it('throws a failed account read', async () => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({ code: 29500, message: 'internal server error' }, 500)
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getPositions({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+  })
+
+  it('throws a transport failure on the account read', async () => {
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        throw new TypeError('fetch failed')
+      }
+      return undefined
+    })
+    const provider = lighterProvider()
+    provider.bind({
+      config: { ...STUB_CLIENT.config, retry: false },
+    } as PerpsSDKClient)
+    await expect(provider.getPositions({ address: ADDRESS })).rejects.toThrow(
+      new TypeError('fetch failed')
+    )
+  })
+
+  it('throws a failed market registry sync for a wallet with no account', async () => {
+    overrideFetch(
+      (url) =>
+        accountNotFound(url, undefined) ??
+        (url.includes('backend.test/v1/perps/markets')
+          ? new Response('boom', { status: 500 })
+          : undefined)
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(provider.getPositions({ address: ADDRESS })).rejects.toThrow()
+  })
+
+  it('returns no withdrawable balances for the account-not-found body', async () => {
+    overrideFetch(accountNotFound)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([])
+  })
+
+  it('keeps the getAccount account-not-found error', async () => {
+    overrideFetch(accountNotFound)
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.AccountNotFound })
+  })
+})
+
 describe('LighterProvider — getAccount margin and PnL totals', () => {
   const isolatedPosition = (
     allocatedMargin: string,
