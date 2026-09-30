@@ -131,6 +131,38 @@ export type HlLiquidationDelta = {
 }
 
 /**
+ * Hyperliquid `cStakingTransfer` ledger delta. Moves `token` between the
+ * account's spot balance and its staking balance; `isDeposit` is `true` for a
+ * move into staking. `amount` is unsigned. A completed unstake row carries the
+ * zero hash.
+ * @public
+ */
+export type HlCStakingTransferDelta = {
+  type: 'cStakingTransfer'
+  token: string
+  amount: string
+  isDeposit: boolean
+}
+
+/** Borrow-lend market action named by a `borrowLend` ledger delta. @public */
+export type HlBorrowLendOperation = 'supply' | 'withdraw' | 'borrow' | 'repay'
+
+/**
+ * Hyperliquid `borrowLend` ledger delta. Moves `token` between the account's
+ * spot balance and the borrow-lend market; `operation` gives the direction and
+ * `amount` is unsigned. `interestAmount` is the accrued interest that
+ * `amount` includes on a `withdraw` or `repay`, and `"0.0"` otherwise.
+ * @public
+ */
+export type HlBorrowLendDelta = {
+  type: 'borrowLend'
+  token: string
+  operation: HlBorrowLendOperation
+  amount: string
+  interestAmount: string
+}
+
+/**
  * Union of known Hyperliquid non-funding ledger deltas plus an open fallback
  * for endpoint variants the provider does not map.
  * @public
@@ -143,6 +175,8 @@ export type HlLedgerDelta =
   | HlDepositDelta
   | HlWithdrawDelta
   | HlLiquidationDelta
+  | HlCStakingTransferDelta
+  | HlBorrowLendDelta
   | {
       type: string
       usdc?: string
@@ -201,6 +235,30 @@ export const isWithdrawDelta = (
 export const isLiquidationDelta = (
   delta: HlLedgerDelta
 ): delta is HlLiquidationDelta => delta.type === 'liquidation'
+
+/**
+ * Type guard for `HlCStakingTransferDelta`. Same catch-all-arm caveat as
+ * `isSpotTransferDelta`.
+ * @public
+ */
+export const isCStakingTransferDelta = (
+  delta: HlLedgerDelta
+): delta is HlCStakingTransferDelta => delta.type === 'cStakingTransfer'
+
+const HL_BORROW_LEND_OPERATIONS: ReadonlySet<unknown> =
+  new Set<HlBorrowLendOperation>(['supply', 'withdraw', 'borrow', 'repay'])
+
+/**
+ * Type guard for `HlBorrowLendDelta`. The operation is part of the guard: an
+ * unknown operation names no direction for the movement.
+ * @public
+ */
+export const isBorrowLendDelta = (
+  delta: HlLedgerDelta
+): delta is HlBorrowLendDelta =>
+  delta.type === 'borrowLend' &&
+  'operation' in delta &&
+  HL_BORROW_LEND_OPERATIONS.has(delta.operation)
 
 /**
  * One timestamped non-funding ledger update. `time` is milliseconds since

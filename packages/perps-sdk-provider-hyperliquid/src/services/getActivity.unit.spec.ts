@@ -738,6 +738,27 @@ describe('getActivity — transfer registry identity', () => {
             basis: '50',
           },
         },
+        {
+          time: 2,
+          hash: 'staking-transfer',
+          delta: {
+            type: 'cStakingTransfer',
+            token: 'HYPE',
+            amount: '5.0',
+            isDeposit: true,
+          },
+        },
+        {
+          time: 3,
+          hash: 'borrow-lend',
+          delta: {
+            type: 'borrowLend',
+            token: 'HYPE',
+            operation: 'supply',
+            amount: '100.0',
+            interestAmount: '0.0',
+          },
+        },
         ...HL_USER_NON_FUNDING_LEDGER,
       ],
     })
