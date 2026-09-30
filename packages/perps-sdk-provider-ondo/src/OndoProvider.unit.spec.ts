@@ -991,6 +991,8 @@ describe('OndoProvider — getMarketSettings', () => {
     }
     const error = await read().catch((e: unknown) => e)
     expect(error).toBeInstanceOf(OndoApiError)
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
   })
 
   it('rejects when the venue returns no leverage row for the market', async () => {

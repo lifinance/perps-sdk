@@ -268,4 +268,8 @@ describe('leverageFromScaledImf', () => {
     expect(leverageFromScaledImf(0)).toBeUndefined()
     expect(leverageFromScaledImf(-500)).toBeUndefined()
   })
+
+  it('is undefined for an unparsable IMF', () => {
+    expect(leverageFromScaledImf(Number.NaN)).toBeUndefined()
+  })
 })

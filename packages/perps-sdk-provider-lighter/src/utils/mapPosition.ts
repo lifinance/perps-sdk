@@ -29,12 +29,18 @@ export const leverageFromImf = (imf: string): number | undefined => {
 /**
  * Display leverage from an integer IMF on `LIGHTER_IMF_PERCENT_SCALE`, the
  * unit of trade rows and order-book details: `500` is 5.00%, so 20x.
- * `undefined` for a non-positive IMF. Lighter declares the fraction a
- * `StrictInt`, so the scale division is exact.
- * @public
+ * `undefined` for a non-positive or unparsable IMF. Lighter declares the
+ * fraction a `StrictInt`, so the scale division is exact.
  */
-export const leverageFromScaledImf = (imf: number): number | undefined =>
-  leverageFromImf(new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed())
+export const leverageFromScaledImf = (imf: number): number | undefined => {
+  let percent: string
+  try {
+    percent = new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed()
+  } catch {
+    return undefined
+  }
+  return leverageFromImf(percent)
+}
 
 /**
  * Map a raw Lighter account position to the generic Position type.

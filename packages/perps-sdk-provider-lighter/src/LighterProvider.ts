@@ -144,7 +144,6 @@ import {
   formatOrderPrice,
   formatOrderSize,
   leverageFromImf,
-  leverageFromScaledImf,
   lighterAsset,
   lighterWithdrawableBalances,
   mapFill,
@@ -157,6 +156,7 @@ import {
   toIsoFromSeconds,
   toRequiredBig,
 } from './utils/index.js'
+import { leverageFromScaledImf } from './utils/mapPosition.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,

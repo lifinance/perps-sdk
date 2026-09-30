@@ -5857,6 +5857,59 @@ describe('LighterProvider — getMarketSettings', () => {
     })
   })
 
+  it("throws SDKError when the order-book details carry only other markets' rows", async () => {
+    orderBookDetailsResponse = () =>
+      respond({
+        ...LIVE_BTC_ORDER_BOOK_DETAILS,
+        order_book_details: [
+          {
+            ...LIVE_BTC_ORDER_BOOK_DETAILS.order_book_details[0],
+            market_id: 2,
+            default_initial_margin_fraction: 1000,
+          },
+        ],
+      })
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it("reads the requested market's default when other markets' rows come first", async () => {
+    orderBookDetailsResponse = () =>
+      respond({
+        ...LIVE_BTC_ORDER_BOOK_DETAILS,
+        order_book_details: [
+          {
+            ...LIVE_BTC_ORDER_BOOK_DETAILS.order_book_details[0],
+            market_id: 2,
+            default_initial_margin_fraction: 1000,
+          },
+          LIVE_BTC_ORDER_BOOK_DETAILS.order_book_details[0],
+        ],
+      })
+
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+  })
+
+  it('throws SDKError when the market row has no default IMF', async () => {
+    const { default_initial_margin_fraction: _, ...detailWithoutImf } =
+      LIVE_BTC_ORDER_BOOK_DETAILS.order_book_details[0]
+    orderBookDetailsResponse = () =>
+      respond({
+        ...LIVE_BTC_ORDER_BOOK_DETAILS,
+        order_book_details: [detailWithoutImf],
+      })
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
   it('throws SDKError when the market default IMF is not positive', async () => {
     orderBookDetailsResponse = () =>
       respond({

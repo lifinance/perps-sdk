@@ -94,6 +94,29 @@ describe('getMarketSettings', () => {
     })
   })
 
+  it('throws SDKError when activeAssetData carries a non-positive leverage', async () => {
+    ;({ restore } = installInfoFetchMock({
+      activeAssetData: {
+        user: ADDRESS.toLowerCase(),
+        coin: 'BTC',
+        leverage: { type: 'cross', value: 0 },
+        maxTradeSzs: ['0', '0'],
+        availableToTrade: ['0', '0'],
+        markPx: '64996.0',
+      },
+    }))
+
+    await expect(
+      getMarketSettings(ctx, {
+        address: ADDRESS,
+        market: { marketId: 'BTC', categoryId: MAIN_MARKET_ID },
+      })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      tool: 'hyperliquid',
+    })
+  })
+
   it('propagates a failed activeAssetData read as a PerpsError', async () => {
     ;({ restore } = installInfoFetchMock({
       activeAssetData: new Response('Internal Server Error', { status: 500 }),
