@@ -609,10 +609,22 @@ export interface LighterAccountConfig {
    */
   accountType: number
   /**
-   * Lighter `available_balance`: venue buying power for the whole account,
-   * already marked to market. A decimal string in quote-asset units.
+   * Lighter `available_balance`: the withdrawable total, already marked to
+   * market. It is not the buying power: it adds each isolated position's
+   * equity above its initial margin requirement and subtracts the shortfall
+   * below it. A decimal string in quote-asset units.
    */
   availableBalance: string
+  /**
+   * Lighter `cross_asset_value`: cross-margin collateral plus the unrealized
+   * PnL of the cross positions. A decimal string in quote-asset units.
+   */
+  crossAssetValue: string
+  /**
+   * Lighter `cross_initial_margin_requirement`: the initial margin the cross
+   * positions lock. A decimal string in quote-asset units.
+   */
+  crossInitialMarginRequirement: string
   /**
    * Lighter `total_asset_value`: perps-route equity, isolated allocations and
    * unrealized PnL included. It excludes the spot-route balances. A decimal

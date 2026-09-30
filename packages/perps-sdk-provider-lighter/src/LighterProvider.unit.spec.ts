@@ -5463,14 +5463,15 @@ describe('LighterProvider — getAvailableToTrade', () => {
     total_discount: '0',
   }
   const accountWith = (
-    availableBalance: string,
+    crossFreeCollateral: string,
     position: Partial<typeof BTC_POSITION_ROW>
   ) => ({
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
         ...ACCOUNT_PAYLOAD.accounts[0],
-        available_balance: availableBalance,
+        cross_asset_value: crossFreeCollateral,
+        cross_initial_margin_requirement: '0',
         positions: [{ ...BTC_POSITION_ROW, ...position }],
       },
     ],

@@ -4,23 +4,19 @@ import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
 import { toRequiredBig } from './utils/decimal.js'
 
-const atLeastZero = (value: Big): Big => (value.lt(0) ? new Big(0) : value)
+export const atLeastZero = (value: Big): Big =>
+  value.lt(0) ? new Big(0) : value
 
-// Lighter's `available_balance` already nets cross unrealized PnL and counts
-// an isolated position's equity above its IMR, so only the rest is released.
+// `availableMargin` is the cross free collateral and holds nothing of an
+// isolated position, so closing one releases its whole equity.
 const releasedOnClose = (position: Position): Big => {
   const marginUsed = toRequiredBig(position.marginUsed, 'marginUsed')
   if (position.marginMode !== MarginMode.ISOLATED) {
     return marginUsed
   }
-  const equity = marginUsed.plus(
-    toRequiredBig(position.unrealizedPnl, 'unrealizedPnl')
+  return atLeastZero(
+    marginUsed.plus(toRequiredBig(position.unrealizedPnl, 'unrealizedPnl'))
   )
-  const imr = toRequiredBig(
-    position.initialMarginRequirement,
-    'initialMarginRequirement'
-  )
-  return equity.lt(imr) ? equity : imr
 }
 
 /**
