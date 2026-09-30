@@ -1721,12 +1721,48 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  const sendAccountAll = (
+    p: LighterWsProvider,
+    type: 'subscribed/account_all' | 'update/account_all',
+    assets: Record<string, { asset_id: number; balance: string }> | null
+  ) => {
+    ;(p as unknown as LighterWsProviderInternals).handleMessage(
+      JSON.stringify({
+        type,
+        channel: `account_all:${ACCOUNT_IDX}`,
+        assets:
+          assets &&
+          Object.fromEntries(
+            Object.entries(assets).map(([key, a]) => [
+              key,
+              { symbol: key, locked_balance: '0', ...a },
+            ])
+          ),
+      })
+    )
+  }
+
+  const sendUserStats = (p: LighterWsProvider, portfolioValue: string) => {
+    ;(p as unknown as LighterWsProviderInternals).handleMessage(
+      JSON.stringify({
+        type: 'update/user_stats',
+        channel: `user_stats:${ACCOUNT_IDX}`,
+        stats: {
+          collateral: portfolioValue,
+          portfolio_value: portfolioValue,
+          available_balance: portfolioValue,
+        },
+      })
+    )
+  }
+
   describe('accountSummary via user_stats', () => {
     it('maps the free cross collateral, not the account-wide withdrawable', () => {
       const p = makeProvider()
       ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
 
       // Live capture of an account with an isolated BTC position: the
       // top-level available_balance (5.50) includes the position's excess
@@ -1766,6 +1802,7 @@ describe('LighterWsProvider', () => {
       ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
 
       ;(p as any).handleMessage(
         JSON.stringify({
@@ -1801,6 +1838,7 @@ describe('LighterWsProvider', () => {
       internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
 
       internals.handleMessage(
         JSON.stringify({
@@ -1856,6 +1894,7 @@ describe('LighterWsProvider', () => {
       ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
 
       ;(p as any).handleMessage(
         JSON.stringify({
@@ -1884,6 +1923,7 @@ describe('LighterWsProvider', () => {
       ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
 
       ;(p as any).handleMessage(
         JSON.stringify({
@@ -1917,6 +1957,180 @@ describe('LighterWsProvider', () => {
         })
       )
       provider.close()
+    })
+
+    describe('spot route', () => {
+      const USDC = 3
+      const LIT = 2048
+
+      const sendLitMid = (p: LighterWsProvider, mid: string) => {
+        ;(p as unknown as LighterWsProviderInternals).handleMessage(
+          JSON.stringify({
+            type: 'update/spot_market_stats',
+            spot_market_stats: {
+              [String(LIT)]: {
+                market_id: LIT,
+                symbol: 'LIT/USDC',
+                index_price: mid,
+                mid_price: mid,
+                last_trade_price: mid,
+                daily_base_token_volume: 0,
+                daily_quote_token_volume: 0,
+                daily_price_low: 0,
+                daily_price_high: 0,
+                daily_price_change: 0,
+              },
+            },
+          })
+        )
+      }
+
+      const portfolioValues = (listener: ReturnType<typeof vi.fn>) =>
+        listener.mock.calls.map(([event]) => event.data.portfolioValue)
+
+      it('emits nothing before the first account_all snapshot', async () => {
+        const p = makeProvider()
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+        sendUserStats(p, '100')
+        expect(listener).not.toHaveBeenCalled()
+
+        sendAccountAll(p, 'subscribed/account_all', {
+          [USDC]: { asset_id: USDC, balance: '10' },
+        })
+        expect(portfolioValues(listener)).toEqual(['110'])
+        p.close()
+      })
+
+      it('drops an account_all update that arrives before the snapshot', async () => {
+        const p = makeProvider()
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'update/account_all', {
+          [USDC]: { asset_id: USDC, balance: '10' },
+        })
+        expect(listener).not.toHaveBeenCalled()
+        p.close()
+      })
+
+      it('upserts the changed assets of an update and ignores a null update', async () => {
+        const p = makeProvider()
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'subscribed/account_all', {
+          [USDC]: { asset_id: USDC, balance: '10' },
+          [LIT]: { asset_id: LIT, balance: '2' },
+        })
+        sendLitMid(p, '1.5')
+        sendAccountAll(p, 'update/account_all', null)
+        sendAccountAll(p, 'update/account_all', {
+          [USDC]: { asset_id: USDC, balance: '25' },
+        })
+
+        // LIT has no mark at the snapshot, so it values at 0 there; the null
+        // update emits nothing.
+        expect(portfolioValues(listener)).toEqual(['110', '128'])
+        p.close()
+      })
+
+      it('skips a mark tick that leaves portfolioValue unchanged', async () => {
+        const p = makeProvider()
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+        const emitOnMark = () =>
+          (
+            p as unknown as {
+              emitAccountSummary(address: string, onlyOnChange: boolean): void
+            }
+          ).emitAccountSummary(TEST_ADDR, true)
+
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'subscribed/account_all', {
+          [LIT]: { asset_id: LIT, balance: '2' },
+        })
+        emitOnMark()
+        sendLitMid(p, '1.5')
+        emitOnMark()
+        emitOnMark()
+
+        expect(portfolioValues(listener)).toEqual(['100', '103'])
+        p.close()
+      })
+
+      it('subscribes account_all and the spot marks without an auth token, and releases them on unsubscribe', async () => {
+        const provider = makeProvider()
+        ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
+        ;(provider as any).rws.getStatus = () => 'connected'
+        const send = vi.fn()
+        ;(provider as any).rws.send = send
+        ;(provider as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+
+        const unsubscribe = await provider.subscribe(
+          { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+
+        for (const channel of [
+          `account_all/${ACCOUNT_IDX}`,
+          'market_stats/all',
+          'spot_market_stats/all',
+        ]) {
+          expect(send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'subscribe', channel })
+          )
+        }
+
+        vi.useFakeTimers()
+        try {
+          unsubscribe()
+          await vi.runAllTimersAsync()
+        } finally {
+          vi.useRealTimers()
+        }
+        for (const channel of [
+          `user_stats/${ACCOUNT_IDX}`,
+          `account_all/${ACCOUNT_IDX}`,
+          'market_stats/all',
+          'spot_market_stats/all',
+        ]) {
+          expect(send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'unsubscribe', channel })
+          )
+        }
+        provider.close()
+      })
+
+      it('throws for a provider key with no settlement asset', () => {
+        const p = new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter-unknown',
+          {},
+          freshClient()
+        )
+        ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+        sendAccountAll(p, 'subscribed/account_all', {})
+        expect(() =>
+          (p as unknown as LighterWsProviderInternals).handleUserStats({
+            type: 'update/user_stats',
+            channel: `user_stats:${ACCOUNT_IDX}`,
+            stats: {
+              collateral: '1',
+              portfolio_value: '1',
+              available_balance: '1',
+            },
+          })
+        ).toThrow(/no settlement asset/)
+        p.close()
+      })
     })
   })
 

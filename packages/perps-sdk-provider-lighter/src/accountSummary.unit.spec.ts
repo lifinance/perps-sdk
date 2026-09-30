@@ -12,8 +12,9 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
-import { getAccountSummary } from './accountSummary.js'
+import { getAccountSummary, lighterPortfolioValue } from './accountSummary.js'
 
 const USDC: Asset = {
   providerId: 'lighter',
@@ -215,5 +216,23 @@ describe('getAccountSummary', () => {
   it('rejects a non-decimal venue figure', () => {
     const broken = account('800', 'n/a')
     expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
+  })
+})
+
+describe('lighterPortfolioValue', () => {
+  it('adds every spot value to the perps equity', () => {
+    expect(
+      lighterPortfolioValue(new Big('12.5'), ['50.25', '0', '0.1']).toFixed()
+    ).toBe('62.85')
+  })
+
+  it('returns the perps equity without spot values', () => {
+    expect(lighterPortfolioValue(new Big('7'), []).toFixed()).toBe('7')
+  })
+
+  it('rejects a non-decimal spot value', () => {
+    expect(() => lighterPortfolioValue(new Big('7'), ['n/a'])).toThrow(
+      PerpsError
+    )
   })
 })

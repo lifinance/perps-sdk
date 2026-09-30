@@ -26,6 +26,19 @@ const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
 }
 
 /**
+ * Lighter portfolio value: the perps-route equity (`total_asset_value`) plus
+ * the USD value of every spot-route holding, settlement asset included.
+ */
+export const lighterPortfolioValue = (
+  perpsEquity: Big,
+  spotValuesUsd: readonly string[]
+): Big =>
+  spotValuesUsd.reduce(
+    (sum, valueUsd) => sum.plus(toRequiredBig(valueUsd, 'valueUsd')),
+    perpsEquity
+  )
+
+/**
  * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
  * is perps-route equity and excludes the spot route, so `portfolioValue` adds
  * every spot `balances` row, settlement included; the `collateralBalances` rows
@@ -50,15 +63,11 @@ export function getAccountSummary(
     unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl)
   }
 
-  let portfolioValue = toRequiredBig(config.totalAssetValue, 'totalAssetValue')
-  for (const balance of account.balances) {
-    portfolioValue = portfolioValue.plus(
-      toRequiredBig(balance.valueUsd, 'valueUsd')
-    )
-  }
-
   return {
-    portfolioValue: portfolioValue.toFixed(),
+    portfolioValue: lighterPortfolioValue(
+      toRequiredBig(config.totalAssetValue, 'totalAssetValue'),
+      account.balances.map((balance) => balance.valueUsd)
+    ).toFixed(),
     availableMargin: atLeastZero(
       toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(
         toRequiredBig(

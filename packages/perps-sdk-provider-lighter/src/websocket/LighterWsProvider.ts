@@ -17,6 +17,7 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import {
+  type AccountSummary,
   type Fill,
   type MarketContext,
   PerpsErrorCode,
@@ -24,11 +25,14 @@ import {
   type Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { lighterPortfolioValue } from '../accountSummary.js'
 import {
   DEFAULT_LIGHTER_REST_URL,
   DEFAULT_LIGHTER_WS_URL,
   LIGHTER_BASE_FEE_TIER,
+  LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_PROVIDER_KEY,
+  LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_SPOT_CATEGORY_ID,
 } from '../constants.js'
 import type { LighterPerpsProvider } from '../LighterProvider.js'
@@ -36,6 +40,7 @@ import type {
   LtAccountPosition,
   LtOrder,
   LtTrade,
+  LtWsAccountAllMessage,
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
   LtWsAccountAllTradesMessage,
@@ -58,10 +63,12 @@ import {
   mapPosition,
   toRequiredBig,
 } from '../utils/index.js'
+import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
-// (order_book/N), `trades` (trade/N).
+// (order_book/N), `trades` (trade/N), `accountSummary` (user_stats/N +
+// account_all/N, priced by the `marketsContext` spot marks).
 // Authenticated channels (resolve an auth token per subscribe send):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -95,6 +102,7 @@ const LIGHTER_AUTH_CHANNEL = {
 function channelNeedsMarkets(channel: Subscription['channel']): boolean {
   return (
     channel === 'marketContext' ||
+    channel === 'accountSummary' ||
     channel === 'orderUpdates' ||
     channel === 'fills' ||
     channel === 'positions'
@@ -136,6 +144,17 @@ interface SubState {
 interface BookLevel {
   size: string
   priceNum: number
+}
+
+/**
+ * Per-address inputs of the `accountSummary` emit: the latest `user_stats`
+ * figures (`perps`, whose `equity` is perps-route only) and the spot-route
+ * balance per asset index from `account_all`.
+ */
+interface AccountSummaryInputs {
+  perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
+  spotBalances?: Map<number, string>
+  lastPortfolioValue?: string
 }
 
 interface OrderbookState {
@@ -184,6 +203,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    * is a full open-position snapshot per the `PositionsEvent` contract.
    */
   private readonly positionsByAddress = new Map<string, Map<number, Position>>()
+
+  private readonly accountSummaryInputs = new Map<
+    string,
+    AccountSummaryInputs
+  >()
 
   private readonly registry: MarketRegistry | undefined
 
@@ -287,7 +311,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     await this.rws.ready()
 
+    const releaseSpotMarks =
+      sub.channel === 'accountSummary'
+        ? await this.subscribeSpotMarks(sub)
+        : undefined
+
     return () => {
+      releaseSpotMarks?.()
       for (const { channel } of wireChannels) {
         this.unregisterSub(channel)
         this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
@@ -301,13 +331,31 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (sub.channel === 'positions') {
         this.positionsByAddress.delete(sub.address.toLowerCase())
       }
+      if (sub.channel === 'accountSummary') {
+        this.accountSummaryInputs.delete(sub.address.toLowerCase())
+      }
     }
+  }
+
+  /**
+   * Hold a `marketsContext` subscription for the spot marks that price the
+   * account's spot balances. The ref-counted base shares the wire channels
+   * with any consumer `marketsContext` subscription.
+   */
+  private subscribeSpotMarks(
+    sub: Extract<Subscription, { channel: 'accountSummary' }>
+  ): Promise<() => void> {
+    const address = sub.address.toLowerCase()
+    return this.subscribe({ channel: 'marketsContext', dex: sub.dex }, () =>
+      this.emitAccountSummary(address, true)
+    )
   }
 
   protected override onClose(): void {
     this.orderbooks.clear()
     this.marketsContext = {}
     this.positionsByAddress.clear()
+    this.accountSummaryInputs.clear()
   }
 
   protected async sendSubscribe({
@@ -434,10 +482,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     if (sub.channel === 'accountSummary') {
       const accountIndex = await this.resolveAccountIndex(sub.address)
-      // `user_stats` is publicly readable; no token needed.
+      // Both are publicly readable. `account_all` is the public source of the
+      // spot balances; `account_all_assets` rejects a subscribe without auth.
       return [
         {
           channel: `user_stats/${accountIndex}`,
+          needsAuth: false,
+          address: sub.address,
+        },
+        {
+          channel: `account_all/${accountIndex}`,
           needsAuth: false,
           address: sub.address,
         },
@@ -586,6 +640,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
 
     if (
+      msg.type === 'subscribed/account_all' ||
+      msg.type === 'update/account_all'
+    ) {
+      this.handleAccountAll(
+        msg as LtWsAccountAllMessage,
+        msg.type === 'subscribed/account_all'
+      )
+      return
+    }
+
+    if (
       msg.type === 'subscribed/account_all_positions' ||
       msg.type === 'update/account_all_positions'
     ) {
@@ -657,15 +722,104 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       marginUsed = isolatedMargin.plus(crossMargin)
     }
 
+    this.inputsFor(address).perps = {
+      equity: portfolio,
+      availableMargin: available.toFixed(),
+      marginUsed: marginUsed.toFixed(),
+      unrealizedPnl: portfolio.minus(collateral).toFixed(),
+    }
+    this.emitAccountSummary(address)
+  }
+
+  /**
+   * Replace the spot balances on a `subscribed/` frame and upsert them on an
+   * `update/` frame. An update before the first snapshot is dropped, so the
+   * map never holds a partial set.
+   */
+  private handleAccountAll(
+    msg: LtWsAccountAllMessage,
+    isSnapshot: boolean
+  ): void {
+    const address = this.addressFromChannel(msg.channel, 'account_all')
+    if (!address) {
+      return
+    }
+    const inputs = this.inputsFor(address)
+    const balances = isSnapshot
+      ? new Map<number, string>()
+      : inputs.spotBalances
+    if (balances === undefined || (!isSnapshot && !msg.assets)) {
+      return
+    }
+    for (const asset of Object.values(msg.assets ?? {})) {
+      balances.set(asset.asset_id, asset.balance)
+    }
+    inputs.spotBalances = balances
+    this.emitAccountSummary(address)
+  }
+
+  private inputsFor(address: string): AccountSummaryInputs {
+    let inputs = this.accountSummaryInputs.get(address)
+    if (inputs === undefined) {
+      inputs = {}
+      this.accountSummaryInputs.set(address, inputs)
+    }
+    return inputs
+  }
+
+  /**
+   * Emit the account summary once both the `user_stats` figures and the spot
+   * balances are in. `portfolioValue` values the spot balances as REST
+   * `getAccount` does. `onlyOnChange` skips an emit whose `portfolioValue`
+   * equals the last one, so a mark tick on an unrelated market emits nothing.
+   */
+  private emitAccountSummary(address: string, onlyOnChange = false): void {
+    const inputs = this.accountSummaryInputs.get(address)
+    if (inputs?.perps === undefined || inputs.spotBalances === undefined) {
+      return
+    }
+    const settlementAssetIndex = this.settlementAssetIndex()
+    const held = [...inputs.spotBalances].filter(([, balance]) =>
+      toRequiredBig(balance, 'balance').gt(0)
+    )
+    const spotPrices = spotPriceByAssetId(
+      this.registry?.markets ?? [],
+      LIGHTER_SPOT_CATEGORY_ID,
+      Object.values(this.marketsContext),
+      new Set(
+        held
+          .filter(([assetId]) => assetId !== settlementAssetIndex)
+          .map(([assetId]) => String(assetId))
+      )
+    )
+    const portfolioValue = lighterPortfolioValue(
+      inputs.perps.equity,
+      held.map(
+        ([assetId, balance]) =>
+          spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
+            .valueUsd
+      )
+    ).toFixed()
+    if (onlyOnChange && portfolioValue === inputs.lastPortfolioValue) {
+      return
+    }
+    inputs.lastPortfolioValue = portfolioValue
+    const { equity: _equity, ...perps } = inputs.perps
     this.emit(`accountSummary:${address}`, {
       channel: 'accountSummary',
-      data: {
-        portfolioValue: portfolio.toFixed(),
-        availableMargin: available.toFixed(),
-        marginUsed: marginUsed.toFixed(),
-        unrealizedPnl: portfolio.minus(collateral).toFixed(),
-      },
+      data: { portfolioValue, ...perps },
     })
+  }
+
+  private settlementAssetIndex(): number {
+    const key = this.providerKey
+    if (key === LIGHTER_PROVIDER_KEY || key === LIGHTER_RH_PROVIDER_KEY) {
+      return LIGHTER_COLLATERAL_ASSETS[key].assetIndex
+    }
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Lighter WS: no settlement asset for provider '${key}'.`
+    )
   }
 
   private handleAccountTrades(msg: LtWsAccountAllTradesMessage): void {
