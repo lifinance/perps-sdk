@@ -170,10 +170,15 @@ describe('lighterWithdrawableBalances', () => {
 
   it('caps the asset at the given settlement index, not at USDC', () => {
     expect(
-      lighterWithdrawableBalances(NO_FREE_MARGIN_ACCOUNT, 1).filter(
-        (row) => row.route === 'perps'
+      lighterWithdrawableBalances(
+        { ...MULTI_ASSET_ACCOUNT, available_balance: '0.005' },
+        1
       )
-    ).toEqual([{ assetId: '3', route: 'perps', available: '143.349992980888' }])
+    ).toEqual([
+      { assetId: '1', route: 'perps', available: '0.005' },
+      { assetId: '2', route: 'spot', available: '8.00004674' },
+      { assetId: '3', route: 'perps', available: '13.89182545205' },
+    ])
   })
 
   it('subtracts locked_balance from the spot route', () => {
@@ -208,6 +213,20 @@ describe('lighterWithdrawableBalances', () => {
     expect(() =>
       withdrawable({ ...MULTI_ASSET_ACCOUNT, available_balance: 'n/a' })
     ).toThrow('available_balance')
+  })
+
+  it('ignores available_balance when the account holds no settlement asset', () => {
+    expect(
+      withdrawable({
+        available_balance: 'n/a',
+        assets: MULTI_ASSET_ACCOUNT.assets.filter(
+          (asset) => asset.asset_id !== LT_ASSET_ID_USDC
+        ),
+      })
+    ).toEqual([
+      { assetId: '1', route: 'perps', available: '0.00709091' },
+      { assetId: '2', route: 'spot', available: '8.00004674' },
+    ])
   })
 
   it('returns nothing for an account holding no assets', () => {

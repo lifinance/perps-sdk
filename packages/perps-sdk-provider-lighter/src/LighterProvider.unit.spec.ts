@@ -1187,8 +1187,18 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ])
   })
 
-  it('caps the settlement perps row at the account available_balance', async () => {
-    // Account 7684, captured live: open positions hold part of the margin.
+  // Account 7684, captured live: open positions hold part of the margin.
+  const OPEN_POSITIONS_USDC = {
+    symbol: 'USDC',
+    asset_id: 3,
+    balance: '103.00085138124',
+    locked_balance: '0.000000',
+    margin_mode: 'disabled',
+    margin_balance: '388482.377119189308',
+    multiplier: '1.000000000000000000',
+  }
+
+  const stubAccount = (fields: Record<string, unknown>) => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
@@ -1196,28 +1206,19 @@ describe('LighterProvider — getWithdrawableBalances', () => {
         if (u.includes('/api/v1/account?')) {
           return respond({
             ...ACCOUNT_PAYLOAD,
-            accounts: [
-              {
-                ...ACCOUNT_PAYLOAD.accounts[0],
-                available_balance: '364310.903135',
-                assets: [
-                  {
-                    symbol: 'USDC',
-                    asset_id: 3,
-                    balance: '103.00085138124',
-                    locked_balance: '0.000000',
-                    margin_mode: 'disabled',
-                    margin_balance: '388482.377119189308',
-                    multiplier: '1.000000000000000000',
-                  },
-                ],
-              },
-            ],
+            accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], ...fields }],
           })
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
     )
+  }
+
+  it('caps the settlement perps row at the account available_balance', async () => {
+    stubAccount({
+      available_balance: '364310.903135',
+      assets: [OPEN_POSITIONS_USDC],
+    })
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
@@ -1226,6 +1227,32 @@ describe('LighterProvider — getWithdrawableBalances', () => {
       { assetId: '3', route: 'spot', available: '103.00085138124' },
       { assetId: '3', route: 'perps', available: '364310.903135' },
     ])
+  })
+
+  it('drops the settlement perps row when available_balance is zero', async () => {
+    stubAccount({
+      available_balance: '0.000000',
+      assets: [OPEN_POSITIONS_USDC],
+    })
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).resolves.toEqual([
+      { assetId: '3', route: 'spot', available: '103.00085138124' },
+    ])
+  })
+
+  it('throws when the account body carries no available_balance', async () => {
+    stubAccount({ available_balance: undefined, assets: [OPEN_POSITIONS_USDC] })
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getWithdrawableBalances!({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('available_balance'),
+    })
   })
 })
 
