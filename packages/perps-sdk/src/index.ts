@@ -260,6 +260,7 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
+export { transferableWithin } from './utils/transferableWithin.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 export { createWarnOnce } from './utils/warnOnce.js'

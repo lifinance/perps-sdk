@@ -1,20 +1,9 @@
-import type { ProviderWithdrawableBalance } from '@lifi/perps-sdk'
-import Big from 'big.js'
+import {
+  type ProviderWithdrawableBalance,
+  transferableWithin,
+} from '@lifi/perps-sdk'
 import type { LtAccount } from '../types/account.js'
 import { toRequiredBig } from './decimal.js'
-
-/**
- * The part of `units` that a venue-wide free figure releases: never below
- * zero and never above the units held.
- *
- * @internal
- */
-export const transferableWithin = (venueFigure: Big, units: Big): Big => {
-  if (venueFigure.lt(0)) {
-    return new Big(0)
-  }
-  return venueFigure.gt(units) ? units : venueFigure
-}
 
 /**
  * Split each held asset into the two routes a Lighter withdrawal can name:

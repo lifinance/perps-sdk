@@ -34,6 +34,7 @@ import {
   toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
+  transferableWithin,
   type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import type {
@@ -65,7 +66,6 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import type Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -136,13 +136,6 @@ import {
   type OndoOrderCursor,
   type OrderSource,
 } from './utils/orderCursor.js'
-
-const transferableWithin = (venueFigure: Big, units: Big): string => {
-  if (venueFigure.lt(0)) {
-    return '0'
-  }
-  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
-}
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -377,7 +370,7 @@ export const ondoProvider = (
                         'balance.withdrawableMargin'
                       ),
                       walletBalance
-                    ),
+                    ).toFixed(),
                   },
                 ]
               : [],

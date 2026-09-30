@@ -33,6 +33,7 @@ import {
   type SignActionsContext,
   type StorageAdapter,
   toPerpsMarketDisplay,
+  transferableWithin,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -162,7 +163,6 @@ import {
 import { spotPriceByAssetId } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
-import { transferableWithin } from './utils/withdrawableBalances.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
