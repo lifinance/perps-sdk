@@ -3,6 +3,7 @@ import type {
   AccountSummary,
   ActivitiesResponse,
   FillsResponse,
+  MarketSettings,
   Order,
   OrdersResponse,
   Position,
@@ -49,6 +50,9 @@ const makePlugin = () => {
     formatOrderSize: vi.fn((_market, size: number) => size.toString()),
     estimateLiquidationPrice: vi.fn(() => undefined),
     positionRemovableMargin: vi.fn(() => undefined),
+    getMarketSettings: vi.fn(
+      async (): Promise<MarketSettings> => ({}) as MarketSettings
+    ),
     resolveAuthToken: vi.fn(async (): Promise<string | undefined> => 'token'),
     projectConfig: vi.fn(() => []),
   }
@@ -68,6 +72,7 @@ const makePlugin = () => {
     formatOrderSize: calls.formatOrderSize,
     estimateLiquidationPrice: calls.estimateLiquidationPrice,
     positionRemovableMargin: calls.positionRemovableMargin,
+    getMarketSettings: calls.getMarketSettings,
     projectConfig: calls.projectConfig,
     resolveAuthToken: calls.resolveAuthToken,
   }

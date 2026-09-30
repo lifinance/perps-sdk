@@ -5619,16 +5619,106 @@ describe('LighterProvider — getMarketSettings', () => {
     ],
   }
 
-  let accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+  // Cross BTC row captured 2026-09-30 from live
+  // `GET https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=7684`:
+  // the percent IMF string `2.00` ⇒ 50x.
+  const LIVE_CROSS_BTC_ROW = {
+    market_id: 1,
+    symbol: 'BTC',
+    initial_margin_fraction: '2.00',
+    open_order_count: 14,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '0.56759',
+    avg_entry_price: '84114.6',
+    position_value: '47898.579546',
+    unrealized_pnl: '155.946751',
+    realized_pnl: '0.000000',
+    liquidation_price: '0',
+    total_funding_paid_out: '-2.506444',
+    margin_mode: 0,
+    margin_set_flag: 1,
+    allocated_margin: '0.000000',
+  }
+
+  // BTC detail captured 2026-09-30 from live
+  // `GET https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails?market_id=1`:
+  // the basis-point default IMF `500` ⇒ 20x.
+  const LIVE_BTC_ORDER_BOOK_DETAILS = {
+    code: 200,
+    order_book_details: [
+      {
+        symbol: 'BTC',
+        market_id: 1,
+        market_type: 'perp',
+        base_asset_id: 0,
+        quote_asset_id: 0,
+        status: 'active',
+        taker_fee: '0.0000',
+        maker_fee: '0.0000',
+        liquidation_fee: '1.0000',
+        min_base_amount: '0.00007',
+        min_quote_amount: '10.000000',
+        order_quote_limit: '281474976.710655',
+        supported_size_decimals: 5,
+        supported_price_decimals: 1,
+        supported_quote_decimals: 6,
+        size_decimals: 5,
+        price_decimals: 1,
+        quote_multiplier: 1,
+        default_initial_margin_fraction: 500,
+        min_initial_margin_fraction: 200,
+        maintenance_margin_fraction: 120,
+        closeout_margin_fraction: 80,
+        last_trade_price: 84369.3,
+        daily_trades_count: 519001,
+        daily_base_token_volume: 9530.12067,
+        daily_quote_token_volume: 798823704.532043,
+        daily_price_low: 82902.2,
+        daily_price_high: 85617.2,
+        daily_price_change: 1.6099935450928253,
+        daily_chart: {},
+        open_interest: 2026.79395,
+        market_config: {
+          market_margin_mode: 0,
+          insurance_fund_account_index: 281474976710655,
+          liquidation_mode: 0,
+          force_reduce_only: false,
+          trading_hours: '',
+          funding_fee_discounts_enabled: false,
+          hidden: false,
+          rfq_enabled: true,
+        },
+        strategy_index: 2,
+      },
+    ],
+    spot_order_book_details: [],
+  }
+
+  const withPositions = (positions: unknown[]) => ({
+    ...ACCOUNT_WITH_ISOLATED_ROW,
+    accounts: [{ ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0], positions }],
+  })
+
+  let accountResponse: () => Response
+  let orderBookDetailsResponse: () => Response
+  let requestedUrls: string[]
 
   beforeEach(() => {
-    accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+    accountResponse = () => respond(ACCOUNT_WITH_ISOLATED_ROW)
+    orderBookDetailsResponse = () => respond(LIVE_BTC_ORDER_BOOK_DETAILS)
+    requestedUrls = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        requestedUrls.push(u)
         if (u.includes('/api/v1/account?')) {
-          return respond(accountPayload)
+          return accountResponse()
+        }
+        if (u.includes('/api/v1/orderBookDetails?')) {
+          return orderBookDetailsResponse()
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -5639,98 +5729,156 @@ describe('LighterProvider — getMarketSettings', () => {
     vi.unstubAllGlobals()
   })
 
-  it("reads the market's mode and leverage from the account position row", async () => {
+  const settingsFor = (marketId: string, categoryId = 'lighter') => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
+    return provider.getMarketSettings({
+      address: ADDRESS,
+      market: { marketId, categoryId },
+    })
+  }
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  const orderBookDetailsRequests = () =>
+    requestedUrls.filter((u) => u.includes('/api/v1/orderBookDetails?'))
+
+  it("reads the market's mode and leverage from the account position row", async () => {
+    await expect(settingsFor('0')).resolves.toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 2,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('reads a cross row whose IMF is a percent string', async () => {
+    accountResponse = () => respond(withPositions([LIVE_CROSS_BTC_ROW]))
+
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 50,
+    })
   })
 
   it('preserves fractional venue leverage without two-decimal rounding', async () => {
-    accountPayload = {
-      ...ACCOUNT_WITH_ISOLATED_ROW,
-      accounts: [
-        {
-          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
-          positions: [
-            {
-              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
-              initial_margin_fraction: '60',
-            },
-          ],
-        },
-      ],
-    }
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+    accountResponse = () =>
+      respond(
+        withPositions([
+          {
+            ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+            initial_margin_fraction: '60',
+          },
+        ])
+      )
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toEqual({
+    await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
       leverage: 100 / 60,
     })
   })
 
-  it('does not return a partial setting when leverage is invalid', async () => {
-    accountPayload = {
-      ...ACCOUNT_WITH_ISOLATED_ROW,
-      accounts: [
-        {
-          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
-          positions: [
-            {
-              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
-              initial_margin_fraction: '0',
-            },
-          ],
-        },
-      ],
-    }
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toBeUndefined()
+  it('resolves the basis-point market default with cross margin for a market without a row', async () => {
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+    expect(orderBookDetailsRequests()).toEqual([
+      expect.stringContaining('/api/v1/orderBookDetails?market_id=1'),
+    ])
   })
 
-  it('resolves undefined for a market without a row', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+  it('resolves the market default with cross margin when the row IMF is not positive', async () => {
+    accountResponse = () =>
+      respond(
+        withPositions([
+          {
+            ...LIVE_CROSS_BTC_ROW,
+            margin_mode: 1,
+            initial_margin_fraction: '0',
+          },
+        ])
+      )
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '7', categoryId: 'lighter' },
-      })
-    ).resolves.toBeUndefined()
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
   })
 
-  it('resolves undefined for a spot market without a request', async () => {
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+  it('resolves the market default when the address has no Lighter account', async () => {
+    accountResponse = () =>
+      respond({ code: 21100, message: 'account not found' }, 400)
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '2048', categoryId: 'spot' },
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+  })
+
+  it('throws SDKError for an unparsable row IMF', async () => {
+    accountResponse = () =>
+      respond(
+        withPositions([
+          { ...LIVE_CROSS_BTC_ROW, initial_margin_fraction: 'n/a' },
+        ])
+      )
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws when the account read fails', async () => {
+    accountResponse = () => respond({ code: 29500, message: 'internal' }, 403)
+
+    await expect(settingsFor('1')).rejects.toBeInstanceOf(PerpsError)
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws when the order-book-details read fails', async () => {
+    // Live body for an unknown market id: HTTP 400.
+    orderBookDetailsResponse = () =>
+      respond({ code: 21602, message: 'invalid market index' }, 400)
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+  })
+
+  it('throws SDKError when the order-book details carry no row for the market', async () => {
+    orderBookDetailsResponse = () =>
+      respond({
+        code: 200,
+        order_book_details: null,
+        spot_order_book_details: [],
       })
-    ).resolves.toBeUndefined()
-    expect(fetchSpy).not.toHaveBeenCalled()
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it('throws SDKError when the market default IMF is not positive', async () => {
+    orderBookDetailsResponse = () =>
+      respond({
+        ...LIVE_BTC_ORDER_BOOK_DETAILS,
+        order_book_details: [
+          {
+            ...LIVE_BTC_ORDER_BOOK_DETAILS.order_book_details[0],
+            default_initial_margin_fraction: 0,
+          },
+        ],
+      })
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it('throws ValidationError for a spot market without a request', async () => {
+    await expect(settingsFor('2048', 'spot')).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+    })
+    expect(requestedUrls).toHaveLength(0)
   })
 })
 

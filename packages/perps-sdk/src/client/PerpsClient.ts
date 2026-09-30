@@ -647,21 +647,22 @@ export class PerpsClient {
   }
 
   /**
-   * The user's current venue-side settings for a market — the margin mode
-   * and leverage the next order on it will use. Resolves `undefined` when
-   * the venue exposes no readable setting for the market (or the provider
-   * has no such read at all).
+   * The user's current venue-side settings for a perps market — the margin
+   * mode and leverage the next order on it will use. Resolves the venue value
+   * or throws.
    *
-   * @throws {PerpsError} When the provider plugin is not registered.
+   * @throws {PerpsError} When the provider plugin is not registered,
+   *   `ValidationError` for a spot market, or any other `PerpsError` when the
+   *   venue read fails or carries no usable value.
    * @public
    */
   async getMarketSettings(params: {
     provider: string
     address: Address
     market: MarketRef
-  }): Promise<MarketSettings | undefined> {
+  }): Promise<MarketSettings> {
     const plugin = this.requireProvider(params.provider)
-    return plugin.getMarketSettings?.({
+    return plugin.getMarketSettings({
       address: params.address,
       market: params.market,
     })

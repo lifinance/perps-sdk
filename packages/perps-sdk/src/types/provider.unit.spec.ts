@@ -3,6 +3,7 @@ import type {
   AccountSummary,
   ActivitiesResponse,
   FillsResponse,
+  MarketSettings,
   Order,
   OrdersResponse,
   PositionsResponse,
@@ -32,6 +33,7 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     formatOrderSize: (_market, size) => size.toString(),
     estimateLiquidationPrice: () => undefined,
     positionRemovableMargin: () => undefined,
+    getMarketSettings: () => stub() as unknown as Promise<MarketSettings>,
     projectConfig: () => [],
   }
 }

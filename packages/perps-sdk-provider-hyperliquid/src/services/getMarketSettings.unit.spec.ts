@@ -1,5 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import { MarginMode } from '@lifi/perps-types'
+import { MarginMode, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import {
@@ -72,7 +72,42 @@ describe('getMarketSettings', () => {
     ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 3 })
   })
 
-  it('resolves undefined for spot markets without a request', async () => {
+  it('throws SDKError when activeAssetData carries no leverage', async () => {
+    ;({ restore } = installInfoFetchMock({
+      activeAssetData: {
+        user: ADDRESS.toLowerCase(),
+        coin: 'BTC',
+        maxTradeSzs: ['0', '0'],
+        availableToTrade: ['0', '0'],
+        markPx: '64996.0',
+      },
+    }))
+
+    await expect(
+      getMarketSettings(ctx, {
+        address: ADDRESS,
+        market: { marketId: 'BTC', categoryId: MAIN_MARKET_ID },
+      })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      tool: 'hyperliquid',
+    })
+  })
+
+  it('propagates a failed activeAssetData read as a PerpsError', async () => {
+    ;({ restore } = installInfoFetchMock({
+      activeAssetData: new Response('Internal Server Error', { status: 500 }),
+    }))
+
+    await expect(
+      getMarketSettings(ctx, {
+        address: ADDRESS,
+        market: { marketId: 'BTC', categoryId: MAIN_MARKET_ID },
+      })
+    ).rejects.toMatchObject({ name: 'PerpsError' })
+  })
+
+  it('throws ValidationError for spot markets without a request', async () => {
     let requests: ReturnType<typeof installInfoFetchMock>['requests']
     ;({ restore, requests } = installInfoFetchMock({}))
 
@@ -81,13 +116,13 @@ describe('getMarketSettings', () => {
         address: ADDRESS,
         market: { marketId: '@142', categoryId: SPOT_MARKET_ID },
       })
-    ).resolves.toBeUndefined()
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     await expect(
       getMarketSettings(ctx, {
         address: ADDRESS,
         market: { marketId: 'PURR/USDC', categoryId: SPOT_MARKET_ID },
       })
-    ).resolves.toBeUndefined()
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     expect(requests).toHaveLength(0)
   })
 })
