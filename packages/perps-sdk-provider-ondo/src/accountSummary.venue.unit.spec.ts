@@ -217,6 +217,7 @@ describe('accountSummary.venue', () => {
         route: 'perps',
         available: BALANCE.withdrawableMargin,
         withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,
+        withdrawalFeeMode: 'onTop',
       },
     ])
   })

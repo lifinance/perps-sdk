@@ -66,7 +66,7 @@ describe('hyperliquidWithdrawableBalances', () => {
     expect(rows).toEqual([{ assetId: '0', route: 'perps', available: '2.5' }])
   })
 
-  it('sets the fee on every quote-asset row and on no other asset', () => {
+  it('sets the deducted fee on every quote-asset row and on no other asset', () => {
     const rows = hyperliquidWithdrawableBalances(
       HlAbstractionMode.UNIFIED_ACCOUNT,
       perpsState('2.5'),
@@ -78,11 +78,24 @@ describe('hyperliquidWithdrawableBalances', () => {
       '1'
     )
     expect(rows).toEqual([
-      { assetId: '0', route: 'spot', available: '6', withdrawalFee: '1' },
+      {
+        assetId: '0',
+        route: 'spot',
+        available: '6',
+        withdrawalFee: '1',
+        withdrawalFeeMode: 'deducted',
+      },
       { assetId: '150', route: 'spot', available: '3' },
-      { assetId: '0', route: 'perps', available: '2.5', withdrawalFee: '1' },
+      {
+        assetId: '0',
+        route: 'perps',
+        available: '2.5',
+        withdrawalFee: '1',
+        withdrawalFeeMode: 'deducted',
+      },
     ])
     expect(rows[1]).not.toHaveProperty('withdrawalFee')
+    expect(rows[1]).not.toHaveProperty('withdrawalFeeMode')
   })
 
   it('sets no fee key on any row when the fee is undefined', () => {
@@ -94,6 +107,7 @@ describe('hyperliquidWithdrawableBalances', () => {
     )
     for (const row of rows) {
       expect(row).not.toHaveProperty('withdrawalFee')
+      expect(row).not.toHaveProperty('withdrawalFeeMode')
     }
   })
 
@@ -111,6 +125,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         route: 'perps',
         available: '2.5',
         withdrawalFee: '0.0000001',
+        withdrawalFeeMode: 'deducted',
       },
     ])
   })

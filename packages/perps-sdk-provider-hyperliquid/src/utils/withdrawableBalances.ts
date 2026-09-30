@@ -17,7 +17,8 @@ import { toWireBig } from './decimal.js'
  *
  * @param quoteAssetId - `Asset.id` the perps-route row is keyed by.
  * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
- *   quote-asset row. Absent leaves every row without a fee.
+ *   quote-asset row. Hyperliquid deducts it from the requested amount. Absent
+ *   leaves every row without a fee.
  * @public
  */
 export const hyperliquidWithdrawableBalances = (
@@ -32,8 +33,15 @@ export const hyperliquidWithdrawableBalances = (
     withdrawalFee === undefined
       ? undefined
       : toWireBig(withdrawalFee, 'providers.withdrawalFeeUsd').toFixed()
-  const feeFor = (assetId: string) =>
-    fee === undefined || assetId !== quoteAssetId ? {} : { withdrawalFee: fee }
+  const feeFor = (
+    assetId: string
+  ): Pick<
+    ProviderWithdrawableBalance,
+    'withdrawalFee' | 'withdrawalFeeMode'
+  > =>
+    fee === undefined || assetId !== quoteAssetId
+      ? {}
+      : { withdrawalFee: fee, withdrawalFeeMode: 'deducted' }
 
   if (isUnifiedAbstraction(abstraction)) {
     for (const balance of spotState.balances) {
