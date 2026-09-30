@@ -17,11 +17,14 @@ export const fetchDetailedAccount = async (
   client: LighterApiClient,
   address: Address
 ): Promise<LtAccount> => {
-  const { status, data } = await client.getWithStatus<{
-    code: number
-    accounts?: LtDetailedAccount[] | null
-    message?: string
-  }>('/api/v1/account', { by: 'l1_address', value: address })
+  const { status, data } = await client.getWithStatus<
+    | {
+        code: number
+        accounts?: LtDetailedAccount[] | null
+        message?: string
+      }
+    | undefined
+  >('/api/v1/account', { by: 'l1_address', value: address })
 
   if (status === 400 && data?.code === LIGHTER_CODE_ACCOUNT_NOT_FOUND) {
     throw new PerpsError(
@@ -33,7 +36,7 @@ export const fetchDetailedAccount = async (
   if (status < 200 || status >= 300) {
     throw new PerpsError(
       PerpsErrorCode.ThirdPartyError,
-      `Lighter account request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`
+      `Lighter account request failed: ${status} — ${data === undefined ? 'non-JSON body' : JSON.stringify(data).slice(0, 200)}`
     )
   }
 
