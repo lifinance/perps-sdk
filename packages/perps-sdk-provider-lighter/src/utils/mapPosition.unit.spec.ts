@@ -10,7 +10,7 @@ import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from '../types/index.js'
-import { mapPosition } from './mapPosition.js'
+import { leverageFromScaledImf, mapPosition } from './mapPosition.js'
 
 const SYMBOL = 'BTC'
 const MARKET: PerpsMarketDisplay = {
@@ -254,5 +254,18 @@ describe('mapPosition (Lighter)', () => {
         expect(typeof result[field]).toBe('string')
       }
     })
+  })
+})
+
+describe('leverageFromScaledImf', () => {
+  it('reads a basis-point IMF as display leverage', () => {
+    expect(leverageFromScaledImf(500)).toBe(20)
+    expect(leverageFromScaledImf(200)).toBe(50)
+    expect(leverageFromScaledImf(666)).toBe(100 / 6.66)
+  })
+
+  it('is undefined for a non-positive IMF', () => {
+    expect(leverageFromScaledImf(0)).toBeUndefined()
+    expect(leverageFromScaledImf(-500)).toBeUndefined()
   })
 })
