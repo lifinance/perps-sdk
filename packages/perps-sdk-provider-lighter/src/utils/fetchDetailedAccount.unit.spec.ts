@@ -50,6 +50,21 @@ describe('fetchDetailedAccount', () => {
     const client = clientWith(stubFetch(500, { message: 'boom' }))
     await expect(fetchDetailedAccount(client, ADDRESS)).rejects.toMatchObject({
       code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('500 — {"message":"boom"}'),
+    })
+  })
+
+  it('throws ThirdPartyError with the status for a non-JSON non-2xx body', async () => {
+    const client = clientWith(
+      async () =>
+        new Response('boom', {
+          status: 500,
+          headers: { 'content-type': 'text/plain' },
+        })
+    )
+    await expect(fetchDetailedAccount(client, ADDRESS)).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('500 — non-JSON body'),
     })
   })
 
