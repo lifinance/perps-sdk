@@ -5,9 +5,11 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 /**
  * Map our `OhlcvInterval` literal to Lighter's `resolution` enum.
  *
- * Lighter exposes only the timeframes listed below. SDK intervals without a
- * direct match (3m, 2h, 8h, 3d, 1w, 1M) raise a validation error rather than
- * silently rounding — the caller picks a supported timeframe.
+ * The keys are exactly the `resolution` enum of Lighter's `GET /api/v1/candles`.
+ * Lighter has no weekly candle (it rejects `1w` with code 20001), so `1w`
+ * stays out. SDK intervals without a direct match (3m, 2h, 8h, 3d, 1w, 1M)
+ * raise a validation error rather than silently rounding — the caller picks a
+ * supported timeframe.
  */
 const LIGHTER_SUPPORTED_INTERVALS: Partial<Record<OhlcvInterval, string>> = {
   '1m': '1m',
