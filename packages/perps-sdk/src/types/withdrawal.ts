@@ -30,7 +30,10 @@ export interface ProviderWithdrawableBalance {
    * asset. The client rejects a value that is not a non-negative decimal.
    */
   withdrawalFee?: string
-  /** Set together with `withdrawalFee`. */
+  /**
+   * Set together with `withdrawalFee`. The client drops it from a row without
+   * a fee and rejects a value outside this union.
+   */
   withdrawalFeeMode?: WithdrawalFeeMode
 }
 
@@ -52,12 +55,15 @@ export interface WithdrawableBalance {
    * `withdrawalFeeMode` `'deducted'`, the venue takes the fee out of the
    * requested amount, and an amount at or below the fee delivers nothing. With
    * `'onTop'`, the venue charges the fee in addition to the requested amount,
-   * so the largest amount the row can fund is `available` minus the fee.
+   * so the largest amount the row can fund is `available` minus the fee. That
+   * result is zero or negative when the fee is at or above `available`, and
+   * the row then funds no withdrawal.
    */
   withdrawalFee?: string
   /**
-   * Set together with `withdrawalFee`. Absent on a row from a provider plugin
-   * that does not report it.
+   * Present only together with `withdrawalFee`. Absent on a row from a
+   * provider plugin that does not report it; absence means the mode is
+   * unknown, not `'deducted'`.
    */
   withdrawalFeeMode?: WithdrawalFeeMode
 }

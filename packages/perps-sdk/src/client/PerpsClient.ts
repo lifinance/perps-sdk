@@ -84,7 +84,11 @@ import type {
   SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
-import type { WithdrawableBalance, WithdrawFlow } from '../types/withdrawal.js'
+import type {
+  WithdrawableBalance,
+  WithdrawalFeeMode,
+  WithdrawFlow,
+} from '../types/withdrawal.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -214,6 +218,10 @@ function assertAllSucceeded(results: ActionResult[]): void {
       failure.error
     )
   }
+}
+
+function isWithdrawalFeeMode(value: string): value is WithdrawalFeeMode {
+  return value === 'deducted' || value === 'onTop'
 }
 
 function isNonNegativeDecimal(value: string): boolean {
@@ -810,8 +818,9 @@ export class PerpsClient {
    * @returns `undefined` when the registered plugin declares no withdrawable
    *   read.
    * @throws {PerpsError} When the provider plugin is not registered, when
-   *   either the plugin read or the asset sync fails, or when a row's
-   *   `withdrawalFee` is not a non-negative decimal.
+   *   either the plugin read or the asset sync fails, when a row's
+   *   `withdrawalFee` is not a non-negative decimal, or when a row with a fee
+   *   has a `withdrawalFeeMode` outside `'deducted' | 'onTop'`.
    * @public
    */
   async getWithdrawableBalances(
@@ -847,14 +856,8 @@ export class PerpsClient {
           return []
         }
       }
-      const feeMode =
-        row.withdrawalFeeMode === undefined
-          ? {}
-          : { withdrawalFeeMode: row.withdrawalFeeMode }
       if (row.withdrawalFee === undefined) {
-        return [
-          { asset, route: row.route, available: row.available, ...feeMode },
-        ]
+        return [{ asset, route: row.route, available: row.available }]
       }
       if (!isNonNegativeDecimal(row.withdrawalFee)) {
         throw new PerpsError(
@@ -862,6 +865,14 @@ export class PerpsClient {
           `Provider '${params.provider}' row for asset '${asset.id}' has a \`withdrawalFee\` that is not a non-negative decimal: '${row.withdrawalFee}'.`
         )
       }
+      const mode: string | undefined = row.withdrawalFeeMode
+      if (mode !== undefined && !isWithdrawalFeeMode(mode)) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `Provider '${params.provider}' row for asset '${asset.id}' has a \`withdrawalFeeMode\` that is not 'deducted' or 'onTop': '${mode}'.`
+        )
+      }
+      const feeMode = mode === undefined ? {} : { withdrawalFeeMode: mode }
       return [
         {
           asset,

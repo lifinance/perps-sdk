@@ -88,11 +88,13 @@ fee source is known for that asset:
   `withdrawalFeeMode` is `'onTop'`.
 - Lighter: never set.
 
-A row with a fee also carries `withdrawalFeeMode`. With `'deducted'`, the venue
-takes the fee out of the requested amount, so an amount at or below the fee
-delivers nothing. With `'onTop'`, the venue charges the fee in addition to the
-requested amount, so the largest amount the row can fund is `available` minus
-the fee.
+A row with a fee can also carry `withdrawalFeeMode`. With `'deducted'`, the
+venue takes the fee out of the requested amount, so an amount at or below the
+fee delivers nothing. With `'onTop'`, the venue charges the fee in addition to
+the requested amount, so the largest amount the row can fund is `available`
+minus the fee. When that result is zero or negative, the row funds no
+withdrawal. An absent `withdrawalFeeMode` means that the mode is unknown. It
+does not mean `'deducted'`.
 
 An absent `withdrawalFee` means that no fee source is known. It does not prove
 that the venue charges no fee.
