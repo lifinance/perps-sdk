@@ -1065,6 +1065,8 @@ export const createLighterProvider = (
         apiKeyRegistered,
         accountType: account.account_type,
         availableBalance: account.available_balance,
+        crossAssetValue: account.cross_asset_value,
+        crossInitialMarginRequirement: account.cross_initial_margin_requirement,
         totalAssetValue: account.total_asset_value,
         userTierName: limitsResult?.user_tier_name,
         accountTradingMode:
