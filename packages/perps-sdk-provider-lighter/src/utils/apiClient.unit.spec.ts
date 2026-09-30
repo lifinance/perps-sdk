@@ -6,6 +6,7 @@ import {
   LighterApiClient,
   LighterAuthRejectedError,
   LighterTokenRevokedError,
+  lighterBodyExcerpt,
 } from './apiClient.js'
 
 const BASE_URL = 'https://lighter.test'
@@ -21,6 +22,14 @@ const stubFetch =
   (status: number, body: unknown): typeof fetch =>
   async () =>
     stubResponse(status, body)
+
+const nonJsonFetch =
+  (status: number, body: string): typeof fetch =>
+  async () =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'text/plain' },
+    })
 
 const TEST_POLICY = {
   enabled: false,
@@ -43,6 +52,17 @@ const clientWith = (
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('lighterBodyExcerpt', () => {
+  it('names a body that did not parse as JSON', () => {
+    expect(lighterBodyExcerpt(undefined)).toBe('non-JSON body')
+  })
+
+  it('cuts the JSON text of a parsed body at 200 characters', () => {
+    expect(lighterBodyExcerpt({ message: 'boom' })).toBe('{"message":"boom"}')
+    expect(lighterBodyExcerpt({ message: 'x'.repeat(300) })).toHaveLength(200)
+  })
 })
 
 describe('LighterApiClient.get (dual-channel error detection)', () => {
@@ -80,6 +100,26 @@ describe('LighterApiClient.get (dual-channel error detection)', () => {
     await expect(client.get('/api/v1/account')).rejects.toBeInstanceOf(
       PerpsError
     )
+  })
+
+  it('keeps a JSON excerpt of the body in a non-2xx error message', async () => {
+    const client = clientWith(stubFetch(500, { message: 'boom' }))
+    await expect(client.get('/api/v1/account')).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('500 — {"message":"boom"}'),
+    })
+  })
+
+  it('throws ThirdPartyError with the status for a non-JSON non-2xx body', async () => {
+    const client = clientWith(nonJsonFetch(502, 'bad gateway'))
+    const error = await client
+      .get('/api/v1/apikeys', { account_index: 1 })
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('502 — non-JSON body'),
+    })
   })
 })
 
@@ -227,6 +267,19 @@ describe('LighterApiClient.getAuthed (auth-rejection subclass)', () => {
     await expect(
       client.getAuthed('/api/v1/accountLimits', 'tok')
     ).rejects.toBeInstanceOf(PerpsError)
+  })
+
+  it('throws ThirdPartyError with the status for a non-JSON non-2xx body', async () => {
+    const client = clientWith(nonJsonFetch(502, 'bad gateway'))
+    const error = await client
+      .getAuthed('/api/v1/accountActiveOrders', 'tok')
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).not.toBeInstanceOf(LighterAuthRejectedError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('502 — non-JSON body'),
+    })
   })
 
   it('returns the parsed body when the 200 response carries a success code', async () => {
