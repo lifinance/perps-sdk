@@ -789,23 +789,29 @@ export const createLighterProvider = (
     }
   }
 
-  const resolveAccountExists = async (
-    address: Address,
-    opts?: SDKRequestOptions
-  ): Promise<boolean> => {
+  /** The account, or `undefined` when Lighter has no account for the address. */
+  const fetchAccountIfExists = async (
+    client: LighterApiClient,
+    address: Address
+  ): Promise<LtAccount | undefined> => {
     try {
-      await fetchDetailedAccount(apiClient(opts), address)
-      return true
+      return await fetchDetailedAccount(client, address)
     } catch (err) {
       if (
         err instanceof PerpsError &&
         err.code === PerpsErrorCode.AccountNotFound
       ) {
-        return false
+        return undefined
       }
       throw err
     }
   }
+
+  const resolveAccountExists = async (
+    address: Address,
+    opts?: SDKRequestOptions
+  ): Promise<boolean> =>
+    (await fetchAccountIfExists(apiClient(opts), address)) !== undefined
 
   let setupPromise: Promise<SetupAction[]> | undefined
 
@@ -1112,11 +1118,13 @@ export const createLighterProvider = (
       params: ProviderGetWithdrawableBalancesParams,
       opts?: SDKRequestOptions
     ): Promise<ProviderWithdrawableBalance[]> {
-      const account = await fetchDetailedAccount(
+      const account = await fetchAccountIfExists(
         apiClient(opts),
         params.address
       )
-      return lighterWithdrawableBalances(account.assets)
+      return account === undefined
+        ? []
+        : lighterWithdrawableBalances(account.assets)
     },
 
     async getPositions(
@@ -1126,9 +1134,16 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        fetchAccountIfExists(client, params.address),
         registry.sync(),
       ])
+      if (account === undefined) {
+        return {
+          provider: providerKey,
+          positions: [],
+          pagination: { limit: params.limit ?? 0, hasMore: false },
+        }
+      }
 
       let positions: Position[] = mapOpenPositions(account.positions, (id) =>
         toPerpsMarketDisplay(registry.require(String(id)))
@@ -1177,17 +1192,12 @@ export const createLighterProvider = (
       if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
         return undefined
       }
-      let account: LtAccount
-      try {
-        account = await fetchDetailedAccount(apiClient(opts), params.address)
-      } catch (err) {
-        if (
-          err instanceof PerpsError &&
-          err.code === PerpsErrorCode.AccountNotFound
-        ) {
-          return undefined
-        }
-        throw err
+      const account = await fetchAccountIfExists(
+        apiClient(opts),
+        params.address
+      )
+      if (account === undefined) {
+        return undefined
       }
       const row = account.positions.find(
         (p) => String(p.market_id) === params.market.marketId
