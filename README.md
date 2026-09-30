@@ -34,14 +34,32 @@ pnpm workspace — Node `>=24`, pnpm `11` (pinned via `packageManager`). From th
 | `pnpm install` | Install workspace dependencies |
 | `pnpm build` | Build every package (CJS + ESM + types) |
 | `pnpm test` | Run all package tests (vitest) |
-| `pnpm test:unit` | Unit tests only |
+| `pnpm test:unit` | Unit tests only (`*.unit.spec.ts`) |
 | `pnpm test:cov` | Tests with coverage |
 | `pnpm check` | Biome lint/format check |
 | `pnpm check:write` | Biome auto-fix |
+| `pnpm check:write:unsafe` | Biome auto-fix, including unsafe fixes |
 | `pnpm check:types` | TypeScript type checking across packages |
 | `pnpm check:types:spec` | TypeScript type checking for `*.spec.ts` files (excluded from `check:types`) |
 | `pnpm check:circular-deps` | madge circular-dependency check |
 | `pnpm knip:check` | Report unused files, deps, and exports |
+| `pnpm knip:write` | Apply the `knip` fixes |
+| `pnpm clean` | Delete the build output of every package |
+| `pnpm clean:modules` | Delete every `node_modules` directory |
+
+`pnpm build` for `@lifi/perps-sdk-provider-lighter` also generates the Go WASM runtime initializer and copies the WASM signer into `dist/`. That package has one more script, `pnpm --filter @lifi/perps-sdk-provider-lighter test:consumers`, which checks the package against consumer bundlers.
+
+### Git hooks and CI
+
+Husky runs three hooks after `pnpm install`:
+
+| Hook | Runs |
+| --- | --- |
+| `pre-commit` | [`scripts/check-no-local-links.sh`](./scripts/check-no-local-links.sh), then `pnpm pre-commit` (`check`, `check:types`, `check:types:spec`, `check:circular-deps`, `knip:check`) |
+| `commit-msg` | `commitlint` with the Conventional Commits config |
+| `pre-push` | `test:unit` in each package, one package at a time |
+
+CI ([`.github/workflows/checks.yaml`](./.github/workflows/checks.yaml)) runs `check`, `build`, `check:types`, `check:types:spec`, `check:circular-deps`, `knip:check`, and the full `test` script of each package.
 
 ## Publishing
 
@@ -83,7 +101,7 @@ The bump level never selects a channel — the channel is whole-repo state, not 
 | Channel | npm dist-tag | How |
 | --- | --- | --- |
 | Stable | `latest` | default; merge changesets as above |
-| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` |
+| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` for each package that has a changeset, then comments the install command on the PR and removes the label |
 | Alpha / Beta | `alpha` / `beta` | enter pre-release mode (below) |
 
 For a sustained pre-release line, enter pre mode on `main`:
@@ -98,7 +116,9 @@ While in pre mode, authors still write ordinary changesets — pre mode applies 
 
 ## Examples
 
-Runnable scripts in [`examples/`](./examples):
+Example scripts in [`examples/`](./examples). Each script uses a placeholder `apiKey`, and `agent-trading.ts` uses a placeholder wallet client. Replace them before you run a script.
+
+Scripts:
 
 | Script | What it shows |
 | --- | --- |
