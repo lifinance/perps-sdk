@@ -5338,21 +5338,6 @@ describe('PerpsClient', () => {
       ])
     })
 
-    it('omits the code so the backend generates one', async () => {
-      const { createCalls, executeCalls } = stageMetaAction([
-        createCodeStep('AB12CD'),
-      ])
-      const client = newClient()
-      client.setUserWallet(walletClient())
-
-      await client.createReferralCode({ address: account.address })
-
-      expect(createCalls[0].params).toEqual({})
-      expect(executeCalls).toHaveLength(1)
-      const signed = executeCalls[0].actions[0] as Eip712SignedActionStep
-      expect(signed.typedData.message).toMatchObject({ code: 'AB12CD' })
-    })
-
     it('propagates a typed PerpsError when the backend rejects an invalid code', async () => {
       server.use(
         http.post(`${BASE_URL}/createAction`, () =>

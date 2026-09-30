@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { acceptTermsTypeFields } from './acceptTerms.js'
 import type {
+  CreateReferralCodeParams,
   CreateReferralCodeTypedData,
   OnboardTypedData,
   ReferralActivityResponse,
@@ -194,5 +195,14 @@ describe('empty-state response shapes', () => {
     expect(activity.items).toEqual([])
     expect(activity.pagination.hasMore).toBe(false)
     expect(activity.pagination.cursor).toBeUndefined()
+  })
+})
+
+describe('CreateReferralCodeParams', () => {
+  it('requires the code', () => {
+    // @ts-expect-error — the backend does not generate a code
+    const params: CreateReferralCodeParams = {}
+
+    expect(params).toEqual({})
   })
 })
