@@ -12,8 +12,14 @@ import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
 type LighterWsProviderInternals = {
   accountIndexCache: Map<string, number>
+  rws: {
+    ready(): Promise<void>
+    getStatus(): string
+    send(data: string): void
+  }
   handleMessage(raw: string): void
   handleUserStats(message: LtWsUserStatsMessage): void
+  emitAccountSummary(address: string, onlyOnChange: boolean): void
 }
 
 // The market registry fetches `${apiUrl}/markets` over HTTP — served by the
@@ -2047,11 +2053,10 @@ describe('LighterWsProvider', () => {
         const listener = vi.fn()
         inject(p, `accountSummary:${TEST_ADDR}`, listener)
         const emitOnMark = () =>
-          (
-            p as unknown as {
-              emitAccountSummary(address: string, onlyOnChange: boolean): void
-            }
-          ).emitAccountSummary(TEST_ADDR, true)
+          (p as unknown as LighterWsProviderInternals).emitAccountSummary(
+            TEST_ADDR,
+            true
+          )
 
         sendUserStats(p, '100')
         sendAccountAll(p, 'subscribed/account_all', {
@@ -2068,11 +2073,12 @@ describe('LighterWsProvider', () => {
 
       it('subscribes account_all and the spot marks without an auth token, and releases them on unsubscribe', async () => {
         const provider = makeProvider()
-        ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
-        ;(provider as any).rws.getStatus = () => 'connected'
+        const internals = provider as unknown as LighterWsProviderInternals
+        internals.rws.ready = vi.fn().mockResolvedValue(undefined)
+        internals.rws.getStatus = () => 'connected'
         const send = vi.fn()
-        ;(provider as any).rws.send = send
-        ;(provider as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+        internals.rws.send = send
+        internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
 
         const unsubscribe = await provider.subscribe(
           { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
@@ -2116,10 +2122,11 @@ describe('LighterWsProvider', () => {
           {},
           freshClient()
         )
-        ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+        const internals = p as unknown as LighterWsProviderInternals
+        internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
         sendAccountAll(p, 'subscribed/account_all', {})
         expect(() =>
-          (p as unknown as LighterWsProviderInternals).handleUserStats({
+          internals.handleUserStats({
             type: 'update/user_stats',
             channel: `user_stats:${ACCOUNT_IDX}`,
             stats: {
