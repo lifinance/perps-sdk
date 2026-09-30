@@ -4,6 +4,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   TimeInForce,
   TriggerCondition,
 } from '@lifi/perps-types'
@@ -275,6 +276,30 @@ describe('mapOrder', () => {
     expect(() =>
       mapOrder(twapFixture({ orderStatus: 'unexpected' }), MARKET)
     ).toThrow(PerpsError)
+  })
+
+  it.each([
+    'filledSize',
+    'size',
+    'filledCost',
+  ] as const)('rejects a non-numeric %s with an SDKError naming the field', (field) => {
+    expect(() => mapOrder(orderFixture({ [field]: 'abc' }), MARKET)).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message: `Ondo field \`${field}\` is not a valid decimal: 'abc'`,
+        tool: 'ondo',
+      })
+    )
+  })
+
+  it('rejects a non-numeric TWAP totalSize with an SDKError naming the field', () => {
+    expect(() => mapOrder(twapFixture({ totalSize: 'abc' }), MARKET)).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message: "Ondo field `totalSize` is not a valid decimal: 'abc'",
+        tool: 'ondo',
+      })
+    )
   })
 })
 

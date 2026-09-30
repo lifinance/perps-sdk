@@ -13,8 +13,8 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
+import { toWireBig } from './decimal.js'
 
 /** Map supported Ondo lifecycle states; unsupported states fail explicitly. */
 export const mapOrderStatus = (status: string): OrderStatus => {
@@ -73,7 +73,10 @@ export const mapOrder = (
   parentOrderId?: string
 ): Order => {
   const twap = 'twapId' in order
-  const filled = new Big(order.filledSize)
+  const filled = toWireBig(order.filledSize, 'filledSize')
+  const totalSize = twap
+    ? toWireBig(order.totalSize, 'totalSize')
+    : toWireBig(order.size, 'size')
   const status = twap
     ? twapStatus(order.orderStatus)
     : mapOrderStatus(order.status)
@@ -88,10 +91,8 @@ export const mapOrder = (
       status === OrderStatus.OPEN && filled.gt(0)
         ? OrderStatus.PARTIALLY_FILLED
         : status,
-    originalSize: new Big(twap ? order.totalSize : order.size).toFixed(),
-    remainingSize: new Big(twap ? order.totalSize : order.size)
-      .minus(filled)
-      .toFixed(),
+    originalSize: totalSize.toFixed(),
+    remainingSize: totalSize.minus(filled).toFixed(),
     filledSize: order.filledSize,
     reduceOnly: order.reduceOnly ?? false,
     createdAt,
@@ -104,7 +105,7 @@ export const mapOrder = (
       ? {
           averagePrice: twap
             ? order.avgFilledPrice
-            : new Big(order.filledCost).div(filled).toFixed(),
+            : toWireBig(order.filledCost, 'filledCost').div(filled).toFixed(),
         }
       : {}),
   }

@@ -1,7 +1,7 @@
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { OndoPosition } from '../types/wire.js'
+import { toWireBig } from './decimal.js'
 
 /**
  * Map a raw Ondo position to the generic Position type. Ondo margin accounts
@@ -16,7 +16,7 @@ export const mapPosition = (
 ): Position => ({
   market,
   side: pos.direction === 'short' ? PositionSide.SHORT : PositionSide.LONG,
-  size: new Big(pos.netQuantity).abs().toFixed(),
+  size: toWireBig(pos.netQuantity, 'netQuantity').abs().toFixed(),
   entryPrice: pos.averageEntryPrice,
   markPrice: pos.markPrice,
   liquidationPrice: pos.liquidationPrice,
