@@ -1,6 +1,7 @@
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
+  PerpsErrorCode,
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
@@ -89,6 +90,17 @@ describe('mapPosition', () => {
     expect(
       mapPosition(positionFixture({ leverage: '3.7' }), MARKET).leverage
     ).toBe(3.7)
+  })
+  it('rejects a non-numeric netQuantity with an SDKError naming the field', () => {
+    expect(() =>
+      mapPosition(positionFixture({ netQuantity: 'abc' }), MARKET)
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.SDKError,
+        message: "Ondo field `netQuantity` is not a valid decimal: 'abc'",
+        tool: 'ondo',
+      })
+    )
   })
 })
 
