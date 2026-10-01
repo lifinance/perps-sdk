@@ -1,5 +1,29 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 22.0.0
+
+### Major Changes
+
+- [#545](https://github.com/lifinance/perps-sdk/pull/545) [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarketSettings` is now a required provider method and `PerpsClient.getMarketSettings` returns `Promise<MarketSettings>`: it resolves the venue leverage and margin mode for a perps market (Lighter falls back to the market default initial margin fraction with cross margin, Ondo reads its leverage endpoint) and throws a `PerpsError` for a spot market, a failed read, or a response with no usable value.
+
+  Migration: a custom `PerpsProviderPlugin` must implement `getMarketSettings` and resolve a `MarketSettings` or throw a `PerpsError`. A caller that branched on an `undefined` result must catch the `PerpsError` instead.
+
+### Minor Changes
+
+- [#541](https://github.com/lifinance/perps-sdk/pull/541) [`22fa5b2`](https://github.com/lifinance/perps-sdk/commit/22fa5b2558329e8c725227babf6caf9ca43ed61a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawableBalances` rows with a `withdrawalFee` can carry `isFeeDeducted`: `true` when the venue takes the fee out of the requested amount (Hyperliquid), `false` when the venue charges it in addition to the requested amount (Ondo). An absent `isFeeDeducted` means unknown. The client drops it from a row without a fee.
+
+### Patch Changes
+
+- [#533](https://github.com/lifinance/perps-sdk/pull/533) [`1a14b63`](https://github.com/lifinance/perps-sdk/commit/1a14b630d77672a0405084022460785199d73f6c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Ondo provider now throws a `PerpsError` with code `SDKError` and `tool: 'ondo'`, naming the field, when a venue payload holds a non-numeric fill, order, or position decimal.
+
+- [#540](https://github.com/lifinance/perps-sdk/pull/540) [`63be278`](https://github.com/lifinance/perps-sdk/commit/63be278a49823adf16df2ba6aee5f15e6e1ff385) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `createPerpsClient` and `PerpsClient` no longer accept the `disableVersionCheck` option or the keyed `providers` config, because no code read them. The `ProviderConfigs`, `ProviderConfig` and `HyperliquidConfig` exports are removed, `PerpsConfig.providers` and `PerpsClientOptions.providers` accept only a `PerpsProviderPlugin[]`, and `PerpsBaseConfig` no longer carries `providers` or `disableVersionCheck`. `WsProviderFactoryParams.markets` is removed; a custom WebSocket factory receives only `provider`, `wsUrl` and `client`. Migrate by passing `providers: [hyperliquidProvider(), ...]`. Every provider package also releases a major, because this major takes `@lifi/perps-sdk` out of their `^19` peer range.
+
+- [#542](https://github.com/lifinance/perps-sdk/pull/542) [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `@lifi/perps-sdk` now exports the `minOf` and `maxOf` Big helpers. The Lighter, Hyperliquid and Ondo providers now share them, with no change in behaviour.
+
+- Updated dependencies [[`ace0308`](https://github.com/lifinance/perps-sdk/commit/ace030844871ab1c89cd228701852516278a8637), [`42dbc80`](https://github.com/lifinance/perps-sdk/commit/42dbc80292469bf453ca2b1dd24dc29ec8a8fe63), [`63be278`](https://github.com/lifinance/perps-sdk/commit/63be278a49823adf16df2ba6aee5f15e6e1ff385), [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc), [`22fa5b2`](https://github.com/lifinance/perps-sdk/commit/22fa5b2558329e8c725227babf6caf9ca43ed61a), [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf), [`2f61644`](https://github.com/lifinance/perps-sdk/commit/2f6164454c36a8047411f5059b8a5f9ae7cdbce7), [`f3fb167`](https://github.com/lifinance/perps-sdk/commit/f3fb1676abc3afef26ace439c56a95064f927e21), [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374)]:
+  - @lifi/perps-types@18.0.0
+  - @lifi/perps-sdk@20.0.0
+
 ## 21.0.0
 
 ### Major Changes

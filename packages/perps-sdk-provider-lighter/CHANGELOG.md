@@ -1,5 +1,49 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 31.0.0
+
+### Major Changes
+
+- [#532](https://github.com/lifinance/perps-sdk/pull/532) [`51569ec`](https://github.com/lifinance/perps-sdk/commit/51569ec83540929242deb8e8dececa212fe21936) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `lighterWithdrawableBalances` now takes the account and the settlement asset index, and caps the settlement asset's `perps` row at the account `available_balance`, so the withdrawable amount no longer includes margin that open positions use.
+
+- [#545](https://github.com/lifinance/perps-sdk/pull/545) [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarketSettings` is now a required provider method and `PerpsClient.getMarketSettings` returns `Promise<MarketSettings>`: it resolves the venue leverage and margin mode for a perps market (Lighter falls back to the market default initial margin fraction with cross margin, Ondo reads its leverage endpoint) and throws a `PerpsError` for a spot market, a failed read, or a response with no usable value.
+
+  Migration: a custom `PerpsProviderPlugin` must implement `getMarketSettings` and resolve a `MarketSettings` or throw a `PerpsError`. A caller that branched on an `undefined` result must catch the `PerpsError` instead.
+
+### Minor Changes
+
+- [#534](https://github.com/lifinance/perps-sdk/pull/534) [`ace0308`](https://github.com/lifinance/perps-sdk/commit/ace030844871ab1c89cd228701852516278a8637) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `availableMargin` is now the cross free collateral (`cross_asset_value` minus `cross_initial_margin_requirement`, floored at 0) instead of the withdrawable `available_balance`, and `LighterAccountConfig` carries the new `crossAssetValue` and `crossInitialMarginRequirement` fields.
+
+- [#546](https://github.com/lifinance/perps-sdk/pull/546) [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Spot rows from `getAccount` now carry `transferable`: the part of `units` that the venue releases from that category. Hyperliquid sets it to `total` minus `hold`, and Lighter sets it to `balance` minus `locked_balance`, clamped to `[0, units]`. The `Balance.transferable` doc states that every collateral row and every spot row carries it.
+
+### Patch Changes
+
+- [#538](https://github.com/lifinance/perps-sdk/pull/538) [`45efeb5`](https://github.com/lifinance/perps-sdk/commit/45efeb5b397512fd7857684e0049779ead496239) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter WebSocket `accountSummary` stream now includes the spot-route holdings in `portfolioValue`, so the streamed value equals the REST `getAccountSummary` value. The stream also subscribes `account_all/{account_index}` and the spot-mark channels, and the first emit waits for the first `account_all` snapshot.
+
+- [#539](https://github.com/lifinance/perps-sdk/pull/539) [`95a732d`](https://github.com/lifinance/perps-sdk/commit/95a732d69a1f9ca0d2f85bc9b6ae8f85abcae50b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The last Lighter `getPortfolioHistory` point now equals `getAccountSummary` `portfolioValue`, so spot-route balances count in the history anchor. Each `getPortfolioHistory` call now reads the account through `getAccount`, which adds the LI.FI markets context read and, when the SDK holds a registered API key, the Lighter `/api/v1/apikeys` and `/api/v1/accountLimits` reads; a failure of any of these reads rejects the history call.
+
+- [#540](https://github.com/lifinance/perps-sdk/pull/540) [`63be278`](https://github.com/lifinance/perps-sdk/commit/63be278a49823adf16df2ba6aee5f15e6e1ff385) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `createPerpsClient` and `PerpsClient` no longer accept the `disableVersionCheck` option or the keyed `providers` config, because no code read them. The `ProviderConfigs`, `ProviderConfig` and `HyperliquidConfig` exports are removed, `PerpsConfig.providers` and `PerpsClientOptions.providers` accept only a `PerpsProviderPlugin[]`, and `PerpsBaseConfig` no longer carries `providers` or `disableVersionCheck`. `WsProviderFactoryParams.markets` is removed; a custom WebSocket factory receives only `provider`, `wsUrl` and `client`. Migrate by passing `providers: [hyperliquidProvider(), ...]`. Every provider package also releases a major, because this major takes `@lifi/perps-sdk` out of their `^19` peer range.
+
+- [#525](https://github.com/lifinance/perps-sdk/pull/525) [`7ba28cb`](https://github.com/lifinance/perps-sdk/commit/7ba28cbaf0cea2afe5f55c14463f3f84ff46a189) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getPositions` and `getWithdrawableBalances` return an empty result for a wallet that has no Lighter account, instead of an `AccountNotFound` error.
+
+- [#526](https://github.com/lifinance/perps-sdk/pull/526) [`1c977fc`](https://github.com/lifinance/perps-sdk/commit/1c977fc51327b55d34bdd9e4373cf37185f67168) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter account reads now reject with a `ThirdPartyError` `PerpsError` that holds the HTTP status when `/api/v1/account` returns a non-2xx response with a non-JSON body, and no longer throw a `TypeError`.
+
+- [#527](https://github.com/lifinance/perps-sdk/pull/527) [`4882167`](https://github.com/lifinance/perps-sdk/commit/4882167d8632c48f995e419c4d0e0daecf93d9b8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter checked REST reads now reject with a `ThirdPartyError` `PerpsError` that holds the HTTP status when a non-2xx response has a non-JSON body, and no longer throw a `TypeError`.
+
+- [#542](https://github.com/lifinance/perps-sdk/pull/542) [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `@lifi/perps-sdk` now exports the `minOf` and `maxOf` Big helpers. The Lighter, Hyperliquid and Ondo providers now share them, with no change in behaviour.
+
+- [#545](https://github.com/lifinance/perps-sdk/pull/545) [`08db4f7`](https://github.com/lifinance/perps-sdk/commit/08db4f71b6d9034f679f83a4003defd142dea33d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarketSettings` reads the Lighter default leverage from the backend market `defaultLeverage` and no longer calls `/api/v1/orderBookDetails`. This replaces the initial margin fraction fallback. The backend market list must carry a positive `defaultLeverage` for every Lighter perps market; otherwise `getMarketSettings` throws a `PerpsError` with code `SDKError`.
+
+- [#547](https://github.com/lifinance/perps-sdk/pull/547) [`7f1e668`](https://github.com/lifinance/perps-sdk/commit/7f1e6680029881d0b3b80ea3e02ab63b6d708305) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter WS `accountSummary` subscription reads the spot balances from the `account_all_assets` channel when an auth token resolves for the address, and keeps the public `account_all` channel otherwise. A resolver that throws counts as no token.
+
+- [#548](https://github.com/lifinance/perps-sdk/pull/548) [`91a6941`](https://github.com/lifinance/perps-sdk/commit/91a694130e9068e68cd87a4feef04fce7ea16b0a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `getAccount` labels and prices spot balances with `LIGHTER_SPOT_CATEGORY_ID`, the same spot category id that the WebSocket `accountSummary` and the other Lighter call sites use.
+
+- [#549](https://github.com/lifinance/perps-sdk/pull/549) [`b2e1c10`](https://github.com/lifinance/perps-sdk/commit/b2e1c10c982e5731da203b290285ccbe75033b02) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `getPortfolioHistory` now unwinds spot-route transfers (`spot_inflow` / `spot_outflow`), so an internal perps-to-spot transfer no longer moves earlier account values.
+
+- Updated dependencies [[`ace0308`](https://github.com/lifinance/perps-sdk/commit/ace030844871ab1c89cd228701852516278a8637), [`42dbc80`](https://github.com/lifinance/perps-sdk/commit/42dbc80292469bf453ca2b1dd24dc29ec8a8fe63), [`63be278`](https://github.com/lifinance/perps-sdk/commit/63be278a49823adf16df2ba6aee5f15e6e1ff385), [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc), [`22fa5b2`](https://github.com/lifinance/perps-sdk/commit/22fa5b2558329e8c725227babf6caf9ca43ed61a), [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf), [`2f61644`](https://github.com/lifinance/perps-sdk/commit/2f6164454c36a8047411f5059b8a5f9ae7cdbce7), [`f3fb167`](https://github.com/lifinance/perps-sdk/commit/f3fb1676abc3afef26ace439c56a95064f927e21), [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374)]:
+  - @lifi/perps-types@18.0.0
+  - @lifi/perps-sdk@20.0.0
+
 ## 30.0.1
 
 ### Patch Changes
