@@ -1,5 +1,30 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 20.0.0
+
+### Major Changes
+
+- [#545](https://github.com/lifinance/perps-sdk/pull/545) [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarketSettings` is now a required provider method and `PerpsClient.getMarketSettings` returns `Promise<MarketSettings>`: it resolves the venue leverage and margin mode for a perps market (Lighter falls back to the market default initial margin fraction with cross margin, Ondo reads its leverage endpoint) and throws a `PerpsError` for a spot market, a failed read, or a response with no usable value.
+
+  Migration: a custom `PerpsProviderPlugin` must implement `getMarketSettings` and resolve a `MarketSettings` or throw a `PerpsError`. A caller that branched on an `undefined` result must catch the `PerpsError` instead.
+
+### Minor Changes
+
+- [#536](https://github.com/lifinance/perps-sdk/pull/536) [`688b7c4`](https://github.com/lifinance/perps-sdk/commit/688b7c4d6fa2ab96c08a60a397322bd7f1ee0dd5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Hyperliquid activity now includes HYPE staking moves (`cStakingTransfer`) and borrow-lend market moves (`borrowLend`) as transfer rows.
+  A zero-hash row (for example, a completed unstake) gets the id `<type>:<token>:<direction or operation>:<amount>:<ISO time>`.
+
+- [#541](https://github.com/lifinance/perps-sdk/pull/541) [`22fa5b2`](https://github.com/lifinance/perps-sdk/commit/22fa5b2558329e8c725227babf6caf9ca43ed61a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawableBalances` rows with a `withdrawalFee` can carry `isFeeDeducted`: `true` when the venue takes the fee out of the requested amount (Hyperliquid), `false` when the venue charges it in addition to the requested amount (Ondo). An absent `isFeeDeducted` means unknown. The client drops it from a row without a fee.
+
+- [#546](https://github.com/lifinance/perps-sdk/pull/546) [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Spot rows from `getAccount` now carry `transferable`: the part of `units` that the venue releases from that category. Hyperliquid sets it to `total` minus `hold`, and Lighter sets it to `balance` minus `locked_balance`, clamped to `[0, units]`. The `Balance.transferable` doc states that every collateral row and every spot row carries it.
+
+### Patch Changes
+
+- [#542](https://github.com/lifinance/perps-sdk/pull/542) [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `@lifi/perps-sdk` now exports the `minOf` and `maxOf` Big helpers. The Lighter, Hyperliquid and Ondo providers now share them, with no change in behaviour.
+
+- Updated dependencies [[`ace0308`](https://github.com/lifinance/perps-sdk/commit/ace030844871ab1c89cd228701852516278a8637), [`42dbc80`](https://github.com/lifinance/perps-sdk/commit/42dbc80292469bf453ca2b1dd24dc29ec8a8fe63), [`63be278`](https://github.com/lifinance/perps-sdk/commit/63be278a49823adf16df2ba6aee5f15e6e1ff385), [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc), [`22fa5b2`](https://github.com/lifinance/perps-sdk/commit/22fa5b2558329e8c725227babf6caf9ca43ed61a), [`a4eeef7`](https://github.com/lifinance/perps-sdk/commit/a4eeef7643de02d35a27df74d7a2b336f5238ebf), [`2f61644`](https://github.com/lifinance/perps-sdk/commit/2f6164454c36a8047411f5059b8a5f9ae7cdbce7), [`f3fb167`](https://github.com/lifinance/perps-sdk/commit/f3fb1676abc3afef26ace439c56a95064f927e21), [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374)]:
+  - @lifi/perps-types@18.0.0
+  - @lifi/perps-sdk@20.0.0
+
 ## 19.0.0
 
 ### Major Changes

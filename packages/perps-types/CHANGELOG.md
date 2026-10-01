@@ -1,5 +1,25 @@
 # @lifi/perps-types
 
+## 18.0.0
+
+### Major Changes
+
+- [#531](https://github.com/lifinance/perps-sdk/pull/531) [`42dbc80`](https://github.com/lifinance/perps-sdk/commit/42dbc80292469bf453ca2b1dd24dc29ec8a8fe63) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `CreateReferralCodeParams.code` is now required, `RevokeAgentParams` is now an empty params type (the backend ignores `address` and `name`), and `WithdrawalParams` accepts the Lighter `assetId` and `route` fields. The TSDoc for deposit `amount` (base-unit integer string), `marginMode` and TWAP `randomize` now matches the backend.
+
+### Minor Changes
+
+- [#534](https://github.com/lifinance/perps-sdk/pull/534) [`ace0308`](https://github.com/lifinance/perps-sdk/commit/ace030844871ab1c89cd228701852516278a8637) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter `availableMargin` is now the cross free collateral (`cross_asset_value` minus `cross_initial_margin_requirement`, floored at 0) instead of the withdrawable `available_balance`, and `LighterAccountConfig` carries the new `crossAssetValue` and `crossInitialMarginRequirement` fields.
+
+- [#543](https://github.com/lifinance/perps-sdk/pull/543) [`2f61644`](https://github.com/lifinance/perps-sdk/commit/2f6164454c36a8047411f5059b8a5f9ae7cdbce7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsMarket` has an optional `defaultLeverage` field: the display leverage the venue applies to a market with no stored user setting.
+
+### Patch Changes
+
+- [#545](https://github.com/lifinance/perps-sdk/pull/545) [`35ca0b4`](https://github.com/lifinance/perps-sdk/commit/35ca0b43419eeb95d2a66c55598717027ead6cdc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarketSettings` is now a required provider method and `PerpsClient.getMarketSettings` returns `Promise<MarketSettings>`: it resolves the venue leverage and margin mode for a perps market (Lighter falls back to the market default initial margin fraction with cross margin, Ondo reads its leverage endpoint) and throws a `PerpsError` for a spot market, a failed read, or a response with no usable value.
+
+  Migration: a custom `PerpsProviderPlugin` must implement `getMarketSettings` and resolve a `MarketSettings` or throw a `PerpsError`. A caller that branched on an `undefined` result must catch the `PerpsError` instead.
+
+- [#546](https://github.com/lifinance/perps-sdk/pull/546) [`29c8698`](https://github.com/lifinance/perps-sdk/commit/29c8698b12e7d38e80cd8b1d8c97fab16cac5374) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Spot rows from `getAccount` now carry `transferable`: the part of `units` that the venue releases from that category. Hyperliquid sets it to `total` minus `hold`, and Lighter sets it to `balance` minus `locked_balance`, clamped to `[0, units]`. The `Balance.transferable` doc states that every collateral row and every spot row carries it.
+
 ## 17.0.0
 
 ### Major Changes
