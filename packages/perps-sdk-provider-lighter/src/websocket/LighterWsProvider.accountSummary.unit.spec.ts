@@ -275,10 +275,12 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
     stubFetch('0', 'cash')
     const client = {
       config: { apiUrl: 'https://backend.test/v1/perps' },
-    } as PerpsSDKClient
+      providers: [],
+      getProvider: () => undefined,
+    } as unknown as PerpsSDKClient
 
     const rest = await restPortfolioValue(client)
-    const streamed = await streamedSummaries(client, '0')
+    const streamed = await streamedSummaries(client, '0', FRAME_ORDERS[0])
 
     expect(rest).toBe('154.00625')
     expect(streamed).toHaveLength(1)

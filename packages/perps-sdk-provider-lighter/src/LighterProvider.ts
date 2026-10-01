@@ -1060,7 +1060,12 @@ export const createLighterProvider = (
       const balances: Balance[] = heldAssets.map((a) => {
         const balance = new Big(a.balance)
         return {
-          ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), a.balance),
+          ...toBalance(
+            a,
+            LIGHTER_SPOT_CATEGORY_ID,
+            registryAsset(a),
+            a.balance
+          ),
           transferable: minOf(
             maxOf(
               balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
