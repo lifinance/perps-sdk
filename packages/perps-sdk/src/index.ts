@@ -235,6 +235,12 @@ export {
   triggerConditionFor,
 } from './utils/orderClassification.js'
 export {
+  marginFromNotional,
+  marginFromSize,
+  sizeFromMargin,
+  sizeFromNotional,
+} from './utils/orderEntry.js'
+export {
   expectedRealizedPnlForOpenOrder,
   expectedRealizedPnlForTriggerOrder,
   findMatchingPosition,
