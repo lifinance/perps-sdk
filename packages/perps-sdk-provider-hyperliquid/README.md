@@ -106,7 +106,8 @@ names its `clientOrderId`. A row with no `clientOrderId`, or one whose
 placement transaction has left the explorer window, keeps `explorerLink`
 absent. The read is skipped when no row carries a `clientOrderId`, and an
 explorer failure leaves the rows unlinked instead of failing the order read or
-the stream.
+the stream. A stream frame waits at most 3 seconds for the explorer, then emits
+its rows unlinked.
 
 | Venue state | SDK status |
 | --- | --- |

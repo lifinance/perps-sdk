@@ -1,4 +1,5 @@
 import {
+  createWarnOnce,
   DecodeChain,
   getMarketRegistry,
   isActiveMarket,
@@ -87,6 +88,11 @@ import {
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
+// The serial order-update chain waits on the explorer read, so a slow explorer must not hold later frames.
+const EXPLORER_LINK_TIMEOUT_MS = 3_000
+
+const warnExplorerLink = createWarnOnce()
 
 const normalizeHlAddress = (address: string): string =>
   isAddress(address, { strict: false }) ? address.toLowerCase() : address
@@ -1113,11 +1119,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
-      const orders = await withExplorerLinks(
-        mapped.filter((order) => order !== undefined),
-        user,
-        hlInfoOptions(client)
-      )
+      const unlinked = mapped.filter((order) => order !== undefined)
+      const orders = await withExplorerLinks(unlinked, user, {
+        ...hlInfoOptions(client),
+        signal: AbortSignal.timeout(EXPLORER_LINK_TIMEOUT_MS),
+      }).catch((error: unknown) => {
+        warnExplorerLink(
+          'explorer link lookup failed',
+          `[${this.providerKey}:ws] explorer link lookup failed: ${String(error)}`
+        )
+        return unlinked
+      })
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }

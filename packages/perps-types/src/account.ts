@@ -89,7 +89,7 @@ export interface OrderBase {
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
   parentOrderId?: string
-  /** Explorer URL of the placement transaction; absent when the provider cannot find that transaction. */
+  /** Explorer URL of a transaction that placed or amended the order; absent when the provider cannot find one. */
   explorerLink?: string
   createdAt: string
   updatedAt: string
