@@ -1,6 +1,6 @@
 import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
-import { maxOf, minOf } from './minMax.js'
+import { maxOf, minOf } from './math.js'
 
 describe('maxOf', () => {
   it.each([
