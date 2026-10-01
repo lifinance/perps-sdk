@@ -181,7 +181,6 @@ export type {
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
-export { calculateTransferable } from './utils/calculateTransferable.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
@@ -223,6 +222,7 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './utils/format.js'
+export { maxOf, minOf } from './utils/minMax.js'
 export {
   ACTIVE_ORDER_STATUSES,
   classifyFill,

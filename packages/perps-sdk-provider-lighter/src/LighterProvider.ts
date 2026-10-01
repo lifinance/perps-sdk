@@ -1,6 +1,5 @@
 import {
   ACTIVE_ORDER_STATUSES,
-  calculateTransferable,
   type DepositFlow,
   explorerTxUrl,
   explorerTxUrlFromBase,
@@ -10,6 +9,8 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
+  maxOf,
+  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -1033,8 +1034,8 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? calculateTransferable(
-                availableBalance,
+            ? minOf(
+                maxOf(availableBalance, new Big(0)),
                 new Big(a.margin_balance)
               ).toFixed()
             : '0',
