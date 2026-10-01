@@ -1,3 +1,5 @@
+import type { LtAccountAsset } from './account.js'
+
 // The Lighter stream server sends JSON messages of shape:
 //   { type: 'subscribed/<channel>' | 'update/<channel>' | 'ping',
 //     channel: '<channel>/<id>',
@@ -9,6 +11,7 @@
 //   - spot_market_stats/all   → context across all spot markets
 //   - spot_market_stats/{id}  → context for one spot market
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
+//   - account_all/{account}   → per-asset spot-route balances
 
 /**
  * Common envelope fields on every Lighter WebSocket frame.
@@ -209,6 +212,21 @@ export type LtWsUserStatsMessage = LtWsMessage & {
       available_balance: string
     }
   }
+}
+
+/**
+ * `account_all/{account_index}` frame, read for its `assets` map only. The
+ * `subscribed/` frame carries every asset keyed by asset index; an `update/`
+ * frame carries the changed assets, or `null` when no balance changed.
+ * `balance` is the spot-route balance in asset units.
+ * @public
+ */
+export type LtWsAccountAllMessage = LtWsMessage & {
+  type: 'subscribed/account_all' | 'update/account_all'
+  assets?: Record<
+    string,
+    Pick<LtAccountAsset, 'symbol' | 'asset_id' | 'balance' | 'locked_balance'>
+  > | null
 }
 
 /**

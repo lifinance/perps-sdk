@@ -1,6 +1,8 @@
 import {
   getMarketRegistry,
   getMarketsContext,
+  maxOf,
+  minOf,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
@@ -14,7 +16,7 @@ import type {
   HyperliquidDexAccountState,
   Position,
 } from '@lifi/perps-types'
-import type Big from 'big.js'
+import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -66,13 +68,6 @@ interface BalancePartition {
   collateralBalances: Balance[]
 }
 
-const transferableWithin = (venueFigure: Big, units: Big): string => {
-  if (venueFigure.lt(0)) {
-    return '0'
-  }
-  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
-}
-
 const buildBalances = (
   abstraction: HlAbstractionMode | null,
   spotState: HlSpotClearinghouseState,
@@ -107,10 +102,13 @@ const buildBalances = (
         units: value.toFixed(),
         valueUsd: value.toFixed(),
         price: '1',
-        transferable: transferableWithin(
-          toWireBig(state.withdrawable, 'clearinghouseState.withdrawable'),
+        transferable: minOf(
+          maxOf(
+            toWireBig(state.withdrawable, 'clearinghouseState.withdrawable'),
+            new Big(0)
+          ),
           value
-        ),
+        ).toFixed(),
       })
     }
   }

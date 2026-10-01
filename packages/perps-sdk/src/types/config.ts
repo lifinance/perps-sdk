@@ -24,32 +24,6 @@ export type SwitchChainHook = (
 ) => Promise<PerpsClientSigner | undefined>
 
 /**
- * Per-provider config — restricts which `markets` the WS client subscribes
- * to. Indexed by provider key.
- *
- * @public
- */
-export interface ProviderConfig {
-  /** Optional provider category/market ids used to filter WS subscriptions. */
-  markets?: string[]
-}
-
-/**
- * @deprecated Use {@link ProviderConfig}.
- * @public
- */
-export type HyperliquidConfig = ProviderConfig
-
-/**
- * Map of per-provider {@link ProviderConfig}, keyed by provider key.
- *
- * @public
- */
-export interface ProviderConfigs {
-  [provider: string]: ProviderConfig | undefined
-}
-
-/**
  * Hook to rewrite each outgoing request's URL/`RequestInit` before it is sent.
  *
  * @public
@@ -101,12 +75,8 @@ export interface PerpsBaseConfig {
   apiKey: string
   /** Resolved perps API base URL. */
   apiUrl: string
-  /** Whether SDK version compatibility checks are disabled. */
-  disableVersionCheck?: boolean
   /** Optional outgoing-request URL/options interceptor. */
   requestInterceptor?: RequestInterceptor
-  /** Optional per-provider WS market filters. */
-  providers?: ProviderConfigs
   /** Optional global or per-provider retry configuration. */
   retry?: RetryConfig
   /** Fetch implementation used by core HTTP transport. */

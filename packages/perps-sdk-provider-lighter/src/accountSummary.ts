@@ -11,7 +11,14 @@ import { atLeastZero } from './availableToTrade.js'
 import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
-const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
+/**
+ * The Lighter arm of `account.config`.
+ *
+ * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
+ */
+export const lighterConfig = (
+  account: AccountResponse
+): LighterAccountConfig => {
   const { config } = account
   if (
     config.provider !== LIGHTER_PROVIDER_KEY &&
@@ -24,6 +31,19 @@ const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
   }
   return config
 }
+
+/**
+ * Lighter portfolio value: the perps-route equity (`total_asset_value`) plus
+ * the USD value of every spot-route holding, settlement asset included.
+ */
+export const lighterPortfolioValue = (
+  perpsEquity: Big,
+  spotValuesUsd: readonly string[]
+): Big =>
+  spotValuesUsd.reduce(
+    (sum, valueUsd) => sum.plus(toRequiredBig(valueUsd, 'valueUsd')),
+    perpsEquity
+  )
 
 /**
  * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
@@ -50,15 +70,11 @@ export function getAccountSummary(
     unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl)
   }
 
-  let portfolioValue = toRequiredBig(config.totalAssetValue, 'totalAssetValue')
-  for (const balance of account.balances) {
-    portfolioValue = portfolioValue.plus(
-      toRequiredBig(balance.valueUsd, 'valueUsd')
-    )
-  }
-
   return {
-    portfolioValue: portfolioValue.toFixed(),
+    portfolioValue: lighterPortfolioValue(
+      toRequiredBig(config.totalAssetValue, 'totalAssetValue'),
+      account.balances.map((balance) => balance.valueUsd)
+    ).toFixed(),
     availableMargin: atLeastZero(
       toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(
         toRequiredBig(

@@ -8,8 +8,10 @@ import type {
   PositionsResponse,
   Quote,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createPerpsClient } from '../client/createPerpsClient.js'
+import type { PerpsClientOptions, PerpsConfig } from './api.js'
+import type { PerpsBaseConfig } from './config.js'
 import type { PerpsProviderPlugin } from './provider.js'
 
 function makeStubProvider(type: string): PerpsProviderPlugin {
@@ -86,27 +88,30 @@ describe('PerpsProvider integration with createPerpsClient', () => {
     expect(client.getProvider('anything')).toBeUndefined()
   })
 
-  it('accepts the legacy ProviderConfigs shape and routes it to config.providers', () => {
-    const client = createPerpsClient({
-      integrator: 'test-app',
-      apiKey: 'test-key',
-      providers: { hyperliquid: { markets: ['BTC', 'ETH'] } },
-    })
-
-    expect(client.providers).toEqual([])
-    expect(client.config.providers).toEqual({
-      hyperliquid: { markets: ['BTC', 'ETH'] },
-    })
+  it('accepts only the plugin array as providers', () => {
+    expectTypeOf<PerpsConfig['providers']>().toEqualTypeOf<
+      PerpsProviderPlugin[] | undefined
+    >()
+    expectTypeOf<PerpsClientOptions['providers']>().toEqualTypeOf<
+      PerpsProviderPlugin[] | undefined
+    >()
+    expectTypeOf<PerpsBaseConfig>().not.toHaveProperty('providers')
   })
 
-  it('keeps config.providers undefined when the plugin array is passed', () => {
+  it('has no disableVersionCheck option', () => {
+    expectTypeOf<PerpsConfig>().not.toHaveProperty('disableVersionCheck')
+    expectTypeOf<PerpsBaseConfig>().not.toHaveProperty('disableVersionCheck')
+  })
+
+  it('keeps provider config and the version-check flag off the resolved config', () => {
     const client = createPerpsClient({
       integrator: 'test-app',
       apiKey: 'test-key',
       providers: [makeStubProvider('hyperliquid')],
     })
 
-    expect(client.config.providers).toBeUndefined()
+    expect(client.config).not.toHaveProperty('providers')
+    expect(client.config).not.toHaveProperty('disableVersionCheck')
   })
 
   it('injects the client via bind so the clientless read can resolve it', async () => {

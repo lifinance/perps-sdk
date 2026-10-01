@@ -12,6 +12,7 @@ export interface GetOhlcvParams {
   provider: string
   /** Opaque provider `Market.id`, not a display symbol. */
   marketId: string
+  /** Pick from the provider's `Provider.supportedIntervals`; support varies per provider. */
   interval: OhlcvInterval
   /** Unix timestamp in milliseconds for the start bound. */
   startTime?: number

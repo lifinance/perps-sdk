@@ -21,13 +21,6 @@ export interface WsProviderFactoryParams {
   /** WS URL discovered from `/providers`. */
   wsUrl: string
   /**
-   * Markets visible to this provider via `/providers`, optionally filtered
-   * by the consumer's `createPerpsClient({ providers: { [key]: { markets } } })`
-   * config. Each provider interprets these its own way — Hyperliquid uses
-   * them to decide which sub-DEXes to subscribe to; Lighter ignores them.
-   */
-  markets: string[]
-  /**
    * The SDK client. WS providers use it to call core services (e.g.
    * `getAssets` to source the wire-id ↔ display-symbol map) without
    * duplicating backend orchestration in the WS layer.
@@ -235,21 +228,9 @@ export class PerpsWsClient {
       throw new Error(`No WebSocket URL found for provider: ${provider}`)
     }
 
-    const allMarkets = (providerInfo.categories ?? []) as Array<{
-      id: string
-    }>
-    const providerConfig = this.client.config.providers?.[provider]
-    const configuredMarkets = providerConfig?.markets
-    const markets = (
-      configuredMarkets
-        ? allMarkets.filter((m) => configuredMarkets.includes(m.id))
-        : allMarkets
-    ).map((m) => m.id)
-
     const wsProvider = factory({
       provider,
       wsUrl: providerInfo.wsUrl,
-      markets,
       client: this.client,
     })
     this.providers.set(provider, wsProvider)

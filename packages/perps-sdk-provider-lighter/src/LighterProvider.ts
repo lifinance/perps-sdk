@@ -9,6 +9,8 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
+  maxOf,
+  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -74,7 +76,7 @@ import {
   projectLighterConfigSettings,
   resolveAccountTier,
 } from './accountConfig.js'
-import { getAccountSummary } from './accountSummary.js'
+import { getAccountSummary, lighterConfig } from './accountSummary.js'
 import { lighterAvailableToTrade } from './availableToTrade.js'
 import {
   DEFAULT_TRADES_LIMIT,
@@ -159,10 +161,9 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
-import { spotPriceByAssetId } from './utils/spotPrice.js'
+import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
-import { transferableWithin } from './utils/withdrawableBalances.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -1014,16 +1015,17 @@ export const createLighterProvider = (
         asset: Asset,
         units: string
       ): Balance => {
-        const price =
-          a.asset_id === collateral.assetIndex
-            ? new Big(1)
-            : spotPrices.get(String(a.asset_id))
+        const { valueUsd, price } = spotValuation(
+          a.asset_id,
+          units,
+          collateral.assetIndex,
+          spotPrices
+        )
         return {
           categoryId,
           asset,
           units,
-          valueUsd:
-            price === undefined ? '0' : new Big(units).times(price).toFixed(),
+          valueUsd,
           ...(price === undefined ? {} : { price: price.toFixed() }),
         }
       }
@@ -1051,8 +1053,8 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? transferableWithin(
-                availableBalance,
+            ? minOf(
+                maxOf(availableBalance, new Big(0)),
                 new Big(a.margin_balance)
               ).toFixed()
             : '0',
@@ -1524,12 +1526,12 @@ export const createLighterProvider = (
       }
 
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
+      const account = await plugin.getAccount({ address: params.address }, opts)
       const window = PNL_WINDOWS[params.range]
       const endTimestampSeconds = Math.floor(Date.now() / 1_000)
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
-        value: String(account.index),
+        value: String(lighterConfig(account).accountIndex),
         resolution: window.resolution,
         start_timestamp:
           params.range === 'all'
@@ -1568,7 +1570,7 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        toRequiredBig(account.total_asset_value, 'total_asset_value')
+        new Big(getAccountSummary(account, account.positions).portfolioValue)
       )
     },
 

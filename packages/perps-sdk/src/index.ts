@@ -132,11 +132,8 @@ export type {
   WithdrawParams,
 } from './types/api.js'
 export type {
-  HyperliquidConfig,
   PerpsBaseConfig,
   PerpsClientSigner,
-  ProviderConfig,
-  ProviderConfigs,
   RequestInterceptor,
   SDKRequestOptions,
   SwitchChainHook,
@@ -222,6 +219,7 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './utils/format.js'
+export { maxOf, minOf } from './utils/math.js'
 export {
   ACTIVE_ORDER_STATUSES,
   classifyFill,
