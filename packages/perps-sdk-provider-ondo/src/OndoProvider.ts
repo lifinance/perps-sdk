@@ -19,6 +19,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPortfolioHistoryParams,
@@ -53,6 +54,7 @@ import type {
   FundingActivity,
   LiquidationActivity,
   MarketDisplay,
+  MarketSettings,
   OndoAccountConfig,
   Order,
   OrdersResponse,
@@ -66,7 +68,12 @@ import type {
   SigningMethod,
   WithdrawalActivity,
 } from '@lifi/perps-types'
-import { ActionType, ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  ActionType,
+  ActivityType,
+  MarginMode,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
@@ -430,6 +437,55 @@ export const ondoProvider = (
             balance,
             account.withdrawalFeeUSD
           )
+        }
+      )
+    },
+
+    /** Ondo is cross-only, so the venue reports leverage alone. */
+    async getMarketSettings(
+      params: ProviderGetMarketSettingsParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarketSettings> {
+      const { marketId, categoryId } = params.market
+      if (categoryId !== ONDO_PROVIDER_KEY) {
+        const error = new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `Ondo market '${marketId}' in category '${categoryId}' is not a perps market`
+        )
+        error.tool = ONDO_PROVIDER_KEY
+        throw error
+      }
+      return withSession(
+        params.address,
+        () => {
+          throw new OndoSessionExpiredError(
+            `No valid Ondo session token stored for ${params.address}. Run the SIWE login first.`
+          )
+        },
+        async (token) => {
+          const leverages = await apiClient(opts).get<OndoLeverage[]>(
+            '/v1/perps/leverage',
+            { params: { market: marketId }, authToken: token.token }
+          )
+          const row = leverages.find((r) => r.market === marketId)
+          if (row === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo returned no leverage for market '${marketId}'`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          const leverage = toWireBig(row.leverage, 'leverage')
+          if (leverage.lte(0)) {
+            const error = new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo field \`leverage\` must be positive: '${row.leverage}'`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          return { marginMode: MarginMode.CROSS, leverage: leverage.toNumber() }
         }
       )
     },

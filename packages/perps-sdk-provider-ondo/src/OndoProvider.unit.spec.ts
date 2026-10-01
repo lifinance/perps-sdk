@@ -391,8 +391,8 @@ let providersResult: Provider[]
 let balanceResult: OndoBalanceSummary
 /** `GET /v1/perps/max_order_size` response body and HTTP status. */
 let maxOrderSizeResponse: { body: unknown; status: number }
-/** `GET /v1/perps/leverage` result. */
-let leverageResult: OndoLeverage[]
+/** `GET /v1/perps/leverage` response body and HTTP status. */
+let leverageResponse: { body: unknown; status: number }
 /** `GET /v1/perps/mark_prices` response body and HTTP status. */
 let markPricesResponse: { body: unknown; status: number }
 
@@ -447,7 +447,7 @@ beforeEach(() => {
   providersResult = [ACCOUNT_PROVIDER_METADATA]
   balanceResult = BALANCE_RESULT
   maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
-  leverageResult = LEVERAGE_RESULT
+  leverageResponse = { body: envelope(LEVERAGE_RESULT), status: 200 }
   markPricesResponse = { body: envelope(MARK_PRICES_RESULT), status: 200 }
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
@@ -468,7 +468,7 @@ beforeEach(() => {
       return respond(maxOrderSizeResponse.body, maxOrderSizeResponse.status)
     }
     if (u.includes('/v1/perps/leverage')) {
-      return respond(envelope(leverageResult))
+      return respond(leverageResponse.body, leverageResponse.status)
     }
     if (u.includes('/v1/perps/mark_prices')) {
       return respond(markPricesResponse.body, markPricesResponse.status)
@@ -901,7 +901,10 @@ describe('OndoProvider — getAvailableToTrade (logged in)', () => {
   })
 
   it('rejects when the venue returns no leverage row for the market', async () => {
-    leverageResult = [{ market: 'TSLA-USD.P', leverage: '5' }]
+    leverageResponse = {
+      body: envelope([{ market: 'TSLA-USD.P', leverage: '5' }]),
+      status: 200,
+    }
     await expect(read()).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message: "Ondo returned no leverage for market 'AAPL-USD.P'",
@@ -950,6 +953,94 @@ describe('OndoProvider — getAvailableToTrade (logged in)', () => {
     expect(recorded.some((r) => r.url.includes('/v1/perps/balance'))).toBe(
       false
     )
+  })
+})
+
+describe('OndoProvider — getMarketSettings', () => {
+  const perpsMarket = { marketId: 'AAPL-USD.P', categoryId: 'ondo' }
+  const read = async () => {
+    const { provider } = await loggedInProvider()
+    return provider.getMarketSettings({ address: ADDRESS, market: perpsMarket })
+  }
+  const leverageRows = (rows: OndoLeverage[]) => {
+    leverageResponse = { body: envelope(rows), status: 200 }
+  }
+
+  it('resolves the stored leverage with cross margin', async () => {
+    await expect(read()).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 5,
+    })
+    const call = recorded.find((r) => r.url.includes('/v1/perps/leverage'))
+    expect(new URL(call!.url).searchParams.get('market')).toBe('AAPL-USD.P')
+    expect(authHeaderOf(call!)).toBe(`Bearer ${AUTH_TOKEN.token}`)
+  })
+
+  it('parses a fractional leverage string exactly', async () => {
+    leverageRows([{ market: 'AAPL-USD.P', leverage: '2.5' }])
+    await expect(read()).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 2.5,
+    })
+  })
+
+  it('rejects when the venue read fails', async () => {
+    leverageResponse = {
+      body: { success: false, error: 'venue exploded' },
+      status: 500,
+    }
+    const error = await read().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(OndoApiError)
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+  })
+
+  it('rejects when the venue returns no leverage row for the market', async () => {
+    leverageRows([{ market: 'TSLA-USD.P', leverage: '5' }])
+    await expect(read()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: "Ondo returned no leverage for market 'AAPL-USD.P'",
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects an unparsable leverage string', async () => {
+    leverageRows([{ market: 'AAPL-USD.P', leverage: 'n/a' }])
+    await expect(read()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      tool: 'ondo',
+    })
+  })
+
+  it('rejects a non-positive leverage', async () => {
+    leverageRows([{ market: 'AAPL-USD.P', leverage: '0' }])
+    await expect(read()).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: "Ondo field `leverage` must be positive: '0'",
+      tool: 'ondo',
+    })
+  })
+
+  it('throws the session-required error without a session', async () => {
+    const provider = loggedOutProvider()
+    await expect(
+      provider.getMarketSettings({ address: ADDRESS, market: perpsMarket })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+    expect(recorded).toEqual([])
+  })
+
+  it('rejects a market outside the perps category without a venue read', async () => {
+    const { provider } = await loggedInProvider()
+    await expect(
+      provider.getMarketSettings({
+        address: ADDRESS,
+        market: { marketId: 'AAPL', categoryId: 'spot' },
+      })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+      tool: 'ondo',
+    })
+    expect(recorded).toEqual([])
   })
 })
 

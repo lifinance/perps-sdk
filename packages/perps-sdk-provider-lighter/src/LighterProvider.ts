@@ -802,6 +802,24 @@ export const createLighterProvider = (
     }
   }
 
+  /** The venue default for a market: its backend `defaultLeverage`, with cross margin. */
+  const resolveDefaultMarketSettings = async (
+    marketId: string
+  ): Promise<MarketSettings> => {
+    const registry = getMarketRegistry(requireClient(), providerKey)
+    await registry.sync()
+    const market = registry.require(marketId)
+    const leverage =
+      'maxLeverage' in market ? market.defaultLeverage : undefined
+    if (leverage === undefined || !(leverage > 0)) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `The backend market '${marketId}' carries no positive Lighter default leverage`
+      )
+    }
+    return { marginMode: MarginMode.CROSS, leverage }
+  }
+
   const resolveAccountExists = async (
     address: Address,
     opts?: SDKRequestOptions
@@ -1181,34 +1199,38 @@ export const createLighterProvider = (
     },
 
     /**
-     * Lighter reports a market's margin mode and leverage only on the
-     * account's position row, so a market the account never touched (or a
-     * missing account) resolves `undefined` rather than a venue default.
+     * Lighter reports a market's margin mode and leverage on the account's
+     * position row. Without a row carrying a positive IMF (or without an
+     * account), the venue applies the market's default leverage with cross margin.
      */
     async getMarketSettings(
       params: ProviderGetMarketSettingsParams,
       opts?: SDKRequestOptions
-    ): Promise<MarketSettings | undefined> {
-      // Spot markets carry no margin mode or leverage.
-      if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
-        return undefined
+    ): Promise<MarketSettings> {
+      const { marketId, categoryId } = params.market
+      if (categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `Lighter market '${marketId}' is a spot market and carries no leverage setting`
+        )
       }
-      const account = await fetchAccountIfExists(
-        apiClient(opts),
-        params.address
+      const client = apiClient(opts)
+      const account = await fetchAccountIfExists(client, params.address)
+      const row = account?.positions.find(
+        (p) => String(p.market_id) === marketId
       )
-      if (account === undefined) {
-        return undefined
-      }
-      const row = account.positions.find(
-        (p) => String(p.market_id) === params.market.marketId
-      )
-      if (!row) {
-        return undefined
-      }
-      const leverage = leverageFromImf(row.initial_margin_fraction)
-      if (leverage === undefined) {
-        return undefined
+      // An unparsable IMF throws; a non-positive one means no stored setting.
+      const leverage =
+        row === undefined
+          ? undefined
+          : leverageFromImf(
+              toRequiredBig(
+                row.initial_margin_fraction,
+                'initial_margin_fraction'
+              ).toFixed()
+            )
+      if (row === undefined || leverage === undefined) {
+        return resolveDefaultMarketSettings(marketId)
       }
       return {
         marginMode:

@@ -213,9 +213,8 @@ export interface AvailableToTrade {
 }
 
 /**
- * The user's complete venue-side settings for one market: the margin mode
- * and display leverage the next order on it will use. A provider returns
- * `undefined` when it cannot read both values.
+ * The user's complete venue-side settings for one perps market: the margin
+ * mode and display leverage the next order on it will use.
  * @public
  */
 export interface MarketSettings {

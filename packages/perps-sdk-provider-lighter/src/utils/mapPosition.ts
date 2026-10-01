@@ -1,6 +1,7 @@
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_IMF_PERCENT_SCALE } from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 import { toPositiveRequiredBig, toRequiredBig } from './decimal.js'
@@ -23,6 +24,22 @@ export const leverageFromImf = (imf: string): number | undefined => {
     return undefined
   }
   return new Big(100).div(parsed).toNumber()
+}
+
+/**
+ * Display leverage from an integer IMF on `LIGHTER_IMF_PERCENT_SCALE`, the
+ * unit of trade rows and order-book details: `500` is 5.00%, so 20x.
+ * `undefined` for a non-positive or unparsable IMF. Lighter declares the
+ * fraction a `StrictInt`, so the scale division is exact.
+ */
+export const leverageFromScaledImf = (imf: number): number | undefined => {
+  let percent: string
+  try {
+    percent = new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed()
+  } catch {
+    return undefined
+  }
+  return leverageFromImf(percent)
 }
 
 /**

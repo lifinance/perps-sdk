@@ -1,11 +1,12 @@
-import type { SDKRequestOptions } from '@lifi/perps-sdk'
+import { PerpsError, type SDKRequestOptions } from '@lifi/perps-sdk'
 import {
   MarginMode,
   type MarketRef,
   type MarketSettings,
+  PerpsErrorCode,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { SPOT_MARKET_ID } from '../constants.js'
+import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import { fetchActiveAssetData } from './activeAssetData.js'
 
@@ -22,17 +23,23 @@ export interface GetMarketSettingsParams {
 /**
  * The user's venue-stored margin mode and leverage for one perps market,
  * read from `activeAssetData` — present whether or not a position is open.
- * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
+ * @throws {PerpsError} `ValidationError` for a spot market; `SDKError` when
+ *   the response carries no positive leverage; any other `PerpsError` on
+ *   Hyperliquid REST error, network, or parsing failures.
  * @public
  */
 export const getMarketSettings = async (
   context: HyperliquidContext,
   params: GetMarketSettingsParams,
   options?: SDKRequestOptions
-): Promise<MarketSettings | undefined> => {
-  // Spot markets carry no leverage state on the venue.
+): Promise<MarketSettings> => {
   if (params.market.categoryId === SPOT_MARKET_ID) {
-    return undefined
+    const error = new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Hyperliquid market '${params.market.marketId}' is a spot market and carries no leverage setting`
+    )
+    error.tool = PROVIDER_KEY
+    throw error
   }
   const data = await fetchActiveAssetData(
     context,
@@ -41,8 +48,13 @@ export const getMarketSettings = async (
     options
   )
   const leverage = data.leverage
-  if (!leverage) {
-    return undefined
+  if (!leverage || !(leverage.value > 0)) {
+    const error = new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Hyperliquid returned no leverage for market '${params.market.marketId}'`
+    )
+    error.tool = PROVIDER_KEY
+    throw error
   }
   return {
     marginMode:

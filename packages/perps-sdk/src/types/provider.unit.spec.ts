@@ -34,6 +34,7 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     formatOrderSize: (_market, size) => size.toString(),
     estimateLiquidationPrice: () => undefined,
     positionRemovableMargin: () => undefined,
+    getMarketSettings: () => stub(),
     projectConfig: () => [],
   }
 }

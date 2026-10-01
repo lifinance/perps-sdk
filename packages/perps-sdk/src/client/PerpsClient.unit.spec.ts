@@ -2228,14 +2228,18 @@ describe('PerpsClient', () => {
       })
     })
 
-    it('resolves undefined when the plugin has no settings read', async () => {
+    it('propagates the provider validation error for a spot market', async () => {
+      const getMarketSettings = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ValidationError, 'spot market')
+      })
+
       await expect(
-        clientWith({}).getMarketSettings({
+        clientWith({ getMarketSettings }).getMarketSettings({
           provider,
           address: userAddress,
-          market,
+          market: { marketId: 'HYPE', categoryId: 'spot' },
         })
-      ).resolves.toBeUndefined()
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     })
 
     it('propagates provider errors', async () => {
@@ -2286,6 +2290,7 @@ describe('PerpsClient', () => {
         formatOrderSize: vi.fn(),
         estimateLiquidationPrice: vi.fn(),
         positionRemovableMargin: vi.fn(),
+        getMarketSettings: vi.fn(),
         projectConfig: vi.fn(() => []),
         ...plugin,
       }
