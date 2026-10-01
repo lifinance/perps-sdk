@@ -1,10 +1,5 @@
-import Big from 'big.js'
-
-// Division precision well above any venue's size decimals, truncating so a
-// derived amount never rounds up past the exact quotient.
-const TruncBig = Big()
-TruncBig.DP = 40
-TruncBig.RM = Big.roundDown
+import type Big from 'big.js'
+import { TruncBig } from './decimal.js'
 
 /**
  * Base size the given margin buys at `leverage`: size = margin × leverage ÷ price.

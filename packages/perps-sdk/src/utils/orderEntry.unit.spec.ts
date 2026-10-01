@@ -7,6 +7,9 @@ import {
   sizeFromNotional,
 } from './orderEntry.js'
 
+// 2 ÷ 3 = 0.666…: truncation ends in 6, round-half-up would end in 7.
+const TWO_THIRDS_TRUNCATED = `0.${'6'.repeat(40)}`
+
 describe('sizeFromMargin', () => {
   it('derives size = margin × leverage ÷ price', () => {
     expect(sizeFromMargin(new Big('100'), 10, new Big('2000')).eq('0.5')).toBe(
@@ -14,10 +17,10 @@ describe('sizeFromMargin', () => {
     )
   })
 
-  it('truncates a non-terminating quotient so size × price never exceeds margin × leverage', () => {
-    const size = sizeFromMargin(new Big('100'), 1, new Big('3'))
-    expect(size.times('3').lte('100')).toBe(true)
-    expect(size.toFixed()).toBe(`33.${'3'.repeat(40)}`)
+  it('truncates so size × price never exceeds margin × leverage', () => {
+    const size = sizeFromMargin(new Big('1'), 2, new Big('3'))
+    expect(size.toFixed()).toBe(TWO_THIRDS_TRUNCATED)
+    expect(size.times('3').lte('2')).toBe(true)
   })
 
   it('leaves the global Big rounding and precision untouched', () => {
@@ -35,8 +38,9 @@ describe('marginFromSize', () => {
   })
 
   it('truncates so margin × leverage never exceeds size × price', () => {
-    const margin = marginFromSize(new Big('1'), 3, new Big('100'))
-    expect(margin.times(3).lte('100')).toBe(true)
+    const margin = marginFromSize(new Big('2'), 3, new Big('1'))
+    expect(margin.toFixed()).toBe(TWO_THIRDS_TRUNCATED)
+    expect(margin.times(3).lte('2')).toBe(true)
   })
 
   it('is the inverse of sizeFromMargin for exact quotients', () => {
@@ -53,8 +57,9 @@ describe('sizeFromNotional', () => {
   })
 
   it('truncates so size × price never exceeds the notional', () => {
-    const size = sizeFromNotional(new Big('100'), new Big('3'))
-    expect(size.times('3').lte('100')).toBe(true)
+    const size = sizeFromNotional(new Big('2'), new Big('3'))
+    expect(size.toFixed()).toBe(TWO_THIRDS_TRUNCATED)
+    expect(size.times('3').lte('2')).toBe(true)
   })
 })
 
@@ -64,7 +69,8 @@ describe('marginFromNotional', () => {
   })
 
   it('truncates so margin × leverage never exceeds the notional', () => {
-    const margin = marginFromNotional(new Big('100'), 3)
-    expect(margin.times(3).lte('100')).toBe(true)
+    const margin = marginFromNotional(new Big('2'), 3)
+    expect(margin.toFixed()).toBe(TWO_THIRDS_TRUNCATED)
+    expect(margin.times(3).lte('2')).toBe(true)
   })
 })
