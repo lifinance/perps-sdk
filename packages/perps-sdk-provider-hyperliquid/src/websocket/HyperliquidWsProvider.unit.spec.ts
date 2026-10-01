@@ -4319,6 +4319,142 @@ describe('accountSummary channel', () => {
       )
 
   it.each([
+    'spotBalances',
+    'accountSummary',
+  ] as const)('rolls back a failed price acquisition for %s and releases a successful retry', async (channel) => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const provider = createEnrichingProvider()
+    const releases: Array<() => void> = []
+    const subscription = {
+      channel,
+      dex: 'hyperliquid',
+      address: '0xabc',
+    } as const
+    const spotMessages = (method: string) =>
+      getMockRwsInstance()
+        .sent.map((raw) => JSON.parse(raw))
+        .filter(
+          (message) =>
+            message.method === method &&
+            message.subscription.type === 'spotState'
+        )
+    try {
+      marketsFetchMock
+        .mockResolvedValueOnce({ markets: [...HL_MARKETS, HL_SPOT_MARKET] })
+        .mockResolvedValueOnce(marketsFailureResponse())
+      if (channel === 'spotBalances') {
+        await expect(provider.subscribe(subscription, vi.fn())).rejects.toThrow(
+          'markets fetch failed'
+        )
+      } else {
+        releases.push(await provider.subscribe(subscription, vi.fn()))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(errors).toHaveBeenCalled()
+      }
+      expect(spotMessages('subscribe')).toHaveLength(1)
+      expect(spotMessages('unsubscribe')).toHaveLength(1)
+
+      await vi.advanceTimersByTimeAsync(201)
+      const listener = vi.fn()
+      releases.push(await provider.subscribe(subscription, listener))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spotMessages('subscribe')).toHaveLength(2)
+      expect(priceMessages('subscribe')).toHaveLength(3)
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(
+        spotFrame(
+          '0xabc',
+          [{ coin: 'USDC', token: 0, total: '1000', hold: '0' }],
+          '160'
+        )
+      )
+      expect(listener).toHaveBeenCalledWith({
+        channel,
+        data:
+          channel === 'accountSummary'
+            ? expect.objectContaining({
+                portfolioValue: '1000',
+                availableMargin: '160',
+              })
+            : [
+                expect.objectContaining({
+                  units: '1000',
+                  valueUsd: '1000',
+                }),
+              ],
+      })
+      for (const release of releases) {
+        release()
+      }
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(spotMessages('unsubscribe')).toHaveLength(2)
+      expect(priceMessages('unsubscribe')).toHaveLength(3)
+      getMockRwsInstance().sent = []
+      getMockRwsInstance().simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(getMockRwsInstance().sent).toEqual([])
+    } finally {
+      provider.close()
+      errors.mockRestore()
+      abstractionFetchMock.mockReset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('rolls back spot and price wires when the connection fails during price acquisition', async () => {
+    const provider = createEnrichingProvider()
+    try {
+      marketsFetchMock
+        .mockResolvedValueOnce({ markets: [...HL_MARKETS, HL_SPOT_MARKET] })
+        .mockImplementationOnce(() => {
+          getMockRwsInstance().simulateStatus('disconnected')
+          return { markets: [...HL_MARKETS, HL_SPOT_MARKET] }
+        })
+      await expect(
+        provider.subscribe(
+          { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+          vi.fn()
+        )
+      ).rejects.toThrow('WebSocket max reconnect attempts reached')
+      getMockRwsInstance().sent = []
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+      expect(getMockRwsInstance().sent).toEqual([])
+    } finally {
+      provider.close()
+    }
+  })
+
+  it('does not send rollback frames after closing a pending price acquisition', async () => {
+    const provider = createEnrichingProvider()
+    const socket = getMockRwsInstance()
+    let rejectReady!: (error: Error) => void
+    const pendingReady = new Promise<void>((_resolve, reject) => {
+      rejectReady = reject
+    })
+    const ready = vi.spyOn(socket, 'ready').mockReturnValueOnce(pendingReady)
+    try {
+      const opening = provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      const rejected = expect(opening).rejects.toThrow('connection failed')
+      await flushMicrotasks()
+      expect(priceMessages('subscribe')).toHaveLength(3)
+      provider.close()
+      socket.sent = []
+      rejectReady(new Error('connection failed'))
+      await rejected
+      expect(socket.sent).toEqual([])
+    } finally {
+      ready.mockRestore()
+      provider.close()
+    }
+  })
+
+  it.each([
     'portfolioMargin',
     'unifiedAccount',
   ])('revalues standalone %s summaries when spot prices arrive and change', async (mode) => {

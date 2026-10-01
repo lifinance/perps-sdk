@@ -311,16 +311,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     // Markets context aggregates slower asset-context feeds with fast mid/mark
     // ticks from `fastAssetCtxs`.
     if (sub.channel === 'marketsContext') {
+      const epoch = this.spotWireEpoch
       const entries = this.getMarketsContextSubEntries()
-
-      for (const { subKey, payload } of entries) {
-        await this.registerSub(subKey, payload)
-      }
-
-      await this.rws.ready()
-
-      return () => {
-        for (const { subKey, payload } of entries) {
+      let acquired = 0
+      const release = () => {
+        if (epoch !== this.spotWireEpoch) {
+          return
+        }
+        for (let index = 0; index < acquired; index++) {
+          const { subKey, payload } = entries[index]
           this.unregisterSub(subKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -330,15 +329,25 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         this.spotCtxByMarketId = {}
         this.fastCtxByMarketId = {}
         this.marketsContextByMarketId = {}
+        acquired = 0
+      }
+      try {
+        for (const { subKey, payload } of entries) {
+          await this.registerSub(subKey, payload)
+          acquired++
+        }
+        await this.rws.ready()
+        return release
+      } catch (error) {
+        release()
+        throw error
       }
     }
 
     // The spot wire is shared between the public spotBalances channel and
     // the unified-summary pipeline; refcounted like the clearinghouse sub.
     if (sub.channel === 'spotBalances') {
-      const release = await this.acquireSpotWire(sub.address)
-      await this.rws.ready()
-      return release
+      return this.acquireSpotWire(sub.address)
     }
 
     // `positions` and `accountSummary` are two views over the same wire
@@ -1227,18 +1236,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const payload = { type: 'spotState', user }
     const count = this.spotRefs.get(user) ?? 0
     this.spotRefs.set(user, count + 1)
-    if (count === 0) {
-      await this.registerSub(wireKey, payload)
-    }
-    const releasePrices =
-      epoch === this.spotWireEpoch
-        ? await super.subscribe(
-            { channel: 'marketsContext', dex: this.providerKey },
-            this.revalueSpotBalances
-          )
-        : undefined
+    let releasePrices: (() => void) | undefined
     let released = false
-    return () => {
+    const release = () => {
       if (released || epoch !== this.spotWireEpoch) {
         return
       }
@@ -1256,6 +1256,21 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         this.spotRefs.set(user, remaining)
       }
     }
+    try {
+      if (count === 0) {
+        await this.registerSub(wireKey, payload)
+      }
+      if (epoch === this.spotWireEpoch) {
+        releasePrices = await super.subscribe(
+          { channel: 'marketsContext', dex: this.providerKey },
+          this.revalueSpotBalances
+        )
+      }
+      return release
+    } catch (error) {
+      release()
+      throw error
+    }
   }
 
   /** Start or stop the spot-fed unified pipeline to match the resolved mode. */
@@ -1269,6 +1284,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     if (unified && existing === undefined) {
       const epoch = this.spotWireEpoch
       const releaseSpot = this.acquireSpotWire(address).catch((error) => {
+        if (this.unifiedSummaryByUser.get(key)?.releaseSpot === releaseSpot) {
+          this.unifiedSummaryByUser.delete(key)
+        }
         wsLog.handlerFailure(this.providerKey, error)
         return () => {}
       })
