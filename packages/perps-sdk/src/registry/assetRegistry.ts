@@ -1,7 +1,7 @@
 import type { Asset, AssetDisplay, AssetsResponse } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
-import { buildUrl, request } from '../transport/request.js'
+import { buildUrl, type RequestOptions, request } from '../transport/request.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { ReferenceDataRegistry } from './referenceDataRegistry.js'
 
@@ -45,13 +45,15 @@ export class AssetRegistry extends ReferenceDataRegistry<Asset> {
     return this.items
   }
 
-  protected fetchItems(): Promise<Asset[]> {
+  protected fetchItems(
+    onResponse: RequestOptions['onResponse']
+  ): Promise<Asset[]> {
     const url = buildUrl(`${this.client.config.apiUrl}/assets`, {
       provider: this.provider,
     })
-    return request<AssetsResponse>(this.client.config, url).then(
-      (response) => response.assets
-    )
+    return request<AssetsResponse>(this.client.config, url, {
+      onResponse,
+    }).then((response) => response.assets)
   }
 
   protected keyOf(asset: Asset): string {
