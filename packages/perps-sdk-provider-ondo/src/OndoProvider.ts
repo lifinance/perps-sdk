@@ -298,6 +298,15 @@ export const ondoProvider = (
     }
   }
 
+  // The `loggedOut` fallback for a per-user value read, where an empty result
+  // would be indistinguishable from an account with no data.
+  const sessionRequired = (read: string) => (): never => {
+    throw new PerpsError(
+      PerpsErrorCode.Unauthorized,
+      `Ondo ${read} requires a session token. Run the SIWE login first.`
+    )
+  }
+
   return {
     type: ONDO_PROVIDER_KEY,
 
@@ -420,7 +429,7 @@ export const ondoProvider = (
     ): Promise<ProviderWithdrawableBalance[]> {
       return withSession(
         params.address,
-        (): ProviderWithdrawableBalance[] => [],
+        sessionRequired('withdrawable balances read'),
         async (token) => {
           const client = apiClient(opts)
           const [{ providers }, balance, account] = await Promise.all([
@@ -496,7 +505,7 @@ export const ondoProvider = (
     ): Promise<AvailableToTrade | undefined> {
       return withSession(
         params.address,
-        () => undefined,
+        sessionRequired('available-to-trade read'),
         async (token) => {
           const registry = marketRegistry()
           await registry.sync()
@@ -658,11 +667,7 @@ export const ondoProvider = (
     ): Promise<PositionsResponse> {
       return withSession<PositionsResponse>(
         params.address,
-        () => ({
-          provider: ONDO_PROVIDER_KEY,
-          positions: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }),
+        sessionRequired('positions read'),
         async (token) => {
           const client = apiClient(opts)
           const [rawPositions] = await Promise.all([
@@ -698,11 +703,7 @@ export const ondoProvider = (
     ): Promise<OrdersResponse> {
       return withSession<OrdersResponse>(
         params.address,
-        () => ({
-          provider: ONDO_PROVIDER_KEY,
-          orders: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }),
+        sessionRequired('orders read'),
         async (token) => {
           const statuses =
             params.statuses === undefined
@@ -865,12 +866,7 @@ export const ondoProvider = (
     ): Promise<Order> {
       return withSession(
         params.address,
-        (): Order => {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            'Ondo order lookup requires a session token. Run the SIWE login first.'
-          )
-        },
+        sessionRequired('order lookup'),
         async (token) => {
           const client = apiClient(opts)
           const [order] = await Promise.all([
@@ -904,11 +900,7 @@ export const ondoProvider = (
     ): Promise<FillsResponse> {
       return withSession<FillsResponse>(
         params.address,
-        () => ({
-          provider: ONDO_PROVIDER_KEY,
-          items: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }),
+        sessionRequired('fills read'),
         async (token) => {
           const client = apiClient(opts)
           const queryParams: ApiParams = {}
@@ -951,11 +943,7 @@ export const ondoProvider = (
     ): Promise<ActivitiesResponse> {
       return withSession<ActivitiesResponse>(
         params.address,
-        () => ({
-          provider: ONDO_PROVIDER_KEY,
-          items: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }),
+        sessionRequired('activity read'),
         async (token) => {
           const inputCursor = decodeActivityCursor(params.cursor)
           const client = apiClient(opts)
@@ -1095,7 +1083,7 @@ export const ondoProvider = (
     ): Promise<PortfolioHistoryResponse> {
       return withSession<PortfolioHistoryResponse>(
         params.address,
-        () => ({ range: params.range, points: [] }),
+        sessionRequired('portfolio history read'),
         async (token) => {
           const client = apiClient(opts)
           const [graph, summary] = await Promise.all([

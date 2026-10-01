@@ -15,11 +15,17 @@ import {
   PositionMarginAdjustment,
   SigningMethod,
 } from '@lifi/perps-types'
-import type { Account, Hex, WalletClient } from 'viem'
+import type { Account, Address, Hex, WalletClient } from 'viem'
 import { createWalletClient, http, recoverTypedDataAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { installInfoFetchMock } from '../test/mockFetch.js'
+import {
+  STANDARD_MARKETS,
+  STANDARD_PRICES,
+  STANDARD_SNAPSHOT,
+} from '../test/venueFixtures.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from './constants.js'
 import { hyperliquidProvider } from './HyperliquidProvider.js'
 
@@ -422,5 +428,33 @@ describe('hyperliquidProvider', () => {
       await provider.removeAgent(ADDRESS)
       expect(await provider.hasAgent(ADDRESS)).toBe(false)
     })
+  })
+})
+
+describe('hyperliquidProvider — per-user reads without setup', () => {
+  let restore: (() => void) | undefined
+  afterEach(() => restore?.())
+
+  it('getPositions succeeds with no stored agent and no credential', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { clearinghouseState: STANDARD_SNAPSHOT.clearinghouseState },
+      STANDARD_MARKETS,
+      STANDARD_PRICES
+    ))
+    const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+    createPerpsClient({
+      integrator: 'test',
+      apiKey: 'k',
+      retry: false,
+      providers: [provider],
+    })
+    const address = STANDARD_SNAPSHOT.address as Address
+
+    await expect(provider.hasAgent(address)).resolves.toBe(false)
+    const { positions } = await provider.getPositions({ address })
+
+    expect(positions).toHaveLength(
+      STANDARD_SNAPSHOT.clearinghouseState.assetPositions.length
+    )
   })
 })

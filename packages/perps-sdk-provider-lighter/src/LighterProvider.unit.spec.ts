@@ -2955,7 +2955,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
   })
 })
 
-describe('LighterProvider — unauthenticated degrade paths', () => {
+describe('LighterProvider — reads without an auth token', () => {
   it('getAccount returns zero fee tier when no token is configured', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
@@ -2967,41 +2967,53 @@ describe('LighterProvider — unauthenticated degrade paths', () => {
     ).toBeUndefined()
   })
 
-  it('getOrders returns no orders when no token is configured', async () => {
+  it.each([
+    [
+      'getOrders',
+      'orders read',
+      (p: LighterPerpsProvider) => p.getOrders({ address: ADDRESS }),
+    ],
+    [
+      'getOrder',
+      'order lookup',
+      (p: LighterPerpsProvider) =>
+        p.getOrder({ address: ADDRESS, id: 'order_1' }),
+    ],
+    [
+      'getFills',
+      'fills read',
+      (p: LighterPerpsProvider) => p.getFills({ address: ADDRESS }),
+    ],
+    [
+      'getPortfolioHistory',
+      'portfolio history read',
+      (p: LighterPerpsProvider) =>
+        p.getPortfolioHistory!({ address: ADDRESS, range: '7d' }),
+    ],
+    [
+      'getActivity',
+      'activity read',
+      (p: LighterPerpsProvider) => p.getActivity({ address: ADDRESS }),
+    ],
+  ])('%s throws Unauthorized without a venue call when no token is configured', async (_method, read, call) => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
-    const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.orders).toEqual([])
-    expect(orders.pagination.hasMore).toBe(false)
-  })
-
-  it('getActivity returns empty items when no token is configured', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const activity = await provider.getActivity({
-      address: ADDRESS,
+    await expect(call(provider)).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.Unauthorized,
+      message: expect.stringContaining(
+        `Lighter ${read} requires an auth token`
+      ),
     })
-    expect(activity.items).toEqual([])
-    expect(activity.pagination.hasMore).toBe(false)
+    expect(recorded).toEqual([])
   })
 
-  it('getFills returns an empty page without hitting /api/v1/trades when no token is configured', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const fills = await provider.getFills({ address: ADDRESS })
-    expect(fills.items).toEqual([])
-    expect(fills.pagination.hasMore).toBe(false)
-    expect(
-      recorded.find((r) => r.url.includes('/api/v1/trades'))
-    ).toBeUndefined()
-  })
-
-  it('getOrder throws when no token is configured', async () => {
+  it('getOrders with an empty status filter resolves empty without a token', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getOrder({ address: ADDRESS, id: 'order_1' })
-    ).rejects.toThrow(/auth token/i)
+      provider.getOrders({ address: ADDRESS, statuses: [] })
+    ).resolves.toMatchObject({ orders: [] })
   })
 })
 
@@ -3393,13 +3405,13 @@ describe('LighterProvider — getPortfolioHistory', () => {
     })
   })
 
-  it('returns no points without a token and never calls /api/v1/pnl', async () => {
+  it('throws Unauthorized without a token and never calls /api/v1/pnl', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
     await expect(
       provider.getPortfolioHistory!({ address: ADDRESS, range: '7d' })
-    ).resolves.toEqual({ range: '7d', points: [] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
     expect(pnlCalls()).toHaveLength(0)
   })
 

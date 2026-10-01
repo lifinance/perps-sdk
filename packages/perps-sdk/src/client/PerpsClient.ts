@@ -360,7 +360,12 @@ export class PerpsClient {
     return resolveProvider(this.sdkClient, provider)
   }
 
-  /** Read active or historical orders from the selected venue. */
+  /**
+   * Read active or historical orders from the selected venue.
+   *
+   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none resolves.
+   */
   async getOrders(
     params: GetOrdersParams,
     options?: SDKRequestOptions
@@ -368,7 +373,12 @@ export class PerpsClient {
     return fetchOrders(this.sdkClient, params, options)
   }
 
-  /** Read one venue order through the provider's unified mapper. */
+  /**
+   * Read one venue order through the provider's unified mapper.
+   *
+   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none resolves.
+   */
   async getOrder(
     params: GetOrderParams,
     options?: SDKRequestOptions
@@ -680,6 +690,8 @@ export class PerpsClient {
    *
    * @throws {PerpsError} When the provider plugin is not registered, or the
    *   market is unknown to the provider's market registry.
+   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none resolves.
    * @public
    */
   async getAvailableToTrade(
@@ -813,6 +825,8 @@ export class PerpsClient {
    * @throws {PerpsError} When the provider plugin is not registered, when
    *   either the plugin read or the asset sync fails, when a row's
    *   `withdrawalFee` is not a non-negative decimal.
+   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none resolves.
    * @public
    */
   async getWithdrawableBalances(
@@ -877,6 +891,8 @@ export class PerpsClient {
    *
    * @throws {PerpsError} When the provider plugin is not registered, when it
    *   declares no portfolio history read, or when the venue read fails.
+   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none resolves.
    * @public
    */
   async getPortfolioHistory(

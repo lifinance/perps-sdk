@@ -23,6 +23,8 @@ export interface GetOrderParams {
  *
  * @throws {PerpsError} When the provider plugin is not registered, or on
  *   backend / network / parsing errors.
+ * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
+ *   Lighter auth token or an Ondo session) and none resolves.
  * @example
  * ```ts
  * const order = await getOrder(client, {

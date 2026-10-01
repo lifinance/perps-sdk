@@ -156,10 +156,23 @@ margin. The provider reads the `percent100` tier. `maxBidBaseSize` becomes
 and the provider converts each side into margin-asset units as
 `baseSize × markPrice ÷ leverage`, truncated toward zero. `leverage` comes from `/v1/perps/leverage`
 and `markPrice` from `/v1/perps/mark_prices`. A venue `insufficient_margin`
-rejection returns `"0"` on both sides. Without a session the method resolves
-`undefined`, and the client falls back to the account summary. Ondo does not
+rejection returns `"0"` on both sides. Without a session the method throws
+`Unauthorized` (see [Reads without a session](#reads-without-a-session)). Ondo does not
 stream this figure, so the `availableToTrade` WebSocket channel stays
 unsupported.
+
+## Reads without a session
+
+These per-user reads throw `PerpsError` with `PerpsErrorCode.Unauthorized`
+when no session token is stored for the address: `getWithdrawableBalances`,
+`getAvailableToTrade`, `getPositions`, `getOrders`, `getOrder`, `getFills`,
+`getActivity` and `getPortfolioHistory`. They also throw `Unauthorized` when
+Ondo rejects a stored token; the provider then removes that token. Complete the
+SIWE login to get a new session.
+
+These status and flow reads do not throw without a session.
+`getAccount` returns an empty account, and `accountExists` returns `false`.
+`getDepositFlow` and `getWithdrawFlow` return `kind: 'setupRequired'`.
 
 ## Environments
 

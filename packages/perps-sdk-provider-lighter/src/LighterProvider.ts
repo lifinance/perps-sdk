@@ -275,9 +275,9 @@ interface ReadOnlyCreationBackoff {
  *   4. Fresh 1h create via this instance's WASM signer + the user's registered
  *      API key
  *
- * When none of these yields a token the auth-gated reads degrade gracefully:
- *   - `getOrders`, `getActivity` return empty results (mirrors backend behaviour)
- *   - `getOrder` throws `Unauthorized`
+ * When none of these yields a token:
+ *   - `getOrders`, `getOrder`, `getFills`, `getPortfolioHistory` and
+ *     `getActivity` throw `PerpsError` with `PerpsErrorCode.Unauthorized`
  *   - `getAccount` returns zero fee tier rather than failing
  *
  * @public
@@ -454,8 +454,7 @@ export const createLighterProvider = (
    *      as the credential that authorises read-only token creation, and as
    *      the fallback while creation is failing, bounded by the
    *      creation-retry backoff.
-   * Returns `undefined` when no source can produce a token — reads degrade
-   * gracefully.
+   * Returns `undefined` when no source can produce a token.
    */
   const resolveAuthToken = async (
     opts: SDKRequestOptions | undefined,
@@ -547,6 +546,25 @@ export const createLighterProvider = (
     })()
     readOnlyCreationInFlight.set(flightKey, attempt)
     return attempt
+  }
+
+  /** {@link resolveAuthToken}, throwing `Unauthorized` when no source yields a token. */
+  const requireAuthToken = async (
+    read: string,
+    opts: SDKRequestOptions | undefined,
+    address: Address,
+    knownApiKey?: LighterApiKey
+  ): Promise<string> => {
+    const token = await resolveAuthToken(opts, address, knownApiKey)
+    if (token === undefined) {
+      throw new PerpsError(
+        PerpsErrorCode.Unauthorized,
+        `Lighter ${read} requires an auth token. Pass \`authToken\` to ` +
+          'lighterProvider, register an API key + signer for on-demand creation, or ' +
+          'forward `options.lighterAuthToken` on the call.'
+      )
+    }
+    return token
   }
 
   const replaceRevokedReadOnlyToken = async (
@@ -1279,10 +1297,7 @@ export const createLighterProvider = (
       if (statuses.size === 0) {
         return empty
       }
-      const token = await resolveAuthToken(opts, params.address)
-      if (token === undefined) {
-        return empty
-      }
+      const token = await requireAuthToken('orders read', opts, params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1371,15 +1386,7 @@ export const createLighterProvider = (
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> {
-      const token = await resolveAuthToken(opts, params.address)
-      if (token === undefined) {
-        throw new PerpsError(
-          PerpsErrorCode.SDKError,
-          'Lighter order lookup requires an auth token. Pass `authToken` to ' +
-            'lighterProvider, register an API key + signer for on-demand creation, or ' +
-            'forward `options.lighterAuthToken` on the call.'
-        )
-      }
+      const token = await requireAuthToken('order lookup', opts, params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1477,14 +1484,7 @@ export const createLighterProvider = (
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> {
-      const token = await resolveAuthToken(opts, params.address)
-      if (token === undefined) {
-        return {
-          provider: providerKey,
-          items: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }
-      }
+      const token = await requireAuthToken('fills read', opts, params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1541,14 +1541,12 @@ export const createLighterProvider = (
       const sdkOwnsToken =
         opts?.lighterAuthToken === undefined && authTokenSource === undefined
       const apiKey = sdkOwnsToken ? await keyStore.get(params.address) : null
-      const token = await resolveAuthToken(
+      const token = await requireAuthToken(
+        'portfolio history read',
         opts,
         params.address,
         apiKey ?? undefined
       )
-      if (token === undefined) {
-        return { range: params.range, points: [] }
-      }
 
       const client = apiClient(opts)
       const account = await plugin.getAccount({ address: params.address }, opts)
@@ -1603,14 +1601,11 @@ export const createLighterProvider = (
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> {
-      const token = await resolveAuthToken(opts, params.address)
-      if (token === undefined) {
-        return {
-          provider: providerKey,
-          items: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }
-      }
+      const token = await requireAuthToken(
+        'activity read',
+        opts,
+        params.address
+      )
 
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(opts)
