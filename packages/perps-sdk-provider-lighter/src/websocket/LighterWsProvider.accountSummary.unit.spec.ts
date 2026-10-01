@@ -146,10 +146,24 @@ const stubFetch = (totalAssetValue: string) =>
 
 type WsInternals = {
   accountIndexCache: Map<string, number>
-  channels: Map<string, { listeners: Map<unknown, number> }>
-  registry: { sync(): Promise<void> }
+  rws: {
+    ready(): Promise<void>
+    getStatus(): string
+    send(data: string): void
+  }
   handleMessage(raw: string): void
 }
+
+type Frame = 'spot_marks' | 'account_all' | 'user_stats'
+
+const FRAME_ORDERS: ReadonlyArray<readonly Frame[]> = [
+  ['spot_marks', 'account_all', 'user_stats'],
+  ['spot_marks', 'user_stats', 'account_all'],
+  ['account_all', 'spot_marks', 'user_stats'],
+  ['account_all', 'user_stats', 'spot_marks'],
+  ['user_stats', 'spot_marks', 'account_all'],
+  ['user_stats', 'account_all', 'spot_marks'],
+]
 
 const restPortfolioValue = async (client: PerpsSDKClient) => {
   const provider = lighterProvider()
@@ -161,19 +175,23 @@ const restPortfolioValue = async (client: PerpsSDKClient) => {
 
 const streamedSummaries = async (
   client: PerpsSDKClient,
-  totalAssetValue: string
+  totalAssetValue: string,
+  order: readonly Frame[]
 ): Promise<AccountSummary[]> => {
   const ws = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, client)
   const internals = ws as unknown as WsInternals
   internals.accountIndexCache.set(ADDRESS.toLowerCase(), ACCOUNT_INDEX)
-  await internals.registry.sync()
+  internals.rws.ready = vi.fn().mockResolvedValue(undefined)
+  internals.rws.getStatus = () => 'connected'
+  internals.rws.send = vi.fn()
   const listener = vi.fn()
-  internals.channels.set(`accountSummary:${ADDRESS.toLowerCase()}`, {
-    listeners: new Map([[listener, 1]]),
-  })
+  await ws.subscribe(
+    { channel: 'accountSummary', dex: 'lighter', address: ADDRESS },
+    listener
+  )
 
-  internals.handleMessage(
-    JSON.stringify({
+  const frames: Record<Frame, string> = {
+    spot_marks: JSON.stringify({
       type: 'update/spot_market_stats',
       spot_market_stats: Object.fromEntries(
         SPOT_MARKS.map((m) => [
@@ -192,10 +210,8 @@ const streamedSummaries = async (
           },
         ])
       ),
-    })
-  )
-  internals.handleMessage(
-    JSON.stringify({
+    }),
+    account_all: JSON.stringify({
       type: 'subscribed/account_all',
       channel: `account_all:${ACCOUNT_INDEX}`,
       assets: Object.fromEntries(
@@ -204,10 +220,8 @@ const streamedSummaries = async (
           { symbol, asset_id, balance, locked_balance },
         ])
       ),
-    })
-  )
-  internals.handleMessage(
-    JSON.stringify({
+    }),
+    user_stats: JSON.stringify({
       type: 'update/user_stats',
       channel: `user_stats:${ACCOUNT_INDEX}`,
       stats: {
@@ -215,8 +229,11 @@ const streamedSummaries = async (
         portfolio_value: totalAssetValue,
         available_balance: totalAssetValue,
       },
-    })
-  )
+    }),
+  }
+  for (const frame of order) {
+    internals.handleMessage(frames[frame])
+  }
   ws.close()
   return listener.mock.calls.map(([event]) => event.data)
 }
@@ -235,17 +252,18 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
       stubFetch(totalAssetValue)
     })
 
-    it('streams the REST portfolioValue', async () => {
+    it.each(
+      FRAME_ORDERS.map((order) => [order.join(', '), order] as const)
+    )('streams the REST portfolioValue after the frames %s', async (_label, order) => {
       const client = {
         config: { apiUrl: 'https://backend.test/v1/perps' },
       } as PerpsSDKClient
 
       const rest = await restPortfolioValue(client)
-      const streamed = await streamedSummaries(client, totalAssetValue)
+      const streamed = await streamedSummaries(client, totalAssetValue, order)
 
       expect(rest).toBe(expected)
-      expect(streamed).toHaveLength(1)
-      expect(streamed[0].portfolioValue).toBe(rest)
+      expect(streamed.at(-1)?.portfolioValue).toBe(rest)
     })
   })
 })
