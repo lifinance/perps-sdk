@@ -237,13 +237,16 @@ export const isLiquidationDelta = (
 ): delta is HlLiquidationDelta => delta.type === 'liquidation'
 
 /**
- * Type guard for `HlCStakingTransferDelta`. Same catch-all-arm caveat as
- * `isSpotTransferDelta`.
+ * Type guard for `HlCStakingTransferDelta`. `isDeposit` is part of the guard:
+ * a row without a boolean `isDeposit` names no direction for the movement.
  * @public
  */
 export const isCStakingTransferDelta = (
   delta: HlLedgerDelta
-): delta is HlCStakingTransferDelta => delta.type === 'cStakingTransfer'
+): delta is HlCStakingTransferDelta =>
+  delta.type === 'cStakingTransfer' &&
+  'isDeposit' in delta &&
+  typeof delta.isDeposit === 'boolean'
 
 const HL_BORROW_LEND_OPERATIONS: ReadonlySet<unknown> =
   new Set<HlBorrowLendOperation>(['supply', 'withdraw', 'borrow', 'repay'])

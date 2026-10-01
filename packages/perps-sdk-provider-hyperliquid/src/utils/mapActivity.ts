@@ -163,17 +163,21 @@ export const mapLedgerEntry = (
     // A completed unstake is a system event with the zero hash and no venue
     // transaction, so the id is synthesized and no explorer link applies.
     const hasTransaction = entry.hash !== zeroHash
+    const direction = isCStakingTransferDelta(delta)
+      ? delta.isDeposit
+        ? 'OUT'
+        : 'IN'
+      : BORROW_LEND_DIRECTION[delta.operation]
+    const action = isCStakingTransferDelta(delta) ? direction : delta.operation
     return {
       ...base,
       ...(hasTransaction
         ? {}
-        : { id: `${delta.type}:${delta.token}:${base.timestamp}` }),
+        : {
+            id: `${delta.type}:${delta.token}:${action}:${delta.amount}:${base.timestamp}`,
+          }),
       type: ActivityType.TRANSFER,
-      direction: isCStakingTransferDelta(delta)
-        ? delta.isDeposit
-          ? 'OUT'
-          : 'IN'
-        : BORROW_LEND_DIRECTION[delta.operation],
+      direction,
       counterpartyAddress: queriedAddress.toLowerCase(),
       asset: resolveLedgerAsset(delta.token, assetRegistry),
       amount: delta.amount,

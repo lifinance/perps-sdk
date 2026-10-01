@@ -92,7 +92,8 @@ move value within one account, so they map with the queried account as
 `counterpartyAddress`. The direction is relative to the spot balance: a stake,
 a supply and a repay are outbound; an unstake, a withdrawal and a borrow are
 inbound. A completed unstake carries the zero hash, so its id is
-`cStakingTransfer:<token>:<ISO time>` and it has no explorer link.
+`cStakingTransfer:<token>:IN:<amount>:<ISO time>` and it has no explorer link.
+A zero-hash `borrowLend` row gets `borrowLend:<token>:<operation>:<amount>:<ISO time>`.
 Unknown future delta types remain outside the supported activity model.
 These exclusions do not apply to missing assets in supported transfer rows:
 the mapper rejects those rows with an error instead of silently omitting them.

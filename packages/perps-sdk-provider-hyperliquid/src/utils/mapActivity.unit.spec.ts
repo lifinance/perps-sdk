@@ -1285,7 +1285,7 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
       resolveMarket
     )
     expect(result).toEqual({
-      id: 'cStakingTransfer:HYPE:2026-07-19T20:27:59.045Z',
+      id: 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z',
       provider: PROVIDER,
       timestamp: '2026-07-19T20:27:59.045Z',
       type: ActivityType.TRANSFER,
@@ -1295,6 +1295,45 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
       amount: '25.38015398',
       meta: { transferType: 'cStakingTransfer' },
     } satisfies TransferActivity)
+  })
+
+  it.each([
+    [UNSTAKE, 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z'],
+    [
+      { ...SUPPLY_HYPE, hash: UNSTAKE.hash },
+      'borrowLend:HYPE:supply:100.0:2026-09-18T18:02:54.549Z',
+    ],
+  ] as const)('synthesizes id %# for a zero-hash $delta.type row', (entry, id) => {
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      LENDER,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toMatchObject({ id })
+    expect(result).not.toHaveProperty('explorerLink')
+  })
+
+  it('gives distinct ids to zero-hash rows that share a time and token', () => {
+    const rows: HlLedgerUpdate[] = [
+      UNSTAKE,
+      { ...UNSTAKE, delta: { ...UNSTAKE.delta, amount: '1.0' } },
+      { ...UNSTAKE, delta: { ...UNSTAKE.delta, isDeposit: true } },
+      { ...SUPPLY_HYPE, time: UNSTAKE.time, hash: UNSTAKE.hash },
+      {
+        ...SUPPLY_HYPE,
+        time: UNSTAKE.time,
+        hash: UNSTAKE.hash,
+        delta: { ...SUPPLY_HYPE.delta, operation: 'repay' },
+      },
+    ]
+    const ids = rows.map(
+      (entry) =>
+        mapLedgerEntry(entry, PROVIDER, STAKER, assetRegistry, resolveMarket)
+          ?.id
+    )
+    expect(new Set(ids).size).toBe(rows.length)
   })
 
   it.each([
@@ -1331,13 +1370,42 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
     ).toMatchObject({ counterpartyAddress: STAKER })
   })
 
-  it('drops a borrow-lend row whose operation names no direction', () => {
+  it.each([
+    ['liquidate', { operation: 'liquidate' }],
+    ['null', { operation: null }],
+    ['missing', {}],
+  ] as const)('drops a borrow-lend row with a %s operation', (_label, operation) => {
     const entry: HlLedgerUpdate = {
       ...SUPPLY_HYPE,
-      delta: { ...SUPPLY_HYPE.delta, operation: 'liquidate' },
+      delta: {
+        type: 'borrowLend',
+        token: 'HYPE',
+        amount: '100.0',
+        interestAmount: '0.0',
+        ...operation,
+      },
     }
     expect(
       mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
+    ).toBeNull()
+  })
+
+  it.each([
+    ['string', { isDeposit: 'true' }],
+    ['null', { isDeposit: null }],
+    ['missing', {}],
+  ] as const)('drops a staking row with a %s isDeposit', (_label, isDeposit) => {
+    const entry: HlLedgerUpdate = {
+      ...STAKE,
+      delta: {
+        type: 'cStakingTransfer',
+        token: 'HYPE',
+        amount: '5.0',
+        ...isDeposit,
+      },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, STAKER, assetRegistry, resolveMarket)
     ).toBeNull()
   })
 

@@ -708,6 +708,61 @@ describe('getActivity — transfer registry identity', () => {
     )
   })
 
+  it('returns staking and borrow-lend rows in a transfer-only request', async () => {
+    installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: [
+          ...ledger,
+          {
+            time: 1704067200000,
+            hash: '0xstake',
+            delta: {
+              type: 'cStakingTransfer',
+              token: 'HYPE',
+              amount: '5.0',
+              isDeposit: true,
+            },
+          },
+          {
+            time: 1704067100000,
+            hash: '0xsupply',
+            delta: {
+              type: 'borrowLend',
+              token: 'HYPE',
+              operation: 'supply',
+              amount: '100.0',
+              interestAmount: '0.0',
+            },
+          },
+        ],
+      },
+      [],
+      [],
+      [token]
+    )
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER],
+    })
+    expect(result.items).toMatchObject([
+      { id: '0xtransfer', type: ActivityType.TRANSFER },
+      {
+        id: '0xstake',
+        type: ActivityType.TRANSFER,
+        direction: 'OUT',
+        asset: token,
+        amount: '5.0',
+      },
+      {
+        id: '0xsupply',
+        type: ActivityType.TRANSFER,
+        direction: 'OUT',
+        asset: token,
+        amount: '100.0',
+      },
+    ])
+  })
+
   it('rejects the feed when a transfer asset cannot resolve', async () => {
     installInfoFetchMock({ userNonFundingLedgerUpdates: ledger })
     await expect(
