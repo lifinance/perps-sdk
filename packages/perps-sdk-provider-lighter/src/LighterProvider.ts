@@ -1064,8 +1064,11 @@ export const createLighterProvider = (
         const balance = new Big(a.balance)
         return {
           ...toBalance(a, spotCategoryId, registryAsset(a), a.balance),
-          transferable: transferableWithin(
-            balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
+          transferable: minOf(
+            maxOf(
+              balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
+              new Big(0)
+            ),
             balance
           ).toFixed(),
         }

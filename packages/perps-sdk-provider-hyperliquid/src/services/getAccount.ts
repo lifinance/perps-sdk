@@ -83,10 +83,13 @@ const buildBalances = (
         const total = toWireBig(b.total, 'spotClearinghouseState.total')
         return {
           ...spotBalance(spotAssetFromToken(b), b.total, priceById),
-          transferable: transferableWithin(
-            total.minus(toWireBig(b.hold, 'spotClearinghouseState.hold')),
+          transferable: minOf(
+            maxOf(
+              total.minus(toWireBig(b.hold, 'spotClearinghouseState.hold')),
+              new Big(0)
+            ),
             total
-          ),
+          ).toFixed(),
         }
       }),
     quoteAssetIds
