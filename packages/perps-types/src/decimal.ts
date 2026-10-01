@@ -1,7 +1,7 @@
 /**
  * Plain decimal string: optional `-`, digits, optional fraction. No grouping,
- * exponent, currency sign or whitespace; matches {@link DECIMAL_PATTERN}. SDK
- * `snap*`/`calculate*` helpers and providers produce it — never `.toString()`.
+ * exponent, currency sign or whitespace; matches {@link DECIMAL_PATTERN}. Build
+ * it with an SDK `snap*`/`calculate*` helper or a provider, not `.toString()`.
  *
  * @public
  */
