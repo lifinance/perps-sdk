@@ -3,6 +3,7 @@ import {
   getMarketRegistry,
   localStorageAdapter,
   type MarketRegistry,
+  PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
@@ -16,12 +17,13 @@ import {
   type WsProviderFactoryParams,
   wsLog,
 } from '@lifi/perps-sdk'
-import type {
-  MarketContext,
-  MarketDisplay,
-  OndoAccountBalance,
-  PerpsMarketDisplay,
-  Subscription,
+import {
+  type MarketContext,
+  type MarketDisplay,
+  type OndoAccountBalance,
+  PerpsErrorCode,
+  type PerpsMarketDisplay,
+  type Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { OndoTokenStore } from '../auth/OndoTokenStore.js'
@@ -44,7 +46,6 @@ import type {
   OndoWsMessage,
   OndoWsTrade,
 } from '../types/index.js'
-import { OndoSessionExpiredError } from '../utils/apiClient.js'
 import {
   mapFill,
   mapOrderUpdates,
@@ -65,7 +66,7 @@ import { intervalFromBarSpan, mapInterval } from '../utils/ohlcvInterval.js'
 // connection, sent before the first private subscribe; the venue rejects a
 // second login on the same connection. The JWT comes from the SIWE session in
 // the token store — absent or expired reads back as null and surfaces as
-// `OndoSessionExpiredError` so callers re-run the SIWE login. A dropped
+// `PerpsError` with `SetupRequired` so callers run the SIWE login. A dropped
 // socket forgets the login, so the guard resets on every close.
 
 const ONDO_AUTH_CHANNEL = {
@@ -580,14 +581,16 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   /**
-   * The stored SIWE session for `address`, or {@link OndoSessionExpiredError}
-   * when it is absent or expired. Shared by the subscribe-time guard, the
-   * login op and the account-summary seed so all three report one message.
+   * The stored SIWE session for `address`, or {@link PerpsError} with
+   * `SetupRequired` when it is absent or expired. Shared by the subscribe-time
+   * guard, the login op and the account-summary seed so all three report one
+   * message.
    */
   private async requireSession(address: Address): Promise<OndoAuthToken> {
     const token = await this.tokenStore.get(address)
     if (token === null) {
-      throw new OndoSessionExpiredError(
+      throw new PerpsError(
+        PerpsErrorCode.SetupRequired,
         `No Ondo session for ${address}. Run the SIWE login before subscribing to account channels.`
       )
     }
@@ -628,9 +631,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
 
   /**
    * Seed the account-summary figures from the REST balance so the first emit
-   * is complete before any positions frame lands. Throws {@link
-   * OndoSessionExpiredError} when the SIWE session is missing, matching the
-   * other authenticated channels.
+   * is complete before any positions frame lands. Throws {@link PerpsError}
+   * with `SetupRequired` when the SIWE session is missing, matching the other
+   * authenticated channels.
    */
   private async seedAccountSummary(
     address: Address,

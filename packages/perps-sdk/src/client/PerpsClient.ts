@@ -363,8 +363,10 @@ export class PerpsClient {
   /**
    * Read active or historical orders from the selected venue.
    *
-   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
-   *   Lighter auth token or an Ondo session) and none resolves.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+   * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
    */
   async getOrders(
     params: GetOrdersParams,
@@ -376,8 +378,10 @@ export class PerpsClient {
   /**
    * Read one venue order through the provider's unified mapper.
    *
-   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
-   *   Lighter auth token or an Ondo session) and none resolves.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+   * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
    */
   async getOrder(
     params: GetOrderParams,
@@ -664,6 +668,9 @@ export class PerpsClient {
    * @throws {PerpsError} When the provider plugin is not registered,
    *   `ValidationError` for a spot market, or any other `PerpsError` when the
    *   venue read fails or carries no usable value.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (an
+   *   Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
    * @public
    */
   async getMarketSettings(params: {
@@ -684,14 +691,19 @@ export class PerpsClient {
    * account displays read the account-scoped
    * {@link AccountSummary.availableMargin} instead.
    *
-   * Providers that read a per-market figure answer it directly. For every
-   * other provider this falls back to the account summary, so both sides
-   * equal `availableMargin` and the asset is the market's quote asset.
+   * Providers that read a per-market figure answer it directly. A provider
+   * that has no per-market figure for the market (a Hyperliquid or Lighter
+   * spot market) resolves `undefined`, and this falls back to the account
+   * summary, so both sides equal `availableMargin` and the asset is the
+   * market's quote asset. A provider read that throws propagates and never
+   * falls back.
    *
    * @throws {PerpsError} When the provider plugin is not registered, or the
    *   market is unknown to the provider's market registry.
-   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
-   *   Lighter auth token or an Ondo session) and none resolves.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+   * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
    * @public
    */
   async getAvailableToTrade(
@@ -825,8 +837,10 @@ export class PerpsClient {
    * @throws {PerpsError} When the provider plugin is not registered, when
    *   either the plugin read or the asset sync fails, when a row's
    *   `withdrawalFee` is not a non-negative decimal.
-   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
-   *   Lighter auth token or an Ondo session) and none resolves.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+   * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
    * @public
    */
   async getWithdrawableBalances(
@@ -891,8 +905,10 @@ export class PerpsClient {
    *
    * @throws {PerpsError} When the provider plugin is not registered, when it
    *   declares no portfolio history read, or when the venue read fails.
-   * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
-   *   Lighter auth token or an Ondo session) and none resolves.
+   * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+   *   Lighter auth token or an Ondo session) and none is stored.
+   * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+   * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
    * @public
    */
   async getPortfolioHistory(

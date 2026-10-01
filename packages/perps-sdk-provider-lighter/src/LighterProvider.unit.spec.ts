@@ -2967,53 +2967,203 @@ describe('LighterProvider — reads without an auth token', () => {
     ).toBeUndefined()
   })
 
-  it.each([
-    [
-      'getOrders',
-      'orders read',
-      (p: LighterPerpsProvider) => p.getOrders({ address: ADDRESS }),
-    ],
-    [
-      'getOrder',
-      'order lookup',
-      (p: LighterPerpsProvider) =>
-        p.getOrder({ address: ADDRESS, id: 'order_1' }),
-    ],
-    [
-      'getFills',
-      'fills read',
-      (p: LighterPerpsProvider) => p.getFills({ address: ADDRESS }),
-    ],
-    [
-      'getPortfolioHistory',
-      'portfolio history read',
-      (p: LighterPerpsProvider) =>
-        p.getPortfolioHistory!({ address: ADDRESS, range: '7d' }),
-    ],
-    [
-      'getActivity',
-      'activity read',
-      (p: LighterPerpsProvider) => p.getActivity({ address: ADDRESS }),
-    ],
-  ])('%s throws Unauthorized without a venue call when no token is configured', async (_method, read, call) => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    await expect(call(provider)).rejects.toMatchObject({
-      name: 'PerpsError',
-      code: PerpsErrorCode.Unauthorized,
-      message: expect.stringContaining(
-        `Lighter ${read} requires an auth token`
-      ),
-    })
-    expect(recorded).toEqual([])
-  })
-
   it('getOrders with an empty status filter resolves empty without a token', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getOrders({ address: ADDRESS, statuses: [] })
     ).resolves.toMatchObject({ orders: [] })
+  })
+
+  it('getOrders throws SetupRequired with no token and Unauthorized with a token the venue rejects', async () => {
+    const noToken = lighterProvider()
+    noToken.bind(STUB_CLIENT)
+    await expect(noToken.getOrders({ address: ADDRESS })).rejects.toMatchObject(
+      { code: PerpsErrorCode.SetupRequired }
+    )
+    expect(recorded).toEqual([])
+
+    overrideFetch((url) =>
+      url.includes('/api/v1/accountActiveOrders')
+        ? respond({ message: 'unauthorized' }, 401)
+        : undefined
+    )
+    const rejected = lighterProvider({ authToken: 'caller-token' })
+    rejected.bind(STUB_CLIENT)
+    await expect(
+      rejected.getOrders({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+  })
+})
+
+describe('LighterProvider — data-read account-access contract', () => {
+  type Access = 'no credential' | 'rejected credential' | 'no account' | 'empty'
+  const ACCESS: readonly Access[] = [
+    'no credential',
+    'rejected credential',
+    'no account',
+    'empty',
+  ]
+  /** The thrown code, or the value the read's projection resolves to. */
+  type Outcome = PerpsErrorCode | { resolves: object }
+
+  const DEFAULT_LEVERAGE = 20
+  const EMPTY = { resolves: [] }
+  const VENUE_DEFAULT = {
+    resolves: { marginMode: MarginMode.CROSS, leverage: DEFAULT_LEVERAGE },
+  }
+  const AUTHED: Record<Access, Outcome> = {
+    'no credential': PerpsErrorCode.SetupRequired,
+    'rejected credential': PerpsErrorCode.Unauthorized,
+    'no account': PerpsErrorCode.AccountNotFound,
+    empty: EMPTY,
+  }
+  // Lighter serves the account read without a token, so these reads have no
+  // credential to miss or to be rejected.
+  const PUBLIC_ACCOUNT: Record<Access, Outcome> = {
+    'no credential': EMPTY,
+    'rejected credential': EMPTY,
+    'no account': PerpsErrorCode.AccountNotFound,
+    empty: EMPTY,
+  }
+
+  const access: Record<Access, FetchOverride> = {
+    'no credential': () => undefined,
+    'rejected credential': (_url, init) =>
+      sentToken(init) === null
+        ? undefined
+        : respond({ message: 'unauthorized' }, 401),
+    'no account': (url) =>
+      url.includes('/api/v1/account?')
+        ? respond({ code: 21100, message: 'account not found' }, 400)
+        : undefined,
+    empty: (url) => {
+      if (url.includes('/api/v1/accountInactiveOrders')) {
+        return respond({ code: 0, next_cursor: '', orders: [] })
+      }
+      if (url.includes('/api/v1/trades')) {
+        return respond({ code: 0, next_cursor: '', trades: [] })
+      }
+      if (url.includes('/api/v1/deposit/history')) {
+        return respond({ code: 0, deposits: [] })
+      }
+      if (url.includes('/api/v1/pnl')) {
+        return respond({ code: 200, resolution: '1h', pnl: [] })
+      }
+      return undefined
+    },
+  }
+
+  const READS: ReadonlyArray<
+    [
+      string,
+      (p: LighterPerpsProvider) => Promise<unknown>,
+      Record<Access, Outcome>,
+    ]
+  > = [
+    [
+      'getOrders',
+      (p) => p.getOrders({ address: ADDRESS }).then((r) => r.orders),
+      AUTHED,
+    ],
+    [
+      'getOrder',
+      (p) => p.getOrder({ address: ADDRESS, id: '7' }),
+      { ...AUTHED, empty: PerpsErrorCode.OrderNotFound },
+    ],
+    [
+      'getFills',
+      (p) => p.getFills({ address: ADDRESS }).then((r) => r.items),
+      AUTHED,
+    ],
+    [
+      'getActivity',
+      (p) => p.getActivity({ address: ADDRESS }).then((r) => r.items),
+      AUTHED,
+    ],
+    [
+      'getPortfolioHistory',
+      (p) =>
+        p.getPortfolioHistory!({ address: ADDRESS, range: '7d' }).then(
+          (r) => r.points
+        ),
+      AUTHED,
+    ],
+    [
+      'getPositions',
+      (p) => p.getPositions({ address: ADDRESS }).then((r) => r.positions),
+      PUBLIC_ACCOUNT,
+    ],
+    [
+      'getWithdrawableBalances',
+      (p) => p.getWithdrawableBalances!({ address: ADDRESS }),
+      PUBLIC_ACCOUNT,
+    ],
+    [
+      'getAvailableToTrade',
+      (p) => p.getAvailableToTrade!({ address: ADDRESS, marketId: '0' }),
+      {
+        'no credential': { resolves: { marketId: '0' } },
+        'rejected credential': { resolves: { marketId: '0' } },
+        'no account': PerpsErrorCode.AccountNotFound,
+        empty: { resolves: { marketId: '0' } },
+      },
+    ],
+    // A wallet with no account trades at the venue default, as one with no
+    // position row on the market does.
+    [
+      'getMarketSettings',
+      (p) =>
+        p.getMarketSettings({
+          address: ADDRESS,
+          market: { marketId: '0', categoryId: 'lighter' },
+        }),
+      {
+        'no credential': VENUE_DEFAULT,
+        'rejected credential': VENUE_DEFAULT,
+        'no account': VENUE_DEFAULT,
+        empty: VENUE_DEFAULT,
+      },
+    ],
+  ]
+
+  it.each(
+    READS.flatMap(([read, call, outcomes]) =>
+      ACCESS.map((state) => [read, state, call, outcomes[state]] as const)
+    )
+  )('%s with %s', async (_read, state, call, outcome) => {
+    overrideFetch((url, init) => {
+      if (
+        url.includes('backend.test/v1/perps/markets') &&
+        !url.includes('marketsContext')
+      ) {
+        return respond({
+          markets: [
+            {
+              ...MARKETS_RESPONSE.markets[0],
+              defaultLeverage: DEFAULT_LEVERAGE,
+            },
+          ],
+        })
+      }
+      return access[state](url, init)
+    })
+    const provider = lighterProvider(
+      state === 'no credential' ? {} : { authToken: 'caller-token' }
+    )
+    provider.bind(STUB_CLIENT)
+
+    if (typeof outcome === 'object') {
+      await expect(call(provider)).resolves.toMatchObject(outcome.resolves)
+      return
+    }
+    await expect(call(provider)).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: outcome,
+    })
+    if (outcome === PerpsErrorCode.SetupRequired) {
+      expect(recorded).toEqual([])
+    }
   })
 })
 
@@ -3098,25 +3248,13 @@ describe('LighterProvider — per-user reads without a Lighter account', () => {
   it.each([
     ['lighter', lighterProvider],
     ['lighter-rh', lighterRhProvider],
-  ])('%s returns an empty list for the account-not-found body', async (key, create) => {
+  ])('%s getPositions throws AccountNotFound for the account-not-found body', async (_key, create) => {
     overrideFetch(accountNotFound)
     const provider = create()
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getPositions({ address: ADDRESS, limit: 50 })
-    ).resolves.toEqual({
-      provider: key,
-      positions: [],
-      pagination: { limit: 50, hasMore: false },
-    })
-  })
-
-  it('reports a zero limit when the caller passes none', async () => {
-    overrideFetch(accountNotFound)
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    const { pagination } = await provider.getPositions({ address: ADDRESS })
-    expect(pagination).toEqual({ limit: 0, hasMore: false })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.AccountNotFound })
   })
 
   it('throws a failed account read', async () => {
@@ -3148,13 +3286,11 @@ describe('LighterProvider — per-user reads without a Lighter account', () => {
     )
   })
 
-  it('throws a failed market registry sync for a wallet with no account', async () => {
-    overrideFetch(
-      (url) =>
-        accountNotFound(url, undefined) ??
-        (url.includes('backend.test/v1/perps/markets')
-          ? new Response('boom', { status: 500 })
-          : undefined)
+  it('throws a failed market registry sync', async () => {
+    overrideFetch((url) =>
+      url.includes('backend.test/v1/perps/markets')
+        ? new Response('boom', { status: 500 })
+        : undefined
     )
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
@@ -3164,15 +3300,6 @@ describe('LighterProvider — per-user reads without a Lighter account', () => {
       code: PerpsErrorCode.DefaultError,
       message: 'Request failed with status code 500',
     })
-  })
-
-  it('returns no withdrawable balances for the account-not-found body', async () => {
-    overrideFetch(accountNotFound)
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-    await expect(
-      provider.getWithdrawableBalances!({ address: ADDRESS })
-    ).resolves.toEqual([])
   })
 
   it('keeps the getAccount account-not-found error', async () => {
@@ -3403,16 +3530,6 @@ describe('LighterProvider — getPortfolioHistory', () => {
       count_back: String(countBack),
       ignore_transfers: 'false',
     })
-  })
-
-  it('throws Unauthorized without a token and never calls /api/v1/pnl', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-
-    await expect(
-      provider.getPortfolioHistory!({ address: ADDRESS, range: '7d' })
-    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
-    expect(pnlCalls()).toHaveLength(0)
   })
 
   it('falls back to the standard token when /api/v1/pnl rejects the read-only token', async () => {

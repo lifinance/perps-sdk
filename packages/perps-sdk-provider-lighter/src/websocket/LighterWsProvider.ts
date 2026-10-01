@@ -392,8 +392,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    * The auth token a gated channel's subscribe frame carries, or a throw when
    * no resolver is wired or the resolver yields none. Shared by the
    * subscribe-time guard and the per-send resolve so both report one message.
-   * Throws {@link PerpsError} with `Unauthorized` so a caller branches on the
-   * code, as it does for the Ondo and Lighter REST auth failures.
+   * Throws {@link PerpsError}: `SetupRequired` when the resolver yields no
+   * token, the code the REST reads throw for the same missing credential, and
+   * `Unauthorized` when no resolver is wired.
    */
   private async requireAuthToken(
     channel: string,
@@ -410,7 +411,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const token = await resolve(address)
     if (!token) {
       throw new PerpsError(
-        PerpsErrorCode.Unauthorized,
+        PerpsErrorCode.SetupRequired,
         `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
       )
     }

@@ -157,22 +157,34 @@ and the provider converts each side into margin-asset units as
 `baseSize × markPrice ÷ leverage`, truncated toward zero. `leverage` comes from `/v1/perps/leverage`
 and `markPrice` from `/v1/perps/mark_prices`. A venue `insufficient_margin`
 rejection returns `"0"` on both sides. Without a session the method throws
-`Unauthorized` (see [Reads without a session](#reads-without-a-session)). Ondo does not
+`SetupRequired` (see [Reads without a session](#reads-without-a-session)). Ondo does not
 stream this figure, so the `availableToTrade` WebSocket channel stays
 unsupported.
 
 ## Reads without a session
 
-These per-user reads throw `PerpsError` with `PerpsErrorCode.Unauthorized`
-when no session token is stored for the address: `getWithdrawableBalances`,
-`getAvailableToTrade`, `getPositions`, `getOrders`, `getOrder`, `getFills`,
-`getActivity` and `getPortfolioHistory`. They also throw `Unauthorized` when
-Ondo rejects a stored token; the provider then removes that token. Complete the
-SIWE login to get a new session.
+A data read throws the session state as a `PerpsError`. A status read returns
+it as a value.
 
-These status and flow reads do not throw without a session.
-`getAccount` returns an empty account, and `accountExists` returns `false`.
-`getDepositFlow` and `getWithdrawFlow` return `kind: 'setupRequired'`.
+These data reads throw: `getWithdrawableBalances`, `getAvailableToTrade`,
+`getMarketSettings`, `getPositions`, `getOrders`, `getOrder`, `getFills`,
+`getActivity` and `getPortfolioHistory`. Each code names one fact:
+
+| Fact | Code |
+| --- | --- |
+| No session token is stored for the address. The provider sends no request to Ondo. | `PerpsErrorCode.SetupRequired` |
+| Ondo rejected the stored session token. The provider removes that token, so the next read throws `SetupRequired`. | `PerpsErrorCode.Unauthorized` |
+| The account has no rows. | No error. The read returns an empty list. |
+
+Ondo opens the account at the SIWE login, so a data read does not throw
+`PerpsErrorCode.AccountNotFound`. For both codes, complete the SIWE login to get
+a new session. The WebSocket account channels throw `SetupRequired` at
+subscribe time when no session is stored.
+
+These status and flow reads do not throw without a session, or after Ondo
+rejects the session. `getAccount` returns an empty account, and `accountExists`
+returns `false`. `getDepositFlow` and `getWithdrawFlow` return
+`kind: 'setupRequired'`.
 
 ## Environments
 

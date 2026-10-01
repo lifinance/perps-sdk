@@ -275,10 +275,22 @@ interface ReadOnlyCreationBackoff {
  *   4. Fresh 1h create via this instance's WASM signer + the user's registered
  *      API key
  *
- * When none of these yields a token:
- *   - `getOrders`, `getOrder`, `getFills`, `getPortfolioHistory` and
- *     `getActivity` throw `PerpsError` with `PerpsErrorCode.Unauthorized`
- *   - `getAccount` returns zero fee tier rather than failing
+ * Status reads report the account's state and do not throw for a missing
+ * credential: `getAccount` returns a zero fee tier and
+ * `apiKeyRegistered: false`; `accountExists` and `getDepositFlow` need no
+ * token.
+ *
+ * Data reads throw `PerpsError`, one code per fact:
+ *   - `SetupRequired` when none of these sources yields a token. The SDK
+ *     sends no venue request. `getOrders`, `getOrder`, `getFills`,
+ *     `getPortfolioHistory` and `getActivity` need a token.
+ *   - `Unauthorized` when Lighter rejects the token that was sent. An
+ *     SDK-owned read-only token that Lighter reports as revoked is replaced
+ *     and the read retried once first.
+ *   - `AccountNotFound` when the wallet has no Lighter account. This also
+ *     applies to `getPositions`, `getWithdrawableBalances` and
+ *     `getAvailableToTrade`, which need no token.
+ * An account with no rows resolves an empty list.
  *
  * @public
  */
@@ -328,8 +340,7 @@ export interface LighterPerpsProvider extends PerpsProviderPlugin {
   /**
    * Resolve a Lighter auth token for `address`, following the resolution order
    * documented on {@link LighterProviderOptions} (the per-call override does not
-   * apply here). Returns `undefined` when no source can produce a token —
-   * callers degrade gracefully.
+   * apply here). Returns `undefined` when no source can produce a token.
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
 }
@@ -548,7 +559,7 @@ export const createLighterProvider = (
     return attempt
   }
 
-  /** {@link resolveAuthToken}, throwing `Unauthorized` when no source yields a token. */
+  /** {@link resolveAuthToken}, throwing `SetupRequired` when no source yields a token. */
   const requireAuthToken = async (
     read: string,
     opts: SDKRequestOptions | undefined,
@@ -558,7 +569,7 @@ export const createLighterProvider = (
     const token = await resolveAuthToken(opts, address, knownApiKey)
     if (token === undefined) {
       throw new PerpsError(
-        PerpsErrorCode.Unauthorized,
+        PerpsErrorCode.SetupRequired,
         `Lighter ${read} requires an auth token. Pass \`authToken\` to ` +
           'lighterProvider, register an API key + signer for on-demand creation, or ' +
           'forward `options.lighterAuthToken` on the call.'
@@ -963,6 +974,7 @@ export const createLighterProvider = (
         localKey !== null &&
         normalizeLighterPublicKey(localKey.apiKeyPublicKey) ===
           normalizeLighterPublicKey(registeredKey.public_key)
+      // Status read: a missing or stale credential reports `apiKeyRegistered: false`, not a throw.
       const token = apiKeyRegistered
         ? await resolveAuthToken(opts, params.address, localKey)
         : undefined
@@ -1167,13 +1179,11 @@ export const createLighterProvider = (
       params: ProviderGetWithdrawableBalancesParams,
       opts?: SDKRequestOptions
     ): Promise<ProviderWithdrawableBalance[]> {
-      const account = await fetchAccountIfExists(
+      const account = await fetchDetailedAccount(
         apiClient(opts),
         params.address
       )
-      return account === undefined
-        ? []
-        : lighterWithdrawableBalances(account, collateral.assetIndex)
+      return lighterWithdrawableBalances(account, collateral.assetIndex)
     },
 
     async getPositions(
@@ -1183,16 +1193,9 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchAccountIfExists(client, params.address),
+        fetchDetailedAccount(client, params.address),
         registry.sync(),
       ])
-      if (account === undefined) {
-        return {
-          provider: providerKey,
-          positions: [],
-          pagination: { limit: params.limit ?? 0, hasMore: false },
-        }
-      }
 
       let positions: Position[] = mapOpenPositions(account.positions, (id) =>
         toPerpsMarketDisplay(registry.require(String(id)))

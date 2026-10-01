@@ -2584,7 +2584,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('throws loudly on an auth channel when the plugin resolves no token (no silent degradation)', async () => {
+    it('throws SetupRequired on an auth channel when the plugin resolves no token', async () => {
       // `lighterProvider()` with no authToken/keyStore resolves `undefined`.
       const client = createPerpsClient({
         integrator: 'test-app',
@@ -2599,7 +2599,10 @@ describe('LighterWsProvider', () => {
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow(/no token was available for/)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: expect.stringMatching(/no token was available for/),
+      })
       provider.close()
     })
   })

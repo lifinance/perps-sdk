@@ -27,8 +27,10 @@ export interface GetPositionsParams {
  *
  * @throws {PerpsError} When the provider plugin is not registered, or on
  *   backend / network / parsing errors.
- * @throws {PerpsError} `Unauthorized` when the venue needs a credential (a
- *   Lighter auth token or an Ondo session) and none resolves.
+ * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
+ *   Lighter auth token or an Ondo session) and none is stored.
+ * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
+ * @throws {PerpsError} `AccountNotFound` when the wallet has no venue account.
  * @example
  * ```ts
  * const { positions } = await getPositions(client, {

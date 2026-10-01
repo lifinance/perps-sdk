@@ -2,6 +2,7 @@ import {
   createMemoryStorage,
   createPerpsClient,
   HYPERLIQUID_USDC,
+  type PerpsProviderPlugin,
 } from '@lifi/perps-sdk'
 import type {
   Eip712ActionStep,
@@ -22,6 +23,7 @@ import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installInfoFetchMock } from '../test/mockFetch.js'
 import {
+  HYPE_PERP_MARKET,
   STANDARD_MARKETS,
   STANDARD_PRICES,
   STANDARD_SNAPSHOT,
@@ -435,12 +437,53 @@ describe('hyperliquidProvider — per-user reads without setup', () => {
   let restore: (() => void) | undefined
   afterEach(() => restore?.())
 
-  it('getPositions succeeds with no stored agent and no credential', async () => {
-    ;({ restore } = installInfoFetchMock(
-      { clearinghouseState: STANDARD_SNAPSHOT.clearinghouseState },
+  const address = STANDARD_SNAPSHOT.address as Address
+  const hypeMarket = {
+    marketId: HYPE_PERP_MARKET.id,
+    categoryId: HYPE_PERP_MARKET.categoryId,
+  }
+
+  it.each<[string, (p: PerpsProviderPlugin) => Promise<unknown>]>([
+    ['getPositions', (p) => p.getPositions({ address })],
+    ['getOrders', (p) => p.getOrders({ address })],
+    ['getFills', (p) => p.getFills({ address })],
+    ['getActivity', (p) => p.getActivity({ address })],
+    [
+      'getPortfolioHistory',
+      (p) => p.getPortfolioHistory!({ address, range: '7d' }),
+    ],
+    ['getWithdrawableBalances', (p) => p.getWithdrawableBalances!({ address })],
+    [
+      'getAvailableToTrade',
+      (p) => p.getAvailableToTrade!({ address, marketId: HYPE_PERP_MARKET.id }),
+    ],
+    [
+      'getMarketSettings',
+      (p) => p.getMarketSettings({ address, market: hypeMarket }),
+    ],
+  ])('%s resolves from public info reads with no stored agent', async (_read, call) => {
+    const installed = installInfoFetchMock(
+      {
+        clearinghouseState: STANDARD_SNAPSHOT.clearinghouseState,
+        spotClearinghouseState: STANDARD_SNAPSHOT.spotClearinghouseState,
+        activeAssetData: STANDARD_SNAPSHOT.activeAssetData.HYPE,
+        userAbstraction: STANDARD_SNAPSHOT.userAbstraction,
+        frontendOpenOrders: [],
+        historicalOrders: [],
+        twapHistory: [],
+        userFills: [],
+        userFillsByTime: [],
+        userFunding: [],
+        userNonFundingLedgerUpdates: [],
+        portfolio: [
+          ['week', { accountValueHistory: [], pnlHistory: [], vlm: '0.0' }],
+          ['perpWeek', { accountValueHistory: [], pnlHistory: [], vlm: '0.0' }],
+        ],
+      },
       STANDARD_MARKETS,
       STANDARD_PRICES
-    ))
+    )
+    restore = installed.restore
     const provider = hyperliquidProvider({ storage: createMemoryStorage() })
     createPerpsClient({
       integrator: 'test',
@@ -448,13 +491,11 @@ describe('hyperliquidProvider — per-user reads without setup', () => {
       retry: false,
       providers: [provider],
     })
-    const address = STANDARD_SNAPSHOT.address as Address
 
     await expect(provider.hasAgent(address)).resolves.toBe(false)
-    const { positions } = await provider.getPositions({ address })
-
-    expect(positions).toHaveLength(
-      STANDARD_SNAPSHOT.clearinghouseState.assetPositions.length
+    await expect(call(provider)).resolves.not.toBeUndefined()
+    expect(installed.requests.map(({ url }) => new URL(url).pathname)).toEqual(
+      installed.requests.map(() => '/info')
     )
   })
 })

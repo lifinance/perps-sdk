@@ -374,13 +374,13 @@ describe('Ondo getOrders', () => {
     ).toEqual([])
     expect(requests).toEqual([])
   })
-  it('throws Unauthorized without a request for an absent session', async () => {
+  it('throws SetupRequired without a request for an absent session', async () => {
     const loggedOut = await setup(() => {
       throw new Error('Unexpected request')
     }, false)
     await expect(
       loggedOut.provider.getOrders({ address: ADDRESS })
-    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
     expect(loggedOut.requests).toEqual([])
   })
   it('rejects malformed cursors before an authenticated order request', async () => {

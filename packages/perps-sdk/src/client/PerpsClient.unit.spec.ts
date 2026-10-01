@@ -1910,6 +1910,21 @@ describe('PerpsClient', () => {
       })
     })
 
+    it('propagates a plugin read that throws instead of falling back', async () => {
+      const getAvailableToTrade = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.SetupRequired, 'no session')
+      })
+      const getAccount = vi.fn(async () => mockAccount)
+      await expect(
+        clientWith({ getAvailableToTrade, getAccount }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+      expect(getAccount).not.toHaveBeenCalled()
+    })
+
     it('reports an unknown market against the provider registry', async () => {
       await expect(
         clientWith({}).getAvailableToTrade({
@@ -2012,6 +2027,20 @@ describe('PerpsClient', () => {
       expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
         address: userAddress,
       })
+    })
+
+    it('propagates a plugin read that throws', async () => {
+      const plugin = {
+        getWithdrawableBalances: vi.fn(async () => {
+          throw new PerpsError(PerpsErrorCode.AccountNotFound, 'no account')
+        }),
+      }
+      await expect(
+        clientWith(plugin).getWithdrawableBalances({
+          provider,
+          address: userAddress,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.AccountNotFound })
     })
 
     it('carries the provider withdrawal fee onto the row, and no fee key where the provider sets none', async () => {

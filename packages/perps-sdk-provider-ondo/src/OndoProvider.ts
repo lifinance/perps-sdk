@@ -274,38 +274,58 @@ export const ondoProvider = (
     config: emptyConfig,
   })
 
-  // Runs an authenticated read against a live session. An absent local token
-  // and a server-revoked one (surfaced mid-call as `OndoSessionExpiredError`)
-  // both evict any stale token and fall back to `loggedOut`, so a rotated
-  // session never soft-locks the UI behind a token that looks valid locally.
+  // Runs an authenticated read against a live session. `noSession` answers
+  // when no token is stored; `rejected` answers after the venue rejects the
+  // stored token mid-call (`OndoSessionExpiredError`), which is evicted first
+  // so a rotated session never soft-locks the UI behind a token that looks
+  // valid locally.
   const withSession = async <T>(
     address: Address,
-    loggedOut: () => T,
+    fallback: { noSession: () => T; rejected: () => T },
     fn: (token: OndoAuthToken) => Promise<T>
   ): Promise<T> => {
     const token = await tokenStore.get(address)
     if (token === null) {
-      return loggedOut()
+      return fallback.noSession()
     }
     try {
       return await fn(token)
     } catch (err) {
       if (err instanceof OndoSessionExpiredError) {
         await tokenStore.remove(address)
-        return loggedOut()
+        return fallback.rejected()
       }
       throw err
     }
   }
 
-  // The `loggedOut` fallback for a per-user value read, where an empty result
-  // would be indistinguishable from an account with no data.
   const sessionRequired = (read: string) => (): never => {
     throw new PerpsError(
-      PerpsErrorCode.Unauthorized,
+      PerpsErrorCode.SetupRequired,
       `Ondo ${read} requires a session token. Run the SIWE login first.`
     )
   }
+
+  const sessionRejected = (read: string) => (): never => {
+    throw new PerpsError(
+      PerpsErrorCode.Unauthorized,
+      `Ondo ${read} failed: the venue rejected the session; sign in again.`
+    )
+  }
+
+  // A data read throws the account's state: an empty result would be
+  // indistinguishable from an account with no data.
+  const dataRead = (read: string) => ({
+    noSession: sessionRequired(read),
+    rejected: sessionRejected(read),
+  })
+
+  // A status read reports the logged-out state whether the session is absent
+  // or was rejected.
+  const statusRead = <T>(loggedOut: () => T) => ({
+    noSession: loggedOut,
+    rejected: loggedOut,
+  })
 
   return {
     type: ONDO_PROVIDER_KEY,
@@ -322,13 +342,13 @@ export const ondoProvider = (
       const apiKeyRegistered = apiKey !== null && hasOndoApiKeyScopes(apiKey)
       return withSession(
         params.address,
-        () => {
+        statusRead(() => {
           const account = loggedOutAccount(params.address)
           return {
             ...account,
             config: { ...emptyConfig, apiKeyRegistered },
           }
-        },
+        }),
         async (token) => {
           const client = apiClient(opts)
           const [
@@ -429,7 +449,7 @@ export const ondoProvider = (
     ): Promise<ProviderWithdrawableBalance[]> {
       return withSession(
         params.address,
-        sessionRequired('withdrawable balances read'),
+        dataRead('withdrawable balances read'),
         async (token) => {
           const client = apiClient(opts)
           const [{ providers }, balance, account] = await Promise.all([
@@ -466,11 +486,7 @@ export const ondoProvider = (
       }
       return withSession(
         params.address,
-        () => {
-          throw new OndoSessionExpiredError(
-            `No valid Ondo session token stored for ${params.address}. Run the SIWE login first.`
-          )
-        },
+        dataRead('market settings read'),
         async (token) => {
           const leverages = await apiClient(opts).get<OndoLeverage[]>(
             '/v1/perps/leverage',
@@ -505,7 +521,7 @@ export const ondoProvider = (
     ): Promise<AvailableToTrade | undefined> {
       return withSession(
         params.address,
-        sessionRequired('available-to-trade read'),
+        dataRead('available-to-trade read'),
         async (token) => {
           const registry = marketRegistry()
           await registry.sync()
@@ -587,7 +603,7 @@ export const ondoProvider = (
     ): Promise<boolean> {
       return withSession(
         params.address,
-        () => false,
+        statusRead(() => false),
         async (token) => {
           await apiClient(opts).get('/v1/account', { authToken: token.token })
           return true
@@ -604,10 +620,12 @@ export const ondoProvider = (
       // before a route has a recipient.
       return withSession<DepositFlow>(
         params.address,
-        () => ({
-          kind: 'setupRequired',
-          setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
-        }),
+        statusRead(
+          (): DepositFlow => ({
+            kind: 'setupRequired',
+            setup: [ActionType.SIWE_LOGIN, ActionType.CREATE_DEPOSIT_ADDRESS],
+          })
+        ),
         async (token) => {
           const depositAddress = await listOndoDepositAddress(
             apiClient(opts),
@@ -636,10 +654,12 @@ export const ondoProvider = (
       // offers one destination: the login address.
       return withSession<WithdrawFlow>(
         params.address,
-        () => ({
-          kind: 'setupRequired',
-          setup: [ActionType.SIWE_LOGIN, ActionType.ADD_WITHDRAWAL_ADDRESS],
-        }),
+        statusRead(
+          (): WithdrawFlow => ({
+            kind: 'setupRequired',
+            setup: [ActionType.SIWE_LOGIN, ActionType.ADD_WITHDRAWAL_ADDRESS],
+          })
+        ),
         async (token) => {
           const { addressBook } = await apiClient(
             opts
@@ -667,7 +687,7 @@ export const ondoProvider = (
     ): Promise<PositionsResponse> {
       return withSession<PositionsResponse>(
         params.address,
-        sessionRequired('positions read'),
+        dataRead('positions read'),
         async (token) => {
           const client = apiClient(opts)
           const [rawPositions] = await Promise.all([
@@ -703,7 +723,7 @@ export const ondoProvider = (
     ): Promise<OrdersResponse> {
       return withSession<OrdersResponse>(
         params.address,
-        sessionRequired('orders read'),
+        dataRead('orders read'),
         async (token) => {
           const statuses =
             params.statuses === undefined
@@ -866,7 +886,7 @@ export const ondoProvider = (
     ): Promise<Order> {
       return withSession(
         params.address,
-        sessionRequired('order lookup'),
+        dataRead('order lookup'),
         async (token) => {
           const client = apiClient(opts)
           const [order] = await Promise.all([
@@ -900,7 +920,7 @@ export const ondoProvider = (
     ): Promise<FillsResponse> {
       return withSession<FillsResponse>(
         params.address,
-        sessionRequired('fills read'),
+        dataRead('fills read'),
         async (token) => {
           const client = apiClient(opts)
           const queryParams: ApiParams = {}
@@ -943,7 +963,7 @@ export const ondoProvider = (
     ): Promise<ActivitiesResponse> {
       return withSession<ActivitiesResponse>(
         params.address,
-        sessionRequired('activity read'),
+        dataRead('activity read'),
         async (token) => {
           const inputCursor = decodeActivityCursor(params.cursor)
           const client = apiClient(opts)
@@ -1083,7 +1103,7 @@ export const ondoProvider = (
     ): Promise<PortfolioHistoryResponse> {
       return withSession<PortfolioHistoryResponse>(
         params.address,
-        sessionRequired('portfolio history read'),
+        dataRead('portfolio history read'),
         async (token) => {
           const client = apiClient(opts)
           const [graph, summary] = await Promise.all([
