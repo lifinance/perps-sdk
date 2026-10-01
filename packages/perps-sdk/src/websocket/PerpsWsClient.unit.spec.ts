@@ -126,14 +126,13 @@ describe('PerpsWsClient', () => {
         expect.objectContaining({
           provider: 'hyperliquid',
           wsUrl: 'wss://api.hyperliquid.xyz/ws',
-          markets: ['hyperliquid', 'xyz'],
         })
       )
 
       ws.close()
     })
 
-    it('passes the raw market list — provider-specific filtering is the factory’s job', async () => {
+    it('passes no market list to the factory', async () => {
       useWsUrlHandler()
       const factory = buildHlFactory()
       const ws = makeWs(factory)
@@ -143,7 +142,7 @@ describe('PerpsWsClient', () => {
         vi.fn()
       )
 
-      expect(factory.mock.calls[0][0].markets).toEqual(['hyperliquid', 'xyz'])
+      expect(factory.mock.calls[0][0]).not.toHaveProperty('markets')
 
       ws.close()
     })
