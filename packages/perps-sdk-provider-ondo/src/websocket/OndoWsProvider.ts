@@ -162,6 +162,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   private accountAddress: string | undefined
   private loginPromise: Promise<void> | undefined
   private authGeneration = 0
+  private authBindingRefs = 0
   private closeGeneration = 0
 
   constructor(
@@ -247,7 +248,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const closeGeneration = this.closeGeneration
     let authGeneration: number | undefined
 
-    let boundHere = false
     if (needsLogin) {
       const { address } = sub as { address: Address }
       // Reject before the address binds and before any wire sub registers: a
@@ -258,9 +258,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         return () => {}
       }
       const bound = address.toLowerCase()
-      boundHere = this.accountAddress !== bound
       this.bindAddress(bound)
       authGeneration = this.authGeneration
+      this.authBindingRefs += 1
     }
     const summaryGeneration =
       sub.channel === 'accountSummary'
@@ -309,9 +309,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         return () => {}
       }
     } catch (err) {
-      // Registry sync, summary seed, or wire acquire failed after the address
-      // bound: release a binding this call newly reserved so a later
-      // subscribe can rebind. A `requireSession` throw never reaches here.
+      // A failed opening releases only its own binding reservation.
       if (
         authGeneration === undefined ||
         authGeneration === this.authGeneration
@@ -323,8 +321,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
           const [key, state] = wireSubs[index]
           this.releaseWire(key, state, needsLogin)
         }
-        if (boundHere) {
-          this.accountAddress = undefined
+        if (authGeneration !== undefined) {
+          this.releaseBinding()
         }
       }
       throw err
@@ -345,6 +343,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       }
       for (const [key, state] of wireSubs) {
         this.releaseWire(key, state, needsLogin)
+      }
+      if (authGeneration !== undefined) {
+        this.releaseBinding()
       }
     }
   }
@@ -385,12 +386,12 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return true
   }
 
-  /**
-   * Forget the authenticated binding and cycle the connection. The venue
-   * permits one login per socket, so a later subscribe for a different address
-   * must authenticate on a fresh connection rather than re-login on this one.
-   */
+  /** Release a channel's binding reservation, including one still opening. */
   private releaseBinding(): void {
+    this.authBindingRefs -= 1
+    if (this.authBindingRefs > 0) {
+      return
+    }
     this.accountAddress = undefined
     this.loginPromise = undefined
     this.authGeneration += 1
@@ -437,11 +438,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.unregisterSub(key)
     this.rws.send(JSON.stringify({ op: 'unsubscribe', ...state.frame }))
-    // Last authenticated wire gone: forget the binding and cycle the socket so
-    // the next address logs in on a fresh connection.
-    if (shared && this.authWireRefs.size === 0) {
-      this.releaseBinding()
-    }
   }
 
   protected async sendSubscribe(state: SubState): Promise<void> {
@@ -472,6 +468,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.authGeneration += 1
     this.closeGeneration += 1
     this.authWireRefs.clear()
+    this.authBindingRefs = 0
     this.clearAccountSummary()
   }
 

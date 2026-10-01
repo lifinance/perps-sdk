@@ -258,6 +258,8 @@ describe('WsProviderBase — deferred teardown', () => {
     const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
     resolveOpen(oldTeardown)
     await opening
+    expect(oldTeardown).toHaveBeenCalledTimes(1)
+    expect(teardown).not.toHaveBeenCalled()
     p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledWith(marketsContextEvent)
 

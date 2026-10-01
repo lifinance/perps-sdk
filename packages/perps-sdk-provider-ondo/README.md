@@ -49,6 +49,10 @@ cannot update a replacement subscription, including one for the same wallet.
 The summary shares ref-counted wire subscriptions with `fills` and `positions`.
 Pending authentication from a closed provider cannot send login or subscription
 frames on a replacement connection or release its shared wire subscriptions.
+Authenticated channels reserve their wallet binding while registry and balance
+reads are pending, before acquiring wires. Releasing the last wire does not
+retire a binding still owned by another pending or active channel. A failed
+opening releases only its own reservation, leaving sibling streams intact.
 
 ## Orders
 

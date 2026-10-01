@@ -1333,6 +1333,213 @@ describe('OndoWsProvider', () => {
       return () => calls
     }
 
+    it.each([
+      'registry',
+      'balance',
+    ])('keeps a pending summary bound when the last wire expires during %s', async (stage) => {
+      vi.useFakeTimers()
+      stubFetch(() => BALANCE)
+      const immediateFetch = fetch
+      let finishRead!: (response: Response) => void
+      const pending = new Promise<Response>((resolve) => {
+        finishRead = resolve
+      })
+      let marketReads = 0
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString()
+        if (
+          (url.includes('/markets') &&
+            ++marketReads === 2 &&
+            stage === 'registry') ||
+          (url.includes('/v1/perps/balance') && stage === 'balance')
+        ) {
+          return pending
+        }
+        return immediateFetch(input, init)
+      })
+      const p = makeProvider(seededBothStorage())
+      const send = stubSocket(p)
+      try {
+        const releasePositions = await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+        releasePositions()
+        const listener = vi.fn()
+        const opening = subscribeSummary(p, listener)
+        await vi.advanceTimersByTimeAsync(300)
+        finishRead(
+          Response.json(
+            stage === 'registry'
+              ? { markets: ONDO_MARKETS }
+              : { success: true, result: BALANCE }
+          )
+        )
+        const releaseSummary = await opening
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'subscribe', channel: 'fillsPerps' })
+        )
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '1050',
+            availableMargin: '850',
+            marginUsed: '200',
+            unrealizedPnl: '50',
+          },
+        })
+        releaseSummary()
+        await vi.advanceTimersByTimeAsync(300)
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'unsubscribe', channel: 'fillsPerps' })
+        )
+        const replacement = vi.fn()
+        await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+          replacement
+        )
+        feed(p, {
+          type: 'update',
+          channel: 'positionsPerps',
+          data: [RAW_POSITION],
+        })
+        expect(replacement).toHaveBeenCalledWith({
+          channel: 'positions',
+          data: [expect.objectContaining({ size: '10', entryPrice: '225.00' })],
+        })
+      } finally {
+        p.close()
+      }
+    })
+
+    it('preserves a live sibling when the opening that first bound the wallet fails', async () => {
+      stubFetch(() => BALANCE)
+      vi.useFakeTimers()
+      const immediateFetch = fetch
+      let failBalance!: (response: Response) => void
+      const pending = new Promise<Response>((resolve) => {
+        failBalance = resolve
+      })
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+        input.toString().includes('/v1/perps/balance')
+          ? pending
+          : immediateFetch(input, init)
+      )
+      const p = makeProvider(seededBothStorage())
+      stubSocket(p)
+      try {
+        const opening = subscribeSummary(p, vi.fn())
+        const rejected = expect(opening).rejects.toThrow()
+        const fills = vi.fn()
+        const releaseFills = await p.subscribe(
+          { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+          fills
+        )
+        failBalance(
+          Response.json(
+            { success: false, message: 'balance unavailable' },
+            { status: 500 }
+          )
+        )
+        await rejected
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+        expect(fills).toHaveBeenCalledWith({
+          channel: 'fills',
+          data: [expect.objectContaining({ id: 'fill-1', size: '5.00' })],
+        })
+        releaseFills()
+        await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+          vi.fn()
+        )
+      } finally {
+        p.close()
+      }
+    })
+
+    it.each([
+      'registry',
+      'balance',
+      'second wire',
+    ])('releases a failed summary acquisition at %s and lets another wallet stream', async (stage) => {
+      vi.useFakeTimers()
+      stubFetch(() => BALANCE)
+      const immediateFetch = fetch
+      let fail = true
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString()
+        if (fail && stage === 'registry' && url.includes('/markets')) {
+          return Promise.resolve(
+            Response.json(
+              { code: 1, message: 'markets unavailable' },
+              { status: 400 }
+            )
+          )
+        }
+        if (fail && stage === 'balance' && url.includes('/v1/perps/balance')) {
+          return Promise.resolve(
+            Response.json(
+              { success: false, message: 'balance unavailable' },
+              { status: 500 }
+            )
+          )
+        }
+        return immediateFetch(input, init)
+      })
+      const p = makeProvider(seededBothStorage())
+      const send = stubSocket(p)
+      send.mockImplementation((raw: string) => {
+        const frame = JSON.parse(raw)
+        if (
+          fail &&
+          stage === 'second wire' &&
+          frame.op === 'subscribe' &&
+          frame.channel === 'fillsPerps'
+        ) {
+          throw new Error('wire send failed')
+        }
+      })
+      try {
+        await expect(subscribeSummary(p, vi.fn())).rejects.toThrow()
+        if (stage === 'second wire') {
+          expect(send).toHaveBeenCalledWith(
+            JSON.stringify({ op: 'unsubscribe', channel: 'positionsPerps' })
+          )
+        }
+        fail = false
+        send.mockClear()
+        const listener = vi.fn()
+        const release = await p.subscribe(
+          { channel: 'accountSummary', dex: 'ondo', address: OTHER_ADDR },
+          listener
+        )
+        expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+          { op: 'login', args: { token: 'jwt-b' } },
+          { op: 'subscribe', channel: 'positionsPerps' },
+          { op: 'subscribe', channel: 'fillsPerps' },
+        ])
+        expect(listener).toHaveBeenCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '1050',
+            availableMargin: '850',
+            marginUsed: '200',
+            unrealizedPnl: '50',
+          },
+        })
+        release()
+        await vi.advanceTimersByTimeAsync(300)
+        expect(
+          send.mock.calls.slice(-2).map(([raw]) => JSON.parse(raw))
+        ).toEqual([
+          { op: 'unsubscribe', channel: 'positionsPerps' },
+          { op: 'unsubscribe', channel: 'fillsPerps' },
+        ])
+      } finally {
+        p.close()
+      }
+    })
+
     it('coalesces same-tick fills and positions frames into one balance read', async () => {
       const MOVED = {
         ...BALANCE,
@@ -1545,7 +1752,7 @@ describe('OndoWsProvider', () => {
       ])
       const p = makeProvider(seededBothStorage())
       p.close()
-      stubSocket(p)
+      const send = stubSocket(p)
       const oldListener = vi.fn()
       const listener = vi.fn()
 
@@ -1596,6 +1803,7 @@ describe('OndoWsProvider', () => {
 
         unsubscribe()
         await vi.advanceTimersByTimeAsync(300)
+        send.mockClear()
         await p.subscribe(
           {
             channel: 'positions',
@@ -1604,6 +1812,13 @@ describe('OndoWsProvider', () => {
           },
           vi.fn()
         )
+        expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+          {
+            op: 'login',
+            args: { token: address === TEST_ADDR ? 'jwt-b' : 'jwt-a' },
+          },
+          { op: 'subscribe', channel: 'positionsPerps' },
+        ])
       } finally {
         p.close()
       }
@@ -1695,10 +1910,15 @@ describe('OndoWsProvider', () => {
         releasePositions()
         unsubscribe()
         await vi.advanceTimersByTimeAsync(300)
+        send.mockClear()
         await p.subscribe(
           { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
           vi.fn()
         )
+        expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+          { op: 'login', args: { token: 'jwt-a' } },
+          { op: 'subscribe', channel: 'positionsPerps' },
+        ])
       } finally {
         p.close()
       }
@@ -1774,10 +1994,15 @@ describe('OndoWsProvider', () => {
           [JSON.stringify({ op: 'unsubscribe', channel: 'positionsPerps' })],
           [JSON.stringify({ op: 'unsubscribe', channel: 'fillsPerps' })],
         ])
+        send.mockClear()
         await p.subscribe(
           { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
           vi.fn()
         )
+        expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+          { op: 'login', args: { token: 'jwt-a' } },
+          { op: 'subscribe', channel: 'positionsPerps' },
+        ])
       } finally {
         p.close()
       }
