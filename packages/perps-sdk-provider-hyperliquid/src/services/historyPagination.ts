@@ -1,5 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
+import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT } from '../constants.js'
 
 type HistoryKey = string | number
 interface HistoryBoundary {
@@ -18,8 +19,26 @@ const compareKeys = (a: HistoryKey, b: HistoryKey): number =>
         ? -1
         : 0
 
+export const getHistoryLimit = (limit = DEFAULT_HISTORY_LIMIT): number => {
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Hyperliquid history limit must be a positive safe integer'
+    )
+  }
+  return Math.min(limit, MAX_HISTORY_LIMIT)
+}
+
 const decodeCursor = (cursor: string): HistoryBoundary => {
-  const value: unknown = JSON.parse(cursor)
+  let value: unknown
+  try {
+    value = JSON.parse(cursor)
+  } catch {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Invalid Hyperliquid history cursor'
+    )
+  }
   if (
     !Array.isArray(value) ||
     value.length !== 4 ||

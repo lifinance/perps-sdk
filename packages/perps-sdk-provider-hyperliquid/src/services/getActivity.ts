@@ -13,11 +13,7 @@ import type {
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import {
-  DEFAULT_HISTORY_LIMIT,
-  MAX_HISTORY_LIMIT,
-  PROVIDER_KEY,
-} from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
   HlUserFills,
@@ -45,7 +41,7 @@ import {
   type InfoRequestOptions,
   infoRequest,
 } from '../utils/infoClient.js'
-import { historyPage } from './historyPagination.js'
+import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
  * Parameters for {@link getActivity}.
@@ -54,7 +50,7 @@ import { historyPage } from './historyPagination.js'
  */
 export interface GetActivityParams {
   address: Address
-  /** Maximum items returned; defaults to 50 and is capped at 200. */
+  /** Positive safe integer; defaults to 50 and is capped at 200. */
   limit?: number
   /** Opaque cursor returned in the previous page's `pagination.cursor`. */
   cursor?: string
@@ -243,6 +239,7 @@ export const getActivity = async (
   params: GetActivityParams,
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
+  const limit = getHistoryLimit(params.limit)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   // Only funding and liquidation rows carry a market, so a Ledger-only
   // request must not pull the market list.
@@ -258,10 +255,6 @@ export const getActivity = async (
   }
   const infoOpts = hlInfoOptions(client, options)
 
-  const limit = Math.min(
-    params.limit ?? DEFAULT_HISTORY_LIMIT,
-    MAX_HISTORY_LIMIT
-  )
   const needLiquidationFills =
     !params.type || params.type.includes(ActivityType.LIQUIDATION)
   let liquidationHistory: Promise<ActivityItem[]> | undefined

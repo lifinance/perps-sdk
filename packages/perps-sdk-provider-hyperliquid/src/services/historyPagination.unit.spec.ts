@@ -1,5 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
-import { ActivityType } from '@lifi/perps-types'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_MARKETS,
@@ -72,6 +72,37 @@ const fillRows = (count: number): HlUserFills =>
 
 describe('Hyperliquid capped history pagination', () => {
   afterEach(() => vi.restoreAllMocks())
+
+  describe.each([
+    { name: 'fills', getHistory: getFills },
+    { name: 'activity', getHistory: getActivity },
+  ])('$name pagination input', ({ getHistory }) => {
+    it.each([
+      '1000:1',
+      '1000',
+      '{}',
+      '[1000,"key",1001,2000]',
+    ])('rejects an invalid or legacy cursor with ValidationError: %s', async (cursor) => {
+      installHistory()
+      await expect(
+        getHistory(context(), { address: ADDRESS, cursor })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    })
+
+    it.each([
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ])('rejects an invalid page limit with ValidationError: %s', async (limit) => {
+      installHistory(fillRows(205), HL_USER_FUNDING)
+      await expect(
+        getHistory(context(), { address: ADDRESS, limit })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    })
+  })
 
   it.each([
     false,
@@ -266,6 +297,66 @@ describe('Hyperliquid capped history pagination', () => {
     expect(next.pagination.hasMore).toBe(false)
   })
 
+  it('keeps liquidation groups at the first-page snapshot when new fills arrive', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(2000)
+    const liquidation = {
+      liquidatedUser: ADDRESS,
+      markPx: '45000',
+      method: 'market' as const,
+    }
+    const fills: HlUserFills = [
+      {
+        ...HL_USER_FILLS[0],
+        time: 1000,
+        tid: 1,
+        oid: 777,
+        liquidation,
+        sz: '1',
+        px: '10',
+      },
+      {
+        ...HL_USER_FILLS[0],
+        time: 1500,
+        tid: 2,
+        oid: 888,
+        liquidation,
+        sz: '3',
+        px: '10',
+      },
+    ]
+    installHistory(fills)
+    const ctx = context()
+    const params = {
+      address: ADDRESS,
+      limit: 1,
+      type: [ActivityType.LIQUIDATION],
+    }
+    const first = await getActivity(ctx, params)
+    expect(first.items).toMatchObject([
+      { id: 'liquidation:888', liquidatedNotionalPosition: '30' },
+    ])
+    expect(first.pagination.hasMore).toBe(true)
+    fills.push({
+      ...fills[0],
+      time: 2500,
+      tid: 3,
+      sz: '9',
+    })
+    now.mockReturnValue(3000)
+    const next = await getActivity(ctx, {
+      ...params,
+      cursor: first.pagination.cursor,
+    })
+    expect(next.items).toMatchObject([
+      {
+        id: 'liquidation:777',
+        liquidatedNotionalPosition: '10',
+        timestamp: '1970-01-01T00:00:01.000Z',
+      },
+    ])
+    expect(next.pagination.hasMore).toBe(false)
+  })
+
   it.each([
     0, 501,
   ])('keeps ledger-excluded liquidation fills out of order groups on every SDK page (%s unrelated rows)', async (count) => {
@@ -378,6 +469,51 @@ describe('Hyperliquid capped history pagination', () => {
       )
     ).rejects.toMatchObject({ name: 'AbortError' })
     expect(requests).toHaveLength(1)
+  })
+
+  it.each([
+    'failure',
+    'abort',
+  ])('rejects instead of returning partial liquidation groups on a later sweep %s', async (action) => {
+    const fills = fillRows(2305)
+    fills[0] = {
+      ...fills[0],
+      liquidation: {
+        liquidatedUser: ADDRESS,
+        markPx: '45000',
+        method: 'market',
+      },
+    }
+    installHistory(fills)
+    const historyFetch = vi.mocked(fetch).getMockImplementation()!
+    const controller = new AbortController()
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      if (body.type === 'userFillsByTime' && body.startTime > 1000) {
+        if (action === 'failure') {
+          return new Response('liquidation history unavailable', {
+            status: 503,
+          })
+        }
+        controller.abort()
+      }
+      return historyFetch(input, init)
+    })
+    const result = getActivity(
+      context(),
+      {
+        address: ADDRESS,
+        startTime: 1000,
+        endTime: 2000,
+        type: [ActivityType.LIQUIDATION],
+      },
+      { signal: controller.signal }
+    )
+    if (action === 'failure') {
+      await expect(result).rejects.toBeInstanceOf(PerpsError)
+    } else {
+      await expect(result).rejects.toMatchObject({ name: 'AbortError' })
+    }
   })
 
   it('rejects a time-only endpoint saturated within one millisecond rather than claiming exhaustion', async () => {

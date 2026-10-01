@@ -114,12 +114,17 @@ the mapper rejects those rows with an error instead of silently omitting them.
 
 `getFills` and `getActivity` return deterministic newest-first pages. Pass the
 opaque `pagination.cursor` back unchanged with the same address, time bounds
-and activity filters. Do not construct or persist timestamp cursors from older
-provider releases; restart those traversals without a cursor.
+and activity filters. Malformed cursors and timestamp or `time:trade-id` cursors
+from older provider releases are rejected with `PerpsErrorCode.ValidationError`.
+Discard those stored cursors and restart the traversal without a cursor.
 
 Both time bounds are inclusive. Activity cursors distinguish different event
 types and IDs at the same timestamp; fill cursors also distinguish trade IDs.
 Subsequent pages exclude newer arrivals beyond the first page's time boundary.
+
+`limit` must be a positive safe integer; invalid values raise
+`PerpsErrorCode.ValidationError`. It defaults to 50, and valid values above 200
+are capped at 200.
 
 Hyperliquid's [info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
 paginates time ranges forwards and caps funding/ledger responses at 500 entries

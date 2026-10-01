@@ -1,16 +1,12 @@
 import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type { Fill, FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import {
-  DEFAULT_HISTORY_LIMIT,
-  MAX_HISTORY_LIMIT,
-  PROVIDER_KEY,
-} from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills } from '../types/index.js'
 import { assetIsOutcome, mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
-import { historyPage } from './historyPagination.js'
+import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
  * Parameters for {@link getFills}.
@@ -19,7 +15,7 @@ import { historyPage } from './historyPagination.js'
  */
 export interface GetFillsParams {
   address: Address
-  /** Maximum items returned; defaults to 50 and is capped at 200. */
+  /** Positive safe integer; defaults to 50 and is capped at 200. */
   limit?: number
   /** Opaque cursor returned in the previous page's `pagination.cursor`. */
   cursor?: string
@@ -35,14 +31,10 @@ export const getFills = async (
   params: GetFillsParams,
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
+  const limit = getHistoryLimit(params.limit)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   await registry.sync()
   const infoOpts = hlInfoOptions(client, options)
-
-  const limit = Math.min(
-    params.limit ?? DEFAULT_HISTORY_LIMIT,
-    MAX_HISTORY_LIMIT
-  )
 
   let useRecent =
     params.cursor === undefined &&
