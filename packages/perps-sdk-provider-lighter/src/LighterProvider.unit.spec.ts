@@ -3348,7 +3348,7 @@ describe('LighterProvider — getPortfolioHistory', () => {
       ...overrides,
     }
   }
-  /** Two cumulative snapshots ending at `total_asset_value` 500. */
+  /** Two cumulative snapshots ending at the account `portfolioValue` 500. */
   const PNL_PAYLOAD: LtAccountPnL = {
     code: 200,
     resolution: '1h',
@@ -3476,6 +3476,26 @@ describe('LighterProvider — getPortfolioHistory', () => {
     expect(calls).toHaveLength(2)
     expect(authHeader(calls[0])).toBe('ro-readonly-lighter')
     expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('rejects when the getAccount read fails, although /api/v1/pnl answers', async () => {
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/accountLimits')) {
+        return new Response('boom', { status: 500 })
+      }
+      return url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+    })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+
+    const err = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+      .then(() => undefined)
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(PerpsError)
+    expect(err.code).toBe(PerpsErrorCode.ThirdPartyError)
   })
 
   it('returns no points when Lighter answers a null pnl list', async () => {

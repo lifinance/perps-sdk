@@ -74,7 +74,7 @@ import {
   projectLighterConfigSettings,
   resolveAccountTier,
 } from './accountConfig.js'
-import { getAccountSummary } from './accountSummary.js'
+import { getAccountSummary, lighterConfig } from './accountSummary.js'
 import { lighterAvailableToTrade } from './availableToTrade.js'
 import {
   DEFAULT_TRADES_LIMIT,
@@ -1503,12 +1503,12 @@ export const createLighterProvider = (
       }
 
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
+      const account = await plugin.getAccount({ address: params.address }, opts)
       const window = PNL_WINDOWS[params.range]
       const endTimestampSeconds = Math.floor(Date.now() / 1_000)
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
-        value: String(account.index),
+        value: String(lighterConfig(account).accountIndex),
         resolution: window.resolution,
         start_timestamp:
           params.range === 'all'
@@ -1547,7 +1547,7 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        toRequiredBig(account.total_asset_value, 'total_asset_value')
+        new Big(getAccountSummary(account, account.positions).portfolioValue)
       )
     },
 
