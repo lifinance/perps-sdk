@@ -43,6 +43,10 @@ describe('isDecimalString', () => {
   it.each(rejectedNonStrings)('rejects the non-string %j', (value) => {
     expect(isDecimalString(value)).toBe(false)
   })
+
+  it('accepts the signed zero that the backend pattern also accepts', () => {
+    expect(isDecimalString('-0')).toBe(true)
+  })
 })
 
 describe('DECIMAL_PATTERN', () => {
