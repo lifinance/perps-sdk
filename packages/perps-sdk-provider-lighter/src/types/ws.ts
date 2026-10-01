@@ -215,14 +215,19 @@ export type LtWsUserStatsMessage = LtWsMessage & {
 }
 
 /**
- * `account_all/{account_index}` frame, read for its `assets` map only. The
- * `subscribed/` frame carries every asset keyed by asset index; an `update/`
- * frame carries the changed assets, or `null` when no balance changed.
- * `balance` is the spot-route balance in asset units.
+ * `account_all/{account_index}` or `account_all_assets/{account_index}` frame,
+ * read for its `assets` map only. The `subscribed/` frame carries every asset
+ * keyed by asset index; an `update/` frame carries the changed assets, or
+ * `null` when no balance changed. `balance` is the spot-route balance in asset
+ * units.
  * @public
  */
 export type LtWsAccountAllMessage = LtWsMessage & {
-  type: 'subscribed/account_all' | 'update/account_all'
+  type:
+    | 'subscribed/account_all'
+    | 'update/account_all'
+    | 'subscribed/account_all_assets'
+    | 'update/account_all_assets'
   assets?: Record<
     string,
     Pick<LtAccountAsset, 'symbol' | 'asset_id' | 'balance' | 'locked_balance'>

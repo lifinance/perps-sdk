@@ -842,8 +842,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
  *
  * Closes over the per-instance options (storage, apiUrl override) so
  * `PerpsWsClient` can call the returned factory with just
- * `({ provider, wsUrl, client })` at subscribe time. `markets` is unused —
- * Ondo advertises a single venue, no sub-DEX filtering.
+ * `({ provider, wsUrl, client })` at subscribe time.
  *
  * @public
  */

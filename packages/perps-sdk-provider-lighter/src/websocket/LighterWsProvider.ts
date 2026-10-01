@@ -73,6 +73,8 @@ import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
 //   - positions    → account_all_positions/{account_index}
+//   - accountSummary spot balances → account_all_assets/{account_index}, when
+//     a token resolves at subscribe time; else the public account_all/N
 //
 // Auth pattern (per Lighter WS spec): the subscribe payload carries the
 // token directly — `{ type: "subscribe", channel: "...", auth: "<token>" }`.
@@ -149,11 +151,11 @@ interface BookLevel {
 /**
  * Per-address inputs of the `accountSummary` emit: the latest `user_stats`
  * figures (`perps`, whose `equity` is perps-route only) and the spot-route
- * balance per asset index from `account_all`.
+ * balance per asset index from `account_all` or `account_all_assets`.
  */
 interface AccountSummaryInputs {
   perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
-  spotBalances?: Map<number, string>
+  spotBalances?: Map<number, Big>
   lastPortfolioValue?: string
 }
 
@@ -303,18 +305,34 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       }
     }
 
-    // Registry keyed by the wire channel (unique per sub), so replay-failure
-    // logs name the channel the venue knows. A logical sub may fan out to
-    // several wire channels (e.g. `marketsContext`), each registered independently.
-    for (const { channel, needsAuth, address } of wireChannels) {
-      await this.registerSub(channel, { channel, needsAuth, address })
-    }
-    await this.rws.ready()
-
+    // Acquired before the wire subs register, so a rejected spot-mark open
+    // leaves no `user_stats`/`account_all` entry behind for the next replay.
     const releaseSpotMarks =
       sub.channel === 'accountSummary'
         ? await this.subscribeSpotMarks(sub)
         : undefined
+    if (sub.channel === 'accountSummary') {
+      this.accountSummaryInputs.set(sub.address.toLowerCase(), {})
+    }
+
+    try {
+      // Registry keyed by the wire channel (unique per sub), so replay-failure
+      // logs name the channel the venue knows. A logical sub may fan out to
+      // several wire channels (e.g. `marketsContext`), each registered independently.
+      for (const { channel, needsAuth, address } of wireChannels) {
+        await this.registerSub(channel, { channel, needsAuth, address })
+      }
+      await this.rws.ready()
+    } catch (error) {
+      releaseSpotMarks?.()
+      for (const { channel } of wireChannels) {
+        this.unregisterSub(channel)
+      }
+      if (sub.channel === 'accountSummary') {
+        this.accountSummaryInputs.delete(sub.address.toLowerCase())
+      }
+      throw error
+    }
 
     return () => {
       releaseSpotMarks?.()
@@ -402,6 +420,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return token
   }
 
+  /** Whether a token resolves for the address; a resolver that throws counts as no token. */
+  private async canResolveAuthToken(address: Address): Promise<boolean> {
+    const resolve = this.authTokenResolver()
+    if (!resolve) {
+      return false
+    }
+    try {
+      return Boolean(await resolve(address))
+    } catch {
+      return false
+    }
+  }
+
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
       case 'marketsContext':
@@ -481,9 +512,15 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return [{ channel: `trade/${id}`, needsAuth: false }]
     }
     if (sub.channel === 'accountSummary') {
+      // Rejects the subscribe for a provider key with no settlement asset,
+      // instead of every later frame.
+      this.settlementAssetIndex()
       const accountIndex = await this.resolveAccountIndex(sub.address)
-      // Both are publicly readable. `account_all` is the public source of the
-      // spot balances; `account_all_assets` rejects a subscribe without auth.
+      // `account_all_assets` carries only the spot balances but rejects a
+      // subscribe without auth; the public `account_all` also carries the
+      // account's trades, positions and funding.
+      const hasToken = await this.canResolveAuthToken(sub.address)
+      const assetsChannel = hasToken ? 'account_all_assets' : 'account_all'
       return [
         {
           channel: `user_stats/${accountIndex}`,
@@ -491,8 +528,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
           address: sub.address,
         },
         {
-          channel: `account_all/${accountIndex}`,
-          needsAuth: false,
+          channel: `${assetsChannel}/${accountIndex}`,
+          needsAuth: hasToken,
           address: sub.address,
         },
       ]
@@ -645,7 +682,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     ) {
       this.handleAccountAll(
         msg as LtWsAccountAllMessage,
+        'account_all',
         msg.type === 'subscribed/account_all'
+      )
+      return
+    }
+
+    if (
+      msg.type === 'subscribed/account_all_assets' ||
+      msg.type === 'update/account_all_assets'
+    ) {
+      this.handleAccountAll(
+        msg as LtWsAccountAllMessage,
+        'account_all_assets',
+        msg.type === 'subscribed/account_all_assets'
       )
       return
     }
@@ -722,7 +772,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       marginUsed = isolatedMargin.plus(crossMargin)
     }
 
-    this.inputsFor(address).perps = {
+    const inputs = this.accountSummaryInputs.get(address)
+    if (inputs === undefined) {
+      return
+    }
+    inputs.perps = {
       equity: portfolio,
       availableMargin: available.toFixed(),
       marginUsed: marginUsed.toFixed(),
@@ -734,37 +788,35 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   /**
    * Replace the spot balances on a `subscribed/` frame and upsert them on an
    * `update/` frame. An update before the first snapshot is dropped, so the
-   * map never holds a partial set.
+   * map never holds a partial set. Balances parse here, so a non-decimal
+   * balance rejects its frame and never reaches the emit path.
    */
   private handleAccountAll(
     msg: LtWsAccountAllMessage,
+    prefix: 'account_all' | 'account_all_assets',
     isSnapshot: boolean
   ): void {
-    const address = this.addressFromChannel(msg.channel, 'account_all')
+    const address = this.addressFromChannel(msg.channel, prefix)
     if (!address) {
       return
     }
-    const inputs = this.inputsFor(address)
-    const balances = isSnapshot
-      ? new Map<number, string>()
-      : inputs.spotBalances
-    if (balances === undefined || (!isSnapshot && !msg.assets)) {
+    const inputs = this.accountSummaryInputs.get(address)
+    if (inputs === undefined || (!isSnapshot && !msg.assets)) {
       return
     }
-    for (const asset of Object.values(msg.assets ?? {})) {
-      balances.set(asset.asset_id, asset.balance)
+    const parsed = Object.values(msg.assets ?? {}).map(
+      (asset) =>
+        [asset.asset_id, toRequiredBig(asset.balance, 'balance')] as const
+    )
+    const balances = isSnapshot ? new Map<number, Big>() : inputs.spotBalances
+    if (balances === undefined) {
+      return
+    }
+    for (const [assetId, balance] of parsed) {
+      balances.set(assetId, balance)
     }
     inputs.spotBalances = balances
     this.emitAccountSummary(address)
-  }
-
-  private inputsFor(address: string): AccountSummaryInputs {
-    let inputs = this.accountSummaryInputs.get(address)
-    if (inputs === undefined) {
-      inputs = {}
-      this.accountSummaryInputs.set(address, inputs)
-    }
-    return inputs
   }
 
   /**
@@ -779,9 +831,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     const settlementAssetIndex = this.settlementAssetIndex()
-    const held = [...inputs.spotBalances].filter(([, balance]) =>
-      toRequiredBig(balance, 'balance').gt(0)
-    )
+    const held = [...inputs.spotBalances].filter(([, balance]) => balance.gt(0))
     const spotPrices = spotPriceByAssetId(
       this.registry?.markets ?? [],
       LIGHTER_SPOT_CATEGORY_ID,
@@ -796,8 +846,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       inputs.perps.equity,
       held.map(
         ([assetId, balance]) =>
-          spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
-            .valueUsd
+          spotValuation(
+            assetId,
+            balance.toFixed(),
+            settlementAssetIndex,
+            spotPrices
+          ).valueUsd
       )
     ).toFixed()
     if (onlyOnChange && portfolioValue === inputs.lastPortfolioValue) {

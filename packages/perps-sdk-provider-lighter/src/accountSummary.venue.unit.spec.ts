@@ -474,6 +474,49 @@ const ASSETS_RESPONSE = {
   ],
 }
 
+// Lighter `GET /api/v1/pnl?by=index&value=7684&resolution=1d`, read
+// 2026-09-30: the two daily snapshots up to the account snapshot time.
+const PNL_PAYLOAD = {
+  code: 200,
+  resolution: '1d',
+  pnl: [
+    {
+      timestamp: 1789948800,
+      trade_pnl: 919173.508975,
+      trade_spot_pnl: 1203091.082151,
+      inflow: 13675714.757163,
+      outflow: 14202382.987449,
+      spot_outflow: 1204097.0813,
+      spot_inflow: 1109,
+      pool_pnl: 54107.537653,
+      pool_inflow: 3700085.440449,
+      pool_outflow: 3754192.978102,
+      staking_pnl: 0,
+      staking_inflow: 0,
+      staking_outflow: 0,
+      pool_total_shares: 0,
+      volume: 4193315.325668,
+    },
+    {
+      timestamp: 1790035200,
+      trade_pnl: 913929.57881,
+      trade_spot_pnl: 1203091.082151,
+      inflow: 13675714.757163,
+      outflow: 14202382.987449,
+      spot_outflow: 1204097.0813,
+      spot_inflow: 1109,
+      pool_pnl: 54107.537653,
+      pool_inflow: 3700085.440449,
+      pool_outflow: 3754192.978102,
+      staking_pnl: 0,
+      staking_inflow: 0,
+      staking_outflow: 0,
+      pool_total_shares: 0,
+      volume: 5964969.601876,
+    },
+  ],
+}
+
 const STUB_CLIENT = {
   config: { apiUrl: 'https://backend.test/v1/perps' },
 } as PerpsSDKClient
@@ -504,6 +547,9 @@ describe('accountSummary.venue', () => {
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
+        }
+        if (u.includes('/api/v1/pnl?')) {
+          return respond(PNL_PAYLOAD)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -552,6 +598,18 @@ describe('accountSummary.venue', () => {
     const { summary } = await load()
     expect(SPOT_USDC_BALANCE).toBe('103.00085138124')
     // 390173.303079 + 103.00085138124
+    expect(summary.portfolioValue).toBe('390276.30393038124')
+  })
+
+  it('getPortfolioHistory ends on AccountSummary.portfolioValue, spot route included', async () => {
+    const { summary } = await load()
+    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    provider.bind(STUB_CLIENT)
+    const history = await provider.getPortfolioHistory?.({
+      address: ADDRESS,
+      range: '7d',
+    })
+    expect(history?.points.at(-1)?.accountValue).toBe(summary.portfolioValue)
     expect(summary.portfolioValue).toBe('390276.30393038124')
   })
 

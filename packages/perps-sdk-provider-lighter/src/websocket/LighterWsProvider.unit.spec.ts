@@ -5,13 +5,19 @@ import {
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LIGHTER_RH_PROVIDER_KEY, LIGHTER_RH_WS_URL } from '../constants.js'
+import {
+  LIGHTER_COLLATERAL_ASSETS,
+  LIGHTER_RH_PROVIDER_KEY,
+  LIGHTER_RH_WS_URL,
+} from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
 import type { LtWsUserStatsMessage } from '../types/index.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
 type LighterWsProviderInternals = {
   accountIndexCache: Map<string, number>
+  accountSummaryInputs: Map<string, unknown>
+  wireSubs: Map<string, unknown>
   rws: {
     ready(): Promise<void>
     getStatus(): string
@@ -247,10 +253,28 @@ describe('LighterWsProvider', () => {
       freshClient()
     )
 
-  /** Seed the account-index cache and sync the market registry so handleMessage can route without a live socket. */
+  /** Seed the account-index cache and the per-address summary inputs that `openChannel` creates. */
+  const seedAccount = (p: LighterWsProvider) => {
+    const internals = p as unknown as LighterWsProviderInternals
+    internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+    internals.accountSummaryInputs.set(TEST_ADDR, {})
+  }
+
+  /** As {@link seedAccount}, plus a market registry sync so handleMessage can route without a live socket. */
   const seedAccountAndMarkets = async (p: LighterWsProvider) => {
-    ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+    seedAccount(p)
     await (p as any).registry.sync()
+  }
+
+  /** Mock the socket as connected so `subscribe` runs the real open path and `send` records the frames. */
+  const connectedProvider = (p: LighterWsProvider = makeProvider()) => {
+    const internals = p as unknown as LighterWsProviderInternals
+    const send = vi.fn()
+    internals.rws.ready = vi.fn().mockResolvedValue(undefined)
+    internals.rws.getStatus = () => 'connected'
+    internals.rws.send = send
+    internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+    return { p, internals, send }
   }
 
   /** Inject a listener directly, bypassing the subscribe WS path. */
@@ -1729,13 +1753,13 @@ describe('LighterWsProvider', () => {
 
   const sendAccountAll = (
     p: LighterWsProvider,
-    type: 'subscribed/account_all' | 'update/account_all',
+    type: `${'subscribed' | 'update'}/${'account_all' | 'account_all_assets'}`,
     assets: Record<string, { asset_id: number; balance: string }> | null
   ) => {
     ;(p as unknown as LighterWsProviderInternals).handleMessage(
       JSON.stringify({
         type,
-        channel: `account_all:${ACCOUNT_IDX}`,
+        channel: `${type.split('/')[1]}:${ACCOUNT_IDX}`,
         assets:
           assets &&
           Object.fromEntries(
@@ -1765,7 +1789,7 @@ describe('LighterWsProvider', () => {
   describe('accountSummary via user_stats', () => {
     it('maps the free cross collateral, not the account-wide withdrawable', () => {
       const p = makeProvider()
-      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      seedAccount(p)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
       sendAccountAll(p, 'subscribed/account_all', {})
@@ -1805,7 +1829,7 @@ describe('LighterWsProvider', () => {
 
     it('renders values below 1e-7 as plain decimals', () => {
       const p = makeProvider()
-      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      seedAccount(p)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
       sendAccountAll(p, 'subscribed/account_all', {})
@@ -1841,7 +1865,7 @@ describe('LighterWsProvider', () => {
     ])('keeps %s cross PnL out of margin used', (_direction, portfolioValue, crossPortfolio, crossAvailable, pnl) => {
       const p = makeProvider()
       const internals = p as unknown as LighterWsProviderInternals
-      internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      seedAccount(p)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
       sendAccountAll(p, 'subscribed/account_all', {})
@@ -1897,7 +1921,7 @@ describe('LighterWsProvider', () => {
 
     it('falls back to the account-wide identities without cross_stats', () => {
       const p = makeProvider()
-      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      seedAccount(p)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
       sendAccountAll(p, 'subscribed/account_all', {})
@@ -1926,7 +1950,7 @@ describe('LighterWsProvider', () => {
 
     it('drops frames without parseable figures', () => {
       const p = makeProvider()
-      ;(p as any).accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
+      seedAccount(p)
       const listener = vi.fn()
       inject(p, `accountSummary:${TEST_ADDR}`, listener)
       sendAccountAll(p, 'subscribed/account_all', {})
@@ -1969,14 +1993,19 @@ describe('LighterWsProvider', () => {
       const USDC = 3
       const LIT = 2048
 
-      const sendLitMid = (p: LighterWsProvider, mid: string) => {
+      const sendSpotMid = (
+        p: LighterWsProvider,
+        marketId: number,
+        symbol: string,
+        mid: string
+      ) => {
         ;(p as unknown as LighterWsProviderInternals).handleMessage(
           JSON.stringify({
             type: 'update/spot_market_stats',
             spot_market_stats: {
-              [String(LIT)]: {
-                market_id: LIT,
-                symbol: 'LIT/USDC',
+              [String(marketId)]: {
+                market_id: marketId,
+                symbol,
                 index_price: mid,
                 mid_price: mid,
                 last_trade_price: mid,
@@ -1990,6 +2019,14 @@ describe('LighterWsProvider', () => {
           })
         )
       }
+      const sendLitMid = (p: LighterWsProvider, mid: string) =>
+        sendSpotMid(p, LIT, 'LIT/USDC', mid)
+
+      const accountSummarySub = {
+        channel: 'accountSummary',
+        dex: 'lighter',
+        address: TEST_ADDR,
+      } as const
 
       const portfolioValues = (listener: ReturnType<typeof vi.fn>) =>
         listener.mock.calls.map(([event]) => event.data.portfolioValue)
@@ -2047,27 +2084,115 @@ describe('LighterWsProvider', () => {
         p.close()
       })
 
-      it('skips a mark tick that leaves portfolioValue unchanged', async () => {
-        const p = makeProvider()
-        await seedAccountAndMarkets(p)
+      it('emits on a spot-mark tick that changes portfolioValue and skips the ticks that do not', async () => {
+        const { p } = connectedProvider()
         const listener = vi.fn()
-        inject(p, `accountSummary:${TEST_ADDR}`, listener)
-        const emitOnMark = () =>
-          (p as unknown as LighterWsProviderInternals).emitAccountSummary(
-            TEST_ADDR,
-            true
-          )
+        await p.subscribe(accountSummarySub, listener)
 
         sendUserStats(p, '100')
         sendAccountAll(p, 'subscribed/account_all', {
           [LIT]: { asset_id: LIT, balance: '2' },
         })
-        emitOnMark()
         sendLitMid(p, '1.5')
-        emitOnMark()
-        emitOnMark()
+        sendLitMid(p, '1.5')
+        sendSpotMid(p, 4096, 'XPL/USDC', '9')
 
         expect(portfolioValues(listener)).toEqual(['100', '103'])
+        p.close()
+      })
+
+      it('drops an account_all frame with a non-decimal balance and keeps the stream alive', async () => {
+        const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+          const p = makeProvider()
+          await seedAccountAndMarkets(p)
+          const listener = vi.fn()
+          inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+          sendUserStats(p, '100')
+          sendAccountAll(p, 'subscribed/account_all', {
+            [USDC]: { asset_id: USDC, balance: '10' },
+          })
+          sendAccountAll(p, 'update/account_all', {
+            [LIT]: { asset_id: LIT, balance: 'not-a-decimal' },
+          })
+          sendAccountAll(p, 'update/account_all', {
+            [USDC]: { asset_id: USDC, balance: '20' },
+          })
+
+          expect(errSpy).toHaveBeenCalledOnce()
+          expect(portfolioValues(listener)).toEqual(['110', '120'])
+          p.close()
+        } finally {
+          errSpy.mockRestore()
+        }
+      })
+
+      it('ignores account frames after the subscription is released', async () => {
+        const { p, internals } = connectedProvider()
+        const listener = vi.fn()
+        const unsubscribe = await p.subscribe(accountSummarySub, listener)
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'subscribed/account_all', {})
+        expect(portfolioValues(listener)).toEqual(['100'])
+
+        vi.useFakeTimers()
+        try {
+          unsubscribe()
+          await vi.runAllTimersAsync()
+        } finally {
+          vi.useRealTimers()
+        }
+        sendUserStats(p, '200')
+        sendAccountAll(p, 'subscribed/account_all', {})
+
+        expect(portfolioValues(listener)).toEqual(['100'])
+        expect(internals.accountSummaryInputs.size).toBe(0)
+        p.close()
+      })
+
+      it('registers no wire sub when the spot-mark subscribe rejects', async () => {
+        const { p, internals, send } = connectedProvider()
+        send.mockImplementation((data: string) => {
+          if (data.includes('market_stats/all')) {
+            throw new Error('socket closed')
+          }
+        })
+
+        await expect(p.subscribe(accountSummarySub, vi.fn())).rejects.toThrow(
+          'socket closed'
+        )
+
+        expect(send).not.toHaveBeenCalledWith(
+          JSON.stringify({
+            type: 'subscribe',
+            channel: `user_stats/${ACCOUNT_IDX}`,
+          })
+        )
+        expect(internals.wireSubs.size).toBe(0)
+        expect(internals.accountSummaryInputs.size).toBe(0)
+        p.close()
+      })
+
+      it('values the Robinhood settlement asset at 1', async () => {
+        const p = new LighterWsProvider(
+          LIGHTER_RH_WS_URL,
+          LIGHTER_RH_PROVIDER_KEY,
+          {},
+          freshClient()
+        )
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+        const usdg =
+          LIGHTER_COLLATERAL_ASSETS[LIGHTER_RH_PROVIDER_KEY].assetIndex
+
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'subscribed/account_all', {
+          [usdg]: { asset_id: usdg, balance: '10' },
+        })
+
+        expect(portfolioValues(listener)).toEqual(['110'])
         p.close()
       })
 
@@ -2115,27 +2240,167 @@ describe('LighterWsProvider', () => {
         provider.close()
       })
 
-      it('throws for a provider key with no settlement asset', () => {
-        const p = new LighterWsProvider(
+      it('replaces the balances on an account_all_assets snapshot and upserts them on an update', async () => {
+        const p = makeProvider()
+        await seedAccountAndMarkets(p)
+        const listener = vi.fn()
+        inject(p, `accountSummary:${TEST_ADDR}`, listener)
+
+        sendUserStats(p, '100')
+        sendAccountAll(p, 'update/account_all_assets', {
+          [USDC]: { asset_id: USDC, balance: '99' },
+        })
+        expect(listener).not.toHaveBeenCalled()
+
+        sendAccountAll(p, 'subscribed/account_all_assets', {
+          [USDC]: { asset_id: USDC, balance: '10' },
+          [LIT]: { asset_id: LIT, balance: '2' },
+        })
+        sendLitMid(p, '1.5')
+        sendAccountAll(p, 'update/account_all_assets', null)
+        sendAccountAll(p, 'update/account_all_assets', {
+          [USDC]: { asset_id: USDC, balance: '25' },
+        })
+        sendAccountAll(p, 'subscribed/account_all_assets', {
+          [USDC]: { asset_id: USDC, balance: '5' },
+        })
+
+        expect(portfolioValues(listener)).toEqual(['110', '128', '105'])
+        p.close()
+      })
+
+      const subscribeAccountSummary = async (provider: LighterWsProvider) => {
+        const { send } = connectedProvider(provider)
+        const unsubscribe = await provider.subscribe(
+          { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+        const sent = send.mock.calls.map(([frame]) => JSON.parse(frame))
+        return { send, sent, unsubscribe }
+      }
+
+      it('subscribes account_all_assets with the auth token when a token resolves, not account_all', async () => {
+        const provider = new LighterWsProvider(
           'ws://127.0.0.1:1',
-          'lighter-unknown',
-          {},
+          'lighter',
+          { resolveAuthToken: async () => 'token' },
           freshClient()
         )
-        const internals = p as unknown as LighterWsProviderInternals
-        internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
-        sendAccountAll(p, 'subscribed/account_all', {})
-        expect(() =>
-          internals.handleUserStats({
-            type: 'update/user_stats',
-            channel: `user_stats:${ACCOUNT_IDX}`,
-            stats: {
-              collateral: '1',
-              portfolio_value: '1',
-              available_balance: '1',
-            },
+
+        const { send, sent, unsubscribe } =
+          await subscribeAccountSummary(provider)
+
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `account_all_assets/${ACCOUNT_IDX}`,
+          auth: 'token',
+        })
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `user_stats/${ACCOUNT_IDX}`,
+        })
+        expect(sent.map((frame) => frame.channel)).not.toContain(
+          `account_all/${ACCOUNT_IDX}`
+        )
+
+        vi.useFakeTimers()
+        try {
+          unsubscribe()
+          await vi.runAllTimersAsync()
+        } finally {
+          vi.useRealTimers()
+        }
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({
+            type: 'unsubscribe',
+            channel: `account_all_assets/${ACCOUNT_IDX}`,
           })
-        ).toThrow(/no settlement asset/)
+        )
+        provider.close()
+      })
+
+      it('keeps the public account_all channel when the resolver yields no token', async () => {
+        const provider = new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          { resolveAuthToken: async () => undefined },
+          freshClient()
+        )
+
+        const { sent } = await subscribeAccountSummary(provider)
+
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `account_all/${ACCOUNT_IDX}`,
+        })
+        expect(sent.map((frame) => frame.channel)).not.toContain(
+          `account_all_assets/${ACCOUNT_IDX}`
+        )
+        provider.close()
+      })
+
+      it('keeps the public account_all channel when the resolver throws', async () => {
+        const provider = new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          {
+            resolveAuthToken: async () => {
+              throw new Error('tokens/create returned 429')
+            },
+          },
+          freshClient()
+        )
+
+        const { sent } = await subscribeAccountSummary(provider)
+
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `account_all/${ACCOUNT_IDX}`,
+        })
+        expect(sent.map((frame) => frame.channel)).not.toContain(
+          `account_all_assets/${ACCOUNT_IDX}`
+        )
+        provider.close()
+      })
+
+      it('resolves the token through the co-registered Lighter plugin', async () => {
+        const authToken = vi.fn(() => 'plugin-token')
+        const provider = new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          {},
+          createPerpsClient({
+            integrator: 'test-app',
+            apiKey: 'test-key',
+            providers: [lighterProvider({ authToken })],
+          })
+        )
+
+        const { sent } = await subscribeAccountSummary(provider)
+
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `account_all_assets/${ACCOUNT_IDX}`,
+          auth: 'plugin-token',
+        })
+        provider.close()
+      })
+
+      it('rejects an accountSummary subscribe for a provider key with no settlement asset', async () => {
+        const { p, send } = connectedProvider(
+          new LighterWsProvider(
+            'ws://127.0.0.1:1',
+            'lighter-unknown',
+            {},
+            freshClient()
+          )
+        )
+
+        await expect(p.subscribe(accountSummarySub, vi.fn())).rejects.toThrow(
+          /no settlement asset/
+        )
+
+        expect(send).not.toHaveBeenCalled()
         p.close()
       })
     })
@@ -2149,7 +2414,6 @@ describe('LighterWsProvider', () => {
       const provider = lighterWsProvider()({
         provider: 'lighter',
         wsUrl: 'ws://127.0.0.1:1',
-        markets: [],
         client,
       }) as LighterWsProvider
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)

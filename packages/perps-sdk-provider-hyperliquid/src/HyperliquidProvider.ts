@@ -363,7 +363,7 @@ export function hyperliquidProvider(
     getMarketSettings: (
       params: ProviderGetMarketSettingsParams,
       opts?: SDKRequestOptions
-    ): Promise<MarketSettings | undefined> =>
+    ): Promise<MarketSettings> =>
       getMarketSettings(
         contextRef.require(),
         { address: params.address, market: params.market },

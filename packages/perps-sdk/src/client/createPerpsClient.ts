@@ -1,10 +1,6 @@
 import type { PerpsConfig } from '../types/api.js'
-import type { PerpsBaseConfig, ProviderConfigs } from '../types/config.js'
-import type {
-  PerpsProvider,
-  PerpsProviderPlugin,
-  PerpsSDKClient,
-} from '../types/provider.js'
+import type { PerpsBaseConfig } from '../types/config.js'
+import type { PerpsProvider, PerpsSDKClient } from '../types/provider.js'
 import { bindProvider } from './bindProvider.js'
 
 /**
@@ -30,15 +26,12 @@ export const DEFAULT_API_URL = 'https://li.quest/v1/perps'
  */
 export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
   const apiUrl = options.apiUrl ?? DEFAULT_API_URL
-  const { providerPlugins, providerConfigs } = splitProviders(options.providers)
 
   const config: PerpsBaseConfig = {
     integrator: options.integrator?.trim() || undefined,
     apiKey: options.apiKey?.trim() ?? '',
     apiUrl,
-    disableVersionCheck: options.disableVersionCheck,
     requestInterceptor: options.requestInterceptor,
-    providers: providerConfigs,
     retry: options.retry,
     fetch: options.fetch,
   }
@@ -58,30 +51,9 @@ export function createPerpsClient(options: PerpsConfig): PerpsSDKClient {
     },
   }
 
-  const boundProviders: PerpsProvider[] = providerPlugins.map((plugin) =>
-    bindProvider(plugin, client)
+  const boundProviders: PerpsProvider[] = (options.providers ?? []).map(
+    (plugin) => bindProvider(plugin, client)
   )
 
   return client
-}
-
-/**
- * Split the overloaded `providers` option into its two shapes — the
- * plugin array used by {@link PerpsSDKClient.getProvider}, and the
- * keyed `ProviderConfigs` consumed internally by `PerpsWsClient` for
- * markets filtering.
- */
-export function splitProviders(
-  input: PerpsProviderPlugin[] | ProviderConfigs | undefined
-): {
-  providerPlugins: PerpsProviderPlugin[]
-  providerConfigs?: ProviderConfigs
-} {
-  if (input === undefined) {
-    return { providerPlugins: [] }
-  }
-  if (Array.isArray(input)) {
-    return { providerPlugins: input }
-  }
-  return { providerPlugins: [], providerConfigs: input }
 }

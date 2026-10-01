@@ -17,10 +17,16 @@ export interface ProviderWithdrawableBalance {
   available: string
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
-   * Absent when the venue publishes no fee for the asset. The client rejects a
-   * value that is not a non-negative decimal.
+   * Absent when the venue publishes no fee for the asset. The client rejects
+   * a value that is not a non-negative decimal.
    */
   withdrawalFee?: string
+  /**
+   * `true` when the venue takes `withdrawalFee` out of the requested amount,
+   * `false` when it charges the fee in addition. Set together with
+   * `withdrawalFee`; the client drops it from a row without a fee.
+   */
+  isFeeDeducted?: boolean
 }
 
 /**
@@ -36,11 +42,22 @@ export interface WithdrawableBalance {
   /** Withdrawable amount in the asset's own units. */
   available: string
   /**
-   * Flat venue fee on a withdrawal from this row, in the asset's own units. An
-   * amount at or below it delivers nothing. Absent when the venue publishes no
-   * fee for the asset.
+   * Flat venue fee on a withdrawal from this row, in the asset's own units.
+   * Absent when the venue publishes no fee for the asset. With
+   * `isFeeDeducted` `true`, the venue takes the fee out of the requested
+   * amount, and an amount at or below the fee delivers nothing. With `false`,
+   * the venue charges the fee in addition to the requested amount, so the
+   * largest amount the row can fund is `available` minus the fee. That result
+   * is zero or negative when the fee is at or above `available`, and the row
+   * then funds no withdrawal.
    */
   withdrawalFee?: string
+  /**
+   * Present only together with `withdrawalFee`. Absent on a row from a
+   * provider plugin that does not report it; absence means unknown, not
+   * `true`.
+   */
+  isFeeDeducted?: boolean
 }
 
 /**
