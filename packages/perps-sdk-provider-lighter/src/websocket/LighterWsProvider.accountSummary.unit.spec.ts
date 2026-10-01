@@ -257,7 +257,9 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
     )('streams the REST portfolioValue after the frames %s', async (_label, order) => {
       const client = {
         config: { apiUrl: 'https://backend.test/v1/perps' },
-      } as PerpsSDKClient
+        providers: [],
+        getProvider: () => undefined,
+      } as unknown as PerpsSDKClient
 
       const rest = await restPortfolioValue(client)
       const streamed = await streamedSummaries(client, totalAssetValue, order)
