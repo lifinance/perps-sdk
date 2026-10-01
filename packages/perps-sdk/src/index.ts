@@ -16,6 +16,7 @@ export {
   DEFAULT_API_URL,
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
+export { requireProvider } from './client/requireProvider.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 // Registries
@@ -132,11 +133,8 @@ export type {
   WithdrawParams,
 } from './types/api.js'
 export type {
-  HyperliquidConfig,
   PerpsBaseConfig,
   PerpsClientSigner,
-  ProviderConfig,
-  ProviderConfigs,
   RequestInterceptor,
   SDKRequestOptions,
   SwitchChainHook,
@@ -222,6 +220,7 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './utils/format.js'
+export { maxOf, minOf } from './utils/math.js'
 export {
   ACTIVE_ORDER_STATUSES,
   classifyFill,
@@ -241,7 +240,7 @@ export {
   findMatchingPosition,
   resolveCloseSize,
 } from './utils/orderMath.js'
-export { stringToFloat } from './utils/parse.js'
+export { parseDecimal, stringToFloat } from './utils/parse.js'
 export {
   directionSign,
   estimateIsolatedLiquidationPrice,
@@ -249,6 +248,7 @@ export {
   predictNewLeverage,
   predictUnrealizedPnl,
   realizedPnlOnClose,
+  wouldImmediatelyLiquidate,
 } from './utils/positionMath.js'
 export type { ScaleToIntegerPolicy } from './utils/scaleToInteger.js'
 export { scaleToInteger } from './utils/scaleToInteger.js'

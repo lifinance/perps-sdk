@@ -61,6 +61,11 @@ export interface BaseMarket {
 export interface PerpsMarket extends BaseMarket {
   maxLeverage: number
   /**
+   * The display leverage the venue applies to a market with no stored user
+   * setting. Absent when the venue publishes no default.
+   */
+  defaultLeverage?: number
+  /**
    * Minimum order notional in USD for this market, as a plain decimal string.
    * Lighter applies it to resting (post-only) orders only. Separate from the
    * venue-wide `Provider.minOrderValueUsd`, which is a `number`; parse this

@@ -120,7 +120,8 @@ withdrawal's own `asset`. A withdrawal Ondo reports as
 `getWithdrawableBalances` reads the account's `/v1/account` `withdrawalFeeUSD`
 and sets it as `withdrawalFee` on the collateral row. That row is in collateral
 units, not USD. The provider uses the USD fee 1:1 because the Ondo collateral
-is USDC.
+is USDC. Ondo charges the fee in addition to the requested amount, so the row
+sets `isFeeDeducted` to `false`.
 
 Activity cursors with overflow rows use format version `2`. The provider rejects
 older overflow formats instead of treating a display symbol as asset identity.

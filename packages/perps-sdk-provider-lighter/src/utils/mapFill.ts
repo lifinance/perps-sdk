@@ -6,12 +6,9 @@ import {
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
 import Big from 'big.js'
-import {
-  LIGHTER_FEE_TICK_SCALE,
-  LIGHTER_IMF_PERCENT_SCALE,
-} from '../constants.js'
+import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
-import { leverageFromImf } from './mapPosition.js'
+import { leverageFromScaledImf } from './mapPosition.js'
 import { isPlaceholderTxHash } from './txHash.js'
 
 /**
@@ -36,16 +33,12 @@ const tickToFeeAmount = (
     .toFixed()
 
 /**
- * Display leverage the viewer had set on the market when the trade executed.
- * Lighter reports it as the pre-trade initial margin fraction, an integer
- * percent on `LIGHTER_IMF_PERCENT_SCALE`: `500` is 5.00%, so 20x. Returns
- * `undefined` when the row omits the fraction. Lighter declares the fraction a
- * `StrictInt`, so the scale division is exact and `toFixed()` loses nothing.
+ * Display leverage the viewer had set on the market when the trade executed,
+ * from the pre-trade initial margin fraction. Returns `undefined` when the
+ * row omits the fraction.
  */
 const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
-  imf === undefined
-    ? undefined
-    : leverageFromImf(new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed())
+  imf === undefined ? undefined : leverageFromScaledImf(imf)
 
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry

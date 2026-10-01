@@ -9,7 +9,7 @@ import type { PerpsProvider, PerpsSDKClient } from '../types/provider.js'
  * `createPerpsClient({ providers: [...] })`) rather than a runtime-recoverable
  * state.
  *
- * @internal
+ * @public
  */
 export function requireProvider(
   client: PerpsSDKClient,

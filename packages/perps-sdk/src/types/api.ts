@@ -24,11 +24,7 @@ import type {
 } from '@lifi/perps-types'
 import type { Account, Address, WalletClient } from 'viem'
 import type { RetryConfig } from '../transport/retryPolicy.js'
-import type {
-  ProviderConfigs,
-  RequestInterceptor,
-  SwitchChainHook,
-} from './config.js'
+import type { RequestInterceptor, SwitchChainHook } from './config.js'
 import type { PerpsProviderPlugin } from './provider.js'
 
 /**
@@ -52,25 +48,15 @@ export interface PerpsConfig {
   apiKey?: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
-  /** Skip the SDK-version compatibility check when set. */
-  disableVersionCheck?: boolean
   /** Hook that can rewrite URL/request options before transport. */
   requestInterceptor?: RequestInterceptor
   /**
-   * Provider plugins or per-provider config. Two shapes are accepted:
-   *
-   * - `PerpsProviderPlugin[]` — plugin objects implementing the read surface
-   *   for one DEX each. Bound to the client at construction and looked up at
-   *   runtime as bound {@link PerpsProvider}s via `client.getProvider(key)`.
-   *   Modelled on `@lifi/sdk`'s `providers: SDKProvider[]`.
-   * - `ProviderConfigs` — keyed config object (e.g.
-   *   `{ hyperliquid: { markets: [...] } }`). Used internally by
-   *   `PerpsWsClient` to filter which markets are subscribed to.
-   *
-   * Both may be supplied during the migration to provider packages;
-   * the array form is preferred for new code.
+   * Provider plugins, one per DEX. Bound to the client at construction and
+   * looked up at runtime as bound {@link PerpsProvider}s via
+   * `client.getProvider(key)`. Modelled on `@lifi/sdk`'s
+   * `providers: SDKProvider[]`.
    */
-  providers?: PerpsProviderPlugin[] | ProviderConfigs
+  providers?: PerpsProviderPlugin[]
   /**
    * The end-user's wallet, used whenever an action's descriptor names
    * `PerpsSigner.USER` as its `signer`. Accepts any viem-compatible WalletClient:
@@ -117,12 +103,8 @@ export interface PerpsClientOptions {
   apiKey?: string
   /** Perps API base URL; defaults to {@link DEFAULT_API_URL}. */
   apiUrl?: string
-  /**
-   * Provider plugins or per-provider config. Accepts the same two shapes as
-   * {@link PerpsConfig.providers}: an array of `PerpsProviderPlugin` plugins or
-   * a keyed `ProviderConfigs` map.
-   */
-  providers?: PerpsProviderPlugin[] | ProviderConfigs
+  /** Provider plugins; see {@link PerpsConfig.providers}. */
+  providers?: PerpsProviderPlugin[]
   /**
    * Hook invoked before a USER-signed EIP-712 action is signed, to switch the
    * user's wallet to the action's target chain. Also settable at runtime via

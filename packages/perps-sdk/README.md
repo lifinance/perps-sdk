@@ -82,10 +82,18 @@ fee source is known for that asset:
 
 - Hyperliquid: the backend `/providers` `withdrawalFeeUsd`, on USDC rows only.
   This read also calls the backend. A missing descriptor value leaves the key
-  absent.
+  absent. `isFeeDeducted` is `true`.
 - Ondo: the account's `/v1/account` `withdrawalFeeUSD`, on the collateral row.
   The USD fee counts 1:1 as collateral units, because Ondo collateral is USDC.
+  `isFeeDeducted` is `false`.
 - Lighter: never set.
+
+A row with a fee can also carry `isFeeDeducted`. With `true`, the venue takes
+the fee out of the requested amount, so an amount at or below the fee delivers
+nothing. With `false`, the venue charges the fee in addition to the requested
+amount, so the largest amount the row can fund is `available` minus the fee.
+When that result is zero or negative, the row funds no withdrawal. An absent
+`isFeeDeducted` means unknown. It does not mean `true`.
 
 An absent `withdrawalFee` means that no fee source is known. It does not prove
 that the venue charges no fee.
@@ -127,10 +135,10 @@ margin that the close releases. Without an Ondo session, for Lighter spot
 markets, and for every other provider, the client falls back to the account
 summary, so `buy` and `sell` both equal `availableMargin`.
 
-Each perps-category row in `Account.collateralBalances` carries
+Each collateral row in `Account.collateralBalances` and each spot row carries
 `transferable`: the part of `units` that the venue releases from that category
-in a category transfer. The value is always from `0` to `units`. It is absent
-on every other row, and no WebSocket channel updates it.
+for a transfer or a withdrawal. The value is always from `0` to `units`. No
+WebSocket channel updates it.
 
 - Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
   sub-dex.
@@ -138,6 +146,8 @@ on every other row, and no WebSocket channel updates it.
   `0` on every other asset's row, since a category transfer moves only the
   settlement asset.
 - Ondo: the `/v1/perps/balance` `withdrawableMargin`.
+- Hyperliquid spot rows: the `spotClearinghouseState` `total` minus `hold`.
+- Lighter spot rows: the asset `balance` minus `locked_balance`.
 
 `PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
 first subscribe, whether the provider streams the `availableToTrade` channel.

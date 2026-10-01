@@ -3,12 +3,14 @@ import type {
   AccountSummary,
   ActivitiesResponse,
   FillsResponse,
+  MarketSettings,
   Order,
   OrdersResponse,
   Position,
   PositionsResponse,
   Quote,
 } from '@lifi/perps-types'
+import { MarginMode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { describe, expect, it, vi } from 'vitest'
 import type { PerpsProviderPlugin, PerpsSDKClient } from '../types/provider.js'
@@ -49,6 +51,12 @@ const makePlugin = () => {
     formatOrderSize: vi.fn((_market, size: number) => size.toString()),
     estimateLiquidationPrice: vi.fn(() => undefined),
     positionRemovableMargin: vi.fn(() => undefined),
+    getMarketSettings: vi.fn(
+      async (): Promise<MarketSettings> => ({
+        marginMode: MarginMode.CROSS,
+        leverage: 1,
+      })
+    ),
     resolveAuthToken: vi.fn(async (): Promise<string | undefined> => 'token'),
     projectConfig: vi.fn(() => []),
   }
@@ -68,6 +76,7 @@ const makePlugin = () => {
     formatOrderSize: calls.formatOrderSize,
     estimateLiquidationPrice: calls.estimateLiquidationPrice,
     positionRemovableMargin: calls.positionRemovableMargin,
+    getMarketSettings: calls.getMarketSettings,
     projectConfig: calls.projectConfig,
     resolveAuthToken: calls.resolveAuthToken,
   }

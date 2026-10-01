@@ -141,9 +141,9 @@ export interface Balance {
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
   /**
-   * Part of `units` the venue releases from this category in a category
-   * transfer, as a decimal string from `0` to `units`. Set on each
-   * perps-category collateral row; absent on every other row.
+   * Part of `units` the venue releases from this category for a transfer or
+   * a withdrawal, as a decimal string clamped to `[0, units]`. Every
+   * collateral row and every spot row carries it.
    */
   transferable?: string
 }
@@ -213,9 +213,8 @@ export interface AvailableToTrade {
 }
 
 /**
- * The user's complete venue-side settings for one market: the margin mode
- * and display leverage the next order on it will use. A provider returns
- * `undefined` when it cannot read both values.
+ * The user's complete venue-side settings for one perps market: the margin
+ * mode and display leverage the next order on it will use.
  * @public
  */
 export interface MarketSettings {
