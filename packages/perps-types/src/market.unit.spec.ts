@@ -11,6 +11,7 @@ import type {
   PerpsMarketDisplay,
   SpotMarket,
 } from './market.js'
+import { OHLCV_MAX_LIMIT } from './market.js'
 
 const btc: Asset = {
   providerId: 'hyperliquid',
@@ -185,6 +186,12 @@ describe('OhlcvResponse', () => {
     }
     expect(response.interval).toBe('1h')
     expect(response.candles).toHaveLength(1)
+  })
+})
+
+describe('OHLCV_MAX_LIMIT', () => {
+  it('matches the backend maximum limit of one OHLCV request', () => {
+    expect(OHLCV_MAX_LIMIT).toBe(1000)
   })
 })
 

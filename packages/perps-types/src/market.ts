@@ -191,6 +191,9 @@ export interface OhlcvResponse {
   candles: Candle[]
 }
 
+/** Maximum `limit` of one OHLCV request; it caps one request, not the chart history. @public */
+export const OHLCV_MAX_LIMIT = 1000
+
 /**
  * Supported OHLCV intervals. Values are wire interval strings (`1M` is one
  * month; lowercase `m` values are minutes).
