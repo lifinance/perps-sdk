@@ -1,4 +1,5 @@
 import type { OhlcvInterval } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { mapInterval } from './ohlcvInterval.js'
 
@@ -31,5 +32,8 @@ describe('mapInterval', () => {
     UNSUPPORTED_INTERVALS
   )('rejects unsupported interval %s with ValidationError', (interval) => {
     expect(() => mapInterval(interval)).toThrow(/does not support/i)
+    expect(() => mapInterval(interval)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
