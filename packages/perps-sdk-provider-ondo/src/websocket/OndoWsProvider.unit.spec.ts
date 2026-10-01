@@ -1296,12 +1296,15 @@ describe('OndoWsProvider', () => {
      * overtake an earlier one. The last entry serves every further read.
      */
     const stubBalanceQueue = (
-      reads: { delayMs: number; balance: unknown }[]
+      reads: { delayMs: number; balance: unknown; authToken?: string }[]
     ) => {
       let calls = 0
       vi.stubGlobal(
         'fetch',
-        async (input: RequestInfo | URL): Promise<Response> => {
+        async (
+          input: RequestInfo | URL,
+          init?: RequestInit
+        ): Promise<Response> => {
           const url = input.toString()
           const json = (body: unknown) =>
             new Response(JSON.stringify(body), {
@@ -1316,6 +1319,13 @@ describe('OndoWsProvider', () => {
           }
           const read = reads[Math.min(calls, reads.length - 1)]
           calls += 1
+          if (
+            read.authToken !== undefined &&
+            new Headers(init?.headers).get('Authorization') !==
+              `Bearer ${read.authToken}`
+          ) {
+            throw new Error('Balance request used the wrong wallet session')
+          }
           await new Promise((resolve) => setTimeout(resolve, read.delayMs))
           return json({ success: true, result: read.balance })
         }
@@ -1405,6 +1415,425 @@ describe('OndoWsProvider', () => {
         },
       })
       p.close()
+    })
+
+    it.each([
+      { address: OTHER_ADDR, authToken: 'jwt-b', teardownMs: 0 },
+      { address: TEST_ADDR, authToken: 'jwt-a', teardownMs: 300 },
+    ])('discards an old refresh after resubscribing for $address', async ({
+      address,
+      authToken,
+      teardownMs,
+    }) => {
+      vi.useFakeTimers()
+      stubBalanceQueue([
+        { delayMs: 0, balance: BALANCE, authToken: 'jwt-a' },
+        {
+          delayMs: 1000,
+          balance: {
+            ...BALANCE,
+            marginBalance: '1025',
+            availableMargin: '825',
+          },
+          authToken: 'jwt-a',
+        },
+        {
+          delayMs: 0,
+          balance: {
+            ...BALANCE,
+            marginBalance: '2200',
+            availableMargin: '2000',
+          },
+          authToken,
+        },
+        {
+          delayMs: 0,
+          balance: {
+            ...BALANCE,
+            marginBalance: '2300',
+            availableMargin: '2100',
+          },
+          authToken,
+        },
+      ])
+      const p = makeProvider(seededBothStorage())
+      p.close()
+      stubSocket(p)
+      const oldListener = vi.fn()
+      const listener = vi.fn()
+
+      try {
+        const opening = subscribeSummary(p, oldListener)
+        await vi.advanceTimersByTimeAsync(0)
+        const unsubscribe = await opening
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+        await vi.advanceTimersByTimeAsync(0)
+        unsubscribe()
+        await vi.advanceTimersByTimeAsync(teardownMs)
+
+        const reopening = p.subscribe(
+          { channel: 'accountSummary', dex: 'ondo', address },
+          listener
+        )
+        await vi.advanceTimersByTimeAsync(0)
+        await reopening
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(listener.mock.calls).toEqual([
+          [
+            {
+              channel: 'accountSummary',
+              data: {
+                portfolioValue: '2200',
+                availableMargin: '2000',
+                marginUsed: '200',
+                unrealizedPnl: '50',
+              },
+            },
+          ],
+        ])
+        expect(oldListener).toHaveBeenCalledTimes(1)
+
+        feed(p, {
+          type: 'update',
+          channel: 'positionsPerps',
+          data: [RAW_POSITION],
+        })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '2300',
+            availableMargin: '2100',
+            marginUsed: '200',
+            unrealizedPnl: '50',
+          },
+        })
+      } finally {
+        p.close()
+      }
+    })
+
+    it.each([
+      { address: OTHER_ADDR, authToken: 'jwt-b' },
+      { address: TEST_ADDR, authToken: 'jwt-a' },
+    ])('discards an old seed after close and resubscribe for $address', async ({
+      address,
+      authToken,
+    }) => {
+      vi.useFakeTimers()
+      stubBalanceQueue([
+        { delayMs: 1000, balance: BALANCE, authToken: 'jwt-a' },
+        {
+          delayMs: 0,
+          balance: {
+            ...BALANCE,
+            marginBalance: '2200',
+            availableMargin: '2000',
+          },
+          authToken,
+        },
+        {
+          delayMs: 0,
+          balance: {
+            ...BALANCE,
+            marginBalance: '2300',
+            availableMargin: '2100',
+          },
+          authToken,
+        },
+      ])
+      const p = makeProvider(seededBothStorage())
+      p.close()
+      stubSocket(p)
+      const oldListener = vi.fn()
+      const listener = vi.fn()
+
+      try {
+        const opening = subscribeSummary(p, oldListener)
+        await vi.advanceTimersByTimeAsync(0)
+        p.close()
+
+        const reopening = p.subscribe(
+          { channel: 'accountSummary', dex: 'ondo', address },
+          listener
+        )
+        await vi.advanceTimersByTimeAsync(0)
+        const unsubscribe = await reopening
+        await vi.advanceTimersByTimeAsync(1000)
+        await opening
+
+        expect(listener.mock.calls).toEqual([
+          [
+            {
+              channel: 'accountSummary',
+              data: {
+                portfolioValue: '2200',
+                availableMargin: '2000',
+                marginUsed: '200',
+                unrealizedPnl: '50',
+              },
+            },
+          ],
+        ])
+        expect(oldListener).not.toHaveBeenCalled()
+
+        feed(p, {
+          type: 'update',
+          channel: 'positionsPerps',
+          data: [RAW_POSITION],
+        })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '2300',
+            availableMargin: '2100',
+            marginUsed: '200',
+            unrealizedPnl: '50',
+          },
+        })
+
+        unsubscribe()
+        await vi.advanceTimersByTimeAsync(300)
+        await p.subscribe(
+          {
+            channel: 'positions',
+            dex: 'ondo',
+            address: address === TEST_ADDR ? OTHER_ADDR : TEST_ADDR,
+          },
+          vi.fn()
+        )
+      } finally {
+        p.close()
+      }
+    })
+
+    it.each([
+      'success',
+      'rejection',
+    ] as const)('keeps replacement wires owned when an old login settles with %s', async (outcome) => {
+      vi.useFakeTimers()
+      const stored = seededBothStorage()
+      let reads = 0
+      let resolveLogin!: (token: string | null) => void
+      let rejectLogin!: (error: Error) => void
+      const loginRead = new Promise<string | null>((resolve, reject) => {
+        resolveLogin = resolve
+        rejectLogin = reject
+      })
+      const storage: StorageAdapter = {
+        ...stored,
+        get: (key) => {
+          if (key === SESSION_KEY && ++reads === 3) {
+            return loginRead
+          }
+          return stored.get(key)
+        },
+      }
+      let balance = BALANCE
+      stubFetch(() => balance)
+      const p = makeProvider(storage)
+      p.close()
+      const send = stubSocket(p)
+      const listener = vi.fn()
+
+      try {
+        const opening = subscribeSummary(p, vi.fn())
+        const settled = opening.then(
+          () => 'success',
+          () => 'rejection'
+        )
+        await vi.advanceTimersByTimeAsync(0)
+        expect(reads).toBe(3)
+        p.close()
+
+        balance = {
+          ...BALANCE,
+          marginBalance: '2200',
+          availableMargin: '2000',
+        }
+        const unsubscribe = await p.subscribe(
+          { channel: 'accountSummary', dex: 'ondo', address: OTHER_ADDR },
+          listener
+        )
+        send.mockClear()
+        if (outcome === 'success') {
+          resolveLogin(await stored.get(SESSION_KEY))
+        } else {
+          rejectLogin(new Error('Old login storage read failed'))
+        }
+        expect(await settled).toBe(outcome)
+
+        const releasePositions = await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+          vi.fn()
+        )
+        expect(send).not.toHaveBeenCalled()
+
+        balance = {
+          ...BALANCE,
+          marginBalance: '2300',
+          availableMargin: '2100',
+        }
+        feed(p, {
+          type: 'update',
+          channel: 'positionsPerps',
+          data: [RAW_POSITION],
+        })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '2300',
+            availableMargin: '2100',
+            marginUsed: '200',
+            unrealizedPnl: '50',
+          },
+        })
+
+        releasePositions()
+        unsubscribe()
+        await vi.advanceTimersByTimeAsync(300)
+        await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+      } finally {
+        p.close()
+      }
+    })
+
+    it.each([
+      'fills',
+      'accountSummary',
+    ] as const)('opens concurrent positions and %s when switching a lingering wallet', async (channel) => {
+      vi.useFakeTimers()
+      stubFetch(() => BALANCE)
+      const p = makeProvider(seededBothStorage())
+      p.close()
+      const send = stubSocket(p)
+      const positions = vi.fn()
+      const second = vi.fn()
+
+      try {
+        const releaseOld = await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+        releaseOld()
+        send.mockClear()
+
+        const [releasePositions, releaseSecond] = await Promise.all([
+          p.subscribe(
+            { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },
+            positions
+          ),
+          p.subscribe({ channel, dex: 'ondo', address: OTHER_ADDR }, second),
+        ])
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'subscribe', channel: 'positionsPerps' })
+        )
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'subscribe', channel: 'fillsPerps' })
+        )
+
+        feed(p, {
+          type: 'update',
+          channel: 'positionsPerps',
+          data: [RAW_POSITION],
+        })
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(positions.mock.calls[0][0]).toMatchObject({
+          channel: 'positions',
+          data: [{ market: { id: 'AAPL-USD.P' } }],
+        })
+        if (channel === 'accountSummary') {
+          expect(second).toHaveBeenLastCalledWith({
+            channel: 'accountSummary',
+            data: {
+              portfolioValue: '1050',
+              availableMargin: '850',
+              marginUsed: '200',
+              unrealizedPnl: '50',
+            },
+          })
+        } else {
+          expect(second.mock.calls[0][0]).toMatchObject({
+            channel: 'fills',
+            data: [{ id: 'fill-1' }],
+          })
+        }
+
+        send.mockClear()
+        releasePositions()
+        releaseSecond()
+        await vi.advanceTimersByTimeAsync(300)
+        expect(send.mock.calls).toEqual([
+          [JSON.stringify({ op: 'unsubscribe', channel: 'positionsPerps' })],
+          [JSON.stringify({ op: 'unsubscribe', channel: 'fillsPerps' })],
+        ])
+        await p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+      } finally {
+        p.close()
+      }
+    })
+
+    it('discards an open closed during the initial session read for the same wallet', async () => {
+      vi.useFakeTimers()
+      const stored = seededStorage()
+      let resolveSession!: (token: string | null) => void
+      const sessionRead = new Promise<string | null>((resolve) => {
+        resolveSession = resolve
+      })
+      let firstRead = true
+      const storage: StorageAdapter = {
+        ...stored,
+        get: (key) => {
+          if (firstRead) {
+            firstRead = false
+            return sessionRead
+          }
+          return stored.get(key)
+        },
+      }
+      stubFetch(() => BALANCE)
+      const p = makeProvider(storage)
+      p.close()
+      const send = stubSocket(p)
+      const listener = vi.fn()
+
+      try {
+        const opening = subscribeSummary(p, vi.fn())
+        p.close()
+        const release = await subscribeSummary(p, listener)
+        send.mockClear()
+        resolveSession(await stored.get(SESSION_KEY))
+        await opening
+
+        expect(listener.mock.calls).toEqual([
+          [
+            {
+              channel: 'accountSummary',
+              data: {
+                portfolioValue: '1050',
+                availableMargin: '850',
+                marginUsed: '200',
+                unrealizedPnl: '50',
+              },
+            },
+          ],
+        ])
+        expect(send).not.toHaveBeenCalled()
+        release()
+        await vi.advanceTimersByTimeAsync(300)
+      } finally {
+        p.close()
+      }
     })
 
     it('shares one positionsPerps wire sub with a positions subscription', async () => {

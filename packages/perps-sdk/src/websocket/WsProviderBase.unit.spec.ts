@@ -198,6 +198,28 @@ describe('WsProviderBase — open failure', () => {
     await expect(s2).rejects.toThrow('WebSocket max reconnect attempts reached')
   })
 
+  it('keeps a replacement subscription when an old open rejects after close', async () => {
+    const p = new TestProvider(new MockRws())
+    let rejectOpen!: (error: Error) => void
+    p.openImpl = () =>
+      new Promise<() => void>((_, reject) => {
+        rejectOpen = reject
+      })
+    const opening = p.subscribe(MARKETS_CONTEXT, vi.fn())
+    const rejected = expect(opening).rejects.toThrow('old open failed')
+    p.close()
+
+    p.openImpl = async () => vi.fn()
+    const listener = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, listener)
+    rejectOpen(new Error('old open failed'))
+    await rejected
+    p.deliver('marketsContext', marketsContextEvent)
+
+    expect(listener).toHaveBeenCalledWith(marketsContextEvent)
+    p.close()
+  })
+
   it('evicts the entry on a failed open so a later subscribe re-opens', async () => {
     const p = new TestProvider(new MockRws())
     p.openImpl = async () => {
@@ -218,6 +240,34 @@ describe('WsProviderBase — open failure', () => {
 })
 
 describe('WsProviderBase — deferred teardown', () => {
+  it('keeps replacement teardown ownership when an old open completes after close', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const oldTeardown = vi.fn()
+    const teardown = vi.fn()
+    let resolveOpen!: (release: () => void) => void
+    p.openImpl = () =>
+      new Promise<() => void>((resolve) => {
+        resolveOpen = resolve
+      })
+    const opening = p.subscribe(MARKETS_CONTEXT, vi.fn())
+    p.close()
+
+    p.openImpl = async () => teardown
+    const listener = vi.fn()
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
+    resolveOpen(oldTeardown)
+    await opening
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(listener).toHaveBeenCalledWith(marketsContextEvent)
+
+    unsubscribe()
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+    expect(oldTeardown).toHaveBeenCalledTimes(1)
+    expect(teardown).toHaveBeenCalledTimes(1)
+    p.close()
+  })
+
   it('does not tear down synchronously; fires the teardown once after the linger', async () => {
     vi.useFakeTimers()
     const p = new TestProvider(new MockRws())
@@ -551,6 +601,31 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     rws.simulateOpen()
     await flushAsync()
     expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps a replacement wire registered when an old send rejects after close', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    let rejectSend!: (error: Error) => void
+    p.sendSubscribeSpy.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSend = reject
+        })
+    )
+    const registering = p.register('marketsContext', { id: 'old' })
+    const rejected = expect(registering).rejects.toThrow('old send failed')
+    p.close()
+    rws.simulateStatus('connected')
+    await p.register('marketsContext', { id: 'replacement' })
+    rejectSend(new Error('old send failed'))
+    await rejected
+
+    p.sendSubscribeSpy.mockClear()
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).toHaveBeenCalledWith({ id: 'replacement' })
+    p.close()
   })
 })
 
