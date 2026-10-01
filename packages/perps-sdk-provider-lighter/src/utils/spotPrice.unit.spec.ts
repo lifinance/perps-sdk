@@ -1,8 +1,9 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Market, MarketContext } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
+import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
-import { spotPriceByAssetId } from './spotPrice.js'
+import { spotPriceByAssetId, spotValuation } from './spotPrice.js'
 
 const asset = (id: string, displaySymbol: string) => ({
   providerId: 'lighter',
@@ -123,5 +124,25 @@ describe('spotPriceByAssetId', () => {
         HELD
       )
     ).toThrow(PerpsError)
+  })
+})
+
+describe('spotValuation', () => {
+  const PRICES = new Map([['2048', new Big('1.5')]])
+
+  it('values the settlement asset at 1', () => {
+    const { valueUsd, price } = spotValuation(3, '10.25', 3, PRICES)
+    expect(valueUsd).toBe('10.25')
+    expect(price?.toFixed()).toBe('1')
+  })
+
+  it('values a priced asset at its spot price', () => {
+    const { valueUsd, price } = spotValuation(2048, '4', 3, PRICES)
+    expect(valueUsd).toBe('6')
+    expect(price?.toFixed()).toBe('1.5')
+  })
+
+  it('values an unpriced asset at 0 with no price', () => {
+    expect(spotValuation(4096, '4', 3, PRICES)).toEqual({ valueUsd: '0' })
   })
 })

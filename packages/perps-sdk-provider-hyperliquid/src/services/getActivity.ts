@@ -24,7 +24,9 @@ import type {
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
 import {
+  isBorrowLendDelta,
   isCollateralTransferDelta,
+  isCStakingTransferDelta,
   isDepositDelta,
   isLiquidationDelta,
   isSendAssetDelta,
@@ -130,7 +132,9 @@ const fetchActivityData = async (
             (isSpotTransferDelta(entry.delta) ||
               isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
-              isVaultTransferDelta(entry.delta))))
+              isVaultTransferDelta(entry.delta) ||
+              isCStakingTransferDelta(entry.delta) ||
+              isBorrowLendDelta(entry.delta))))
       ) {
         return []
       }

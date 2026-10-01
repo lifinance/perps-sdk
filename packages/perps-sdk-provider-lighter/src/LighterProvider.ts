@@ -159,7 +159,7 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
-import { spotPriceByAssetId } from './utils/spotPrice.js'
+import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
 import { transferableWithin } from './utils/withdrawableBalances.js'
@@ -996,16 +996,17 @@ export const createLighterProvider = (
         asset: Asset,
         units: string
       ): Balance => {
-        const price =
-          a.asset_id === collateral.assetIndex
-            ? new Big(1)
-            : spotPrices.get(String(a.asset_id))
+        const { valueUsd, price } = spotValuation(
+          a.asset_id,
+          units,
+          collateral.assetIndex,
+          spotPrices
+        )
         return {
           categoryId,
           asset,
           units,
-          valueUsd:
-            price === undefined ? '0' : new Big(units).times(price).toFixed(),
+          valueUsd,
           ...(price === undefined ? {} : { price: price.toFixed() }),
         }
       }

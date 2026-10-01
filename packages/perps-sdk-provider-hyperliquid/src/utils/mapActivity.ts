@@ -17,13 +17,17 @@ import type {
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
+import { zeroHash } from 'viem'
 import type {
+  HlBorrowLendOperation,
   HlFundingUpdate,
   HlLedgerUpdate,
   HlUserFill,
 } from '../types/index.js'
 import {
+  isBorrowLendDelta,
   isCollateralTransferDelta,
+  isCStakingTransferDelta,
   isDepositDelta,
   isLiquidationDelta,
   isSendAssetDelta,
@@ -48,6 +52,17 @@ const HL_NATIVE_TOKEN_SYMBOL = 'HYPE'
 const HL_COLLATERAL_ASSET_ID = '0'
 
 /**
+ * Direction relative to the account's spot balance, the same frame as an
+ * outbound `vaultDeposit`.
+ */
+const BORROW_LEND_DIRECTION: Record<HlBorrowLendOperation, 'IN' | 'OUT'> = {
+  supply: 'OUT',
+  withdraw: 'IN',
+  borrow: 'IN',
+  repay: 'OUT',
+}
+
+/**
  * A ledger row moves a spot asset — a perp contract cannot be sent, received
  * or withdrawn — so the delta's token symbol resolves inside the spot asset
  * registry. The HIP-1 ticker auction keeps those symbols unique.
@@ -69,6 +84,7 @@ const resolveLedgerAsset = (symbol: string, registry: AssetRegistry): Asset => {
 
 /**
  * Map supported ledger entries; exclude same-account moves and unsupported types.
+ * Staking and borrow-lend moves map with the queried account as counterparty.
  * Missing assets throw; unresolved liquidation markets omit only those positions.
  * @public
  */
@@ -140,6 +156,46 @@ export const mapLedgerEntry = (
       ...(fees.length === 0 ? {} : { fees }),
       meta,
       explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
+    } satisfies TransferActivity
+  }
+
+  if (isCStakingTransferDelta(delta) || isBorrowLendDelta(delta)) {
+    // A completed unstake is a system event with the zero hash and no venue
+    // transaction, so the id is synthesized and no explorer link applies.
+    const hasTransaction = entry.hash !== zeroHash
+    const direction = isCStakingTransferDelta(delta)
+      ? delta.isDeposit
+        ? 'OUT'
+        : 'IN'
+      : BORROW_LEND_DIRECTION[delta.operation]
+    const action = isCStakingTransferDelta(delta) ? direction : delta.operation
+    return {
+      ...base,
+      ...(hasTransaction
+        ? {}
+        : {
+            id: `${delta.type}:${delta.token}:${action}:${delta.amount}:${base.timestamp}`,
+          }),
+      type: ActivityType.TRANSFER,
+      direction,
+      counterpartyAddress: queriedAddress.toLowerCase(),
+      asset: resolveLedgerAsset(delta.token, assetRegistry),
+      amount: delta.amount,
+      meta: isCStakingTransferDelta(delta)
+        ? { transferType: delta.type }
+        : {
+            transferType: delta.type,
+            operation: delta.operation,
+            interestAmount: delta.interestAmount,
+          },
+      ...(hasTransaction
+        ? {
+            explorerLink: explorerTxUrl(
+              ExplorerChainId.HYPERLIQUID,
+              entry.hash
+            ),
+          }
+        : {}),
     } satisfies TransferActivity
   }
 
