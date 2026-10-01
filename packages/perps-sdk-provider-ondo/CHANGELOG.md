@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 22.0.1
+
+### Patch Changes
+
+- [#557](https://github.com/lifinance/perps-sdk/pull/557) [`0113117`](https://github.com/lifinance/perps-sdk/commit/0113117e34488b3bca3bd2c566ed4e529c4a00d0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Discard pending Ondo account-summary seeds and refreshes after subscription teardown or provider close, preventing stale balances from reaching a replacement wallet subscription, including same-wallet resubscriptions. Keep delayed authentication and wire acquisition from sending frames or changing shared references after their connection ownership ends. Preserve replacement WebSocket channel and wire registrations when an earlier open or send completes or fails after close.
+
+  Retain Ondo wallet bindings for pending and active authenticated channels, not just acquired wires. Keep delayed opens alive across another channel's linger expiry, and preserve sibling streams when a concurrent opening fails.
+
 ## 22.0.0
 
 ### Major Changes

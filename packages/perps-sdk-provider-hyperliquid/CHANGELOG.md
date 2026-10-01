@@ -1,5 +1,21 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 20.1.0
+
+### Minor Changes
+
+- [#556](https://github.com/lifinance/perps-sdk/pull/556) [`06888e4`](https://github.com/lifinance/perps-sdk/commit/06888e48707d05caaa1091b0116df744f69f6604) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Paginate retained Hyperliquid fills, funding, ledger events and liquidations beyond upstream response caps without losing equal-time activities. Return deterministic newest-first pages and opaque cursors, preserving liquidation order aggregation and inclusive time bounds. Venue retention still limits fills to the latest 10,000; unpageable saturated timestamps fail explicitly instead of silently truncating history.
+
+  Migration: malformed cursors and older timestamp or `time:trade-id` cursors are rejected with `PerpsErrorCode.ValidationError`. Callers must discard stored older cursors and restart traversals without a cursor; the provider does not restart automatically.
+
+  Reject page limits that are not positive safe integers with `PerpsErrorCode.ValidationError`, preventing non-advancing pages and uncapped history reads. Valid limits still default to 50 and cap at 200.
+
+### Patch Changes
+
+- [#555](https://github.com/lifinance/perps-sdk/pull/555) [`5198c9b`](https://github.com/lifinance/perps-sdk/commit/5198c9b52cc9b50f5eb38a818efd7253a4cbc9c2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Keep Hyperliquid spot balance and spot-funded account summary price feeds subscribed independently of market consumers. Revalue stored balances on price updates and wait for listed held assets to receive prices before emitting portfolio values.
+
+  Roll back spot and price subscriptions when portfolio feed acquisition fails, and allow summary resubscriptions to recover without retaining ownerless wires.
+
 ## 20.0.0
 
 ### Major Changes
