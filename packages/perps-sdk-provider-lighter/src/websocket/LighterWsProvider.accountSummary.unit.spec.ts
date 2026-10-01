@@ -98,17 +98,17 @@ const MARKETS_CONTEXT_RESPONSE = {
   })),
 }
 
-const PROVIDERS_RESPONSE = {
+const providersResponse = (spotCategoryId: string) => ({
   providers: [
     {
       key: 'lighter',
       categories: [
         { id: 'perps', quoteAsset: lighterAsset('USDC', 'USDC') },
-        { id: 'spot', quoteAsset: null },
+        { id: spotCategoryId, quoteAsset: null },
       ],
     },
   ],
-}
+})
 
 const ASSETS_RESPONSE = {
   assets: ASSETS.map((a) => lighterAsset(a.asset_id, a.symbol)),
@@ -120,7 +120,7 @@ const respond = (body: unknown): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-const stubFetch = (totalAssetValue: string) =>
+const stubFetch = (totalAssetValue: string, providersSpotCategoryId = 'spot') =>
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string | URL) => {
@@ -135,7 +135,7 @@ const stubFetch = (totalAssetValue: string) =>
         return respond(ASSETS_RESPONSE)
       }
       if (u.includes('backend.test/v1/perps/providers')) {
-        return respond(PROVIDERS_RESPONSE)
+        return respond(providersResponse(providersSpotCategoryId))
       }
       if (u.includes('/api/v1/account?')) {
         return respond(accountPayload(totalAssetValue))
@@ -247,5 +247,21 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
       expect(streamed).toHaveLength(1)
       expect(streamed[0].portfolioValue).toBe(rest)
     })
+  })
+
+  // Both paths price spot assets by the markets that carry
+  // LIGHTER_SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
+  it('streams the REST portfolioValue when /providers names a different spot category id', async () => {
+    stubFetch('0', 'cash')
+    const client = {
+      config: { apiUrl: 'https://backend.test/v1/perps' },
+    } as PerpsSDKClient
+
+    const rest = await restPortfolioValue(client)
+    const streamed = await streamedSummaries(client, '0')
+
+    expect(rest).toBe('154.00625')
+    expect(streamed).toHaveLength(1)
+    expect(streamed[0].portfolioValue).toBe(rest)
   })
 })

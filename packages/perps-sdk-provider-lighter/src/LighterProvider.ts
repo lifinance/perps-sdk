@@ -963,9 +963,6 @@ export const createLighterProvider = (
       const instanceMeta = providers.find((p) => p.key === providerKey)
       const categories = instanceMeta?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
-      const spotCategoryId =
-        categories.find((c) => c.quoteAsset === null)?.id ??
-        LIGHTER_SPOT_CATEGORY_ID
 
       const availableBalance = toRequiredBig(
         account.available_balance,
@@ -982,7 +979,7 @@ export const createLighterProvider = (
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
-        spotCategoryId,
+        LIGHTER_SPOT_CATEGORY_ID,
         prices,
         new Set(
           [...heldAssets, ...marginAssets]
@@ -1042,7 +1039,7 @@ export const createLighterProvider = (
         }
       })
       const balances: Balance[] = heldAssets.map((a) =>
-        toBalance(a, spotCategoryId, registryAsset(a), a.balance)
+        toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), a.balance)
       )
 
       const assetCollateral = account.assets.flatMap((a) =>
