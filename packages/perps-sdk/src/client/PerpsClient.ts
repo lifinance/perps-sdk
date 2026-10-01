@@ -811,7 +811,7 @@ export class PerpsClient {
    * @returns `undefined` when the registered plugin declares no withdrawable
    *   read.
    * @throws {PerpsError} When the provider plugin is not registered, when
-   *   either the plugin read or the asset sync fails, or when a row's
+   *   either the plugin read or the asset sync fails, when a row's
    *   `withdrawalFee` is not a non-negative decimal.
    * @public
    */
@@ -863,6 +863,9 @@ export class PerpsClient {
           route: row.route,
           available: row.available,
           withdrawalFee: row.withdrawalFee,
+          ...(row.isFeeDeducted === undefined
+            ? {}
+            : { isFeeDeducted: row.isFeeDeducted }),
         },
       ]
     })

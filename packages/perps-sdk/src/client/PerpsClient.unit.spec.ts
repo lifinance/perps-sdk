@@ -2035,6 +2035,62 @@ describe('PerpsClient', () => {
       expect(rows?.[1]).not.toHaveProperty('withdrawalFee')
     })
 
+    it.each([
+      true,
+      false,
+    ])('carries the provider isFeeDeducted %s onto the row unchanged', async (isFeeDeducted) => {
+      await expect(
+        clientWith(
+          withRows([
+            {
+              assetId: '3',
+              route: 'perps',
+              available: '11',
+              withdrawalFee: '1',
+              isFeeDeducted,
+            },
+          ])
+        ).getWithdrawableBalances({ provider, address: userAddress })
+      ).resolves.toEqual([
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11',
+          withdrawalFee: '1',
+          isFeeDeducted,
+        },
+      ])
+    })
+
+    it('sets no isFeeDeducted key where the provider sets none', async () => {
+      const rows = await clientWith(
+        withRows([
+          { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
+          { assetId: '3', route: 'spot', available: '5' },
+        ])
+      ).getWithdrawableBalances({ provider, address: userAddress })
+      expect(rows).toHaveLength(2)
+      for (const row of rows ?? []) {
+        expect(row).not.toHaveProperty('isFeeDeducted')
+      }
+    })
+
+    it('drops isFeeDeducted from a row without a fee', async () => {
+      const rows = await clientWith(
+        withRows([
+          {
+            assetId: '3',
+            route: 'perps',
+            available: '11',
+            isFeeDeducted: false,
+          },
+        ])
+      ).getWithdrawableBalances({ provider, address: userAddress })
+      expect(rows).toEqual([
+        { asset: ASSETS[1], route: 'perps', available: '11' },
+      ])
+    })
+
     it('carries a zero withdrawal fee onto the row', async () => {
       await expect(
         clientWith(
