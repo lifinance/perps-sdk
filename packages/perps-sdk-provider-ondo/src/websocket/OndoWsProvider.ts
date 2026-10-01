@@ -92,6 +92,7 @@ interface SubState {
   frame: { channel: string; markets?: string[]; resolution?: string }
   needsAuth: boolean
   address?: Address
+  authGeneration?: number
 }
 
 /**
@@ -138,6 +139,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * positions frame, which is what moves them.
    */
   private accountSummary: OndoAccountBalance | undefined
+  private accountSummaryGeneration = 0
 
   /**
    * Serializes the balance re-read: a single trade event emits a fills frame
@@ -159,6 +161,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   /** The single address this connection's login is bound to. */
   private accountAddress: string | undefined
   private loginPromise: Promise<void> | undefined
+  private authGeneration = 0
+  private authBindingRefs = 0
+  private closeGeneration = 0
 
   constructor(
     wsUrl: string = DEFAULT_ONDO_WS_URL,
@@ -240,18 +245,28 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const wireSubs = this.resolveChannel(sub)
     const needsLogin =
       isAuthChannel(sub.channel) || sub.channel === 'accountSummary'
+    const closeGeneration = this.closeGeneration
+    let authGeneration: number | undefined
 
-    let boundHere = false
     if (needsLogin) {
       const { address } = sub as { address: Address }
       // Reject before the address binds and before any wire sub registers: a
       // registered sub whose login can never succeed is retried on every
       // reopen without the caller ever seeing the failure.
       await this.requireSession(address)
+      if (closeGeneration !== this.closeGeneration) {
+        return () => {}
+      }
       const bound = address.toLowerCase()
-      boundHere = this.accountAddress !== bound
       this.bindAddress(bound)
+      authGeneration = this.authGeneration
+      this.authBindingRefs += 1
     }
+    const summaryGeneration =
+      sub.channel === 'accountSummary'
+        ? this.accountSummaryGeneration
+        : undefined
+    let acquiredWireCount = 0
 
     try {
       if (needsLogin) {
@@ -259,31 +274,78 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         // market identity the mapped orders/fills/positions embed.
         await this.registry?.sync()
       }
-      if (sub.channel === 'accountSummary') {
-        await this.seedAccountSummary((sub as { address: Address }).address)
+      if (
+        authGeneration !== undefined &&
+        authGeneration !== this.authGeneration
+      ) {
+        return () => {}
+      }
+      if (sub.channel === 'accountSummary' && summaryGeneration !== undefined) {
+        if (summaryGeneration !== this.accountSummaryGeneration) {
+          return () => {}
+        }
+        await this.seedAccountSummary(sub.address, summaryGeneration)
+        if (summaryGeneration !== this.accountSummaryGeneration) {
+          return () => {}
+        }
       }
       // Authenticated wire subs are shared and ref-counted; public ones are 1:1.
       for (const [key, state] of wireSubs) {
+        state.authGeneration = authGeneration
         await this.acquireWire(key, state, needsLogin)
+        acquiredWireCount += 1
+        if (
+          authGeneration !== undefined &&
+          authGeneration !== this.authGeneration
+        ) {
+          return () => {}
+        }
       }
       await this.rws.ready()
+      if (
+        authGeneration !== undefined &&
+        authGeneration !== this.authGeneration
+      ) {
+        return () => {}
+      }
     } catch (err) {
-      // Registry sync, summary seed, or wire acquire failed after the address
-      // bound: release a binding this call newly reserved so a later
-      // subscribe can rebind. A `requireSession` throw never reaches here.
-      if (boundHere) {
-        this.accountAddress = undefined
+      // A failed opening releases only its own binding reservation.
+      if (
+        authGeneration === undefined ||
+        authGeneration === this.authGeneration
+      ) {
+        if (summaryGeneration !== undefined) {
+          this.clearAccountSummary()
+        }
+        for (let index = 0; index < acquiredWireCount; index += 1) {
+          const [key, state] = wireSubs[index]
+          this.releaseWire(key, state, needsLogin)
+        }
+        if (authGeneration !== undefined) {
+          this.releaseBinding()
+        }
       }
       throw err
     }
 
     return () => {
-      if (sub.channel === 'accountSummary') {
-        this.accountSummary = undefined
-        this.accountSummaryChain.reset()
+      if (
+        authGeneration !== undefined &&
+        authGeneration !== this.authGeneration
+      ) {
+        return
+      }
+      if (summaryGeneration !== undefined) {
+        if (summaryGeneration !== this.accountSummaryGeneration) {
+          return
+        }
+        this.clearAccountSummary()
       }
       for (const [key, state] of wireSubs) {
         this.releaseWire(key, state, needsLogin)
+      }
+      if (authGeneration !== undefined) {
+        this.releaseBinding()
       }
     }
   }
@@ -324,14 +386,15 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return true
   }
 
-  /**
-   * Forget the authenticated binding and cycle the connection. The venue
-   * permits one login per socket, so a later subscribe for a different address
-   * must authenticate on a fresh connection rather than re-login on this one.
-   */
+  /** Release a channel's binding reservation, including one still opening. */
   private releaseBinding(): void {
+    this.authBindingRefs -= 1
+    if (this.authBindingRefs > 0) {
+      return
+    }
     this.accountAddress = undefined
     this.loginPromise = undefined
+    this.authGeneration += 1
     this.rws.reconnect()
   }
 
@@ -352,7 +415,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         await this.registerSub(key, state)
       } catch (err) {
         // Roll back the ref we just took so a later subscribe re-registers.
-        this.authWireRefs.delete(key)
+        if (state.authGeneration === this.authGeneration) {
+          this.authWireRefs.delete(key)
+        }
         throw err
       }
     }
@@ -361,6 +426,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   /** Mirror of {@link acquireWire}: drop the wire sub on its last release. */
   private releaseWire(key: string, state: SubState, shared: boolean): void {
     if (shared) {
+      if (state.authGeneration !== this.authGeneration) {
+        return
+      }
       const remaining = (this.authWireRefs.get(key) ?? 1) - 1
       if (remaining > 0) {
         this.authWireRefs.set(key, remaining)
@@ -370,19 +438,24 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.unregisterSub(key)
     this.rws.send(JSON.stringify({ op: 'unsubscribe', ...state.frame }))
-    // Last authenticated wire gone: forget the binding and cycle the socket so
-    // the next address logs in on a fresh connection.
-    if (shared && this.authWireRefs.size === 0) {
-      this.releaseBinding()
-    }
   }
 
   protected async sendSubscribe(state: SubState): Promise<void> {
     if (state.needsAuth && state.address !== undefined) {
+      if (state.authGeneration !== this.authGeneration) {
+        return
+      }
       // Re-assert the binding: a replay after a reconnect (which cleared it on
       // close) must restore the address account frames emit under.
       this.accountAddress = state.address.toLowerCase()
-      await this.ensureLogin(state.address)
+      const login = this.ensureLogin(state.address)
+      await login
+      if (
+        this.loginPromise !== login ||
+        state.authGeneration !== this.authGeneration
+      ) {
+        return
+      }
     }
     this.rws.send(JSON.stringify({ op: 'subscribe', ...state.frame }))
   }
@@ -392,6 +465,11 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.pendingFunding.clear()
     this.loginPromise = undefined
     this.accountAddress = undefined
+    this.authGeneration += 1
+    this.closeGeneration += 1
+    this.authWireRefs.clear()
+    this.authBindingRefs = 0
+    this.clearAccountSummary()
   }
 
   /** Wire subs for `sub`, keyed uniquely for the base's replay registry. */
@@ -523,14 +601,20 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    */
   private ensureLogin(address: Address): Promise<void> {
     if (this.loginPromise === undefined) {
-      this.loginPromise = (async () => {
-        const token = await this.requireSession(address)
-        this.rws.send(
-          JSON.stringify({ op: 'login', args: { token: token.token } })
-        )
-      })()
-      this.loginPromise.catch(() => {
-        this.loginPromise = undefined
+      const login: Promise<void> = this.requireSession(address).then(
+        (token) => {
+          if (this.loginPromise === login) {
+            this.rws.send(
+              JSON.stringify({ op: 'login', args: { token: token.token } })
+            )
+          }
+        }
+      )
+      this.loginPromise = login
+      login.catch(() => {
+        if (this.loginPromise === login) {
+          this.loginPromise = undefined
+        }
       })
     }
     return this.loginPromise
@@ -548,24 +632,50 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * OndoSessionExpiredError} when the SIWE session is missing, matching the
    * other authenticated channels.
    */
-  private async seedAccountSummary(address: Address): Promise<void> {
+  private async seedAccountSummary(
+    address: Address,
+    generation: number
+  ): Promise<void> {
     const token = await this.requireSession(address)
-    this.accountSummary = await this.readBalance(token.token)
-    this.emitAccountSummary()
-  }
-
-  /** Re-read the venue balance moved by the frame and re-emit the summary. */
-  private async refreshAccountSummary(address: Address): Promise<void> {
-    const token = await this.tokenStore.get(address)
-    if (token === null || this.accountSummary === undefined) {
+    if (generation !== this.accountSummaryGeneration) {
       return
     }
     const balance = await this.readBalance(token.token)
-    if (this.accountSummary === undefined) {
+    if (generation !== this.accountSummaryGeneration) {
       return
     }
     this.accountSummary = balance
-    this.emitAccountSummary()
+    this.emitAccountSummary(address)
+  }
+
+  /** Re-read the venue balance moved by the frame and re-emit the summary. */
+  private async refreshAccountSummary(
+    address: Address,
+    generation: number
+  ): Promise<void> {
+    const token = await this.tokenStore.get(address)
+    if (
+      token === null ||
+      this.accountSummary === undefined ||
+      generation !== this.accountSummaryGeneration
+    ) {
+      return
+    }
+    const balance = await this.readBalance(token.token)
+    if (
+      this.accountSummary === undefined ||
+      generation !== this.accountSummaryGeneration
+    ) {
+      return
+    }
+    this.accountSummary = balance
+    this.emitAccountSummary(address)
+  }
+
+  private clearAccountSummary(): void {
+    this.accountSummaryGeneration += 1
+    this.accountSummary = undefined
+    this.accountSummaryChain.reset()
   }
 
   private async readBalance(authToken: string): Promise<OndoAccountBalance> {
@@ -584,13 +694,12 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   /** Emit the current account summary from the venue balance figures. */
-  private emitAccountSummary(): void {
+  private emitAccountSummary(address: Address): void {
     const balance = this.accountSummary
-    const address = this.accountAddress
-    if (balance === undefined || address === undefined) {
+    if (balance === undefined) {
       return
     }
-    this.emit(`accountSummary:${address}`, {
+    this.emit(`accountSummary:${address.toLowerCase()}`, {
       channel: 'accountSummary',
       data: {
         portfolioValue: balance.marginBalance,
@@ -803,8 +912,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
     if (this.accountSummary !== undefined) {
+      const generation = this.accountSummaryGeneration
       this.accountSummaryChain.push(() =>
-        this.refreshAccountSummary(address as Address)
+        this.refreshAccountSummary(address as Address, generation)
       )
     }
   }
@@ -829,8 +939,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       data: mapped,
     })
     if (this.accountSummary !== undefined) {
+      const generation = this.accountSummaryGeneration
       this.accountSummaryChain.push(() =>
-        this.refreshAccountSummary(address as Address)
+        this.refreshAccountSummary(address as Address, generation)
       )
     }
   }
