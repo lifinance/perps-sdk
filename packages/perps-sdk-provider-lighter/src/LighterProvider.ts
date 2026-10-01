@@ -111,7 +111,6 @@ import type {
   LtLiquidation,
   LtLiquidationsResponse,
   LtOrder,
-  LtOrderBookDetailsResponse,
   LtOrdersResponse,
   LtPositionFunding,
   LtPositionFundingsResponse,
@@ -156,7 +155,6 @@ import {
   toIsoFromSeconds,
   toRequiredBig,
 } from './utils/index.js'
-import { leverageFromScaledImf } from './utils/mapPosition.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -803,26 +801,19 @@ export const createLighterProvider = (
     }
   }
 
-  /** The venue default for a market: its default IMF, with cross margin. */
-  const fetchDefaultMarketSettings = async (
-    client: LighterApiClient,
+  /** The venue default for a market: its backend `defaultLeverage`, with cross margin. */
+  const resolveDefaultMarketSettings = async (
     marketId: string
   ): Promise<MarketSettings> => {
-    const { order_book_details } = await client.get<LtOrderBookDetailsResponse>(
-      '/api/v1/orderBookDetails',
-      { market_id: marketId }
-    )
-    const detail = wireList(order_book_details).find(
-      (d) => String(d.market_id) === marketId
-    )
+    const registry = getMarketRegistry(requireClient(), providerKey)
+    await registry.sync()
+    const market = registry.require(marketId)
     const leverage =
-      detail === undefined
-        ? undefined
-        : leverageFromScaledImf(detail.default_initial_margin_fraction)
+      'maxLeverage' in market ? market.defaultLeverage : undefined
     if (leverage === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Lighter returned no default initial margin fraction for market '${marketId}'`
+        `The backend market '${marketId}' carries no Lighter default leverage`
       )
     }
     return { marginMode: MarginMode.CROSS, leverage }
@@ -1208,7 +1199,7 @@ export const createLighterProvider = (
     /**
      * Lighter reports a market's margin mode and leverage on the account's
      * position row. Without a row carrying a positive IMF (or without an
-     * account), the venue applies the market's default IMF with cross margin.
+     * account), the venue applies the market's default leverage with cross margin.
      */
     async getMarketSettings(
       params: ProviderGetMarketSettingsParams,
@@ -1237,7 +1228,7 @@ export const createLighterProvider = (
               ).toFixed()
             )
       if (row === undefined || leverage === undefined) {
-        return fetchDefaultMarketSettings(client, marketId)
+        return resolveDefaultMarketSettings(marketId)
       }
       return {
         marginMode:
