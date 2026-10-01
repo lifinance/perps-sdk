@@ -94,7 +94,7 @@ describe('MarketRegistry', () => {
     expect(requests).toHaveLength(1)
   })
 
-  it('refetches on each non-concurrent sync, leaving freshness to the HTTP layer', async () => {
+  it('refreshes market membership when the response has no freshness metadata', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const requests = serveMarkets([
       { markets: [BTC] },
