@@ -110,6 +110,39 @@ Unknown future delta types remain outside the supported activity model.
 These exclusions do not apply to missing assets in supported transfer rows:
 the mapper rejects those rows with an error instead of silently omitting them.
 
+## History pagination
+
+`getFills` and `getActivity` return deterministic newest-first pages. Pass the
+opaque `pagination.cursor` back unchanged with the same address, time bounds
+and activity filters. Malformed cursors and timestamp or `time:trade-id` cursors
+from older provider releases are rejected with `PerpsErrorCode.ValidationError`.
+Discard those stored cursors and restart the traversal without a cursor.
+
+Both time bounds are inclusive. Activity cursors distinguish different event
+types and IDs at the same timestamp; fill cursors also distinguish trade IDs.
+Subsequent pages exclude newer arrivals beyond the first page's time boundary.
+
+`limit` must be a positive safe integer; invalid values raise
+`PerpsErrorCode.ValidationError`. It defaults to 50, and valid values above 200
+are capped at 200.
+
+Hyperliquid's [info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
+paginates time ranges forwards and caps funding/ledger responses at 500 entries
+or blocks, and fills at 2,000. The provider narrows saturated time windows before
+returning newest-first pages. A single millisecond that saturates the venue cap
+raises an error because the upstream time-only API cannot prove completeness.
+Failures and cancellation reject the request rather than returning a partial page.
+
+Only the latest 10,000 fills are available upstream, including liquidation fills;
+pagination cannot recover older venue-discarded history. Liquidation-inclusive
+activity reads scan this bounded retained fill history on each SDK page so all
+fills of an order are aggregated before pagination. Matching ledger liquidations
+are excluded using ledger history between the earliest and latest retained
+liquidation fills, independently of the current SDK page. Their cursors retain
+the original upper time bound, preventing subsequent pages from regrouping an
+order using newly arriving fills. Funding/ledger-only activity and ordinary fill
+pages use bounded newest-first windows instead of repeatedly downloading full history.
+
 ## Order reads
 
 `getOrders` returns `{ provider, orders, pagination }`. Each `Order` carries a

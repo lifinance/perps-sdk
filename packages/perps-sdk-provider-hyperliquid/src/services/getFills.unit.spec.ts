@@ -34,50 +34,6 @@ describe('getFills', () => {
     restore?.()
   })
 
-  it('uses `userFills` when neither startTime nor endTime is provided', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
-    restore = mock.restore
-
-    const result = await getFills(ctx, {
-      address: ADDRESS,
-    })
-
-    expect(result.items).toHaveLength(1)
-    expect(result.items[0].market.quoteAsset.displaySymbol).toBe('USDC')
-    expect(mock.requests.some((r) => r.body.type === 'userFills')).toBe(true)
-    expect(mock.requests.some((r) => r.body.type === 'userFillsByTime')).toBe(
-      false
-    )
-  })
-
-  it('switches to `userFillsByTime` when startTime or endTime is provided', async () => {
-    const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
-    restore = mock.restore
-
-    await getFills(ctx, {
-      address: ADDRESS,
-      startTime: 1000,
-      endTime: 2000,
-    })
-
-    const byTime = mock.requests.find((r) => r.body.type === 'userFillsByTime')
-    expect(byTime).toBeDefined()
-    expect(byTime!.body.startTime).toBe(1000)
-    expect(byTime!.body.endTime).toBe(2000)
-  })
-
-  it('drops fills at or above the composite cursor', async () => {
-    ;({ restore } = installInfoFetchMock(baseResponses, HL_MARKETS))
-
-    const result = await getFills(ctx, {
-      address: ADDRESS,
-      // The only fill has (time 1704067200000, tid 100); the cursor is
-      // exclusive so a cursor pointing at it filters it out.
-      cursor: '1704067200000:100',
-    })
-    expect(result.items).toHaveLength(0)
-  })
-
   it('enriches a spot fill onto the backend BASE/QUOTE display and spot logo', async () => {
     ;({ restore } = installInfoFetchMock(
       { ...baseResponses, userFills: HL_SPOT_USER_FILLS },
@@ -138,7 +94,11 @@ describe('getFills', () => {
       { ...HL_USER_FILLS[0], tid: 400, time: 4000 },
     ]
     ;({ restore } = installInfoFetchMock(
-      { ...baseResponses, userFills: unsortedFills },
+      {
+        ...baseResponses,
+        userFills: unsortedFills,
+        userFillsByTime: unsortedFills,
+      },
       HL_MARKETS
     ))
 
@@ -156,30 +116,6 @@ describe('getFills', () => {
 
     const seenIds = [...page1.items, ...page2.items].map((i) => i.id)
     expect(new Set(seenIds).size).toBe(4)
-  })
-
-  it('returns the last item composite (time, tid) as the next cursor and reports hasMore against the limit', async () => {
-    const manyFills = Array.from({ length: 3 }, (_, i) => ({
-      ...HL_USER_FILLS[0],
-      tid: 200 + i,
-      time: 1704067200000 + i,
-    }))
-    ;({ restore } = installInfoFetchMock(
-      {
-        ...baseResponses,
-        userFills: manyFills,
-      },
-      HL_MARKETS
-    ))
-
-    const result = await getFills(ctx, {
-      address: ADDRESS,
-      limit: 2,
-    })
-
-    expect(result.items).toHaveLength(2)
-    expect(result.pagination.hasMore).toBe(true)
-    expect(result.pagination.cursor).toBe('1704067200001:201')
   })
 })
 
@@ -254,28 +190,6 @@ describe('getFills — unresolvable market rows', () => {
       id: 'DELISTED',
       isDelisted: true,
     })
-    warn.mockRestore()
-  })
-
-  it('keeps the page window and the cursor a dropped row sits in', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    ;({ restore } = installInfoFetchMock(
-      {
-        ...baseResponses,
-        userFills: [
-          { ...HL_USER_FILLS[0], tid: 300, time: 3000 },
-          unknownFill({ tid: 200, time: 2000 }),
-          { ...HL_USER_FILLS[0], tid: 100, time: 1000 },
-        ],
-      },
-      HL_MARKETS
-    ))
-
-    const result = await getFills(unresolvedCtx, { address: ADDRESS, limit: 2 })
-
-    expect(result.items.map((i) => i.id)).toEqual(['300'])
-    expect(result.pagination.hasMore).toBe(true)
-    expect(result.pagination.cursor).toBe('2000:200')
     warn.mockRestore()
   })
 
