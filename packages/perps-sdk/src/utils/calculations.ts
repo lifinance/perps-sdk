@@ -338,7 +338,7 @@ interface BookWalk {
   filledNotional: number
   /** Volume-weighted average fill price, or 0 when the book is empty. */
   vwap: number
-  /** True when the levels could not absorb the requested notional. */
+  /** True when the levels could not absorb the requested notional, and for a non-finite notional. */
   insufficientLiquidity: boolean
 }
 
@@ -348,7 +348,8 @@ interface BookWalk {
  * in array order — the caller passes asks for a buy and bids for a sell, each
  * already ordered best-price-first. When the book cannot absorb the full
  * notional, the walk stops at the last level and flags `insufficientLiquidity`,
- * returning the best obtainable fill.
+ * returning the best obtainable fill. A non-finite `sizeUsd` gives NaN fill
+ * fields with `insufficientLiquidity` set.
  *
  * @throws {PerpsError} `ValidationError` when a level's `price` or `size`
  *   does not parse to a finite number.
@@ -363,7 +364,7 @@ export function walkOrderbook(
       baseSize: Number.NaN,
       filledNotional: Number.NaN,
       vwap: Number.NaN,
-      insufficientLiquidity: false,
+      insufficientLiquidity: true,
     }
   }
   let remaining = new DivBig(sizeUsd)

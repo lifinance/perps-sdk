@@ -141,9 +141,10 @@ export interface Balance {
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
   /**
-   * Part of `units` the venue releases from this category for a transfer or
-   * a withdrawal, as a decimal string clamped to `[0, units]`. Every
-   * collateral row and every spot row carries it.
+   * Part of `units` the venue releases from this category, as a decimal
+   * string clamped to `[0, units]`. Every collateral row and every spot row
+   * carries it. It is not the withdrawal ceiling: read
+   * `PerpsClient.getWithdrawableBalances` for that.
    */
   transferable?: string
 }

@@ -666,6 +666,7 @@ describe('non-finite inputs', () => {
     expect(walk.baseSize).toBeNaN()
     expect(walk.filledNotional).toBeNaN()
     expect(walk.vwap).toBeNaN()
+    expect(walk.insufficientLiquidity).toBe(true)
   })
 })
 

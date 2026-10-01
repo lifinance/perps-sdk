@@ -294,56 +294,6 @@ const ACCOUNT_PAYLOAD = {
   ],
 }
 
-const ORDER_BOOK_DETAILS_PAYLOAD = {
-  code: 0,
-  order_book_details: [
-    {
-      symbol: 'BTC',
-      market_id: 0,
-      market_type: 'perps',
-      base_asset_id: 1,
-      quote_asset_id: 3,
-      status: 'active',
-      taker_fee: '0.0005',
-      maker_fee: '0.0001',
-      liquidation_fee: '0',
-      min_base_amount: '0.001',
-      min_quote_amount: '10',
-      order_quote_limit: '1000000',
-      supported_size_decimals: 4,
-      supported_price_decimals: 2,
-      supported_quote_decimals: 2,
-      size_decimals: 8,
-      price_decimals: 2,
-      quote_multiplier: 1,
-      default_initial_margin_fraction: 100,
-      min_initial_margin_fraction: 500,
-      maintenance_margin_fraction: 250,
-      closeout_margin_fraction: 100,
-      last_trade_price: 50000,
-      daily_trades_count: 100,
-      daily_base_token_volume: 10,
-      daily_quote_token_volume: 500000,
-      daily_price_low: 49000,
-      daily_price_high: 51000,
-      daily_price_change: 2,
-      open_interest: 100,
-      daily_chart: {},
-      market_config: {
-        market_margin_mode: 0,
-        insurance_fund_account_index: 0,
-        liquidation_mode: 0,
-        force_reduce_only: false,
-        trading_hours: '24/7',
-        funding_fee_discounts_enabled: false,
-        hidden: false,
-      },
-      strategy_index: 0,
-    },
-  ],
-  spot_order_book_details: [],
-}
-
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
 const APIKEYS_MATCHING_STORED_KEY = {
   code: 0,
@@ -477,9 +427,6 @@ beforeEach(() => {
     }
     if (u.includes('/api/v1/account?')) {
       return respond(ACCOUNT_PAYLOAD)
-    }
-    if (u.includes('/api/v1/orderBookDetails')) {
-      return respond(ORDER_BOOK_DETAILS_PAYLOAD)
     }
     if (u.includes('/api/v1/apikeys')) {
       return respond(APIKEYS_MATCHING_STORED_KEY)
@@ -1062,9 +1009,6 @@ const stubAccount = (assets: unknown[]) => {
       if (u.includes('/api/v1/account?')) {
         return respond(payload)
       }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-      }
       if (u.includes('/api/v1/apikeys')) {
         return respond(APIKEYS_EMPTY)
       }
@@ -1375,9 +1319,6 @@ describe('LighterProvider — getAccount balance asset identity', () => {
         }
         if (u.includes('/api/v1/account?')) {
           return respond(accountPayload)
-        }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
@@ -2098,9 +2039,6 @@ describe('LighterProvider — getAccount balance categoryId', () => {
         }
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_WITH_SPOT)
-        }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
@@ -3208,7 +3146,12 @@ describe('LighterProvider — per-user reads without a Lighter account', () => {
     )
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
-    await expect(provider.getPositions({ address: ADDRESS })).rejects.toThrow()
+    await expect(
+      provider.getPositions({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.DefaultError,
+      message: 'Request failed with status code 500',
+    })
   })
 
   it('returns no withdrawable balances for the account-not-found body', async () => {
@@ -3605,9 +3548,6 @@ describe('LighterProvider — normalisation', () => {
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
       }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-      }
       if (u.includes('/api/v1/deposit/history')) {
         return respond({
           code: 0,
@@ -3854,9 +3794,6 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
       }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-      }
       if (u.includes('/api/v1/deposit/history')) {
         if (u.includes('cursor=dep-next')) {
           return respond({
@@ -3992,9 +3929,6 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       }
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
-      }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
       }
       if (u.includes('/api/v1/transfer/history')) {
         return respond({ code: 0, transfers: [transferRow(assetId, txHash)] })

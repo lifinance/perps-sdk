@@ -136,9 +136,9 @@ markets, and for every other provider, the client falls back to the account
 summary, so `buy` and `sell` both equal `availableMargin`.
 
 Each collateral row in `Account.collateralBalances` and each spot row carries
-`transferable`: the part of `units` that the venue releases from that category
-for a transfer or a withdrawal. The value is always from `0` to `units`. No
-WebSocket channel updates it.
+`transferable`: the part of `units` that the venue releases from that category.
+The value is always from `0` to `units`. No WebSocket channel updates it. It is
+not the withdrawal ceiling: read `getWithdrawableBalances` for that.
 
 - Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
   sub-dex.
