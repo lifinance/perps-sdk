@@ -5541,7 +5541,19 @@ describe('LighterProvider — getAvailableToTrade', () => {
         }
         if (u.includes('backend.test/v1/perps/markets')) {
           return respond({
-            markets: [...MARKETS_RESPONSE.markets, SPOT_MARKET],
+            markets: [
+              ...MARKETS_RESPONSE.markets,
+              {
+                ...MARKETS_RESPONSE.markets[0],
+                id: '1',
+                baseAsset: {
+                  ...MARKETS_RESPONSE.markets[0].baseAsset,
+                  id: '1',
+                  displaySymbol: 'ETH',
+                },
+              },
+              SPOT_MARKET,
+            ],
           })
         }
         if (u.includes('backend.test/v1/perps/assets')) {
@@ -5601,6 +5613,55 @@ describe('LighterProvider — getAvailableToTrade', () => {
       buy: '240',
       sell: '40',
     })
+  })
+
+  it.each([
+    { equity: '50', buy: '0', sell: '100', availableMargin: '0' },
+    { equity: '200', buy: '0', sell: '200', availableMargin: '0' },
+    { equity: '240', buy: '40', sell: '240', availableMargin: '40' },
+  ])('preserves signed cross free collateral for equity $equity while keeping summary nonnegative', async ({
+    equity,
+    buy,
+    sell,
+    availableMargin,
+  }) => {
+    const crossPosition = {
+      ...BTC_POSITION_ROW,
+      margin_mode: LT_MARGIN_MODE_CROSS,
+      allocated_margin: '0',
+    }
+    accountPayload = {
+      ...ACCOUNT_PAYLOAD,
+      accounts: [
+        {
+          ...ACCOUNT_PAYLOAD.accounts[0],
+          collateral: equity,
+          total_asset_value: equity,
+          cross_asset_value: equity,
+          cross_initial_margin_requirement: '200',
+          positions: [
+            crossPosition,
+            {
+              ...crossPosition,
+              market_id: 1,
+              symbol: 'ETH',
+              position: '0.5',
+              avg_entry_price: '2000',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+
+    await expect(availableToTradeOn('0', provider)).resolves.toMatchObject({
+      buy,
+      sell,
+    })
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      provider.getAccountSummary(account, account.positions)
+    ).toMatchObject({ availableMargin })
   })
 
   it('answers on the Robinhood-chain deployment', async () => {
