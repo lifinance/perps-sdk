@@ -4,14 +4,6 @@ import type { Address } from 'viem'
 export type { WithdrawalRoute }
 
 /**
- * How a venue applies a row's `withdrawalFee` to the requested amount:
- * `'deducted'` takes it out of the amount, `'onTop'` charges it in addition.
- *
- * @public
- */
-export type WithdrawalFeeMode = 'deducted' | 'onTop'
-
-/**
  * One withdrawable `(asset, route)` selection as the provider reports it, keyed
  * by provider-native asset id and awaiting the core asset-metadata join.
  *
@@ -25,16 +17,16 @@ export interface ProviderWithdrawableBalance {
   available: string
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
-   * `withdrawalFeeMode` says whether the venue deducts it from the requested
-   * amount or adds it on top. Absent when the venue publishes no fee for the
-   * asset. The client rejects a value that is not a non-negative decimal.
+   * Absent when the venue publishes no fee for the asset. The client rejects
+   * a value that is not a non-negative decimal.
    */
   withdrawalFee?: string
   /**
-   * Set together with `withdrawalFee`. The client drops it from a row without
-   * a fee and rejects a value outside this union.
+   * `true` when the venue takes `withdrawalFee` out of the requested amount,
+   * `false` when it charges the fee in addition. Set together with
+   * `withdrawalFee`; the client drops it from a row without a fee.
    */
-  withdrawalFeeMode?: WithdrawalFeeMode
+  isFeeDeducted?: boolean
 }
 
 /**
@@ -52,20 +44,20 @@ export interface WithdrawableBalance {
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
    * Absent when the venue publishes no fee for the asset. With
-   * `withdrawalFeeMode` `'deducted'`, the venue takes the fee out of the
-   * requested amount, and an amount at or below the fee delivers nothing. With
-   * `'onTop'`, the venue charges the fee in addition to the requested amount,
-   * so the largest amount the row can fund is `available` minus the fee. That
-   * result is zero or negative when the fee is at or above `available`, and
-   * the row then funds no withdrawal.
+   * `isFeeDeducted` `true`, the venue takes the fee out of the requested
+   * amount, and an amount at or below the fee delivers nothing. With `false`,
+   * the venue charges the fee in addition to the requested amount, so the
+   * largest amount the row can fund is `available` minus the fee. That result
+   * is zero or negative when the fee is at or above `available`, and the row
+   * then funds no withdrawal.
    */
   withdrawalFee?: string
   /**
    * Present only together with `withdrawalFee`. Absent on a row from a
-   * provider plugin that does not report it; absence means the mode is
-   * unknown, not `'deducted'`.
+   * provider plugin that does not report it; absence means unknown, not
+   * `true`.
    */
-  withdrawalFeeMode?: WithdrawalFeeMode
+  isFeeDeducted?: boolean
 }
 
 /**

@@ -2036,9 +2036,9 @@ describe('PerpsClient', () => {
     })
 
     it.each([
-      'deducted',
-      'onTop',
-    ])('carries the provider withdrawal fee mode %s onto the row unchanged', async (withdrawalFeeMode) => {
+      true,
+      false,
+    ])('carries the provider isFeeDeducted %s onto the row unchanged', async (isFeeDeducted) => {
       await expect(
         clientWith(
           withRows([
@@ -2047,7 +2047,7 @@ describe('PerpsClient', () => {
               route: 'perps',
               available: '11',
               withdrawalFee: '1',
-              withdrawalFeeMode,
+              isFeeDeducted,
             },
           ])
         ).getWithdrawableBalances({ provider, address: userAddress })
@@ -2057,12 +2057,12 @@ describe('PerpsClient', () => {
           route: 'perps',
           available: '11',
           withdrawalFee: '1',
-          withdrawalFeeMode,
+          isFeeDeducted,
         },
       ])
     })
 
-    it('sets no fee mode key where the provider sets none', async () => {
+    it('sets no isFeeDeducted key where the provider sets none', async () => {
       const rows = await clientWith(
         withRows([
           { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
@@ -2071,43 +2071,24 @@ describe('PerpsClient', () => {
       ).getWithdrawableBalances({ provider, address: userAddress })
       expect(rows).toHaveLength(2)
       for (const row of rows ?? []) {
-        expect(row).not.toHaveProperty('withdrawalFeeMode')
+        expect(row).not.toHaveProperty('isFeeDeducted')
       }
     })
 
-    it('drops a fee mode from a row without a fee', async () => {
+    it('drops isFeeDeducted from a row without a fee', async () => {
       const rows = await clientWith(
         withRows([
           {
             assetId: '3',
             route: 'perps',
             available: '11',
-            withdrawalFeeMode: 'onTop',
+            isFeeDeducted: false,
           },
         ])
       ).getWithdrawableBalances({ provider, address: userAddress })
       expect(rows).toEqual([
         { asset: ASSETS[1], route: 'perps', available: '11' },
       ])
-    })
-
-    it('rejects a row whose withdrawal fee mode is outside the union', async () => {
-      await expect(
-        clientWith(
-          withRows([
-            {
-              assetId: '3',
-              route: 'perps',
-              available: '11',
-              withdrawalFee: '1',
-              withdrawalFeeMode: 'included',
-            },
-          ])
-        ).getWithdrawableBalances({ provider, address: userAddress })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.SDKError,
-        message: `Provider '${provider}' row for asset '3' has a \`withdrawalFeeMode\` that is not 'deducted' or 'onTop': 'included'.`,
-      })
     })
 
     it('carries a zero withdrawal fee onto the row', async () => {

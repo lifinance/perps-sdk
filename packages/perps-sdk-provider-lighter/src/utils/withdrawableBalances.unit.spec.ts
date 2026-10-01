@@ -240,7 +240,7 @@ describe('lighterWithdrawableBalances', () => {
     expect(rows.length).toBeGreaterThan(0)
     for (const row of rows) {
       expect(row).not.toHaveProperty('withdrawalFee')
-      expect(row).not.toHaveProperty('withdrawalFeeMode')
+      expect(row).not.toHaveProperty('isFeeDeducted')
     }
   })
 })

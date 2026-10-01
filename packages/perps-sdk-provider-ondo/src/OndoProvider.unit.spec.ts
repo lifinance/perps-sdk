@@ -708,7 +708,7 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         route: 'perps',
         available: BALANCE_RESULT.withdrawableMargin,
         withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,
-        withdrawalFeeMode: 'onTop',
+        isFeeDeducted: false,
       },
     ])
   })

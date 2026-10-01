@@ -83,7 +83,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         route: 'spot',
         available: '6',
         withdrawalFee: '1',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
       { assetId: '150', route: 'spot', available: '3' },
       {
@@ -91,11 +91,11 @@ describe('hyperliquidWithdrawableBalances', () => {
         route: 'perps',
         available: '2.5',
         withdrawalFee: '1',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
     ])
     expect(rows[1]).not.toHaveProperty('withdrawalFee')
-    expect(rows[1]).not.toHaveProperty('withdrawalFeeMode')
+    expect(rows[1]).not.toHaveProperty('isFeeDeducted')
   })
 
   it('sets no fee key on any row when the fee is undefined', () => {
@@ -107,7 +107,7 @@ describe('hyperliquidWithdrawableBalances', () => {
     )
     for (const row of rows) {
       expect(row).not.toHaveProperty('withdrawalFee')
-      expect(row).not.toHaveProperty('withdrawalFeeMode')
+      expect(row).not.toHaveProperty('isFeeDeducted')
     }
   })
 
@@ -125,7 +125,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         route: 'perps',
         available: '2.5',
         withdrawalFee: '0.0000001',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
     ])
   })

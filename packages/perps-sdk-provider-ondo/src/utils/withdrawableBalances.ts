@@ -39,7 +39,7 @@ export const ondoWithdrawableBalances = (
               withdrawalFeeUsd,
               'account.withdrawalFeeUSD'
             ).toFixed(),
-            withdrawalFeeMode: 'onTop',
+            isFeeDeducted: false,
           }),
     },
   ]

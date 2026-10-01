@@ -175,7 +175,6 @@ export type {
 export type {
   ProviderWithdrawableBalance,
   WithdrawableBalance,
-  WithdrawalFeeMode,
   WithdrawalRoute,
   WithdrawFlow,
   WithdrawFlowReady,

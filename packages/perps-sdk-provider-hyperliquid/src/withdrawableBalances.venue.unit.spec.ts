@@ -65,7 +65,7 @@ describe('getWithdrawableBalances.venue: unified account', () => {
         route: 'spot',
         available: '102.54975228',
         withdrawalFee: '1',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
       { assetId: '73', route: 'spot', available: '6.15' },
       { assetId: '150', route: 'spot', available: '2.10613124' },
@@ -76,7 +76,7 @@ describe('getWithdrawableBalances.venue: unified account', () => {
         route: 'perps',
         available: '0.6975',
         withdrawalFee: '1',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
     ])
   })
@@ -172,7 +172,7 @@ describe('getWithdrawableBalances.venue: portfolio margin account', () => {
         route: 'spot',
         available: '3573826.69076083',
         withdrawalFee: '1',
-        withdrawalFeeMode: 'deducted',
+        isFeeDeducted: true,
       },
       { assetId: '146', route: 'spot', available: '7.43118' },
       { assetId: '150', route: 'spot', available: '0.00338262' },
