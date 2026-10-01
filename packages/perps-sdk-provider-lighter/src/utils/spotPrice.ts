@@ -1,5 +1,5 @@
 import type { Market, MarketContext } from '@lifi/perps-types'
-import type Big from 'big.js'
+import Big from 'big.js'
 import { toRequiredBig } from './decimal.js'
 
 /**
@@ -36,4 +36,24 @@ export const spotPriceByAssetId = (
     }
   }
   return priceByAssetId
+}
+
+/**
+ * USD value of `units` of a Lighter asset, with the unit price it used: the
+ * settlement asset at 1, any other at its `spotPrices` entry. An asset absent
+ * from `spotPrices` values at 0 and carries no price.
+ */
+export const spotValuation = (
+  assetId: number,
+  units: string,
+  settlementAssetIndex: number,
+  spotPrices: ReadonlyMap<string, Big>
+): { valueUsd: string; price?: Big } => {
+  const price =
+    assetId === settlementAssetIndex
+      ? new Big(1)
+      : spotPrices.get(String(assetId))
+  return price === undefined
+    ? { valueUsd: '0' }
+    : { valueUsd: new Big(units).times(price).toFixed(), price }
 }
