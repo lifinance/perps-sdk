@@ -1192,8 +1192,8 @@ export const createLighterProvider = (
     },
 
     /**
-     * Lighter publishes no per-market figure, so this derives one from the
-     * account's `available_balance` and its open position on the market.
+     * Derive per-market capacity from signed cross free collateral and the
+     * margin released by closing the market's open position.
      */
     async getAvailableToTrade(
       params: ProviderGetAvailableToTradeParams,
@@ -1206,8 +1206,21 @@ export const createLighterProvider = (
         return undefined
       }
       const account = await plugin.getAccount({ address: params.address }, opts)
-      const { availableMargin } = getAccountSummary(account, account.positions)
-      return lighterAvailableToTrade(market, availableMargin, account.positions)
+      const config = lighterConfig(account)
+      const crossFreeCollateral = toRequiredBig(
+        config.crossAssetValue,
+        'crossAssetValue'
+      ).minus(
+        toRequiredBig(
+          config.crossInitialMarginRequirement,
+          'crossInitialMarginRequirement'
+        )
+      )
+      return lighterAvailableToTrade(
+        market,
+        crossFreeCollateral.toFixed(),
+        account.positions
+      )
     },
 
     /**
