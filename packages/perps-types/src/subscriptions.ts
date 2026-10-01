@@ -6,6 +6,7 @@ import type {
   Order,
   Position,
 } from './account.js'
+import type { DecimalString } from './decimal.js'
 import type {
   Candle,
   MarketContext,
@@ -152,7 +153,7 @@ export type PositionsEvent = { channel: 'positions'; data: Position[] }
  */
 export type SpotBalancesEvent = {
   channel: 'spotBalances'
-  data: (Balance & { locked: string })[]
+  data: (Balance & { locked: DecimalString })[]
 }
 
 /**

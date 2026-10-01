@@ -1,4 +1,5 @@
 import type { Pagination } from './account.js'
+import type { DecimalString } from './decimal.js'
 import type { Address } from './primitives.js'
 import type { PerpsTypedData, TypedDataParameter } from './typedData.js'
 
@@ -71,9 +72,9 @@ export interface OwnedReferralCodeEligibility {
    * Executed notional the address must reach, as a decimal string in the
    * backend's reporting currency. Absent when the backend does not disclose it.
    */
-  requiredNotional?: string
+  requiredNotional?: DecimalString
   /** The address's executed notional so far, in the same units as `requiredNotional`. */
-  currentNotional?: string
+  currentNotional?: DecimalString
 }
 
 /**
@@ -125,7 +126,7 @@ export interface ReferralActivityItem {
    * Executed notional recorded against this attachment, as a decimal string in
    * the backend's reporting currency.
    */
-  notional: string
+  notional: DecimalString
 }
 
 /**

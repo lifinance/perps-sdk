@@ -1,4 +1,5 @@
 import type { FeeTier } from './account.js'
+import type { DecimalString } from './decimal.js'
 import type { FundingInfo } from './market.js'
 
 /** Side of the quoted market order, using lowercase wire values. @public */
@@ -26,20 +27,20 @@ export interface Quote {
   type: TradeType
   side: QuoteSide
   /** Input notional in USD. */
-  sizeUsd: string
+  sizeUsd: DecimalString
   /** Base amount the book filled for `sizeUsd` (or the most obtainable when the book is too thin). */
-  baseSize: string
-  markPrice: string
+  baseSize: DecimalString
+  markPrice: DecimalString
   /** Volume-weighted average fill price from the book walk. */
-  expectedFillPrice: string
+  expectedFillPrice: DecimalString
   /** VWAP deviation from `markPrice` in basis points; non-negative. */
-  priceImpactBps: string
+  priceImpactBps: DecimalString
   /** Base maker/taker fee fractions (not bps) for the public tier. */
   feeTier: FeeTier
   /** Always `true` in v1 — quotes use the public base tier, never a per-account tier. */
   isDefaultFeeTier: boolean
   /** Taker fee on the filled notional in USD: `filledNotional * feeTier.taker`. */
-  feeUsd: string
+  feeUsd: DecimalString
   /** Current funding for perps; `null` for spot. */
   funding: FundingInfo | null
   /** `true` when the book could not fill the full `sizeUsd` — `baseSize`/fill reflect the best obtainable. */

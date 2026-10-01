@@ -1,3 +1,5 @@
+import type { DecimalString } from './decimal.js'
+
 /** Lookback window of a portfolio history read. @public */
 export type PortfolioHistoryRange = '24h' | '7d' | '30d' | 'all'
 
@@ -9,9 +11,9 @@ export type PortfolioHistoryRange = '24h' | '7d' | '30d' | 'all'
 export interface PortfolioHistoryPoint {
   /** Unix milliseconds. */
   timestamp: number
-  accountValue: string
+  accountValue: DecimalString
   /** Cumulative PnL from the start of the requested window. */
-  pnl: string
+  pnl: DecimalString
 }
 
 /**
@@ -22,6 +24,6 @@ export interface PortfolioHistoryPoint {
 export interface PortfolioHistoryResponse {
   range: PortfolioHistoryRange
   points: PortfolioHistoryPoint[]
-  volume?: string
-  totalPnl?: string
+  volume?: DecimalString
+  totalPnl?: DecimalString
 }

@@ -1,4 +1,5 @@
 import type { Asset } from './asset.js'
+import type { DecimalString } from './decimal.js'
 import type { PositionMarginAdjustment } from './enums.js'
 
 /**
@@ -9,7 +10,7 @@ import type { PositionMarginAdjustment } from './enums.js'
  */
 export interface FundingInfo {
   /** Funding rate as a decimal fraction. */
-  rate: string
+  rate: DecimalString
   /** Next funding timestamp in Unix milliseconds. */
   nextFundingTime: number
 }
@@ -43,14 +44,14 @@ export interface BaseMarket {
    * describe the tick. Format prices through the provider's `formatOrderPrice`
    * rather than applying this field directly.
    */
-  priceIncrement?: string
+  priceIncrement?: DecimalString
   /**
    * Exact size lot as a plain decimal string (e.g. `'0.05'`). Present when the
    * venue's grid is not a power of ten, where `szDecimals` alone cannot
    * describe the lot. Format sizes through the provider's `formatOrderSize`
    * rather than applying this field directly.
    */
-  sizeIncrement?: string
+  sizeIncrement?: DecimalString
 }
 
 /**
@@ -71,11 +72,11 @@ export interface PerpsMarket extends BaseMarket {
    * venue-wide `Provider.minOrderValueUsd`, which is a `number`; parse this
    * string before comparing the two.
    */
-  minOrderValueUsd?: string
+  minOrderValueUsd?: DecimalString
   /** Maximum market-order notional in USD, as a plain decimal string. */
-  maxMarketOrderUsd?: string
+  maxMarketOrderUsd?: DecimalString
   /** Maximum limit-order notional in USD, as a plain decimal string. */
-  maxLimitOrderUsd?: string
+  maxLimitOrderUsd?: DecimalString
   onlyIsolated: boolean
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment
@@ -150,16 +151,16 @@ export interface MarketContext {
   /** Opaque provider market identifier for this context frame. */
   marketId: string
   /** Current order-book midpoint, as a decimal quote string. */
-  midPrice: string
+  midPrice: DecimalString
   /** Provider mark price, as a decimal quote string. */
-  markPrice: string
-  oraclePrice?: string
-  prevDayPrice?: string
-  priceChange24h?: string
-  volume24h?: string
-  marketCap?: string
+  markPrice: DecimalString
+  oraclePrice?: DecimalString
+  prevDayPrice?: DecimalString
+  priceChange24h?: DecimalString
+  volume24h?: DecimalString
+  marketCap?: DecimalString
   /** Quote-asset open-interest notional as a decimal string. */
-  openInterest?: string
+  openInterest?: DecimalString
   funding?: FundingInfo
 }
 
@@ -176,11 +177,11 @@ export interface PricesResponse {
  */
 export interface Candle {
   t: number
-  o: string
-  h: string
-  l: string
-  c: string
-  v: string
+  o: DecimalString
+  h: DecimalString
+  l: DecimalString
+  c: DecimalString
+  v: DecimalString
 }
 
 /** Response containing candles for one provider market and interval. @public */
@@ -215,8 +216,8 @@ export type OhlcvInterval =
 
 /** One price/size level in an order book; both values are decimal strings. @public */
 export interface OrderbookLevel {
-  price: string
-  size: string
+  price: DecimalString
+  size: DecimalString
 }
 
 /** Snapshot of bids and asks for one market. `timestamp` is Unix milliseconds. @public */
@@ -232,8 +233,8 @@ export interface OrderbookResponse {
 export interface Trade {
   provider: string
   marketId: string
-  price: string
-  size: string
+  price: DecimalString
+  size: DecimalString
   timestamp: number
   side: 'buy' | 'sell'
   id?: string
