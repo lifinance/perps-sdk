@@ -64,6 +64,26 @@ const client = createPerpsClient({
 })
 ```
 
+## Reference registry caching
+
+Asset and market registries are scoped to each SDK client and provider. In Node,
+the default HTTP transport reuses the indexed snapshot while the response's
+explicit `Cache-Control: max-age` remains fresh. `Age`, `Date`, and request
+duration reduce the remaining lifetime; cache hits never extend it. Backend URL
+and SDK credential changes invalidate reuse.
+
+Missing or invalid freshness metadata, `no-store`, `no-cache`, and `Vary: *`
+cause another HTTP request. There is no guessed TTL or stale-on-error fallback:
+an expired refresh failure rejects `sync()`, leaving the last successful snapshot
+available only for existing index lookups. Concurrent requests with the same
+identity share a refresh.
+
+Browsers continue to use their native HTTP cache. A `requestInterceptor` or
+custom `fetch` can change credentials, headers, or cache policy on every call,
+so either disables registry-level reuse and request coalescing. Such hooks still
+run on every `sync()`. This cache applies only to reference registries, not account,
+price, or authenticated trading responses.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
