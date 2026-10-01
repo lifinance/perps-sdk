@@ -16,7 +16,9 @@ import {
   type QuoteSide,
   type TradeType,
 } from '@lifi/perps-types'
+import type Big from 'big.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { areFinite, DivBig } from './decimal.js'
 
 /**
  * Calculate position size in asset units from margin.
@@ -36,7 +38,13 @@ export function calculatePositionSize(
   leverage: number,
   price: number
 ): number {
-  return (marginUsd * leverage) / price
+  if (price === 0) {
+    return (marginUsd * leverage) / price
+  }
+  if (!areFinite(marginUsd, leverage, price)) {
+    return Number.NaN
+  }
+  return new DivBig(marginUsd).times(leverage).div(price).toNumber()
 }
 
 /**
@@ -48,7 +56,10 @@ export function calculatePositionSize(
  * @public
  */
 export function calculateNotionalValue(size: number, price: number): number {
-  return Math.abs(size) * price
+  if (!areFinite(size, price)) {
+    return Number.NaN
+  }
+  return new DivBig(size).abs().times(price).toNumber()
 }
 
 /**
@@ -65,7 +76,10 @@ export function calculateUnrealizedPnl(
   currentPrice: number,
   size: number
 ): number {
-  return (currentPrice - entryPrice) * size
+  if (!areFinite(entryPrice, currentPrice, size)) {
+    return Number.NaN
+  }
+  return new DivBig(currentPrice).minus(entryPrice).times(size).toNumber()
 }
 
 /**
@@ -80,7 +94,10 @@ export function calculateRoe(pnl: number, margin: number): number {
   if (margin === 0) {
     return 0
   }
-  return (pnl / margin) * 100
+  if (!areFinite(pnl, margin)) {
+    return Number.NaN
+  }
+  return new DivBig(pnl).div(margin).times(100).toNumber()
 }
 
 /**
@@ -95,7 +112,13 @@ export function calculateRequiredMargin(
   notionalValue: number,
   leverage: number
 ): number {
-  return notionalValue / leverage
+  if (leverage === 0) {
+    return notionalValue / leverage
+  }
+  if (!areFinite(notionalValue, leverage)) {
+    return Number.NaN
+  }
+  return new DivBig(notionalValue).div(leverage).toNumber()
 }
 
 /**
@@ -107,7 +130,10 @@ export function calculateRequiredMargin(
  * @public
  */
 export function estimateFees(sizeUsd: number, feeRate: number): number {
-  return sizeUsd * feeRate
+  if (!areFinite(sizeUsd, feeRate)) {
+    return Number.NaN
+  }
+  return new DivBig(sizeUsd).times(feeRate).toNumber()
 }
 
 /**
@@ -124,8 +150,17 @@ export function applySlippage(
   slippagePercent: number,
   isBuy: boolean
 ): number {
-  const multiplier = 1 + slippagePercent / 100
-  return isBuy ? price * multiplier : price / multiplier
+  if (!areFinite(price, slippagePercent)) {
+    return Number.NaN
+  }
+  const multiplier = new DivBig(slippagePercent).div(100).plus(1)
+  if (isBuy) {
+    return new DivBig(price).times(multiplier).toNumber()
+  }
+  if (multiplier.eq(0)) {
+    return price / multiplier.toNumber()
+  }
+  return new DivBig(price).div(multiplier).toNumber()
 }
 
 /**
@@ -166,7 +201,10 @@ export function effectiveLeverage(params: {
   if (marginUsd === 0) {
     return 0
   }
-  return positionValueUsd / marginUsd
+  if (!areFinite(positionValueUsd, marginUsd)) {
+    return Number.NaN
+  }
+  return new DivBig(positionValueUsd).div(marginUsd).toNumber()
 }
 
 /**
@@ -202,12 +240,15 @@ export function calculateExpectedPnl(
   if (!triggerPrice || entryPrice === 0 || margin === 0) {
     return null
   }
+  if (!areFinite(triggerPrice, entryPrice, leverage, margin)) {
+    return { amount: Number.NaN, percent: Number.NaN }
+  }
   const priceDiff = isLong
-    ? triggerPrice - entryPrice
-    : entryPrice - triggerPrice
-  const percent = (priceDiff / entryPrice) * leverage * 100
-  const amount = margin * (percent / 100)
-  return { amount, percent }
+    ? new DivBig(triggerPrice).minus(entryPrice)
+    : new DivBig(entryPrice).minus(triggerPrice)
+  const percent = priceDiff.div(entryPrice).times(leverage).times(100)
+  const amount = percent.times(margin).div(100)
+  return { amount: amount.toNumber(), percent: percent.toNumber() }
 }
 
 /**
@@ -228,8 +269,14 @@ export function priceFromPercent(
   if (entryPrice === 0 || leverage === 0) {
     return 0
   }
-  const priceDelta = (percent / 100 / leverage) * entryPrice
-  return isLong ? entryPrice + priceDelta : entryPrice - priceDelta
+  if (!areFinite(percent, entryPrice, leverage)) {
+    return Number.NaN
+  }
+  const priceDelta = new DivBig(percent)
+    .times(entryPrice)
+    .div(new DivBig(leverage).times(100))
+  const entry = new DivBig(entryPrice)
+  return (isLong ? entry.plus(priceDelta) : entry.minus(priceDelta)).toNumber()
 }
 
 /**
@@ -250,8 +297,13 @@ export function percentFromPrice(
   if (entryPrice === 0 || leverage === 0) {
     return 0
   }
-  const priceDiff = isLong ? price - entryPrice : entryPrice - price
-  return (priceDiff / entryPrice) * leverage * 100
+  if (!areFinite(price, entryPrice, leverage)) {
+    return Number.NaN
+  }
+  const priceDiff = isLong
+    ? new DivBig(price).minus(entryPrice)
+    : new DivBig(entryPrice).minus(price)
+  return priceDiff.div(entryPrice).times(leverage).times(100).toNumber()
 }
 
 /**
@@ -268,11 +320,14 @@ export function calculateRealizedPnlPercent(
   size: number,
   price: number
 ): number {
-  const positionValue = Math.abs(size) * price
-  if (positionValue === 0) {
+  if (!areFinite(realizedPnl, size, price)) {
+    return Number.NaN
+  }
+  const positionValue = new DivBig(size).abs().times(price)
+  if (positionValue.eq(0)) {
     return 0
   }
-  return (realizedPnl / positionValue) * 100
+  return new DivBig(realizedPnl).div(positionValue).times(100).toNumber()
 }
 
 /** Result of {@link walkOrderbook} — the fill obtained for a USD-notional walk. */
@@ -303,32 +358,47 @@ export function walkOrderbook(
   levels: OrderbookLevel[],
   sizeUsd: number
 ): BookWalk {
-  let remaining = sizeUsd
-  let baseSize = 0
-  let filledNotional = 0
+  if (!Number.isFinite(sizeUsd)) {
+    return {
+      baseSize: Number.NaN,
+      filledNotional: Number.NaN,
+      vwap: Number.NaN,
+      insufficientLiquidity: false,
+    }
+  }
+  let remaining = new DivBig(sizeUsd)
+  let baseSize = new DivBig(0)
+  let filledNotional = new DivBig(0)
   for (const level of levels) {
-    if (remaining <= 0) {
+    if (remaining.lte(0)) {
       break
     }
-    const price = Number.parseFloat(level.price)
-    const size = Number.parseFloat(level.size)
-    if (!Number.isFinite(price) || !Number.isFinite(size)) {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
-        `Malformed orderbook level: price='${level.price}', size='${level.size}'`
-      )
+    const { price, size } = parseLevel(level)
+    const levelNotional = size.times(price)
+    const take = remaining.lt(levelNotional) ? remaining : levelNotional
+    if (take.eq(0)) {
+      continue
     }
-    const levelNotional = size * price
-    const take = Math.min(remaining, levelNotional)
-    filledNotional += take
-    baseSize += take / price
-    remaining -= take
+    filledNotional = filledNotional.plus(take)
+    baseSize = baseSize.plus(take.div(price))
+    remaining = remaining.minus(take)
   }
   return {
-    baseSize,
-    filledNotional,
-    vwap: baseSize === 0 ? 0 : filledNotional / baseSize,
-    insufficientLiquidity: remaining > 0,
+    baseSize: baseSize.toNumber(),
+    filledNotional: filledNotional.toNumber(),
+    vwap: baseSize.eq(0) ? 0 : filledNotional.div(baseSize).toNumber(),
+    insufficientLiquidity: remaining.gt(0),
+  }
+}
+
+function parseLevel(level: OrderbookLevel): { price: Big; size: Big } {
+  try {
+    return { price: new DivBig(level.price), size: new DivBig(level.size) }
+  } catch {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Malformed orderbook level: price='${level.price}', size='${level.size}'`
+    )
   }
 }
 

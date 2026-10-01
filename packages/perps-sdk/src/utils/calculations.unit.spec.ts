@@ -11,6 +11,7 @@ import { PerpsError } from '../errors/PerpsError.js'
 import {
   applySlippage,
   buildQuote,
+  calculateExpectedPnl,
   calculateNotionalValue,
   calculatePositionSize,
   calculateRealizedPnlPercent,
@@ -20,6 +21,8 @@ import {
   effectiveLeverage,
   estimateFees,
   liquidationDistancePercent,
+  percentFromPrice,
+  priceFromPercent,
   walkOrderbook,
 } from './calculations.js'
 
@@ -549,5 +552,134 @@ describe('buildQuote', () => {
         timestamp: 1700000000000,
       })
     ).toThrow(PerpsError)
+  })
+})
+
+describe('exact decimal results', () => {
+  it('calculatePositionSize lands on the lot boundary', () => {
+    expect(calculatePositionSize(7, 2, 0.07)).toBe(200)
+    expect(calculatePositionSize(7, 3, 0.07)).toBe(300)
+    expect(calculatePositionSize(7, 10, 0.07)).toBe(1000)
+  })
+
+  it('calculateNotionalValue', () => {
+    expect(calculateNotionalValue(0.1, 3)).toBe(0.3)
+    expect(calculateNotionalValue(-0.1, 3)).toBe(0.3)
+  })
+
+  it('calculateUnrealizedPnl', () => {
+    expect(calculateUnrealizedPnl(0.1, 0.3, 1)).toBe(0.2)
+  })
+
+  it('calculateRoe', () => {
+    expect(calculateRoe(0.3, 0.1)).toBe(300)
+  })
+
+  it('calculateRequiredMargin', () => {
+    expect(calculateRequiredMargin(0.3, 3)).toBe(0.1)
+  })
+
+  it('estimateFees', () => {
+    expect(estimateFees(0.7, 0.1)).toBe(0.07)
+  })
+
+  it('applySlippage', () => {
+    expect(applySlippage(0.07, 10, true)).toBe(0.077)
+    expect(applySlippage(110, 10, false)).toBe(100)
+  })
+
+  it('effectiveLeverage', () => {
+    expect(effectiveLeverage({ positionValueUsd: 0.3, marginUsd: 0.1 })).toBe(3)
+    expect(effectiveLeverage({ positionValueUsd: 0.7, marginUsd: 0.1 })).toBe(7)
+  })
+
+  it('calculateExpectedPnl', () => {
+    expect(calculateExpectedPnl(0.77, 0.7, 3, true, 10)).toEqual({
+      amount: 3,
+      percent: 30,
+    })
+    expect(calculateExpectedPnl(0.63, 0.7, 3, false, 10)?.percent).toBe(30)
+  })
+
+  it('priceFromPercent', () => {
+    expect(priceFromPercent(30, 0.7, 3, true)).toBe(0.77)
+  })
+
+  it('percentFromPrice', () => {
+    expect(percentFromPrice(0.77, 0.7, 3, true)).toBe(30)
+  })
+
+  it('calculateRealizedPnlPercent', () => {
+    expect(calculateRealizedPnlPercent(0.3, 1, 0.1)).toBe(300)
+  })
+
+  it('walkOrderbook', () => {
+    const walk = walkOrderbook([{ price: '0.1', size: '3' }], 0.3)
+    expect(walk.baseSize).toBe(3)
+    expect(walk.filledNotional).toBe(0.3)
+    expect(walk.vwap).toBe(0.1)
+    expect(walk.insufficientLiquidity).toBe(false)
+  })
+
+  it('buildQuote', () => {
+    const quote = buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'BTC',
+      type: 'perps',
+      side: 'buy',
+      sizeUsd: 0.3,
+      market: perpsMarket,
+      price: perpsPrice,
+      bids,
+      asks: [{ price: '0.1', size: '3' }],
+      feeTier: { maker: '0', taker: '0' },
+      timestamp: 1700000000000,
+    })
+    expect(quote.baseSize).toBe('3')
+  })
+
+  it('gives back the nearest number for a non-terminating quotient', () => {
+    expect(priceFromPercent(10, 100, 3, true)).toBe(103.33333333333333)
+  })
+})
+
+describe('non-finite inputs', () => {
+  const nonFinite = [Number.NaN, Number.POSITIVE_INFINITY]
+
+  it.each(nonFinite)('gives back NaN for %s and does not throw', (bad) => {
+    expect(calculatePositionSize(bad, 2, 1)).toBeNaN()
+    expect(calculateNotionalValue(bad, 1)).toBeNaN()
+    expect(calculateUnrealizedPnl(1, bad, 1)).toBeNaN()
+    expect(calculateRoe(bad, 1)).toBeNaN()
+    expect(calculateRequiredMargin(bad, 2)).toBeNaN()
+    expect(estimateFees(bad, 0.1)).toBeNaN()
+    expect(applySlippage(bad, 1, true)).toBeNaN()
+    expect(effectiveLeverage({ positionValueUsd: bad, marginUsd: 1 })).toBeNaN()
+    expect(calculateExpectedPnl(1, bad, 2, true, 1)).toEqual({
+      amount: Number.NaN,
+      percent: Number.NaN,
+    })
+    expect(priceFromPercent(bad, 1, 2, true)).toBeNaN()
+    expect(percentFromPrice(bad, 1, 2, true)).toBeNaN()
+    expect(calculateRealizedPnlPercent(bad, 1, 1)).toBeNaN()
+    const walk = walkOrderbook([{ price: '1', size: '1' }], bad)
+    expect(walk.baseSize).toBeNaN()
+    expect(walk.filledNotional).toBeNaN()
+    expect(walk.vwap).toBeNaN()
+  })
+})
+
+describe('walkOrderbook zero-price level', () => {
+  it('skips a level that absorbs no notional instead of dividing by zero', () => {
+    const walk = walkOrderbook(
+      [
+        { price: '0', size: '5' },
+        { price: '100', size: '1' },
+      ],
+      50
+    )
+    expect(walk.baseSize).toBe(0.5)
+    expect(walk.filledNotional).toBe(50)
+    expect(walk.vwap).toBe(100)
   })
 })

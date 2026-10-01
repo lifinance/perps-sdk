@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stringToFloat } from './parse.js'
+import { parseDecimal, stringToFloat } from './parse.js'
 
 describe('stringToFloat', () => {
   it('should parse a plain number', () => {
@@ -50,5 +50,36 @@ describe('stringToFloat', () => {
 
   it('should return zero for symbols-only string', () => {
     expect(stringToFloat('$%')).toBe(0)
+  })
+})
+
+describe('parseDecimal', () => {
+  it.each([
+    [undefined, undefined],
+    [null, undefined],
+    ['', 0],
+    ['   ', 0],
+    ['123.45', 123.45],
+    ['-42.5', -42.5],
+    ['+42.5', 42.5],
+    ['0.07', 0.07],
+    ['not-a-number', undefined],
+    ['10oops', undefined],
+    ['1.2.3', undefined],
+    ['NaN', undefined],
+    ['Infinity', undefined],
+    ['$', undefined],
+    ['$1,234.5', 1234.5],
+    ['12.5%', 12.5],
+    ['12 USD', 12],
+  ])('parses %j to %j', (input, expected) => {
+    expect(parseDecimal(input)).toBe(expected)
+  })
+
+  it('differs from stringToFloat on malformed input', () => {
+    expect(stringToFloat('10oops')).toBe(10)
+    expect(parseDecimal('10oops')).toBeUndefined()
+    expect(stringToFloat('abc')).toBeNaN()
+    expect(parseDecimal('abc')).toBeUndefined()
   })
 })
