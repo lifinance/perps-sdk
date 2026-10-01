@@ -35,6 +35,18 @@ Setup registers an agent keypair whose private key signs orders locally, so trad
 
 The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass your own `StorageAdapter` to the `HyperliquidAgentStore` constructor to use a different backend — a custom adapter bypasses this encryption and is responsible for protecting the key at rest.
 
+## Live portfolio valuation
+
+`spotBalances` and spot-funded `accountSummary` subscriptions own their shared
+price feeds; neither requires a separate `marketsContext` subscriber. Price
+updates revalue the latest spot snapshot without waiting for another balance
+frame. Releasing another market consumer does not interrupt portfolio pricing.
+
+For a held token with a listed spot market, balance and summary emissions wait
+for its first price rather than reporting a zero USD value. Tokens without a
+listed market retain their unpriced balances. Unified and portfolio-margin
+summaries also wait for clearinghouse state and venue-reported buying power.
+
 ## Ledger asset identity
 
 Transfers carry the backend registry `Asset`, including its logo, numeric `id`,
