@@ -2339,6 +2339,30 @@ describe('LighterWsProvider', () => {
         provider.close()
       })
 
+      it('keeps the public account_all channel when the resolver throws', async () => {
+        const provider = new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          {
+            resolveAuthToken: async () => {
+              throw new Error('tokens/create returned 429')
+            },
+          },
+          freshClient()
+        )
+
+        const { sent } = await subscribeAccountSummary(provider)
+
+        expect(sent).toContainEqual({
+          type: 'subscribe',
+          channel: `account_all/${ACCOUNT_IDX}`,
+        })
+        expect(sent.map((frame) => frame.channel)).not.toContain(
+          `account_all_assets/${ACCOUNT_IDX}`
+        )
+        provider.close()
+      })
+
       it('resolves the token through the co-registered Lighter plugin', async () => {
         const authToken = vi.fn(() => 'plugin-token')
         const provider = new LighterWsProvider(

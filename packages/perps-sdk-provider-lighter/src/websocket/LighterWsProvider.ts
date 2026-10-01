@@ -420,6 +420,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return token
   }
 
+  /** Whether a token resolves for the address; a resolver that throws counts as no token. */
+  private async canResolveAuthToken(address: Address): Promise<boolean> {
+    const resolve = this.authTokenResolver()
+    if (!resolve) {
+      return false
+    }
+    try {
+      return Boolean(await resolve(address))
+    } catch {
+      return false
+    }
+  }
+
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
       case 'marketsContext':
@@ -506,7 +519,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       // `account_all_assets` carries only the spot balances but rejects a
       // subscribe without auth; the public `account_all` also carries the
       // account's trades, positions and funding.
-      const hasToken = Boolean(await this.authTokenResolver()?.(sub.address))
+      const hasToken = await this.canResolveAuthToken(sub.address)
       const assetsChannel = hasToken ? 'account_all_assets' : 'account_all'
       return [
         {
