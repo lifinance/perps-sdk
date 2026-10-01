@@ -24,6 +24,7 @@ import {
   type Position,
   type Subscription,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import type { Address } from 'viem'
 import { lighterPortfolioValue } from '../accountSummary.js'
 import {
@@ -148,14 +149,10 @@ interface BookLevel {
   priceNum: number
 }
 
-/**
- * Per-address inputs of the `accountSummary` emit: the latest `user_stats`
- * figures (`perps`, whose `equity` is perps-route only) and the spot-route
- * balance per asset index from `account_all` or `account_all_assets`.
- */
+/** Settlement equity and per-asset route quantities for account valuation. */
 interface AccountSummaryInputs {
   perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
-  spotBalances?: Map<number, Big>
+  balances?: Map<number, { spot: Big; margin: Big }>
   lastPortfolioValue?: string
 }
 
@@ -516,9 +513,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       // instead of every later frame.
       this.settlementAssetIndex()
       const accountIndex = await this.resolveAccountIndex(sub.address)
-      // `account_all_assets` carries only the spot balances but rejects a
-      // subscribe without auth; the public `account_all` also carries the
-      // account's trades, positions and funding.
+      // `account_all_assets` requires auth; `account_all` is publicly readable.
       const hasToken = await this.canResolveAuthToken(sub.address)
       const assetsChannel = hasToken ? 'account_all_assets' : 'account_all'
       return [
@@ -785,12 +780,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.emitAccountSummary(address)
   }
 
-  /**
-   * Replace the spot balances on a `subscribed/` frame and upsert them on an
-   * `update/` frame. An update before the first snapshot is dropped, so the
-   * map never holds a partial set. Balances parse here, so a non-decimal
-   * balance rejects its frame and never reaches the emit path.
-   */
+  /** Snapshots replace all route quantities; deltas upsert changed assets. */
   private handleAccountAll(
     msg: LtWsAccountAllMessage,
     prefix: 'account_all' | 'account_all_assets',
@@ -804,34 +794,46 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     if (inputs === undefined || (!isSnapshot && !msg.assets)) {
       return
     }
-    const parsed = Object.values(msg.assets ?? {}).map(
-      (asset) =>
-        [asset.asset_id, toRequiredBig(asset.balance, 'balance')] as const
-    )
-    const balances = isSnapshot ? new Map<number, Big>() : inputs.spotBalances
+    const parsed = Object.values(msg.assets ?? {}).map((asset) => ({
+      assetId: asset.asset_id,
+      spot: toRequiredBig(asset.balance, 'balance'),
+      margin:
+        asset.margin_balance === undefined
+          ? undefined
+          : toRequiredBig(asset.margin_balance, 'margin_balance'),
+    }))
+    const balances = isSnapshot
+      ? new Map<number, { spot: Big; margin: Big }>()
+      : inputs.balances
     if (balances === undefined) {
       return
     }
-    for (const [assetId, balance] of parsed) {
-      balances.set(assetId, balance)
+    for (const { assetId, spot, margin } of parsed) {
+      balances.set(assetId, {
+        spot,
+        margin: margin ?? balances.get(assetId)?.margin ?? new Big(0),
+      })
     }
-    inputs.spotBalances = balances
+    inputs.balances = balances
     this.emitAccountSummary(address)
   }
 
-  /**
-   * Emit the account summary once both the `user_stats` figures and the spot
-   * balances are in. `portfolioValue` values the spot balances as REST
-   * `getAccount` does. `onlyOnChange` skips an emit whose `portfolioValue`
-   * equals the last one, so a mark tick on an unrelated market emits nothing.
-   */
+  /** Unrelated mark ticks do not emit an unchanged portfolio value. */
   private emitAccountSummary(address: string, onlyOnChange = false): void {
     const inputs = this.accountSummaryInputs.get(address)
-    if (inputs?.perps === undefined || inputs.spotBalances === undefined) {
+    if (inputs?.perps === undefined || inputs.balances === undefined) {
       return
     }
     const settlementAssetIndex = this.settlementAssetIndex()
-    const held = [...inputs.spotBalances].filter(([, balance]) => balance.gt(0))
+    const held = [...inputs.balances]
+      .map(
+        ([assetId, { spot, margin }]) =>
+          [
+            assetId,
+            assetId === settlementAssetIndex ? spot : spot.plus(margin),
+          ] as const
+      )
+      .filter(([, balance]) => balance.gt(0))
     const spotPrices = spotPriceByAssetId(
       this.registry?.markets ?? [],
       LIGHTER_SPOT_CATEGORY_ID,
