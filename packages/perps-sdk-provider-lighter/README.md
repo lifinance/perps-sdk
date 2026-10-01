@@ -31,6 +31,12 @@ const client = createPerpsClient({
 
 Each factory owns its deployment's endpoints, zkLighter signing chain id and collateral asset, and creates its own WASM signer, API-key store and read-only token manager. Registering both keeps their keys, tokens and caches separate.
 
+## Portfolio value
+
+Account summaries and the current portfolio-history anchor include Lighter's settlement equity (`total_asset_value`), every spot-route holding, and the marked USD value of non-settlement margin-route holdings. Settlement margin is already included in equity and is not added again. The deployment's settlement metadata distinguishes USDC on mainnet from USDG on Robinhood chain.
+
+WebSocket account summaries retain spot and margin quantities from account snapshots and balance updates, and revalue non-settlement holdings on spot-market price updates. Assets without a matching spot price retain a zero USD value. These holdings do not change available margin or trading capacity.
+
 ## API key storage
 
 Setup registers an API key user-side; the bundled WASM signer uses it to sign orders locally. Key material is persisted through a `StorageAdapter` — the default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass `storage` to use another backend:

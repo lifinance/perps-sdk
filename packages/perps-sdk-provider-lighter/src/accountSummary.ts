@@ -8,7 +8,11 @@ import type {
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { atLeastZero } from './availableToTrade.js'
-import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
+import {
+  LIGHTER_COLLATERAL_ASSETS,
+  LIGHTER_PROVIDER_KEY,
+  LIGHTER_RH_PROVIDER_KEY,
+} from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
 /**
@@ -33,26 +37,20 @@ export const lighterConfig = (
 }
 
 /**
- * Lighter portfolio value: the perps-route equity (`total_asset_value`) plus
- * the USD value of every spot-route holding, settlement asset included.
+ * Add marked holdings excluded from Lighter's settlement equity.
  */
 export const lighterPortfolioValue = (
   perpsEquity: Big,
-  spotValuesUsd: readonly string[]
+  holdingValuesUsd: readonly string[]
 ): Big =>
-  spotValuesUsd.reduce(
+  holdingValuesUsd.reduce(
     (sum, valueUsd) => sum.plus(toRequiredBig(valueUsd, 'valueUsd')),
     perpsEquity
   )
 
 /**
- * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
- * is perps-route equity and excludes the spot route, so `portfolioValue` adds
- * every spot `balances` row, settlement included; the `collateralBalances` rows
- * are the perps-route holding already inside `totalAssetValue`.
- * `availableMargin` is the cross free collateral, floored at 0: an isolated
- * position's equity stays with that position until the user removes it. The
- * positions supply only the margin and PnL breakdown.
+ * Roll up settlement equity, spot holdings and non-settlement margin holdings.
+ * Settlement margin is already included in `totalAssetValue`.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
@@ -62,6 +60,15 @@ export function getAccountSummary(
   positions: Position[]
 ): AccountSummary {
   const config = lighterConfig(account)
+  const settlement = LIGHTER_COLLATERAL_ASSETS[config.provider]
+  const holdings = [
+    ...account.balances,
+    ...account.collateralBalances.filter(
+      ({ asset }) =>
+        asset.id !== String(settlement.assetIndex) &&
+        asset.id !== settlement.displaySymbol
+    ),
+  ]
 
   let marginUsed = new Big(0)
   let unrealizedPnl = new Big(0)
@@ -73,7 +80,7 @@ export function getAccountSummary(
   return {
     portfolioValue: lighterPortfolioValue(
       toRequiredBig(config.totalAssetValue, 'totalAssetValue'),
-      account.balances.map((balance) => balance.valueUsd)
+      holdings.map((balance) => balance.valueUsd)
     ).toFixed(),
     availableMargin: atLeastZero(
       toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(

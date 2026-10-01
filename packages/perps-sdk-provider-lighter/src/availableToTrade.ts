@@ -27,7 +27,7 @@ const releasedOnClose = (position: Position): Big => {
  * plus `availableMargin` and the margin that closing releases, floored at 0.
  * A deficit therefore never cuts the closing part. Both amounts are at least 0.
  *
- * @param availableMargin - The account's {@link AccountSummary.availableMargin}.
+ * @param availableMargin - Signed cross free collateral, before summary clamping.
  * @throws {PerpsError} `SDKError` when a decimal the formula reads is malformed.
  * @internal
  */

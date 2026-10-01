@@ -11,7 +11,7 @@ import type { LtAccountAsset } from './account.js'
 //   - spot_market_stats/all   → context across all spot markets
 //   - spot_market_stats/{id}  → context for one spot market
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
-//   - account_all/{account}   → per-asset spot-route balances
+//   - account_all/{account}   → per-asset spot and margin-route balances
 
 /**
  * Common envelope fields on every Lighter WebSocket frame.
@@ -218,8 +218,7 @@ export type LtWsUserStatsMessage = LtWsMessage & {
  * `account_all/{account_index}` or `account_all_assets/{account_index}` frame,
  * read for its `assets` map only. The `subscribed/` frame carries every asset
  * keyed by asset index; an `update/` frame carries the changed assets, or
- * `null` when no balance changed. `balance` is the spot-route balance in asset
- * units.
+ * `null` when no balance changed. Route balances are in asset units.
  * @public
  */
 export type LtWsAccountAllMessage = LtWsMessage & {
@@ -230,7 +229,8 @@ export type LtWsAccountAllMessage = LtWsMessage & {
     | 'update/account_all_assets'
   assets?: Record<
     string,
-    Pick<LtAccountAsset, 'symbol' | 'asset_id' | 'balance' | 'locked_balance'>
+    Pick<LtAccountAsset, 'symbol' | 'asset_id' | 'balance' | 'locked_balance'> &
+      Partial<Pick<LtAccountAsset, 'margin_balance'>>
   > | null
 }
 
