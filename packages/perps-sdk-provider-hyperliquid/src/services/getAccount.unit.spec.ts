@@ -100,6 +100,7 @@ describe('getAccount', () => {
         units: '500',
         valueUsd: '500',
         price: '1',
+        transferable: '500',
       },
       {
         // Collateral asset is the dex's market quote asset (token-index id).
@@ -251,6 +252,7 @@ describe('getAccount', () => {
         units: '10000',
         valueUsd: '10000',
         price: '1',
+        transferable: '0',
       },
     ])
     expect(result.marginUsed).toBe(
@@ -449,7 +451,8 @@ describe('getAccount', () => {
     expect(getAccountSummary(account, []).availableMargin).toBe('90')
     expect(
       account.collateralBalances.find((b) => b.categoryId === 'spot')
-    ).not.toHaveProperty('transferable')
+        ?.transferable
+    ).toBe('500')
   })
 
   it('bounds a withdrawable above the sub-dex account value to the row units', async () => {
@@ -692,6 +695,7 @@ describe('getAccount', () => {
         units: '1000',
         valueUsd: '1000',
         price: '1',
+        transferable: '1000',
       },
     ])
     expect(result.balances).toEqual([
@@ -707,6 +711,7 @@ describe('getAccount', () => {
         units: '100',
         valueUsd: '4000',
         price: '40',
+        transferable: '100',
       },
       {
         categoryId: 'spot',
@@ -719,6 +724,7 @@ describe('getAccount', () => {
         units: '0.1',
         valueUsd: '10000',
         price: '100000',
+        transferable: '0.1',
       },
     ])
 
@@ -755,6 +761,65 @@ describe('getAccount', () => {
     const spot = result.collateralBalances.find((b) => b.categoryId === 'spot')
     expect(spot?.units).toBe('500')
     expect(spot?.valueUsd).toBe('500')
+    expect(spot?.transferable).toBe('300')
+  })
+
+  describe.each([
+    ['standard (never set)', null],
+    ['standard (default)', HlAbstractionMode.DEFAULT],
+    ['unified', HlAbstractionMode.UNIFIED_ACCOUNT],
+  ] as const)('spot transferable in %s mode', (_name, abstraction) => {
+    it.each([
+      ['a partial hold', '200', '300'],
+      ['no hold', '0', '500'],
+      ['a hold above the total', '700', '0'],
+    ])('releases total minus hold for %s, clamped to [0, units]', async (_case, hold, expected) => {
+      ;({ restore } = installInfoFetchMock(
+        {
+          ...defaultResponses(abstraction),
+          spotClearinghouseState: {
+            balances: [
+              { coin: 'USDC', token: 0, total: '500', hold, entryNtl: '0' },
+              { coin: 'PURR', token: 1, total: '500', hold, entryNtl: '0' },
+            ],
+            tokenToAvailableAfterMaintenance: [[0, '0']],
+          },
+        },
+        HL_MARKETS
+      ))
+
+      const result = await getAccount(ctx, { address: ADDRESS })
+
+      const spotRows = [
+        ...result.collateralBalances,
+        ...result.balances,
+      ].filter((b) => b.categoryId === 'spot')
+      expect(
+        spotRows.map((b) => [b.asset.id, b.units, b.transferable])
+      ).toEqual([
+        ['0', '500', expected],
+        ['1', '500', expected],
+      ])
+    })
+  })
+
+  it('throws a named error identifying a non-decimal spot hold', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        spotClearinghouseState: {
+          balances: [
+            { coin: 'USDC', token: 0, total: '500', hold: 'x', entryNtl: '0' },
+          ],
+          tokenToAvailableAfterMaintenance: [],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    await expect(getAccount(ctx, { address: ADDRESS })).rejects.toThrow(
+      /spotClearinghouseState\.hold/
+    )
   })
 
   const failingTypeMock = (failType: string) => {

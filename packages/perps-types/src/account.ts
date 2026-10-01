@@ -141,9 +141,9 @@ export interface Balance {
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
   price?: string
   /**
-   * Part of `units` the venue releases from this category in a category
-   * transfer, as a decimal string from `0` to `units`. Set on each
-   * perps-category collateral row; absent on every other row.
+   * Part of `units` the venue releases from this category for a transfer or
+   * a withdrawal, as a decimal string clamped to `[0, units]`. Every
+   * collateral row and every spot row carries it.
    */
   transferable?: string
 }

@@ -1060,9 +1060,16 @@ export const createLighterProvider = (
             : '0',
         }
       })
-      const balances: Balance[] = heldAssets.map((a) =>
-        toBalance(a, spotCategoryId, registryAsset(a), a.balance)
-      )
+      const balances: Balance[] = heldAssets.map((a) => {
+        const balance = new Big(a.balance)
+        return {
+          ...toBalance(a, spotCategoryId, registryAsset(a), a.balance),
+          transferable: transferableWithin(
+            balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
+            balance
+          ).toFixed(),
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

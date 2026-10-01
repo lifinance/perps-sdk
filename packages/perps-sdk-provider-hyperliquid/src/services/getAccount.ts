@@ -79,7 +79,16 @@ const buildBalances = (
   const { balances, collateralBalances } = partitionSpotBalances(
     spotState.balances
       .filter((b) => !assetIsOutcome(b.coin))
-      .map((b) => spotBalance(spotAssetFromToken(b), b.total, priceById)),
+      .map((b) => {
+        const total = toWireBig(b.total, 'spotClearinghouseState.total')
+        return {
+          ...spotBalance(spotAssetFromToken(b), b.total, priceById),
+          transferable: transferableWithin(
+            total.minus(toWireBig(b.hold, 'spotClearinghouseState.hold')),
+            total
+          ),
+        }
+      }),
     quoteAssetIds
   )
 
