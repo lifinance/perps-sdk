@@ -1,6 +1,6 @@
 import {
+  calculateTransferable,
   type ProviderWithdrawableBalance,
-  transferableWithin,
 } from '@lifi/perps-sdk'
 import type { LtAccount } from '../types/account.js'
 import { toRequiredBig } from './decimal.js'
@@ -36,7 +36,7 @@ export const lighterWithdrawableBalances = (
     const marginBalance = toRequiredBig(asset.margin_balance, 'margin_balance')
     const perps =
       asset.asset_id === settlementAssetIndex
-        ? transferableWithin(
+        ? calculateTransferable(
             toRequiredBig(account.available_balance, 'available_balance'),
             marginBalance
           )

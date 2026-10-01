@@ -1,11 +1,11 @@
 import {
+  calculateTransferable,
   getMarketRegistry,
   getMarketsContext,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
   stringToFloat,
   toPerpsMarketDisplay,
-  transferableWithin,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
@@ -101,7 +101,7 @@ const buildBalances = (
         units: value.toFixed(),
         valueUsd: value.toFixed(),
         price: '1',
-        transferable: transferableWithin(
+        transferable: calculateTransferable(
           toWireBig(state.withdrawable, 'clearinghouseState.withdrawable'),
           value
         ).toFixed(),

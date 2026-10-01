@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  calculateTransferable,
   type DepositFlow,
   explorerTxUrl,
   explorerTxUrlFromBase,
@@ -33,7 +34,6 @@ import {
   type SignActionsContext,
   type StorageAdapter,
   toPerpsMarketDisplay,
-  transferableWithin,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -1033,7 +1033,7 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? transferableWithin(
+            ? calculateTransferable(
                 availableBalance,
                 new Big(a.margin_balance)
               ).toFixed()

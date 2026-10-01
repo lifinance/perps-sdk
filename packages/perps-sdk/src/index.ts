@@ -181,6 +181,7 @@ export type {
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
+export { calculateTransferable } from './utils/calculateTransferable.js'
 export type { ExpectedPnl } from './utils/calculations.js'
 export {
   applySlippage,
@@ -260,7 +261,6 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
-export { transferableWithin } from './utils/transferableWithin.js'
 export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
 export { validateMargin } from './utils/validation.js'
 export { createWarnOnce } from './utils/warnOnce.js'

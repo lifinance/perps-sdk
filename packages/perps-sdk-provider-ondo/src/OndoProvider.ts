@@ -1,6 +1,7 @@
 import {
   ACTIVE_ORDER_STATUSES,
   type ActionSignerContribution,
+  calculateTransferable,
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
@@ -34,7 +35,6 @@ import {
   toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
-  transferableWithin,
   type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import type {
@@ -364,7 +364,7 @@ export const ondoProvider = (
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
                     price: '1',
-                    transferable: transferableWithin(
+                    transferable: calculateTransferable(
                       toWireBig(
                         balance.withdrawableMargin,
                         'balance.withdrawableMargin'
