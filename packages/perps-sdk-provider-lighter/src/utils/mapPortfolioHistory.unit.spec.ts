@@ -126,6 +126,40 @@ describe('mapPortfolioHistory', () => {
     })
   })
 
+  it.each([
+    {
+      name: 'a perps-to-spot transfer keeps the value flat',
+      transfer: { outflow: 1_000, spot_inflow: 1_000 },
+      earlierValue: '5000',
+    },
+    {
+      name: 'a spot-to-perps transfer keeps the value flat',
+      transfer: { inflow: 148_876.77, spot_outflow: 148_876.77 },
+      earlierValue: '5000',
+    },
+    {
+      name: 'a spot-only deposit lowers the earlier value',
+      transfer: { spot_inflow: 103 },
+      earlierValue: '4897',
+    },
+  ])('unwinds spot-route flows: $name', ({ transfer, earlierValue }) => {
+    const snapshots = [
+      snapshot({ timestamp: 1_764_892_800, trade_pnl: 7 }),
+      snapshot({ timestamp: 1_764_979_200, trade_pnl: 7, ...transfer }),
+    ]
+
+    expect(
+      mapPortfolioHistory('all', snapshots, new Big('5000')).points
+    ).toEqual([
+      {
+        timestamp: 1_764_892_800_000,
+        accountValue: earlierValue,
+        pnl: '0',
+      },
+      { timestamp: 1_764_979_200_000, accountValue: '5000', pnl: '0' },
+    ])
+  })
+
   it('returns no totalPnl and zero volume without snapshots', () => {
     expect(mapPortfolioHistory('all', [], new Big('100'))).toEqual({
       range: 'all',

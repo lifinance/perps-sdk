@@ -9,6 +9,13 @@ function getCumulativePnl(snapshot: LtPnLEntry): Big {
   return new Big(snapshot.trade_pnl).plus(snapshot.trade_spot_pnl)
 }
 
+function getCumulativeNetFlow(snapshot: LtPnLEntry): Big {
+  return new Big(snapshot.inflow)
+    .minus(snapshot.outflow)
+    .plus(snapshot.spot_inflow)
+    .minus(snapshot.spot_outflow)
+}
+
 /**
  * Derive window-relative history from Lighter's cumulative PnL snapshots.
  * Historical account values are anchored to the current account value.
@@ -36,16 +43,14 @@ export const mapPortfolioHistory = (
   const latestPnl = getCumulativePnl(latestSnapshot)
   const accountValueOffset = currentValue
     .minus(latestPnl)
-    .minus(latestSnapshot.inflow)
-    .plus(latestSnapshot.outflow)
+    .minus(getCumulativeNetFlow(latestSnapshot))
   const points = orderedSnapshots.map((snapshot) => {
     const pnl = getCumulativePnl(snapshot)
     return {
       timestamp: snapshot.timestamp * 1_000,
       accountValue: accountValueOffset
         .plus(pnl)
-        .plus(snapshot.inflow)
-        .minus(snapshot.outflow)
+        .plus(getCumulativeNetFlow(snapshot))
         .toFixed(),
       pnl: pnl.minus(firstPnl).toFixed(),
     }
