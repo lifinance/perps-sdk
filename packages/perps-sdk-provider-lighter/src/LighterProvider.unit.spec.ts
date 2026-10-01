@@ -43,6 +43,7 @@ import {
   LIGHTER_RH_DEPLOYMENT,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_REST_URL,
+  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 import {
   type LighterPerpsProvider,
@@ -2030,8 +2031,8 @@ describe('LighterProvider — deployment-aware collateral display', () => {
 })
 
 describe('LighterProvider — getAccount balance categoryId', () => {
-  // Fixture category ids match nothing else (provider key, markets fixture,
-  // 'spot' constant), so these assertions can only pass via /providers.
+  // The null-quote category id differs from LIGHTER_SPOT_CATEGORY_ID, so the
+  // spot assertion fails if getAccount reads the spot id from /providers.
   const PERPS_CATEGORY_ID = 'perps'
   const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
   const PROVIDERS_PERPS_CATEGORY = {
@@ -2121,14 +2122,14 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     )
   })
 
-  it('labels spot token holdings with the null-quote category id from /providers', async () => {
+  it('labels spot token holdings with LIGHTER_SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.balances.length).toBeGreaterThan(0)
     for (const balance of account.balances) {
-      expect(balance.categoryId).toBe(SPOT_CATEGORY_ID_FROM_METADATA)
+      expect(balance.categoryId).toBe(LIGHTER_SPOT_CATEGORY_ID)
     }
   })
 })
