@@ -453,16 +453,17 @@ export interface PerpsProviderPlugin {
   ): Promise<PositionsResponse>
 
   /**
-   * The user's current venue-side settings for one market — the margin mode
-   * and leverage the next order on it will use. Optional because venues
-   * expose this unevenly: Hyperliquid reads it directly (`activeAssetData`),
-   * Lighter only reports it on an account's position row. `undefined` means
-   * the venue has nothing to read for this market.
+   * The user's current venue-side settings for one perps market — the margin
+   * mode and leverage the next order on it will use. Resolves the venue value
+   * or throws.
+   *
+   * @throws {PerpsError} `ValidationError` for a spot market; any other
+   *   `PerpsError` when the venue read fails or carries no usable value.
    */
-  getMarketSettings?(
+  getMarketSettings(
     params: ProviderGetMarketSettingsParams,
     options?: SDKRequestOptions
-  ): Promise<MarketSettings | undefined>
+  ): Promise<MarketSettings>
 
   /**
    * The amounts the account can still buy and sell on one market, in that

@@ -10,8 +10,9 @@ import { toWireBig } from './decimal.js'
  *
  * @param assetId - `Asset.id` the row is keyed by.
  * @param withdrawalFeeUsd - The account's `withdrawalFeeUSD`. Ondo collateral
- *   is USDC, so the USD fee is the row fee 1:1 in collateral units. Absent
- *   leaves the row without a fee.
+ *   is USDC, so the USD fee is the row fee 1:1 in collateral units. Ondo
+ *   charges it on top of the requested amount. Absent leaves the row without a
+ *   fee.
  * @public
  */
 export const ondoWithdrawableBalances = (
@@ -38,6 +39,7 @@ export const ondoWithdrawableBalances = (
               withdrawalFeeUsd,
               'account.withdrawalFeeUSD'
             ).toFixed(),
+            isFeeDeducted: false,
           }),
     },
   ]

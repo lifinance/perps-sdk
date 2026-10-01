@@ -73,6 +73,8 @@ import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
 //   - positions    → account_all_positions/{account_index}
+//   - accountSummary spot balances → account_all_assets/{account_index}, when
+//     a token resolves at subscribe time; else the public account_all/N
 //
 // Auth pattern (per Lighter WS spec): the subscribe payload carries the
 // token directly — `{ type: "subscribe", channel: "...", auth: "<token>" }`.
@@ -149,7 +151,7 @@ interface BookLevel {
 /**
  * Per-address inputs of the `accountSummary` emit: the latest `user_stats`
  * figures (`perps`, whose `equity` is perps-route only) and the spot-route
- * balance per asset index from `account_all`.
+ * balance per asset index from `account_all` or `account_all_assets`.
  */
 interface AccountSummaryInputs {
   perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
@@ -418,6 +420,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     return token
   }
 
+  /** Whether a token resolves for the address; a resolver that throws counts as no token. */
+  private async canResolveAuthToken(address: Address): Promise<boolean> {
+    const resolve = this.authTokenResolver()
+    if (!resolve) {
+      return false
+    }
+    try {
+      return Boolean(await resolve(address))
+    } catch {
+      return false
+    }
+  }
+
   protected toKey(sub: Subscription): string {
     switch (sub.channel) {
       case 'marketsContext':
@@ -501,8 +516,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       // instead of every later frame.
       this.settlementAssetIndex()
       const accountIndex = await this.resolveAccountIndex(sub.address)
-      // Both are publicly readable. `account_all` is the public source of the
-      // spot balances; `account_all_assets` rejects a subscribe without auth.
+      // `account_all_assets` carries only the spot balances but rejects a
+      // subscribe without auth; the public `account_all` also carries the
+      // account's trades, positions and funding.
+      const hasToken = await this.canResolveAuthToken(sub.address)
+      const assetsChannel = hasToken ? 'account_all_assets' : 'account_all'
       return [
         {
           channel: `user_stats/${accountIndex}`,
@@ -510,8 +528,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
           address: sub.address,
         },
         {
-          channel: `account_all/${accountIndex}`,
-          needsAuth: false,
+          channel: `${assetsChannel}/${accountIndex}`,
+          needsAuth: hasToken,
           address: sub.address,
         },
       ]
@@ -664,7 +682,20 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     ) {
       this.handleAccountAll(
         msg as LtWsAccountAllMessage,
+        'account_all',
         msg.type === 'subscribed/account_all'
+      )
+      return
+    }
+
+    if (
+      msg.type === 'subscribed/account_all_assets' ||
+      msg.type === 'update/account_all_assets'
+    ) {
+      this.handleAccountAll(
+        msg as LtWsAccountAllMessage,
+        'account_all_assets',
+        msg.type === 'subscribed/account_all_assets'
       )
       return
     }
@@ -762,9 +793,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    */
   private handleAccountAll(
     msg: LtWsAccountAllMessage,
+    prefix: 'account_all' | 'account_all_assets',
     isSnapshot: boolean
   ): void {
-    const address = this.addressFromChannel(msg.channel, 'account_all')
+    const address = this.addressFromChannel(msg.channel, prefix)
     if (!address) {
       return
     }

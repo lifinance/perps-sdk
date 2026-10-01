@@ -43,6 +43,7 @@ import {
   LIGHTER_RH_DEPLOYMENT,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_REST_URL,
+  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 import {
   type LighterPerpsProvider,
@@ -293,56 +294,6 @@ const ACCOUNT_PAYLOAD = {
   ],
 }
 
-const ORDER_BOOK_DETAILS_PAYLOAD = {
-  code: 0,
-  order_book_details: [
-    {
-      symbol: 'BTC',
-      market_id: 0,
-      market_type: 'perps',
-      base_asset_id: 1,
-      quote_asset_id: 3,
-      status: 'active',
-      taker_fee: '0.0005',
-      maker_fee: '0.0001',
-      liquidation_fee: '0',
-      min_base_amount: '0.001',
-      min_quote_amount: '10',
-      order_quote_limit: '1000000',
-      supported_size_decimals: 4,
-      supported_price_decimals: 2,
-      supported_quote_decimals: 2,
-      size_decimals: 8,
-      price_decimals: 2,
-      quote_multiplier: 1,
-      default_initial_margin_fraction: 100,
-      min_initial_margin_fraction: 500,
-      maintenance_margin_fraction: 250,
-      closeout_margin_fraction: 100,
-      last_trade_price: 50000,
-      daily_trades_count: 100,
-      daily_base_token_volume: 10,
-      daily_quote_token_volume: 500000,
-      daily_price_low: 49000,
-      daily_price_high: 51000,
-      daily_price_change: 2,
-      open_interest: 100,
-      daily_chart: {},
-      market_config: {
-        market_margin_mode: 0,
-        insurance_fund_account_index: 0,
-        liquidation_mode: 0,
-        force_reduce_only: false,
-        trading_hours: '24/7',
-        funding_fee_discounts_enabled: false,
-        hidden: false,
-      },
-      strategy_index: 0,
-    },
-  ],
-  spot_order_book_details: [],
-}
-
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
 const APIKEYS_MATCHING_STORED_KEY = {
   code: 0,
@@ -476,9 +427,6 @@ beforeEach(() => {
     }
     if (u.includes('/api/v1/account?')) {
       return respond(ACCOUNT_PAYLOAD)
-    }
-    if (u.includes('/api/v1/orderBookDetails')) {
-      return respond(ORDER_BOOK_DETAILS_PAYLOAD)
     }
     if (u.includes('/api/v1/apikeys')) {
       return respond(APIKEYS_MATCHING_STORED_KEY)
@@ -1035,44 +983,41 @@ describe('LighterProvider — referralPresent', () => {
   })
 })
 
+const accountWithAssets = (assets: unknown[]) => ({
+  ...ACCOUNT_PAYLOAD,
+  accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
+})
+
+const stubAccount = (assets: unknown[]) => {
+  const payload = accountWithAssets(assets)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(payload)
+      }
+      if (u.includes('/api/v1/apikeys')) {
+        return respond(APIKEYS_EMPTY)
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+  )
+}
+
 describe('LighterProvider — assetCollateral projection', () => {
-  const accountWithAssets = (assets: unknown[]) => ({
-    ...ACCOUNT_PAYLOAD,
-    accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
-  })
-
-  const stubAccount = (assets: unknown[]) => {
-    const payload = accountWithAssets(assets)
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string | URL) => {
-        const u = String(url)
-        if (u.includes('backend.test/v1/perps/marketsContext')) {
-          return respond(MARKETS_CONTEXT_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/markets')) {
-          return respond(MARKETS_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/assets')) {
-          return respond(ASSETS_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/providers')) {
-          return respond(PROVIDERS_RESPONSE)
-        }
-        if (u.includes('/api/v1/account?')) {
-          return respond(payload)
-        }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-        }
-        if (u.includes('/api/v1/apikeys')) {
-          return respond(APIKEYS_EMPTY)
-        }
-        throw new Error(`Unhandled URL in test: ${u}`)
-      })
-    )
-  }
-
   it("decodes each held asset's margin_mode into an enabled flag", async () => {
     stubAccount([
       {
@@ -1132,6 +1077,33 @@ describe('LighterProvider — assetCollateral projection', () => {
     expect(account.config).toMatchObject({
       assetCollateral: [{ assetId: '0', enabled: true }],
     })
+  })
+})
+
+describe('LighterProvider — spot transferable', () => {
+  const heldUsdc = (balance: string, lockedBalance: string) => ({
+    symbol: 'USDC',
+    asset_id: 3,
+    balance,
+    locked_balance: lockedBalance,
+    margin_balance: '0',
+    multiplier: '1.000000000000000000',
+    margin_mode: 'enabled',
+  })
+
+  it.each([
+    ['a partial lock', '27.69', '5', '22.69'],
+    ['a full lock', '5303.615000', '5303.615000', '0'],
+    ['no lock', '27.69', '0', '27.69'],
+    ['a lock above the balance', '27.69', '30', '0'],
+  ])('releases balance minus locked_balance for %s', async (_case, balance, lockedBalance, expected) => {
+    stubAccount([heldUsdc(balance, lockedBalance)])
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      account.balances.map((b) => [b.categoryId, b.units, b.transferable])
+    ).toEqual([['spot', balance, expected]])
   })
 })
 
@@ -1347,9 +1319,6 @@ describe('LighterProvider — getAccount balance asset identity', () => {
         }
         if (u.includes('/api/v1/account?')) {
           return respond(accountPayload)
-        }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
@@ -1984,6 +1953,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         units: '10',
         valueUsd: '10',
         price: '1',
+        transferable: '10',
       },
       {
         categoryId: 'spot',
@@ -1995,14 +1965,15 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         },
         units: '2',
         valueUsd: '0',
+        transferable: '2',
       },
     ])
   })
 })
 
 describe('LighterProvider — getAccount balance categoryId', () => {
-  // Fixture category ids match nothing else (provider key, markets fixture,
-  // 'spot' constant), so these assertions can only pass via /providers.
+  // The null-quote category id differs from LIGHTER_SPOT_CATEGORY_ID, so the
+  // spot assertion fails if getAccount reads the spot id from /providers.
   const PERPS_CATEGORY_ID = 'perps'
   const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
   const PROVIDERS_PERPS_CATEGORY = {
@@ -2069,9 +2040,6 @@ describe('LighterProvider — getAccount balance categoryId', () => {
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_WITH_SPOT)
         }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-        }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
         }
@@ -2092,14 +2060,14 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     )
   })
 
-  it('labels spot token holdings with the null-quote category id from /providers', async () => {
+  it('labels spot token holdings with LIGHTER_SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.balances.length).toBeGreaterThan(0)
     for (const balance of account.balances) {
-      expect(balance.categoryId).toBe(SPOT_CATEGORY_ID_FROM_METADATA)
+      expect(balance.categoryId).toBe(LIGHTER_SPOT_CATEGORY_ID)
     }
   })
 })
@@ -3178,7 +3146,12 @@ describe('LighterProvider — per-user reads without a Lighter account', () => {
     )
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
-    await expect(provider.getPositions({ address: ADDRESS })).rejects.toThrow()
+    await expect(
+      provider.getPositions({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.DefaultError,
+      message: 'Request failed with status code 500',
+    })
   })
 
   it('returns no withdrawable balances for the account-not-found body', async () => {
@@ -3348,7 +3321,7 @@ describe('LighterProvider — getPortfolioHistory', () => {
       ...overrides,
     }
   }
-  /** Two cumulative snapshots ending at `total_asset_value` 500. */
+  /** Two cumulative snapshots ending at the account `portfolioValue` 500. */
   const PNL_PAYLOAD: LtAccountPnL = {
     code: 200,
     resolution: '1h',
@@ -3478,6 +3451,26 @@ describe('LighterProvider — getPortfolioHistory', () => {
     expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
   })
 
+  it('rejects when the getAccount read fails, although /api/v1/pnl answers', async () => {
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/accountLimits')) {
+        return new Response('boom', { status: 500 })
+      }
+      return url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+    })
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+
+    const err = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
+      .then(() => undefined)
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(PerpsError)
+    expect(err.code).toBe(PerpsErrorCode.ThirdPartyError)
+  })
+
   it('returns no points when Lighter answers a null pnl list', async () => {
     overrideFetch((url) =>
       url.includes('/api/v1/pnl')
@@ -3554,9 +3547,6 @@ describe('LighterProvider — normalisation', () => {
       recorded.push({ url: u })
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
-      }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
       }
       if (u.includes('/api/v1/deposit/history')) {
         return respond({
@@ -3804,9 +3794,6 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
       }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-      }
       if (u.includes('/api/v1/deposit/history')) {
         if (u.includes('cursor=dep-next')) {
           return respond({
@@ -3942,9 +3929,6 @@ describe('LighterProvider — getActivity transfer token registry', () => {
       }
       if (u.includes('/api/v1/account?')) {
         return respond(ACCOUNT_PAYLOAD)
-      }
-      if (u.includes('/api/v1/orderBookDetails')) {
-        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
       }
       if (u.includes('/api/v1/transfer/history')) {
         return respond({ code: 0, transfers: [transferRow(assetId, txHash)] })
@@ -5688,16 +5672,60 @@ describe('LighterProvider — getMarketSettings', () => {
     ],
   }
 
-  let accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+  // Cross BTC row captured 2026-09-30 from live
+  // `GET https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=7684`:
+  // the percent IMF string `2.00` ⇒ 50x.
+  const LIVE_CROSS_BTC_ROW = {
+    market_id: 1,
+    symbol: 'BTC',
+    initial_margin_fraction: '2.00',
+    open_order_count: 14,
+    pending_order_count: 0,
+    position_tied_order_count: 0,
+    sign: 1,
+    position: '0.56759',
+    avg_entry_price: '84114.6',
+    position_value: '47898.579546',
+    unrealized_pnl: '155.946751',
+    realized_pnl: '0.000000',
+    liquidation_price: '0',
+    total_funding_paid_out: '-2.506444',
+    margin_mode: 0,
+    margin_set_flag: 1,
+    allocated_margin: '0.000000',
+  }
+
+  // Live Lighter BTC default IMF is 500 basis points, so the backend market
+  // carries a default leverage of 20.
+  const BTC_MARKET = {
+    ...MARKETS_RESPONSE.markets[0],
+    id: '1',
+    defaultLeverage: 20,
+  }
+
+  const withPositions = (positions: unknown[]) => ({
+    ...ACCOUNT_WITH_ISOLATED_ROW,
+    accounts: [{ ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0], positions }],
+  })
+
+  let accountResponse: () => Response
+  let backendMarkets: unknown[]
+  let requestedUrls: string[]
 
   beforeEach(() => {
-    accountPayload = ACCOUNT_WITH_ISOLATED_ROW
+    accountResponse = () => respond(ACCOUNT_WITH_ISOLATED_ROW)
+    backendMarkets = [...MARKETS_RESPONSE.markets, BTC_MARKET]
+    requestedUrls = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        requestedUrls.push(u)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond({ markets: backendMarkets })
+        }
         if (u.includes('/api/v1/account?')) {
-          return respond(accountPayload)
+          return accountResponse()
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -5708,98 +5736,155 @@ describe('LighterProvider — getMarketSettings', () => {
     vi.unstubAllGlobals()
   })
 
-  it("reads the market's mode and leverage from the account position row", async () => {
+  const settingsFor = (marketId: string, categoryId = 'lighter') => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
+    return provider.getMarketSettings({
+      address: ADDRESS,
+      market: { marketId, categoryId },
+    })
+  }
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 2 })
+  const orderBookDetailsRequests = () =>
+    requestedUrls.filter((u) => u.includes('/api/v1/orderBookDetails?'))
+
+  it("reads the market's mode and leverage from the account position row", async () => {
+    await expect(settingsFor('0')).resolves.toEqual({
+      marginMode: MarginMode.ISOLATED,
+      leverage: 2,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('reads a cross row whose IMF is a percent string', async () => {
+    accountResponse = () => respond(withPositions([LIVE_CROSS_BTC_ROW]))
+
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 50,
+    })
   })
 
   it('preserves fractional venue leverage without two-decimal rounding', async () => {
-    accountPayload = {
-      ...ACCOUNT_WITH_ISOLATED_ROW,
-      accounts: [
-        {
-          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
-          positions: [
-            {
-              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
-              initial_margin_fraction: '60',
-            },
-          ],
-        },
-      ],
-    }
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+    accountResponse = () =>
+      respond(
+        withPositions([
+          {
+            ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
+            initial_margin_fraction: '60',
+          },
+        ])
+      )
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toEqual({
+    await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
       leverage: 100 / 60,
     })
   })
 
-  it('does not return a partial setting when leverage is invalid', async () => {
-    accountPayload = {
-      ...ACCOUNT_WITH_ISOLATED_ROW,
-      accounts: [
-        {
-          ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0],
-          positions: [
-            {
-              ...ACCOUNT_WITH_ISOLATED_ROW.accounts[0].positions[0],
-              initial_margin_fraction: '0',
-            },
-          ],
-        },
-      ],
-    }
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
-
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '0', categoryId: 'lighter' },
-      })
-    ).resolves.toBeUndefined()
+  it("resolves the backend market's default leverage with cross margin for a market without a row", async () => {
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
   })
 
-  it('resolves undefined for a market without a row', async () => {
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+  it('resolves the market default with cross margin when the row IMF is not positive', async () => {
+    accountResponse = () =>
+      respond(
+        withPositions([
+          {
+            ...LIVE_CROSS_BTC_ROW,
+            margin_mode: 1,
+            initial_margin_fraction: '0',
+          },
+        ])
+      )
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '7', categoryId: 'lighter' },
-      })
-    ).resolves.toBeUndefined()
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
   })
 
-  it('resolves undefined for a spot market without a request', async () => {
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    const provider = lighterProvider()
-    provider.bind(STUB_CLIENT)
+  it('resolves the market default when the address has no Lighter account', async () => {
+    accountResponse = () =>
+      respond({ code: 21100, message: 'account not found' }, 400)
 
-    await expect(
-      provider.getMarketSettings?.({
-        address: ADDRESS,
-        market: { marketId: '2048', categoryId: 'spot' },
-      })
-    ).resolves.toBeUndefined()
-    expect(fetchSpy).not.toHaveBeenCalled()
+    await expect(settingsFor('1')).resolves.toEqual({
+      marginMode: MarginMode.CROSS,
+      leverage: 20,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws SDKError for an unparsable row IMF', async () => {
+    accountResponse = () =>
+      respond(
+        withPositions([
+          { ...LIVE_CROSS_BTC_ROW, initial_margin_fraction: 'n/a' },
+        ])
+      )
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it('throws when the account read fails', async () => {
+    accountResponse = () => respond({ code: 29500, message: 'internal' }, 403)
+
+    await expect(settingsFor('1')).rejects.toBeInstanceOf(PerpsError)
+  })
+
+  it('throws SDKError when the backend market carries no default leverage', async () => {
+    const { defaultLeverage: _, ...marketWithoutDefault } = BTC_MARKET
+    backendMarkets = [marketWithoutDefault]
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.SDKError,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws SDKError when the backend market default leverage is not positive', async () => {
+    backendMarkets = [{ ...BTC_MARKET, defaultLeverage: 0 }]
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.SDKError,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws SDKError when the backend lists the market id as a spot market', async () => {
+    const { maxLeverage: _, ...spotShaped } = BTC_MARKET
+    backendMarkets = [{ ...spotShaped, positionMarginAdjustment: undefined }]
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.SDKError,
+    })
+  })
+
+  it('throws MarketNotFound when the backend market list does not carry the market', async () => {
+    backendMarkets = [...MARKETS_RESPONSE.markets]
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.MarketNotFound,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
+  it('throws ValidationError for a spot market without a request', async () => {
+    await expect(settingsFor('2048', 'spot')).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+    })
+    expect(requestedUrls).toHaveLength(0)
   })
 })
 

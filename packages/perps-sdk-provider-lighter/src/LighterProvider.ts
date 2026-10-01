@@ -9,6 +9,8 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
+  maxOf,
+  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -74,7 +76,7 @@ import {
   projectLighterConfigSettings,
   resolveAccountTier,
 } from './accountConfig.js'
-import { getAccountSummary } from './accountSummary.js'
+import { getAccountSummary, lighterConfig } from './accountSummary.js'
 import { lighterAvailableToTrade } from './availableToTrade.js'
 import {
   DEFAULT_TRADES_LIMIT,
@@ -162,7 +164,6 @@ import {
 import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
-import { transferableWithin } from './utils/withdrawableBalances.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -801,6 +802,24 @@ export const createLighterProvider = (
     }
   }
 
+  /** The venue default for a market: its backend `defaultLeverage`, with cross margin. */
+  const resolveDefaultMarketSettings = async (
+    marketId: string
+  ): Promise<MarketSettings> => {
+    const registry = getMarketRegistry(requireClient(), providerKey)
+    await registry.sync()
+    const market = registry.require(marketId)
+    const leverage =
+      'maxLeverage' in market ? market.defaultLeverage : undefined
+    if (leverage === undefined || !(leverage > 0)) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `The backend market '${marketId}' carries no positive Lighter default leverage`
+      )
+    }
+    return { marginMode: MarginMode.CROSS, leverage }
+  }
+
   const resolveAccountExists = async (
     address: Address,
     opts?: SDKRequestOptions
@@ -963,9 +982,6 @@ export const createLighterProvider = (
       const instanceMeta = providers.find((p) => p.key === providerKey)
       const categories = instanceMeta?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
-      const spotCategoryId =
-        categories.find((c) => c.quoteAsset === null)?.id ??
-        LIGHTER_SPOT_CATEGORY_ID
 
       const availableBalance = toRequiredBig(
         account.available_balance,
@@ -982,7 +998,7 @@ export const createLighterProvider = (
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
-        spotCategoryId,
+        LIGHTER_SPOT_CATEGORY_ID,
         prices,
         new Set(
           [...heldAssets, ...marginAssets]
@@ -1034,16 +1050,31 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? transferableWithin(
-                availableBalance,
+            ? minOf(
+                maxOf(availableBalance, new Big(0)),
                 new Big(a.margin_balance)
               ).toFixed()
             : '0',
         }
       })
-      const balances: Balance[] = heldAssets.map((a) =>
-        toBalance(a, spotCategoryId, registryAsset(a), a.balance)
-      )
+      const balances: Balance[] = heldAssets.map((a) => {
+        const balance = new Big(a.balance)
+        return {
+          ...toBalance(
+            a,
+            LIGHTER_SPOT_CATEGORY_ID,
+            registryAsset(a),
+            a.balance
+          ),
+          transferable: minOf(
+            maxOf(
+              balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
+              new Big(0)
+            ),
+            balance
+          ).toFixed(),
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined
@@ -1180,34 +1211,38 @@ export const createLighterProvider = (
     },
 
     /**
-     * Lighter reports a market's margin mode and leverage only on the
-     * account's position row, so a market the account never touched (or a
-     * missing account) resolves `undefined` rather than a venue default.
+     * Lighter reports a market's margin mode and leverage on the account's
+     * position row. Without a row carrying a positive IMF (or without an
+     * account), the venue applies the market's default leverage with cross margin.
      */
     async getMarketSettings(
       params: ProviderGetMarketSettingsParams,
       opts?: SDKRequestOptions
-    ): Promise<MarketSettings | undefined> {
-      // Spot markets carry no margin mode or leverage.
-      if (params.market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
-        return undefined
+    ): Promise<MarketSettings> {
+      const { marketId, categoryId } = params.market
+      if (categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `Lighter market '${marketId}' is a spot market and carries no leverage setting`
+        )
       }
-      const account = await fetchAccountIfExists(
-        apiClient(opts),
-        params.address
+      const client = apiClient(opts)
+      const account = await fetchAccountIfExists(client, params.address)
+      const row = account?.positions.find(
+        (p) => String(p.market_id) === marketId
       )
-      if (account === undefined) {
-        return undefined
-      }
-      const row = account.positions.find(
-        (p) => String(p.market_id) === params.market.marketId
-      )
-      if (!row) {
-        return undefined
-      }
-      const leverage = leverageFromImf(row.initial_margin_fraction)
-      if (leverage === undefined) {
-        return undefined
+      // An unparsable IMF throws; a non-positive one means no stored setting.
+      const leverage =
+        row === undefined
+          ? undefined
+          : leverageFromImf(
+              toRequiredBig(
+                row.initial_margin_fraction,
+                'initial_margin_fraction'
+              ).toFixed()
+            )
+      if (row === undefined || leverage === undefined) {
+        return resolveDefaultMarketSettings(marketId)
       }
       return {
         marginMode:
@@ -1503,12 +1538,12 @@ export const createLighterProvider = (
       }
 
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
+      const account = await plugin.getAccount({ address: params.address }, opts)
       const window = PNL_WINDOWS[params.range]
       const endTimestampSeconds = Math.floor(Date.now() / 1_000)
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
-        value: String(account.index),
+        value: String(lighterConfig(account).accountIndex),
         resolution: window.resolution,
         start_timestamp:
           params.range === 'all'
@@ -1547,7 +1582,7 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        toRequiredBig(account.total_asset_value, 'total_asset_value')
+        new Big(getAccountSummary(account, account.positions).portfolioValue)
       )
     },
 
