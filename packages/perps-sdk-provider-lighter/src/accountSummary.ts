@@ -7,6 +7,7 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
+import { atLeastZero } from './availableToTrade.js'
 import { LIGHTER_PROVIDER_KEY, LIGHTER_RH_PROVIDER_KEY } from './constants.js'
 import { toRequiredBig } from './utils/decimal.js'
 
@@ -28,8 +29,10 @@ const lighterConfig = (account: AccountResponse): LighterAccountConfig => {
  * Roll a Lighter account up into an {@link AccountSummary}. `totalAssetValue`
  * is perps-route equity and excludes the spot route, so `portfolioValue` adds
  * every spot `balances` row, settlement included; the `collateralBalances` rows
- * are the perps-route holding already inside `totalAssetValue`. The positions
- * supply only the margin and PnL breakdown.
+ * are the perps-route holding already inside `totalAssetValue`.
+ * `availableMargin` is the cross free collateral, floored at 0: an isolated
+ * position's equity stays with that position until the user removes it. The
+ * positions supply only the margin and PnL breakdown.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
@@ -56,9 +59,13 @@ export function getAccountSummary(
 
   return {
     portfolioValue: portfolioValue.toFixed(),
-    availableMargin: toRequiredBig(
-      config.availableBalance,
-      'availableBalance'
+    availableMargin: atLeastZero(
+      toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(
+        toRequiredBig(
+          config.crossInitialMarginRequirement,
+          'crossInitialMarginRequirement'
+        )
+      )
     ).toFixed(),
     marginUsed: marginUsed.toFixed(),
     unrealizedPnl: unrealizedPnl.toFixed(),

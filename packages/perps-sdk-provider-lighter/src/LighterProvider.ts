@@ -164,18 +164,12 @@ import {
 import { spotPriceByAssetId } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
+import { transferableWithin } from './utils/withdrawableBalances.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
 const tickToFeeString = (tick: number): string =>
   String(tick / LIGHTER_FEE_TICK_SCALE)
-
-const transferableWithin = (venueFigure: Big, units: Big): string => {
-  if (venueFigure.lt(0)) {
-    return '0'
-  }
-  return (venueFigure.gt(units) ? units : venueFigure).toFixed()
-}
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -1066,7 +1060,10 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? transferableWithin(availableBalance, new Big(a.margin_balance))
+            ? transferableWithin(
+                availableBalance,
+                new Big(a.margin_balance)
+              ).toFixed()
             : '0',
         }
       })
@@ -1092,6 +1089,8 @@ export const createLighterProvider = (
         apiKeyRegistered,
         accountType: account.account_type,
         availableBalance: account.available_balance,
+        crossAssetValue: account.cross_asset_value,
+        crossInitialMarginRequirement: account.cross_initial_margin_requirement,
         totalAssetValue: account.total_asset_value,
         userTierName: limitsResult?.user_tier_name,
         accountTradingMode:
@@ -1151,7 +1150,7 @@ export const createLighterProvider = (
       )
       return account === undefined
         ? []
-        : lighterWithdrawableBalances(account.assets)
+        : lighterWithdrawableBalances(account, collateral.assetIndex)
     },
 
     async getPositions(

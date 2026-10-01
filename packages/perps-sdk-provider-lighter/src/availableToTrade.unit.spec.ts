@@ -101,8 +101,6 @@ describe('lighterAvailableToTrade', () => {
   })
 
   it('isolated long: sell adds allocated margin, uPnL and IMR', () => {
-    // equity 100 − 20 = 80 sits below the IMR of 100, so none of it is in
-    // `available_balance` and closing releases all of it.
     const result = lighterAvailableToTrade(MARKET, '50', [
       positionOn(MARKET, {
         margin_mode: LT_MARGIN_MODE_ISOLATED,
@@ -113,8 +111,7 @@ describe('lighterAvailableToTrade', () => {
     expect(result).toMatchObject({ buy: '50', sell: '230' })
   })
 
-  it('isolated long: equity above IMR releases only the IMR', () => {
-    // `available_balance` already counts the 160 − 100 = 60 excess.
+  it('isolated long: equity above IMR releases all of it', () => {
     const result = lighterAvailableToTrade(MARKET, '50', [
       positionOn(MARKET, {
         margin_mode: LT_MARGIN_MODE_ISOLATED,
@@ -122,7 +119,7 @@ describe('lighterAvailableToTrade', () => {
         unrealized_pnl: '10',
       }),
     ])
-    expect(result).toMatchObject({ buy: '50', sell: '250' })
+    expect(result).toMatchObject({ buy: '50', sell: '310' })
   })
 
   it('cross short: buy adds the cross IMR twice, sell stays available', () => {
@@ -162,8 +159,8 @@ describe('lighterAvailableToTrade', () => {
     expect(result).toMatchObject({ buy: '40', sell: '240' })
   })
 
-  it('keeps the IMR for a losing isolated position whose loss exceeds its margin', () => {
-    // 3 free − 40 negative equity clamps at 0; the 10 IMR still closes it.
+  it('releases nothing from an isolated position whose loss exceeds its margin', () => {
+    // The −40 equity clamps at 0, so the 3 free and the 10 IMR remain.
     const result = lighterAvailableToTrade(MARKET, '3', [
       positionOn(MARKET, {
         margin_mode: LT_MARGIN_MODE_ISOLATED,
@@ -172,7 +169,7 @@ describe('lighterAvailableToTrade', () => {
         position_value: '100',
       }),
     ])
-    expect(result).toMatchObject({ buy: '3', sell: '10' })
+    expect(result).toMatchObject({ buy: '3', sell: '13' })
   })
 
   it('keeps the IMR when a margin deficit exceeds the released margin', () => {
@@ -205,5 +202,73 @@ describe('lighterAvailableToTrade', () => {
       }),
     ])
     expect(result).toMatchObject({ buy: '0.1', sell: '0.5' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Recorded venue snapshot: Lighter `GET /api/v1/account?by=index&value=242`
+// (unified mode), recorded 2026-09-30T16:30:51Z. The two isolated position
+// rows are copied verbatim; ANTHROPIC sits below its IMR, STABLECOINX above.
+// `available_balance` read 7928414.373984; the cross free collateral is
+// cross_asset_value 9180384.076306004 − cross IMR 1255821.527953.
+// ---------------------------------------------------------------------------
+describe('lighterAvailableToTrade — account 242 snapshot', () => {
+  const CROSS_FREE_COLLATERAL = '7924562.548353004'
+
+  const marketFor = (id: string, symbol: string): Market => ({
+    ...MARKET,
+    id,
+    baseAsset: { ...MARKET.baseAsset, id, displaySymbol: symbol },
+  })
+  const ANTHROPIC = marketFor('193', 'ANTHROPIC')
+  const STABLECOINX = marketFor('229', 'STABLECOINX')
+
+  const POSITIONS = [
+    positionOn(ANTHROPIC, {
+      symbol: 'ANTHROPIC',
+      initial_margin_fraction: '100.00',
+      sign: 1,
+      position: '477.87709',
+      avg_entry_price: '2136.4',
+      position_value: '1020172.011732',
+      unrealized_pnl: '-759.733703',
+      realized_pnl: '0.000000',
+      liquidation_price: '1.1006155702280012',
+      total_funding_paid_out: '-536.914375',
+      margin_mode: LT_MARGIN_MODE_ISOLATED,
+      allocated_margin: '1020468.901545',
+    }),
+    positionOn(STABLECOINX, {
+      symbol: 'STABLECOINX',
+      initial_margin_fraction: '20.00',
+      sign: 1,
+      position: '685.05',
+      avg_entry_price: '14.3014',
+      position_value: '11294.282340',
+      unrealized_pnl: '1497.081797',
+      realized_pnl: '0.000000',
+      liquidation_price: '7.830809215982907',
+      total_funding_paid_out: '55.741822',
+      margin_mode: LT_MARGIN_MODE_ISOLATED,
+      allocated_margin: '5076.444193',
+    }),
+  ]
+
+  it('below its IMR: buy is the cross free collateral, sell adds IMR 1020172.011732 and equity 1019709.167842', () => {
+    expect(
+      lighterAvailableToTrade(ANTHROPIC, CROSS_FREE_COLLATERAL, POSITIONS)
+    ).toMatchObject({
+      buy: CROSS_FREE_COLLATERAL,
+      sell: '9964443.727927004',
+    })
+  })
+
+  it('above its IMR: buy is the cross free collateral, sell adds IMR 2258.856468 and equity 6573.52599', () => {
+    expect(
+      lighterAvailableToTrade(STABLECOINX, CROSS_FREE_COLLATERAL, POSITIONS)
+    ).toMatchObject({
+      buy: CROSS_FREE_COLLATERAL,
+      sell: '7933394.930811004',
+    })
   })
 })

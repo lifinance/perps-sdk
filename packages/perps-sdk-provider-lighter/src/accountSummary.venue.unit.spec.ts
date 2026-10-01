@@ -526,9 +526,26 @@ describe('accountSummary.venue', () => {
     }
   }
 
-  it('AccountSummary.availableMargin equals available_balance', async () => {
+  it('AccountSummary.availableMargin equals cross_asset_value minus cross_initial_margin_requirement, not available_balance', async () => {
     const { summary } = await load()
-    expect(summary.availableMargin).toBe(AVAILABLE_BALANCE)
+    // 389935.010211 − 20553.031116; available_balance also counts the
+    // SPCX isolated excess 184.702660 + 53.590208 − 164.077736.
+    expect(summary.availableMargin).toBe('369381.979095')
+    expect(summary.availableMargin).not.toBe(AVAILABLE_BALANCE)
+  })
+
+  it('getAvailableToTrade on the isolated SPCX long releases its whole equity on the sell side', async () => {
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const result = await provider.getAvailableToTrade?.({
+      address: ADDRESS,
+      marketId: '194',
+    })
+    // sell = IMR 164.0777358 + 369381.979095 + equity 238.292868
+    expect(result).toMatchObject({
+      buy: '369381.979095',
+      sell: '369784.3496988',
+    })
   })
 
   it('AccountSummary.portfolioValue equals total_asset_value plus the spot-route USDC balance', async () => {
