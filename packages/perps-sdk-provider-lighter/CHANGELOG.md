@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 31.0.1
+
+### Patch Changes
+
+- [#554](https://github.com/lifinance/perps-sdk/pull/554) [`c1ca6d7`](https://github.com/lifinance/perps-sdk/commit/c1ca6d7412cd907bfa31f8239af9179b16b9205f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Include marked non-settlement margin-route holdings in Lighter account summaries, WebSocket balance and price updates, and the current portfolio-history anchor without counting settlement equity twice.
+
+- [#552](https://github.com/lifinance/perps-sdk/pull/552) [`7a08b16`](https://github.com/lifinance/perps-sdk/commit/7a08b167ee40a7abc73b10bf2358f9e523248cc3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Preserve signed cross free collateral when calculating per-market trading capacity so undercollateralized accounts do not overstate capacity after closing a position. Account summary available margin remains nonnegative.
+
 ## 31.0.0
 
 ### Major Changes

@@ -1,5 +1,19 @@
 # @lifi/perps-sdk
 
+## 20.1.0
+
+### Minor Changes
+
+- [#559](https://github.com/lifinance/perps-sdk/pull/559) [`8349d0c`](https://github.com/lifinance/perps-sdk/commit/8349d0c8b7861a870080872aa8f46b16e893f8bb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `Big`-typed order-entry helpers `sizeFromMargin`, `marginFromSize`, `sizeFromNotional` and `marginFromNotional`. Each one divides at 40 decimal places and truncates, so a derived amount never exceeds the amount the user holds.
+
+### Patch Changes
+
+- [#553](https://github.com/lifinance/perps-sdk/pull/553) [`6d91fce`](https://github.com/lifinance/perps-sdk/commit/6d91fce5958385a8e02ee014326a610df5a18429) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Reuse fresh asset and market registry snapshots in Node according to HTTP max-age, Age, and Date headers. Keep reference caches isolated by client, provider, backend URL, and SDK credentials, and bypass reuse for dynamic request hooks. Preserve browser HTTP caching and reject failed expired refreshes rather than serving stale data.
+
+- [#557](https://github.com/lifinance/perps-sdk/pull/557) [`0113117`](https://github.com/lifinance/perps-sdk/commit/0113117e34488b3bca3bd2c566ed4e529c4a00d0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Discard pending Ondo account-summary seeds and refreshes after subscription teardown or provider close, preventing stale balances from reaching a replacement wallet subscription, including same-wallet resubscriptions. Keep delayed authentication and wire acquisition from sending frames or changing shared references after their connection ownership ends. Preserve replacement WebSocket channel and wire registrations when an earlier open or send completes or fails after close.
+
+  Retain Ondo wallet bindings for pending and active authenticated channels, not just acquired wires. Keep delayed opens alive across another channel's linger expiry, and preserve sibling streams when a concurrent opening fails.
+
 ## 20.0.0
 
 ### Major Changes
