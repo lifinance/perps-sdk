@@ -6,6 +6,8 @@
  * always non-negative magnitudes; direction is carried by `isLong`.
  */
 
+import { areFinite, DivBig } from './decimal.js'
+
 /**
  * Direction sign for a position.
  *
@@ -50,8 +52,17 @@ export function estimateIsolatedLiquidationPrice(params: {
   if (denominator === 0) {
     return undefined
   }
-  const marginAvailable = entryPrice * (1 / leverage - maintenanceMarginRate)
-  return entryPrice - (side * marginAvailable) / denominator
+  if (!areFinite(entryPrice, leverage, maintenanceMarginRate)) {
+    return Number.NaN
+  }
+  const mmr = new DivBig(maintenanceMarginRate)
+  const marginAvailable = new DivBig(1)
+    .div(leverage)
+    .minus(mmr)
+    .times(entryPrice)
+  return new DivBig(entryPrice)
+    .minus(marginAvailable.times(side).div(mmr.times(-side).plus(1)))
+    .toNumber()
 }
 
 /**
@@ -84,7 +95,14 @@ export function predictAverageEntryPrice(params: {
   if (!Number.isFinite(currentEntry) || !Number.isFinite(fillPrice)) {
     return undefined
   }
-  return (currentSize * currentEntry + addSize * fillPrice) / totalSize
+  if (!areFinite(currentSize, addSize)) {
+    return Number.NaN
+  }
+  return new DivBig(currentSize)
+    .times(currentEntry)
+    .plus(new DivBig(addSize).times(fillPrice))
+    .div(new DivBig(currentSize).plus(addSize))
+    .toNumber()
 }
 
 /**
@@ -109,7 +127,13 @@ export function predictNewLeverage(params: {
   if (totalMargin <= 0) {
     return undefined
   }
-  return (currentNotional + addNotional) / totalMargin
+  if (!areFinite(currentNotional, currentMargin, addNotional, addMargin)) {
+    return Number.NaN
+  }
+  return new DivBig(currentNotional)
+    .plus(addNotional)
+    .div(new DivBig(currentMargin).plus(addMargin))
+    .toNumber()
 }
 
 /**
@@ -127,7 +151,14 @@ export function predictUnrealizedPnl(params: {
   isLong: boolean
 }): number {
   const { entryPrice, markPrice, size, isLong } = params
-  return (markPrice - entryPrice) * size * directionSign(isLong)
+  if (!areFinite(entryPrice, markPrice, size)) {
+    return Number.NaN
+  }
+  return new DivBig(markPrice)
+    .minus(entryPrice)
+    .times(size)
+    .times(directionSign(isLong))
+    .toNumber()
 }
 
 /**
@@ -145,5 +176,12 @@ export function realizedPnlOnClose(params: {
   isLong: boolean
 }): number {
   const { entryPrice, closePrice, closeSize, isLong } = params
-  return (closePrice - entryPrice) * closeSize * directionSign(isLong)
+  if (!areFinite(entryPrice, closePrice, closeSize)) {
+    return Number.NaN
+  }
+  return new DivBig(closePrice)
+    .minus(entryPrice)
+    .times(closeSize)
+    .times(directionSign(isLong))
+    .toNumber()
 }

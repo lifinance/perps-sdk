@@ -270,3 +270,123 @@ describe('realizedPnlOnClose', () => {
     expect(r).toBeCloseTo(-20, 9)
   })
 })
+
+describe('exact decimal results', () => {
+  it('predictUnrealizedPnl', () => {
+    expect(
+      predictUnrealizedPnl({
+        entryPrice: 0.1,
+        markPrice: 0.3,
+        size: 1,
+        isLong: true,
+      })
+    ).toBe(0.2)
+  })
+
+  it('realizedPnlOnClose', () => {
+    expect(
+      realizedPnlOnClose({
+        entryPrice: 0.1,
+        closePrice: 0.3,
+        closeSize: 2,
+        isLong: false,
+      })
+    ).toBe(-0.4)
+  })
+
+  it('predictAverageEntryPrice', () => {
+    expect(
+      predictAverageEntryPrice({
+        currentSize: 0.1,
+        currentEntry: 0.7,
+        addSize: 0.2,
+        fillPrice: 0.7,
+      })
+    ).toBe(0.7)
+  })
+
+  it('predictNewLeverage', () => {
+    expect(
+      predictNewLeverage({
+        currentNotional: 0.1,
+        currentMargin: 0.1,
+        addNotional: 0.2,
+        addMargin: 0.1,
+      })
+    ).toBe(1.5)
+    expect(
+      predictNewLeverage({
+        currentNotional: 0.7,
+        currentMargin: 0.1,
+        addNotional: 0.2,
+        addMargin: 0.2,
+      })
+    ).toBe(3)
+  })
+
+  it('estimateIsolatedLiquidationPrice', () => {
+    expect(
+      estimateIsolatedLiquidationPrice({
+        entryPrice: 0.3,
+        leverage: 10,
+        isLong: false,
+        maintenanceMarginRate: 0.02,
+      })
+    ).toBe(0.3235294117647059)
+    expect(
+      estimateIsolatedLiquidationPrice({
+        entryPrice: 1.1,
+        leverage: 20,
+        isLong: false,
+        maintenanceMarginRate: 0.01,
+      })
+    ).toBe(1.1435643564356435)
+  })
+})
+
+describe('non-finite inputs', () => {
+  const nonFinite = [Number.NaN, Number.POSITIVE_INFINITY]
+
+  it.each(nonFinite)('gives back NaN for %s and does not throw', (bad) => {
+    expect(
+      estimateIsolatedLiquidationPrice({
+        entryPrice: bad,
+        leverage: 10,
+        isLong: true,
+        maintenanceMarginRate: 0.01,
+      })
+    ).toBeNaN()
+    expect(
+      predictAverageEntryPrice({
+        currentSize: bad,
+        currentEntry: 100,
+        addSize: 1,
+        fillPrice: 100,
+      })
+    ).toBeNaN()
+    expect(
+      predictNewLeverage({
+        currentNotional: bad,
+        currentMargin: 1,
+        addNotional: 1,
+        addMargin: 1,
+      })
+    ).toBeNaN()
+    expect(
+      predictUnrealizedPnl({
+        entryPrice: bad,
+        markPrice: 1,
+        size: 1,
+        isLong: true,
+      })
+    ).toBeNaN()
+    expect(
+      realizedPnlOnClose({
+        entryPrice: bad,
+        closePrice: 1,
+        closeSize: 1,
+        isLong: true,
+      })
+    ).toBeNaN()
+  })
+})
