@@ -1189,6 +1189,240 @@ describe('mapLedgerEntry — non-transfer branches', () => {
   })
 })
 
+describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
+  // Recorded 2026-09-30T18:28:37Z from `userNonFundingLedgerUpdates` on
+  // api.hyperliquid.xyz. Rows are verbatim; each `address` is the queried user.
+  const STAKER = '0x2f103bc1da4b4de74737c538a01e17822524a6e3'
+  const LENDER = '0xa41bbc2063daeaa250d5cd624ccdc4d5904f46b4'
+  const STAKE: HlLedgerUpdate = {
+    time: 1784136628469,
+    hash: '0x3eb07da3cb73f4ed402a0440008f7802054f0089667713bfe27928f68a77ced7',
+    delta: {
+      type: 'cStakingTransfer',
+      token: 'HYPE',
+      amount: '5.0',
+      isDeposit: true,
+    },
+  }
+  const UNSTAKE: HlLedgerUpdate = {
+    time: 1784492879045,
+    hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    delta: {
+      type: 'cStakingTransfer',
+      token: 'HYPE',
+      amount: '25.38015398',
+      isDeposit: false,
+    },
+  }
+  const SUPPLY_HYPE: HlLedgerUpdate = {
+    time: 1789754574549,
+    hash: '0x0fc80e74b96e07e111410444b05fb8020346005a546126b3b390b9c77861e1cb',
+    delta: {
+      type: 'borrowLend',
+      token: 'HYPE',
+      operation: 'supply',
+      amount: '100.0',
+      interestAmount: '0.0',
+    },
+  }
+  const WITHDRAW_HYPE: HlLedgerUpdate = {
+    time: 1790608051368,
+    hash: '0x9886aa5aa956ff879a000445661bc40206610040445a1e593c4f55ad685ad972',
+    delta: {
+      type: 'borrowLend',
+      token: 'HYPE',
+      operation: 'withdraw',
+      amount: '90.0',
+      interestAmount: '0.0',
+    },
+  }
+  const BORROW_USDC: HlLedgerUpdate = {
+    time: 1789754587548,
+    hash: '0xcc1e079e99cdbd1bcd970444b0606202046a008434c0dbed6fe6b2f158c19706',
+    delta: {
+      type: 'borrowLend',
+      token: 'USDC',
+      operation: 'borrow',
+      amount: '4000.0',
+      interestAmount: '0.0',
+    },
+  }
+  const REPAY_USDC: HlLedgerUpdate = {
+    time: 1790608396569,
+    hash: '0xb3f63c1deeea6ac5b56f0445662e8e0207b0000389ed899757bee770adee44b0',
+    delta: {
+      type: 'borrowLend',
+      token: 'USDC',
+      operation: 'repay',
+      amount: '4005.69059395',
+      interestAmount: '5.69059395',
+    },
+  }
+
+  it('maps a stake as an outbound HYPE transfer with its explorer link', () => {
+    expect(
+      mapLedgerEntry(STAKE, PROVIDER, STAKER, assetRegistry, resolveMarket)
+    ).toEqual({
+      id: STAKE.hash,
+      provider: PROVIDER,
+      timestamp: '2026-07-15T17:30:28.469Z',
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAddress: STAKER,
+      asset: HYPE,
+      amount: '5.0',
+      meta: { transferType: 'cStakingTransfer' },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${STAKE.hash}`,
+    } satisfies TransferActivity)
+  })
+
+  it('maps a zero-hash unstake inbound with a synthesized id and no explorer link', () => {
+    const result = mapLedgerEntry(
+      UNSTAKE,
+      PROVIDER,
+      STAKER,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z',
+      provider: PROVIDER,
+      timestamp: '2026-07-19T20:27:59.045Z',
+      type: ActivityType.TRANSFER,
+      direction: 'IN',
+      counterpartyAddress: STAKER,
+      asset: HYPE,
+      amount: '25.38015398',
+      meta: { transferType: 'cStakingTransfer' },
+    } satisfies TransferActivity)
+  })
+
+  it.each([
+    [UNSTAKE, 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z'],
+    [
+      { ...SUPPLY_HYPE, hash: UNSTAKE.hash },
+      'borrowLend:HYPE:supply:100.0:2026-09-18T18:02:54.549Z',
+    ],
+  ] as const)('synthesizes id %# for a zero-hash $delta.type row', (entry, id) => {
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      LENDER,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toMatchObject({ id })
+    expect(result).not.toHaveProperty('explorerLink')
+  })
+
+  it('gives distinct ids to zero-hash rows that share a time and token', () => {
+    const rows: HlLedgerUpdate[] = [
+      UNSTAKE,
+      { ...UNSTAKE, delta: { ...UNSTAKE.delta, amount: '1.0' } },
+      { ...UNSTAKE, delta: { ...UNSTAKE.delta, isDeposit: true } },
+      { ...SUPPLY_HYPE, time: UNSTAKE.time, hash: UNSTAKE.hash },
+      {
+        ...SUPPLY_HYPE,
+        time: UNSTAKE.time,
+        hash: UNSTAKE.hash,
+        delta: { ...SUPPLY_HYPE.delta, operation: 'repay' },
+      },
+    ]
+    const ids = rows.map(
+      (entry) =>
+        mapLedgerEntry(entry, PROVIDER, STAKER, assetRegistry, resolveMarket)
+          ?.id
+    )
+    expect(new Set(ids).size).toBe(rows.length)
+  })
+
+  it.each([
+    [SUPPLY_HYPE, 'OUT', HYPE, '100.0', 'supply', '0.0'],
+    [WITHDRAW_HYPE, 'IN', HYPE, '90.0', 'withdraw', '0.0'],
+    [BORROW_USDC, 'IN', USDC, '4000.0', 'borrow', '0.0'],
+    [REPAY_USDC, 'OUT', USDC, '4005.69059395', 'repay', '5.69059395'],
+  ] as const)('maps borrow-lend row %# as a %s transfer', (entry, direction, asset, amount, operation, interestAmount) => {
+    expect(
+      mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
+    ).toEqual({
+      id: entry.hash,
+      provider: PROVIDER,
+      timestamp: new Date(entry.time).toISOString(),
+      type: ActivityType.TRANSFER,
+      direction,
+      counterpartyAddress: LENDER,
+      asset,
+      amount,
+      meta: { transferType: 'borrowLend', operation, interestAmount },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`,
+    } satisfies TransferActivity)
+  })
+
+  it('lower-cases a checksummed queried address for the counterparty', () => {
+    expect(
+      mapLedgerEntry(
+        STAKE,
+        PROVIDER,
+        '0x2F103bC1Da4B4DE74737c538A01E17822524A6E3',
+        assetRegistry,
+        resolveMarket
+      )
+    ).toMatchObject({ counterpartyAddress: STAKER })
+  })
+
+  it.each([
+    ['liquidate', { operation: 'liquidate' }],
+    ['null', { operation: null }],
+    ['missing', {}],
+  ] as const)('drops a borrow-lend row with a %s operation', (_label, operation) => {
+    const entry: HlLedgerUpdate = {
+      ...SUPPLY_HYPE,
+      delta: {
+        type: 'borrowLend',
+        token: 'HYPE',
+        amount: '100.0',
+        interestAmount: '0.0',
+        ...operation,
+      },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
+    ).toBeNull()
+  })
+
+  it.each([
+    ['string', { isDeposit: 'true' }],
+    ['null', { isDeposit: null }],
+    ['missing', {}],
+  ] as const)('drops a staking row with a %s isDeposit', (_label, isDeposit) => {
+    const entry: HlLedgerUpdate = {
+      ...STAKE,
+      delta: {
+        type: 'cStakingTransfer',
+        token: 'HYPE',
+        amount: '5.0',
+        ...isDeposit,
+      },
+    }
+    expect(
+      mapLedgerEntry(entry, PROVIDER, STAKER, assetRegistry, resolveMarket)
+    ).toBeNull()
+  })
+
+  it.each([
+    STAKE,
+    SUPPLY_HYPE,
+  ])('rejects an unresolved $delta.type asset', async (entry) => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ assets: [USDC] }), { status: 200 })
+    )
+    await assetRegistry.sync()
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed/)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // mapFundingActivity
 // ---------------------------------------------------------------------------

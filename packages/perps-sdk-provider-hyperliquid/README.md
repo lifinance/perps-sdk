@@ -76,6 +76,10 @@ defines token indices and `tokenId`.
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
 | `spotGenesis` | Excluded: token allocation has no source counterparty. |
 | `rewardsClaim` | Excluded: reward income has no source counterparty. |
+| `cStakingTransfer` | Transfer between the spot and staking balances of one account; resolve the token symbol. `isDeposit` gives the direction. |
+| `borrowLend` | Transfer between the spot balance and the borrow-lend market; resolve the token symbol. `operation` gives the direction; `meta` keeps `operation` and `interestAmount`. |
+| `gossipPriorityGasAuction` | Excluded: a gas fee is not an asset transfer. |
+| `accountActivationGas` | Excluded: a gas fee is not an asset transfer. |
 
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor
@@ -83,6 +87,13 @@ field. A query for the vault account therefore raises `ValidationError` for that
 row instead of inventing a counterparty. Depositor-account queries map normally.
 
 The mapper excludes same-account movements in the transfer variants.
+`cStakingTransfer` and `borrowLend` rows are the exception: they always
+move value within one account, so they map with the queried account as
+`counterpartyAddress`. The direction is relative to the spot balance: a stake,
+a supply and a repay are outbound; an unstake, a withdrawal and a borrow are
+inbound. A completed unstake carries the zero hash, so its id is
+`cStakingTransfer:<token>:IN:<amount>:<ISO time>` and it has no explorer link.
+A zero-hash `borrowLend` row gets `borrowLend:<token>:<operation>:<amount>:<ISO time>`.
 Unknown future delta types remain outside the supported activity model.
 These exclusions do not apply to missing assets in supported transfer rows:
 the mapper rejects those rows with an error instead of silently omitting them.
