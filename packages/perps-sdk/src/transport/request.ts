@@ -20,6 +20,12 @@ import {
 export interface RequestOptions extends RequestInit {
   /** Per-call retry override. Falls back to the resolved client-level policy. */
   retry?: RetryPolicy | false
+  /** Successful response metadata, delivered only after JSON decoding. */
+  onResponse?: (
+    headers: Headers,
+    requestStartedAt: number,
+    responseReceivedAt: number
+  ) => void
 }
 
 /**
@@ -34,7 +40,7 @@ export async function request<T>(
   options: RequestOptions = {},
   sdkOptions?: SDKRequestOptions
 ): Promise<T> {
-  const { retry, ...fetchInit } = options
+  const { retry, onResponse, ...fetchInit } = options
   const policy =
     retry !== undefined
       ? resolveRetryPolicy(LIFI_RETRY_DEFAULTS, retry, LIFI_REQUEST_KEY)
@@ -64,11 +70,13 @@ export async function request<T>(
   }
 
   try {
+    const requestStartedAt = onResponse ? Date.now() : 0
     const response = await fetchWithRetry(url, finalOptions, {
       policy,
       fetchImpl: config.fetch,
       signal: sdkOptions?.signal ?? finalOptions.signal ?? undefined,
     })
+    const responseReceivedAt = onResponse ? Date.now() : 0
 
     if (!response.ok) {
       let body: PerpsErrorBody | undefined
@@ -94,7 +102,9 @@ export async function request<T>(
       throw error
     }
 
-    return (await response.json()) as T
+    const data = (await response.json()) as T
+    onResponse?.(response.headers, requestStartedAt, responseReceivedAt)
+    return data
   } catch (error) {
     if (error instanceof PerpsError) {
       throw error
