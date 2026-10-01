@@ -6,7 +6,7 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
-import { buildUrl, request } from '../transport/request.js'
+import { buildUrl, type RequestOptions, request } from '../transport/request.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { ReferenceDataRegistry } from './referenceDataRegistry.js'
 
@@ -84,13 +84,15 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
     return market
   }
 
-  protected fetchItems(): Promise<Market[]> {
+  protected fetchItems(
+    onResponse: RequestOptions['onResponse']
+  ): Promise<Market[]> {
     const url = buildUrl(`${this.client.config.apiUrl}/markets`, {
       provider: this.provider,
     })
-    return request<MarketsResponse>(this.client.config, url).then(
-      (response) => response.markets
-    )
+    return request<MarketsResponse>(this.client.config, url, {
+      onResponse,
+    }).then((response) => response.markets)
   }
 
   protected keyOf(market: Market): string {
