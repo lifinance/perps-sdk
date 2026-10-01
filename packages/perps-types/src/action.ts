@@ -1,4 +1,5 @@
 import type { AcceptTermsParams } from './acceptTerms.js'
+import type { DecimalString } from './decimal.js'
 import type {
   ActionType,
   MarginMode,
@@ -271,13 +272,13 @@ export type ActionResult =
  * @public
  */
 export interface TriggerOrderInput {
-  triggerPrice: string
-  limitPrice?: string
+  triggerPrice: DecimalString
+  limitPrice?: DecimalString
   /**
    * Base-asset size the trigger closes. Omitted covers the entire position,
    * tracking later size changes; set, it is a fixed partial amount.
    */
-  size?: string
+  size?: DecimalString
 }
 
 /**
@@ -287,10 +288,10 @@ export interface TriggerOrderInput {
  */
 export interface ModifyOrderInput {
   id: string
-  price?: string
-  size?: string
-  triggerPrice?: string
-  limitPrice?: string
+  price?: DecimalString
+  size?: DecimalString
+  triggerPrice?: DecimalString
+  limitPrice?: DecimalString
 }
 
 /**
@@ -302,8 +303,8 @@ export interface PlaceOrderParams {
   market: MarketRef
   side: OrderSide
   type?: Exclude<OrderType, OrderType.TWAP>
-  size: string
-  price?: string
+  size: DecimalString
+  price?: DecimalString
   leverage?: number
   /**
    * Hyperliquid: requires `leverage`. Omitted leaves the market's current
@@ -344,7 +345,7 @@ export interface PlaceTwapOrderParams {
   market: MarketRef
   side: OrderSide
   /** Total base-asset size executed across the TWAP's lifetime, as a decimal string. */
-  size: string
+  size: DecimalString
   /** Total execution window in seconds. */
   durationSeconds: number
   reduceOnly?: boolean
@@ -353,9 +354,9 @@ export interface PlaceTwapOrderParams {
   /** Ondo: interval between child orders in seconds. */
   frequencySeconds?: number
   /** Ondo: lowest acceptable child-order price, as a decimal string. */
-  minPrice?: string
+  minPrice?: DecimalString
   /** Ondo: highest acceptable child-order price, as a decimal string. */
-  maxPrice?: string
+  maxPrice?: DecimalString
 }
 
 /**
@@ -417,7 +418,7 @@ export interface UpdateLeverageParams {
 export interface UpdatePositionMarginParams {
   market: MarketRef
   action: 'add' | 'remove'
-  amount: string
+  amount: DecimalString
 }
 
 /**
@@ -449,7 +450,7 @@ export type WithdrawalRoute = 'perps' | 'spot'
  */
 export interface WithdrawalParams {
   destination: Address
-  amount: string
+  amount: DecimalString
   /** Lighter: provider-native `Asset.id` to withdraw. Omitted withdraws the quote asset. */
   assetId?: string
   /** Lighter: balance route to draw from. Omitted is `perps`. */
@@ -469,7 +470,7 @@ export interface WithdrawalParams {
  */
 export interface DepositParams {
   /** Amount of the token to deposit, as an integer string in the token's base units (e.g. "100500000" for 100.5 USDC). */
-  amount: string
+  amount: DecimalString
   /** ERC-20 token address on the source chain. */
   tokenAddress: Address
   /** Chain ID of the source chain (e.g. 1 for Ethereum, 42161 for Arbitrum). */
@@ -534,7 +535,7 @@ export interface SendAssetParams {
   collateral: string
   sourceDex: string
   destinationDex: string
-  amount: string
+  amount: DecimalString
 }
 
 /**

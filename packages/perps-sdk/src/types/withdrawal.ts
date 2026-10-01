@@ -1,4 +1,9 @@
-import type { ActionType, Asset, WithdrawalRoute } from '@lifi/perps-types'
+import type {
+  ActionType,
+  Asset,
+  DecimalString,
+  WithdrawalRoute,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 
 export type { WithdrawalRoute }
@@ -14,13 +19,13 @@ export interface ProviderWithdrawableBalance {
   assetId: string
   route: WithdrawalRoute
   /** Withdrawable amount in the asset's own units. Always greater than zero. */
-  available: string
+  available: DecimalString
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
    * Absent when the venue publishes no fee for the asset. The client rejects
    * a value that is not a non-negative decimal.
    */
-  withdrawalFee?: string
+  withdrawalFee?: DecimalString
   /**
    * `true` when the venue takes `withdrawalFee` out of the requested amount,
    * `false` when it charges the fee in addition. Set together with
@@ -40,7 +45,7 @@ export interface WithdrawableBalance {
   asset: Asset
   route: WithdrawalRoute
   /** Withdrawable amount in the asset's own units. */
-  available: string
+  available: DecimalString
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
    * Absent when the venue publishes no fee for the asset. With
@@ -51,7 +56,7 @@ export interface WithdrawableBalance {
    * is zero or negative when the fee is at or above `available`, and the row
    * then funds no withdrawal.
    */
-  withdrawalFee?: string
+  withdrawalFee?: DecimalString
   /**
    * Present only together with `withdrawalFee`. Absent on a row from a
    * provider plugin that does not report it; absence means unknown, not
