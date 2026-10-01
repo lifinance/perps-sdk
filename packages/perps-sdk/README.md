@@ -127,10 +127,10 @@ margin that the close releases. Without an Ondo session, for Lighter spot
 markets, and for every other provider, the client falls back to the account
 summary, so `buy` and `sell` both equal `availableMargin`.
 
-Each perps-category row in `Account.collateralBalances` carries
+Each collateral row in `Account.collateralBalances` and each spot row carries
 `transferable`: the part of `units` that the venue releases from that category
-in a category transfer. The value is always from `0` to `units`. It is absent
-on every other row, and no WebSocket channel updates it.
+for a transfer or a withdrawal. The value is always from `0` to `units`. No
+WebSocket channel updates it.
 
 - Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
   sub-dex.
@@ -138,6 +138,8 @@ on every other row, and no WebSocket channel updates it.
   `0` on every other asset's row, since a category transfer moves only the
   settlement asset.
 - Ondo: the `/v1/perps/balance` `withdrawableMargin`.
+- Hyperliquid spot rows: the `spotClearinghouseState` `total` minus `hold`.
+- Lighter spot rows: the asset `balance` minus `locked_balance`.
 
 `PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
 first subscribe, whether the provider streams the `availableToTrade` channel.

@@ -1035,44 +1035,44 @@ describe('LighterProvider — referralPresent', () => {
   })
 })
 
+const accountWithAssets = (assets: unknown[]) => ({
+  ...ACCOUNT_PAYLOAD,
+  accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
+})
+
+const stubAccount = (assets: unknown[]) => {
+  const payload = accountWithAssets(assets)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/marketsContext')) {
+        return respond(MARKETS_CONTEXT_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/assets')) {
+        return respond(ASSETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond(PROVIDERS_RESPONSE)
+      }
+      if (u.includes('/api/v1/account?')) {
+        return respond(payload)
+      }
+      if (u.includes('/api/v1/orderBookDetails')) {
+        return respond(ORDER_BOOK_DETAILS_PAYLOAD)
+      }
+      if (u.includes('/api/v1/apikeys')) {
+        return respond(APIKEYS_EMPTY)
+      }
+      throw new Error(`Unhandled URL in test: ${u}`)
+    })
+  )
+}
+
 describe('LighterProvider — assetCollateral projection', () => {
-  const accountWithAssets = (assets: unknown[]) => ({
-    ...ACCOUNT_PAYLOAD,
-    accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
-  })
-
-  const stubAccount = (assets: unknown[]) => {
-    const payload = accountWithAssets(assets)
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string | URL) => {
-        const u = String(url)
-        if (u.includes('backend.test/v1/perps/marketsContext')) {
-          return respond(MARKETS_CONTEXT_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/markets')) {
-          return respond(MARKETS_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/assets')) {
-          return respond(ASSETS_RESPONSE)
-        }
-        if (u.includes('backend.test/v1/perps/providers')) {
-          return respond(PROVIDERS_RESPONSE)
-        }
-        if (u.includes('/api/v1/account?')) {
-          return respond(payload)
-        }
-        if (u.includes('/api/v1/orderBookDetails')) {
-          return respond(ORDER_BOOK_DETAILS_PAYLOAD)
-        }
-        if (u.includes('/api/v1/apikeys')) {
-          return respond(APIKEYS_EMPTY)
-        }
-        throw new Error(`Unhandled URL in test: ${u}`)
-      })
-    )
-  }
-
   it("decodes each held asset's margin_mode into an enabled flag", async () => {
     stubAccount([
       {
@@ -1132,6 +1132,33 @@ describe('LighterProvider — assetCollateral projection', () => {
     expect(account.config).toMatchObject({
       assetCollateral: [{ assetId: '0', enabled: true }],
     })
+  })
+})
+
+describe('LighterProvider — spot transferable', () => {
+  const heldUsdc = (balance: string, lockedBalance: string) => ({
+    symbol: 'USDC',
+    asset_id: 3,
+    balance,
+    locked_balance: lockedBalance,
+    margin_balance: '0',
+    multiplier: '1.000000000000000000',
+    margin_mode: 'enabled',
+  })
+
+  it.each([
+    ['a partial lock', '27.69', '5', '22.69'],
+    ['a full lock', '5303.615000', '5303.615000', '0'],
+    ['no lock', '27.69', '0', '27.69'],
+    ['a lock above the balance', '27.69', '30', '0'],
+  ])('releases balance minus locked_balance for %s', async (_case, balance, lockedBalance, expected) => {
+    stubAccount([heldUsdc(balance, lockedBalance)])
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(
+      account.balances.map((b) => [b.categoryId, b.units, b.transferable])
+    ).toEqual([['spot', balance, expected]])
   })
 })
 
@@ -1984,6 +2011,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         units: '10',
         valueUsd: '10',
         price: '1',
+        transferable: '10',
       },
       {
         categoryId: 'spot',
@@ -1995,6 +2023,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
         },
         units: '2',
         valueUsd: '0',
+        transferable: '2',
       },
     ])
   })
