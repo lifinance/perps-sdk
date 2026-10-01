@@ -4287,77 +4287,401 @@ describe('accountSummary channel', () => {
     }
   })
 
-  it('values non-quote spot collateral into portfolio value in both spot-held modes', async () => {
-    // Non-quote spot tokens count toward the portfolio at their full price.
-    // Buying power comes from the venue, so both modes report the same one.
-    const hypeSpot: Market = {
-      ...HL_SPOT_MARKET,
-      id: '@200',
-      baseAsset: {
-        ...HL_SPOT_MARKET.baseAsset,
-        id: '150',
-        displaySymbol: 'HYPE',
-      },
-    }
-
-    const summaryFor = async (mode: string) => {
-      abstractionFetchMock.mockResolvedValue(mode)
-      const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
-      const listener = vi.fn()
-      const contextListener = vi.fn()
-      await provider.subscribe(
-        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
-        listener
-      )
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        contextListener
-      )
-      await flushMicrotasks()
-
-      // Price HYPE spot at $40 so the 100-unit balance values to $4000. HL
-      // streams spot context over `sac` (base64 + raw DEFLATE); the decode is
-      // async, so gate on the context emission before valuing the balance.
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            '@200': { midPx: '40', markPx: '40' },
-          }),
-        })
-      )
-      await vi.waitFor(() => {
-        expect(
-          contextListener.mock.calls.at(-1)?.[0]?.data['@200']
-        ).toBeDefined()
+  const hypeSpot: Market = {
+    ...HL_SPOT_MARKET,
+    id: '@200',
+    baseAsset: {
+      ...HL_SPOT_MARKET.baseAsset,
+      id: '150',
+      displaySymbol: 'HYPE',
+    },
+  }
+  const holdings = [
+    { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+    { coin: 'HYPE', token: 150, total: '100', hold: '5' },
+  ]
+  const seedSpotPrice = async (price: string) =>
+    getMockRwsInstance().simulateMessage(
+      JSON.stringify({
+        channel: 'sac',
+        data: await encodeCompressed({
+          '@200': { midPx: price, markPx: price },
+        }),
       })
+    )
+  const priceMessages = (method: string) =>
+    getMockRwsInstance()
+      .sent.map((raw) => JSON.parse(raw))
+      .filter(
+        (message) =>
+          message.method === method &&
+          ['pac', 'sac', 'fastAssetCtxs'].includes(message.subscription.type)
+      )
 
+  it.each([
+    'spotBalances',
+    'accountSummary',
+  ] as const)('rolls back a failed price acquisition for %s and releases a successful retry', async (channel) => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const provider = createEnrichingProvider()
+    const releases: Array<() => void> = []
+    const subscription = {
+      channel,
+      dex: 'hyperliquid',
+      address: '0xabc',
+    } as const
+    const spotMessages = (method: string) =>
+      getMockRwsInstance()
+        .sent.map((raw) => JSON.parse(raw))
+        .filter(
+          (message) =>
+            message.method === method &&
+            message.subscription.type === 'spotState'
+        )
+    try {
+      marketsFetchMock
+        .mockResolvedValueOnce({ markets: [...HL_MARKETS, HL_SPOT_MARKET] })
+        .mockResolvedValueOnce(marketsFailureResponse())
+      if (channel === 'spotBalances') {
+        await expect(provider.subscribe(subscription, vi.fn())).rejects.toThrow(
+          'markets fetch failed'
+        )
+      } else {
+        releases.push(await provider.subscribe(subscription, vi.fn()))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(errors).toHaveBeenCalled()
+      }
+      expect(spotMessages('subscribe')).toHaveLength(1)
+      expect(spotMessages('unsubscribe')).toHaveLength(1)
+
+      await vi.advanceTimersByTimeAsync(201)
+      const listener = vi.fn()
+      releases.push(await provider.subscribe(subscription, listener))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spotMessages('subscribe')).toHaveLength(2)
+      expect(priceMessages('subscribe')).toHaveLength(3)
       getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
       getMockRwsInstance().simulateMessage(
         spotFrame(
           '0xabc',
-          [
-            { coin: 'USDC', token: 0, total: '1000', hold: '0' },
-            { coin: 'HYPE', token: 150, total: '100', hold: '0' },
-          ],
-          '2160'
+          [{ coin: 'USDC', token: 0, total: '1000', hold: '0' }],
+          '160'
         )
       )
-      await flushMicrotasks()
-      return listener.mock.calls.at(-1)?.[0].data
-    }
-
-    try {
-      for (const mode of ['portfolioMargin', 'unifiedAccount']) {
-        expect(await summaryFor(mode)).toEqual({
-          // USDC 1000 + HYPE 100 × $40.
-          portfolioValue: '5000',
-          availableMargin: '2160',
-          marginUsed: '940',
-          unrealizedPnl: '100',
-        })
+      expect(listener).toHaveBeenCalledWith({
+        channel,
+        data:
+          channel === 'accountSummary'
+            ? expect.objectContaining({
+                portfolioValue: '1000',
+                availableMargin: '160',
+              })
+            : [
+                expect.objectContaining({
+                  units: '1000',
+                  valueUsd: '1000',
+                }),
+              ],
+      })
+      for (const release of releases) {
+        release()
       }
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(spotMessages('unsubscribe')).toHaveLength(2)
+      expect(priceMessages('unsubscribe')).toHaveLength(3)
+      getMockRwsInstance().sent = []
+      getMockRwsInstance().simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(getMockRwsInstance().sent).toEqual([])
     } finally {
+      provider.close()
+      errors.mockRestore()
+      abstractionFetchMock.mockReset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('rolls back spot and price wires when the connection fails during price acquisition', async () => {
+    const provider = createEnrichingProvider()
+    try {
+      marketsFetchMock
+        .mockResolvedValueOnce({ markets: [...HL_MARKETS, HL_SPOT_MARKET] })
+        .mockImplementationOnce(() => {
+          getMockRwsInstance().simulateStatus('disconnected')
+          return { markets: [...HL_MARKETS, HL_SPOT_MARKET] }
+        })
+      await expect(
+        provider.subscribe(
+          { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+          vi.fn()
+        )
+      ).rejects.toThrow('WebSocket max reconnect attempts reached')
+      getMockRwsInstance().sent = []
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+      expect(getMockRwsInstance().sent).toEqual([])
+    } finally {
+      provider.close()
+    }
+  })
+
+  it('does not send rollback frames after closing a pending price acquisition', async () => {
+    const provider = createEnrichingProvider()
+    const socket = getMockRwsInstance()
+    let rejectReady!: (error: Error) => void
+    const pendingReady = new Promise<void>((_resolve, reject) => {
+      rejectReady = reject
+    })
+    const ready = vi.spyOn(socket, 'ready').mockReturnValueOnce(pendingReady)
+    try {
+      const opening = provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      const rejected = expect(opening).rejects.toThrow('connection failed')
+      await flushMicrotasks()
+      expect(priceMessages('subscribe')).toHaveLength(3)
+      provider.close()
+      socket.sent = []
+      rejectReady(new Error('connection failed'))
+      await rejected
+      expect(socket.sent).toEqual([])
+    } finally {
+      ready.mockRestore()
+      provider.close()
+    }
+  })
+
+  it.each([
+    'portfolioMargin',
+    'unifiedAccount',
+  ])('revalues standalone %s summaries when spot prices arrive and change', async (mode) => {
+    abstractionFetchMock.mockResolvedValue(mode)
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    try {
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(spotFrame('0xabc', holdings, '2160'))
+      expect(listener).not.toHaveBeenCalled()
+      expect(priceMessages('subscribe')).toHaveLength(3)
+
+      await seedSpotPrice('40')
+      await vi.waitFor(() => {
+        expect(listener).toHaveBeenLastCalledWith({
+          channel: 'accountSummary',
+          data: {
+            portfolioValue: '5000',
+            availableMargin: '2160',
+            marginUsed: '940',
+            unrealizedPnl: '100',
+          },
+        })
+      })
+
+      await seedFast({ '@200': { midPx: '45', markPx: '45' } })
+      await vi.waitFor(() => {
+        expect(listener.mock.calls.at(-1)?.[0].data.portfolioValue).toBe('5500')
+      })
+    } finally {
+      provider.close()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('revalues standalone spot balances without emitting missing-price zeroes', async () => {
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    try {
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(spotFrame('0xabc', holdings))
+      expect(listener).not.toHaveBeenCalled()
+      expect(priceMessages('subscribe')).toHaveLength(3)
+      await seedSpotPrice('40')
+      await vi.waitFor(() => {
+        expect(listener.mock.calls.at(-1)?.[0].data).toEqual([
+          expect.objectContaining({ units: '1000', valueUsd: '1000' }),
+          expect.objectContaining({
+            units: '100',
+            valueUsd: '4000',
+            locked: '5',
+          }),
+        ])
+      })
+      await seedFast({ '@200': { midPx: '45' } })
+      await vi.waitFor(() => {
+        expect(listener.mock.calls.at(-1)?.[0].data[1].valueUsd).toBe('4500')
+      })
+      getMockRwsInstance().simulateMessage(spotFrame('0xabc', []))
+      expect(listener).toHaveBeenLastCalledWith({
+        channel: 'spotBalances',
+        data: [],
+      })
+    } finally {
+      provider.close()
+    }
+  })
+
+  it('retains early prices after external markets release until the final portfolio consumer leaves', async () => {
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    try {
+      const contextListener = vi.fn()
+      const releaseMarkets = await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        contextListener
+      )
+      await seedSpotPrice('40')
+      await vi.waitFor(() =>
+        expect(
+          contextListener.mock.calls.at(-1)?.[0].data['@200']
+        ).toBeDefined()
+      )
+      const summaryListener = vi.fn()
+      const spotListener = vi.fn()
+      const releaseSummary = await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        summaryListener
+      )
+      const releaseSpot = await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        spotListener
+      )
+      await flushMicrotasks()
+      expect(priceMessages('subscribe')).toHaveLength(3)
+
+      vi.useFakeTimers()
+      releaseMarkets()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(priceMessages('unsubscribe')).toEqual([])
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      getMockRwsInstance().simulateMessage(spotFrame('0xabc', holdings, '2160'))
+      expect(summaryListener.mock.calls.at(-1)?.[0].data.portfolioValue).toBe(
+        '5000'
+      )
+      expect(spotListener.mock.calls.at(-1)?.[0].data[1].valueUsd).toBe('4000')
+
+      releaseSummary()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(priceMessages('unsubscribe')).toEqual([])
+      vi.useRealTimers()
+      await seedFast({ '@200': { midPx: '45' } })
+      await vi.waitFor(() =>
+        expect(spotListener.mock.calls.at(-1)?.[0].data[1].valueUsd).toBe(
+          '4500'
+        )
+      )
+
+      vi.useFakeTimers()
+      releaseSpot()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(priceMessages('unsubscribe')).toHaveLength(3)
+    } finally {
+      provider.close()
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it.each([
+    'release',
+    'close',
+  ])('does not acquire portfolio feeds after %s during an abstraction read', async (action) => {
+    vi.useFakeTimers()
+    let resolveMode!: (mode: string) => void
+    abstractionFetchMock.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveMode = resolve
+      })
+    )
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    try {
+      const release = await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      if (action === 'close') {
+        provider.close()
+      } else {
+        release()
+        await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS)
+      }
+      getMockRwsInstance().sent = []
+      resolveMode('unifiedAccount')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(getMockRwsInstance().sent).toEqual([])
+    } finally {
+      provider.close()
+      vi.useRealTimers()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('does not reopen price feeds when the socket closes during spot acquisition', async () => {
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    const socket = getMockRwsInstance()
+    const send = vi.spyOn(socket, 'send').mockImplementation((raw: string) => {
+      socket.sent.push(raw)
+      const message = JSON.parse(raw)
+      if (
+        message.method === 'subscribe' &&
+        message.subscription.type === 'spotState'
+      ) {
+        provider.close()
+      }
+    })
+    try {
+      await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await flushMicrotasks()
+      expect(socket.closed).toBe(true)
+      expect(priceMessages('subscribe')).toEqual([])
+    } finally {
+      send.mockRestore()
+      provider.close()
+      abstractionFetchMock.mockReset()
+    }
+  })
+
+  it('releases portfolio feeds while a positions consumer retains the clearinghouse wire', async () => {
+    vi.useFakeTimers()
+    abstractionFetchMock.mockResolvedValue('unifiedAccount')
+    const provider = createEnrichingProvider([...HL_MARKETS, hypeSpot])
+    try {
+      const positions = vi.fn()
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+        positions
+      )
+      const release = await provider.subscribe(
+        { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      getMockRwsInstance().sent = []
+      release()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS * 2)
+      expect(priceMessages('unsubscribe')).toHaveLength(3)
+      getMockRwsInstance().simulateMessage(summaryFrame('0xabc'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(positions.mock.calls.at(-1)?.[0].data[0].market.id).toBe('BTC')
+      expect(priceMessages('subscribe')).toEqual([])
+    } finally {
+      provider.close()
+      vi.useRealTimers()
       abstractionFetchMock.mockReset()
     }
   })
@@ -4668,7 +4992,6 @@ describe('accountSummary channel', () => {
         { channel: 'accountSummary', dex: 'hyperliquid', address: '0xabc' },
         listener
       )
-      // Positions listener keeps the wire (and the cached mode) alive.
       await provider.subscribe(
         { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
         vi.fn()

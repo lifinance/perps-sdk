@@ -137,20 +137,21 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
-  // The clearinghouse stream covers perps equity only, so its summary is
-  // honest solely for modes whose collateral lives per-dex. The abstraction
-  // mode is read per subscribed user (null = never set = standard) and
-  // selects the summary source: standard/dexAbstraction emit the equity
-  // summary straight from clearinghouse frames, unified/portfolio run the
-  // spot-fed pipeline below. Frames arriving before the first read are held
-  // and released on resolution (delayed, never wrong). The read refreshes on
-  // fresh summary subscribes and once older than the TTL, and drops with
-  // the user's last clearinghouse subscription.
+  // Spot-funded modes need both spot valuation and clearinghouse margin state.
   private readonly abstractionByUser = new Map<
     string,
     { mode: HlAbstractionMode | null; readAt: number } | 'pending'
   >()
+  private readonly summaryUsers = new Set<string>()
+  private readonly abstractionReadsByUser = new Map<string, symbol>()
   private readonly spotRefs = new Map<string, number>()
+  private spotWireEpoch = 0
+  private readonly latestSpotByUser = new Map<string, HlWsSpotStateData>()
+  private readonly revalueSpotBalances = () => {
+    for (const user of this.latestSpotByUser.keys()) {
+      this.emitSpotBalances(user)
+    }
+  }
   // Unified/portfolio summary pipeline: collateral lives in spot, margin and
   // uPnL on the positions — the summary recomputes from the latest of both
   // envelopes with the same gross calculator the REST getAccountSummary uses.
@@ -310,16 +311,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     // Markets context aggregates slower asset-context feeds with fast mid/mark
     // ticks from `fastAssetCtxs`.
     if (sub.channel === 'marketsContext') {
+      const epoch = this.spotWireEpoch
       const entries = this.getMarketsContextSubEntries()
-
-      for (const { subKey, payload } of entries) {
-        await this.registerSub(subKey, payload)
-      }
-
-      await this.rws.ready()
-
-      return () => {
-        for (const { subKey, payload } of entries) {
+      let acquired = 0
+      const release = () => {
+        if (epoch !== this.spotWireEpoch) {
+          return
+        }
+        for (let index = 0; index < acquired; index++) {
+          const { subKey, payload } = entries[index]
           this.unregisterSub(subKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -329,15 +329,25 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         this.spotCtxByMarketId = {}
         this.fastCtxByMarketId = {}
         this.marketsContextByMarketId = {}
+        acquired = 0
+      }
+      try {
+        for (const { subKey, payload } of entries) {
+          await this.registerSub(subKey, payload)
+          acquired++
+        }
+        await this.rws.ready()
+        return release
+      } catch (error) {
+        release()
+        throw error
       }
     }
 
     // The spot wire is shared between the public spotBalances channel and
     // the unified-summary pipeline; refcounted like the clearinghouse sub.
     if (sub.channel === 'spotBalances') {
-      const release = await this.acquireSpotWire(sub.address)
-      await this.rws.ready()
-      return release
+      return this.acquireSpotWire(sub.address)
     }
 
     // `positions` and `accountSummary` are two views over the same wire
@@ -348,20 +358,25 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       const payload = this.toHlPayload(sub)
       const count = this.clearinghouseRefs.get(user) ?? 0
       this.clearinghouseRefs.set(user, count + 1)
+      if (sub.channel === 'accountSummary') {
+        this.summaryUsers.add(user)
+      }
       if (count === 0) {
         await this.registerSub(wireKey, payload)
       }
       await this.rws.ready()
       return () => {
+        if (sub.channel === 'accountSummary') {
+          this.summaryUsers.delete(user)
+          this.abstractionReadsByUser.delete(user)
+          this.abstractionByUser.delete(user)
+          this.heldSummaryByUser.delete(user)
+          this.syncUnifiedPipeline(user, user, null)
+        }
         const remaining = (this.clearinghouseRefs.get(user) ?? 1) - 1
         if (remaining <= 0) {
           this.clearinghouseRefs.delete(user)
-          // Drop the summary gate's mode read (and its pipeline) with the
-          // subscription so a resubscribe reflects an account-mode change.
-          this.abstractionByUser.delete(user)
-          this.heldSummaryByUser.delete(user)
           this.latestPerpsByUser.delete(user)
-          this.syncUnifiedPipeline(user, user, null)
           this.unregisterSub(wireKey)
           this.rws.send(
             JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -489,9 +504,19 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   protected override onClose(): void {
+    this.spotWireEpoch++
     this.perpCtxBySubDex.clear()
     this.spotCtxByMarketId = {}
     this.fastCtxByMarketId = {}
+    this.latestSpotByUser.clear()
+    this.spotRefs.clear()
+    this.clearinghouseRefs.clear()
+    this.summaryUsers.clear()
+    this.abstractionReadsByUser.clear()
+    this.abstractionByUser.clear()
+    this.heldSummaryByUser.clear()
+    this.latestPerpsByUser.clear()
+    this.unifiedSummaryByUser.clear()
     this.marketsContextByMarketId = {}
     this.orderbookKeysByMarketId.clear()
     this.latestOrderbookByMarketId.clear()
@@ -1206,22 +1231,23 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     // Lowercased in the payload too, so releases from either holder (public
     // channel or pipeline) unsubscribe with an identical payload.
     const user = address.toLowerCase()
+    const epoch = this.spotWireEpoch
     const wireKey = `spot:${user}`
     const payload = { type: 'spotState', user }
     const count = this.spotRefs.get(user) ?? 0
     this.spotRefs.set(user, count + 1)
-    if (count === 0) {
-      await this.registerSub(wireKey, payload)
-    }
+    let releasePrices: (() => void) | undefined
     let released = false
-    return () => {
-      if (released) {
+    const release = () => {
+      if (released || epoch !== this.spotWireEpoch) {
         return
       }
       released = true
+      releasePrices?.()
       const remaining = (this.spotRefs.get(user) ?? 1) - 1
       if (remaining <= 0) {
         this.spotRefs.delete(user)
+        this.latestSpotByUser.delete(user)
         this.unregisterSub(wireKey)
         this.rws.send(
           JSON.stringify({ method: 'unsubscribe', subscription: payload })
@@ -1229,6 +1255,21 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       } else {
         this.spotRefs.set(user, remaining)
       }
+    }
+    try {
+      if (count === 0) {
+        await this.registerSub(wireKey, payload)
+      }
+      if (epoch === this.spotWireEpoch) {
+        releasePrices = await super.subscribe(
+          { channel: 'marketsContext', dex: this.providerKey },
+          this.revalueSpotBalances
+        )
+      }
+      return release
+    } catch (error) {
+      release()
+      throw error
     }
   }
 
@@ -1241,12 +1282,22 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const unified = !HyperliquidWsProvider.summaryComputableFor(mode)
     const existing = this.unifiedSummaryByUser.get(key)
     if (unified && existing === undefined) {
-      this.unifiedSummaryByUser.set(key, {
-        releaseSpot: this.acquireSpotWire(address).catch((error) => {
-          wsLog.handlerFailure(this.providerKey, error)
-          return () => {}
-        }),
+      const epoch = this.spotWireEpoch
+      const releaseSpot = this.acquireSpotWire(address).catch((error) => {
+        if (this.unifiedSummaryByUser.get(key)?.releaseSpot === releaseSpot) {
+          this.unifiedSummaryByUser.delete(key)
+        }
+        wsLog.handlerFailure(this.providerKey, error)
+        return () => {}
       })
+      if (epoch !== this.spotWireEpoch) {
+        return
+      }
+      this.unifiedSummaryByUser.set(key, { releaseSpot })
+      const spot = this.latestSpotByUser.get(key)
+      if (spot !== undefined) {
+        this.handleSpotState(spot)
+      }
     } else if (!unified && existing !== undefined) {
       this.unifiedSummaryByUser.delete(key)
       void existing.releaseSpot.then((release) => release())
@@ -1303,6 +1354,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
   ) {
     const key = user.toLowerCase()
+    if (!this.summaryUsers.has(key)) {
+      return
+    }
     // Without a client there is no way to read the mode; keep the historic
     // always-emit behavior rather than silencing every standalone consumer.
     if (this.client === undefined) {
@@ -1340,7 +1394,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     refreshing?: { mode: HlAbstractionMode | null; readAt: number }
   ) {
     const client = this.client
-    if (client === undefined) {
+    if (client === undefined || !this.summaryUsers.has(key)) {
       return
     }
     // A background refresh keeps the current entry live (stamped now so
@@ -1349,6 +1403,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       key,
       refreshing ? { ...refreshing, readAt: Date.now() } : 'pending'
     )
+    const read = Symbol()
+    this.abstractionReadsByUser.set(key, read)
     // "Never set abstraction" is a successful 200 `null` body — only a fetch
     // failure clears a first read so the next frame retries it. A failed
     // refresh keeps the previous mode until the TTL passes again.
@@ -1358,6 +1414,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       hlInfoOptions(client)
     ).then(
       (mode) => {
+        if (this.abstractionReadsByUser.get(key) !== read) {
+          return
+        }
+        this.abstractionReadsByUser.delete(key)
         this.abstractionByUser.set(key, { mode, readAt: Date.now() })
         this.syncUnifiedPipeline(key, user, mode)
         const held = this.heldSummaryByUser.get(key)
@@ -1370,6 +1430,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
       },
       (error) => {
+        if (this.abstractionReadsByUser.get(key) !== read) {
+          return
+        }
+        this.abstractionReadsByUser.delete(key)
         if (!refreshing) {
           this.abstractionByUser.delete(key)
         }
@@ -1401,35 +1465,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   private handleSpotState(data: HlWsSpotStateData) {
     const user = data.user.toLowerCase()
+    this.latestSpotByUser.set(user, data)
     const markets = this.registry?.activeMarkets ?? []
-    const priceById = spotPriceById(markets, this.mergedMids())
-    const rows = data.spotState.balances
-      .filter(
-        (balance) =>
-          !assetIsOutcome(balance.coin) &&
-          toWireBig(balance.total, 'spotState.balances.total').gt(0)
-      )
-      .map((balance) => ({
-        balance: spotBalance(
-          spotAssetFromToken(balance),
-          balance.total,
-          priceById
-        ),
-        hold: balance.hold,
-      }))
-    this.emit(`spotState:${user}`, {
-      channel: 'spotBalances',
-      data: rows.map(({ balance, hold }) => ({ ...balance, locked: hold })),
-    })
-
     const pipeline = this.unifiedSummaryByUser.get(user)
     if (pipeline !== undefined) {
-      const quoteAssetIds = new Set(markets.map((m) => m.quoteAsset.id))
-      // Same partition as getAccount so REST and WS agree on collateral.
-      pipeline.spot = partitionSpotBalances(
-        rows.map(({ balance }) => balance),
-        quoteAssetIds
-      )
       const settlementAssetId = markets.find(
         (m) => m.categoryId === this.providerKey
       )?.quoteAsset.id
@@ -1442,6 +1481,45 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       } else {
         pipeline.availableMargin = available
       }
+    }
+    this.emitSpotBalances(user)
+  }
+
+  private emitSpotBalances(user: string) {
+    const data = this.latestSpotByUser.get(user)
+    if (data === undefined) {
+      return
+    }
+    const markets = this.registry?.activeMarkets ?? []
+    const priceById = spotPriceById(markets, this.mergedMids())
+    const balances = data.spotState.balances.filter(
+      (balance) =>
+        !assetIsOutcome(balance.coin) &&
+        toWireBig(balance.total, 'spotState.balances.total').gt(0)
+    )
+    const pipeline = this.unifiedSummaryByUser.get(user)
+    // Known spot markets await a price; unlisted tokens keep their unpriced balance.
+    if (
+      balances.some((balance) => priceById.get(String(balance.token)) === 0)
+    ) {
+      if (pipeline !== undefined) {
+        pipeline.spot = undefined
+      }
+      return
+    }
+    const rows = balances.map((balance) => ({
+      ...spotBalance(spotAssetFromToken(balance), balance.total, priceById),
+      locked: balance.hold,
+    }))
+    this.emit(`spotState:${user}`, {
+      channel: 'spotBalances',
+      data: rows,
+    })
+    if (pipeline !== undefined) {
+      pipeline.spot = partitionSpotBalances(
+        rows,
+        new Set(markets.map((market) => market.quoteAsset.id))
+      )
       this.emitUnifiedSummary(user)
     }
   }
