@@ -40,6 +40,20 @@ const client = createPerpsClient({
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
 - `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
+## WebSocket account summaries
+
+`accountSummary` seeds from `/v1/perps/balance` and refreshes after fills and
+positions frames. Each balance read belongs to its wallet subscription: after
+that subscription is torn down or the provider is closed, pending responses
+cannot update a replacement subscription, including one for the same wallet.
+The summary shares ref-counted wire subscriptions with `fills` and `positions`.
+Pending authentication from a closed provider cannot send login or subscription
+frames on a replacement connection or release its shared wire subscriptions.
+Authenticated channels reserve their wallet binding while registry and balance
+reads are pending, before acquiring wires. Releasing the last wire does not
+retire a binding still owned by another pending or active channel. A failed
+opening releases only its own reservation, leaving sibling streams intact.
+
 ## Orders
 
 `getOrders` returns `{ provider, orders, pagination }`. Each `Order` has one

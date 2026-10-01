@@ -199,7 +199,9 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     try {
       await this.sendSubscribe(state)
     } catch (err) {
-      this.wireSubs.delete(key)
+      if (this.wireSubs.get(key) === state) {
+        this.wireSubs.delete(key)
+      }
       throw err
     }
   }
@@ -304,7 +306,11 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     try {
       const teardown = await opening
       const current = this.channels.get(key)
-      if (current === undefined || current.listeners.size === 0) {
+      if (current !== entry) {
+        teardown()
+        return
+      }
+      if (current.listeners.size === 0) {
         // Every listener released while opening — unwind immediately.
         teardown()
         this.channels.delete(key)
@@ -315,7 +321,9 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     } catch (err) {
       // Open failed: drop the channel so all (concurrent) subscribers reject
       // cleanly and a later subscribe re-opens.
-      this.channels.delete(key)
+      if (this.channels.get(key) === entry) {
+        this.channels.delete(key)
+      }
       throw err
     }
   }
