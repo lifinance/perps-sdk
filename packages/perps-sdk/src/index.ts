@@ -222,6 +222,7 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './utils/format.js'
+export { maxOf, minOf } from './utils/math.js'
 export {
   ACTIVE_ORDER_STATUSES,
   classifyFill,

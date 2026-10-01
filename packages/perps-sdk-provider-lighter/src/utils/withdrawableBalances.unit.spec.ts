@@ -1,12 +1,8 @@
-import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import type { LtAccount } from '../types/account.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
 import * as barrel from './index.js'
-import {
-  lighterWithdrawableBalances,
-  transferableWithin,
-} from './withdrawableBalances.js'
+import { lighterWithdrawableBalances } from './withdrawableBalances.js'
 
 type WithdrawableAccount = Pick<LtAccount, 'assets' | 'available_balance'>
 
@@ -241,18 +237,6 @@ describe('lighterWithdrawableBalances', () => {
     for (const row of rows) {
       expect(row).not.toHaveProperty('withdrawalFee')
     }
-  })
-})
-
-describe('transferableWithin', () => {
-  it.each([
-    ['venue figure below the units', '5', '8', '5'],
-    ['venue figure above the units', '9', '8', '8'],
-    ['negative venue figure', '-1', '8', '0'],
-  ])('returns the capped amount for a %s', (_, venue, units, expected) => {
-    expect(transferableWithin(new Big(venue), new Big(units)).toFixed()).toBe(
-      expected
-    )
   })
 })
 

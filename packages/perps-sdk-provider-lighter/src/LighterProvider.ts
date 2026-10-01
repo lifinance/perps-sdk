@@ -9,6 +9,8 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
+  maxOf,
+  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -162,7 +164,6 @@ import {
 import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
-import { transferableWithin } from './utils/withdrawableBalances.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
@@ -1034,8 +1035,8 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? transferableWithin(
-                availableBalance,
+            ? minOf(
+                maxOf(availableBalance, new Big(0)),
                 new Big(a.margin_balance)
               ).toFixed()
             : '0',
