@@ -6,6 +6,7 @@ import {
   predictNewLeverage,
   predictUnrealizedPnl,
   realizedPnlOnClose,
+  wouldImmediatelyLiquidate,
 } from './positionMath.js'
 
 describe('directionSign', () => {
@@ -388,5 +389,51 @@ describe('non-finite inputs', () => {
         isLong: true,
       })
     ).toBeNaN()
+  })
+})
+
+describe('wouldImmediatelyLiquidate', () => {
+  it.each([
+    { liquidationPrice: 100, currentPrice: 100, isLong: true, expected: true },
+    { liquidationPrice: 101, currentPrice: 100, isLong: true, expected: true },
+    { liquidationPrice: 99, currentPrice: 100, isLong: true, expected: false },
+    { liquidationPrice: 100, currentPrice: 100, isLong: false, expected: true },
+    { liquidationPrice: 99, currentPrice: 100, isLong: false, expected: true },
+    {
+      liquidationPrice: 101,
+      currentPrice: 100,
+      isLong: false,
+      expected: false,
+    },
+    { liquidationPrice: 100, currentPrice: 0, isLong: true, expected: false },
+    { liquidationPrice: 100, currentPrice: 0, isLong: false, expected: false },
+    { liquidationPrice: 0, currentPrice: 100, isLong: true, expected: false },
+    { liquidationPrice: 0, currentPrice: 100, isLong: false, expected: false },
+  ])('liq $liquidationPrice at $currentPrice (long: $isLong) is $expected', ({
+    expected,
+    ...params
+  }) => {
+    expect(wouldImmediatelyLiquidate(params)).toBe(expected)
+  })
+
+  it('composes with estimateIsolatedLiquidationPrice', () => {
+    const liquidates = (leverage: number) => {
+      const liquidationPrice = estimateIsolatedLiquidationPrice({
+        entryPrice: 100,
+        leverage,
+        isLong: true,
+        maintenanceMarginRate: 0.03,
+      })
+      if (liquidationPrice === undefined) {
+        throw new Error('expected a liquidation price')
+      }
+      return wouldImmediatelyLiquidate({
+        liquidationPrice,
+        currentPrice: 100,
+        isLong: true,
+      })
+    }
+    expect(liquidates(50)).toBe(true)
+    expect(liquidates(10)).toBe(false)
   })
 })

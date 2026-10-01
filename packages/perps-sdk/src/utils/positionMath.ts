@@ -66,6 +66,28 @@ export function estimateIsolatedLiquidationPrice(params: {
 }
 
 /**
+ * Whether an isolated position with this liquidation price is already past
+ * liquidation at `currentPrice`: a long liquidates when the price falls to its
+ * liquidation level, a short when it rises to it. A non-positive price on
+ * either side counts as unknown, so the result is `false`.
+ *
+ * @public
+ */
+export function wouldImmediatelyLiquidate(params: {
+  liquidationPrice: number
+  currentPrice: number
+  isLong: boolean
+}): boolean {
+  const { liquidationPrice, currentPrice, isLong } = params
+  if (currentPrice <= 0 || liquidationPrice <= 0) {
+    return false
+  }
+  return isLong
+    ? liquidationPrice >= currentPrice
+    : liquidationPrice <= currentPrice
+}
+
+/**
  * Predicted average entry price after adding to an existing position.
  *
  * Weighted average of the current entry and the new fill price, weighted by
