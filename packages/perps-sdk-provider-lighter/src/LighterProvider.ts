@@ -811,10 +811,10 @@ export const createLighterProvider = (
     const market = registry.require(marketId)
     const leverage =
       'maxLeverage' in market ? market.defaultLeverage : undefined
-    if (leverage === undefined) {
+    if (leverage === undefined || !(leverage > 0)) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `The backend market '${marketId}' carries no Lighter default leverage`
+        `The backend market '${marketId}' carries no positive Lighter default leverage`
       )
     }
     return { marginMode: MarginMode.CROSS, leverage }

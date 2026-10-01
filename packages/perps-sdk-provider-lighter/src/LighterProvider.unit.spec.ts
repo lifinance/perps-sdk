@@ -5886,6 +5886,16 @@ describe('LighterProvider — getMarketSettings', () => {
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
 
+  it('throws SDKError when the backend market default leverage is not positive', async () => {
+    backendMarkets = [{ ...BTC_MARKET, defaultLeverage: 0 }]
+
+    await expect(settingsFor('1')).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.SDKError,
+    })
+    expect(orderBookDetailsRequests()).toHaveLength(0)
+  })
+
   it('throws SDKError when the backend lists the market id as a spot market', async () => {
     const { maxLeverage: _, ...spotShaped } = BTC_MARKET
     backendMarkets = [{ ...spotShaped, positionMarginAdjustment: undefined }]
