@@ -395,7 +395,6 @@ describe('format gives human strings', () => {
   })
 })
 
-/** Function exports the entry point takes from a module matching `from`. */
 const functionExportsFrom = (from: (specifier: string) => boolean): string[] =>
   entryExports
     .filter((entry) => from(entry.from))
@@ -497,16 +496,12 @@ describe('convert and wire give DecimalStrings', () => {
   })
 })
 
-/**
- * One verb per kind of transformation: `parse`, `format`, `snap`, `calculate`,
- * `estimate`, `resolve`, `validate`, `is`/`would`/`has`, `build`, `aggregate`
- * and `<a>To<B>`.
- */
+/** `<a>To<B>` allows a camel-case `<a>`, as in `baseUnitsToDecimal`. */
 const VOCABULARY =
   /^(parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|[a-z][A-Za-z]*To[A-Z])/
 const BANNED_VERB = /^(derive|predict|convert)/
 
-/** Tier functions whose names predate the vocabulary and stay, with why. */
+/** Tier functions outside the vocabulary, each with the reason it keeps its name. */
 const NAMING_EXCEPTIONS: Record<string, string> = {
   applySlippage: 'display-tier formula; consumers call it by this name',
   classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
