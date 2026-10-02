@@ -1,4 +1,8 @@
-import { DECIMAL_PATTERN, type DecimalString } from '@lifi/perps-types'
+import {
+  DECIMAL_PATTERN,
+  type DecimalString,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import { calculateOrderAmounts } from './orderAmounts.js'
@@ -90,7 +94,7 @@ describe('calculateOrderAmounts', () => {
     expect(amounts?.size).toBe('1234567.0000000001')
   })
 
-  it('truncates the quote amounts to quoteDecimals, 2 by default', () => {
+  it('rounds a derived margin up and a derived notional down', () => {
     const amounts = calculateOrderAmounts({
       sdk,
       market: market({ szDecimals: 6 }),
@@ -101,7 +105,7 @@ describe('calculateOrderAmounts', () => {
     })
 
     expect(amounts).toEqual({
-      margin: '3.66',
+      margin: '3.67',
       size: '1',
       notional: '10.99',
     })
@@ -119,7 +123,7 @@ describe('calculateOrderAmounts', () => {
     })
 
     expect(amounts).toEqual({
-      margin: '3.6663',
+      margin: '3.6664',
       size: '1',
       notional: '10.999',
     })
@@ -169,6 +173,89 @@ describe('calculateOrderAmounts', () => {
 
     expect(amounts?.size).toBe('1.5')
     expect(new Big(amounts?.size ?? '0').mod('0.5').eq(0)).toBe(true)
+  })
+
+  it('funds a held size at a non-integer leverage', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 6 }),
+      held: 'size',
+      amount: '1',
+      leverage: 2.5,
+      price: '10.999',
+    })
+
+    // Truncating to '4.39' funds 10.975 of the 10.999 the size costs.
+    expect(amounts).toEqual({ margin: '4.4', size: '1', notional: '10.99' })
+    expect(new Big('1').times('10.999').lte(new Big('4.4').times(2.5))).toBe(
+      true
+    )
+  })
+
+  it('funds a held notional at a non-integer leverage', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 4 }),
+      held: 'notional',
+      amount: '10.999',
+      leverage: 1.1,
+      price: '3',
+    })
+
+    // The held notional normalises to '10.99' first; '9.99' funds only 10.989.
+    expect(amounts).toEqual({
+      margin: '10',
+      size: '3.6633',
+      notional: '10.99',
+    })
+  })
+
+  it.each([
+    ['margin' as const, '0.01' as DecimalString, '50000' as DecimalString, 5],
+    ['size' as const, '0.001' as DecimalString, '10' as DecimalString, 2],
+    ['notional' as const, '0.01' as DecimalString, '50000' as DecimalString, 5],
+  ])('gives null for a held %s of %s that snaps below one lot', (held, amount, price, szDecimals) => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: market({ szDecimals }),
+        held,
+        amount,
+        leverage: 1,
+        price,
+      })
+    ).toBeNull()
+  })
+
+  it('gives null when the notional truncates below the quote grid', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: market({ szDecimals: 2 }),
+        held: 'size',
+        amount: '0.01',
+        leverage: 1,
+        price: '0.001',
+      })
+    ).toBeNull()
+  })
+
+  it.each([
+    -1,
+    2.5,
+    Number.NaN,
+  ])('rejects the quoteDecimals %j', (quoteDecimals) => {
+    expect(() =>
+      calculateOrderAmounts({
+        sdk,
+        market: market(),
+        held: 'margin',
+        amount: '7',
+        leverage: 2,
+        price: '0.07',
+        quoteDecimals,
+      })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 
   it.each([
@@ -225,8 +312,8 @@ describe('calculateOrderAmounts', () => {
 })
 
 /**
- * Non-terminating divisions in every column. A held margin is the direction
- * that can overspend, so the ceiling is the one the table pins.
+ * Non-terminating divisions in every column. Every direction has to fund
+ * itself, so each block pins the same ceiling from its own held field.
  */
 const INVARIANT_ROWS: ReadonlyArray<
   readonly [DecimalString, number, DecimalString, number]
@@ -238,9 +325,10 @@ const INVARIANT_ROWS: ReadonlyArray<
   ['1000', 3, '7', 6],
   ['12345.67', 11, '0.0001', 3],
   ['9', 13, '17', 5],
-  ['0.5', 2, '3', 0],
+  ['100', 3, '7', 0],
   ['1000000', 50, '123.456', 4],
   ['33.33', 7, '0.17', 6],
+  ['250.5', 2.5, '19.99', 3],
 ]
 
 describe('calculateOrderAmounts invariants', () => {
@@ -273,7 +361,7 @@ describe('calculateOrderAmounts invariants', () => {
 
   it.each(
     INVARIANT_ROWS
-  )('a held size of %s at %ix on price %s (szDecimals %i) stays on the grid and under-funds nothing', (amount, leverage, price, szDecimals) => {
+  )('a held size of %s at %ix on price %s (szDecimals %i) stays on the grid and is funded by its margin', (amount, leverage, price, szDecimals) => {
     const target = market({ szDecimals })
     const amounts = calculateOrderAmounts({
       sdk,
@@ -288,11 +376,11 @@ describe('calculateOrderAmounts invariants', () => {
     }
 
     expect(snapOrderSize(sdk, target, amounts.size)).toBe(amounts.size)
-    // A held size fixes the notional, so the margin truncates downward.
+    // A held size fixes the notional, so the margin rounds up to cover it.
     expect(
-      new Big(amounts.margin)
-        .times(leverage)
-        .lte(new Big(amounts.size).times(price))
+      new Big(amounts.size)
+        .times(price)
+        .lte(new Big(amounts.margin).times(leverage))
     ).toBe(true)
     expect(amounts.margin).toMatch(DECIMAL_PATTERN)
     expect(amounts.size).toMatch(DECIMAL_PATTERN)
@@ -301,7 +389,7 @@ describe('calculateOrderAmounts invariants', () => {
 
   it.each(
     INVARIANT_ROWS
-  )('a held notional of %s at %ix on price %s (szDecimals %i) caps both derived sides', (amount, leverage, price, szDecimals) => {
+  )('a held notional of %s at %ix on price %s (szDecimals %i) caps the size and is funded by its margin', (amount, leverage, price, szDecimals) => {
     const target = market({ szDecimals })
     const amounts = calculateOrderAmounts({
       sdk,
@@ -320,7 +408,7 @@ describe('calculateOrderAmounts invariants', () => {
       new Big(amounts.size).times(price).lte(new Big(amounts.notional))
     ).toBe(true)
     expect(
-      new Big(amounts.margin).times(leverage).lte(new Big(amounts.notional))
+      new Big(amounts.notional).lte(new Big(amounts.margin).times(leverage))
     ).toBe(true)
     expect(amounts.margin).toMatch(DECIMAL_PATTERN)
     expect(amounts.size).toMatch(DECIMAL_PATTERN)

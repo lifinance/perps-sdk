@@ -199,8 +199,19 @@ rules to another venue's market.
 
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. It normalises the held field first, then derives the other
-two from that value, and it truncates every division, so a held margin always
-funds the size it buys:
+two from that value. The rounding is directional, so the result always funds
+itself — `size × price ≤ margin × leverage`:
+
+- a derived size truncates onto the venue lot grid;
+- a derived notional truncates onto the `quoteDecimals` grid;
+- a derived margin rounds **up** onto the `quoteDecimals` grid, because it is
+  the one amount that has to cover the others;
+- a held field keeps its own normalised value.
+
+The call gives `null` when the input is not a positive amount, price and
+leverage, and also when the grids snap the result to a non-positive amount:
+a size below one lot, or a quote amount below the last `quoteDecimals` place,
+describes no order a venue can take.
 
 ```ts
 import { calculateOrderAmounts } from '@lifi/perps-sdk'
@@ -214,7 +225,7 @@ const amounts = calculateOrderAmounts({
   price: '1000',
   // quoteDecimals defaults to 2, the minor unit of a USD quote asset.
 })
-// { margin: '100', size: '0.5', notional: '500' }, or null on a bad input
+// { margin: '100', size: '0.5', notional: '500' }, or null — see above
 ```
 
 `truncateDecimal(value, decimals)` rounds a decimal string down and pads it to

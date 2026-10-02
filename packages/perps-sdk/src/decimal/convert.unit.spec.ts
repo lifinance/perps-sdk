@@ -225,6 +225,10 @@ describe('numberToDecimalString', () => {
     expect(numberToDecimalString(value)).toBe(expected)
   })
 
+  it('keeps the float artifact a number already carries', () => {
+    expect(numberToDecimalString(0.1 + 0.2)).toBe('0.30000000000000004')
+  })
+
   it.each([
     1e-7, 5e-7, -0, 123456789.123, 1.5e21, -2.5,
   ])('spells %j as a DecimalString', (value) => {

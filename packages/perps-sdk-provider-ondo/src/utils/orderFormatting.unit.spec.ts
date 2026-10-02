@@ -1,11 +1,18 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import {
+  calculateOrderAmounts,
+  createPerpsClient,
+  PerpsError,
+  snapOrderPrice as snapOrderPriceViaSdk,
+} from '@lifi/perps-sdk'
 import {
   isDecimalString,
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
+import { ondoProvider } from '../OndoProvider.js'
 import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
 
 const marketFixture = (overrides?: Partial<PerpsMarket>): PerpsMarket => ({
@@ -125,6 +132,15 @@ describe('snapOrderSize', () => {
     ).toBe('1234567.0000000001')
   })
 
+  it('truncates a 40-decimal quotient onto the lot grid', () => {
+    expect(
+      snapOrderSize(
+        marketFixture(),
+        '42.8571428571428571428571428571428571428571'
+      )
+    ).toBe('42.85')
+  })
+
   it('strips trailing zeros', () => {
     expect(snapOrderSize(marketFixture(), '1.5')).toBe('1.5')
     expect(snapOrderSize(marketFixture(), '3')).toBe('3')
@@ -141,5 +157,71 @@ describe('snapOrderSize', () => {
     '0.001',
   ])('spells the snapped size of %j as a DecimalString', (size) => {
     expect(isDecimalString(snapOrderSize(marketFixture(), size))).toBe(true)
+  })
+})
+
+describe('calculateOrderAmounts over the Ondo plugin', () => {
+  const sdk = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+    providers: [ondoProvider()],
+  })
+
+  it('truncates the 40-decimal quotient it derives onto the lot grid', () => {
+    const market = marketFixture({ szDecimals: 2 })
+
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market,
+      held: 'margin',
+      amount: '100',
+      leverage: 3,
+      price: '7',
+    })
+
+    expect(amounts).toEqual({ margin: '100', size: '42.85', notional: '300' })
+    expect(snapOrderSize(market, amounts?.size ?? '0')).toBe('42.85')
+  })
+
+  it('funds the size the 0.5 lot grid rounds down to', () => {
+    const market = marketFixture({ sizeIncrement: '0.5' })
+
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market,
+      held: 'size',
+      amount: '1.7',
+      leverage: 3,
+      price: '10.999',
+    })
+
+    expect(amounts).toEqual({ margin: '5.5', size: '1.5', notional: '16.49' })
+    expect(new Big('1.5').times('10.999').lte(new Big('5.5').times(3))).toBe(
+      true
+    )
+  })
+
+  it('gives null for an amount below one Ondo lot', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: marketFixture({ sizeIncrement: '0.5' }),
+        held: 'size',
+        amount: '0.4',
+        leverage: 1,
+        price: '10',
+      })
+    ).toBeNull()
+  })
+
+  it('propagates the missing price grid through the client wrapper', () => {
+    const market = marketFixture({
+      priceDecimals: undefined,
+      priceIncrement: undefined,
+    })
+
+    expect(() => snapOrderPriceViaSdk(sdk, market, '201.5')).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
