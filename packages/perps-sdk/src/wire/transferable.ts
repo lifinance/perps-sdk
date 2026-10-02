@@ -1,5 +1,5 @@
 import type { DecimalString } from '@lifi/perps-types'
-import { requireDecimal } from './requireDecimal.js'
+import { requireDecimal } from '../decimal/requireDecimal.js'
 
 /**
  * The part of `units` that a venue-wide free figure releases: never below

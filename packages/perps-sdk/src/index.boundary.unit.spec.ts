@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import {
   DECIMAL_PATTERN,
-  isDecimalString,
   MarginMode,
   OrderSide,
   OrderStatus,
@@ -668,7 +667,9 @@ describe('the order-entry surface gives DecimalStrings', () => {
         typeof result === 'string' ? [result] : Object.values(Object(result))
       expect(values.length, name).toBeGreaterThan(0)
       for (const value of values) {
-        expect(isDecimalString(value), `${name} -> ${String(value)}`).toBe(true)
+        expect(sdk.isDecimalString(value), `${name} -> ${String(value)}`).toBe(
+          true
+        )
       }
     }
   })
@@ -683,5 +684,13 @@ describe('the order-entry surface gives DecimalStrings', () => {
   ])('no longer exports the Big-typed helper %s', (name) => {
     expect(entryExports.map((e) => e.exported)).not.toContain(name)
     expect(Object.keys(sdk)).not.toContain(name)
+  })
+})
+
+describe('runtime helpers that perps-types does not own', () => {
+  it('exports them from @lifi/perps-sdk', () => {
+    expect(typeof sdk.isDecimalString).toBe('function')
+    expect(typeof sdk.positionSupportsMarginAdjustment).toBe('function')
+    expect(typeof sdk.positionSupportsMarginRemoval).toBe('function')
   })
 })

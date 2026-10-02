@@ -15,12 +15,3 @@ export type DecimalString = string
  * @public
  */
 export const DECIMAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/
-
-/**
- * Narrows an unknown value to a {@link DecimalString}.
- *
- * @public
- */
-export function isDecimalString(value: unknown): value is DecimalString {
-  return typeof value === 'string' && DECIMAL_PATTERN.test(value)
-}

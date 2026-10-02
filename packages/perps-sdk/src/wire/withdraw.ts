@@ -1,6 +1,6 @@
 import type { DecimalString } from '@lifi/perps-types'
+import { requireDecimal } from '../decimal/requireDecimal.js'
 import type { WithdrawableBalance } from '../types/withdrawal.js'
-import { requireDecimal } from './requireDecimal.js'
 
 /**
  * Largest `amount` a withdrawable row can fund: `available` when the venue

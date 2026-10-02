@@ -1,11 +1,11 @@
 import {
   type DecimalString,
-  isDecimalString,
   type Market,
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 import { TruncBig } from '../decimal/big.js'
+import { isDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { snapOrderSize } from './snap.js'

@@ -1,11 +1,11 @@
 import {
   calculateOrderAmounts,
   createPerpsClient,
+  isDecimalString,
   PerpsError,
   snapOrderPrice as snapOrderPriceViaSdk,
 } from '@lifi/perps-sdk'
 import {
-  isDecimalString,
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,

@@ -9,6 +9,7 @@ import {
   getMarketsContext,
   getProviders,
   isActiveOrderStatus,
+  isDecimalString,
   localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
@@ -65,7 +66,6 @@ import type {
 import {
   ActionType,
   ActivityType,
-  isDecimalString,
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'

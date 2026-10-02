@@ -1,5 +1,6 @@
-import { isDecimalString, PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { isDecimalString } from '../decimal/parse.js'
 import { calculateTransferable } from './transferable.js'
 
 describe('calculateTransferable', () => {

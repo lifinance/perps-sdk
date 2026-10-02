@@ -1,4 +1,4 @@
-import { isDecimalString } from '@lifi/perps-types'
+import { isDecimalString } from '@lifi/perps-sdk'
 import { describe, expect, it } from 'vitest'
 import {
   getMaxPriceDecimals,

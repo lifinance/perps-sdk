@@ -1,6 +1,5 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { isDecimalString, PerpsError } from '@lifi/perps-sdk'
 import {
-  isDecimalString,
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,

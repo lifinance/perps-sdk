@@ -1,7 +1,7 @@
 import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 import { DivBig } from '../decimal/big.js'
+import { requireDecimal } from '../decimal/requireDecimal.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { requireDecimal } from './requireDecimal.js'
 
 /** @public */
 export interface RefuelAmountInput {

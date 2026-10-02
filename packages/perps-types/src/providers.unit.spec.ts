@@ -10,7 +10,7 @@ import type {
 } from './account.js'
 import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
-import { isDecimalString } from './decimal.js'
+import { DECIMAL_PATTERN } from './decimal.js'
 import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
@@ -849,14 +849,19 @@ describe('Provider monetary fields', () => {
       )
     )
   )('%s.%s is absent or a decimal string', (_key, _field, value) => {
-    expect(value === undefined || isDecimalString(value)).toBe(true)
+    expect(
+      value === undefined ||
+        (typeof value === 'string' && DECIMAL_PATTERN.test(value))
+    ).toBe(true)
   })
 
   it.each(
     monetaryFields
   )('is advertised as a decimal string by at least one descriptor: %s', (field) => {
     expect(
-      descriptors.some(([, provider]) => isDecimalString(provider[field]))
+      descriptors.some(([, provider]) =>
+        DECIMAL_PATTERN.test(provider[field] ?? '')
+      )
     ).toBe(true)
   })
 })

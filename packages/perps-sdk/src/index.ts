@@ -39,7 +39,11 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './decimal/format.js'
-export { parseDecimal, stringToFloat } from './decimal/parse.js'
+export {
+  isDecimalString,
+  parseDecimal,
+  stringToFloat,
+} from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {
@@ -83,6 +87,8 @@ export {
   estimateNewLeverage,
   estimateUnrealizedPnl,
   liquidationDistancePercent,
+  positionSupportsMarginAdjustment,
+  positionSupportsMarginRemoval,
   predictAverageEntryPrice,
   predictNewLeverage,
   predictUnrealizedPnl,
