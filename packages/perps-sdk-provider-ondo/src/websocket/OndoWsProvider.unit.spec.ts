@@ -3,7 +3,11 @@ import {
   createPerpsClient,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
-import { OrderStatus, PositionMarginAdjustment } from '@lifi/perps-types'
+import {
+  OrderStatus,
+  PerpsErrorCode,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_ONDO_API_URL, DEFAULT_ONDO_WS_URL } from '../constants.js'
@@ -840,7 +844,7 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('surfaces a session-expired error when no session token is stored', async () => {
+    it('throws SetupRequired when no session token is stored', async () => {
       const p = makeProvider(createMemoryStorage())
       stubSocket(p)
 
@@ -849,7 +853,10 @@ describe('OndoWsProvider', () => {
           { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow(/session/i)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: expect.stringMatching(/No Ondo session/),
+      })
       p.close()
     })
 
@@ -2081,12 +2088,14 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('surfaces a session-expired error when no session token is stored', async () => {
+    it('throws SetupRequired when no session token is stored', async () => {
       stubFetch(() => BALANCE)
       const p = makeProvider(createMemoryStorage())
       stubSocket(p)
 
-      await expect(subscribeSummary(p, vi.fn())).rejects.toThrow(/session/i)
+      await expect(subscribeSummary(p, vi.fn())).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+      })
       p.close()
     })
   })

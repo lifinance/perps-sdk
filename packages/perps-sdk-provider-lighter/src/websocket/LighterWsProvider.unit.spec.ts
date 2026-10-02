@@ -1,4 +1,4 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
 import {
   OrderStatus,
   PerpsErrorCode,
@@ -24,6 +24,7 @@ type LighterWsProviderInternals = {
     send(data: string): void
   }
   handleMessage(raw: string): void
+  resolveAccountIndex(address: string): Promise<number>
   handleUserStats(message: LtWsUserStatsMessage): void
   emitAccountSummary(address: string, onlyOnChange: boolean): void
 }
@@ -2554,20 +2555,26 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('throws an actionable error when no Lighter plugin is registered on the client', async () => {
+    it('throws SDKError when no Lighter plugin is registered on the client', async () => {
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
       })
       const provider = bareProviderFor(client)
-      ;(provider as any).rws.send = vi.fn()
+      const internals = provider as unknown as LighterWsProviderInternals
+      internals.rws.send = vi.fn()
 
       await expect(
         provider.subscribe(
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow(/no auth-token resolver was available/)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining(
+          'no auth-token resolver was available'
+        ),
+      })
       provider.close()
     })
 
@@ -2654,7 +2661,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('throws loudly on an auth channel when the plugin resolves no token (no silent degradation)', async () => {
+    it('throws SetupRequired on an auth channel when the plugin resolves no token', async () => {
       // `lighterProvider()` with no authToken/keyStore resolves `undefined`.
       const client = createPerpsClient({
         integrator: 'test-app',
@@ -2669,7 +2676,38 @@ describe('LighterWsProvider', () => {
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow(/no token was available for/)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SetupRequired,
+        message: expect.stringMatching(/no token was available for/),
+      })
+      provider.close()
+    })
+
+    it.each([
+      'positions',
+      'orderUpdates',
+    ] as const)('%s throws SetupRequired before the account lookup when the wallet has no token and no account', async (channel) => {
+      const client = createPerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [lighterProvider()],
+      })
+      const provider = bareProviderFor(client)
+      const internals = provider as unknown as LighterWsProviderInternals
+      internals.rws.send = vi.fn()
+      const lookup = vi
+        .spyOn(internals, 'resolveAccountIndex')
+        .mockRejectedValue(
+          new PerpsError(PerpsErrorCode.AccountNotFound, 'account not found')
+        )
+
+      await expect(
+        provider.subscribe(
+          { channel, dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+      expect(lookup).not.toHaveBeenCalled()
       provider.close()
     })
   })

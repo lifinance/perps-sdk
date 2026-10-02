@@ -7,6 +7,7 @@ import {
   type Market,
   OrderStatus,
   OrderType,
+  PerpsErrorCode,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
@@ -364,7 +365,7 @@ describe('Ondo getOrders', () => {
     ).toHaveLength(1)
     expect(requests.at(-1)?.url.searchParams.get('cursor')).toBe('twap-next')
   })
-  it('returns empty null feeds and makes no requests for an empty filter or absent session', async () => {
+  it('returns empty null feeds and makes no requests for an empty filter', async () => {
     const { provider, requests } = await setup(() => ({ result: null }))
     expect((await provider.getOrders({ address: ADDRESS })).orders).toEqual([])
     requests.length = 0
@@ -372,12 +373,18 @@ describe('Ondo getOrders', () => {
       (await provider.getOrders({ address: ADDRESS, statuses: [] })).orders
     ).toEqual([])
     expect(requests).toEqual([])
+  })
+  it('throws SetupRequired without a request for an absent session', async () => {
     const loggedOut = await setup(() => {
       throw new Error('Unexpected request')
     }, false)
-    expect(
-      (await loggedOut.provider.getOrders({ address: ADDRESS })).orders
-    ).toEqual([])
+    await expect(
+      loggedOut.provider.getOrders({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    await expect(
+      loggedOut.provider.getOrders({ address: ADDRESS, statuses: [] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(loggedOut.requests).toEqual([])
   })
   it('rejects malformed cursors before an authenticated order request', async () => {
     const { provider, requests } = await setup(() => ({ result: [] }))
