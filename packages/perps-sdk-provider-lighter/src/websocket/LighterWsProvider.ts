@@ -293,15 +293,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     const wireChannels = await this.resolveChannel(sub)
 
-    // Reject before any wire sub registers: a registered sub whose token can
-    // never be resolved is retried on every reopen without the caller ever
-    // seeing the failure.
-    for (const { channel, needsAuth, address } of wireChannels) {
-      if (needsAuth) {
-        await this.requireAuthToken(channel, address)
-      }
-    }
-
     // Acquired before the wire subs register, so a rejected spot-mark open
     // leaves no `user_stats`/`account_all` entry behind for the next replay.
     const releaseSpotMarks =
@@ -535,13 +526,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       sub.channel === 'fills' ||
       sub.channel === 'positions'
     ) {
-      const accountIndex = await this.resolveAccountIndex(sub.address)
       const lighterChannel = LIGHTER_AUTH_CHANNEL[sub.channel]
       // `account_all_trades` is publicly readable per the Lighter WS spec —
       // an auth token only filters events to the user's own account, which
       // we don't currently use to scope further. Skip the token here so a
       // user without a registered API key still gets their fill stream.
       const needsAuth = sub.channel !== 'fills'
+      // Before the account lookup and before registration: a registered sub
+      // with no token would fail on every reopen without the caller seeing it.
+      if (needsAuth) {
+        await this.requireAuthToken(lighterChannel, sub.address)
+      }
+      const accountIndex = await this.resolveAccountIndex(sub.address)
       return [
         {
           channel: `${lighterChannel}/${accountIndex}`,
