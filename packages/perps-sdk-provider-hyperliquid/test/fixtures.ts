@@ -93,7 +93,7 @@ export const USDC_ASSET = {
   logoURI: '',
 }
 
-/** Backend `/providers` descriptor with the live `withdrawalFeeUsd: 1`. */
+/** Backend `/providers` descriptor. Hyperliquid charges a flat 1 USDC withdrawal fee. */
 export const HYPERLIQUID_PROVIDER: Provider = {
   key: 'hyperliquid',
   name: 'Hyperliquid',
@@ -104,7 +104,7 @@ export const HYPERLIQUID_PROVIDER: Provider = {
   actions: [],
   categories: [],
   supportedIntervals: [],
-  withdrawalFeeUsd: 1,
+  withdrawalFeeUsd: '1',
 }
 
 const baseAsset = (symbol: string) => ({
