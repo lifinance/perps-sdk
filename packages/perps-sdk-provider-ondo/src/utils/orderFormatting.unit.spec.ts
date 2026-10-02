@@ -10,7 +10,6 @@ import {
   type PerpsMarket,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import { ondoProvider } from '../OndoProvider.js'
 import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
@@ -179,11 +178,15 @@ describe('calculateOrderAmounts over the Ondo plugin', () => {
       price: '7',
     })
 
-    expect(amounts).toEqual({ margin: '100', size: '42.85', notional: '300' })
+    expect(amounts).toEqual({
+      margin: '100',
+      size: '42.85',
+      notional: '299.95',
+    })
     expect(snapOrderSize(market, amounts?.size ?? '0')).toBe('42.85')
   })
 
-  it('funds the size the 0.5 lot grid rounds down to', () => {
+  it('prices the size the 0.5 lot grid rounds down to, with no quote grid', () => {
     const market = marketFixture({ sizeIncrement: '0.5' })
 
     const amounts = calculateOrderAmounts({
@@ -195,10 +198,11 @@ describe('calculateOrderAmounts over the Ondo plugin', () => {
       price: '10.999',
     })
 
-    expect(amounts).toEqual({ margin: '5.5', size: '1.5', notional: '16.49' })
-    expect(new Big('1.5').times('10.999').lte(new Big('5.5').times(3))).toBe(
-      true
-    )
+    expect(amounts).toEqual({
+      margin: '5.4995',
+      size: '1.5',
+      notional: '16.4985',
+    })
   })
 
   it('gives null for an amount below one Ondo lot', () => {

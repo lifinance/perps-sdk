@@ -687,6 +687,46 @@ describe('the order-entry surface gives DecimalStrings', () => {
   })
 })
 
+describe('calculateOrderAmounts at the public entry point', () => {
+  const input = {
+    sdk: WIRE_CLIENT,
+    market: WIRE_MARKET,
+    amount: '123.456789',
+    leverage: 3,
+    price: '0.07',
+  }
+
+  it.each([
+    'margin',
+    'size',
+    'notional',
+  ] as const)('gives a DecimalString in every field for a held %s', (held) => {
+    const amounts = sdk.calculateOrderAmounts({ ...input, held })
+    if (amounts === null) {
+      expect.unreachable('the sample input is a valid order')
+    }
+
+    for (const [field, value] of Object.entries(amounts)) {
+      expect(sdk.isDecimalString(value), `${held}.${field} -> ${value}`).toBe(
+        true
+      )
+    }
+  })
+
+  it('takes no quote precision', () => {
+    const withQuoteDecimals: sdk.OrderAmountsInput = {
+      ...input,
+      held: 'margin',
+      // @ts-expect-error `calculateOrderAmounts` applies no quote grid.
+      quoteDecimals: 2,
+    }
+
+    expect(sdk.calculateOrderAmounts(withQuoteDecimals)?.margin).toBe(
+      '123.456789'
+    )
+  })
+})
+
 describe('runtime helpers that perps-types does not own', () => {
   it('exports them from @lifi/perps-sdk', () => {
     expect(typeof sdk.isDecimalString).toBe('function')
