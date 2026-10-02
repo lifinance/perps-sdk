@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 20.1.1
+
+### Patch Changes
+
+- [#563](https://github.com/lifinance/perps-sdk/pull/563) [`66e23f1`](https://github.com/lifinance/perps-sdk/commit/66e23f199607a9cfb19c0b5cb9b7b10482e14c80) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `DecimalString` boundary type, its `DECIMAL_PATTERN` regex and the `isDecimalString` guard, and apply the alias to every monetary and quantity field in the shared types.
+
+- Updated dependencies [[`66e23f1`](https://github.com/lifinance/perps-sdk/commit/66e23f199607a9cfb19c0b5cb9b7b10482e14c80)]:
+  - @lifi/perps-types@18.1.0
+
 ## 20.1.0
 
 ### Minor Changes
