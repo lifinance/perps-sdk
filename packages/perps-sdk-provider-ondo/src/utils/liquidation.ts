@@ -7,7 +7,7 @@
  */
 
 import {
-  estimateIsolatedLiquidationPrice,
+  estimateLiquidationPrice as estimateIsolatedLiquidationPrice,
   type LiquidationEstimateParams,
 } from '@lifi/perps-sdk'
 import type { PerpsMarket } from '@lifi/perps-types'

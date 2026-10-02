@@ -1,4 +1,4 @@
-import { PerpsError, scaleToInteger } from '@lifi/perps-sdk'
+import { decimalToBaseUnits, PerpsError } from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
@@ -632,7 +632,7 @@ export class LighterSigner {
         return wasm.SignWithdraw(
           numberField(p, 'asset_index'),
           routeType,
-          scaleToInteger(amount, numberField(p, 'decimals'), 'truncate'),
+          decimalToBaseUnits(amount, numberField(p, 'decimals'), 'truncate'),
           SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,

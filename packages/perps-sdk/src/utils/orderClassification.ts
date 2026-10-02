@@ -5,20 +5,11 @@ import type {
   TwapOrder,
 } from '@lifi/perps-types'
 import {
-  FillClassification,
   OrderSide,
   OrderStatus,
   OrderType,
   TriggerCondition,
 } from '@lifi/perps-types'
-import { stringToFloat } from './parse.js'
-
-/**
- * Re-exported fill taxonomy used by {@link classifyFillFromPosition}.
- *
- * @public
- */
-export { FillClassification }
 
 const TP_TYPES = new Set<OrderType>([
   OrderType.TAKE_PROFIT_MARKET,
@@ -96,25 +87,4 @@ export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
  */
 export function isActiveOrderStatus(status: OrderStatus): boolean {
   return ACTIVE_ORDER_STATUSES.has(status)
-}
-
-/**
- * Classify a fill as open or close based on realizedPnl.
- * @deprecated Use `Fill.classification` instead — it uses startPosition
- * for accurate open/increase/reduce/close/reverse classification.
- * @public
- */
-export function classifyFill(
-  side: OrderSide,
-  realizedPnl: string | null | undefined
-): FillClassification {
-  const isClose = realizedPnl != null && stringToFloat(realizedPnl) !== 0
-  if (side === OrderSide.BUY) {
-    return isClose
-      ? FillClassification.CLOSED_SHORT
-      : FillClassification.OPENED_LONG
-  }
-  return isClose
-    ? FillClassification.CLOSED_LONG
-    : FillClassification.OPENED_SHORT
 }

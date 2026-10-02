@@ -4,8 +4,8 @@ import {
   maxOf,
   minOf,
   type ProviderGetAccountParams,
+  parseDecimal,
   type SDKRequestOptions,
-  stringToFloat,
   toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
 import type {
@@ -209,7 +209,9 @@ export const getAccount = async (
 
   const priceById = spotPriceById(
     markets,
-    new Map(prices.map((p) => [p.marketId, stringToFloat(p.markPrice)]))
+    new Map(
+      prices.map((p) => [p.marketId, parseDecimal(p.markPrice) ?? Number.NaN])
+    )
   )
 
   const positions: Position[] = stateResults.flatMap((state) =>
