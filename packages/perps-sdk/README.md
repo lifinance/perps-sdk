@@ -285,6 +285,8 @@ digits. It has no grouping, exponent, currency sign or whitespace. `'0.5'` and
 - `truncateDecimal`, `decimalToBaseUnits` and the account-side `wire/`
   helpers throw `PerpsError(ValidationError)` for a string that fails the
   pattern. `calculateOrderAmounts` gives `null` for one.
+- `baseUnitsToDecimal` throws `PerpsError(ValidationError)` for an amount that
+  is not an integer string, such as `'1.5'` or `'1e3'`.
 - No exported signature carries a `Big`. The SDK and the providers compute
   with `big.js` internally, and give back a `DecimalString` or a `number`.
 - A `number` is for display math and small integers only, such as leverage,
@@ -308,7 +310,7 @@ One verb names one kind of transformation.
 | Verb                        | Input → output                                     | Fallible                          | Example                                                    |
 | --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
 | `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseDecimal`                                             |
-| `<a>To<B>`                  | representation A → B, no domain meaning            | throws on invalid, never guesses  | `decimalToBaseUnits`, `baseUnitsToDecimal`, `numberToDecimalString` |
+| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `baseUnits`, `decimal`, `decimalString` or `number` | throws on invalid, never guesses  | `decimalToBaseUnits`, `baseUnitsToDecimal`, `numberToDecimalString` |
 | `format<X>`                 | value → human string (grouped, localised)          | no; renders a placeholder         | `formatUsd`, `formatNumber`                                |
 | `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
 | `calculate<X>`              | values → exact result by formula                   | no                                | `calculateNotionalValue`, `calculateOrderAmounts`          |
@@ -316,12 +318,13 @@ One verb names one kind of transformation.
 | `resolve<X>`                | candidates and rules → the one to use              | no                                | `resolveCloseSize`, `resolveQuote`                         |
 | `validate<X>`               | values → ok or error result                        | —                                 | —                                                          |
 | `is<X>` `would<X>` `has<X>` | → `boolean`                                        | —                                 | `isDecimalString`, `wouldImmediatelyLiquidate`             |
-| `select<X>`                 | structure → field, no arithmetic                   | no                                | `selectUserSetupActions`                                   |
 | `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
 | `aggregate<X>`              | collection → totals                                | —                                 | —                                                          |
 
-The SDK uses no `derive`, `predict` or `convert` verb, and no bare noun as a
-function name.
+No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
+`convert` verb, or a bare noun as its name. The boundary spec checks every
+name in these tiers against this table, and lists each exception with its
+reason.
 
 ## WebSocket
 
