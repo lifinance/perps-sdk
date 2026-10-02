@@ -1,3 +1,4 @@
+import { isDecimalString } from '@lifi/perps-sdk'
 import type { MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
@@ -804,6 +805,27 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it.each([
+      ['a sub-micro', '1.0000001', '0.0000001'],
+      ['a 1e21', '1000000000000000000001', '1000000000000000000000'],
+    ])('spells %s realized PnL without an exponent', (_label, price, pnl) => {
+      const fill = mapFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price,
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '1',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.realizedPnl).toBe(pnl)
+      expect(isDecimalString(fill.realizedPnl)).toBe(true)
     })
 
     it('derives PnL when a short is closed (entry 50000, exit 40000)', () => {

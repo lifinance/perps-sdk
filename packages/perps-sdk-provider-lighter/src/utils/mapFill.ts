@@ -76,7 +76,7 @@ const deriveRealizedPnl = (
   const pnl = isLong
     ? price.minus(avgEntry).times(closedSize)
     : avgEntry.minus(price).times(closedSize)
-  return pnl.eq(0) ? null : pnl.toString()
+  return pnl.eq(0) ? null : pnl.toFixed()
 }
 
 /**

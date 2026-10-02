@@ -1,3 +1,4 @@
+import { isDecimalString } from '@lifi/perps-sdk'
 import { describe, expect, it } from 'vitest'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 import { mapMarketContext } from './mapMarketContext.js'
@@ -82,5 +83,21 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.openInterest).toBe('1234.5')
     expect(result).not.toHaveProperty('priceChange24h')
     expect(result).not.toHaveProperty('volume24h')
+  })
+
+  it.each([
+    ['a sub-micro', 1e-7],
+    ['a 1e21', 1e21],
+  ])('emits DecimalString daily figures at %s magnitude', (_label, figure) => {
+    const result = mapMarketContext({
+      ...perpStats,
+      daily_price_change: figure,
+      daily_quote_token_volume: figure,
+    })
+
+    expect(isDecimalString(result.priceChange24h), result.priceChange24h).toBe(
+      true
+    )
+    expect(isDecimalString(result.volume24h), result.volume24h).toBe(true)
   })
 })

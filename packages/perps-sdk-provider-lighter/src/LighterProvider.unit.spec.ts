@@ -2,6 +2,7 @@ import {
   createMemoryStorage,
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
+  isDecimalString,
   LIGHTER_USDC,
   PerpsClient,
   PerpsError,
@@ -892,6 +893,31 @@ describe('LighterProvider — account tier', () => {
       recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
     ).toBeDefined()
     expect(lighterConfigOf(account.config).userTierName).toBeUndefined()
+  })
+
+  it.each([
+    ['a sub-micro', 0.35, '0.00000035'],
+    ['a 1e21', 1e27, '1000000000000000000000'],
+  ])('spells %s fee tier from the fee tick without an exponent', async (_label, tick, fee) => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/accountLimits')
+        ? respond({
+            code: 0,
+            user_tier: 'STD',
+            current_maker_fee_tick: tick,
+            current_taker_fee_tick: tick,
+          })
+        : undefined
+    )
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+    const { feeTier } = await provider.getAccount(
+      { address: ADDRESS },
+      { lighterAuthToken: 'per-call-token' }
+    )
+    expect(feeTier).toEqual({ maker: fee, taker: fee })
+    expect(isDecimalString(feeTier.maker)).toBe(true)
+    expect(isDecimalString(feeTier.taker)).toBe(true)
   })
 
   it('leaves the tier string absent on the unauthenticated read', async () => {

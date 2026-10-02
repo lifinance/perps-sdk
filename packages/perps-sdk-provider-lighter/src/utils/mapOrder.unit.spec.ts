@@ -1,4 +1,4 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { isDecimalString, PerpsError } from '@lifi/perps-sdk'
 import {
   type MarketDisplay,
   OrderSide,
@@ -180,6 +180,18 @@ describe('mapOrder (Lighter)', () => {
       filledSize: '1e-400',
       averagePrice: '2000',
     })
+  })
+
+  it.each([
+    ['a sub-micro', '0.0000001', '0.0000001'],
+    ['a 1e21', '1000000000000000000000', '1000000000000000000000'],
+  ])('spells %s average price without an exponent', (_label, quote, price) => {
+    const { averagePrice } = mapOrder(
+      baseOrder({ filled_base_amount: '1', filled_quote_amount: quote }),
+      MARKET
+    )
+    expect(averagePrice).toBe(price)
+    expect(isDecimalString(averagePrice)).toBe(true)
   })
 
   it('retains decimal sizes and maps regular order execution fields', () => {

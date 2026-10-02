@@ -1,6 +1,7 @@
 import {
   createMemoryStorage,
   createPerpsClient,
+  isDecimalString,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
@@ -550,6 +551,46 @@ describe('OndoWsProvider', () => {
           v: '12345.67',
         },
       })
+      p.close()
+    })
+
+    it.each([
+      ['a sub-micro', 1e-7, '0.0000001'],
+      ['a 1e21', 1e21, '1000000000000000000000'],
+    ])('spells %s kline figure without an exponent', (_label, figure, decimal) => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:AAPL-USD.P:1m', listener)
+
+      feed(p, {
+        type: 'update',
+        channel: 'kLinePerps',
+        data: {
+          m: 'AAPL-USD.P',
+          t: 1709648375,
+          s: 1709648340,
+          e: 1709648400,
+          o: figure,
+          h: figure,
+          l: figure,
+          c: figure,
+          v: figure,
+          x: false,
+        },
+      })
+
+      const { data } = listener.mock.calls[0][0]
+      expect(data).toEqual({
+        t: 1709648340 * 1000,
+        o: decimal,
+        h: decimal,
+        l: decimal,
+        c: decimal,
+        v: decimal,
+      })
+      for (const value of [data.o, data.h, data.l, data.c, data.v]) {
+        expect(isDecimalString(value)).toBe(true)
+      }
       p.close()
     })
 
