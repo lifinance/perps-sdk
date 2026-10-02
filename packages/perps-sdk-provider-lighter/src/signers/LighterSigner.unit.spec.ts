@@ -916,6 +916,29 @@ describe('LighterSigner', () => {
     })
   })
 
+  it('rejects an exponent-notation withdrawal amount before SignWithdraw', async () => {
+    const signWithdraw = vi.fn<LighterWasmExports['SignWithdraw']>()
+    const guardedSigner = await signerWithWasm({ SignWithdraw: signWithdraw })
+
+    const failure = guardedSigner.sign(
+      ActionType.WITHDRAWAL,
+      {
+        ...ETH_SPOT_WITHDRAWAL,
+        amount: '1e-7',
+        min_withdrawal_amount: '0.00000001',
+        nonce: 14,
+      },
+      ctx()
+    )
+
+    await expect(failure).rejects.toBeInstanceOf(PerpsError)
+    await expect(failure).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+      message: expect.stringMatching(/decimalToBaseUnits\(value\).*'1e-7'/),
+    })
+    expect(signWithdraw).not.toHaveBeenCalled()
+  })
+
   it('signChangePubKey classifies a WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
       SignChangePubKey: () => ({ error: 'change-pub-key signing failed' }),
