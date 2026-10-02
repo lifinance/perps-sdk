@@ -1,11 +1,12 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import {
+  isDecimalString,
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { formatOrderPrice, formatOrderSize } from './orderFormatting.js'
+import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
 
 // Decimal budgets mirror live Lighter orderBookDetails:
 // BTC: supported_price_decimals 1, supported_size_decimals 5
@@ -41,30 +42,30 @@ const doge = market({
   priceDecimals: 6,
 })
 
-describe('formatOrderPrice (Lighter)', () => {
+describe('snapOrderPrice (Lighter)', () => {
   it('rounds onto the market tick grid', () => {
-    expect(formatOrderPrice(btc, 61729.64)).toBe('61729.6')
-    expect(formatOrderPrice(btc, 61729.66)).toBe('61729.7')
+    expect(snapOrderPrice(btc, '61729.64')).toBe('61729.6')
+    expect(snapOrderPrice(btc, '61729.66')).toBe('61729.7')
   })
 
   it('keeps prices with more than 5 significant figures intact', () => {
-    expect(formatOrderPrice(btc, 61729.6)).toBe('61729.6')
+    expect(snapOrderPrice(btc, '61729.6')).toBe('61729.6')
   })
 
   it('uses the full decimal budget on high-precision markets', () => {
-    expect(formatOrderPrice(doge, 0.1234564)).toBe('0.123456')
-    expect(formatOrderPrice(doge, 0.1234567)).toBe('0.123457')
+    expect(snapOrderPrice(doge, '0.1234564')).toBe('0.123456')
+    expect(snapOrderPrice(doge, '0.1234567')).toBe('0.123457')
   })
 
   it('removes trailing zeros', () => {
-    expect(formatOrderPrice(doge, 0.1)).toBe('0.1')
-    expect(formatOrderPrice(btc, 61730)).toBe('61730')
+    expect(snapOrderPrice(doge, '0.1')).toBe('0.1')
+    expect(snapOrderPrice(btc, '61730')).toBe('61730')
   })
 
   it('throws ValidationError when the market carries no priceDecimals', () => {
     const bare = market({ priceDecimals: undefined })
     try {
-      formatOrderPrice(bare, 61729.6)
+      snapOrderPrice(bare, '61729.6')
       expect.fail('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(PerpsError)
@@ -74,44 +75,86 @@ describe('formatOrderPrice (Lighter)', () => {
 
   it('rounds exact-halfway decimals half-up on the true decimal value', () => {
     const twoDp = market({ priceDecimals: 2 })
-    expect(formatOrderPrice(twoDp, 1.005)).toBe('1.01')
-    expect(formatOrderPrice(twoDp, -1.005)).toBe('-1.01')
+    expect(snapOrderPrice(twoDp, '1.005')).toBe('1.01')
+    expect(snapOrderPrice(twoDp, '-1.005')).toBe('-1.01')
+  })
+
+  it.each(['0', '-0'])('gives 0 for the price %j', (price) => {
+    expect(snapOrderPrice(btc, price)).toBe('0')
   })
 
   it('emits plain notation for prices at or above 1e21', () => {
-    expect(formatOrderPrice(market({ priceDecimals: 2 }), 1.5e21)).toBe(
-      '1500000000000000000000'
-    )
+    expect(
+      snapOrderPrice(market({ priceDecimals: 2 }), '1500000000000000000000')
+    ).toBe('1500000000000000000000')
+  })
+
+  it.each([
+    '61729.66',
+    '0.1',
+    '-1.005',
+    '-0',
+    '1500000000000000000000',
+  ])('spells the snapped price of %j as a DecimalString', (price) => {
+    expect(
+      isDecimalString(snapOrderPrice(market({ priceDecimals: 2 }), price))
+    ).toBe(true)
   })
 })
 
-describe('formatOrderSize (Lighter)', () => {
+describe('snapOrderSize (Lighter)', () => {
   it('truncates to the market lot grid (never rounds up)', () => {
-    expect(formatOrderSize(btc, 0.000209)).toBe('0.0002')
-    expect(formatOrderSize(doge, 12.9)).toBe('12')
+    expect(snapOrderSize(btc, '0.000209')).toBe('0.0002')
+    expect(snapOrderSize(doge, '12.9')).toBe('12')
   })
 
   it('removes trailing zeros', () => {
-    expect(formatOrderSize(btc, 1.5)).toBe('1.5')
-    expect(formatOrderSize(btc, 2)).toBe('2')
+    expect(snapOrderSize(btc, '1.5')).toBe('1.5')
+    expect(snapOrderSize(btc, '2')).toBe('2')
   })
 
-  it('does not shave a lot off binary float artifacts', () => {
-    expect(formatOrderSize(market({ szDecimals: 1 }), 8.2)).toBe('8.2')
-    expect(formatOrderSize(market({ szDecimals: 2 }), 0.1 + 0.2)).toBe('0.3')
+  it('does not shave a lot off a float artifact spelled as a decimal', () => {
+    expect(snapOrderSize(market({ szDecimals: 1 }), '8.2')).toBe('8.2')
+    expect(
+      snapOrderSize(market({ szDecimals: 2 }), '0.30000000000000004')
+    ).toBe('0.3')
   })
 
-  it('returns zero for zero size', () => {
-    expect(formatOrderSize(btc, 0)).toBe('0')
+  it('keeps the last lot step and separates it from the next one', () => {
+    const sixDp = market({ szDecimals: 6 })
+    expect(snapOrderSize(sixDp, '0.000599')).toBe('0.000599')
+    expect(snapOrderSize(sixDp, '0.0006')).toBe('0.0006')
+    expect(snapOrderSize(sixDp, '0.0005999')).toBe('0.000599')
   })
 
-  it('handles sizes whose string form is exponential', () => {
-    expect(formatOrderSize(btc, 2e-8)).toBe('0')
+  it('keeps all 17 significant digits a number would drop', () => {
+    expect(Number('1234567.0000000001')).toBe(1234567)
+    expect(
+      snapOrderSize(market({ szDecimals: 10 }), '1234567.0000000001')
+    ).toBe('1234567.0000000001')
+  })
+
+  it.each(['0', '-0'])('gives 0 for the size %j', (size) => {
+    expect(snapOrderSize(btc, size)).toBe('0')
+  })
+
+  it('truncates sub-lot dust to zero', () => {
+    expect(snapOrderSize(btc, '0.00000002')).toBe('0')
   })
 
   it('emits plain notation for sizes at or above 1e21', () => {
-    expect(formatOrderSize(market({ szDecimals: 2 }), 1.5e21)).toBe(
-      '1500000000000000000000'
-    )
+    expect(
+      snapOrderSize(market({ szDecimals: 2 }), '1500000000000000000000')
+    ).toBe('1500000000000000000000')
+  })
+
+  it.each([
+    '0.000209',
+    '1.5',
+    '-0',
+    '0.00000002',
+    '1500000000000000000000',
+  ])('spells the snapped size of %j as a DecimalString', (size) => {
+    expect(isDecimalString(snapOrderSize(btc, size))).toBe(true)
   })
 })

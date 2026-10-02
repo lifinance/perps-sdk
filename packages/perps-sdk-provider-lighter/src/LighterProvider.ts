@@ -142,8 +142,6 @@ import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
   estimateLiquidationPrice,
   fetchDetailedAccount,
-  formatOrderPrice,
-  formatOrderSize,
   leverageFromImf,
   lighterAsset,
   lighterWithdrawableBalances,
@@ -152,6 +150,8 @@ import {
   mapOrder,
   mapPortfolioHistory,
   positionRemovableMargin,
+  snapOrderPrice,
+  snapOrderSize,
   toBigOrNull,
   toIsoFromMs,
   toIsoFromSeconds,
@@ -1814,9 +1814,9 @@ export const createLighterProvider = (
       return getAccountSummary(account, positions)
     },
 
-    formatOrderPrice,
+    snapOrderPrice,
 
-    formatOrderSize,
+    snapOrderSize,
 
     estimateLiquidationPrice,
 

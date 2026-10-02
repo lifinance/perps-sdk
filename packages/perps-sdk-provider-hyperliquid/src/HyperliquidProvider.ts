@@ -35,6 +35,7 @@ import {
   ActionType,
   type ActivitiesResponse,
   type AvailableToTrade,
+  type DecimalString,
   type FillsResponse,
   type Market,
   type MarketSettings,
@@ -80,7 +81,7 @@ import { hyperliquidSignActions } from './signers/signActions.js'
 import type { HlExtraAgents } from './types/index.js'
 import { hlInfoOptions, infoRequest } from './utils/infoClient.js'
 import { calculateLiquidationPrice } from './utils/liquidation.js'
-import { formatOrderPrice, formatOrderSize } from './utils/orderFormatting.js'
+import { snapOrderPrice, snapOrderSize } from './utils/orderFormatting.js'
 import { positionRemovableMargin } from './utils/transferMargin.js'
 
 /**
@@ -465,15 +466,15 @@ export function hyperliquidProvider(
       positions: Position[]
     ): AccountSummary => getAccountSummary(account, positions),
 
-    formatOrderPrice: (market: Market, price: number): string =>
-      formatOrderPrice(
+    snapOrderPrice: (market: Market, price: DecimalString): DecimalString =>
+      snapOrderPrice(
         price,
         market.szDecimals,
         market.categoryId === SPOT_MARKET_ID ? 'spot' : undefined
       ),
 
-    formatOrderSize: (market: Market, size: number): string =>
-      formatOrderSize(size, market.szDecimals),
+    snapOrderSize: (market: Market, size: DecimalString): DecimalString =>
+      snapOrderSize(size, market.szDecimals),
 
     estimateLiquidationPrice: (
       market: PerpsMarket,

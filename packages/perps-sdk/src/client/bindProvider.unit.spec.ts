@@ -47,8 +47,8 @@ const makePlugin = () => {
       (_account: AccountResponse, _positions: Position[]): AccountSummary =>
         ({}) as AccountSummary
     ),
-    formatOrderPrice: vi.fn((_market, price: number) => price.toString()),
-    formatOrderSize: vi.fn((_market, size: number) => size.toString()),
+    snapOrderPrice: vi.fn((_market, price: string) => price),
+    snapOrderSize: vi.fn((_market, size: string) => size),
     estimateLiquidationPrice: vi.fn(() => undefined),
     positionRemovableMargin: vi.fn(() => undefined),
     getMarketSettings: vi.fn(
@@ -72,8 +72,8 @@ const makePlugin = () => {
     accountExists: calls.accountExists,
     getQuote: calls.getQuote,
     getAccountSummary: calls.getAccountSummary,
-    formatOrderPrice: calls.formatOrderPrice,
-    formatOrderSize: calls.formatOrderSize,
+    snapOrderPrice: calls.snapOrderPrice,
+    snapOrderSize: calls.snapOrderSize,
     estimateLiquidationPrice: calls.estimateLiquidationPrice,
     positionRemovableMargin: calls.positionRemovableMargin,
     getMarketSettings: calls.getMarketSettings,

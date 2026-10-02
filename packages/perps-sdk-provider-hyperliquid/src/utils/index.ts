@@ -45,9 +45,9 @@ export {
 export { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 export { coinAsset, perpsDexNames } from './marketDisplay.js'
 export {
-  formatOrderPrice,
-  formatOrderSize,
   getMaxPriceDecimals,
+  snapOrderPrice,
+  snapOrderSize,
 } from './orderFormatting.js'
 export { priceStepToAggregation } from './priceStepToAggregation.js'
 export {

@@ -26,7 +26,9 @@ export {
   decimalToBaseUnits,
   fromBaseUnits,
   fromBaseUnitsNumber,
+  numberToDecimalString,
   scaleToInteger,
+  truncateDecimal,
 } from './decimal/convert.js'
 export type { FormatOptions, RoundingMode } from './decimal/format.js'
 export {
@@ -305,10 +307,10 @@ export {
   WsProviderBase,
 } from './websocket/WsProviderBase.js'
 export { wsLog } from './websocket/wsLog.js'
-export {
-  marginFromNotional,
-  marginFromSize,
-  sizeFromMargin,
-  sizeFromNotional,
+export type {
+  OrderAmounts,
+  OrderAmountsInput,
 } from './wire/orderAmounts.js'
+export { calculateOrderAmounts } from './wire/orderAmounts.js'
+export { snapOrderPrice, snapOrderSize } from './wire/snap.js'
 export { maxOf, minOf } from './wire/transferable.js'

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import {
   DECIMAL_PATTERN,
+  isDecimalString,
   MarginMode,
   OrderSide,
   OrderStatus,
@@ -15,16 +16,13 @@ import {
 } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as sdk from './index.js'
+import { venueClient, venueMarket } from './wire/venueProvider.mock.js'
 
 /**
  * `Big` instances that are still part of the published surface. Each entry
  * names the ORD-1925 sub-issue that removes it; the list must shrink to empty.
  */
 const ALLOWED_BIG_EXPORTS: readonly string[] = [
-  'sizeFromMargin', // ORD-1928 — order wire tier takes and gives DecimalString
-  'marginFromSize', // ORD-1928
-  'sizeFromNotional', // ORD-1928
-  'marginFromNotional', // ORD-1928
   'maxOf', // ORD-1929 — account wire tier drops the Big helpers
   'minOf', // ORD-1929
 ]
@@ -597,6 +595,8 @@ const FORMAT_SAMPLES: Record<
 const CONVERT_STRING_SAMPLES: Record<string, readonly unknown[]> = {
   baseUnitsToDecimal: ['1234500000', 6],
   fromBaseUnits: ['1234500000', 6],
+  numberToDecimalString: [123456789.123],
+  truncateDecimal: ['1000.999', 2],
 }
 
 describe('format gives human strings, convert gives DecimalStrings', () => {
@@ -636,5 +636,62 @@ describe('format gives human strings, convert gives DecimalStrings', () => {
       expect(typeof result, name).toBe('string')
       expect(String(result), name).toMatch(DECIMAL_PATTERN)
     }
+  })
+})
+
+const WIRE_MARKET = venueMarket({ szDecimals: 4 })
+const WIRE_CLIENT = venueClient()
+
+/**
+ * The order-entry surface the widget calls. Every one of them takes and gives
+ * a `DecimalString`, so no caller needs a `number` hop or a `Big`.
+ */
+const DECIMAL_STRING_SAMPLES: Record<string, readonly unknown[]> = {
+  calculateOrderAmounts: [
+    {
+      sdk: WIRE_CLIENT,
+      market: WIRE_MARKET,
+      held: 'margin',
+      amount: '100',
+      leverage: 5,
+      price: '1000',
+    },
+  ],
+  numberToDecimalString: [123456789.123],
+  snapOrderPrice: [WIRE_CLIENT, WIRE_MARKET, '1234.5678'],
+  snapOrderSize: [WIRE_CLIENT, WIRE_MARKET, '0.123456'],
+  truncateDecimal: ['1000.999', 2],
+}
+
+describe('the order-entry surface gives DecimalStrings', () => {
+  it('exports every named helper', () => {
+    for (const name of Object.keys(DECIMAL_STRING_SAMPLES)) {
+      expect(
+        entryExports.map((e) => e.exported),
+        name
+      ).toContain(name)
+    }
+  })
+
+  it('gives a DecimalString for each sample call', () => {
+    for (const [name, args] of Object.entries(DECIMAL_STRING_SAMPLES)) {
+      const result = callExport(name, args)
+      const values =
+        typeof result === 'string' ? [result] : Object.values(Object(result))
+      expect(values.length, name).toBeGreaterThan(0)
+      for (const value of values) {
+        expect(isDecimalString(value), `${name} -> ${String(value)}`).toBe(true)
+      }
+    }
+  })
+
+  it.each([
+    'marginFromNotional',
+    'marginFromSize',
+    'sizeFromMargin',
+    'sizeFromNotional',
+  ])('no longer exports the Big-typed helper %s', (name) => {
+    expect(entryExports.map((e) => e.exported)).not.toContain(name)
+    expect(Object.keys(sdk)).not.toContain(name)
   })
 })
