@@ -39,6 +39,7 @@ import {
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getAccount}.
@@ -149,6 +150,8 @@ export const getAccount = async (
   params: GetAccountParams,
   options?: SDKRequestOptions
 ): Promise<AccountResponse> => {
+  const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   const markets = await registry.sync()
   const dexNames = perpsDexNames(markets)
@@ -156,7 +159,6 @@ export const getAccount = async (
   const quoteAssetByCategory = new Map(
     markets.map((m) => [m.categoryId, m.quoteAsset])
   )
-  const infoOpts = hlInfoOptions(client, options)
 
   const [
     feesResult,

@@ -29,6 +29,21 @@ const client = createPerpsClient({
 })
 ```
 
+## Account boundary
+
+A Hyperliquid account exists only after its first deposit. `accountExists`
+returns `false` before then. Account-scoped HTTP reads — `getAccount`,
+`getWithdrawableBalances`, `getAvailableToTrade`, `getMarketSettings`,
+`getPositions`, `getOrders`, `getOrder`, `getFills`, `getActivity`, and
+`getPortfolioHistory` — throw `PerpsErrorCode.AccountNotFound` for that wallet.
+The `orderUpdates`, `fills`, `positions`, `spotBalances`, `accountSummary`, and
+`availableToTrade` WebSocket subscriptions reject with the same error before
+opening a venue channel.
+
+Public market reads and the deposit flow remain available before account
+creation. Existing accounts with no positions, orders, fills, or activity
+return their normal empty data.
+
 ## Agent key storage
 
 Setup registers an agent keypair whose private key signs orders locally, so trading needs no per-order wallet popups. The agent key authorizes trading only — it cannot withdraw funds.

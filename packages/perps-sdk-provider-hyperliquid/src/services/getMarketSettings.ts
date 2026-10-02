@@ -8,7 +8,9 @@ import {
 import type { Address } from 'viem'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
+import { hlInfoOptions } from '../utils/infoClient.js'
 import { fetchActiveAssetData } from './activeAssetData.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getMarketSettings}.
@@ -41,6 +43,11 @@ export const getMarketSettings = async (
     error.tool = PROVIDER_KEY
     throw error
   }
+  await requireAccountExists(
+    context.apiUrl,
+    params.address,
+    hlInfoOptions(context.client, options)
+  )
   const data = await fetchActiveAssetData(
     context,
     params.address,

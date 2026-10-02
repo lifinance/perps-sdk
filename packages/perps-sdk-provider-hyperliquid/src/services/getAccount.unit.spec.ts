@@ -26,6 +26,7 @@ const client = createPerpsClient({
 })
 
 const defaultResponses = (abstraction: HlAbstractionMode | null = null) => ({
+  preTransferCheck: { userExists: true, fee: '0.0' },
   userFees: HL_USER_FEES,
   userAbstraction: abstraction,
   extraAgents: HL_EXTRA_AGENTS,

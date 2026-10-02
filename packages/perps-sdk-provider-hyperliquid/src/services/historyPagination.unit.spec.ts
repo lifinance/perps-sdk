@@ -35,6 +35,9 @@ function installHistory(
       return referenceFetch(input, init)
     }
     const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    if (body.type === 'preTransferCheck') {
+      return Response.json({ userExists: true, fee: '0.0' })
+    }
     requests.push(body)
     const rows =
       body.type === 'userFunding'

@@ -121,7 +121,10 @@ describe('getOrder', () => {
     )
     restore = installed.restore
     expect((await getOrder(ctx, { address: ADDRESS, id })).orderId).toBe('1')
-    expect(installed.requests[0].body.oid).toBe(id)
+    expect(
+      installed.requests.find(({ body }) => body.type === 'orderStatus')?.body
+        .oid
+    ).toBe(id)
   })
 
   it('reads a TWAP by venue id after an unknownOid response', async () => {

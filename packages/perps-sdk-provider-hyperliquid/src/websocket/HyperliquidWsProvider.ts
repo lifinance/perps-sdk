@@ -32,12 +32,13 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
-import { isAddress } from 'viem'
+import { type Address, isAddress } from 'viem'
 import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   SPOT_MARKET_ID,
 } from '../constants.js'
+import { requireAccountExists } from '../services/getAccountExists.js'
 import type {
   HlActiveAssetData,
   HlAssetPosition,
@@ -139,6 +140,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
+  private readonly accountChecksByUser = new Map<string, Promise<void>>()
   // Spot-funded modes need both spot valuation and clearinghouse margin state.
   private readonly abstractionByUser = new Map<
     string,
@@ -231,6 +233,26 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.orderApiUrl = orderApiUrl.origin
   }
 
+  private ensureAccountExists(address: Address): Promise<void> {
+    const user = normalizeHlAddress(address)
+    const existing = this.accountChecksByUser.get(user)
+    if (existing !== undefined) {
+      return existing
+    }
+    const check = requireAccountExists(
+      this.orderApiUrl,
+      address,
+      this.client === undefined ? undefined : hlInfoOptions(this.client)
+    )
+    this.accountChecksByUser.set(user, check)
+    void check.catch(() => {
+      if (this.accountChecksByUser.get(user) === check) {
+        this.accountChecksByUser.delete(user)
+      }
+    })
+    return check
+  }
+
   override async subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
@@ -280,23 +302,19 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   protected async openChannel(sub: Subscription): Promise<() => void> {
-    // Must run synchronously, before any await, so two concurrent opens
-    // cannot both pass the exclusivity check.
-    if (sub.channel === 'orderUpdates') {
-      this.claimOrderUpdatesKey(this.toKey(sub))
-    }
-
-    await this.registry?.sync()
-
+    const registry = this.registry
+    let marketValidated = false
     if (
-      this.registry !== undefined &&
+      registry !== undefined &&
       (sub.channel === 'marketContext' ||
         sub.channel === 'orderbook' ||
         sub.channel === 'candle' ||
         sub.channel === 'trades' ||
         sub.channel === 'availableToTrade')
     ) {
-      const market = this.registry.requireActive(sub.marketId)
+      await registry.sync()
+      marketValidated = true
+      const market = registry.requireActive(sub.marketId)
       if (
         sub.channel === 'availableToTrade' &&
         market.categoryId === SPOT_MARKET_ID
@@ -308,6 +326,18 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         error.tool = this.providerKey
         throw error
       }
+    }
+
+    if ('address' in sub) {
+      await this.ensureAccountExists(sub.address)
+    }
+
+    if (sub.channel === 'orderUpdates') {
+      this.claimOrderUpdatesKey(this.toKey(sub))
+    }
+
+    if (registry !== undefined && !marketValidated) {
+      await registry.sync()
     }
 
     // Markets context aggregates slower asset-context feeds with fast mid/mark

@@ -2,6 +2,7 @@ import {
   createMemoryStorage,
   createPerpsClient,
   HYPERLIQUID_USDC,
+  type PerpsProvider,
   type PerpsProviderPlugin,
 } from '@lifi/perps-sdk'
 import type {
@@ -201,6 +202,122 @@ describe('hyperliquidProvider', () => {
     for (const url of mock.infoRequests) {
       expect(url.startsWith(`${customUrl}/info`)).toBe(true)
     }
+  })
+
+  describe('account access', () => {
+    const reads: {
+      name: string
+      run: (provider: PerpsProvider) => Promise<unknown>
+    }[] = [
+      {
+        name: 'getAccount',
+        run: (provider) => provider.getAccount({ address: ADDRESS }),
+      },
+      {
+        name: 'getWithdrawableBalances',
+        run: (provider) =>
+          provider.getWithdrawableBalances!({ address: ADDRESS }),
+      },
+      {
+        name: 'getPositions',
+        run: (provider) => provider.getPositions({ address: ADDRESS }),
+      },
+      {
+        name: 'getMarketSettings',
+        run: (provider) =>
+          provider.getMarketSettings({
+            address: ADDRESS,
+            market: { marketId: 'BTC', categoryId: 'hyperliquid' },
+          }),
+      },
+      {
+        name: 'getAvailableToTrade',
+        run: (provider) =>
+          provider.getAvailableToTrade!({
+            address: ADDRESS,
+            marketId: 'BTC',
+          }),
+      },
+      {
+        name: 'getOrders',
+        run: (provider) => provider.getOrders({ address: ADDRESS }),
+      },
+      {
+        name: 'getOrders with an empty status filter',
+        run: (provider) =>
+          provider.getOrders({ address: ADDRESS, statuses: [] }),
+      },
+      {
+        name: 'getOrder',
+        run: (provider) => provider.getOrder({ address: ADDRESS, id: '1' }),
+      },
+      {
+        name: 'getFills',
+        run: (provider) => provider.getFills({ address: ADDRESS }),
+      },
+      {
+        name: 'getActivity',
+        run: (provider) => provider.getActivity({ address: ADDRESS }),
+      },
+      {
+        name: 'getPortfolioHistory',
+        run: (provider) =>
+          provider.getPortfolioHistory!({
+            address: ADDRESS,
+            range: '24h',
+          }),
+      },
+    ]
+
+    it.each(
+      reads
+    )('$name throws AccountNotFound before reading account data', async ({
+      run,
+    }) => {
+      const mock = installInfoFetchMock(
+        {
+          preTransferCheck: { userExists: false, fee: '1.0' },
+        },
+        MARKETS_RESPONSE.markets
+      )
+      restore = mock.restore
+      const client = createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        retry: false,
+        providers: [hyperliquidProvider()],
+      })
+
+      await expect(
+        run(client.getProvider('hyperliquid')!)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.AccountNotFound,
+        tool: 'hyperliquid',
+      })
+      expect(mock.requests.map(({ body }) => body.type)).toEqual([
+        'preTransferCheck',
+      ])
+    })
+
+    it('does not classify a malformed account status as AccountNotFound', async () => {
+      const mock = installInfoFetchMock({
+        preTransferCheck: { userExists: 'false', fee: '0.0' },
+      })
+      restore = mock.restore
+      const client = createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        retry: false,
+        providers: [hyperliquidProvider()],
+      })
+
+      await expect(
+        client.getProvider('hyperliquid')!.getPositions({ address: ADDRESS })
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.ThirdPartyError,
+        tool: 'hyperliquid',
+      })
+    })
   })
 
   describe('agent session ownership', () => {
@@ -464,6 +581,7 @@ describe('hyperliquidProvider — per-user reads without setup', () => {
   ])('%s resolves from public info reads with no stored agent', async (_read, call) => {
     const installed = installInfoFetchMock(
       {
+        preTransferCheck: { userExists: true, fee: '0.0' },
         clearinghouseState: STANDARD_SNAPSHOT.clearinghouseState,
         spotClearinghouseState: STANDARD_SNAPSHOT.spotClearinghouseState,
         activeAssetData: STANDARD_SNAPSHOT.activeAssetData.HYPE,

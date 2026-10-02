@@ -41,6 +41,7 @@ import {
   type InfoRequestOptions,
   infoRequest,
 } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
@@ -240,6 +241,8 @@ export const getActivity = async (
   options?: SDKRequestOptions
 ): Promise<ActivitiesResponse> => {
   const limit = getHistoryLimit(params.limit)
+  const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   // Only funding and liquidation rows carry a market, so a Ledger-only
   // request must not pull the market list.
@@ -253,7 +256,6 @@ export const getActivity = async (
   ) {
     await assetRegistry.sync()
   }
-  const infoOpts = hlInfoOptions(client, options)
 
   const needLiquidationFills =
     !params.type || params.type.includes(ActivityType.LIQUIDATION)
