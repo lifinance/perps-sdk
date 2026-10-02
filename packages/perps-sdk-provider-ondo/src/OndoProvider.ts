@@ -164,9 +164,10 @@ export interface OndoProviderOptions {
  *
  * Per-user reads call Ondo's REST API directly — every one requires the
  * session JWT obtained through the SIWE login and stored in the token store.
- * Without a stored token the reads degrade gracefully (empty pages,
- * `loggedIn: false` config) instead of failing; `getOrder` throws because an
- * empty result would be indistinguishable from "order not found".
+ * A data read throws `PerpsErrorCode.SetupRequired` when no session is stored
+ * and `PerpsErrorCode.Unauthorized` when Ondo rejects the stored session. A
+ * status read (`getAccount`, `accountExists`, `getDepositFlow`,
+ * `getWithdrawFlow`) returns the logged-out state instead.
  *
  * @example
  * ```ts
