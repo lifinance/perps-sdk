@@ -53,7 +53,9 @@ describe('hyperliquidWithdrawableBalances', () => {
       ]),
       '0'
     )
-    expect(rows).toEqual([{ assetId: '0', route: 'spot', available: '6' }])
+    expect(rows).toEqual([
+      { assetId: '0', route: 'spot', available: '6', max: '6' },
+    ])
   })
 
   it('omits every spot row on a standard account', () => {
@@ -63,7 +65,9 @@ describe('hyperliquidWithdrawableBalances', () => {
       spotState([spotBalance('USDC', 0, '10', '0')]),
       '0'
     )
-    expect(rows).toEqual([{ assetId: '0', route: 'perps', available: '2.5' }])
+    expect(rows).toEqual([
+      { assetId: '0', route: 'perps', available: '2.5', max: '2.5' },
+    ])
   })
 
   it('sets the deducted fee on every quote-asset row and on no other asset', () => {
@@ -82,14 +86,16 @@ describe('hyperliquidWithdrawableBalances', () => {
         assetId: '0',
         route: 'spot',
         available: '6',
+        max: '6',
         withdrawalFee: '1',
         isFeeDeducted: true,
       },
-      { assetId: '150', route: 'spot', available: '3' },
+      { assetId: '150', route: 'spot', available: '3', max: '3' },
       {
         assetId: '0',
         route: 'perps',
         available: '2.5',
+        max: '2.5',
         withdrawalFee: '1',
         isFeeDeducted: true,
       },
@@ -124,6 +130,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         assetId: '0',
         route: 'perps',
         available: '2.5',
+        max: '2.5',
         withdrawalFee: '0.0000001',
         isFeeDeducted: true,
       },

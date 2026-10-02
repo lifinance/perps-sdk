@@ -1,3 +1,4 @@
+import { numberToDecimalString } from '@lifi/perps-sdk'
 import type { MarketContext } from '@lifi/perps-types'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 
@@ -24,8 +25,8 @@ export const mapMarketContext = (
       midPrice: stats.mid_price,
       markPrice: stats.mark_price,
       oraclePrice: stats.index_price,
-      priceChange24h: String(stats.daily_price_change),
-      volume24h: String(stats.daily_quote_token_volume),
+      priceChange24h: numberToDecimalString(stats.daily_price_change),
+      volume24h: numberToDecimalString(stats.daily_quote_token_volume),
       openInterest: stats.open_interest,
       funding: {
         rate: stats.current_funding_rate,
@@ -38,7 +39,7 @@ export const mapMarketContext = (
     midPrice: stats.mid_price,
     markPrice: stats.mid_price,
     oraclePrice: stats.index_price,
-    priceChange24h: String(stats.daily_price_change),
-    volume24h: String(stats.daily_quote_token_volume),
+    priceChange24h: numberToDecimalString(stats.daily_price_change),
+    volume24h: numberToDecimalString(stats.daily_quote_token_volume),
   }
 }

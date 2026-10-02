@@ -21,6 +21,12 @@ export interface ProviderWithdrawableBalance {
   /** Withdrawable amount in the asset's own units. Always greater than zero. */
   available: DecimalString
   /**
+   * Largest `amount` the row can fund: `available` when the fee is deducted
+   * from the amount or absent; `available − withdrawalFee` floored at zero
+   * when the venue charges the fee on top (`isFeeDeducted === false`).
+   */
+  max: DecimalString
+  /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
    * Absent when the venue publishes no fee for the asset. The client rejects
    * a value that is not a non-negative decimal.
@@ -46,6 +52,12 @@ export interface WithdrawableBalance {
   route: WithdrawalRoute
   /** Withdrawable amount in the asset's own units. */
   available: DecimalString
+  /**
+   * Largest `amount` the row can fund: `available` when the fee is deducted
+   * from the amount or absent; `available − withdrawalFee` floored at zero
+   * when the venue charges the fee on top (`isFeeDeducted === false`).
+   */
+  max: DecimalString
   /**
    * Flat venue fee on a withdrawal from this row, in the asset's own units.
    * Absent when the venue publishes no fee for the asset. With

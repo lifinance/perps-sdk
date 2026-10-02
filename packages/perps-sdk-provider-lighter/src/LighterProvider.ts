@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  calculateTransferable,
   type DepositFlow,
   explorerTxUrl,
   explorerTxUrlFromBase,
@@ -9,8 +10,6 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
-  maxOf,
-  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -1050,31 +1049,22 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? minOf(
-                maxOf(availableBalance, new Big(0)),
-                new Big(a.margin_balance)
-              ).toFixed()
+            ? calculateTransferable(
+                availableBalance.toFixed(),
+                a.margin_balance
+              )
             : '0',
         }
       })
-      const balances: Balance[] = heldAssets.map((a) => {
-        const balance = new Big(a.balance)
-        return {
-          ...toBalance(
-            a,
-            LIGHTER_SPOT_CATEGORY_ID,
-            registryAsset(a),
-            a.balance
-          ),
-          transferable: minOf(
-            maxOf(
-              balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
-              new Big(0)
-            ),
-            balance
-          ).toFixed(),
-        }
-      })
+      const balances: Balance[] = heldAssets.map((a) => ({
+        ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), a.balance),
+        transferable: calculateTransferable(
+          new Big(a.balance)
+            .minus(toRequiredBig(a.locked_balance, 'locked_balance'))
+            .toFixed(),
+          a.balance
+        ),
+      }))
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

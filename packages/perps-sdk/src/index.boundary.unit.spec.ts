@@ -18,15 +18,6 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import * as sdk from './index.js'
 import { venueClient, venueMarket } from './wire/venueProvider.mock.js'
 
-/**
- * `Big` instances that are still part of the published surface. Each entry
- * names the ORD-1925 sub-issue that removes it; the list must shrink to empty.
- */
-const ALLOWED_BIG_EXPORTS: readonly string[] = [
-  'maxOf', // ORD-1929 — account wire tier drops the Big helpers
-  'minOf', // ORD-1929
-]
-
 /** Internals that must never reach the public entry point. */
 const NEVER_EXPORTED: readonly string[] = ['DivBig', 'TruncBig', 'areFinite']
 
@@ -312,21 +303,13 @@ describe('Big never crosses the public API boundary', () => {
     expect(unresolved).toEqual([])
   })
 
-  it('names Big in no exported signature outside the allow-list', () => {
+  it('names Big in no exported signature', () => {
     const offenders = entryExports
       .map(({ exported }) => exported)
-      .filter((name) => !ALLOWED_BIG_EXPORTS.includes(name))
       .filter((name) =>
         mentionsBig(boundaryText[name] ?? declaringModule[name] ?? '')
       )
     expect(offenders).toEqual([])
-  })
-
-  it('keeps the allow-list honest — every entry is still a live violation', () => {
-    const stale = ALLOWED_BIG_EXPORTS.filter(
-      (name) => !mentionsBig(boundaryText[name] ?? '')
-    )
-    expect(stale).toEqual([])
   })
 
   it.each(NEVER_EXPORTED)('does not export %s', (name) => {
@@ -657,6 +640,11 @@ const DECIMAL_STRING_SAMPLES: Record<string, readonly unknown[]> = {
       price: '1000',
     },
   ],
+  calculateRefuelAmount: [{ gasUsd: '4', priceUsd: '3', decimals: 6 }],
+  calculateTransferable: ['12', '10'],
+  calculateWithdrawMax: [
+    { available: '10', withdrawalFee: '0.5', isFeeDeducted: false },
+  ],
   numberToDecimalString: [123456789.123],
   snapOrderPrice: [WIRE_CLIENT, WIRE_MARKET, '1234.5678'],
   snapOrderSize: [WIRE_CLIENT, WIRE_MARKET, '0.123456'],
@@ -688,6 +676,8 @@ describe('the order-entry surface gives DecimalStrings', () => {
   it.each([
     'marginFromNotional',
     'marginFromSize',
+    'maxOf',
+    'minOf',
     'sizeFromMargin',
     'sizeFromNotional',
   ])('no longer exports the Big-typed helper %s', (name) => {

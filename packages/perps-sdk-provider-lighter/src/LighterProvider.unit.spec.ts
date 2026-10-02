@@ -1153,9 +1153,19 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '1', route: 'spot', available: '0.00609091' },
-      { assetId: '3', route: 'spot', available: '10.9886' },
-      { assetId: '3', route: 'perps', available: '11.009697536' },
+      {
+        assetId: '1',
+        route: 'spot',
+        available: '0.00609091',
+        max: '0.00609091',
+      },
+      { assetId: '3', route: 'spot', available: '10.9886', max: '10.9886' },
+      {
+        assetId: '3',
+        route: 'perps',
+        available: '11.009697536',
+        max: '11.009697536',
+      },
     ])
   })
 
@@ -1196,8 +1206,18 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '3', route: 'spot', available: '103.00085138124' },
-      { assetId: '3', route: 'perps', available: '364310.903135' },
+      {
+        assetId: '3',
+        route: 'spot',
+        available: '103.00085138124',
+        max: '103.00085138124',
+      },
+      {
+        assetId: '3',
+        route: 'perps',
+        available: '364310.903135',
+        max: '364310.903135',
+      },
     ])
   })
 
@@ -1211,7 +1231,12 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '3', route: 'spot', available: '103.00085138124' },
+      {
+        assetId: '3',
+        route: 'spot',
+        available: '103.00085138124',
+        max: '103.00085138124',
+      },
     ])
   })
 

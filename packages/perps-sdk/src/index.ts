@@ -312,5 +312,8 @@ export type {
   OrderAmountsInput,
 } from './wire/orderAmounts.js'
 export { calculateOrderAmounts } from './wire/orderAmounts.js'
+export type { RefuelAmountInput } from './wire/refuel.js'
+export { calculateRefuelAmount } from './wire/refuel.js'
 export { snapOrderPrice, snapOrderSize } from './wire/snap.js'
-export { maxOf, minOf } from './wire/transferable.js'
+export { calculateTransferable } from './wire/transferable.js'
+export { calculateWithdrawMax } from './wire/withdraw.js'

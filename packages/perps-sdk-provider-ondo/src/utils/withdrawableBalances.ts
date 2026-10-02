@@ -1,4 +1,7 @@
-import type { ProviderWithdrawableBalance } from '@lifi/perps-sdk'
+import {
+  calculateWithdrawMax,
+  type ProviderWithdrawableBalance,
+} from '@lifi/perps-sdk'
 import type { OndoBalanceSummary } from '../types/wire.js'
 import { toWireBig } from './decimal.js'
 
@@ -10,9 +13,9 @@ import { toWireBig } from './decimal.js'
  *
  * @param assetId - `Asset.id` the row is keyed by.
  * @param withdrawalFeeUsd - The account's `withdrawalFeeUSD`. Ondo collateral
- *   is USDC, so the USD fee is the row fee 1:1 in collateral units. Ondo
- *   charges it on top of the requested amount. Absent leaves the row without a
- *   fee.
+ * is USDC, so the USD fee is the row fee 1:1 in collateral units. Ondo
+ * charges it on top of the requested amount. Absent leaves the row without a
+ * fee.
  * @public
  */
 export const ondoWithdrawableBalances = (
@@ -27,20 +30,19 @@ export const ondoWithdrawableBalances = (
   if (!available.gt(0)) {
     return []
   }
-  return [
-    {
-      assetId,
-      route: 'perps',
-      available: available.toFixed(),
-      ...(withdrawalFeeUsd === undefined
-        ? {}
-        : {
-            withdrawalFee: toWireBig(
-              withdrawalFeeUsd,
-              'account.withdrawalFeeUSD'
-            ).toFixed(),
-            isFeeDeducted: false,
-          }),
-    },
-  ]
+  const row = {
+    assetId,
+    route: 'perps' as const,
+    available: available.toFixed(),
+    ...(withdrawalFeeUsd === undefined
+      ? {}
+      : {
+          withdrawalFee: toWireBig(
+            withdrawalFeeUsd,
+            'account.withdrawalFeeUSD'
+          ).toFixed(),
+          isFeeDeducted: false,
+        }),
+  }
+  return [{ ...row, max: calculateWithdrawMax(row) }]
 }
