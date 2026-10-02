@@ -64,9 +64,19 @@ function parseEntryExports(declaration: string): ExportedName[] {
   return names
 }
 
+/** A `}` that one of these characters follows continues its statement. */
+const CONTINUES_STATEMENT: Record<string, true> = {
+  '&': true,
+  '|': true,
+  '[': true,
+  ')': true,
+  '>': true,
+}
+
 /**
  * Split a declaration file into top-level statements. Comments are stripped
- * first, so a `Big` named in prose never counts as a signature.
+ * first, so a `Big` named in prose never counts as a signature. A `}` ends a
+ * statement only when no intersection, union or indexed access continues it.
  */
 function topLevelStatements(declaration: string): string[] {
   const source = declaration
@@ -82,8 +92,14 @@ function topLevelStatements(declaration: string): string[] {
     } else if (char === '}' || char === ')' || char === ']') {
       depth--
       if (depth === 0 && char === '}') {
-        statements.push(source.slice(start, i + 1).trim())
-        start = i + 1
+        let next = i + 1
+        while (next < source.length && ' \t\r\n'.includes(source[next] ?? '')) {
+          next++
+        }
+        if (!CONTINUES_STATEMENT[source[next] ?? '']) {
+          statements.push(source.slice(start, i + 1).trim())
+          start = i + 1
+        }
       }
     } else if (char === ';' && depth === 0) {
       statements.push(source.slice(start, i).trim())
@@ -99,36 +115,52 @@ const DECLARED_NAME =
 /** `export declare const old: typeof new` — a deprecated alias in the emit. */
 const TYPEOF_ALIAS = /:\s*typeof\s+([A-Za-z_$][\w$]*)\s*$/
 
-function declarationsByName(declaration: string): Record<string, string> {
+/**
+ * Every top-level declaration per name. A name carries more than one when it
+ * heads an overload set, or when a value declaration and a type declaration
+ * merge under it.
+ */
+function declarationsByName(declaration: string): Record<string, string[]> {
   // Null prototype: an identifier such as `toString` must not resolve to
   // `Object.prototype` when a declaration names it.
-  const byName: Record<string, string> = Object.create(null)
+  const byName: Record<string, string[]> = Object.create(null)
   for (const statement of topLevelStatements(declaration)) {
     const name = DECLARED_NAME.exec(statement)?.[1]
     if (name) {
-      byName[name] = statement
+      const declarations = byName[name] ?? []
+      declarations.push(statement)
+      byName[name] = declarations
     }
   }
   return byName
 }
 
 /**
- * Follow `typeof` aliases to the declaration that carries the real signature,
- * so a deprecated alias is checked against what it forwards to.
+ * Every declaration a name exposes, with each `typeof` alias replaced by the
+ * declarations it forwards to, so a deprecated alias is checked against what
+ * it forwards to. An alias whose target this module does not declare keeps its
+ * own statement, so the caller can follow the target across modules.
  */
 function resolveSignature(
   name: string,
-  byName: Record<string, string>
-): string | undefined {
-  let statement = byName[name]
-  for (let hops = 0; statement && hops < 8; hops++) {
-    const target = TYPEOF_ALIAS.exec(statement)?.[1]
-    if (!target || !byName[target]) {
-      return statement
+  byName: Record<string, string[]>
+): string[] {
+  const resolved: string[] = []
+  const seen = new Set<string>([name])
+  const queue: string[] = [name]
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    for (const statement of byName[current] ?? []) {
+      const target = TYPEOF_ALIAS.exec(statement)?.[1]
+      if (target && byName[target] && !seen.has(target)) {
+        seen.add(target)
+        queue.push(target)
+      } else {
+        resolved.push(statement)
+      }
     }
-    statement = byName[target]
   }
-  return statement
+  return resolved
 }
 
 const IDENTIFIER = /[A-Za-z_$][\w$]*/g
@@ -143,7 +175,7 @@ interface DeclarationSite {
 }
 
 interface DeclarationModule {
-  byName: Record<string, string>
+  byName: Record<string, string[]>
   /** Declaration site per name the module takes from a relative module. */
   importedFrom: Record<string, DeclarationSite>
 }
@@ -170,11 +202,11 @@ function parseModule(declaration: string, path: string): DeclarationModule {
 }
 
 /**
- * The declaration text a public export exposes: its own statement plus every
- * declaration that statement names, followed transitively through the module's
- * relative imports. A type a public signature names belongs to the boundary
- * even when no module exports it; a declaration no public signature reaches
- * stays internal.
+ * The declaration text a public export exposes: every statement its name
+ * carries plus every declaration those statements name, followed transitively
+ * through the module's relative imports. A type a public signature names
+ * belongs to the boundary even when no module exports it; a declaration no
+ * public signature reaches stays internal.
  */
 function signatureClosure(
   site: DeclarationSite,
@@ -186,40 +218,46 @@ function signatureClosure(
   while (queue.length > 0) {
     const current = queue.shift() as DeclarationSite
     const module = load(current.path)
-    const statement = module && resolveSignature(current.name, module.byName)
-    if (!(module && statement)) {
+    if (!module) {
       continue
     }
-    reached.push(statement)
-    for (const [identifier] of statement.matchAll(IDENTIFIER)) {
-      const next = module.byName[identifier]
-        ? { path: current.path, name: identifier }
-        : module.importedFrom[identifier]
-      if (!next) {
-        continue
+    for (const statement of resolveSignature(current.name, module.byName)) {
+      reached.push(statement)
+      for (const [identifier] of statement.matchAll(IDENTIFIER)) {
+        const next = module.byName[identifier]
+          ? { path: current.path, name: identifier }
+          : module.importedFrom[identifier]
+        if (!next) {
+          continue
+        }
+        const key = `${next.path}#${next.name}`
+        if (seen.has(key)) {
+          continue
+        }
+        seen.add(key)
+        queue.push(next)
       }
-      const key = `${next.path}#${next.name}`
-      if (seen.has(key)) {
-        continue
-      }
-      seen.add(key)
-      queue.push(next)
     }
   }
   return reached.length > 0 ? reached.join('\n') : undefined
 }
 
-function returnTypeOf(statement: string): string | undefined {
-  const normalised = statement.replace(/\s+/g, ' ').trim()
-  return (
-    /=> ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1] ??
-    /\) ?: ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1]
-  )
+function returnTypeOf(statements: readonly string[]): string | undefined {
+  for (const statement of statements) {
+    const normalised = statement.replace(/\s+/g, ' ').trim()
+    const returns =
+      /=> ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1] ??
+      /\) ?: ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1]
+    if (returns) {
+      return returns
+    }
+  }
+  return undefined
 }
 
 let entryExports: ExportedName[] = []
 /** Declaration text per public export name; absent for a pure value re-export. */
-const signatures: Record<string, string> = {}
+const signatures: Record<string, string[]> = {}
 /** Signature plus every module-local declaration it names, per export name. */
 const boundaryText: Record<string, string> = {}
 /** Declaring module text per public export name, the conservative fallback. */
@@ -254,9 +292,9 @@ beforeAll(() => {
       continue
     }
     declaringModule[exported] = textCache[path]
-    const declaration = resolveSignature(local, module.byName)
-    if (declaration) {
-      signatures[exported] = declaration
+    const declarations = resolveSignature(local, module.byName)
+    if (declarations.length > 0) {
+      signatures[exported] = declarations
     }
     const closure = signatureClosure({ path, name: local }, load)
     if (closure) {
@@ -303,7 +341,9 @@ describe('Big never crosses the public API boundary', () => {
  * A two-module emit in the shape `tsc` produces: a public function returns a
  * module-local interface that carries a `Big`, another takes an interface
  * imported from a sibling module that carries one, a deprecated alias forwards
- * to the first, and an internal helper takes a `Big` no export reaches.
+ * to the first, and an internal helper takes a `Big` no export reaches. The
+ * remaining declarations hold a `Big` on an earlier overload, on the value half
+ * of a merged declaration, and after the first top-level `}` of a signature.
  */
 const ORDER_EMIT_PATH = '/emit/order.d.ts'
 const GRID_EMIT_PATH = '/emit/grid.d.ts'
@@ -316,6 +356,22 @@ export declare function walkBook(levels: number[]): BookWalk;
 export declare const legacyWalkBook: typeof walkBook;
 export declare function snapSize(size: string, grid: Grid): string;
 export declare function sumSizes(levels: number[]): number;
+export declare function scale(value: Big, decimals: number): string;
+export declare function scale(value: string, decimals: number): string;
+export declare const Limits: {
+    readonly max: Big;
+};
+export type Limits = (typeof Limits)[keyof typeof Limits];
+export declare function splitSize(size: string): {
+    base: number;
+} & {
+    raw: Big;
+};
+export declare function labelSize(size: string): {
+    label: string;
+} | Big;
+export declare const cycleA: typeof cycleB;
+export declare const cycleB: typeof cycleA;
 interface BookWalk {
     vwap: number;
     vwapBig: Big;
@@ -351,6 +407,26 @@ describe('the declaration scan follows named types to the Big they hide', () => 
 
   it('leaves an internal Big no exported signature names alone', () => {
     expect(mentionsBig(emitClosure('sumSizes'))).toBe(false)
+  })
+
+  it('reaches a Big on an earlier overload of an overload set', () => {
+    expect(mentionsBig(emitClosure('scale'))).toBe(true)
+  })
+
+  it('reaches a Big on the value half of a merged declaration', () => {
+    expect(mentionsBig(emitClosure('Limits'))).toBe(true)
+  })
+
+  it('reaches a Big in an intersection that follows an object type', () => {
+    expect(mentionsBig(emitClosure('splitSize'))).toBe(true)
+  })
+
+  it('reaches a Big in a union that follows an object type', () => {
+    expect(mentionsBig(emitClosure('labelSize'))).toBe(true)
+  })
+
+  it('terminates on a cycle of typeof aliases', () => {
+    expect(mentionsBig(emitClosure('cycleA'))).toBe(false)
   })
 })
 
@@ -546,7 +622,7 @@ describe('format gives human strings, convert gives DecimalStrings', () => {
     const stringExports = entryExports
       .filter(({ from }) => from === './decimal/convert.js')
       .filter(({ exported }) => {
-        const returns = returnTypeOf(signatures[exported] ?? '')
+        const returns = returnTypeOf(signatures[exported] ?? [])
         return returns === 'DecimalString' || returns === 'string'
       })
       .map(({ exported }) => exported)
