@@ -1509,7 +1509,12 @@ describe('LighterProvider — getAccount balance asset identity', () => {
 
     const account = await provider.getAccount({ address: ADDRESS })
 
-    expect(account.balances.map((b) => b.transferable)).toEqual(['0.0000003'])
+    expect(
+      account.balances.map(({ units, transferable }) => ({
+        units,
+        transferable,
+      }))
+    ).toEqual([{ units: '0.0000005', transferable: '0.0000003' }])
   })
 
   it('omits a collateral row for an asset whose margin_balance is zero', async () => {

@@ -65,6 +65,7 @@ import type {
 import {
   ActionType,
   ActivityType,
+  isDecimalString,
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
@@ -1050,7 +1051,7 @@ export const createLighterProvider = (
             a,
             perpsCategory?.id ?? providerKey,
             isSettlement ? settlementAsset : registryAsset(a),
-            a.margin_balance
+            isDecimalString(a.margin_balance) ? a.margin_balance : marginBalance
           ),
           transferable: isSettlement
             ? calculateTransferable(availableBalance.toFixed(), marginBalance)
@@ -1064,7 +1065,7 @@ export const createLighterProvider = (
             a,
             LIGHTER_SPOT_CATEGORY_ID,
             registryAsset(a),
-            a.balance
+            isDecimalString(a.balance) ? a.balance : balance.toFixed()
           ),
           transferable: calculateTransferable(
             balance
