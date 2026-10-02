@@ -1,9 +1,12 @@
-import { PerpsError } from '@lifi/perps-sdk'
 import {
-  PerpsErrorCode,
-  type Position,
+  PerpsError,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
+} from '@lifi/perps-sdk'
+import {
+  type DecimalString,
+  PerpsErrorCode,
+  type Position,
 } from '@lifi/perps-types'
 import Big from 'big.js'
 
@@ -47,7 +50,7 @@ function positivePositionAmount(value: string, field: string): Big {
  */
 export function positionRemovableMargin(
   position: Position
-): string | undefined {
+): DecimalString | undefined {
   if (!positionSupportsMarginAdjustment(position)) {
     return undefined
   }

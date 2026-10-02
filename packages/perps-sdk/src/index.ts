@@ -17,17 +17,11 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export { requireProvider } from './client/requireProvider.js'
-export type {
-  BaseUnitsRounding,
-  ScaleToIntegerPolicy,
-} from './decimal/convert.js'
+export type { BaseUnitsRounding } from './decimal/convert.js'
 export {
   baseUnitsToDecimal,
   decimalToBaseUnits,
-  fromBaseUnits,
-  fromBaseUnitsNumber,
   numberToDecimalString,
-  scaleToInteger,
   truncateDecimal,
 } from './decimal/convert.js'
 export type { FormatOptions, RoundingMode } from './decimal/format.js'
@@ -39,7 +33,7 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './decimal/format.js'
-export { parseDecimal, stringToFloat } from './decimal/parse.js'
+export { isDecimalString, parseDecimal } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {
@@ -52,18 +46,13 @@ export {
   applySlippage,
   buildQuote,
   calculateExpectedPnl,
-  calculatePositionSize,
   calculateRealizedPnlPercent,
   calculateSize,
   calculateTriggerPercent,
   calculateTriggerPrice,
   estimateFees,
   estimateRealizedPnl,
-  expectedRealizedPnlForOpenOrder,
-  expectedRealizedPnlForTriggerOrder,
   findMatchingPosition,
-  percentFromPrice,
-  priceFromPercent,
   resolveCloseSize,
   walkOrderbook,
 } from './math/order.js'
@@ -75,18 +64,12 @@ export {
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
-  directionSign,
-  effectiveLeverage,
   estimateAverageEntryPrice,
-  estimateIsolatedLiquidationPrice,
   estimateLiquidationPrice,
   estimateNewLeverage,
   estimateUnrealizedPnl,
-  liquidationDistancePercent,
-  predictAverageEntryPrice,
-  predictNewLeverage,
-  predictUnrealizedPnl,
-  realizedPnlOnClose,
+  positionSupportsMarginAdjustment,
+  positionSupportsMarginRemoval,
   wouldImmediatelyLiquidate,
 } from './math/position.js'
 // Registries

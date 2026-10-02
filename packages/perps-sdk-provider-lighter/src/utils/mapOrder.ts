@@ -118,7 +118,7 @@ export const mapOrder = (order: LtOrder, market: MarketDisplay): Order => {
       ? {
           averagePrice: new Big(order.filled_quote_amount)
             .div(filledSize)
-            .toString(),
+            .toFixed(),
         }
       : {}),
     reduceOnly: order.reduce_only,

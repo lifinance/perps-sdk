@@ -1,11 +1,16 @@
-import { PerpsError } from '@lifi/perps-sdk'
 import {
+  calculateOrderAmounts,
+  createPerpsClient,
   isDecimalString,
+  PerpsError,
+} from '@lifi/perps-sdk'
+import {
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { lighterProvider } from '../LighterProvider.js'
 import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
 
 // Decimal budgets mirror live Lighter orderBookDetails:
@@ -156,5 +161,39 @@ describe('snapOrderSize (Lighter)', () => {
     '1500000000000000000000',
   ])('spells the snapped size of %j as a DecimalString', (size) => {
     expect(isDecimalString(snapOrderSize(btc, size))).toBe(true)
+  })
+})
+
+describe('calculateOrderAmounts over the Lighter plugin', () => {
+  const sdk = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+    providers: [lighterProvider()],
+  })
+
+  it('returns a held margin byte-identical and truncates the size onto a whole-lot market', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: doge,
+        held: 'margin',
+        amount: '10.123456',
+        leverage: 5,
+        price: '0.123456',
+      })
+    ).toEqual({ margin: '10.123456', size: '410', notional: '50.61696' })
+  })
+
+  it('gives a held size in the Lighter spelling, with no trailing zeros', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: btc,
+        held: 'size',
+        amount: '0.00150',
+        leverage: 10,
+        price: '61729.6',
+      })
+    ).toEqual({ margin: '9.25944', size: '0.0015', notional: '92.5944' })
   })
 })

@@ -1,22 +1,19 @@
 /**
- * Display-tier position formulas. Every function takes and gives `number`;
- * exact decimal arithmetic happens internally with `DivBig`.
+ * Display-tier position formulas and margin-adjustment predicates. Every
+ * formula takes and gives `number`; exact decimal arithmetic happens
+ * internally with `DivBig`.
  *
  * Sign convention: long = +1, short = -1. Sizes passed to the `estimate*`
  * helpers are always non-negative magnitudes; direction is carried by
  * `isLong`.
  */
 
+import {
+  MarginMode,
+  type Position,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { areFinite, DivBig } from '../decimal/big.js'
-
-/**
- * Direction sign for a position.
- *
- * @deprecated Inline `isLong ? 1 : -1`. Removed in the next major.
- */
-export function directionSign(isLong: boolean): 1 | -1 {
-  return isLong ? 1 : -1
-}
 
 /**
  * Calculate notional value of a position.
@@ -113,11 +110,6 @@ export function calculateLiquidationDistance(params: {
 }
 
 /**
- * @deprecated Use `calculateLiquidationDistance`. Removed in the next major.
- */
-export const liquidationDistancePercent = calculateLiquidationDistance
-
-/**
  * Effective leverage of an open position.
  *
  * leverage = positionValueUsd / marginUsd
@@ -140,11 +132,6 @@ export function calculateEffectiveLeverage(params: {
   }
   return new DivBig(positionValueUsd).div(marginUsd).toNumber()
 }
-
-/**
- * @deprecated Use `calculateEffectiveLeverage`. Removed in the next major.
- */
-export const effectiveLeverage = calculateEffectiveLeverage
 
 /**
  * Estimated liquidation price for an isolated-margin position, parameterised
@@ -191,11 +178,6 @@ export function estimateLiquidationPrice(params: {
     .minus(marginAvailable.times(side).div(mmr.times(-side).plus(1)))
     .toNumber()
 }
-
-/**
- * @deprecated Use `estimateLiquidationPrice`. Removed in the next major.
- */
-export const estimateIsolatedLiquidationPrice = estimateLiquidationPrice
 
 /**
  * Whether an isolated position with this liquidation price is already past
@@ -260,11 +242,6 @@ export function estimateAverageEntryPrice(params: {
 }
 
 /**
- * @deprecated Use `estimateAverageEntryPrice`. Removed in the next major.
- */
-export const predictAverageEntryPrice = estimateAverageEntryPrice
-
-/**
  * Estimated effective leverage after adding margin and notional.
  *
  * leverage = totalNotional / totalMargin. The caller computes notional from
@@ -296,11 +273,6 @@ export function estimateNewLeverage(params: {
 }
 
 /**
- * @deprecated Use `estimateNewLeverage`. Removed in the next major.
- */
-export const predictNewLeverage = estimateNewLeverage
-
-/**
  * Estimated unrealised PnL at the current mark price.
  *
  * `pnl = (markPrice - entryPrice) * size * (isLong ? 1 : -1)`
@@ -324,11 +296,6 @@ export function estimateUnrealizedPnl(params: {
     .times(isLong ? 1 : -1)
     .toNumber()
 }
-
-/**
- * @deprecated Use `estimateUnrealizedPnl`. Removed in the next major.
- */
-export const predictUnrealizedPnl = estimateUnrealizedPnl
 
 /**
  * Realised PnL on the portion of a position being closed.
@@ -356,6 +323,28 @@ export function calculateRealizedPnl(params: {
 }
 
 /**
- * @deprecated Use `calculateRealizedPnl`. Removed in the next major.
+ * Whether this position can take a margin adjustment at all: it holds margin of
+ * its own and its market exposes individual position margin.
+ *
+ * @public
  */
-export const realizedPnlOnClose = calculateRealizedPnl
+export function positionSupportsMarginAdjustment(position: Position): boolean {
+  return (
+    position.marginMode === MarginMode.ISOLATED &&
+    position.market.positionMarginAdjustment !== PositionMarginAdjustment.NONE
+  )
+}
+
+/**
+ * Whether a removal is among the adjustments this position permits. An
+ * `ADD_ONLY` market takes adds and no withdrawal.
+ *
+ * @public
+ */
+export function positionSupportsMarginRemoval(position: Position): boolean {
+  return (
+    positionSupportsMarginAdjustment(position) &&
+    position.market.positionMarginAdjustment ===
+      PositionMarginAdjustment.ADD_AND_REMOVE
+  )
+}

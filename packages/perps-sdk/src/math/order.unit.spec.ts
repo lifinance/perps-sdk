@@ -1,4 +1,5 @@
 import {
+  type FeeTier,
   MarginMode,
   type MarketContext,
   type OrderbookLevel,
@@ -10,6 +11,7 @@ import {
   type Position,
   PositionMarginAdjustment,
   PositionSide,
+  type Quote,
   type RegularOrder,
   type SpotMarket,
   TimeInForce,
@@ -18,36 +20,22 @@ import {
   type TwapOrder,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { isDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
   applySlippage,
   buildQuote,
   calculateExpectedPnl,
-  calculatePositionSize,
   calculateRealizedPnlPercent,
   calculateSize,
   calculateTriggerPercent,
   calculateTriggerPrice,
   estimateFees,
   estimateRealizedPnl,
-  expectedRealizedPnlForOpenOrder,
-  expectedRealizedPnlForTriggerOrder,
   findMatchingPosition,
-  percentFromPrice,
-  priceFromPercent,
   resolveCloseSize,
   walkOrderbook,
 } from './order.js'
-
-describe('deprecated aliases', () => {
-  it.each([
-    [calculatePositionSize, calculateSize],
-    [priceFromPercent, calculateTriggerPrice],
-    [percentFromPrice, calculateTriggerPercent],
-  ])('alias %# forwards to the renamed implementation', (alias, renamed) => {
-    expect(alias).toBe(renamed)
-  })
-})
 
 describe('calculateSize', () => {
   it('should calculate size from margin, leverage, and price', () => {
@@ -387,6 +375,86 @@ describe('buildQuote', () => {
         timestamp: 1700000000000,
       })
     ).toThrow(PerpsError)
+  })
+})
+
+describe('buildQuote decimal spelling', () => {
+  const DECIMAL_FIELDS = [
+    'sizeUsd',
+    'baseSize',
+    'expectedFillPrice',
+    'priceImpactBps',
+    'feeUsd',
+  ] as const
+
+  const quoteOf = (input: {
+    sizeUsd: number
+    asks?: OrderbookLevel[]
+    price?: MarketContext
+    feeTier?: FeeTier
+  }): Quote =>
+    buildQuote({
+      provider: 'hyperliquid',
+      symbol: 'BTC',
+      type: 'perps',
+      side: 'buy',
+      market: perpsMarket,
+      price: perpsPrice,
+      bids,
+      asks,
+      feeTier: { maker: '0', taker: '0.00035' },
+      timestamp: 1700000000000,
+      ...input,
+    })
+
+  const expectDecimalFields = (quote: Quote) => {
+    for (const field of DECIMAL_FIELDS) {
+      expect(isDecimalString(quote[field]), `${field} -> ${quote[field]}`).toBe(
+        true
+      )
+    }
+  }
+
+  it('spells a sub-micro fee and price impact without an exponent', () => {
+    const quote = quoteOf({
+      sizeUsd: 0.001,
+      asks: [{ price: '100.000000001', size: '1' }],
+    })
+    expect(quote.feeUsd).toBe('0.00000035')
+    expectDecimalFields(quote)
+  })
+
+  it('spells figures of at least 1e21 without an exponent', () => {
+    const price = '10000000000000000000000'
+    const quote = quoteOf({
+      sizeUsd: 1e30,
+      price: { ...perpsPrice, markPrice: price },
+      asks: [{ price, size: '10000000000' }],
+    })
+    expect(quote.sizeUsd).toBe('1000000000000000000000000000000')
+    expect(quote.expectedFillPrice).toBe(price)
+    expectDecimalFields(quote)
+  })
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('rejects a non-finite sizeUsd (%s) instead of spelling it', (sizeUsd) => {
+    expect(() => quoteOf({ sizeUsd })).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('rejects a taker fee that does not parse to a finite number', () => {
+    expect(() =>
+      quoteOf({ sizeUsd: 100, feeTier: { maker: '0', taker: 'abc' } })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+  })
+
+  it('rejects a mark price that does not parse to a finite number', () => {
+    expect(() =>
+      quoteOf({ sizeUsd: 100, price: { ...perpsPrice, markPrice: 'abc' } })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })
 
@@ -871,7 +939,7 @@ describe('estimateRealizedPnl dispatch', () => {
     ).toBeNull()
   })
 
-  it('routes each union member to the branch the deprecated pair used', () => {
+  it('prices a regular order at its limit and a trigger order at its trigger', () => {
     const long = position({
       side: PositionSide.LONG,
       size: '1',
@@ -884,13 +952,9 @@ describe('estimateRealizedPnl dispatch', () => {
     })
     const trigger = triggerOrder({
       remainingSize: '1',
-      triggerPrice: '150',
+      triggerPrice: '120',
     })
-    expect(estimateRealizedPnl(limit, long)).toBe(
-      expectedRealizedPnlForOpenOrder(limit, long)
-    )
-    expect(estimateRealizedPnl(trigger, long)).toBe(
-      expectedRealizedPnlForTriggerOrder(trigger, long)
-    )
+    expect(estimateRealizedPnl(limit, long)).toBe(50)
+    expect(estimateRealizedPnl(trigger, long)).toBe(20)
   })
 })

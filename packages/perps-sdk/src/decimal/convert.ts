@@ -2,7 +2,7 @@ import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { formatUnits } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
-import { parseDecimal } from './parse.js'
+import { requireDecimal } from './requireDecimal.js'
 
 /**
  * Off-grid resolution for {@link decimalToBaseUnits}:
@@ -15,18 +15,13 @@ import { parseDecimal } from './parse.js'
 export type BaseUnitsRounding = 'truncate' | 'round'
 
 /**
- * @deprecated Use `BaseUnitsRounding`. Removed in the next major.
- */
-export type ScaleToIntegerPolicy = BaseUnitsRounding
-
-/**
  * Scale a decimal string to a scaled integer in exact decimal arithmetic — an
  * on-grid input maps to its exact scaled integer with no binary float
  * artifacts (`'0.29'` at 2 decimals is 29, never 28). Off-grid input resolves
  * per `rounding`; there is no silent default.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal
- *   numeric string, `decimals` is not a non-negative integer, or the scaled
+ * @throws {PerpsError} `ValidationError` when `value` is not a
+ *   {@link DecimalString}, `decimals` is not a non-negative integer, or the scaled
  *   result's magnitude exceeds `Number.MAX_SAFE_INTEGER`.
  * @public
  */
@@ -41,16 +36,7 @@ export const decimalToBaseUnits = (
       `Invalid decimals for integer scaling: ${decimals}`
     )
   }
-  let parsed: Big
-  try {
-    parsed = new Big(value)
-  } catch {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Invalid decimal string for integer scaling: '${value}'`
-    )
-  }
-  const scaled = parsed
+  const scaled = requireDecimal(value, 'decimalToBaseUnits(value)')
     .times(new Big(10).pow(decimals))
     .round(0, rounding === 'truncate' ? Big.roundDown : Big.roundHalfUp)
   if (scaled.abs().gt(Number.MAX_SAFE_INTEGER)) {
@@ -62,17 +48,15 @@ export const decimalToBaseUnits = (
   return scaled.toNumber()
 }
 
-/**
- * @deprecated Use `decimalToBaseUnits`. Removed in the next major.
- */
-export const scaleToInteger = decimalToBaseUnits
+const BASE_UNITS_PATTERN = /^-?\d+$/
 
 /**
- * Convert a base-unit amount (bigint string) to a decimal string.
+ * Convert a base-unit amount (integer string) to a decimal string.
  *
  * @param amount - Amount in base units (e.g. "1000000" for 1 USDC)
  * @param decimals - Token decimals (e.g. 6 for USDC)
- * @returns Decimal string; `"0"` when `amount` is not a valid bigint
+ * @throws {PerpsError} `ValidationError` when `amount` is not an integer
+ *   string, or `decimals` is not a non-negative integer.
  * @example
  * ```ts
  * baseUnitsToDecimal('1000000', 6) // '1'
@@ -80,27 +64,22 @@ export const scaleToInteger = decimalToBaseUnits
  * @public
  */
 export function baseUnitsToDecimal(
-  amount: string,
+  amount: DecimalString,
   decimals: number
 ): DecimalString {
-  try {
-    return formatUnits(BigInt(amount), decimals)
-  } catch {
-    return '0'
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`baseUnitsToDecimal(decimals)\`: ${decimals} is not a non-negative integer.`
+    )
   }
-}
-
-/**
- * @deprecated Use `baseUnitsToDecimal`. Removed in the next major.
- */
-export const fromBaseUnits = baseUnitsToDecimal
-
-/**
- * @deprecated Compose `parseDecimal(baseUnitsToDecimal(...))`. Removed in the
- * next major.
- */
-export function fromBaseUnitsNumber(amount: string, decimals: number): number {
-  return parseDecimal(baseUnitsToDecimal(amount, decimals)) ?? 0
+  if (!BASE_UNITS_PATTERN.test(amount)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`baseUnitsToDecimal(amount)\`: '${amount}' is not an integer base-unit string.`
+    )
+  }
+  return formatUnits(BigInt(amount), decimals)
 }
 
 /**
@@ -114,8 +93,8 @@ export function fromBaseUnitsNumber(amount: string, decimals: number): number {
  * float artifact: `'0.01'` at 18 decimals gives
  * `'0.010000000000000000'`, which `Number#toFixed` cannot.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal
- *   numeric string, or `decimals` is not a non-negative integer.
+ * @throws {PerpsError} `ValidationError` when `value` is not a
+ *   {@link DecimalString}, or `decimals` is not a non-negative integer.
  * @public
  */
 export function truncateDecimal(
@@ -128,16 +107,10 @@ export function truncateDecimal(
       `Invalid decimals for truncation: ${decimals}`
     )
   }
-  let parsed: Big
-  try {
-    parsed = new Big(value)
-  } catch {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Invalid decimal string for truncation: '${value}'`
-    )
-  }
-  const truncated = parsed.round(decimals, Big.roundDown)
+  const truncated = requireDecimal(value, 'truncateDecimal(value)').round(
+    decimals,
+    Big.roundDown
+  )
   // big.js carries the sign through a round to zero; '-0.00' is not a spelling.
   return (truncated.eq(0) ? new Big(0) : truncated).toFixed(decimals)
 }

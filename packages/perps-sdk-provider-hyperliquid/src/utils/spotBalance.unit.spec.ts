@@ -1,3 +1,4 @@
+import { isDecimalString } from '@lifi/perps-sdk'
 import { type Asset, PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlSpotBalance } from '../types/index.js'
@@ -66,6 +67,15 @@ describe('spotBalance', () => {
       price: '0.0000005',
       valueUsd: '0.000001',
     })
+  })
+
+  it.each([
+    ['a sub-micro', 5e-7],
+    ['a 1e21', 1e21],
+  ])('emits a DecimalString price and value at %s mark', (_label, mark) => {
+    const result = spotBalance(asset, '2', new Map([['150', mark]]))
+    expect(isDecimalString(result.price), result.price).toBe(true)
+    expect(isDecimalString(result.valueUsd), result.valueUsd).toBe(true)
   })
 
   it('rejects a total that is not a decimal', () => {

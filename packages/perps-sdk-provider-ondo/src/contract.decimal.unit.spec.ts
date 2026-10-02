@@ -1,10 +1,10 @@
-import { createMemoryStorage, type PerpsSDKClient } from '@lifi/perps-sdk'
-import type { Provider } from '@lifi/perps-types'
 import {
+  createMemoryStorage,
   isDecimalString,
-  PositionMarginAdjustment,
-  SigningMethod,
-} from '@lifi/perps-types'
+  type PerpsSDKClient,
+} from '@lifi/perps-sdk'
+import type { Provider } from '@lifi/perps-types'
+import { PositionMarginAdjustment, SigningMethod } from '@lifi/perps-types'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoProvider } from './OndoProvider.js'

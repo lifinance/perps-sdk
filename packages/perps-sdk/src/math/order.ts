@@ -22,6 +22,7 @@ import {
 } from '@lifi/perps-types'
 import type Big from 'big.js'
 import { areFinite, DivBig } from '../decimal/big.js'
+import { numberToDecimalString } from '../decimal/convert.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
   isActiveOrderStatus,
@@ -56,11 +57,6 @@ export function calculateSize(
   }
   return new DivBig(marginUsd).times(leverage).div(price).toNumber()
 }
-
-/**
- * @deprecated Use `calculateSize`. Removed in the next major.
- */
-export const calculatePositionSize = calculateSize
 
 /**
  * Estimate trading fees.
@@ -177,11 +173,6 @@ export function calculateTriggerPrice(
 }
 
 /**
- * @deprecated Use `calculateTriggerPrice`. Removed in the next major.
- */
-export const priceFromPercent = calculateTriggerPrice
-
-/**
  * Calculate the percentage gain/loss a trigger price realises.
  *
  * @param price - Target price
@@ -207,11 +198,6 @@ export function calculateTriggerPercent(
     : new DivBig(entryPrice).minus(price)
   return priceDiff.div(entryPrice).times(leverage).times(100).toNumber()
 }
-
-/**
- * @deprecated Use `calculateTriggerPercent`. Removed in the next major.
- */
-export const percentFromPrice = calculateTriggerPercent
 
 /**
  * Calculate realized PnL as a percentage of position value at close.
@@ -334,7 +320,8 @@ interface BuildQuoteInput {
  * the market's `funding` (`null` for spot, which has none).
  *
  * @throws {PerpsError} `ValidationError` when a book level does not parse to
- *   a finite number — see {@link walkOrderbook}.
+ *   a finite number — see {@link walkOrderbook} — or when a quoted figure is
+ *   not finite (a non-finite `sizeUsd`, mark price or taker fee).
  * @public
  */
 export function buildQuote(input: BuildQuoteInput): Quote {
@@ -356,14 +343,14 @@ export function buildQuote(input: BuildQuoteInput): Quote {
     marketId: market.id,
     type: input.type,
     side,
-    sizeUsd: sizeUsd.toString(),
-    baseSize: walk.baseSize.toString(),
+    sizeUsd: numberToDecimalString(sizeUsd),
+    baseSize: numberToDecimalString(walk.baseSize),
     markPrice: price.markPrice,
-    expectedFillPrice: walk.vwap.toString(),
-    priceImpactBps: priceImpactBps.toString(),
+    expectedFillPrice: numberToDecimalString(walk.vwap),
+    priceImpactBps: numberToDecimalString(priceImpactBps),
     feeTier,
     isDefaultFeeTier: true,
-    feeUsd: feeUsd.toString(),
+    feeUsd: numberToDecimalString(feeUsd),
     funding: price.funding ?? null,
     insufficientLiquidity: walk.insufficientLiquidity,
     timestamp: input.timestamp,
@@ -530,13 +517,3 @@ export function estimateRealizedPnl(
   }
   return null
 }
-
-/**
- * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
- */
-export const expectedRealizedPnlForOpenOrder = regularOrderRealizedPnl
-
-/**
- * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
- */
-export const expectedRealizedPnlForTriggerOrder = triggerOrderRealizedPnl

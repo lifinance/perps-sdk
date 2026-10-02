@@ -4,10 +4,7 @@ import { PerpsError } from '../errors/PerpsError.js'
 import {
   baseUnitsToDecimal,
   decimalToBaseUnits,
-  fromBaseUnits,
-  fromBaseUnitsNumber,
   numberToDecimalString,
-  scaleToInteger,
   truncateDecimal,
 } from './convert.js'
 
@@ -23,15 +20,6 @@ const expectValidationError = (fn: () => unknown, match: RegExp) => {
     expect(e.code).toBe(PerpsErrorCode.ValidationError)
   }
 }
-
-describe('deprecated aliases', () => {
-  it.each([
-    [scaleToInteger, decimalToBaseUnits],
-    [fromBaseUnits, baseUnitsToDecimal],
-  ])('alias %# forwards to the renamed implementation', (alias, renamed) => {
-    expect(alias).toBe(renamed)
-  })
-})
 
 describe('decimalToBaseUnits', () => {
   it('scales on-grid values exactly under both roundings', () => {
@@ -76,15 +64,20 @@ describe('decimalToBaseUnits', () => {
     )
   })
 
-  it('rejects non-numeric input loudly', () => {
+  it.each([
+    'abc',
+    '',
+    '1e-8',
+    '1E7',
+  ])('rejects the non-decimal string %j, naming the function and the value', (value) => {
     expectValidationError(
-      () => decimalToBaseUnits('abc', 2, 'truncate'),
-      /Invalid decimal string for integer scaling/
+      () => decimalToBaseUnits(value, 8, 'truncate'),
+      new RegExp(`decimalToBaseUnits\\(value\\).*'${value}'`)
     )
-    expectValidationError(
-      () => decimalToBaseUnits('', 2, 'round'),
-      /Invalid decimal string for integer scaling/
-    )
+  })
+
+  it('scales the smallest plain decimal an exponent string would spell', () => {
+    expect(decimalToBaseUnits('0.00000001', 8, 'truncate')).toBe(1)
   })
 
   it('rejects invalid decimals', () => {
@@ -112,8 +105,33 @@ describe('baseUnitsToDecimal', () => {
     expect(baseUnitsToDecimal('500000', 6)).toBe('0.5')
   })
 
-  it('should return 0 for invalid input', () => {
-    expect(baseUnitsToDecimal('not-a-number', 6)).toBe('0')
+  it('converts a 30-digit integer exactly', () => {
+    expect(baseUnitsToDecimal('123456789012345678901234567890', 18)).toBe(
+      '123456789012.34567890123456789'
+    )
+  })
+
+  it.each([
+    'not-a-number',
+    '1.5',
+    '1e3',
+    '',
+  ])('rejects the non-integer string %j, naming the function and the value', (amount) => {
+    expectValidationError(
+      () => baseUnitsToDecimal(amount, 6),
+      new RegExp(`baseUnitsToDecimal\\(amount\\).*'${amount}'`)
+    )
+  })
+
+  it('rejects invalid decimals', () => {
+    expectValidationError(
+      () => baseUnitsToDecimal('1', -1),
+      /baseUnitsToDecimal\(decimals\).*-1/
+    )
+    expectValidationError(
+      () => baseUnitsToDecimal('1', 1.5),
+      /baseUnitsToDecimal\(decimals\).*1\.5/
+    )
   })
 
   it.each([
@@ -123,7 +141,7 @@ describe('baseUnitsToDecimal', () => {
     ['-500000', 6],
     ['1234500000', 6],
     ['0', 6],
-    ['not-a-number', 6],
+    ['123456789012345678901234567890', 18],
   ] as const)('spells %s at %i decimals as a DecimalString', (amount, dp) => {
     expect(baseUnitsToDecimal(amount, dp)).toMatch(DECIMAL_PATTERN)
   })
@@ -132,16 +150,6 @@ describe('baseUnitsToDecimal', () => {
     expect(
       decimalToBaseUnits(baseUnitsToDecimal('1234500', 6), 6, 'truncate')
     ).toBe(1234500)
-  })
-})
-
-describe('fromBaseUnitsNumber', () => {
-  it('should return a number', () => {
-    expect(fromBaseUnitsNumber('1000000', 6)).toBe(1)
-  })
-
-  it('should return 0 for invalid input', () => {
-    expect(fromBaseUnitsNumber('bad', 6)).toBe(0)
   })
 })
 
@@ -167,9 +175,8 @@ describe('truncateDecimal', () => {
     )
   })
 
-  it('expands exponent notation into plain digits', () => {
-    expect(truncateDecimal('1e-7', 8)).toBe('0.00000010')
-    expect(truncateDecimal('1.5e21', 2)).toBe('1500000000000000000000.00')
+  it('keeps the smallest step of its own grid', () => {
+    expect(truncateDecimal('0.00000001', 8)).toBe('0.00000001')
   })
 
   it('drops the sign when the truncation lands on zero', () => {
@@ -197,10 +204,12 @@ describe('truncateDecimal', () => {
     'abc',
     '1.2.3',
     '0x10',
-  ])('rejects the non-numeric value %j', (value) => {
+    '1e-8',
+    '1.5e21',
+  ])('rejects the non-decimal string %j, naming the function and the value', (value) => {
     expectValidationError(
-      () => truncateDecimal(value, 2),
-      /Invalid decimal string for truncation/
+      () => truncateDecimal(value, 8),
+      new RegExp(`truncateDecimal\\(value\\).*'${value}'`)
     )
   })
 
@@ -215,6 +224,7 @@ describe('truncateDecimal', () => {
 describe('numberToDecimalString', () => {
   it.each([
     [1e-7, '0.0000001'],
+    [1e-8, '0.00000001'],
     [5e-7, '0.0000005'],
     [-0, '0'],
     [0, '0'],

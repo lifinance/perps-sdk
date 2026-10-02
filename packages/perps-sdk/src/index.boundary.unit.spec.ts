@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import * as perpsTypes from '@lifi/perps-types'
 import {
   DECIMAL_PATTERN,
-  isDecimalString,
   MarginMode,
   OrderSide,
   OrderStatus,
@@ -23,12 +23,11 @@ const NEVER_EXPORTED: readonly string[] = ['DivBig', 'TruncBig', 'areFinite']
 
 const PACKAGE_ROOT = resolve(import.meta.dirname, '..')
 const TYPES_ROOT = join(PACKAGE_ROOT, 'dist', 'types')
+const ENTRY_PATH = join(TYPES_ROOT, 'index.d.ts')
 
 interface ExportedName {
   /** Name as the public entry point spells it. */
   exported: string
-  /** Name the declaring module spells it, which an `as` rename changes. */
-  local: string
   /** Declaring module specifier, relative to the entry point. */
   from: string
 }
@@ -47,210 +46,69 @@ function parseEntryExports(declaration: string): ExportedName[] {
         continue
       }
       const [local, exported] = entry.split(/\s+as\s+/)
-      names.push({ exported: exported ?? local, local, from })
+      names.push({ exported: exported ?? local, from })
     }
   }
   return names
 }
 
-/** A `}` that one of these characters follows continues its statement. */
-const CONTINUES_STATEMENT: Record<string, true> = {
-  '&': true,
-  '|': true,
-  '[': true,
-  ')': true,
-  '>': true,
+/** Comments go first, so a `Big` named in prose never counts as a token. */
+const stripComments = (declaration: string): string =>
+  declaration.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+
+/** A relative `from '…'` of an import or re-export, or an inline `import('…')` type. */
+const RELATIVE_SPECIFIER =
+  /(?:\bfrom\s*|\bimport\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g
+
+type DeclarationReader = (path: string) => string | undefined
+
+interface DeclarationWalk {
+  /** Comment-stripped text per declaration file reached. */
+  reached: Map<string, string>
+  /** Paths a reached file names that have no declaration file. */
+  missing: string[]
 }
 
 /**
- * Split a declaration file into top-level statements. Comments are stripped
- * first, so a `Big` named in prose never counts as a signature. A `}` ends a
- * statement only when no intersection, union or indexed access continues it.
+ * Every declaration file the entry point reaches through relative imports,
+ * re-exports and inline `import()` types: the whole public type surface.
  */
-function topLevelStatements(declaration: string): string[] {
-  const source = declaration
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '')
-  const statements: string[] = []
-  let depth = 0
-  let start = 0
-  for (let i = 0; i < source.length; i++) {
-    const char = source[i]
-    if (char === '{' || char === '(' || char === '[') {
-      depth++
-    } else if (char === '}' || char === ')' || char === ']') {
-      depth--
-      if (depth === 0 && char === '}') {
-        let next = i + 1
-        while (next < source.length && ' \t\r\n'.includes(source[next] ?? '')) {
-          next++
-        }
-        if (!CONTINUES_STATEMENT[source[next] ?? '']) {
-          statements.push(source.slice(start, i + 1).trim())
-          start = i + 1
-        }
-      }
-    } else if (char === ';' && depth === 0) {
-      statements.push(source.slice(start, i).trim())
-      start = i + 1
-    }
-  }
-  return statements.filter(Boolean)
-}
-
-const DECLARED_NAME =
-  /^(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:function|const|let|var|class|interface|enum|type|namespace)\s+([A-Za-z_$][\w$]*)/
-
-/** `export declare const old: typeof new` — a deprecated alias in the emit. */
-const TYPEOF_ALIAS = /:\s*typeof\s+([A-Za-z_$][\w$]*)\s*$/
-
-/**
- * Every top-level declaration per name. A name carries more than one when it
- * heads an overload set, or when a value declaration and a type declaration
- * merge under it.
- */
-function declarationsByName(declaration: string): Record<string, string[]> {
-  // Null prototype: an identifier such as `toString` must not resolve to
-  // `Object.prototype` when a declaration names it.
-  const byName: Record<string, string[]> = Object.create(null)
-  for (const statement of topLevelStatements(declaration)) {
-    const name = DECLARED_NAME.exec(statement)?.[1]
-    if (name) {
-      const declarations = byName[name] ?? []
-      declarations.push(statement)
-      byName[name] = declarations
-    }
-  }
-  return byName
-}
-
-/**
- * Every declaration a name exposes, with each `typeof` alias replaced by the
- * declarations it forwards to, so a deprecated alias is checked against what
- * it forwards to. An alias whose target this module does not declare keeps its
- * own statement, so the caller can follow the target across modules.
- */
-function resolveSignature(
-  name: string,
-  byName: Record<string, string[]>
-): string[] {
-  const resolved: string[] = []
-  const seen = new Set<string>([name])
-  const queue: string[] = [name]
+function walkDeclarations(
+  entry: string,
+  read: DeclarationReader
+): DeclarationWalk {
+  const reached = new Map<string, string>()
+  const missing: string[] = []
+  const queue = [entry]
   while (queue.length > 0) {
-    const current = queue.shift() as string
-    for (const statement of byName[current] ?? []) {
-      const target = TYPEOF_ALIAS.exec(statement)?.[1]
-      if (target && byName[target] && !seen.has(target)) {
-        seen.add(target)
-        queue.push(target)
-      } else {
-        resolved.push(statement)
-      }
-    }
-  }
-  return resolved
-}
-
-const IDENTIFIER = /[A-Za-z_$][\w$]*/g
-const IMPORT_BLOCK = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g
-
-/** Where a name a declaration references is declared. */
-interface DeclarationSite {
-  /** Declaration file holding the name. */
-  path: string
-  /** Name as that file spells it. */
-  name: string
-}
-
-interface DeclarationModule {
-  byName: Record<string, string[]>
-  /** Declaration site per name the module takes from a relative module. */
-  importedFrom: Record<string, DeclarationSite>
-}
-
-type ModuleLoader = (path: string) => DeclarationModule | undefined
-
-function parseModule(declaration: string, path: string): DeclarationModule {
-  const importedFrom: Record<string, DeclarationSite> = Object.create(null)
-  for (const [, block, from] of declaration.matchAll(IMPORT_BLOCK)) {
-    if (!from.startsWith('.')) {
+    const path = queue.shift() as string
+    if (reached.has(path) || missing.includes(path)) {
       continue
     }
-    const target = join(dirname(path), from.replace(/\.js$/, '.d.ts'))
-    for (const raw of block.split(',')) {
-      const entry = raw.trim().replace(/^type\s+/, '')
-      if (!entry) {
-        continue
-      }
-      const [name, local] = entry.split(/\s+as\s+/)
-      importedFrom[local ?? name] = { path: target, name }
-    }
-  }
-  return { byName: declarationsByName(declaration), importedFrom }
-}
-
-/**
- * The declaration text a public export exposes: every statement its name
- * carries plus every declaration those statements name, followed transitively
- * through the module's relative imports. A type a public signature names
- * belongs to the boundary even when no module exports it; a declaration no
- * public signature reaches stays internal.
- */
-function signatureClosure(
-  site: DeclarationSite,
-  load: ModuleLoader
-): string | undefined {
-  const seen = new Set<string>([`${site.path}#${site.name}`])
-  const queue: DeclarationSite[] = [site]
-  const reached: string[] = []
-  while (queue.length > 0) {
-    const current = queue.shift() as DeclarationSite
-    const module = load(current.path)
-    if (!module) {
+    const text = read(path)
+    if (text === undefined) {
+      missing.push(path)
       continue
     }
-    for (const statement of resolveSignature(current.name, module.byName)) {
-      reached.push(statement)
-      for (const [identifier] of statement.matchAll(IDENTIFIER)) {
-        const next = module.byName[identifier]
-          ? { path: current.path, name: identifier }
-          : module.importedFrom[identifier]
-        if (!next) {
-          continue
-        }
-        const key = `${next.path}#${next.name}`
-        if (seen.has(key)) {
-          continue
-        }
-        seen.add(key)
-        queue.push(next)
-      }
+    const code = stripComments(text)
+    reached.set(path, code)
+    for (const [, specifier] of code.matchAll(RELATIVE_SPECIFIER)) {
+      queue.push(join(dirname(path), specifier.replace(/\.js$/, '.d.ts')))
     }
   }
-  return reached.length > 0 ? reached.join('\n') : undefined
+  return { reached, missing }
 }
 
-function returnTypeOf(statements: readonly string[]): string | undefined {
-  for (const statement of statements) {
-    const normalised = statement.replace(/\s+/g, ' ').trim()
-    const returns =
-      /=> ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1] ??
-      /\) ?: ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1]
-    if (returns) {
-      return returns
-    }
-  }
-  return undefined
-}
+/** The `'big.js'` specifier itself, so an aliased local name still gets caught. */
+const BIG_MODULE_SPECIFIER = /(?:\bfrom\s*|\bimport\(\s*)['"]big\.js['"]/
+const mentionsBig = (text: string): boolean =>
+  /\bBig\b/.test(text) || BIG_MODULE_SPECIFIER.test(text)
+
+const bigDeclarations = ({ reached }: DeclarationWalk): string[] =>
+  [...reached].filter(([, code]) => mentionsBig(code)).map(([path]) => path)
 
 let entryExports: ExportedName[] = []
-/** Declaration text per public export name; absent for a pure value re-export. */
-const signatures: Record<string, string[]> = {}
-/** Signature plus every module-local declaration it names, per export name. */
-const boundaryText: Record<string, string> = {}
-/** Declaring module text per public export name, the conservative fallback. */
-const declaringModule: Record<string, string> = {}
+let publicDeclarations: DeclarationWalk = { reached: new Map(), missing: [] }
 
 beforeAll(() => {
   execFileSync(
@@ -258,58 +116,24 @@ beforeAll(() => {
     ['--build', 'tsconfig.build.json'],
     { cwd: PACKAGE_ROOT, stdio: 'pipe' }
   )
-  const entry = readFileSync(join(TYPES_ROOT, 'index.d.ts'), 'utf8')
-  entryExports = parseEntryExports(entry)
-
-  const textCache: Record<string, string> = {}
-  const moduleCache: Record<string, DeclarationModule> = {}
-  const load: ModuleLoader = (path) => {
-    if (moduleCache[path] === undefined) {
-      if (!existsSync(path)) {
-        return undefined
-      }
-      textCache[path] = readFileSync(path, 'utf8')
-      moduleCache[path] = parseModule(textCache[path], path)
-    }
-    return moduleCache[path]
-  }
-
-  for (const { exported, local, from } of entryExports) {
-    const path = join(TYPES_ROOT, from.replace(/\.js$/, '.d.ts'))
-    const module = load(path)
-    if (!module) {
-      continue
-    }
-    declaringModule[exported] = textCache[path]
-    const declarations = resolveSignature(local, module.byName)
-    if (declarations.length > 0) {
-      signatures[exported] = declarations
-    }
-    const closure = signatureClosure({ path, name: local }, load)
-    if (closure) {
-      boundaryText[exported] = closure
-    }
-  }
+  entryExports = parseEntryExports(readFileSync(ENTRY_PATH, 'utf8'))
+  publicDeclarations = walkDeclarations(ENTRY_PATH, (path) =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined
+  )
 })
 
-const mentionsBig = (text: string): boolean => /\bBig\b/.test(text)
-
 describe('Big never crosses the public API boundary', () => {
-  it('builds declarations for every re-exported module', () => {
+  it('reaches the declaration of every re-exported module', () => {
     expect(entryExports.length).toBeGreaterThan(0)
-    const unresolved = entryExports
-      .filter(({ exported }) => declaringModule[exported] === undefined)
-      .map(({ exported }) => exported)
-    expect(unresolved).toEqual([])
+    expect(publicDeclarations.missing).toEqual([])
+    const unreached = entryExports
+      .map(({ from }) => join(TYPES_ROOT, from.replace(/\.js$/, '.d.ts')))
+      .filter((path) => !publicDeclarations.reached.has(path))
+    expect(unreached).toEqual([])
   })
 
-  it('names Big in no exported signature', () => {
-    const offenders = entryExports
-      .map(({ exported }) => exported)
-      .filter((name) =>
-        mentionsBig(boundaryText[name] ?? declaringModule[name] ?? '')
-      )
-    expect(offenders).toEqual([])
+  it('names Big in no declaration the entry point reaches', () => {
+    expect(bigDeclarations(publicDeclarations)).toEqual([])
   })
 
   it.each(NEVER_EXPORTED)('does not export %s', (name) => {
@@ -319,95 +143,91 @@ describe('Big never crosses the public API boundary', () => {
 })
 
 /**
- * A two-module emit in the shape `tsc` produces: a public function returns a
- * module-local interface that carries a `Big`, another takes an interface
- * imported from a sibling module that carries one, a deprecated alias forwards
- * to the first, and an internal helper takes a `Big` no export reaches. The
- * remaining declarations hold a `Big` on an earlier overload, on the value half
- * of a merged declaration, and after the first top-level `}` of a signature.
+ * An emit in the shape `tsc` produces: the entry re-exports a function whose
+ * parameter type comes from an `import type` and whose return type is an
+ * inline `import()` that carries a `Big`, and star-re-exports a module. One
+ * module names `Big` in prose only, and one internal module that holds a `Big`
+ * is never named.
  */
-const ORDER_EMIT_PATH = '/emit/order.d.ts'
-const GRID_EMIT_PATH = '/emit/grid.d.ts'
-
-const EMIT: Record<string, string> = {
-  [ORDER_EMIT_PATH]: `
-import type Big from 'big.js';
-import type { Grid } from './grid.js';
-export declare function walkBook(levels: number[]): BookWalk;
-export declare const legacyWalkBook: typeof walkBook;
-export declare function snapSize(size: string, grid: Grid): string;
-export declare function sumSizes(levels: number[]): number;
-export declare function scale(value: Big, decimals: number): string;
-export declare function scale(value: string, decimals: number): string;
-export declare const Limits: {
-    readonly max: Big;
-};
-export type Limits = (typeof Limits)[keyof typeof Limits];
-export declare function splitSize(size: string): {
-    base: number;
-} & {
-    raw: Big;
-};
-export declare function labelSize(size: string): {
-    label: string;
-} | Big;
-export declare const cycleA: typeof cycleB;
-export declare const cycleB: typeof cycleA;
-interface BookWalk {
-    vwap: number;
-    vwapBig: Big;
-}
-declare function parseLevel(level: string): Big;
+const WALK_EMIT: Record<string, string> = {
+  '/emit/index.d.ts': `
+export { walkBook } from './order.js';
+export type { Grid } from './grid.js';
+export * from './math.js';
 `,
-  [GRID_EMIT_PATH]: `
+  '/emit/math.d.ts': `
+export declare function calculateSpread(bid: number, ask: number): number;
+`,
+  '/emit/order.d.ts': `
+import type { Level } from './level.js';
+export declare function walkBook(levels: Level[]): import("./walk.js").BookWalk;
+`,
+  '/emit/level.d.ts': `
+export interface Level {
+    price: string;
+}
+`,
+  '/emit/walk.d.ts': `
 import type Big from 'big.js';
+export interface BookWalk {
+    vwap: Big;
+}
+`,
+  '/emit/grid.d.ts': `
+/** Snaps a size, never a Big, onto the grid. */
 export interface Grid {
-    tick: Big;
+    tick: string;
 }
+`,
+  '/emit/internal.d.ts': `
+import type Big from 'big.js';
+export declare function parseLevel(level: string): Big;
 `,
 }
 
-const loadEmit: ModuleLoader = (path) =>
-  EMIT[path] === undefined ? undefined : parseModule(EMIT[path], path)
+describe('the declaration walk', () => {
+  const walk = walkDeclarations('/emit/index.d.ts', (path) => WALK_EMIT[path])
 
-const emitClosure = (name: string): string =>
-  signatureClosure({ path: ORDER_EMIT_PATH, name }, loadEmit) ?? ''
-
-describe('the declaration scan follows named types to the Big they hide', () => {
-  it('reaches a Big on the module-local interface a signature returns', () => {
-    expect(mentionsBig(emitClosure('walkBook'))).toBe(true)
+  it('follows re-exports, type imports and inline import() types only', () => {
+    expect([...walk.reached.keys()].sort()).toEqual([
+      '/emit/grid.d.ts',
+      '/emit/index.d.ts',
+      '/emit/level.d.ts',
+      '/emit/math.d.ts',
+      '/emit/order.d.ts',
+      '/emit/walk.d.ts',
+    ])
+    expect(walk.missing).toEqual([])
   })
 
-  it('reaches it through a deprecated typeof alias as well', () => {
-    expect(mentionsBig(emitClosure('legacyWalkBook'))).toBe(true)
+  it('flags the Big behind an inline import() and ignores prose', () => {
+    expect(bigDeclarations(walk)).toEqual(['/emit/walk.d.ts'])
   })
 
-  it('reaches it through an interface imported from a sibling module', () => {
-    expect(mentionsBig(emitClosure('snapSize'))).toBe(true)
+  it('flags a big.js import whose local name hides the Big token', () => {
+    const ALIASED_EMIT: Record<string, string> = {
+      '/alias/index.d.ts': `
+export type { Quote } from './quote.js';
+`,
+      '/alias/quote.d.ts': `
+import type BigNumber from 'big.js';
+export interface Quote {
+    vwap: BigNumber;
+}
+`,
+    }
+    const aliased = walkDeclarations(
+      '/alias/index.d.ts',
+      (path) => ALIASED_EMIT[path]
+    )
+    expect(bigDeclarations(aliased)).toEqual(['/alias/quote.d.ts'])
   })
 
-  it('leaves an internal Big no exported signature names alone', () => {
-    expect(mentionsBig(emitClosure('sumSizes'))).toBe(false)
-  })
-
-  it('reaches a Big on an earlier overload of an overload set', () => {
-    expect(mentionsBig(emitClosure('scale'))).toBe(true)
-  })
-
-  it('reaches a Big on the value half of a merged declaration', () => {
-    expect(mentionsBig(emitClosure('Limits'))).toBe(true)
-  })
-
-  it('reaches a Big in an intersection that follows an object type', () => {
-    expect(mentionsBig(emitClosure('splitSize'))).toBe(true)
-  })
-
-  it('reaches a Big in a union that follows an object type', () => {
-    expect(mentionsBig(emitClosure('labelSize'))).toBe(true)
-  })
-
-  it('terminates on a cycle of typeof aliases', () => {
-    expect(mentionsBig(emitClosure('cycleA'))).toBe(false)
+  it('reports a specifier with no declaration file', () => {
+    const broken = walkDeclarations('/emit/index.d.ts', (path) =>
+      path === '/emit/grid.d.ts' ? undefined : WALK_EMIT[path]
+    )
+    expect(broken.missing).toEqual(['/emit/grid.d.ts'])
   })
 })
 
@@ -487,7 +307,6 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { liquidationPrice: 45000, currentPrice: 50000 },
   ],
   calculateNotionalValue: [0.5, 60000],
-  calculatePositionSize: [1000, 10, 50000],
   calculateRealizedPnl: [
     { entryPrice: 100, closePrice: 150, closeSize: 1, isLong: true },
   ],
@@ -502,7 +321,6 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { currentSize: 1, currentEntry: 100, addSize: 1, fillPrice: 200 },
   ],
   estimateFees: [10000, 0.00035],
-  estimateIsolatedLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateNewLeverage: [
     {
@@ -537,52 +355,56 @@ describe('display-tier formulas give back numbers', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
-  it('gives back a number for each sample call', () => {
+  it('gives back a finite number for each sample call', () => {
     for (const [name, args] of Object.entries(MATH_SAMPLES)) {
       const result = callExport(name, args)
       const fields = NUMERIC_FIELDS[name]
       if (fields) {
         for (const field of fields) {
-          expect(typeof Object(result)[field], `${name}.${field}`).toBe(
-            'number'
-          )
+          expect(
+            Number.isFinite(Object(result)[field]),
+            `${name}.${field}`
+          ).toBe(true)
         }
         continue
       }
-      expect(typeof result, name).toBe('number')
+      expect(Number.isFinite(result), name).toBe(true)
     }
   })
 })
 
-const EN_US = { locale: 'en-US' }
+const EN_US = 'en-US'
+const EN_US_GROUP = new Intl.NumberFormat(EN_US)
+  .formatToParts(1_000_000)
+  .find(({ type }) => type === 'group')?.value
+const GROUPED = new RegExp(`\\d[${EN_US_GROUP}]\\d{3}`)
 
 /**
  * One sample call per human formatter at an input of 1000 or more, with the
- * marker that proves the output is for a screen: grouped digits, a compact
- * magnitude suffix, or the percent sign `formatSignedPercent` carries in place
- * of grouping.
+ * marker that proves the output is for a screen. The grouping separator comes
+ * from the locale, not a literal. `formatSignedPercent` never groups and
+ * `formatCompactUsd` gives a magnitude suffix in place of grouping.
  */
 const FORMAT_SAMPLES: Record<
   string,
   { args: readonly unknown[]; marker: RegExp }
 > = {
-  formatCompactUsd: { args: [1234.5, EN_US], marker: /\d[KMB]$/ },
-  formatNumber: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
-  formatPrice: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
-  formatSignedPercent: { args: [1234.5, EN_US], marker: /\d%$/ },
-  formatSignedUsd: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
-  formatUsd: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
+  formatCompactUsd: {
+    args: [1234567.5, { locale: EN_US }],
+    marker: /\d[KMB]$/,
+  },
+  formatNumber: { args: [1234567.5, { locale: EN_US }], marker: GROUPED },
+  formatPrice: { args: [1234567.5, { locale: EN_US }], marker: GROUPED },
+  formatSignedPercent: { args: [1234567.5, { locale: EN_US }], marker: /\d%$/ },
+  formatSignedUsd: { args: [1234567.5, { locale: EN_US }], marker: GROUPED },
+  formatUsd: { args: [1234567.5, { locale: EN_US }], marker: GROUPED },
 }
 
-/** Sample inputs for every `decimal/convert.ts` export that gives a string. */
-const CONVERT_STRING_SAMPLES: Record<string, readonly unknown[]> = {
-  baseUnitsToDecimal: ['1234500000', 6],
-  fromBaseUnits: ['1234500000', 6],
-  numberToDecimalString: [123456789.123],
-  truncateDecimal: ['1000.999', 2],
-}
+describe('format gives human strings', () => {
+  it('reads a grouping separator for the sample locale', () => {
+    expect(EN_US_GROUP).toBeTruthy()
+  })
 
-describe('format gives human strings, convert gives DecimalStrings', () => {
   it('covers every format export', () => {
     const formatExports = entryExports
       .filter(({ from }) => from === './decimal/format.js')
@@ -600,36 +422,32 @@ describe('format gives human strings, convert gives DecimalStrings', () => {
       expect(String(result), name).toMatch(marker)
     }
   })
-
-  it('covers every string-returning convert export', () => {
-    const stringExports = entryExports
-      .filter(({ from }) => from === './decimal/convert.js')
-      .filter(({ exported }) => {
-        const returns = returnTypeOf(signatures[exported] ?? [])
-        return returns === 'DecimalString' || returns === 'string'
-      })
-      .map(({ exported }) => exported)
-      .sort()
-    expect(stringExports).toEqual(Object.keys(CONVERT_STRING_SAMPLES).sort())
-  })
-
-  it('renders a DecimalString for every convert export', () => {
-    for (const [name, args] of Object.entries(CONVERT_STRING_SAMPLES)) {
-      const result = callExport(name, args)
-      expect(typeof result, name).toBe('string')
-      expect(String(result), name).toMatch(DECIMAL_PATTERN)
-    }
-  })
 })
+
+const functionExportsFrom = (from: (specifier: string) => boolean): string[] =>
+  entryExports
+    .filter((entry) => from(entry.from))
+    .map(({ exported }) => exported)
+    .filter((name) => typeof sdkExports[name] === 'function')
+    .sort()
+
+/** One sample call per `decimal/convert.ts` function. */
+const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
+  baseUnitsToDecimal: ['1234500000', 6],
+  decimalToBaseUnits: ['0.29', 2, 'truncate'],
+  numberToDecimalString: [1e-8],
+  truncateDecimal: ['1000.999', 2],
+}
 
 const WIRE_MARKET = venueMarket({ szDecimals: 4 })
 const WIRE_CLIENT = venueClient()
 
 /**
- * The order-entry surface the widget calls. Every one of them takes and gives
- * a `DecimalString`, so no caller needs a `number` hop or a `Big`.
+ * One sample call per `wire/` function: the order-entry and account surface
+ * the widget calls. Every one gives `DecimalString`s only, so no caller needs
+ * a `number` hop or a `Big`.
  */
-const DECIMAL_STRING_SAMPLES: Record<string, readonly unknown[]> = {
+const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
   calculateOrderAmounts: [
     {
       sdk: WIRE_CLIENT,
@@ -645,30 +463,51 @@ const DECIMAL_STRING_SAMPLES: Record<string, readonly unknown[]> = {
   calculateWithdrawMax: [
     { available: '10', withdrawalFee: '0.5', isFeeDeducted: false },
   ],
-  numberToDecimalString: [123456789.123],
   snapOrderPrice: [WIRE_CLIENT, WIRE_MARKET, '1234.5678'],
   snapOrderSize: [WIRE_CLIENT, WIRE_MARKET, '0.123456'],
-  truncateDecimal: ['1000.999', 2],
 }
 
-describe('the order-entry surface gives DecimalStrings', () => {
-  it('exports every named helper', () => {
-    for (const name of Object.keys(DECIMAL_STRING_SAMPLES)) {
-      expect(
-        entryExports.map((e) => e.exported),
-        name
-      ).toContain(name)
+/** The result itself when it is a scalar, else its field values. */
+const resultValues = (result: unknown): unknown[] =>
+  typeof result === 'object' && result !== null
+    ? Object.values(result)
+    : [result]
+
+describe('convert and wire give DecimalStrings', () => {
+  it('samples every decimal/convert.ts function', () => {
+    expect(
+      functionExportsFrom((from) => from === './decimal/convert.js')
+    ).toEqual(Object.keys(CONVERT_SAMPLES).sort())
+  })
+
+  it('samples every wire/ function', () => {
+    expect(functionExportsFrom((from) => from.startsWith('./wire/'))).toEqual(
+      Object.keys(WIRE_SAMPLES).sort()
+    )
+  })
+
+  it('gives a DecimalString for every string a convert function returns', () => {
+    const strings = Object.entries(CONVERT_SAMPLES).flatMap(([name, args]) =>
+      resultValues(callExport(name, args))
+        .filter((value) => typeof value === 'string')
+        .map((value) => [name, value] as const)
+    )
+    expect(strings.length).toBeGreaterThan(0)
+    for (const [name, value] of strings) {
+      expect(sdk.isDecimalString(value), `${name} -> ${String(value)}`).toBe(
+        true
+      )
     }
   })
 
-  it('gives a DecimalString for each sample call', () => {
-    for (const [name, args] of Object.entries(DECIMAL_STRING_SAMPLES)) {
-      const result = callExport(name, args)
-      const values =
-        typeof result === 'string' ? [result] : Object.values(Object(result))
+  it('gives only DecimalStrings from every wire function', () => {
+    for (const [name, args] of Object.entries(WIRE_SAMPLES)) {
+      const values = resultValues(callExport(name, args))
       expect(values.length, name).toBeGreaterThan(0)
       for (const value of values) {
-        expect(isDecimalString(value), `${name} -> ${String(value)}`).toBe(true)
+        expect(sdk.isDecimalString(value), `${name} -> ${String(value)}`).toBe(
+          true
+        )
       }
     }
   })
@@ -683,5 +522,133 @@ describe('the order-entry surface gives DecimalStrings', () => {
   ])('no longer exports the Big-typed helper %s', (name) => {
     expect(entryExports.map((e) => e.exported)).not.toContain(name)
     expect(Object.keys(sdk)).not.toContain(name)
+  })
+})
+
+/** `<a>To<B>` converts between representations only, so both operands come from this closed set. */
+const REPRESENTATIONS = ['baseUnits', 'decimal', 'decimalString', 'number']
+const capitalise = (token: string): string =>
+  token.charAt(0).toUpperCase() + token.slice(1)
+const VOCABULARY = new RegExp(
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate)(?:[A-Z]|$)' +
+    `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
+)
+const BANNED_VERB = /^(derive|predict|convert)/
+
+describe('the vocabulary pattern', () => {
+  it.each([
+    'baseUnitsToDecimal',
+    'decimalToBaseUnits',
+    'numberToDecimalString',
+  ])('admits the representation conversion %s', (name) => {
+    expect(VOCABULARY.test(name)).toBe(true)
+  })
+
+  it.each([
+    'walkOrderbookToDepth',
+    'stringToFloat',
+    'convertAmount',
+    'baseUnitsToDecimalOrZero',
+    'isolateMargin',
+    'hashX',
+    'builderX',
+    'snapshotX',
+  ])('rejects %s', (name) => {
+    expect(VOCABULARY.test(name)).toBe(false)
+  })
+})
+
+/** Tier functions outside the vocabulary, each with the reason it keeps its name. */
+const NAMING_EXCEPTIONS: Record<string, string> = {
+  applySlippage: 'display-tier formula; consumers call it by this name',
+  classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
+  classifyFillFromPosition: 'fill taxonomy the providers call',
+  findMatchingPosition: 'structure lookup with no arithmetic',
+  positionSupportsMarginAdjustment:
+    'is-class predicate; a rename is a second breaking change, parked for a human decision',
+  positionSupportsMarginRemoval:
+    'is-class predicate; a rename is a second breaking change, parked for a human decision',
+  truncateDecimal: 'the tracker vocabulary lists it under snap<X>',
+  walkOrderbook: 'book traversal that buildQuote composes',
+}
+
+const TIER_MODULE = /^\.\/(decimal|math|wire)\//
+
+describe('decimal/, math/ and wire/ names follow the vocabulary', () => {
+  const tierFunctions = (): string[] =>
+    functionExportsFrom((from) => TIER_MODULE.test(from))
+
+  it('names every tier function with a vocabulary verb', () => {
+    const offenders = tierFunctions().filter(
+      (name) => !(VOCABULARY.test(name) || name in NAMING_EXCEPTIONS)
+    )
+    expect(offenders).toEqual([])
+  })
+
+  it('names no tier function with a banned verb', () => {
+    expect(tierFunctions().filter((name) => BANNED_VERB.test(name))).toEqual([])
+  })
+
+  it('keeps no stale naming exception', () => {
+    const names = tierFunctions()
+    const stale = Object.keys(NAMING_EXCEPTIONS).filter(
+      (name) => !names.includes(name) || VOCABULARY.test(name)
+    )
+    expect(stale).toEqual([])
+  })
+})
+
+describe('calculateOrderAmounts at the public entry point', () => {
+  const input = {
+    sdk: WIRE_CLIENT,
+    market: WIRE_MARKET,
+    amount: '123.456789',
+    leverage: 3,
+    price: '0.07',
+  }
+
+  it.each([
+    'margin',
+    'size',
+    'notional',
+  ] as const)('gives a DecimalString in every field for a held %s', (held) => {
+    const amounts = sdk.calculateOrderAmounts({ ...input, held })
+    if (amounts === null) {
+      expect.unreachable('the sample input is a valid order')
+    }
+
+    for (const [field, value] of Object.entries(amounts)) {
+      expect(sdk.isDecimalString(value), `${held}.${field} -> ${value}`).toBe(
+        true
+      )
+    }
+  })
+
+  it('takes no quote precision', () => {
+    const withQuoteDecimals: sdk.OrderAmountsInput = {
+      ...input,
+      held: 'margin',
+      // @ts-expect-error `calculateOrderAmounts` applies no quote grid.
+      quoteDecimals: 2,
+    }
+
+    expect(sdk.calculateOrderAmounts(withQuoteDecimals)?.margin).toBe(
+      '123.456789'
+    )
+  })
+})
+
+describe('runtime helpers that perps-types does not own', () => {
+  it('exports them from @lifi/perps-sdk', () => {
+    expect(typeof sdk.isDecimalString).toBe('function')
+    expect(typeof sdk.positionSupportsMarginAdjustment).toBe('function')
+    expect(typeof sdk.positionSupportsMarginRemoval).toBe('function')
+  })
+
+  it('leaves @lifi/perps-types with no function export', () => {
+    const functions = Object.entries(perpsTypes)
+      .filter(([, value]) => typeof value === 'function')
+      .map(([name]) => name)
+    expect(functions).toEqual([])
   })
 })

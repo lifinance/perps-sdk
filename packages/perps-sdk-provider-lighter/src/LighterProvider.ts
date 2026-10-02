@@ -9,7 +9,9 @@ import {
   getMarketsContext,
   getProviders,
   isActiveOrderStatus,
+  isDecimalString,
   localStorageAdapter,
+  numberToDecimalString,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -65,7 +67,6 @@ import type {
 import {
   ActionType,
   ActivityType,
-  isDecimalString,
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
@@ -168,7 +169,7 @@ import { wireList } from './utils/wireList.js'
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
 const tickToFeeString = (tick: number): string =>
-  String(tick / LIGHTER_FEE_TICK_SCALE)
+  numberToDecimalString(tick / LIGHTER_FEE_TICK_SCALE)
 
 const projectFeeTier = (
   limits: LtAccountLimits

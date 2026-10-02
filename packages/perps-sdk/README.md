@@ -199,20 +199,28 @@ the provider from `market.providerId`, so a caller never applies one venue's
 rules to another venue's market.
 
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
-one the user typed. It normalises the held field first, then derives the other
-two from that value. The rounding is directional, so the result always funds
-itself — `size × price ≤ margin × leverage`:
+one the user typed. Every venue places an order by size alone, so the size is
+the only amount that snaps onto a grid: the venue lot grid. Margin and notional
+are display and comparison values. No quote grid applies to them.
 
-- a derived size truncates onto the venue lot grid;
-- a derived notional truncates onto the `quoteDecimals` grid;
-- a derived margin rounds **up** onto the `quoteDecimals` grid, because it is
-  the one amount that has to cover the others;
-- a held field keeps its own normalised value.
+| held       | `size`                                     | `notional`     | `margin`              |
+| ---------- | ------------------------------------------ | -------------- | --------------------- |
+| `size`     | `snapOrderSize(amount)`                    | `size × price` | `notional ÷ leverage` |
+| `notional` | `snapOrderSize(amount ÷ price)`            | `size × price` | `notional ÷ leverage` |
+| `margin`   | `snapOrderSize(amount × leverage ÷ price)` | `size × price` | `amount`, unchanged   |
 
-The call gives `null` when the input is not a positive amount, price and
-leverage, and also when the grids snap the result to a non-positive amount:
-a size below one lot, or a quote amount below the last `quoteDecimals` place,
-describes no order a venue can take.
+- A held margin comes back byte-identical to the input string.
+- `notional` is always the snapped size times the price, so it describes the
+  order that the venue opens, not the input before the snap.
+- A derived margin is exact SDK division: 40 decimal places, rounded half-up,
+  with no trailing zeros.
+- A derived size truncates onto the lot grid, so a held margin always funds
+  its size: `size × price ≤ margin × leverage`.
+
+The call gives `null` when `amount` or `price` is not a positive
+`DecimalString`, when `leverage` is not a positive finite number, or when the
+snapped size is zero (below one lot). A sub-cent margin is a valid order when
+the lot grid takes the size.
 
 ```ts
 import { calculateOrderAmounts } from '@lifi/perps-sdk'
@@ -224,15 +232,20 @@ const amounts = calculateOrderAmounts({
   amount: '100',
   leverage: 5,
   price: '1000',
-  // quoteDecimals defaults to 2, the minor unit of a USD quote asset.
 })
 // { margin: '100', size: '0.5', notional: '500' }, or null — see above
 ```
 
+Send `amounts.size` as `PlaceOrderParams.size`. It is the same string that the
+size field shows.
+
 `truncateDecimal(value, decimals)` rounds a decimal string down and pads it to
 exactly `decimals` places, which seeds a fixed-decimal input field.
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
-a plain decimal string, so `1e-7` becomes `'0.0000001'`.
+a plain decimal string, so `1e-7` becomes `'0.0000001'`. `truncateDecimal` and
+`decimalToBaseUnits` throw `PerpsError(ValidationError)` for a string that is
+not a `DecimalString`, such as `'1e-8'`. `isDecimalString(value)` tests a
+value against the same rule.
 
 A provider plugin implements the same two rules for its own venue:
 `snapOrderPrice(market: Market, price: DecimalString): DecimalString` and
@@ -257,6 +270,61 @@ passes through a `number`:
 
 Each one throws `PerpsError(ValidationError)`, naming the field, when an
 input is not a `DecimalString`.
+
+## Numbers
+
+### The `DecimalString` contract
+
+Every monetary or quantity value that crosses a package, provider or network
+boundary is a `DecimalString` from `@lifi/perps-types`. It matches
+`DECIMAL_PATTERN`: an optional leading `-`, digits, and an optional `.` with
+digits. It has no grouping, exponent, currency sign or whitespace. `'0.5'` and
+`'-1250'` are `DecimalString`s; `'1e-7'`, `'1,000'`, `'.5'` and `'$1'` are not.
+
+- `isDecimalString(value)` tests a value against the pattern.
+- `truncateDecimal`, `decimalToBaseUnits` and the account-side `wire/`
+  helpers throw `PerpsError(ValidationError)` for a string that fails the
+  pattern. `calculateOrderAmounts` gives `null` for one.
+- `baseUnitsToDecimal` throws `PerpsError(ValidationError)` for an amount that
+  is not an integer string, such as `'1.5'` or `'1e3'`.
+- No exported signature carries a `Big`. The SDK and the providers compute
+  with `big.js` internally, and give back a `DecimalString` or a `number`.
+- A `number` is for display math and small integers only, such as leverage,
+  decimals, percentages and chart values. A `number` never goes to a venue.
+
+### Three tiers
+
+| Tier       | Holds                                                    | In → out                                  | Rule                                                        |
+| ---------- | -------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| `decimal/` | `parseDecimal`, `<a>To<B>` conversions, `format*`        | representation → representation           | No domain words. Conversions throw on invalid input.        |
+| `math/`    | display-tier formulas (`calculate*`, `estimate*`, …)     | `number` → `number`                       | Results are for `format*`. Never send one to a venue.       |
+| `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers   | `DecimalString` → `DecimalString`         | Venue-ready values, snapped by the market's own provider.   |
+
+A value for a venue comes from `wire/` or from a provider field. A value for a
+screen goes through `parseDecimal`, then `math/`, then `format*`.
+
+### Vocabulary
+
+One verb names one kind of transformation.
+
+| Verb                        | Input → output                                     | Fallible                          | Example                                                    |
+| --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseDecimal`                                             |
+| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `baseUnits`, `decimal`, `decimalString` or `number` | throws on invalid, never guesses  | `decimalToBaseUnits`, `baseUnitsToDecimal`, `numberToDecimalString` |
+| `format<X>`                 | value → human string (grouped, localised)          | no; renders a placeholder         | `formatUsd`, `formatNumber`                                |
+| `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
+| `calculate<X>`              | values → exact result by formula                   | no                                | `calculateNotionalValue`, `calculateOrderAmounts`          |
+| `estimate<X>`               | values → approximation or forward-looking value    | no                                | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
+| `resolve<X>`                | candidates and rules → the one to use              | no                                | `resolveCloseSize`, `resolveQuote`                         |
+| `validate<X>`               | values → ok or error result                        | —                                 | —                                                          |
+| `is<X>` `would<X>` `has<X>` | → `boolean`                                        | —                                 | `isDecimalString`, `wouldImmediatelyLiquidate`             |
+| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
+| `aggregate<X>`              | collection → totals                                | —                                 | —                                                          |
+
+No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
+`convert` verb, or a bare noun as its name. The boundary spec checks every
+name in these tiers against this table, and lists each exception with its
+reason.
 
 ## WebSocket
 

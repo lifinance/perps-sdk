@@ -5,6 +5,7 @@ import {
   isActiveMarket,
   isActiveOrderStatus,
   type MarketRegistry,
+  numberToDecimalString,
   PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
@@ -1608,10 +1609,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
 
-const toMarketContextString = (value: unknown): string | undefined =>
-  typeof value === 'string' || typeof value === 'number'
-    ? String(value)
-    : undefined
+const toMarketContextString = (value: unknown): string | undefined => {
+  if (typeof value === 'number') {
+    return numberToDecimalString(value)
+  }
+  return typeof value === 'string' ? value : undefined
+}
 
 const toMarketCapString = (
   price: unknown,
