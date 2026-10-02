@@ -26,31 +26,16 @@ import {
   applySlippage,
   buildQuote,
   calculateExpectedPnl,
-  calculatePositionSize,
   calculateRealizedPnlPercent,
   calculateSize,
   calculateTriggerPercent,
   calculateTriggerPrice,
   estimateFees,
   estimateRealizedPnl,
-  expectedRealizedPnlForOpenOrder,
-  expectedRealizedPnlForTriggerOrder,
   findMatchingPosition,
-  percentFromPrice,
-  priceFromPercent,
   resolveCloseSize,
   walkOrderbook,
 } from './order.js'
-
-describe('deprecated aliases', () => {
-  it.each([
-    [calculatePositionSize, calculateSize],
-    [priceFromPercent, calculateTriggerPrice],
-    [percentFromPrice, calculateTriggerPercent],
-  ])('alias %# forwards to the renamed implementation', (alias, renamed) => {
-    expect(alias).toBe(renamed)
-  })
-})
 
 describe('calculateSize', () => {
   it('should calculate size from margin, leverage, and price', () => {
@@ -954,7 +939,7 @@ describe('estimateRealizedPnl dispatch', () => {
     ).toBeNull()
   })
 
-  it('routes each union member to the branch the deprecated pair used', () => {
+  it('prices a regular order at its limit and a trigger order at its trigger', () => {
     const long = position({
       side: PositionSide.LONG,
       size: '1',
@@ -967,13 +952,9 @@ describe('estimateRealizedPnl dispatch', () => {
     })
     const trigger = triggerOrder({
       remainingSize: '1',
-      triggerPrice: '150',
+      triggerPrice: '120',
     })
-    expect(estimateRealizedPnl(limit, long)).toBe(
-      expectedRealizedPnlForOpenOrder(limit, long)
-    )
-    expect(estimateRealizedPnl(trigger, long)).toBe(
-      expectedRealizedPnlForTriggerOrder(trigger, long)
-    )
+    expect(estimateRealizedPnl(limit, long)).toBe(50)
+    expect(estimateRealizedPnl(trigger, long)).toBe(20)
   })
 })

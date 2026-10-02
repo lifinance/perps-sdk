@@ -597,7 +597,7 @@ export interface PerpsProviderPlugin {
    * @throws {PerpsError} `ValidationError` when a `Position` decimal that the
    *   venue formula reads is malformed.
    */
-  positionRemovableMargin(position: Position): string | undefined
+  positionRemovableMargin(position: Position): DecimalString | undefined
 
   /**
    * Project a typed {@link AccountConfig} against the provider's `setup`

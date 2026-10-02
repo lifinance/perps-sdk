@@ -8,7 +8,7 @@
  */
 
 import {
-  estimateLiquidationPrice as estimateIsolatedLiquidationPrice,
+  estimateLiquidationPrice as estimateLiquidationPriceAtRate,
   type LiquidationEstimateParams,
 } from '@lifi/perps-sdk'
 import type { PerpsMarket } from '@lifi/perps-types'
@@ -30,7 +30,7 @@ export function estimateLiquidationPrice(
   if (market.maintenanceMarginRate === undefined) {
     return undefined
   }
-  return estimateIsolatedLiquidationPrice({
+  return estimateLiquidationPriceAtRate({
     entryPrice: params.entryPrice,
     leverage: params.leverage,
     isLong: params.isLong,

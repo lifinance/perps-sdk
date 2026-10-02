@@ -6,6 +6,7 @@ import type {
   ActionParamsMap,
   PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
+  DecimalString,
   ExecuteActionResponse,
   MarginMode,
   MarketRef,
@@ -137,9 +138,9 @@ export interface PlaceOrderParams {
   side: OrderSide
   type: Exclude<OrderType, OrderType.TWAP>
   /** Base-asset size as a decimal wire string. */
-  size: string
+  size: DecimalString
   /** Limit price as a decimal wire string; required by limit-style orders. */
-  price: string
+  price: DecimalString
   /** Optional leverage multiplier; provider defaults apply when omitted. */
   leverage?: number
   /**
@@ -223,7 +224,7 @@ export interface SendAssetActionParams {
   /** Destination DEX/account identifier understood by the provider. */
   destinationDex: string
   /** Transfer amount as a provider-compatible decimal wire string. */
-  amount: string
+  amount: DecimalString
 }
 
 /**

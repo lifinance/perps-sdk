@@ -16,15 +16,6 @@ import {
 import { areFinite, DivBig } from '../decimal/big.js'
 
 /**
- * Direction sign for a position.
- *
- * @deprecated Inline `isLong ? 1 : -1`. Removed in the next major.
- */
-export function directionSign(isLong: boolean): 1 | -1 {
-  return isLong ? 1 : -1
-}
-
-/**
  * Calculate notional value of a position.
  *
  * @param size - Position size in asset units
@@ -119,11 +110,6 @@ export function calculateLiquidationDistance(params: {
 }
 
 /**
- * @deprecated Use `calculateLiquidationDistance`. Removed in the next major.
- */
-export const liquidationDistancePercent = calculateLiquidationDistance
-
-/**
  * Effective leverage of an open position.
  *
  * leverage = positionValueUsd / marginUsd
@@ -146,11 +132,6 @@ export function calculateEffectiveLeverage(params: {
   }
   return new DivBig(positionValueUsd).div(marginUsd).toNumber()
 }
-
-/**
- * @deprecated Use `calculateEffectiveLeverage`. Removed in the next major.
- */
-export const effectiveLeverage = calculateEffectiveLeverage
 
 /**
  * Estimated liquidation price for an isolated-margin position, parameterised
@@ -197,11 +178,6 @@ export function estimateLiquidationPrice(params: {
     .minus(marginAvailable.times(side).div(mmr.times(-side).plus(1)))
     .toNumber()
 }
-
-/**
- * @deprecated Use `estimateLiquidationPrice`. Removed in the next major.
- */
-export const estimateIsolatedLiquidationPrice = estimateLiquidationPrice
 
 /**
  * Whether an isolated position with this liquidation price is already past
@@ -266,11 +242,6 @@ export function estimateAverageEntryPrice(params: {
 }
 
 /**
- * @deprecated Use `estimateAverageEntryPrice`. Removed in the next major.
- */
-export const predictAverageEntryPrice = estimateAverageEntryPrice
-
-/**
  * Estimated effective leverage after adding margin and notional.
  *
  * leverage = totalNotional / totalMargin. The caller computes notional from
@@ -302,11 +273,6 @@ export function estimateNewLeverage(params: {
 }
 
 /**
- * @deprecated Use `estimateNewLeverage`. Removed in the next major.
- */
-export const predictNewLeverage = estimateNewLeverage
-
-/**
  * Estimated unrealised PnL at the current mark price.
  *
  * `pnl = (markPrice - entryPrice) * size * (isLong ? 1 : -1)`
@@ -332,11 +298,6 @@ export function estimateUnrealizedPnl(params: {
 }
 
 /**
- * @deprecated Use `estimateUnrealizedPnl`. Removed in the next major.
- */
-export const predictUnrealizedPnl = estimateUnrealizedPnl
-
-/**
  * Realised PnL on the portion of a position being closed.
  *
  * `rPnl = (closePrice - entryPrice) * closeSize * (isLong ? 1 : -1)`
@@ -360,11 +321,6 @@ export function calculateRealizedPnl(params: {
     .times(isLong ? 1 : -1)
     .toNumber()
 }
-
-/**
- * @deprecated Use `calculateRealizedPnl`. Removed in the next major.
- */
-export const realizedPnlOnClose = calculateRealizedPnl
 
 /**
  * Whether this position can take a margin adjustment at all: it holds margin of

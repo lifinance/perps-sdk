@@ -1,3 +1,5 @@
+import type { DecimalString } from '@lifi/perps-types'
+
 /**
  * Options shared by the human-facing display formatters.
  *
@@ -28,7 +30,7 @@ export type RoundingMode = 'halfUp' | 'floor'
 
 const DEFAULT_PLACEHOLDER = '—'
 
-type FormatInput = number | string | null | undefined
+type FormatInput = number | DecimalString | string | null | undefined
 
 /**
  * Extra decimal places used to normalise IEEE-754 representation noise before

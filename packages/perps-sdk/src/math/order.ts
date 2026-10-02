@@ -59,11 +59,6 @@ export function calculateSize(
 }
 
 /**
- * @deprecated Use `calculateSize`. Removed in the next major.
- */
-export const calculatePositionSize = calculateSize
-
-/**
  * Estimate trading fees.
  *
  * @param sizeUsd - Position size in USD (notional value)
@@ -178,11 +173,6 @@ export function calculateTriggerPrice(
 }
 
 /**
- * @deprecated Use `calculateTriggerPrice`. Removed in the next major.
- */
-export const priceFromPercent = calculateTriggerPrice
-
-/**
  * Calculate the percentage gain/loss a trigger price realises.
  *
  * @param price - Target price
@@ -208,11 +198,6 @@ export function calculateTriggerPercent(
     : new DivBig(entryPrice).minus(price)
   return priceDiff.div(entryPrice).times(leverage).times(100).toNumber()
 }
-
-/**
- * @deprecated Use `calculateTriggerPercent`. Removed in the next major.
- */
-export const percentFromPrice = calculateTriggerPercent
 
 /**
  * Calculate realized PnL as a percentage of position value at close.
@@ -532,13 +517,3 @@ export function estimateRealizedPnl(
   }
   return null
 }
-
-/**
- * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
- */
-export const expectedRealizedPnlForOpenOrder = regularOrderRealizedPnl
-
-/**
- * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
- */
-export const expectedRealizedPnlForTriggerOrder = triggerOrderRealizedPnl

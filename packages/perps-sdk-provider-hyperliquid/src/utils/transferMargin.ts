@@ -3,7 +3,11 @@ import {
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
 } from '@lifi/perps-sdk'
-import { PerpsErrorCode, type Position } from '@lifi/perps-types'
+import {
+  type DecimalString,
+  PerpsErrorCode,
+  type Position,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 
 const NOTIONAL_FLOOR_RATIO = '0.1'
@@ -48,7 +52,7 @@ function positivePositionAmount(value: string, field: string): Big {
  */
 export function positionRemovableMargin(
   position: Position
-): string | undefined {
+): DecimalString | undefined {
   if (!positionSupportsMarginAdjustment(position)) {
     return undefined
   }
