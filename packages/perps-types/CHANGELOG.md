@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 20.0.0
+
+### Major Changes
+
+- [#574](https://github.com/lifinance/perps-sdk/pull/574) [`823307e`](https://github.com/lifinance/perps-sdk/commit/823307ea8a46a0bf51c125e2262ff33cacbeee37) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `calculateOrderAmounts` applies no quote grid. Only `size` snaps, onto the venue lot grid. A held margin comes back byte-identical, `notional` is always the snapped size times the price, and a derived margin is `notional ÷ leverage` at 40 decimal places, rounded half-up. The call gives `null` only for an invalid `amount`, `price` or `leverage`, or for a size below one lot, so a sub-cent margin is now a valid order.
+
+  - `@lifi/perps-sdk`: `OrderAmountsInput.quoteDecimals` is removed. `truncateDecimal` and `decimalToBaseUnits` throw `PerpsError(ValidationError)` for a string that is not a `DecimalString`, such as `'1e-8'`, instead of parsing it. `isDecimalString`, `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` are now exported from `@lifi/perps-sdk`.
+  - `@lifi/perps-types`: `isDecimalString`, `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` are removed. Import them from `@lifi/perps-sdk`. `DecimalString` and `DECIMAL_PATTERN` stay in `@lifi/perps-types`, which now exports no function.
+  - Provider packages: import the moved functions from `@lifi/perps-sdk`, and need the `@lifi/perps-sdk` and `@lifi/perps-types` majors of this release.
+
 ## 19.0.0
 
 ### Major Changes

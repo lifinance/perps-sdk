@@ -1,5 +1,55 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 25.0.0
+
+### Major Changes
+
+- [#577](https://github.com/lifinance/perps-sdk/pull/577) [`f935176`](https://github.com/lifinance/perps-sdk/commit/f9351768ad510760beea23ab2e8d84f04799f4ba) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `@lifi/perps-sdk` removes every deprecated numeric alias. Each removed name has one replacement:
+
+  - `stringToFloat` → `parseDecimal`. `parseDecimal` gives `undefined` for a malformed string, where `stringToFloat` gave `NaN` or a partial parse.
+  - `fromBaseUnitsNumber(amount, decimals)` → `(parseDecimal(baseUnitsToDecimal(amount, decimals)) ?? 0)`. `baseUnitsToDecimal` now throws on a non-integer base-unit string, where `fromBaseUnitsNumber` gave `0`.
+  - `scaleToInteger` → `decimalToBaseUnits`.
+  - `ScaleToIntegerPolicy` → `BaseUnitsRounding`.
+  - `fromBaseUnits` → `baseUnitsToDecimal`.
+  - `calculatePositionSize` → `calculateSize`.
+  - `effectiveLeverage` → `calculateEffectiveLeverage`.
+  - `liquidationDistancePercent` → `calculateLiquidationDistance`.
+  - `realizedPnlOnClose` → `calculateRealizedPnl`.
+  - `predictUnrealizedPnl` → `estimateUnrealizedPnl`.
+  - `predictAverageEntryPrice` → `estimateAverageEntryPrice`.
+  - `predictNewLeverage` → `estimateNewLeverage`.
+  - `estimateIsolatedLiquidationPrice` → `estimateLiquidationPrice`.
+  - `directionSign(isLong)` → `isLong ? 1 : -1`.
+  - `priceFromPercent` → `calculateTriggerPrice`.
+  - `percentFromPrice` → `calculateTriggerPercent`.
+  - `expectedRealizedPnlForOpenOrder` and `expectedRealizedPnlForTriggerOrder` → `estimateRealizedPnl(order, position)`.
+
+  The monetary signatures that still said `string` now say `DecimalString`: `PlaceOrderParams.size` and `.price`, `SendAssetActionParams.amount`, `PerpsClient.updatePositionMargin`'s `amount`, `PerpsClient.getPositionRemovableMargin` and `PerpsProvider.positionRemovableMargin`, `baseUnitsToDecimal`'s `amount`, `classifyFillFromPosition`'s `startPosition` and `sz`, and `classifyFill`'s `realizedPnl`. `DecimalString` is an alias of `string`, so no call site needs a change for these.
+
+  `baseUnitsToDecimal(amount, decimals)` now throws `PerpsError(ValidationError)` when `amount` is not an integer string (`'1.5'`, `'1e3'`, `''`, `'abc'`) or `decimals` is not a non-negative integer. It gave `'0'` for an invalid `amount` before. A caller that passes venue text must handle the error at that boundary.
+
+  - Provider packages: major, because each pins an exact peer range on `@lifi/perps-sdk` and that package is major here. `positionRemovableMargin` on Hyperliquid and Lighter declares a `DecimalString` result. Lighter and Ondo no longer import a removed name. Behaviour does not change.
+
+- [#574](https://github.com/lifinance/perps-sdk/pull/574) [`823307e`](https://github.com/lifinance/perps-sdk/commit/823307ea8a46a0bf51c125e2262ff33cacbeee37) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `calculateOrderAmounts` applies no quote grid. Only `size` snaps, onto the venue lot grid. A held margin comes back byte-identical, `notional` is always the snapped size times the price, and a derived margin is `notional ÷ leverage` at 40 decimal places, rounded half-up. The call gives `null` only for an invalid `amount`, `price` or `leverage`, or for a size below one lot, so a sub-cent margin is now a valid order.
+
+  - `@lifi/perps-sdk`: `OrderAmountsInput.quoteDecimals` is removed. `truncateDecimal` and `decimalToBaseUnits` throw `PerpsError(ValidationError)` for a string that is not a `DecimalString`, such as `'1e-8'`, instead of parsing it. `isDecimalString`, `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` are now exported from `@lifi/perps-sdk`.
+  - `@lifi/perps-types`: `isDecimalString`, `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` are removed. Import them from `@lifi/perps-sdk`. `DecimalString` and `DECIMAL_PATTERN` stay in `@lifi/perps-types`, which now exports no function.
+  - Provider packages: import the moved functions from `@lifi/perps-sdk`, and need the `@lifi/perps-sdk` and `@lifi/perps-types` majors of this release.
+
+### Patch Changes
+
+- [#575](https://github.com/lifinance/perps-sdk/pull/575) [`8c6a69e`](https://github.com/lifinance/perps-sdk/commit/8c6a69ef88ca86e0c4e7998edf1d4c078a2c4038) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Producers that build a `DecimalString` from a number now write it in plain notation. They do not write exponent notation such as `'3.5e-7'` or `'1e+21'`.
+
+  - `@lifi/perps-sdk`: `buildQuote` writes `sizeUsd`, `baseSize`, `expectedFillPrice`, `priceImpactBps` and `feeUsd` with `numberToDecimalString`. When one of these figures is not finite, for example from a `NaN` `sizeUsd` or taker fee, `buildQuote` throws `PerpsError(ValidationError)`. The quote does not carry `'NaN'`.
+  - `@lifi/perps-sdk`: `subscribeQuote` rejects a non-finite `size` with `PerpsError(ValidationError)` before it subscribes. When a streamed quote cannot be built, or `onQuote` throws, the SDK logs the error and skips that emission. The error does not escape from the throttle timer.
+  - `@lifi/perps-sdk-provider-hyperliquid`: a numeric `activeAssetCtx` or `activeSpotAssetCtx` field becomes a plain-notation market-context value.
+  - `@lifi/perps-sdk-provider-lighter`: the account `feeTier`, a fill `realizedPnl` and an order `averagePrice` are in plain notation. When `accountLimits` returns an absent or non-numeric fee tick, `getAccount` rejects with `PerpsError(ValidationError)`. The `feeTier` does not carry `'NaN'`.
+  - `@lifi/perps-sdk-provider-ondo`: the candle `o`, `h`, `l`, `c` and `v` values from the `kLinePerps` stream are in plain notation. The provider logs and drops a kline frame with a missing or non-numeric figure. The candle does not carry `'undefined'`.
+
+- Updated dependencies [[`f935176`](https://github.com/lifinance/perps-sdk/commit/f9351768ad510760beea23ab2e8d84f04799f4ba), [`8c6a69e`](https://github.com/lifinance/perps-sdk/commit/8c6a69ef88ca86e0c4e7998edf1d4c078a2c4038), [`823307e`](https://github.com/lifinance/perps-sdk/commit/823307ea8a46a0bf51c125e2262ff33cacbeee37)]:
+  - @lifi/perps-sdk@22.0.0
+  - @lifi/perps-types@20.0.0
+
 ## 24.0.0
 
 ### Major Changes
