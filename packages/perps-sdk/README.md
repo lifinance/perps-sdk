@@ -271,6 +271,58 @@ passes through a `number`:
 Each one throws `PerpsError(ValidationError)`, naming the field, when an
 input is not a `DecimalString`.
 
+## Numbers
+
+### The `DecimalString` contract
+
+Every monetary or quantity value that crosses a package, provider or network
+boundary is a `DecimalString` from `@lifi/perps-types`. It matches
+`DECIMAL_PATTERN`: an optional leading `-`, digits, and an optional `.` with
+digits. It has no grouping, exponent, currency sign or whitespace. `'0.5'` and
+`'-1250'` are `DecimalString`s; `'1e-7'`, `'1,000'`, `'.5'` and `'$1'` are not.
+
+- `isDecimalString(value)` tests a value against the pattern.
+- `truncateDecimal`, `decimalToBaseUnits` and the account-side `wire/`
+  helpers throw `PerpsError(ValidationError)` for a string that fails the
+  pattern. `calculateOrderAmounts` gives `null` for one.
+- No exported signature carries a `Big`. The SDK and the providers compute
+  with `big.js` internally, and give back a `DecimalString` or a `number`.
+- A `number` is for display math and small integers only, such as leverage,
+  decimals, percentages and chart values. A `number` never goes to a venue.
+
+### Three tiers
+
+| Tier       | Holds                                                    | In → out                                  | Rule                                                        |
+| ---------- | -------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| `decimal/` | `parseDecimal`, `<a>To<B>` conversions, `format*`        | representation → representation           | No domain words. Conversions throw on invalid input.        |
+| `math/`    | display-tier formulas (`calculate*`, `estimate*`, …)     | `number` → `number`                       | Results are for `format*`. Never send one to a venue.       |
+| `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers   | `DecimalString` → `DecimalString`         | Venue-ready values, snapped by the market's own provider.   |
+
+A value for a venue comes from `wire/` or from a provider field. A value for a
+screen goes through `parseDecimal`, then `math/`, then `format*`.
+
+### Vocabulary
+
+One verb names one kind of transformation.
+
+| Verb                        | Input → output                                     | Fallible                          | Example                                                    |
+| --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseDecimal`                                             |
+| `<a>To<B>`                  | representation A → B, no domain meaning            | throws on invalid, never guesses  | `decimalToBaseUnits`, `baseUnitsToDecimal`, `numberToDecimalString` |
+| `format<X>`                 | value → human string (grouped, localised)          | no; renders a placeholder         | `formatUsd`, `formatNumber`                                |
+| `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
+| `calculate<X>`              | values → exact result by formula                   | no                                | `calculateNotionalValue`, `calculateOrderAmounts`          |
+| `estimate<X>`               | values → approximation or forward-looking value    | no                                | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
+| `resolve<X>`                | candidates and rules → the one to use              | no                                | `resolveCloseSize`, `resolveQuote`                         |
+| `validate<X>`               | values → ok or error result                        | —                                 | —                                                          |
+| `is<X>` `would<X>` `has<X>` | → `boolean`                                        | —                                 | `isDecimalString`, `wouldImmediatelyLiquidate`             |
+| `select<X>`                 | structure → field, no arithmetic                   | no                                | `selectUserSetupActions`                                   |
+| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
+| `aggregate<X>`              | collection → totals                                | —                                 | —                                                          |
+
+The SDK uses no `derive`, `predict` or `convert` verb, and no bare noun as a
+function name.
+
 ## WebSocket
 
 `PerpsWsClient` streams prices, orderbook, and account events over WebSocket. Register a WS provider per DEX; `subscribe()` returns an unsubscribe function, and multiple listeners on the same channel share one wire subscription:
