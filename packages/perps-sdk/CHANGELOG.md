@@ -1,5 +1,22 @@
 # @lifi/perps-sdk
 
+## 21.0.0
+
+### Major Changes
+
+- [#567](https://github.com/lifinance/perps-sdk/pull/567) [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Move the order-entry surface to `DecimalString`, in and out. The `PerpsProvider` interface renames `formatOrderPrice` → `snapOrderPrice(market, price: DecimalString): DecimalString` and `formatOrderSize` → `snapOrderSize(market, size: DecimalString): DecimalString`, so an order amount never passes through a `number` and never loses digits above 15 significant figures. New `snapOrderSize(sdk, market, size)` and `snapOrderPrice(sdk, market, price)` resolve the market's own provider and delegate. New `calculateOrderAmounts({ sdk, market, held, amount, leverage, price, quoteDecimals })` gives the margin, size and notional as decimal strings. Its rounding is directional, so the result funds itself — `size × price ≤ margin × leverage`: a derived size truncates onto the venue lot grid, a derived notional truncates onto the `quoteDecimals` grid, a derived margin rounds up onto the `quoteDecimals` grid, and a held field keeps its own normalised value. It gives `null` on a non-positive amount, price or leverage, and on a result the grids snap to a non-positive size or quote amount; it throws `ValidationError` when `quoteDecimals` is not a non-negative integer. New `truncateDecimal(value, decimals)` rounds down and pads to a fixed decimal place count, and new `numberToDecimalString(value)` spells a `number` in plain notation. The `Big`-typed `sizeFromMargin`, `marginFromSize`, `sizeFromNotional` and `marginFromNotional` are deleted with no alias; call `calculateOrderAmounts` instead. `estimateLiquidationPrice` keeps its name and its `number` types.
+
+### Minor Changes
+
+- [#565](https://github.com/lifinance/perps-sdk/pull/565) [`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Reorganise the numeric helpers into `decimal/`, `math/` and `wire/`, and rename each export to the boundary vocabulary: `decimalToBaseUnits`, `baseUnitsToDecimal`, `calculateSize`, `calculateEffectiveLeverage`, `calculateLiquidationDistance`, `calculateRealizedPnl`, `calculateTriggerPrice`, `calculateTriggerPercent`, `estimateUnrealizedPnl`, `estimateAverageEntryPrice`, `estimateNewLeverage`, `estimateLiquidationPrice` and `estimateRealizedPnl`. Every previous name stays exported as a deprecated alias, so no consumer breaks. `validateMargin` is removed.
+
+- [#569](https://github.com/lifinance/perps-sdk/pull/569) [`6c60405`](https://github.com/lifinance/perps-sdk/commit/6c604057c0892d5b0d007b299e0692f25d3339a6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add three account-side wire helpers and drop the last `Big` exports. `calculateTransferable(venueFigure, units)` clamps a venue free figure to `[0, units]` and is now the single cap behind `Balance.transferable` on every provider. `calculateWithdrawMax(row)` gives the largest amount a withdrawable row can fund: `available` when the venue deducts the fee or publishes none, and `available − withdrawalFee` floored at zero when the venue charges the fee on top. `calculateRefuelAmount({ gasUsd, priceUsd, decimals })` divides the recommended gas value by the source-token price, rounds up onto the token grid and keeps trailing zeros to `decimals`, so an 18-decimal refuel never lands short; it gives `undefined` when either input is not greater than zero. `ProviderWithdrawableBalance` and `WithdrawableBalance` gain the required `max: DecimalString` that `calculateWithdrawMax` fills. The `Big`-typed `maxOf` and `minOf` exports are removed: `Big` no longer appears anywhere on the published declaration surface.
+
+### Patch Changes
+
+- Updated dependencies [[`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a), [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2), [`13d3ae4`](https://github.com/lifinance/perps-sdk/commit/13d3ae446d9e12897af1c9887c0cd8d700ddb628), [`9e80782`](https://github.com/lifinance/perps-sdk/commit/9e807824275b2811c425f048fb348210cf0c4e17)]:
+  - @lifi/perps-types@19.0.0
+
 ## 20.1.1
 
 ### Patch Changes

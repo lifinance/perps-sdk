@@ -1,5 +1,21 @@
 # @lifi/perps-types
 
+## 19.0.0
+
+### Major Changes
+
+- [#568](https://github.com/lifinance/perps-sdk/pull/568) [`9e80782`](https://github.com/lifinance/perps-sdk/commit/9e807824275b2811c425f048fb348210cf0c4e17) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Provider.minDepositUsd`, `minOrderValueUsd`, `minWithdrawalUsd`, `depositFeeUsd` and `withdrawalFeeUsd` are now `DecimalString` instead of `number`. The venue-wide `Provider.minOrderValueUsd` and the per-market `PerpsMarket.minOrderValueUsd` therefore carry one type, so a caller parses both the same way before it compares them. Hyperliquid `getWithdrawableBalances` reads the descriptor fee as a decimal string.
+
+### Minor Changes
+
+- [#569](https://github.com/lifinance/perps-sdk/pull/569) [`13d3ae4`](https://github.com/lifinance/perps-sdk/commit/13d3ae446d9e12897af1c9887c0cd8d700ddb628) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Require `transferable` on every `spotBalances` frame row. The channel type is now `Balance & { locked: DecimalString; transferable: DecimalString }`, so a live spot frame carries the same released-units figure that a REST account snapshot carries.
+
+### Patch Changes
+
+- [#565](https://github.com/lifinance/perps-sdk/pull/565) [`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Drop the `Provider.minOrderValueUsd` doc reference to the removed SDK `validateMargin` helper.
+
+- [#567](https://github.com/lifinance/perps-sdk/pull/567) [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Name the renamed provider methods `snapOrderPrice` and `snapOrderSize` in the `Market` grid-field docs.
+
 ## 18.1.0
 
 ### Minor Changes

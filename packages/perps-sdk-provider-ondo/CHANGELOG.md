@@ -1,5 +1,23 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 23.0.0
+
+### Major Changes
+
+- [#567](https://github.com/lifinance/perps-sdk/pull/567) [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Rename the plugin order-entry methods to match the `@lifi/perps-sdk` contract: `formatOrderSize` → `snapOrderSize(DecimalString)` and `formatOrderPrice` → `snapOrderPrice(DecimalString)`. Each one takes and gives a decimal string, so a 17-significant-digit size survives the call. The Hyperliquid package renames its exported `formatOrderSize(size, szDecimals)` and `formatOrderPrice(price, szDecimals, market)` helpers the same way. The grid rules are unchanged: sizes truncate toward zero onto the lot grid, prices round half-up onto the tick grid. The core SDK deletes `sizeFromMargin`, `marginFromSize`, `sizeFromNotional` and `marginFromNotional` in the same release.
+
+### Minor Changes
+
+- [#569](https://github.com/lifinance/perps-sdk/pull/569) [`6c60405`](https://github.com/lifinance/perps-sdk/commit/6c604057c0892d5b0d007b299e0692f25d3339a6) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Set `max` on every `getWithdrawableBalances` row with the shared `calculateWithdrawMax`, and clamp every `Balance.transferable` with the shared `calculateTransferable` instead of a local `minOf(maxOf(...))` copy. The Hyperliquid `spotBalances` WebSocket frame now sets `transferable` on every row, so the live feed carries the figure the REST snapshot carries. Hyperliquid spot balances now spell their unit price and USD value in plain decimal notation, so a mark below `1e-6` no longer reaches a consumer as `5e-7`; Lighter market contexts do the same for `priceChange24h` and `volume24h`, and a Lighter market that publishes no daily figure now omits the field instead of dropping the whole all-markets frame.
+
+### Patch Changes
+
+- [#565](https://github.com/lifinance/perps-sdk/pull/565) [`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Import the renamed `@lifi/perps-sdk` helpers (`parseDecimal`, `decimalToBaseUnits`, `estimateLiquidationPrice`). Behaviour is unchanged.
+
+- Updated dependencies [[`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a), [`f0eff17`](https://github.com/lifinance/perps-sdk/commit/f0eff1733a86e87c0c573c5dd1d4266cd693b00a), [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2), [`61f44fb`](https://github.com/lifinance/perps-sdk/commit/61f44fb6247eb3d5f7252252cea3de0ff5a8cdb2), [`13d3ae4`](https://github.com/lifinance/perps-sdk/commit/13d3ae446d9e12897af1c9887c0cd8d700ddb628), [`6c60405`](https://github.com/lifinance/perps-sdk/commit/6c604057c0892d5b0d007b299e0692f25d3339a6), [`9e80782`](https://github.com/lifinance/perps-sdk/commit/9e807824275b2811c425f048fb348210cf0c4e17)]:
+  - @lifi/perps-types@19.0.0
+  - @lifi/perps-sdk@21.0.0
+
 ## 22.0.1
 
 ### Patch Changes
