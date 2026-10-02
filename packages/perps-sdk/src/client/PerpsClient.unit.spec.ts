@@ -1925,6 +1925,21 @@ describe('PerpsClient', () => {
       expect(getAccount).not.toHaveBeenCalled()
     })
 
+    it('propagates the account read that the summary fallback runs', async () => {
+      const getAvailableToTrade = vi.fn(async () => undefined)
+      const getAccount = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.AccountNotFound, 'no account')
+      })
+      await expect(
+        clientWith({ getAvailableToTrade, getAccount }).getAvailableToTrade({
+          provider,
+          address: userAddress,
+          marketId: 'BTC',
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.AccountNotFound })
+      expect(getAccount).toHaveBeenCalled()
+    })
+
     it('reports an unknown market against the provider registry', async () => {
       await expect(
         clientWith({}).getAvailableToTrade({
