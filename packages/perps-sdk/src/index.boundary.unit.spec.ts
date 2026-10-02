@@ -1,0 +1,401 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import {
+  DECIMAL_PATTERN,
+  MarginMode,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  type Position,
+  PositionMarginAdjustment,
+  PositionSide,
+  type RegularOrder,
+  TimeInForce,
+} from '@lifi/perps-types'
+import { beforeAll, describe, expect, it } from 'vitest'
+import * as sdk from './index.js'
+
+/**
+ * `Big` instances that are still part of the published surface. Each entry
+ * names the ORD-1925 sub-issue that removes it; the list must shrink to empty.
+ */
+const ALLOWED_BIG_EXPORTS: readonly string[] = [
+  'sizeFromMargin', // ORD-1928 — order wire tier takes and gives DecimalString
+  'marginFromSize', // ORD-1928
+  'sizeFromNotional', // ORD-1928
+  'marginFromNotional', // ORD-1928
+  'maxOf', // ORD-1929 — account wire tier drops the Big helpers
+  'minOf', // ORD-1929
+]
+
+/** Internals that must never reach the public entry point. */
+const NEVER_EXPORTED: readonly string[] = ['DivBig', 'TruncBig', 'areFinite']
+
+const PACKAGE_ROOT = resolve(import.meta.dirname, '..')
+const TYPES_ROOT = join(PACKAGE_ROOT, 'dist', 'types')
+
+interface ExportedName {
+  /** Name as the public entry point spells it. */
+  exported: string
+  /** Name the declaring module spells it, which an `as` rename changes. */
+  local: string
+  /** Declaring module specifier, relative to the entry point. */
+  from: string
+}
+
+const EXPORT_BLOCK = /export\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g
+
+function parseEntryExports(declaration: string): ExportedName[] {
+  const names: ExportedName[] = []
+  for (const [, block, from] of declaration.matchAll(EXPORT_BLOCK)) {
+    if (!from.startsWith('.')) {
+      continue
+    }
+    for (const raw of block.split(',')) {
+      const entry = raw.trim().replace(/^type\s+/, '')
+      if (!entry) {
+        continue
+      }
+      const [local, exported] = entry.split(/\s+as\s+/)
+      names.push({ exported: exported ?? local, local, from })
+    }
+  }
+  return names
+}
+
+/**
+ * Split a declaration file into top-level statements. Comments are stripped
+ * first, so a `Big` named in prose never counts as a signature.
+ */
+function topLevelStatements(declaration: string): string[] {
+  const source = declaration
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+  const statements: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]
+    if (char === '{' || char === '(' || char === '[') {
+      depth++
+    } else if (char === '}' || char === ')' || char === ']') {
+      depth--
+      if (depth === 0 && char === '}') {
+        statements.push(source.slice(start, i + 1).trim())
+        start = i + 1
+      }
+    } else if (char === ';' && depth === 0) {
+      statements.push(source.slice(start, i).trim())
+      start = i + 1
+    }
+  }
+  return statements.filter(Boolean)
+}
+
+const DECLARED_NAME =
+  /^(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?(?:function|const|let|var|class|interface|enum|type|namespace)\s+([A-Za-z_$][\w$]*)/
+
+/** `export declare const old: typeof new` — a deprecated alias in the emit. */
+const TYPEOF_ALIAS = /:\s*typeof\s+([A-Za-z_$][\w$]*)\s*$/
+
+function declarationsByName(declaration: string): Record<string, string> {
+  const byName: Record<string, string> = {}
+  for (const statement of topLevelStatements(declaration)) {
+    const name = DECLARED_NAME.exec(statement)?.[1]
+    if (name) {
+      byName[name] = statement
+    }
+  }
+  return byName
+}
+
+/**
+ * Follow `typeof` aliases to the declaration that carries the real signature,
+ * so a deprecated alias is checked against what it forwards to.
+ */
+function resolveSignature(
+  name: string,
+  byName: Record<string, string>
+): string | undefined {
+  let statement = byName[name]
+  for (let hops = 0; statement && hops < 8; hops++) {
+    const target = TYPEOF_ALIAS.exec(statement)?.[1]
+    if (!target || !byName[target]) {
+      return statement
+    }
+    statement = byName[target]
+  }
+  return statement
+}
+
+function returnTypeOf(statement: string): string | undefined {
+  const normalised = statement.replace(/\s+/g, ' ').trim()
+  return (
+    /=> ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1] ??
+    /\) ?: ([A-Za-z_$][\w$]*)$/.exec(normalised)?.[1]
+  )
+}
+
+let entryExports: ExportedName[] = []
+/** Declaration text per public export name; absent for a pure value re-export. */
+const signatures: Record<string, string> = {}
+/** Declaring module text per public export name, the conservative fallback. */
+const declaringModule: Record<string, string> = {}
+
+beforeAll(() => {
+  execFileSync(
+    join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsc'),
+    ['--build', 'tsconfig.build.json'],
+    { cwd: PACKAGE_ROOT, stdio: 'pipe' }
+  )
+  const entry = readFileSync(join(TYPES_ROOT, 'index.d.ts'), 'utf8')
+  entryExports = parseEntryExports(entry)
+
+  const textCache: Record<string, string> = {}
+  const declarationCache: Record<string, Record<string, string>> = {}
+  for (const { exported, local, from } of entryExports) {
+    const path = join(TYPES_ROOT, from.replace(/\.js$/, '.d.ts'))
+    if (textCache[path] === undefined) {
+      textCache[path] = readFileSync(path, 'utf8')
+      declarationCache[path] = declarationsByName(textCache[path])
+    }
+    declaringModule[exported] = textCache[path]
+    const declaration = resolveSignature(local, declarationCache[path])
+    if (declaration) {
+      signatures[exported] = declaration
+    }
+  }
+})
+
+const mentionsBig = (text: string): boolean => /\bBig\b/.test(text)
+
+describe('Big never crosses the public API boundary', () => {
+  it('builds declarations for every re-exported module', () => {
+    expect(entryExports.length).toBeGreaterThan(0)
+    const unresolved = entryExports
+      .filter(({ exported }) => declaringModule[exported] === undefined)
+      .map(({ exported }) => exported)
+    expect(unresolved).toEqual([])
+  })
+
+  it('names Big in no exported signature outside the allow-list', () => {
+    const offenders = entryExports
+      .map(({ exported }) => exported)
+      .filter((name) => !ALLOWED_BIG_EXPORTS.includes(name))
+      .filter((name) =>
+        mentionsBig(signatures[name] ?? declaringModule[name] ?? '')
+      )
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the allow-list honest — every entry is still a live violation', () => {
+    const stale = ALLOWED_BIG_EXPORTS.filter(
+      (name) => !mentionsBig(signatures[name] ?? '')
+    )
+    expect(stale).toEqual([])
+  })
+
+  it.each(NEVER_EXPORTED)('does not export %s', (name) => {
+    expect(entryExports.map((e) => e.exported)).not.toContain(name)
+    expect(Object.keys(sdk)).not.toContain(name)
+  })
+})
+
+const sdkExports: Record<string, unknown> = { ...sdk }
+
+function callExport(name: string, args: readonly unknown[]): unknown {
+  const fn = sdkExports[name]
+  if (typeof fn !== 'function') {
+    throw new Error(`${name} is not an exported function`)
+  }
+  return Reflect.apply(fn, undefined, args)
+}
+
+const MARKET = {
+  providerId: 'hyperliquid',
+  id: 'BTC',
+  categoryId: 'hyperliquid',
+  baseAsset: {
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    displaySymbol: 'BTC',
+    logoURI: '',
+  },
+  quoteAsset: {
+    providerId: 'hyperliquid',
+    id: 'USDC',
+    displaySymbol: 'USDC',
+    logoURI: '',
+  },
+  positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+}
+
+const LONG_POSITION: Position = {
+  market: MARKET,
+  side: PositionSide.LONG,
+  size: '1',
+  entryPrice: '100',
+  markPrice: '100',
+  liquidationPrice: '0',
+  unrealizedPnl: '0',
+  accruedFunding: '0',
+  leverage: 1,
+  marginUsed: '0',
+  initialMarginRequirement: '0',
+  marginMode: MarginMode.CROSS,
+}
+
+const SELL_LIMIT: RegularOrder = {
+  orderId: 'order-1',
+  market: MARKET,
+  type: OrderType.LIMIT,
+  side: OrderSide.SELL,
+  originalSize: '1',
+  remainingSize: '1',
+  filledSize: '0',
+  price: '150',
+  reduceOnly: false,
+  status: OrderStatus.OPEN,
+  timeInForce: TimeInForce.GTC,
+  createdAt: '2025-01-01T00:00:00Z',
+  updatedAt: '2025-01-01T00:00:00Z',
+}
+
+const LIQUIDATION_INPUT = {
+  entryPrice: 100,
+  leverage: 10,
+  isLong: true,
+  maintenanceMarginRate: 0.01,
+}
+
+/** One sample call per display-tier formula, keyed by its public name. */
+const MATH_SAMPLES: Record<string, readonly unknown[]> = {
+  applySlippage: [100, 0.5, true],
+  calculateEffectiveLeverage: [{ positionValueUsd: 10000, marginUsd: 1000 }],
+  calculateExpectedPnl: [0.77, 0.7, 3, true, 10],
+  calculateLiquidationDistance: [
+    { liquidationPrice: 45000, currentPrice: 50000 },
+  ],
+  calculateNotionalValue: [0.5, 60000],
+  calculatePositionSize: [1000, 10, 50000],
+  calculateRealizedPnl: [
+    { entryPrice: 100, closePrice: 150, closeSize: 1, isLong: true },
+  ],
+  calculateRealizedPnlPercent: [50, 1, 500],
+  calculateRequiredMargin: [10000, 10],
+  calculateRoe: [500, 1000],
+  calculateSize: [1000, 10, 50000],
+  calculateTriggerPercent: [0.77, 0.7, 3, true],
+  calculateTriggerPrice: [30, 0.7, 3, true],
+  calculateUnrealizedPnl: [50000, 55000, 1],
+  estimateAverageEntryPrice: [
+    { currentSize: 1, currentEntry: 100, addSize: 1, fillPrice: 200 },
+  ],
+  estimateFees: [10000, 0.00035],
+  estimateIsolatedLiquidationPrice: [LIQUIDATION_INPUT],
+  estimateLiquidationPrice: [LIQUIDATION_INPUT],
+  estimateNewLeverage: [
+    {
+      currentNotional: 1000,
+      currentMargin: 100,
+      addNotional: 500,
+      addMargin: 50,
+    },
+  ],
+  estimateRealizedPnl: [SELL_LIMIT, LONG_POSITION],
+  estimateUnrealizedPnl: [
+    { entryPrice: 100, markPrice: 110, size: 2, isLong: true },
+  ],
+}
+
+/** Formulas whose numbers sit on fields rather than on the return value. */
+const NUMERIC_FIELDS: Record<string, readonly string[]> = {
+  calculateExpectedPnl: ['amount', 'percent'],
+}
+
+const DISPLAY_VERB = /^(calculate|estimate|apply)/
+
+const mathFormulaExports = (): string[] =>
+  entryExports
+    .filter(({ from }) => from.startsWith('./math/'))
+    .map(({ exported }) => exported)
+    .filter((name) => DISPLAY_VERB.test(name))
+    .sort()
+
+describe('display-tier formulas give back numbers', () => {
+  it('samples every calculate/estimate/apply export under math/', () => {
+    expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
+  })
+
+  it('gives back a number for each sample call', () => {
+    for (const [name, args] of Object.entries(MATH_SAMPLES)) {
+      const result = callExport(name, args)
+      const fields = NUMERIC_FIELDS[name]
+      if (fields) {
+        for (const field of fields) {
+          expect(typeof Object(result)[field], `${name}.${field}`).toBe(
+            'number'
+          )
+        }
+        continue
+      }
+      expect(typeof result, name).toBe('number')
+    }
+  })
+})
+
+/** Sample inputs ≥ 1000, where a human formatter must group the digits. */
+const FORMAT_SAMPLES: Record<string, readonly unknown[]> = {
+  formatCompactUsd: [1234.5],
+  formatNumber: [1234.5],
+  formatPrice: [1234.5],
+  formatSignedPercent: [1234.5],
+  formatSignedUsd: [1234.5],
+  formatUsd: [1234.5],
+}
+
+/** Sample inputs for every `decimal/convert.ts` export that gives a string. */
+const CONVERT_STRING_SAMPLES: Record<string, readonly unknown[]> = {
+  baseUnitsToDecimal: ['1234500000', 6],
+  fromBaseUnits: ['1234500000', 6],
+}
+
+describe('format gives human strings, convert gives DecimalStrings', () => {
+  it('covers every format export', () => {
+    const formatExports = entryExports
+      .filter(({ from }) => from === './decimal/format.js')
+      .map(({ exported }) => exported)
+      .filter((name) => name.startsWith('format'))
+      .sort()
+    expect(formatExports).toEqual(Object.keys(FORMAT_SAMPLES).sort())
+  })
+
+  it('renders a grouped, non-DecimalString result for an input of 1000 or more', () => {
+    for (const [name, args] of Object.entries(FORMAT_SAMPLES)) {
+      const result = callExport(name, args)
+      expect(typeof result, name).toBe('string')
+      expect(String(result), name).not.toMatch(DECIMAL_PATTERN)
+    }
+  })
+
+  it('covers every string-returning convert export', () => {
+    const stringExports = entryExports
+      .filter(({ from }) => from === './decimal/convert.js')
+      .filter(({ exported }) => {
+        const returns = returnTypeOf(signatures[exported] ?? '')
+        return returns === 'DecimalString' || returns === 'string'
+      })
+      .map(({ exported }) => exported)
+      .sort()
+    expect(stringExports).toEqual(Object.keys(CONVERT_STRING_SAMPLES).sort())
+  })
+
+  it('renders a DecimalString for every convert export', () => {
+    for (const [name, args] of Object.entries(CONVERT_STRING_SAMPLES)) {
+      const result = callExport(name, args)
+      expect(typeof result, name).toBe('string')
+      expect(String(result), name).toMatch(DECIMAL_PATTERN)
+    }
+  })
+})
