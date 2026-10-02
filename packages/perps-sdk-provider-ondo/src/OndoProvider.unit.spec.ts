@@ -41,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
+import { ONDO_PROVIDER_KEY } from './constants.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
@@ -696,11 +697,14 @@ const SESSION_GATED_READS: ReadonlyArray<
 const sessionRequiredError = (read: string) => ({
   code: PerpsErrorCode.SetupRequired,
   message: `Ondo ${read} requires a session token. Run the SIWE login first.`,
+  tool: ONDO_PROVIDER_KEY,
 })
 
 const sessionRejectedError = (read: string) => ({
   code: PerpsErrorCode.Unauthorized,
   message: `Ondo ${read} failed: the venue rejected the session; sign in again.`,
+  tool: ONDO_PROVIDER_KEY,
+  cause: expect.any(OndoSessionExpiredError),
 })
 
 describe('OndoProvider — reads without a session', () => {

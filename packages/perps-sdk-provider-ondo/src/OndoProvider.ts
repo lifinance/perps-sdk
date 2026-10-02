@@ -282,7 +282,10 @@ export const ondoProvider = (
   // valid locally.
   const withSession = async <T>(
     address: Address,
-    fallback: { noSession: () => T; rejected: () => T },
+    fallback: {
+      noSession: () => T
+      rejected: (cause: OndoSessionExpiredError) => T
+    },
     fn: (token: OndoAuthToken) => Promise<T>
   ): Promise<T> => {
     const token = await tokenStore.get(address)
@@ -294,25 +297,32 @@ export const ondoProvider = (
     } catch (err) {
       if (err instanceof OndoSessionExpiredError) {
         await tokenStore.remove(address)
-        return fallback.rejected()
+        return fallback.rejected(err)
       }
       throw err
     }
   }
 
   const sessionRequired = (read: string) => (): never => {
-    throw new PerpsError(
+    const error = new PerpsError(
       PerpsErrorCode.SetupRequired,
       `Ondo ${read} requires a session token. Run the SIWE login first.`
     )
+    error.tool = ONDO_PROVIDER_KEY
+    throw error
   }
 
-  const sessionRejected = (read: string) => (): never => {
-    throw new PerpsError(
-      PerpsErrorCode.Unauthorized,
-      `Ondo ${read} failed: the venue rejected the session; sign in again.`
-    )
-  }
+  const sessionRejected =
+    (read: string) =>
+    (cause: OndoSessionExpiredError): never => {
+      const error = new PerpsError(
+        PerpsErrorCode.Unauthorized,
+        `Ondo ${read} failed: the venue rejected the session; sign in again.`
+      )
+      error.tool = ONDO_PROVIDER_KEY
+      error.cause = cause
+      throw error
+    }
 
   // A data read throws the account's state: an empty result would be
   // indistinguishable from an account with no data.
