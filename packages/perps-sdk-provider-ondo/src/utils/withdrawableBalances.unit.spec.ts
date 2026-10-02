@@ -12,6 +12,7 @@ describe('ondoWithdrawableBalances', () => {
         assetId: 'usdc',
         route: 'perps',
         available: '599',
+        max: '597.5',
         withdrawalFee: '1.5',
         isFeeDeducted: false,
       },
@@ -24,6 +25,7 @@ describe('ondoWithdrawableBalances', () => {
         assetId: 'usdc',
         route: 'perps',
         available: '599',
+        max: '599',
         withdrawalFee: '0',
         isFeeDeducted: false,
       },
@@ -32,7 +34,12 @@ describe('ondoWithdrawableBalances', () => {
 
   it('sets no fee or isFeeDeducted key when the venue fee is absent', () => {
     const [row] = ondoWithdrawableBalances('usdc', balance('599'))
-    expect(row).toEqual({ assetId: 'usdc', route: 'perps', available: '599' })
+    expect(row).toEqual({
+      assetId: 'usdc',
+      route: 'perps',
+      available: '599',
+      max: '599',
+    })
     expect(row).not.toHaveProperty('withdrawalFee')
     expect(row).not.toHaveProperty('isFeeDeducted')
   })

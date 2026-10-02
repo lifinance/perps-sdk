@@ -877,7 +877,9 @@ export class PerpsClient {
         }
       }
       if (row.withdrawalFee === undefined) {
-        return [{ asset, route: row.route, available: row.available }]
+        return [
+          { asset, route: row.route, available: row.available, max: row.max },
+        ]
       }
       if (!isNonNegativeDecimal(row.withdrawalFee)) {
         throw new PerpsError(
@@ -890,6 +892,7 @@ export class PerpsClient {
           asset,
           route: row.route,
           available: row.available,
+          max: row.max,
           withdrawalFee: row.withdrawalFee,
           ...(row.isFeeDeducted === undefined
             ? {}

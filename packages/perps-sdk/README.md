@@ -108,15 +108,16 @@ fee source is known for that asset:
   `isFeeDeducted` is `false`.
 - Lighter: never set.
 
-A row with a fee can also carry `isFeeDeducted`. With `true`, the venue takes
-the fee out of the requested amount, so an amount at or below the fee delivers
-nothing. With `false`, the venue charges the fee in addition to the requested
-amount, so the largest amount the row can fund is `available` minus the fee.
-When that result is zero or negative, the row funds no withdrawal. An absent
+Every row carries `max`: the largest `amount` the row can fund. A row with a
+fee can also carry `isFeeDeducted`. With `true`, the venue takes the fee out
+of the requested amount, so an amount at or below the fee delivers nothing,
+and `max` equals `available`. With `false`, the venue charges the fee in
+addition to the requested amount, so `max` is `available` minus the fee,
+floored at zero. A `max` of zero funds no withdrawal. An absent
 `isFeeDeducted` means unknown. It does not mean `true`.
 
 An absent `withdrawalFee` means that no fee source is known. It does not prove
-that the venue charges no fee.
+that the venue charges no fee. `max` then equals `available`.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
@@ -182,6 +183,80 @@ const availableToTrade = await client.getAvailableToTrade({
 })
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
+
+### Order amounts and venue grids
+
+Order amounts cross the API as a `DecimalString`: a plain decimal string with
+no grouping, exponent or currency sign. Never convert one to a `number`. A
+`number` holds 15 significant digits, so `Number('1234567.0000000001')` is
+`1234567` and the order loses a lot step before it reaches the venue.
+
+`snapOrderSize(sdk, market, size)` snaps a size onto the venue lot grid of the
+market's own provider. It truncates toward zero, so the snapped size never
+exceeds the size the user asked for. `snapOrderPrice(sdk, market, price)`
+snaps a price onto the venue tick grid and rounds half-up. Each one resolves
+the provider from `market.providerId`, so a caller never applies one venue's
+rules to another venue's market.
+
+`calculateOrderAmounts()` gives the three order-entry amounts from whichever
+one the user typed. It normalises the held field first, then derives the other
+two from that value. The rounding is directional, so the result always funds
+itself — `size × price ≤ margin × leverage`:
+
+- a derived size truncates onto the venue lot grid;
+- a derived notional truncates onto the `quoteDecimals` grid;
+- a derived margin rounds **up** onto the `quoteDecimals` grid, because it is
+  the one amount that has to cover the others;
+- a held field keeps its own normalised value.
+
+The call gives `null` when the input is not a positive amount, price and
+leverage, and also when the grids snap the result to a non-positive amount:
+a size below one lot, or a quote amount below the last `quoteDecimals` place,
+describes no order a venue can take.
+
+```ts
+import { calculateOrderAmounts } from '@lifi/perps-sdk'
+
+const amounts = calculateOrderAmounts({
+  sdk: client.client,
+  market,
+  held: 'margin',
+  amount: '100',
+  leverage: 5,
+  price: '1000',
+  // quoteDecimals defaults to 2, the minor unit of a USD quote asset.
+})
+// { margin: '100', size: '0.5', notional: '500' }, or null — see above
+```
+
+`truncateDecimal(value, decimals)` rounds a decimal string down and pads it to
+exactly `decimals` places, which seeds a fixed-decimal input field.
+`numberToDecimalString(value)` spells a `number` from a venue or browser API as
+a plain decimal string, so `1e-7` becomes `'0.0000001'`.
+
+A provider plugin implements the same two rules for its own venue:
+`snapOrderPrice(market: Market, price: DecimalString): DecimalString` and
+`snapOrderSize(market: Market, size: DecimalString): DecimalString`.
+`estimateLiquidationPrice()` stays on `number`, in and out: it is a
+display-tier estimate for a screen, not a wire amount.
+
+### Account-side wire helpers
+
+Three helpers take and give a `DecimalString`, so an account figure never
+passes through a `number`:
+
+- `calculateTransferable(venueFigure, units)` clamps a venue free figure to
+  `[0, units]`. It is the single cap behind `Balance.transferable` on every
+  provider.
+- `calculateWithdrawMax(row)` gives `WithdrawableBalance.max` from
+  `available`, `withdrawalFee` and `isFeeDeducted`.
+- `calculateRefuelAmount({ gasUsd, priceUsd, decimals })` divides the
+  recommended gas value by the source-token price, rounds **up** onto the
+  token grid and keeps trailing zeros to `decimals`, so a refuel never lands
+  short. It gives `undefined` when either input is not greater than zero.
+
+Each one throws `PerpsError(ValidationError)`, naming the field, when an
+input is not a `DecimalString`.
 
 ## WebSocket
 

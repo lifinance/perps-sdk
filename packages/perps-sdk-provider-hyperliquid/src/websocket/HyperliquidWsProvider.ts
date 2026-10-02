@@ -1,4 +1,5 @@
 import {
+  calculateTransferable,
   DecodeChain,
   getMarketRegistry,
   isActiveMarket,
@@ -1507,10 +1508,19 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       return
     }
-    const rows = balances.map((balance) => ({
-      ...spotBalance(spotAssetFromToken(balance), balance.total, priceById),
-      locked: balance.hold,
-    }))
+    const rows = balances.map((balance) => {
+      const total = toWireBig(balance.total, 'spotState.balances.total')
+      return {
+        ...spotBalance(spotAssetFromToken(balance), balance.total, priceById),
+        locked: balance.hold,
+        transferable: calculateTransferable(
+          total
+            .minus(toWireBig(balance.hold, 'spotState.balances.hold'))
+            .toFixed(),
+          total.toFixed()
+        ),
+      }
+    })
     this.emit(`spotState:${user}`, {
       channel: 'spotBalances',
       data: rows,

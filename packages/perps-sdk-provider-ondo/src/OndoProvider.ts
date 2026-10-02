@@ -1,6 +1,7 @@
 import {
   ACTIVE_ORDER_STATUSES,
   type ActionSignerContribution,
+  calculateTransferable,
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
@@ -8,8 +9,6 @@ import {
   getMarketRegistry,
   getProviders,
   localStorageAdapter,
-  maxOf,
-  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -74,7 +73,6 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -123,8 +121,6 @@ import {
 import { toWireBig } from './utils/decimal.js'
 import {
   estimateLiquidationPrice,
-  formatOrderPrice,
-  formatOrderSize,
   listOndoDepositAddress,
   mapDepositActivity,
   mapFill,
@@ -137,6 +133,8 @@ import {
   ondoWithdrawableBalances,
   positionRemovableMargin,
   requireOndoCollateralAsset,
+  snapOrderPrice,
+  snapOrderSize,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
 import {
@@ -413,16 +411,13 @@ export const ondoProvider = (
                     units: balance.walletBalance,
                     valueUsd: balance.walletBalance,
                     price: '1',
-                    transferable: minOf(
-                      maxOf(
-                        toWireBig(
-                          balance.withdrawableMargin,
-                          'balance.withdrawableMargin'
-                        ),
-                        new Big(0)
-                      ),
-                      walletBalance
-                    ).toFixed(),
+                    transferable: calculateTransferable(
+                      toWireBig(
+                        balance.withdrawableMargin,
+                        'balance.withdrawableMargin'
+                      ).toFixed(),
+                      walletBalance.toFixed()
+                    ),
                   },
                 ]
               : [],
@@ -1148,9 +1143,9 @@ export const ondoProvider = (
       return getAccountSummary(account)
     },
 
-    formatOrderPrice,
+    snapOrderPrice,
 
-    formatOrderSize,
+    snapOrderSize,
 
     estimateLiquidationPrice,
 

@@ -1,4 +1,5 @@
 import type { Asset, AssetDisplay } from './asset.js'
+import type { DecimalString } from './decimal.js'
 import type {
   ActionType,
   ActivityType,
@@ -23,9 +24,9 @@ import type { Address, ProviderId } from './primitives.js'
  */
 export interface FeeTier {
   /** Decimal fraction charged to maker fills, represented as a string. */
-  maker: string
+  maker: DecimalString
   /** Decimal fraction charged to taker fills, represented as a string. */
-  taker: string
+  taker: DecimalString
 }
 
 /**
@@ -38,22 +39,22 @@ export interface Position {
   market: PerpsMarketDisplay
   side: PositionSide
   /** Position quantity in base-asset units. */
-  size: string
+  size: DecimalString
   /** Average entry price in quote-asset units. */
-  entryPrice: string
+  entryPrice: DecimalString
   /** Current provider mark price in quote-asset units. */
-  markPrice: string
+  markPrice: DecimalString
   /** Estimated liquidation price in quote-asset units. */
-  liquidationPrice: string
+  liquidationPrice: DecimalString
   /** Unrealized PnL in quote-currency units. */
-  unrealizedPnl: string
+  unrealizedPnl: DecimalString
   /**
    * Funding this position accrued since it opened, in quote-currency units.
    * Positive means the account received funding and negative means the account
    * paid it, matching {@link FundingActivity} amounts. Every venue resets the
    * value when the position returns to flat.
    */
-  accruedFunding: string
+  accruedFunding: DecimalString
   /** Position leverage as a numeric multiple. */
   leverage: number
   /**
@@ -62,12 +63,12 @@ export interface Position {
    * Hyperliquid isolated `marginUsed` includes the unrealized PnL of the
    * position; Lighter `allocated_margin` excludes it.
    */
-  marginUsed: string
+  marginUsed: DecimalString
   /**
    * Exact initial margin the venue currently requires for this position.
    * Unlike `leverage`, this decimal string is safe for risk calculations.
    */
-  initialMarginRequirement: string
+  initialMarginRequirement: DecimalString
   marginMode: MarginMode
 }
 
@@ -82,10 +83,10 @@ export interface OrderBase {
   status: OrderStatus
   /** Venue text for a REJECTED or CANCELLED order, when the venue gives one. */
   statusReason?: string
-  originalSize: string
-  remainingSize: string
-  filledSize: string
-  averagePrice?: string
+  originalSize: DecimalString
+  remainingSize: DecimalString
+  filledSize: DecimalString
+  averagePrice?: DecimalString
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
   parentOrderId?: string
@@ -98,7 +99,7 @@ export interface OrderBase {
 /** Market or limit order with a time-in-force policy. */
 export interface RegularOrder extends OrderBase {
   type: OrderType.MARKET | OrderType.LIMIT
-  price?: string
+  price?: DecimalString
   timeInForce: TimeInForce
   expiresAt?: string
 }
@@ -110,9 +111,9 @@ export interface TriggerOrder extends OrderBase {
     | OrderType.STOP_LIMIT
     | OrderType.TAKE_PROFIT_MARKET
     | OrderType.TAKE_PROFIT_LIMIT
-  triggerPrice: string
+  triggerPrice: DecimalString
   triggerCondition: TriggerCondition
-  limitPrice?: string
+  limitPrice?: DecimalString
 }
 
 /** Time-weighted execution parent. */
@@ -135,18 +136,18 @@ export interface Balance {
   /** Which category/venue this balance sits in — references a {@link ProviderCategory}. */
   categoryId: string
   asset: Asset
-  units: string
+  units: DecimalString
   /** USD value the SDK fills from the prices map; consumers render with zero math. */
-  valueUsd: string
+  valueUsd: DecimalString
   /** USD price of one unit. Absent when the provider holds no price for the asset. */
-  price?: string
+  price?: DecimalString
   /**
    * Part of `units` the venue releases from this category, as a decimal
    * string clamped to `[0, units]`. Every collateral row and every spot row
    * carries it. It is not the withdrawal ceiling: read
    * `PerpsClient.getWithdrawableBalances` for that.
    */
-  transferable?: string
+  transferable?: DecimalString
 }
 
 /**
@@ -170,9 +171,9 @@ export interface AccountResponse {
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
   positions: Position[]
   /** Margin reserved across the account, represented as a decimal string. */
-  marginUsed: string
+  marginUsed: DecimalString
   /** Unrealized account PnL, represented as a decimal string. */
-  unrealizedPnl: string
+  unrealizedPnl: DecimalString
   feeTier: FeeTier
   config: AccountConfig
 }
@@ -185,13 +186,13 @@ export interface AccountResponse {
  */
 export interface AccountSummary {
   /** Total account portfolio value in USD. */
-  portfolioValue: string
+  portfolioValue: DecimalString
   /** Margin currently available for new orders in USD. */
-  availableMargin: string
+  availableMargin: DecimalString
   /** Margin currently reserved by open positions/orders in USD. */
-  marginUsed: string
+  marginUsed: DecimalString
   /** Aggregate unrealized PnL in USD. */
-  unrealizedPnl: string
+  unrealizedPnl: DecimalString
 }
 
 /**
@@ -208,9 +209,9 @@ export interface AvailableToTrade {
   /** The market's margin asset, which both amounts are denominated in. */
   asset: AssetDisplay
   /** Amount the account can still buy, represented as a decimal string. */
-  buy: string
+  buy: DecimalString
   /** Amount the account can still sell, represented as a decimal string. */
-  sell: string
+  sell: DecimalString
 }
 
 /**
@@ -251,7 +252,7 @@ export interface OrdersResponse {
  */
 export interface Fee {
   /** Decimal string in `asset`'s units. */
-  amount: string
+  amount: DecimalString
   /**
    * Display symbol the fee is denominated in, resolved by the provider
    * adapter. Falls back to the venue's own asset id when the registry knows no
@@ -276,10 +277,10 @@ export interface Fill {
    * Hyperliquid taker fill, which may be a market or an aggressive limit order).
    */
   type?: OrderType
-  size: string
-  price: string
+  size: DecimalString
+  price: DecimalString
   liquidity: LiquidityRole
-  filledSize?: string
+  filledSize?: DecimalString
   /** Absent when the venue reports no fee for the fill. */
   fee?: Fee
   /**
@@ -300,8 +301,8 @@ export interface Fill {
    * a sentinel value.
    */
   leverage?: number
-  realizedPnl?: string | null
-  startPosition?: string
+  realizedPnl?: DecimalString | null
+  startPosition?: DecimalString
   classification: FillClassification
   createdAt: string
   /** Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
@@ -354,7 +355,7 @@ export interface BaseActivity {
 export interface DepositActivity extends BaseActivity {
   type: ActivityType.DEPOSIT
   asset: Asset
-  amount: string
+  amount: DecimalString
   /**
    * Address the deposited funds came from, as the venue reports it. Absent
    * when the venue's deposit payload names no source address.
@@ -373,7 +374,7 @@ export interface DepositActivity extends BaseActivity {
 export interface WithdrawalActivity extends BaseActivity {
   type: ActivityType.WITHDRAWAL
   asset: Asset
-  amount: string
+  amount: DecimalString
   /** Absent when the venue reports no fee for the withdrawal. */
   fee?: Fee
   /** Fully-resolved block-explorer URL for the on-chain withdrawal tx. */
@@ -388,7 +389,7 @@ export interface WithdrawalActivity extends BaseActivity {
 export interface LiquidatedPosition {
   market: MarketDisplay
   /** Absent when the venue reports no liquidated size for the position. */
-  size?: string
+  size?: DecimalString
 }
 
 /**
@@ -402,9 +403,9 @@ export interface LiquidatedPosition {
 export interface LiquidationActivity extends BaseActivity {
   type: ActivityType.LIQUIDATION
   /** Absent when the venue reports no liquidated notional. */
-  liquidatedNotionalPosition?: string
+  liquidatedNotionalPosition?: DecimalString
   /** Absent when the venue reports no account value at liquidation time. */
-  accountValue?: string
+  accountValue?: DecimalString
   /**
    * Margin mode the liquidated account ran under, in the venue's own
    * vocabulary — typically `cross` or `isolated`, but the venue may report
@@ -432,9 +433,9 @@ export interface FundingActivity extends BaseActivity {
    * Signed, in quote-currency units. Positive means the account received
    * funding; negative means the account paid it.
    */
-  amount: string
-  positionSize: string
-  fundingRate: string
+  amount: DecimalString
+  positionSize: DecimalString
+  fundingRate: DecimalString
 }
 
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
@@ -451,7 +452,7 @@ export type TransferActivity = BaseActivity & {
   type: ActivityType.TRANSFER
   direction: 'IN' | 'OUT'
   asset: Asset
-  amount: string
+  amount: DecimalString
   /**
    * Every fee the venue charged for the transfer, in the order the venue
    * reports them. A venue may charge several fees for one transfer, each in a
@@ -509,7 +510,7 @@ export type HyperliquidAgent = Record<string, unknown>
 export interface HyperliquidBuilderFeeApproval {
   builderAddress: string
   /** Basis points as a string. */
-  maxFeeRate: string
+  maxFeeRate: DecimalString
   approved: boolean
 }
 
@@ -521,10 +522,10 @@ export interface HyperliquidBuilderFeeApproval {
  */
 export interface HyperliquidMarginSummary {
   /** Total equity: locked margin and unrealized PnL included. */
-  accountValue: string
-  totalNtlPos: string
-  totalRawUsd: string
-  totalMarginUsed: string
+  accountValue: DecimalString
+  totalNtlPos: DecimalString
+  totalRawUsd: DecimalString
+  totalMarginUsed: DecimalString
 }
 
 /**
@@ -539,8 +540,8 @@ export interface HyperliquidDexAccountState {
   marginSummary: HyperliquidMarginSummary
   /** Cross-margin subset of {@link HyperliquidDexAccountState.marginSummary}. */
   crossMarginSummary: HyperliquidMarginSummary
-  crossMaintenanceMarginUsed: string
-  withdrawable: string
+  crossMaintenanceMarginUsed: DecimalString
+  withdrawable: DecimalString
 }
 
 /**
@@ -561,7 +562,7 @@ export interface HyperliquidAccountConfig {
    * `tokenToAvailableAfterMaintenance` list. Unified and portfolio-margin
    * accounts only; other modes derive buying power from `marginSummary`.
    */
-  availableAfterMaintenance?: string
+  availableAfterMaintenance?: DecimalString
 }
 
 /**
@@ -614,23 +615,23 @@ export interface LighterAccountConfig {
    * equity above its initial margin requirement and subtracts the shortfall
    * below it. A decimal string in quote-asset units.
    */
-  availableBalance: string
+  availableBalance: DecimalString
   /**
    * Lighter `cross_asset_value`: cross-margin collateral plus the unrealized
    * PnL of the cross positions. A decimal string in quote-asset units.
    */
-  crossAssetValue: string
+  crossAssetValue: DecimalString
   /**
    * Lighter `cross_initial_margin_requirement`: the initial margin the cross
    * positions lock. A decimal string in quote-asset units.
    */
-  crossInitialMarginRequirement: string
+  crossInitialMarginRequirement: DecimalString
   /**
    * Lighter `total_asset_value`: perps-route equity, isolated allocations and
    * unrealized PnL included. It excludes the spot-route balances. A decimal
    * string in quote-asset units.
    */
-  totalAssetValue: string
+  totalAssetValue: DecimalString
   /**
    * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
    * `changeAccountTier` accepts. Absent on an unauthenticated read, which
@@ -669,15 +670,15 @@ export interface LighterAccountConfig {
  */
 export interface OndoAccountBalance {
   /** Collateral only: locked margin included, unrealized PnL excluded. */
-  walletBalance: string
-  unrealizedPnl: string
+  walletBalance: DecimalString
+  unrealizedPnl: DecimalString
   /** Total equity. */
-  marginBalance: string
-  usedMargin: string
+  marginBalance: DecimalString
+  usedMargin: DecimalString
   /** Venue buying power. */
-  availableMargin: string
+  availableMargin: DecimalString
   /** Venue withdrawable figure, at or below {@link OndoAccountBalance.availableMargin}. */
-  withdrawableMargin: string
+  withdrawableMargin: DecimalString
 }
 
 /**

@@ -609,10 +609,10 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     maintenanceMarginRate: 0.012,
   }
 
-  it('formats prices and sizes against the Lighter decimal budgets', () => {
+  it('snaps prices and sizes against the Lighter decimal budgets', () => {
     const provider = lighterProvider()
-    expect(provider.formatOrderPrice(btcMarket, 50000.25)).toBe('50000.3')
-    expect(provider.formatOrderSize(btcMarket, 0.123456)).toBe('0.1234')
+    expect(provider.snapOrderPrice(btcMarket, '50000.25')).toBe('50000.3')
+    expect(provider.snapOrderSize(btcMarket, '0.123456')).toBe('0.1234')
   })
 
   it('estimates liquidation from the market maintenanceMarginRate', () => {
@@ -1153,9 +1153,19 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '1', route: 'spot', available: '0.00609091' },
-      { assetId: '3', route: 'spot', available: '10.9886' },
-      { assetId: '3', route: 'perps', available: '11.009697536' },
+      {
+        assetId: '1',
+        route: 'spot',
+        available: '0.00609091',
+        max: '0.00609091',
+      },
+      { assetId: '3', route: 'spot', available: '10.9886', max: '10.9886' },
+      {
+        assetId: '3',
+        route: 'perps',
+        available: '11.009697536',
+        max: '11.009697536',
+      },
     ])
   })
 
@@ -1196,8 +1206,18 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '3', route: 'spot', available: '103.00085138124' },
-      { assetId: '3', route: 'perps', available: '364310.903135' },
+      {
+        assetId: '3',
+        route: 'spot',
+        available: '103.00085138124',
+        max: '103.00085138124',
+      },
+      {
+        assetId: '3',
+        route: 'perps',
+        available: '364310.903135',
+        max: '364310.903135',
+      },
     ])
   })
 
@@ -1211,7 +1231,12 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     await expect(
       provider.getWithdrawableBalances!({ address: ADDRESS })
     ).resolves.toEqual([
-      { assetId: '3', route: 'spot', available: '103.00085138124' },
+      {
+        assetId: '3',
+        route: 'spot',
+        available: '103.00085138124',
+        max: '103.00085138124',
+      },
     ])
   })
 
@@ -1460,6 +1485,36 @@ describe('LighterProvider — getAccount balance asset identity', () => {
         transferable,
       }))
     ).toEqual([{ units: '60', transferable: '0' }])
+  })
+
+  it('spells transferable in plain notation for a sub-micro spot holding', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              ...ACCOUNT_WITH_SPOT.accounts[0].assets[0],
+              balance: '5e-7',
+              locked_balance: '2e-7',
+              margin_balance: '0',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(
+      account.balances.map(({ units, transferable }) => ({
+        units,
+        transferable,
+      }))
+    ).toEqual([{ units: '0.0000005', transferable: '0.0000003' }])
   })
 
   it('omits a collateral row for an asset whose margin_balance is zero', async () => {

@@ -1,5 +1,6 @@
 import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
+import type { DecimalString } from './decimal.js'
 import type {
   ActionRelay,
   ActionType,
@@ -179,25 +180,37 @@ export interface Provider {
    * values. Absent when the provider has no settlement chain.
    */
   chainId?: number
-  /** Absent means no minimum advertised. */
-  minDepositUsd?: number
   /**
-   * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
-   * `minMarginUsd` parameter. Absent means no minimum advertised.
+   * Minimum deposit in USD, as a plain decimal string. Absent means no
+   * minimum advertised.
    */
-  minOrderValueUsd?: number
+  minDepositUsd?: DecimalString
+  /**
+   * Minimum order notional value in USD, as a plain decimal string. Absent
+   * means no minimum advertised.
+   */
+  minOrderValueUsd?: DecimalString
   /**
    * Minimum order notional value in USD for reduce-only orders, when the
    * provider applies a lower floor than `minOrderValueUsd`. Absent means
    * reduce-only orders use the same floor as `minOrderValueUsd`.
    */
   minReduceOrderValueUsd?: number
-  /** Minimum withdrawal notional in USD. Absent means no minimum advertised. */
-  minWithdrawalUsd?: number
-  /** Flat deposit fee in USD the provider charges. Absent means no fee advertised. */
-  depositFeeUsd?: number
-  /** Flat withdrawal fee in USD the provider charges. Absent means no fee advertised. */
-  withdrawalFeeUsd?: number
+  /**
+   * Minimum withdrawal notional in USD, as a plain decimal string. Absent
+   * means no minimum advertised.
+   */
+  minWithdrawalUsd?: DecimalString
+  /**
+   * Flat deposit fee in USD the provider charges, as a plain decimal string.
+   * Absent means no fee advertised.
+   */
+  depositFeeUsd?: DecimalString
+  /**
+   * Flat withdrawal fee in USD the provider charges, as a plain decimal
+   * string. Absent means no fee advertised.
+   */
+  withdrawalFeeUsd?: DecimalString
   /**
    * Candle intervals this provider supports for OHLCV/chart requests, in
    * ascending order. Drives the client's chart interval selector. Empty for

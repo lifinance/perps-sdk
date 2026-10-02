@@ -89,6 +89,6 @@ export const getWithdrawableBalances = async (
     state,
     spotState,
     quoteAsset.id,
-    feeUsd === undefined ? undefined : String(feeUsd)
+    feeUsd
   )
 }

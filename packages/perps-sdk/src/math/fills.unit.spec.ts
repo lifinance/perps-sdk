@@ -1,6 +1,6 @@
-import { FillClassification } from '@lifi/perps-types'
+import { FillClassification, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { classifyFillFromPosition } from './fillClassification.js'
+import { classifyFill, classifyFillFromPosition } from './fills.js'
 
 /**
  * Exhaustive coverage of `classifyFillFromPosition` against the
@@ -73,5 +73,79 @@ describe('classifyFillFromPosition (shared)', () => {
         FillClassification.REDUCED_SHORT
       )
     })
+  })
+})
+
+describe('classifyFill (deprecated — PnL heuristic)', () => {
+  it('should classify BUY with no PnL as Opened Long', () => {
+    expect(classifyFill(OrderSide.BUY, null)).toBe(
+      FillClassification.OPENED_LONG
+    )
+    expect(classifyFill(OrderSide.BUY, undefined)).toBe(
+      FillClassification.OPENED_LONG
+    )
+  })
+
+  it('should classify BUY with zero PnL as Opened Long', () => {
+    expect(classifyFill(OrderSide.BUY, '0')).toBe(
+      FillClassification.OPENED_LONG
+    )
+  })
+
+  it('should classify BUY with non-zero PnL as Closed Short', () => {
+    expect(classifyFill(OrderSide.BUY, '150.50')).toBe(
+      FillClassification.CLOSED_SHORT
+    )
+    expect(classifyFill(OrderSide.BUY, '-50.25')).toBe(
+      FillClassification.CLOSED_SHORT
+    )
+  })
+
+  it('should classify SELL with no PnL as Opened Short', () => {
+    expect(classifyFill(OrderSide.SELL, null)).toBe(
+      FillClassification.OPENED_SHORT
+    )
+    expect(classifyFill(OrderSide.SELL, undefined)).toBe(
+      FillClassification.OPENED_SHORT
+    )
+  })
+
+  it('should classify SELL with zero PnL as Opened Short', () => {
+    expect(classifyFill(OrderSide.SELL, '0')).toBe(
+      FillClassification.OPENED_SHORT
+    )
+  })
+
+  it('should classify SELL with non-zero PnL as Closed Long', () => {
+    expect(classifyFill(OrderSide.SELL, '200.00')).toBe(
+      FillClassification.CLOSED_LONG
+    )
+    expect(classifyFill(OrderSide.SELL, '-100.00')).toBe(
+      FillClassification.CLOSED_LONG
+    )
+  })
+
+  it('should treat very small non-zero PnL as a close', () => {
+    expect(classifyFill(OrderSide.BUY, '0.01')).toBe(
+      FillClassification.CLOSED_SHORT
+    )
+    expect(classifyFill(OrderSide.SELL, '-0.001')).toBe(
+      FillClassification.CLOSED_LONG
+    )
+  })
+
+  it('should treat "0.0" as zero (not a close)', () => {
+    expect(classifyFill(OrderSide.BUY, '0.0')).toBe(
+      FillClassification.OPENED_LONG
+    )
+    expect(classifyFill(OrderSide.SELL, '0.00')).toBe(
+      FillClassification.OPENED_SHORT
+    )
+  })
+
+  it('reads an unparseable realizedPnl as a close, as a non-zero value does', () => {
+    expect(classifyFill(OrderSide.BUY, 'n/a')).toBe(
+      FillClassification.CLOSED_SHORT
+    )
   })
 })

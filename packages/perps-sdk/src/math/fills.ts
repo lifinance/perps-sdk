@@ -1,4 +1,12 @@
-import { FillClassification } from '@lifi/perps-types'
+import { FillClassification, OrderSide } from '@lifi/perps-types'
+import { parseDecimal } from '../decimal/parse.js'
+
+/**
+ * Re-exported fill taxonomy used by {@link classifyFillFromPosition}.
+ *
+ * @public
+ */
+export { FillClassification }
 
 /**
  * Classify a perpetual fill into the Open/Close/Increase/Reduce/Switch
@@ -48,4 +56,25 @@ export function classifyFillFromPosition(
     return FillClassification.INCREASED_SHORT
   }
   return FillClassification.REDUCED_SHORT
+}
+
+/**
+ * Classify a fill as open or close based on realizedPnl.
+ * @deprecated Use `Fill.classification` instead — it uses startPosition
+ * for accurate open/increase/reduce/close/reverse classification.
+ * @public
+ */
+export function classifyFill(
+  side: OrderSide,
+  realizedPnl: string | null | undefined
+): FillClassification {
+  const isClose = realizedPnl != null && parseDecimal(realizedPnl) !== 0
+  if (side === OrderSide.BUY) {
+    return isClose
+      ? FillClassification.CLOSED_SHORT
+      : FillClassification.OPENED_LONG
+  }
+  return isClose
+    ? FillClassification.CLOSED_LONG
+    : FillClassification.OPENED_SHORT
 }

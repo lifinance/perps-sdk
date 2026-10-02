@@ -64,4 +64,23 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.openInterest).toBeUndefined()
     expect(result.funding).toBeUndefined()
   })
+
+  it('omits the daily figures a record does not carry', () => {
+    // A frame as the wire delivers it, for a market listed inside the last
+    // 24h: both daily figures arrive as JSON `null`.
+    const freshMarket: LtWsMarketStats = JSON.parse(
+      JSON.stringify({
+        ...perpStats,
+        daily_quote_token_volume: null,
+        daily_price_change: null,
+      })
+    )
+
+    const result = mapMarketContext(freshMarket)
+
+    expect(result.markPrice).toBe('95000')
+    expect(result.openInterest).toBe('1234.5')
+    expect(result).not.toHaveProperty('priceChange24h')
+    expect(result).not.toHaveProperty('volume24h')
+  })
 })

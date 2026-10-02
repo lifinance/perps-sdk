@@ -1,3 +1,5 @@
+import type { DecimalString } from './decimal.js'
+
 /**
  * Underlying token/registry entry. The base entity of the perps taxonomy:
  * a tradable unit referenced by markets (as base/quote legs) and held by
@@ -32,7 +34,7 @@ export interface Asset {
   /** L1 token contract; the zero address denotes native gas. */
   l1Address?: string
   /** Venue minimum for a single withdrawal, denominated in this asset — not USD. */
-  minWithdrawalAmount?: string
+  minWithdrawalAmount?: DecimalString
 }
 
 /**

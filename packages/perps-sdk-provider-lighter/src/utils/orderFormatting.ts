@@ -1,31 +1,38 @@
 /**
- * Lighter order size and price formatting for exchange submission.
+ * Lighter order size and price snapping for exchange submission.
  *
  * Lighter publishes a flat per-market decimal budget on its order books
  * (`supported_price_decimals` / `supported_size_decimals`), surfaced on the
- * generic {@link Market} as `priceDecimals` / `szDecimals`. Prices round to
- * the tick grid; sizes truncate to the lot grid.
+ * generic {@link Market} as `priceDecimals` / `szDecimals`. Prices round onto
+ * the tick grid; sizes truncate onto the lot grid.
  */
 
 import { PerpsError } from '@lifi/perps-sdk'
-import { type Market, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  type DecimalString,
+  type Market,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import Big from 'big.js'
 
 /**
- * Format a price onto a Lighter market's tick grid: rounded to the market's
- * `priceDecimals` (Lighter's `supported_price_decimals`), trailing zeros
- * stripped.
+ * Snap a price onto a Lighter market's tick grid: rounded half-up to the
+ * market's `priceDecimals` (Lighter's `supported_price_decimals`), trailing
+ * zeros stripped.
  *
  * @throws {PerpsError} `ValidationError` when `market.priceDecimals` is
  *   absent — without the venue's tick grid no correct price can be produced.
  * @public
  */
-export function formatOrderPrice(market: Market, price: number): string {
+export function snapOrderPrice(
+  market: Market,
+  price: DecimalString
+): DecimalString {
   if (market.priceDecimals === undefined) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
       `Market '${market.id}' carries no priceDecimals; Lighter order prices ` +
-        `cannot be formatted without the market's tick grid.`
+        `cannot be snapped without the market's tick grid.`
     )
   }
   const rounded = new Big(price).round(market.priceDecimals, Big.roundHalfUp)
@@ -33,14 +40,17 @@ export function formatOrderPrice(market: Market, price: number): string {
 }
 
 /**
- * Format a size onto a Lighter market's lot grid: truncated (never rounded
- * up, so the size cannot exceed the user's balance) to the market's
+ * Snap a size onto a Lighter market's lot grid: truncated toward zero (never
+ * rounded up, so the size cannot exceed the user's balance) to the market's
  * `szDecimals` (Lighter's `supported_size_decimals`), trailing zeros stripped.
  *
  * @param size - Size in base-asset units as a non-negative magnitude.
  * @public
  */
-export function formatOrderSize(market: Market, size: number): string {
+export function snapOrderSize(
+  market: Market,
+  size: DecimalString
+): DecimalString {
   const truncated = new Big(size).round(market.szDecimals, Big.roundDown)
   return truncated.eq(0) ? '0' : truncated.toFixed()
 }

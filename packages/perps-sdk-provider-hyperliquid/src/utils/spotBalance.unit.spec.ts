@@ -1,4 +1,4 @@
-import type { Asset } from '@lifi/perps-types'
+import { type Asset, PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlSpotBalance } from '../types/index.js'
 import { spotAssetFromToken, spotBalance } from './spotBalance.js'
@@ -59,5 +59,18 @@ describe('spotBalance', () => {
     const result = spotBalance(asset, '2', new Map())
     expect(result.price).toBeUndefined()
     expect(result.valueUsd).toBe('0')
+  })
+
+  it('spells a sub-micro price and value in plain decimal notation', () => {
+    expect(spotBalance(asset, '2', new Map([['150', 5e-7]]))).toMatchObject({
+      price: '0.0000005',
+      valueUsd: '0.000001',
+    })
+  })
+
+  it('rejects a total that is not a decimal', () => {
+    expect(() => spotBalance(asset, '12abc', new Map([['150', 37.5]]))).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
