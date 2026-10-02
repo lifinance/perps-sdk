@@ -99,7 +99,10 @@ function walkDeclarations(
   return { reached, missing }
 }
 
-const mentionsBig = (text: string): boolean => /\bBig\b/.test(text)
+/** The `'big.js'` specifier itself, so an aliased local name still gets caught. */
+const BIG_MODULE_SPECIFIER = /(?:\bfrom\s*|\bimport\(\s*)['"]big\.js['"]/
+const mentionsBig = (text: string): boolean =>
+  /\bBig\b/.test(text) || BIG_MODULE_SPECIFIER.test(text)
 
 const bigDeclarations = ({ reached }: DeclarationWalk): string[] =>
   [...reached].filter(([, code]) => mentionsBig(code)).map(([path]) => path)
@@ -199,6 +202,25 @@ describe('the declaration walk', () => {
 
   it('flags the Big behind an inline import() and ignores prose', () => {
     expect(bigDeclarations(walk)).toEqual(['/emit/walk.d.ts'])
+  })
+
+  it('flags a big.js import whose local name hides the Big token', () => {
+    const ALIASED_EMIT: Record<string, string> = {
+      '/alias/index.d.ts': `
+export type { Quote } from './quote.js';
+`,
+      '/alias/quote.d.ts': `
+import type BigNumber from 'big.js';
+export interface Quote {
+    vwap: BigNumber;
+}
+`,
+    }
+    const aliased = walkDeclarations(
+      '/alias/index.d.ts',
+      (path) => ALIASED_EMIT[path]
+    )
+    expect(bigDeclarations(aliased)).toEqual(['/alias/quote.d.ts'])
   })
 
   it('reports a specifier with no declaration file', () => {
@@ -333,19 +355,20 @@ describe('display-tier formulas give back numbers', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
-  it('gives back a number for each sample call', () => {
+  it('gives back a finite number for each sample call', () => {
     for (const [name, args] of Object.entries(MATH_SAMPLES)) {
       const result = callExport(name, args)
       const fields = NUMERIC_FIELDS[name]
       if (fields) {
         for (const field of fields) {
-          expect(typeof Object(result)[field], `${name}.${field}`).toBe(
-            'number'
-          )
+          expect(
+            Number.isFinite(Object(result)[field]),
+            `${name}.${field}`
+          ).toBe(true)
         }
         continue
       }
-      expect(typeof result, name).toBe('number')
+      expect(Number.isFinite(result), name).toBe(true)
     }
   })
 })
@@ -507,7 +530,7 @@ const REPRESENTATIONS = ['baseUnits', 'decimal', 'decimalString', 'number']
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
-  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate)' +
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate)(?:[A-Z]|$)' +
     `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
 )
 const BANNED_VERB = /^(derive|predict|convert)/
@@ -526,6 +549,10 @@ describe('the vocabulary pattern', () => {
     'stringToFloat',
     'convertAmount',
     'baseUnitsToDecimalOrZero',
+    'isolateMargin',
+    'hashX',
+    'builderX',
+    'snapshotX',
   ])('rejects %s', (name) => {
     expect(VOCABULARY.test(name)).toBe(false)
   })
