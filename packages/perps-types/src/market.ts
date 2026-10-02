@@ -68,9 +68,8 @@ export interface PerpsMarket extends BaseMarket {
   defaultLeverage?: number
   /**
    * Minimum order notional in USD for this market, as a plain decimal string.
-   * Lighter applies it to resting (post-only) orders only. Separate from the
-   * venue-wide `Provider.minOrderValueUsd`, which is a `number`; parse this
-   * string before comparing the two.
+   * Lighter applies it to resting (post-only) orders only. This per-market
+   * floor is separate from the venue-wide `Provider.minOrderValueUsd`.
    */
   minOrderValueUsd?: DecimalString
   /** Maximum market-order notional in USD, as a plain decimal string. */
