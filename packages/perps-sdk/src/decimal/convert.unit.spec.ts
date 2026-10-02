@@ -4,10 +4,7 @@ import { PerpsError } from '../errors/PerpsError.js'
 import {
   baseUnitsToDecimal,
   decimalToBaseUnits,
-  fromBaseUnits,
-  fromBaseUnitsNumber,
   numberToDecimalString,
-  scaleToInteger,
   truncateDecimal,
 } from './convert.js'
 
@@ -23,15 +20,6 @@ const expectValidationError = (fn: () => unknown, match: RegExp) => {
     expect(e.code).toBe(PerpsErrorCode.ValidationError)
   }
 }
-
-describe('deprecated aliases', () => {
-  it.each([
-    [scaleToInteger, decimalToBaseUnits],
-    [fromBaseUnits, baseUnitsToDecimal],
-  ])('alias %# forwards to the renamed implementation', (alias, renamed) => {
-    expect(alias).toBe(renamed)
-  })
-})
 
 describe('decimalToBaseUnits', () => {
   it('scales on-grid values exactly under both roundings', () => {
@@ -137,16 +125,6 @@ describe('baseUnitsToDecimal', () => {
     expect(
       decimalToBaseUnits(baseUnitsToDecimal('1234500', 6), 6, 'truncate')
     ).toBe(1234500)
-  })
-})
-
-describe('fromBaseUnitsNumber', () => {
-  it('should return a number', () => {
-    expect(fromBaseUnitsNumber('1000000', 6)).toBe(1)
-  })
-
-  it('should return 0 for invalid input', () => {
-    expect(fromBaseUnitsNumber('bad', 6)).toBe(0)
   })
 })
 

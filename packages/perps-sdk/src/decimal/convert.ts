@@ -2,7 +2,6 @@ import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { formatUnits } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
-import { parseDecimal } from './parse.js'
 import { requireDecimal } from './requireDecimal.js'
 
 /**
@@ -14,11 +13,6 @@ import { requireDecimal } from './requireDecimal.js'
  * @public
  */
 export type BaseUnitsRounding = 'truncate' | 'round'
-
-/**
- * @deprecated Use `BaseUnitsRounding`. Removed in the next major.
- */
-export type ScaleToIntegerPolicy = BaseUnitsRounding
 
 /**
  * Scale a decimal string to a scaled integer in exact decimal arithmetic — an
@@ -55,11 +49,6 @@ export const decimalToBaseUnits = (
 }
 
 /**
- * @deprecated Use `decimalToBaseUnits`. Removed in the next major.
- */
-export const scaleToInteger = decimalToBaseUnits
-
-/**
  * Convert a base-unit amount (bigint string) to a decimal string.
  *
  * @param amount - Amount in base units (e.g. "1000000" for 1 USDC)
@@ -80,19 +69,6 @@ export function baseUnitsToDecimal(
   } catch {
     return '0'
   }
-}
-
-/**
- * @deprecated Use `baseUnitsToDecimal`. Removed in the next major.
- */
-export const fromBaseUnits = baseUnitsToDecimal
-
-/**
- * @deprecated Compose `parseDecimal(baseUnitsToDecimal(...))`. Removed in the
- * next major.
- */
-export function fromBaseUnitsNumber(amount: string, decimals: number): number {
-  return parseDecimal(baseUnitsToDecimal(amount, decimals)) ?? 0
 }
 
 /**

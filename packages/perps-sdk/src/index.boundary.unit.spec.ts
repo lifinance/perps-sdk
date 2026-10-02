@@ -486,7 +486,6 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { liquidationPrice: 45000, currentPrice: 50000 },
   ],
   calculateNotionalValue: [0.5, 60000],
-  calculatePositionSize: [1000, 10, 50000],
   calculateRealizedPnl: [
     { entryPrice: 100, closePrice: 150, closeSize: 1, isLong: true },
   ],
@@ -501,7 +500,6 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { currentSize: 1, currentEntry: 100, addSize: 1, fillPrice: 200 },
   ],
   estimateFees: [10000, 0.00035],
-  estimateIsolatedLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateNewLeverage: [
     {
@@ -576,7 +574,6 @@ const FORMAT_SAMPLES: Record<
 /** Sample inputs for every `decimal/convert.ts` export that gives a string. */
 const CONVERT_STRING_SAMPLES: Record<string, readonly unknown[]> = {
   baseUnitsToDecimal: ['1234500000', 6],
-  fromBaseUnits: ['1234500000', 6],
   numberToDecimalString: [123456789.123],
   truncateDecimal: ['1000.999', 2],
 }

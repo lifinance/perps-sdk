@@ -24,11 +24,6 @@ function toFloat(value: string): number {
   return parseFloat(cleaned)
 }
 
-/**
- * @deprecated Use `parseDecimal`. Removed in the next major.
- */
-export const stringToFloat = toFloat
-
 const FORMATTED_NUMBER =
   /^(?:[+-]\s*)?(?:\$\s*)?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*(?:%|USD))?$/i
 

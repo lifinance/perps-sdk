@@ -13,45 +13,14 @@ import {
   calculateRequiredMargin,
   calculateRoe,
   calculateUnrealizedPnl,
-  directionSign,
-  effectiveLeverage,
   estimateAverageEntryPrice,
-  estimateIsolatedLiquidationPrice,
   estimateLiquidationPrice,
   estimateNewLeverage,
   estimateUnrealizedPnl,
-  liquidationDistancePercent,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
-  predictAverageEntryPrice,
-  predictNewLeverage,
-  predictUnrealizedPnl,
-  realizedPnlOnClose,
   wouldImmediatelyLiquidate,
 } from './position.js'
-
-describe('deprecated aliases', () => {
-  it.each([
-    [effectiveLeverage, calculateEffectiveLeverage],
-    [liquidationDistancePercent, calculateLiquidationDistance],
-    [realizedPnlOnClose, calculateRealizedPnl],
-    [predictUnrealizedPnl, estimateUnrealizedPnl],
-    [predictAverageEntryPrice, estimateAverageEntryPrice],
-    [predictNewLeverage, estimateNewLeverage],
-    [estimateIsolatedLiquidationPrice, estimateLiquidationPrice],
-  ])('alias %# forwards to the renamed implementation', (alias, renamed) => {
-    expect(alias).toBe(renamed)
-  })
-})
-
-describe('directionSign', () => {
-  it('returns +1 for long', () => {
-    expect(directionSign(true)).toBe(1)
-  })
-  it('returns -1 for short', () => {
-    expect(directionSign(false)).toBe(-1)
-  })
-})
 
 describe('calculateNotionalValue', () => {
   it('should calculate notional for positive size', () => {
