@@ -2832,6 +2832,40 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
     expect(activeOrderCalls).toBe(2) // rejected once, retried once
     expect(orders.orders).toEqual([])
   })
+
+  it('throws Unauthorized without a retry when the venue rejects an SDK-owned token that is not revoked', async () => {
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+
+    let createCount = 0
+    let activeOrderCalls = 0
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        return respond(accountWithOpenOrder)
+      }
+      if (url.includes('/api/v1/tokens/create')) {
+        createCount += 1
+        return respond(readOnlyTokenResponse('ro-rejected'))
+      }
+      if (url.includes('/api/v1/accountActiveOrders')) {
+        activeOrderCalls += 1
+        return respond({ message: 'unauthorized' }, 401)
+      }
+      return undefined
+    })
+
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getOrders({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+    expect(createCount).toBe(1)
+    expect(activeOrderCalls).toBe(1)
+  })
 })
 
 describe('LighterProvider — getOrders pagination contract', () => {
@@ -2993,6 +3027,21 @@ describe('LighterProvider — reads without an auth token', () => {
     await expect(
       rejected.getOrders({ address: ADDRESS })
     ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+  })
+
+  it('getOrders throws SetupRequired before the account lookup when the wallet has no token and no account', async () => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({ code: 21100, message: 'account not found' }, 400)
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getOrders({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(recorded).toEqual([])
   })
 })
 

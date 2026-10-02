@@ -2645,16 +2645,19 @@ describe('OndoProvider — server-revoked session', () => {
   // authenticated read must evict the stale token and throw `Unauthorized` so
   // the UI cannot soft-lock behind a token that still looks valid locally.
   const revokeSession = () =>
-    fetchMock.mockImplementation(async (url: string | URL) => {
-      const u = String(url)
-      if (u.includes('backend.test/v1/perps/markets')) {
-        return respond(MARKETS_RESPONSE)
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond({ providers: providersResult })
+        }
+        recorded.push({ url: u, init })
+        return respond({ success: false, error: 'token expired' }, 401)
       }
-      if (u.includes('backend.test/v1/perps/providers')) {
-        return respond({ providers: providersResult })
-      }
-      return respond({ success: false, error: 'token expired' }, 401)
-    })
+    )
 
   it.each(
     SESSION_GATED_READS

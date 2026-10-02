@@ -381,6 +381,9 @@ describe('Ondo getOrders', () => {
     await expect(
       loggedOut.provider.getOrders({ address: ADDRESS })
     ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    await expect(
+      loggedOut.provider.getOrders({ address: ADDRESS, statuses: [] })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
     expect(loggedOut.requests).toEqual([])
   })
   it('rejects malformed cursors before an authenticated order request', async () => {
