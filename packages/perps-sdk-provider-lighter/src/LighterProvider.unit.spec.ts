@@ -2246,17 +2246,33 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirstPoll)
   })
 
-  it.each([
-    {
-      label: 'HTTP 401',
-      rejection: () => new Response('unauthorized', { status: 401 }),
-    },
-    {
-      label: 'body code 20013',
-      rejection: () => respond({ code: 20013, message: 'invalid auth string' }),
-    },
-  ])('does not evict or recreate an SDK-owned token rejected by $label', async ({
+  it.each(
+    [
+      {
+        label: 'HTTP 401',
+        rejection: () => new Response('unauthorized', { status: 401 }),
+      },
+      {
+        label: 'body code 20013',
+        rejection: () =>
+          respond({ code: 20013, message: 'invalid auth string' }),
+      },
+    ].flatMap((r) => [
+      {
+        ...r,
+        read: 'getAccount',
+        call: (p: LighterPerpsProvider) => p.getAccount({ address: ADDRESS }),
+      },
+      {
+        ...r,
+        read: 'getAvailableToTrade',
+        call: (p: LighterPerpsProvider) =>
+          p.getAvailableToTrade!({ address: ADDRESS, marketId: '0' }),
+      },
+    ])
+  )('$read throws Unauthorized without evicting or recreating an SDK-owned token rejected by $label', async ({
     rejection,
+    call,
   }) => {
     const storage = await storageWithApiKey()
     let createCount = 0
@@ -2275,9 +2291,10 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
 
-    await expect(
-      provider.getAccount({ address: ADDRESS })
-    ).rejects.toBeInstanceOf(PerpsError)
+    await expect(call(provider)).rejects.toMatchObject({
+      name: 'PerpsError',
+      code: PerpsErrorCode.Unauthorized,
+    })
 
     expect(createCount).toBe(1)
     expect(limitsCalls).toBe(1)

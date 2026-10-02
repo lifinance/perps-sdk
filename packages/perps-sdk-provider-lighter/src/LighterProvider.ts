@@ -277,8 +277,10 @@ interface ReadOnlyCreationBackoff {
  *
  * Status reads report the account's state and do not throw for a missing
  * credential: `getAccount` returns a zero fee tier and
- * `apiKeyRegistered: false`; `accountExists` and `getDepositFlow` need no
- * token.
+ * `apiKeyRegistered: false` when the wallet has no locally stored API key
+ * matching the key registered on Lighter; otherwise it reads the fee tier
+ * with the resolved token and throws `Unauthorized` if Lighter rejects it.
+ * `accountExists` and `getDepositFlow` need no token.
  *
  * Data reads throw `PerpsError`, one code per fact:
  *   - `SetupRequired` when none of these sources yields a token. The SDK
@@ -289,7 +291,9 @@ interface ReadOnlyCreationBackoff {
  *     and the read retried once first.
  *   - `AccountNotFound` when the wallet has no Lighter account. This also
  *     applies to `getPositions`, `getWithdrawableBalances` and
- *     `getAvailableToTrade`, which need no token.
+ *     `getAvailableToTrade`, which need no token. `getAvailableToTrade`
+ *     reads the fee tier through `getAccount`, so it also throws
+ *     `Unauthorized` when a matching local key's token is rejected.
  * An account with no rows resolves an empty list.
  *
  * @public
