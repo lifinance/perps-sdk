@@ -1,8 +1,13 @@
-import type { SDKRequestOptions } from '@lifi/perps-sdk'
+import { PerpsError, type SDKRequestOptions } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { type Address, zeroAddress } from 'viem'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type { HlPreTransferCheck } from '../types/index.js'
-import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import {
+  hlInfoOptions,
+  type InfoRequestOptions,
+  infoRequest,
+} from '../utils/infoClient.js'
 
 /**
  * Parameters for {@link getAccountExists}.
@@ -11,6 +16,36 @@ import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
  */
 export interface GetAccountExistsParams {
   address: Address
+}
+
+async function readAccountExists(
+  apiUrl: string,
+  address: Address,
+  options?: InfoRequestOptions
+): Promise<boolean> {
+  const response = await infoRequest<unknown>(
+    apiUrl,
+    {
+      type: 'preTransferCheck',
+      user: address,
+      source: zeroAddress,
+    },
+    options
+  )
+  if (
+    typeof response === 'object' &&
+    response !== null &&
+    'userExists' in response &&
+    typeof response.userExists === 'boolean'
+  ) {
+    return response.userExists
+  }
+  const error = new PerpsError(
+    PerpsErrorCode.ThirdPartyError,
+    'Hyperliquid preTransferCheck response has no boolean userExists field'
+  )
+  error.tool = PROVIDER_KEY
+  throw error
 }
 
 /**
@@ -22,19 +57,25 @@ export interface GetAccountExistsParams {
  * @throws {PerpsError} On Hyperliquid REST error, network, or parsing failures.
  * @public
  */
-export const getAccountExists = async (
+export const getAccountExists = (
   { client, apiUrl }: HyperliquidContext,
   params: GetAccountExistsParams,
   options?: SDKRequestOptions
-): Promise<boolean> => {
-  const { userExists } = await infoRequest<HlPreTransferCheck>(
-    apiUrl,
-    {
-      type: 'preTransferCheck',
-      user: params.address,
-      source: zeroAddress,
-    },
-    hlInfoOptions(client, options)
+): Promise<boolean> =>
+  readAccountExists(apiUrl, params.address, hlInfoOptions(client, options))
+
+export async function requireAccountExists(
+  apiUrl: string,
+  address: Address,
+  options?: InfoRequestOptions
+): Promise<void> {
+  if (await readAccountExists(apiUrl, address, options)) {
+    return
+  }
+  const error = new PerpsError(
+    PerpsErrorCode.AccountNotFound,
+    `No Hyperliquid account found for address: ${address}`
   )
-  return userExists
+  error.tool = PROVIDER_KEY
+  throw error
 }

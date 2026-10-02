@@ -19,6 +19,7 @@ import type {
 import { withExplorerLinks } from '../utils/explorer.js'
 import { assetIsOutcome, mapOrder, perpsDexNames } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
@@ -65,6 +66,8 @@ export const getOrders = async (
   options?: SDKRequestOptions
 ): Promise<OrdersResponse> => {
   const statuses = params.statuses ?? [...ACTIVE_ORDER_STATUSES]
+  const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   if (statuses.length === 0) {
     return {
       provider: PROVIDER_KEY,
@@ -74,7 +77,6 @@ export const getOrders = async (
   }
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   const markets = await registry.sync()
-  const infoOpts = hlInfoOptions(client, options)
   const active = statuses.some(isActiveOrderStatus)
   const terminal = statuses.some((status) => !isActiveOrderStatus(status))
   const [open, historical, twaps] = await Promise.all([

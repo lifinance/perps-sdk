@@ -243,6 +243,10 @@ const marketsFailureResponse = () =>
 const abstractionFetchMock = vi.fn()
 const orderStatusFetchMock = vi.fn()
 const spotStateFetchMock = vi.fn()
+const accountExistsFetchMock = vi.fn(async () => ({
+  userExists: true,
+  fee: '0.0',
+}))
 
 const orderMetadata = (
   overrides: Partial<HlOrderDetail['order']> = {}
@@ -299,6 +303,9 @@ vi.stubGlobal(
       }
       if (body.type === 'spotClearinghouseState') {
         return Response.json(await spotStateFetchMock(body, url))
+      }
+      if (body.type === 'preTransferCheck') {
+        return Response.json(await accountExistsFetchMock())
       }
       if (body.type !== 'userAbstraction') {
         throw new Error(`Unexpected info request: ${body.type}`)
@@ -365,6 +372,77 @@ describe('HyperliquidWsProvider', () => {
       expect(getMockRwsInstance().options).toEqual({
         pingPayload: '{"method":"ping"}',
       })
+    })
+  })
+
+  describe('account access', () => {
+    const address = '0x3A18b8e1e653DF2a60e312e342084604F5E3e876'
+    const subscriptions: Subscription[] = [
+      { channel: 'orderUpdates', dex: providerKey, address },
+      { channel: 'fills', dex: providerKey, address },
+      { channel: 'positions', dex: providerKey, address },
+      { channel: 'spotBalances', dex: providerKey, address },
+      { channel: 'accountSummary', dex: providerKey, address },
+      {
+        channel: 'availableToTrade',
+        dex: providerKey,
+        address,
+        marketId: 'BTC',
+      },
+    ]
+
+    it.each(
+      subscriptions
+    )('$channel rejects an address with no Hyperliquid account', async (subscription) => {
+      accountExistsFetchMock.mockResolvedValueOnce({
+        userExists: false,
+        fee: '1.0',
+      })
+      const provider = createProvider()
+
+      await expect(
+        provider.subscribe(subscription, vi.fn())
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.AccountNotFound,
+        tool: providerKey,
+      })
+      expect(getMockRwsInstance().sent).toEqual([])
+    })
+
+    it('coalesces concurrent checks and retries after a missing account is funded', async () => {
+      accountExistsFetchMock.mockClear()
+      let resolveCheck!: (value: { userExists: boolean; fee: string }) => void
+      accountExistsFetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveCheck = resolve
+          })
+      )
+      const provider = createProvider()
+      const attempts = subscriptions.map((subscription) =>
+        provider.subscribe(subscription, vi.fn())
+      )
+
+      await vi.waitFor(() => {
+        expect(accountExistsFetchMock).toHaveBeenCalledOnce()
+      })
+      resolveCheck({ userExists: false, fee: '1.0' })
+      const results = await Promise.allSettled(attempts)
+
+      for (const result of results) {
+        expect(result.status).toBe('rejected')
+        if (result.status === 'rejected') {
+          expect(result.reason).toMatchObject({
+            code: PerpsErrorCode.AccountNotFound,
+            tool: providerKey,
+          })
+        }
+      }
+      expect(getMockRwsInstance().sent).toEqual([])
+
+      const unsubscribe = await provider.subscribe(subscriptions[0], vi.fn())
+      expect(accountExistsFetchMock).toHaveBeenCalledTimes(2)
+      unsubscribe()
     })
   })
 
@@ -451,18 +529,37 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('rejects a subscription for a delisted market', async () => {
+      accountExistsFetchMock.mockClear()
       const provider = createEnrichingProvider([
         ...HL_MARKETS,
         HL_DELISTED_MARKET,
       ])
+      accountExistsFetchMock.mockResolvedValueOnce({
+        userExists: false,
+        fee: '1.0',
+      })
 
       await expect(
         provider.subscribe(subscriptionFor('DELISTED'), vi.fn())
-      ).rejects.toThrow()
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.MarketNotFound,
+        tool: 'hyperliquid',
+      })
+      expect(accountExistsFetchMock).not.toHaveBeenCalled()
+      accountExistsFetchMock.mockReset()
+      accountExistsFetchMock.mockResolvedValue({
+        userExists: true,
+        fee: '0.0',
+      })
     })
 
     it('rejects a spot market and sends no wire subscription', async () => {
+      accountExistsFetchMock.mockClear()
       const provider = createEnrichingProvider()
+      accountExistsFetchMock.mockResolvedValueOnce({
+        userExists: false,
+        fee: '1.0',
+      })
 
       await expect(
         provider.subscribe(subscriptionFor(HL_SPOT_MARKET.id), vi.fn())
@@ -471,6 +568,12 @@ describe('HyperliquidWsProvider', () => {
         tool: 'hyperliquid',
       })
       expect(getMockRwsInstance().sent).toHaveLength(0)
+      expect(accountExistsFetchMock).not.toHaveBeenCalled()
+      accountExistsFetchMock.mockReset()
+      accountExistsFetchMock.mockResolvedValue({
+        userExists: true,
+        fee: '0.0',
+      })
     })
 
     it.each([

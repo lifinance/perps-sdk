@@ -79,6 +79,7 @@ describe('Hyperliquid getPortfolioHistory', () => {
 
     expect(requestBodies(installed.requests)).toEqual([
       'portfolio',
+      'preTransferCheck',
       'userAbstraction',
     ])
     expect(result).toEqual({

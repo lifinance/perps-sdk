@@ -21,9 +21,9 @@ const jsonResponse = (value: unknown, status = 200): Response =>
  * resolves each Hyperliquid POST from `responses` keyed by the body's `type`
  * field. A `Response` entry or `providers` value is served as-is, so a
  * spec can drive a non-2xx status. POSTs are recorded in `requests`; the
- * reference-data GET routes are recorded separately in `referenceRequests`, so
- * a spec can assert a filtered read skipped one. Unknown `type` values raise so
- * tests can't rely on default fixtures.
+ * reference-data GET routes are recorded separately in `referenceRequests`.
+ * Account-read fixtures model a funded account unless they provide
+ * `preTransferCheck`; every other unknown `type` raises.
  */
 export function installInfoFetchMock(
   responses: Record<string, unknown>,
@@ -80,6 +80,9 @@ export function installInfoFetchMock(
       requests.push({ url, body })
 
       const type = body.type as string
+      if (type === 'preTransferCheck' && !(type in responses)) {
+        return jsonResponse({ userExists: true, fee: '0.0' })
+      }
       if (!(type in responses)) {
         throw new Error(`No mock response registered for /info type=${type}`)
       }

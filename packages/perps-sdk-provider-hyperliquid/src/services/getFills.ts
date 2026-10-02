@@ -6,6 +6,7 @@ import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills } from '../types/index.js'
 import { assetIsOutcome, mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
@@ -32,9 +33,10 @@ export const getFills = async (
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
   const limit = getHistoryLimit(params.limit)
+  const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   await registry.sync()
-  const infoOpts = hlInfoOptions(client, options)
 
   let useRecent =
     params.cursor === undefined &&

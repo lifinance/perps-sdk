@@ -9,7 +9,9 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
+import { hlInfoOptions } from '../utils/infoClient.js'
 import { fetchActiveAssetData } from './activeAssetData.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getAvailableToTrade}.
@@ -43,6 +45,11 @@ export const getAvailableToTrade = async (
   if (market.categoryId === SPOT_MARKET_ID) {
     return undefined
   }
+  await requireAccountExists(
+    context.apiUrl,
+    params.address,
+    hlInfoOptions(context.client, options)
+  )
   const data = await fetchActiveAssetData(
     context,
     params.address,

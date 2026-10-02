@@ -15,6 +15,7 @@ import {
   perpsDexNames,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getPositions}.
@@ -42,9 +43,10 @@ export const getPositions = async (
   params: GetPositionsParams,
   options?: SDKRequestOptions
 ): Promise<PositionsResponse> => {
+  const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   const markets = await registry.sync()
-  const infoOpts = hlInfoOptions(client, options)
 
   const stateResults = await Promise.all(
     perpsDexNames(markets).map((name) =>

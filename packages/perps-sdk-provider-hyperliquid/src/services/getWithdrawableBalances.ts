@@ -16,6 +16,7 @@ import type {
 } from '../types/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { hyperliquidWithdrawableBalances } from '../utils/withdrawableBalances.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getWithdrawableBalances}.
@@ -46,6 +47,7 @@ export const getWithdrawableBalances = async (
 ): Promise<ProviderWithdrawableBalance[]> => {
   const registry = getMarketRegistry(client, PROVIDER_KEY)
   const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
 
   const [{ providers }, markets, abstraction, state, spotState] =
     await Promise.all([
