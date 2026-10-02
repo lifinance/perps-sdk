@@ -1041,6 +1041,10 @@ export const createLighterProvider = (
       // account's free margin; every other perps-route asset releases none.
       const collateralBalances: Balance[] = marginAssets.map((a) => {
         const isSettlement = a.asset_id === collateral.assetIndex
+        const marginBalance = toRequiredBig(
+          a.margin_balance,
+          'margin_balance'
+        ).toFixed()
         return {
           ...toBalance(
             a,
@@ -1049,22 +1053,27 @@ export const createLighterProvider = (
             a.margin_balance
           ),
           transferable: isSettlement
-            ? calculateTransferable(
-                availableBalance.toFixed(),
-                a.margin_balance
-              )
+            ? calculateTransferable(availableBalance.toFixed(), marginBalance)
             : '0',
         }
       })
-      const balances: Balance[] = heldAssets.map((a) => ({
-        ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), a.balance),
-        transferable: calculateTransferable(
-          new Big(a.balance)
-            .minus(toRequiredBig(a.locked_balance, 'locked_balance'))
-            .toFixed(),
-          a.balance
-        ),
-      }))
+      const balances: Balance[] = heldAssets.map((a) => {
+        const balance = toRequiredBig(a.balance, 'balance')
+        return {
+          ...toBalance(
+            a,
+            LIGHTER_SPOT_CATEGORY_ID,
+            registryAsset(a),
+            a.balance
+          ),
+          transferable: calculateTransferable(
+            balance
+              .minus(toRequiredBig(a.locked_balance, 'locked_balance'))
+              .toFixed(),
+            balance.toFixed()
+          ),
+        }
+      })
 
       const assetCollateral = account.assets.flatMap((a) =>
         a.margin_mode === undefined

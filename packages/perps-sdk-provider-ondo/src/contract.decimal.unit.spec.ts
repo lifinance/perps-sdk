@@ -5,7 +5,7 @@ import {
   PositionMarginAdjustment,
   SigningMethod,
 } from '@lifi/perps-types'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoAuthToken } from './types/auth.js'
@@ -34,6 +34,19 @@ const valuesAt = (root: unknown, path: string): unknown[] =>
     [root]
   )
 
+/**
+ * Assert `path` carries at least one value and that every one of them is a
+ * {@link isDecimalString}, so a path the fixture never populates fails rather
+ * than passing on an empty set.
+ */
+const expectDecimalsAt = (root: unknown, path: string): void => {
+  const values = valuesAt(root, path).filter((value) => value != null)
+  expect(values.length, `${path} -> no value in the fixture`).toBeGreaterThan(0)
+  for (const value of values) {
+    expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(true)
+  }
+}
+
 /** Every `DecimalString` field `Position` declares. */
 const POSITION_FIELDS = [
   'size',
@@ -49,8 +62,8 @@ const POSITION_FIELDS = [
 /** Every `DecimalString` field `Balance` declares. */
 const BALANCE_FIELDS = ['units', 'valueUsd', 'price', 'transferable']
 
+// Ondo reports no spot category, so every balance row is collateral.
 const ACCOUNT_PATHS = [
-  ...BALANCE_FIELDS.map((f) => `balances[].${f}`),
   ...BALANCE_FIELDS.map((f) => `collateralBalances[].${f}`),
   ...POSITION_FIELDS.map((f) => `positions[].${f}`),
   'marginUsed',
@@ -79,14 +92,12 @@ const ORDER_PATHS = [
   'orders[].limitPrice',
 ]
 
+// An Ondo fill carries no filled size, no start position and no builder fee.
 const FILL_PATHS = [
   'items[].size',
   'items[].price',
-  'items[].filledSize',
   'items[].realizedPnl',
-  'items[].startPosition',
   'items[].fee.amount',
-  'items[].builderFee.amount',
 ]
 
 const ADDRESS = '0x2222222222222222222222222222222222222222' as const
@@ -218,6 +229,25 @@ const ORDER: OndoOrder = {
   timeInForce: 'GTC',
 }
 
+/** A stop-limit order, the only shape that carries a trigger and a limit. */
+const STOP_LIMIT_ORDER: OndoOrder = {
+  orderId: 'ord-2',
+  side: 'sell',
+  price: '0.0000005',
+  size: '0.0000005',
+  market: MARKET,
+  filledSize: '0',
+  lastFillSize: '0',
+  filledCost: '0',
+  fee: '0',
+  status: 'open',
+  createdAt: '2026-03-05T14:31:00Z',
+  type: 'limit',
+  timeInForce: 'GTC',
+  stopOrderType: 'stopLoss',
+  triggerPrice: '0.0000005',
+}
+
 const FILL: OndoFill = {
   id: 'fill-1',
   orderId: 'ord-1',
@@ -296,7 +326,7 @@ describe('ondo emits a DecimalString on every typed field', () => {
           return respond(page([]))
         }
         if (u.includes('/v1/perps/orders')) {
-          return respond(page([ORDER]))
+          return respond(page([ORDER, STOP_LIMIT_ORDER]))
         }
         if (u.includes('/v1/perps/fills')) {
           return respond(page([FILL]))
@@ -333,7 +363,7 @@ describe('ondo emits a DecimalString on every typed field', () => {
     }
   })
 
-  afterEach(() => {
+  afterAll(() => {
     vi.unstubAllGlobals()
   })
 
@@ -349,21 +379,7 @@ describe('ondo emits a DecimalString on every typed field', () => {
   for (const [label, key, paths] of cases) {
     describe(label, () => {
       it.each(paths)('spells %s as a decimal', (path) => {
-        for (const value of valuesAt(reads[key], path)) {
-          if (value == null) {
-            continue
-          }
-          expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(
-            true
-          )
-        }
-      })
-
-      it('reads at least one decimal, so the fixture is not empty', () => {
-        const found = paths.flatMap((path) =>
-          valuesAt(reads[key], path).filter((value) => value != null)
-        )
-        expect(found.length).toBeGreaterThan(0)
+        expectDecimalsAt(reads[key], path)
       })
     })
   }

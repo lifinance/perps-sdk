@@ -4,7 +4,7 @@ import {
   type Market,
   type MarketContext,
 } from '@lifi/perps-types'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   HL_CLEARINGHOUSE_STATE,
   HL_EXTRA_AGENTS,
@@ -44,6 +44,19 @@ const valuesAt = (root: unknown, path: string): unknown[] =>
     [root]
   )
 
+/**
+ * Assert `path` carries at least one value and that every one of them is a
+ * {@link isDecimalString}, so a path the fixture never populates fails rather
+ * than passing on an empty set.
+ */
+const expectDecimalsAt = (root: unknown, path: string): void => {
+  const values = valuesAt(root, path).filter((value) => value != null)
+  expect(values.length, `${path} -> no value in the fixture`).toBeGreaterThan(0)
+  for (const value of values) {
+    expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(true)
+  }
+}
+
 /** Every `DecimalString` field `Position` declares. */
 const POSITION_FIELDS = [
   'size',
@@ -77,14 +90,14 @@ const WITHDRAWABLE_PATHS = [
 
 const AVAILABLE_TO_TRADE_PATHS = ['buy', 'sell']
 
+// The perp mapper publishes no `priceChange24h`, and `marketCap` belongs to
+// the spot context only.
 const MARKET_CONTEXT_PATHS = [
   'midPrice',
   'markPrice',
   'oraclePrice',
   'prevDayPrice',
-  'priceChange24h',
   'volume24h',
-  'marketCap',
   'openInterest',
   'funding.rate',
 ]
@@ -146,17 +159,73 @@ const SPOT_MARKET: Market = {
 
 const MARKETS = [...HL_MARKETS, SPOT_MARKET]
 
+/** A stop-limit order, the only shape that carries `limitPrice`. */
+const STOP_LIMIT_ORDER = {
+  oid: 3,
+  coin: 'BTC',
+  side: 'S',
+  sz: '0.0000005',
+  limitPx: '0.0000005',
+  orderType: 'Stop Limit',
+  origSz: '0.0000005',
+  reduceOnly: true,
+  timestamp: 1704067200000,
+  isTrigger: true,
+  isPositionTpsl: false,
+  triggerCondition: 'Below 90000',
+  triggerPx: '90000',
+  children: [],
+  tif: null,
+  cloid: null,
+}
+
+/** A part-executed TWAP, the only shape that carries `averagePrice`. */
+const TWAP_ENTRY = {
+  state: {
+    coin: 'BTC',
+    executedNtl: '0.0094',
+    executedSz: '0.0000001',
+    minutes: 30,
+    side: 'B',
+    sz: '0.0000005',
+    timestamp: 1704067200000,
+    reduceOnly: false,
+  },
+  status: { status: 'activated' },
+  time: 1704067200,
+  twapId: 7,
+}
+
+/** A closing fill with a builder fee, so `realizedPnl` is not null. */
+const CLOSING_FILL = {
+  tid: 102,
+  oid: 3,
+  coin: 'BTC',
+  side: 'S',
+  sz: '0.0000005',
+  px: '94000',
+  dir: 'Close Long',
+  fee: '0.0000001',
+  builderFee: '0.0000001',
+  closedPnl: '0.0000005',
+  crossed: true,
+  time: 1704067200000,
+  startPosition: '0.1',
+}
+
+const FILLS = [...HL_USER_FILLS, CLOSING_FILL]
+
 const RESPONSES = {
   userFees: HL_USER_FEES,
   userAbstraction: null,
   extraAgents: HL_EXTRA_AGENTS,
   spotClearinghouseState: SPOT_STATE,
   clearinghouseState: HL_CLEARINGHOUSE_STATE,
-  frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+  frontendOpenOrders: [...HL_FRONTEND_OPEN_ORDERS, STOP_LIMIT_ORDER],
   historicalOrders: [],
-  twapHistory: [],
-  userFills: HL_USER_FILLS,
-  userFillsByTime: HL_USER_FILLS,
+  twapHistory: [TWAP_ENTRY],
+  userFills: FILLS,
+  userFillsByTime: FILLS,
   activeAssetData: {
     user: ADDRESS.toLowerCase(),
     coin: 'BTC',
@@ -167,16 +236,20 @@ const RESPONSES = {
   },
 }
 
-/** A venue context whose funding rate sits at the `1e-7` boundary. */
+/**
+ * A venue context for a sub-micro market: the funding rate sits at the `1e-7`
+ * boundary and the open-interest notional the mapper computes lands below
+ * `1e-6`.
+ */
 const SUB_MICRO_CTX = {
   coin: 'BTC',
   funding: '0.0000001',
-  openInterest: '0.0000005',
+  openInterest: '2.5',
   dayNtlVlm: '50000',
-  prevDayPx: '94000',
-  markPx: '95000',
+  prevDayPx: '0.0000004',
+  markPx: '0.0000005',
   midPx: null,
-  oraclePx: '94999',
+  oraclePx: '0.00000049',
 }
 
 describe('hyperliquid emits a DecimalString on every typed field', () => {
@@ -212,7 +285,7 @@ describe('hyperliquid emits a DecimalString on every typed field', () => {
     }
   })
 
-  afterEach(() => {
+  afterAll(() => {
     restore?.()
   })
 
@@ -228,21 +301,7 @@ describe('hyperliquid emits a DecimalString on every typed field', () => {
   for (const [label, key, paths] of cases) {
     describe(label, () => {
       it.each(paths)('spells %s as a decimal', (path) => {
-        for (const value of valuesAt(reads[key], path)) {
-          if (value == null) {
-            continue
-          }
-          expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(
-            true
-          )
-        }
-      })
-
-      it('reads at least one decimal, so the fixture is not empty', () => {
-        const found = paths.flatMap((path) =>
-          valuesAt(reads[key], path).filter((value) => value != null)
-        )
-        expect(found.length).toBeGreaterThan(0)
+        expectDecimalsAt(reads[key], path)
       })
     })
   }
@@ -261,20 +320,12 @@ describe('hyperliquid emits a DecimalString on every typed field', () => {
   it.each(
     MARKET_CONTEXT_PATHS
   )('spells mapMarketContext %s as a decimal', (path) => {
-    for (const value of valuesAt(
-      mapMarketContext('BTC', SUB_MICRO_CTX),
-      path
-    )) {
-      if (value == null) {
-        continue
-      }
-      expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(true)
-    }
+    expectDecimalsAt(mapMarketContext('BTC', SUB_MICRO_CTX), path)
   })
 
-  it('keeps a sub-micro funding rate in plain notation', () => {
-    expect(mapMarketContext('BTC', SUB_MICRO_CTX).funding?.rate).toBe(
-      '0.0000001'
+  it('spells a computed sub-micro open-interest notional in plain notation', () => {
+    expect(mapMarketContext('BTC', SUB_MICRO_CTX).openInterest).toBe(
+      '0.00000125'
     )
   })
 })

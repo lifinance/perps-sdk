@@ -8,6 +8,27 @@ const isPerpStats = (
   stats: LtWsMarketStats | LtWsSpotMarketStats
 ): stats is LtWsMarketStats => 'mark_price' in stats
 
+const isFiniteFigure = (value: number | null | undefined): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+
+/**
+ * The 24h figures of one record, omitted where the frame carries no finite
+ * number. The venue publishes them as unvalidated JSON, and `market_stats/all`
+ * maps every market in one pass, so a single absent figure must not cost the
+ * whole frame.
+ */
+const dailyFigures = (stats: {
+  daily_price_change?: number | null
+  daily_quote_token_volume?: number | null
+}): Pick<MarketContext, 'priceChange24h' | 'volume24h'> => ({
+  ...(isFiniteFigure(stats.daily_price_change)
+    ? { priceChange24h: numberToDecimalString(stats.daily_price_change) }
+    : {}),
+  ...(isFiniteFigure(stats.daily_quote_token_volume)
+    ? { volume24h: numberToDecimalString(stats.daily_quote_token_volume) }
+    : {}),
+})
+
 /**
  * Map a Lighter market-stats record to a {@link MarketContext}: `index_price`
  * is the oracle, `mid_price` the mid. Perp records carry the venue
@@ -25,8 +46,7 @@ export const mapMarketContext = (
       midPrice: stats.mid_price,
       markPrice: stats.mark_price,
       oraclePrice: stats.index_price,
-      priceChange24h: numberToDecimalString(stats.daily_price_change),
-      volume24h: numberToDecimalString(stats.daily_quote_token_volume),
+      ...dailyFigures(stats),
       openInterest: stats.open_interest,
       funding: {
         rate: stats.current_funding_rate,
@@ -39,7 +59,6 @@ export const mapMarketContext = (
     midPrice: stats.mid_price,
     markPrice: stats.mid_price,
     oraclePrice: stats.index_price,
-    priceChange24h: numberToDecimalString(stats.daily_price_change),
-    volume24h: numberToDecimalString(stats.daily_quote_token_volume),
+    ...dailyFigures(stats),
   }
 }

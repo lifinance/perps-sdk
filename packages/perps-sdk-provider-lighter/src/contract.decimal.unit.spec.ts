@@ -1,6 +1,6 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import { isDecimalString, PositionMarginAdjustment } from '@lifi/perps-types'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
 import type { LtWsMarketStats } from './types/index.js'
 import { mapMarketContext } from './utils/mapMarketContext.js'
@@ -22,6 +22,19 @@ const valuesAt = (root: unknown, path: string): unknown[] =>
     },
     [root]
   )
+
+/**
+ * Assert `path` carries at least one value and that every one of them is a
+ * {@link isDecimalString}, so a path the fixture never populates fails rather
+ * than passing on an empty set.
+ */
+const expectDecimalsAt = (root: unknown, path: string): void => {
+  const values = valuesAt(root, path).filter((value) => value != null)
+  expect(values.length, `${path} -> no value in the fixture`).toBeGreaterThan(0)
+  for (const value of values) {
+    expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(true)
+  }
+}
 
 /** Every `DecimalString` field `Position` declares. */
 const POSITION_FIELDS = [
@@ -48,22 +61,18 @@ const ACCOUNT_PATHS = [
   'feeTier.taker',
 ]
 
-const WITHDRAWABLE_PATHS = [
-  'rows[].available',
-  'rows[].max',
-  'rows[].withdrawalFee',
-]
+// Lighter publishes no withdrawal fee, so a row never carries one.
+const WITHDRAWABLE_PATHS = ['rows[].available', 'rows[].max']
 
 const AVAILABLE_TO_TRADE_PATHS = ['buy', 'sell']
 
+// The Lighter mapper publishes no previous-day price and no market cap.
 const MARKET_CONTEXT_PATHS = [
   'midPrice',
   'markPrice',
   'oraclePrice',
-  'prevDayPrice',
   'priceChange24h',
   'volume24h',
-  'marketCap',
   'openInterest',
   'funding.rate',
 ]
@@ -80,14 +89,13 @@ const ORDER_PATHS = [
   'orders[].limitPrice',
 ]
 
+// A Lighter fill carries no filled size of its own and no builder fee.
 const FILL_PATHS = [
   'items[].size',
   'items[].price',
-  'items[].filledSize',
   'items[].realizedPnl',
   'items[].startPosition',
   'items[].fee.amount',
-  'items[].builderFee.amount',
 ]
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -271,6 +279,41 @@ const ACTIVE_ORDERS = {
       updated_at: 1_775_000_100,
       transaction_time: 1_775_000_000_000_000,
     },
+    // A stop-limit order, the only shape that carries a trigger and a limit.
+    {
+      order_index: 89,
+      client_order_index: 0,
+      order_id: 'lt-89',
+      client_order_id: '0',
+      market_index: BTC_MARKET_ID,
+      owner_account_index: ACCOUNT_INDEX,
+      initial_base_amount: '0.0000005',
+      price: '0.0000005',
+      nonce: 11,
+      remaining_base_amount: '0.0000005',
+      is_ask: true,
+      filled_base_amount: '0',
+      filled_quote_amount: '0',
+      side: 'sell',
+      type: 'stop-loss-limit',
+      time_in_force: 'good-till-time',
+      reduce_only: true,
+      trigger_price: '90000.0',
+      order_expiry: 1_775_000_900_000,
+      status: 'open',
+      trigger_status: 'pending',
+      trigger_time: 0,
+      parent_order_index: 0,
+      parent_order_id: '',
+      to_trigger_order_id_0: '',
+      to_trigger_order_id_1: '',
+      to_cancel_order_id_0: '',
+      block_height: 1,
+      timestamp: 1_775_000_000,
+      created_at: 1_775_000_000,
+      updated_at: 1_775_000_100,
+      transaction_time: 1_775_000_000_000_000,
+    },
   ],
 }
 
@@ -290,6 +333,10 @@ const TRADES = {
       ask_account_id: 0,
       bid_account_id: ACCOUNT_INDEX,
       is_maker_ask: false,
+      // The viewer holds a short before the trade, so the buy reduces it and
+      // realizes PnL against the pre-trade entry basis.
+      maker_position_size_before: '-0.000001',
+      maker_entry_quote_before: '0.0941',
       block_height: 1,
       timestamp: 1_700_000_000_000,
       taker_fee: 280,
@@ -383,7 +430,7 @@ describe('lighter emits a DecimalString on every typed field', () => {
     }
   })
 
-  afterEach(() => {
+  afterAll(() => {
     vi.unstubAllGlobals()
   })
 
@@ -399,21 +446,7 @@ describe('lighter emits a DecimalString on every typed field', () => {
   for (const [label, key, paths] of cases) {
     describe(label, () => {
       it.each(paths)('spells %s as a decimal', (path) => {
-        for (const value of valuesAt(reads[key], path)) {
-          if (value == null) {
-            continue
-          }
-          expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(
-            true
-          )
-        }
-      })
-
-      it('reads at least one decimal, so the fixture is not empty', () => {
-        const found = paths.flatMap((path) =>
-          valuesAt(reads[key], path).filter((value) => value != null)
-        )
-        expect(found.length).toBeGreaterThan(0)
+        expectDecimalsAt(reads[key], path)
       })
     })
   }
@@ -431,17 +464,11 @@ describe('lighter emits a DecimalString on every typed field', () => {
   it.each(
     MARKET_CONTEXT_PATHS
   )('spells mapMarketContext %s as a decimal', (path) => {
-    for (const value of valuesAt(mapMarketContext(SUB_MICRO_STATS), path)) {
-      if (value == null) {
-        continue
-      }
-      expect(isDecimalString(value), `${path} -> ${String(value)}`).toBe(true)
-    }
+    expectDecimalsAt(mapMarketContext(SUB_MICRO_STATS), path)
   })
 
-  it('keeps a sub-micro funding rate and daily change in plain notation', () => {
+  it('spells a sub-micro daily change and volume in plain notation', () => {
     const context = mapMarketContext(SUB_MICRO_STATS)
-    expect(context.funding?.rate).toBe('0.0000001')
     expect(context.priceChange24h).toBe('0.0000001')
     expect(context.volume24h).toBe('0.0000005')
   })

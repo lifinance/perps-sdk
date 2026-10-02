@@ -1487,6 +1487,31 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     ).toEqual([{ units: '60', transferable: '0' }])
   })
 
+  it('spells transferable in plain notation for a sub-micro spot holding', async () => {
+    accountPayload = {
+      ...ACCOUNT_WITH_SPOT,
+      accounts: [
+        {
+          ...ACCOUNT_WITH_SPOT.accounts[0],
+          assets: [
+            {
+              ...ACCOUNT_WITH_SPOT.accounts[0].assets[0],
+              balance: '5e-7',
+              locked_balance: '2e-7',
+              margin_balance: '0',
+            },
+          ],
+        },
+      ],
+    }
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.balances.map((b) => b.transferable)).toEqual(['0.0000003'])
+  })
+
   it('omits a collateral row for an asset whose margin_balance is zero', async () => {
     accountPayload = {
       ...ACCOUNT_WITH_SPOT,

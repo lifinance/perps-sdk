@@ -108,15 +108,16 @@ fee source is known for that asset:
   `isFeeDeducted` is `false`.
 - Lighter: never set.
 
-A row with a fee can also carry `isFeeDeducted`. With `true`, the venue takes
-the fee out of the requested amount, so an amount at or below the fee delivers
-nothing. With `false`, the venue charges the fee in addition to the requested
-amount, so the largest amount the row can fund is `available` minus the fee.
-When that result is zero or negative, the row funds no withdrawal. An absent
+Every row carries `max`: the largest `amount` the row can fund. A row with a
+fee can also carry `isFeeDeducted`. With `true`, the venue takes the fee out
+of the requested amount, so an amount at or below the fee delivers nothing,
+and `max` equals `available`. With `false`, the venue charges the fee in
+addition to the requested amount, so `max` is `available` minus the fee,
+floored at zero. A `max` of zero funds no withdrawal. An absent
 `isFeeDeducted` means unknown. It does not mean `true`.
 
 An absent `withdrawalFee` means that no fee source is known. It does not prove
-that the venue charges no fee.
+that the venue charges no fee. `max` then equals `available`.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
@@ -238,6 +239,24 @@ A provider plugin implements the same two rules for its own venue:
 `snapOrderSize(market: Market, size: DecimalString): DecimalString`.
 `estimateLiquidationPrice()` stays on `number`, in and out: it is a
 display-tier estimate for a screen, not a wire amount.
+
+### Account-side wire helpers
+
+Three helpers take and give a `DecimalString`, so an account figure never
+passes through a `number`:
+
+- `calculateTransferable(venueFigure, units)` clamps a venue free figure to
+  `[0, units]`. It is the single cap behind `Balance.transferable` on every
+  provider.
+- `calculateWithdrawMax(row)` gives `WithdrawableBalance.max` from
+  `available`, `withdrawalFee` and `isFeeDeducted`.
+- `calculateRefuelAmount({ gasUsd, priceUsd, decimals })` divides the
+  recommended gas value by the source-token price, rounds **up** onto the
+  token grid and keeps trailing zeros to `decimals`, so a refuel never lands
+  short. It gives `undefined` when either input is not greater than zero.
+
+Each one throws `PerpsError(ValidationError)`, naming the field, when an
+input is not a `DecimalString`.
 
 ## WebSocket
 

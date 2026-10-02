@@ -1360,6 +1360,76 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
+    it('keeps every market in the all-markets frame when one record omits its daily figures', async () => {
+      const provider = makeFetchingProvider()
+      // The suite installs no socket double, so the spec holds the open
+      // socket and the frame callback through their declared shapes.
+      const internals = provider as unknown as {
+        rws: {
+          ready: () => Promise<void>
+          getStatus: () => string
+          send: (payload: string) => void
+        }
+        handleMessage: (raw: string) => void
+      }
+      internals.rws.ready = vi.fn().mockResolvedValue(undefined)
+      internals.rws.getStatus = () => 'connected'
+      internals.rws.send = vi.fn()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'lighter' },
+        listener
+      )
+
+      // A market listed inside the last 24h: the venue sends `null` for both
+      // daily figures while every other market carries them.
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          market_stats: {
+            '0': {
+              market_id: 0,
+              index_price: '1.49',
+              mark_price: '1.5',
+              mid_price: '1.51',
+              open_interest: '0',
+              last_trade_price: '1.5',
+              current_funding_rate: '0.0001',
+              funding_rate: '0.00009',
+              funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+              daily_base_token_volume: 0,
+              daily_quote_token_volume: null,
+              daily_price_change: null,
+            },
+            '1': {
+              market_id: 1,
+              index_price: '49998',
+              mark_price: '50000',
+              mid_price: '50001',
+              open_interest: '12.5',
+              last_trade_price: '50002',
+              current_funding_rate: '0.0001',
+              funding_rate: '0.00009',
+              funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+              daily_base_token_volume: 10,
+              daily_quote_token_volume: 500000,
+              daily_price_change: 1.2,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const { data } = listener.mock.calls[0][0]
+      expect(Object.keys(data).sort()).toEqual(['0', '1'])
+      expect(data['0'].markPrice).toBe('1.5')
+      expect(data['0'].priceChange24h).toBeUndefined()
+      expect(data['0'].volume24h).toBeUndefined()
+      expect(data['1'].priceChange24h).toBe('1.2')
+      expect(data['1'].volume24h).toBe('500000')
+      provider.close()
+    })
+
     it('subscribes to one perp marketContext channel and emits a single context', async () => {
       const provider = makeFetchingProvider()
       ;(provider as any).rws.ready = vi.fn().mockResolvedValue(undefined)
