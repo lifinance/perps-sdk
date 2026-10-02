@@ -142,13 +142,18 @@ describe('Big never crosses the public API boundary', () => {
 /**
  * An emit in the shape `tsc` produces: the entry re-exports a function whose
  * parameter type comes from an `import type` and whose return type is an
- * inline `import()` that carries a `Big`. One module names `Big` in prose only,
- * and one internal module that holds a `Big` is never named.
+ * inline `import()` that carries a `Big`, and star-re-exports a module. One
+ * module names `Big` in prose only, and one internal module that holds a `Big`
+ * is never named.
  */
 const WALK_EMIT: Record<string, string> = {
   '/emit/index.d.ts': `
 export { walkBook } from './order.js';
 export type { Grid } from './grid.js';
+export * from './math.js';
+`,
+  '/emit/math.d.ts': `
+export declare function calculateSpread(bid: number, ask: number): number;
 `,
   '/emit/order.d.ts': `
 import type { Level } from './level.js';
@@ -185,6 +190,7 @@ describe('the declaration walk', () => {
       '/emit/grid.d.ts',
       '/emit/index.d.ts',
       '/emit/level.d.ts',
+      '/emit/math.d.ts',
       '/emit/order.d.ts',
       '/emit/walk.d.ts',
     ])
@@ -496,10 +502,34 @@ describe('convert and wire give DecimalStrings', () => {
   })
 })
 
-/** `<a>To<B>` allows a camel-case `<a>`, as in `baseUnitsToDecimal`. */
-const VOCABULARY =
-  /^(parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|[a-z][A-Za-z]*To[A-Z])/
+/** `<a>To<B>` converts between representations only, so both operands come from this closed set. */
+const REPRESENTATIONS = ['baseUnits', 'decimal', 'decimalString', 'number']
+const capitalise = (token: string): string =>
+  token.charAt(0).toUpperCase() + token.slice(1)
+const VOCABULARY = new RegExp(
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate)' +
+    `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
+)
 const BANNED_VERB = /^(derive|predict|convert)/
+
+describe('the vocabulary pattern', () => {
+  it.each([
+    'baseUnitsToDecimal',
+    'decimalToBaseUnits',
+    'numberToDecimalString',
+  ])('admits the representation conversion %s', (name) => {
+    expect(VOCABULARY.test(name)).toBe(true)
+  })
+
+  it.each([
+    'walkOrderbookToDepth',
+    'stringToFloat',
+    'convertAmount',
+    'baseUnitsToDecimalOrZero',
+  ])('rejects %s', (name) => {
+    expect(VOCABULARY.test(name)).toBe(false)
+  })
+})
 
 /** Tier functions outside the vocabulary, each with the reason it keeps its name. */
 const NAMING_EXCEPTIONS: Record<string, string> = {
@@ -507,9 +537,11 @@ const NAMING_EXCEPTIONS: Record<string, string> = {
   classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
   classifyFillFromPosition: 'fill taxonomy the providers call',
   findMatchingPosition: 'structure lookup with no arithmetic',
-  positionSupportsMarginAdjustment: 'is-class predicate; rename candidate',
-  positionSupportsMarginRemoval: 'is-class predicate; rename candidate',
-  truncateDecimal: 'snap-class: seeds a fixed-decimal input field',
+  positionSupportsMarginAdjustment:
+    'is-class predicate; a rename is a second breaking change, parked for a human decision',
+  positionSupportsMarginRemoval:
+    'is-class predicate; a rename is a second breaking change, parked for a human decision',
+  truncateDecimal: 'the tracker vocabulary lists it under snap<X>',
   walkOrderbook: 'book traversal that buildQuote composes',
 }
 
