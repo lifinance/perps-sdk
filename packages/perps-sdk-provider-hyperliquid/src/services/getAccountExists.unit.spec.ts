@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { zeroAddress } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -45,5 +46,22 @@ describe('getAccountExists', () => {
     await expect(getAccountExists(ctx, { address: ADDRESS })).resolves.toBe(
       true
     )
+  })
+
+  it.each([
+    {},
+    { userExists: null },
+    { userExists: 'false' },
+  ])('rejects a malformed preTransferCheck response', async (response) => {
+    ;({ restore } = installInfoFetchMock({
+      preTransferCheck: response,
+    }))
+
+    await expect(
+      getAccountExists(ctx, { address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      tool: 'hyperliquid',
+    })
   })
 })

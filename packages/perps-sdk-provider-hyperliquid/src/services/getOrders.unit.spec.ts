@@ -63,6 +63,7 @@ describe('getOrders', () => {
     restore = installed.restore
     const result = await getOrders(ctx, { address: ADDRESS })
     expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'preTransferCheck',
       'frontendOpenOrders',
       'twapHistory',
     ])
@@ -130,6 +131,11 @@ describe('getOrders', () => {
       statuses: [OrderStatus.FILLED],
     })
     expect(installed.requests.map((request) => request.body)).toEqual([
+      {
+        type: 'preTransferCheck',
+        user: ADDRESS,
+        source: '0x0000000000000000000000000000000000000000',
+      },
       { type: 'historicalOrders', user: ADDRESS },
       { type: 'twapHistory', user: ADDRESS },
     ])
@@ -195,6 +201,7 @@ describe('getOrders', () => {
       statuses: [OrderStatus.OPEN, OrderStatus.FILLED],
     })
     expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'preTransferCheck',
       'frontendOpenOrders',
       'historicalOrders',
       'twapHistory',
@@ -224,13 +231,15 @@ describe('getOrders', () => {
     ).toEqual([])
   })
 
-  it('returns no orders and makes no requests for an empty filter', async () => {
+  it('returns no orders after checking the account for an empty filter', async () => {
     const installed = installInfoFetchMock({}, HL_MARKETS)
     restore = installed.restore
     expect(
       (await getOrders(ctx, { address: ADDRESS, statuses: [] })).orders
     ).toEqual([])
-    expect(installed.requests).toEqual([])
+    expect(installed.requests.map(({ body }) => body.type)).toEqual([
+      'preTransferCheck',
+    ])
   })
 
   it('maps a liquidation market order from the terminal feed', async () => {
@@ -379,6 +388,7 @@ describe('getOrders', () => {
     restore = installed.restore
     const { orders } = await getOrders(ctx, { address: ADDRESS })
     expect(installed.requests.map((request) => request.body.type)).toEqual([
+      'preTransferCheck',
       'frontendOpenOrders',
       'twapHistory',
     ])

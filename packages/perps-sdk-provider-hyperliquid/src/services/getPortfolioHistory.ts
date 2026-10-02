@@ -15,6 +15,7 @@ import type {
 } from '../types/index.js'
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /** Parameters for {@link getPortfolioHistory}. @public */
 export interface GetPortfolioHistoryParams {
@@ -83,6 +84,7 @@ export async function getPortfolioHistory(
 ): Promise<PortfolioHistoryResponse> {
   const { client, apiUrl } = ctx
   const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const [portfolio, abstraction] = await Promise.all([
     infoRequest<HlPortfolio>(
       apiUrl,

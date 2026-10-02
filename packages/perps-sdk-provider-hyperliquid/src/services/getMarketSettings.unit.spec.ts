@@ -44,8 +44,8 @@ describe('getMarketSettings', () => {
         market: { marketId: 'BTC', categoryId: MAIN_MARKET_ID },
       })
     ).resolves.toEqual({ marginMode: MarginMode.CROSS, leverage: 20 })
-    expect(requests).toHaveLength(1)
-    expect(requests[0].body).toEqual({
+    expect(requests).toHaveLength(2)
+    expect(requests.at(-1)?.body).toEqual({
       type: 'activeAssetData',
       user: ADDRESS,
       coin: 'BTC',

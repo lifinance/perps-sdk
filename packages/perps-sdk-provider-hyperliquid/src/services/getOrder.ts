@@ -15,6 +15,7 @@ import type {
 import { withExplorerLinks } from '../utils/explorer.js'
 import { assetIsOutcome, mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { requireAccountExists } from './getAccountExists.js'
 
 /**
  * Parameters for {@link getOrder}.
@@ -49,6 +50,7 @@ export const getOrder = async (
   }
 
   const infoOpts = hlInfoOptions(client, options)
+  await requireAccountExists(apiUrl, params.address, infoOpts)
   const status = await infoRequest<HlOrderStatusResponse>(
     apiUrl,
     { type: 'orderStatus', user: params.address, oid },
