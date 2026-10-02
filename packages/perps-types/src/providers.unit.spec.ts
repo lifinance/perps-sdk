@@ -10,6 +10,7 @@ import type {
 } from './account.js'
 import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
+import { isDecimalString } from './decimal.js'
 import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
@@ -162,7 +163,7 @@ const hyperliquidProvider: Provider = {
   categories: [{ id: 'hyperliquid', quoteAsset: usdcAsset }],
   funding: hourlyProviderFunding,
   chainId: 1337,
-  minOrderValueUsd: 10,
+  minOrderValueUsd: '10',
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
 }
 
@@ -188,11 +189,12 @@ const lighterProvider: Provider = {
   ],
   funding: hourlyProviderFunding,
   chainId: 3586256,
-  minOrderValueUsd: 10,
+  minOrderValueUsd: '10',
   minReduceOrderValueUsd: 1,
-  minWithdrawalUsd: 5,
-  depositFeeUsd: 0,
-  withdrawalFeeUsd: 1,
+  minDepositUsd: '5',
+  minWithdrawalUsd: '5',
+  depositFeeUsd: '0',
+  withdrawalFeeUsd: '1',
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
 }
 
@@ -754,11 +756,11 @@ describe('Provider.referralCode', () => {
 
 describe('Provider order-value minimums', () => {
   it('carries minOrderValueUsd as the venue order-value floor', () => {
-    expect(hyperliquidProvider.minOrderValueUsd).toBe(10)
+    expect(hyperliquidProvider.minOrderValueUsd).toBe('10')
   })
 
   it('carries an optional separate reduce-only floor', () => {
-    expect(lighterProvider.minOrderValueUsd).toBe(10)
+    expect(lighterProvider.minOrderValueUsd).toBe('10')
     expect(lighterProvider.minReduceOrderValueUsd).toBe(1)
   })
 
@@ -808,17 +810,54 @@ describe('Provider.chainId', () => {
   })
 })
 
-describe('Provider withdrawal minimum and deposit/withdrawal fees', () => {
-  it('carries minWithdrawalUsd and the flat deposit/withdrawal fees', () => {
-    expect(lighterProvider.minWithdrawalUsd).toBe(5)
-    expect(lighterProvider.depositFeeUsd).toBe(0)
-    expect(lighterProvider.withdrawalFeeUsd).toBe(1)
+describe('Provider deposit/withdrawal minimums and fees', () => {
+  it('carries the deposit and withdrawal minimums with the flat fees', () => {
+    expect(lighterProvider.minDepositUsd).toBe('5')
+    expect(lighterProvider.minWithdrawalUsd).toBe('5')
+    expect(lighterProvider.depositFeeUsd).toBe('0')
+    expect(lighterProvider.withdrawalFeeUsd).toBe('1')
   })
 
-  it('admits a provider that advertises no withdrawal minimum or fees', () => {
+  it('admits a provider that advertises no minimum or fee', () => {
+    expect(providerWithNoDescriptors.minDepositUsd).toBeUndefined()
     expect(providerWithNoDescriptors.minWithdrawalUsd).toBeUndefined()
     expect(providerWithNoDescriptors.depositFeeUsd).toBeUndefined()
     expect(providerWithNoDescriptors.withdrawalFeeUsd).toBeUndefined()
+  })
+})
+
+describe('Provider monetary fields', () => {
+  const monetaryFields = [
+    'minDepositUsd',
+    'minOrderValueUsd',
+    'minWithdrawalUsd',
+    'depositFeeUsd',
+    'withdrawalFeeUsd',
+  ] as const
+
+  const descriptors: ReadonlyArray<readonly [string, Provider]> = [
+    ['hyperliquid', hyperliquidProvider],
+    ['lighter', lighterProvider],
+    ['noop', providerWithNoDescriptors],
+    ['announced', announcedProvider],
+  ]
+
+  it.each(
+    descriptors.flatMap(([key, provider]) =>
+      monetaryFields.map(
+        (field) => [key, field, provider[field]] as [string, string, unknown]
+      )
+    )
+  )('%s.%s is absent or a decimal string', (_key, _field, value) => {
+    expect(value === undefined || isDecimalString(value)).toBe(true)
+  })
+
+  it.each(
+    monetaryFields
+  )('is advertised as a decimal string by at least one descriptor: %s', (field) => {
+    expect(
+      descriptors.some(([, provider]) => isDecimalString(provider[field]))
+    ).toBe(true)
   })
 })
 
