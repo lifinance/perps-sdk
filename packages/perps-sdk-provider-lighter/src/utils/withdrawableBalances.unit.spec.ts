@@ -116,29 +116,37 @@ const NO_FREE_MARGIN_ACCOUNT: WithdrawableAccount = {
   ],
 }
 
+/** A Lighter row: the venue publishes no fee, so `max` equals `available`. */
+const row = (assetId: string, route: 'spot' | 'perps', available: string) => ({
+  assetId,
+  route,
+  available,
+  max: available,
+})
+
 const withdrawable = (account: WithdrawableAccount) =>
   lighterWithdrawableBalances(account, LT_ASSET_ID_USDC)
 
 describe('lighterWithdrawableBalances', () => {
   it('splits each held asset into its spot and perps routes', () => {
     expect(withdrawable(MULTI_ASSET_ACCOUNT)).toEqual([
-      { assetId: '1', route: 'perps', available: '0.00709091' },
-      { assetId: '2', route: 'spot', available: '8.00004674' },
-      { assetId: '3', route: 'perps', available: '13.891825' },
+      row('1', 'perps', '0.00709091'),
+      row('2', 'spot', '8.00004674'),
+      row('3', 'perps', '13.891825'),
     ])
   })
 
   it('caps the settlement perps route at available_balance when positions hold margin', () => {
     expect(withdrawable(OPEN_POSITIONS_ACCOUNT)).toEqual([
-      { assetId: '3', route: 'spot', available: '103.00085138124' },
-      { assetId: '3', route: 'perps', available: '364310.903135' },
+      row('3', 'spot', '103.00085138124'),
+      row('3', 'perps', '364310.903135'),
     ])
   })
 
   it('caps the settlement perps route at margin_balance when available_balance is larger', () => {
     expect(withdrawable(PROFIT_ACCOUNT)).toEqual([
-      { assetId: '2', route: 'spot', available: '0.00000056' },
-      { assetId: '3', route: 'perps', available: '2890.789967953113' },
+      row('2', 'spot', '0.00000056'),
+      row('3', 'perps', '2890.789967953113'),
     ])
   })
 
@@ -158,10 +166,7 @@ describe('lighterWithdrawableBalances', () => {
         available_balance: NO_FREE_MARGIN_ACCOUNT.available_balance,
         assets: MULTI_ASSET_ACCOUNT.assets,
       })
-    ).toEqual([
-      { assetId: '1', route: 'perps', available: '0.00709091' },
-      { assetId: '2', route: 'spot', available: '8.00004674' },
-    ])
+    ).toEqual([row('1', 'perps', '0.00709091'), row('2', 'spot', '8.00004674')])
   })
 
   it('caps the asset at the given settlement index, not at USDC', () => {
@@ -171,9 +176,9 @@ describe('lighterWithdrawableBalances', () => {
         1
       )
     ).toEqual([
-      { assetId: '1', route: 'perps', available: '0.005' },
-      { assetId: '2', route: 'spot', available: '8.00004674' },
-      { assetId: '3', route: 'perps', available: '13.89182545205' },
+      row('1', 'perps', '0.005'),
+      row('2', 'spot', '8.00004674'),
+      row('3', 'perps', '13.89182545205'),
     ])
   })
 
@@ -183,16 +188,12 @@ describe('lighterWithdrawableBalances', () => {
         ...LOCKED_ACCOUNT,
         assets: [{ ...LOCKED_ACCOUNT.assets[0], balance: '6000.000000' }],
       })
-    ).toContainEqual({
-      assetId: '3',
-      route: 'spot',
-      available: '696.385',
-    })
+    ).toContainEqual(row('3', 'spot', '696.385'))
   })
 
   it('drops the spot route when locked_balance covers the whole balance', () => {
     expect(withdrawable(LOCKED_ACCOUNT)).toEqual([
-      { assetId: '3', route: 'perps', available: '16107.856484' },
+      row('3', 'perps', '16107.856484'),
     ])
   })
 
@@ -219,10 +220,7 @@ describe('lighterWithdrawableBalances', () => {
           (asset) => asset.asset_id !== LT_ASSET_ID_USDC
         ),
       })
-    ).toEqual([
-      { assetId: '1', route: 'perps', available: '0.00709091' },
-      { assetId: '2', route: 'spot', available: '8.00004674' },
-    ])
+    ).toEqual([row('1', 'perps', '0.00709091'), row('2', 'spot', '8.00004674')])
   })
 
   it('returns nothing for an account holding no assets', () => {

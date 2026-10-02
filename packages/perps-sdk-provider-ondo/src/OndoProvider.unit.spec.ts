@@ -707,6 +707,7 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         assetId: ONDO_COLLATERAL_ASSET.id,
         route: 'perps',
         available: BALANCE_RESULT.withdrawableMargin,
+        max: BALANCE_RESULT.withdrawableMargin,
         withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,
         isFeeDeducted: false,
       },

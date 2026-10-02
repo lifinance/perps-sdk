@@ -59,6 +59,7 @@ import {
 import { PerpsError } from '../errors/PerpsError.js'
 import type { ProviderSetup } from '../types/api.js'
 import type { PerpsProviderPlugin } from '../types/provider.js'
+import type { ProviderWithdrawableBalance } from '../types/withdrawal.js'
 import { DEFAULT_API_URL } from './createPerpsClient.js'
 import { PerpsClient } from './PerpsClient.js'
 
@@ -1989,15 +1990,25 @@ describe('PerpsClient', () => {
       })
     }
 
-    const withRows = (rows: unknown[]) => ({
+    const withRows = (rows: ProviderWithdrawableBalance[]) => ({
       getWithdrawableBalances: vi.fn(async () => rows),
     })
 
     it('joins core asset metadata onto every actionable row', async () => {
       const plugin = withRows([
-        { assetId: '1', route: 'spot', available: '0.00609091' },
-        { assetId: '3', route: 'spot', available: '10.9886' },
-        { assetId: '3', route: 'perps', available: '11.009697536' },
+        {
+          assetId: '1',
+          route: 'spot',
+          available: '0.00609091',
+          max: '0.00609091',
+        },
+        { assetId: '3', route: 'spot', available: '10.9886', max: '10.9886' },
+        {
+          assetId: '3',
+          route: 'perps',
+          available: '11.009697536',
+          max: '11.009697536',
+        },
       ])
       await expect(
         clientWith(plugin).getWithdrawableBalances({
@@ -2005,9 +2016,24 @@ describe('PerpsClient', () => {
           address: userAddress,
         })
       ).resolves.toEqual([
-        { asset: ASSETS[0], route: 'spot', available: '0.00609091' },
-        { asset: ASSETS[1], route: 'spot', available: '10.9886' },
-        { asset: ASSETS[1], route: 'perps', available: '11.009697536' },
+        {
+          asset: ASSETS[0],
+          route: 'spot',
+          available: '0.00609091',
+          max: '0.00609091',
+        },
+        {
+          asset: ASSETS[1],
+          route: 'spot',
+          available: '10.9886',
+          max: '10.9886',
+        },
+        {
+          asset: ASSETS[1],
+          route: 'perps',
+          available: '11.009697536',
+          max: '11.009697536',
+        },
       ])
       expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
         address: userAddress,
@@ -2016,8 +2042,14 @@ describe('PerpsClient', () => {
 
     it('carries the provider withdrawal fee onto the row, and no fee key where the provider sets none', async () => {
       const plugin = withRows([
-        { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
-        { assetId: '3', route: 'spot', available: '5' },
+        {
+          assetId: '3',
+          route: 'perps',
+          available: '11',
+          max: '11',
+          withdrawalFee: '1',
+        },
+        { assetId: '3', route: 'spot', available: '5', max: '5' },
       ])
       const rows = await clientWith(plugin).getWithdrawableBalances({
         provider,
@@ -2028,17 +2060,18 @@ describe('PerpsClient', () => {
           asset: ASSETS[1],
           route: 'perps',
           available: '11',
+          max: '11',
           withdrawalFee: '1',
         },
-        { asset: ASSETS[1], route: 'spot', available: '5' },
+        { asset: ASSETS[1], route: 'spot', available: '5', max: '5' },
       ])
       expect(rows?.[1]).not.toHaveProperty('withdrawalFee')
     })
 
     it.each([
-      true,
-      false,
-    ])('carries the provider isFeeDeducted %s onto the row unchanged', async (isFeeDeducted) => {
+      [true, '11'],
+      [false, '10'],
+    ] as const)('carries the provider isFeeDeducted %s and its max %s onto the row unchanged', async (isFeeDeducted, max) => {
       await expect(
         clientWith(
           withRows([
@@ -2046,6 +2079,7 @@ describe('PerpsClient', () => {
               assetId: '3',
               route: 'perps',
               available: '11',
+              max,
               withdrawalFee: '1',
               isFeeDeducted,
             },
@@ -2056,6 +2090,7 @@ describe('PerpsClient', () => {
           asset: ASSETS[1],
           route: 'perps',
           available: '11',
+          max,
           withdrawalFee: '1',
           isFeeDeducted,
         },
@@ -2065,8 +2100,14 @@ describe('PerpsClient', () => {
     it('sets no isFeeDeducted key where the provider sets none', async () => {
       const rows = await clientWith(
         withRows([
-          { assetId: '3', route: 'perps', available: '11', withdrawalFee: '1' },
-          { assetId: '3', route: 'spot', available: '5' },
+          {
+            assetId: '3',
+            route: 'perps',
+            available: '11',
+            max: '11',
+            withdrawalFee: '1',
+          },
+          { assetId: '3', route: 'spot', available: '5', max: '5' },
         ])
       ).getWithdrawableBalances({ provider, address: userAddress })
       expect(rows).toHaveLength(2)
@@ -2082,12 +2123,13 @@ describe('PerpsClient', () => {
             assetId: '3',
             route: 'perps',
             available: '11',
+            max: '11',
             isFeeDeducted: false,
           },
         ])
       ).getWithdrawableBalances({ provider, address: userAddress })
       expect(rows).toEqual([
-        { asset: ASSETS[1], route: 'perps', available: '11' },
+        { asset: ASSETS[1], route: 'perps', available: '11', max: '11' },
       ])
     })
 
@@ -2099,6 +2141,7 @@ describe('PerpsClient', () => {
               assetId: '3',
               route: 'perps',
               available: '11',
+              max: '11',
               withdrawalFee: '0',
             },
           ])
@@ -2108,6 +2151,7 @@ describe('PerpsClient', () => {
           asset: ASSETS[1],
           route: 'perps',
           available: '11',
+          max: '11',
           withdrawalFee: '0',
         },
       ])
@@ -2120,7 +2164,13 @@ describe('PerpsClient', () => {
       await expect(
         clientWith(
           withRows([
-            { assetId: '3', route: 'perps', available: '11', withdrawalFee },
+            {
+              assetId: '3',
+              route: 'perps',
+              available: '11',
+              max: '11',
+              withdrawalFee,
+            },
           ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).rejects.toMatchObject({
@@ -2133,9 +2183,24 @@ describe('PerpsClient', () => {
       await expect(
         clientWith(
           withRows([
-            { assetId: '1', route: 'spot', available: '0.000040752' },
-            { assetId: '3', route: 'spot', available: '0.008924170612' },
-            { assetId: '3', route: 'perps', available: '0.003226339915' },
+            {
+              assetId: '1',
+              route: 'spot',
+              available: '0.000040752',
+              max: '0.000040752',
+            },
+            {
+              assetId: '3',
+              route: 'spot',
+              available: '0.008924170612',
+              max: '0.008924170612',
+            },
+            {
+              assetId: '3',
+              route: 'perps',
+              available: '0.003226339915',
+              max: '0.003226339915',
+            },
           ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([])
@@ -2148,7 +2213,14 @@ describe('PerpsClient', () => {
       ]
       await expect(
         clientWith(
-          withRows([{ assetId: '1', route: 'spot', available: '0.00609091' }]),
+          withRows([
+            {
+              assetId: '1',
+              route: 'spot',
+              available: '0.00609091',
+              max: '0.00609091',
+            },
+          ]),
           assets
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).rejects.toMatchObject({
@@ -2161,27 +2233,48 @@ describe('PerpsClient', () => {
     it('keeps a row sitting exactly on the asset minimum', async () => {
       await expect(
         clientWith(
-          withRows([{ assetId: '1', route: 'spot', available: '0.001' }])
+          withRows([
+            { assetId: '1', route: 'spot', available: '0.001', max: '0.001' },
+          ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([
-        { asset: ASSETS[0], route: 'spot', available: '0.001' },
+        { asset: ASSETS[0], route: 'spot', available: '0.001', max: '0.001' },
       ])
     })
 
     it('keeps rows for an asset that publishes no minimum', async () => {
       await expect(
         clientWith(
-          withRows([{ assetId: '9', route: 'spot', available: '0.05153' }])
+          withRows([
+            {
+              assetId: '9',
+              route: 'spot',
+              available: '0.05153',
+              max: '0.05153',
+            },
+          ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([
-        { asset: ASSETS[2], route: 'spot', available: '0.05153' },
+        {
+          asset: ASSETS[2],
+          route: 'spot',
+          available: '0.05153',
+          max: '0.05153',
+        },
       ])
     })
 
     it('omits a row whose asset the provider registry does not carry', async () => {
       await expect(
         clientWith(
-          withRows([{ assetId: '2', route: 'spot', available: '6.00005017' }])
+          withRows([
+            {
+              assetId: '2',
+              route: 'spot',
+              available: '6.00005017',
+              max: '6.00005017',
+            },
+          ])
         ).getWithdrawableBalances({ provider, address: userAddress })
       ).resolves.toEqual([])
     })
@@ -2209,11 +2302,31 @@ describe('PerpsClient', () => {
       await expect(
         clientWith(
           withRows([
-            { assetId: '0', route: 'spot', available: '102.54975228' },
-            { assetId: '73', route: 'spot', available: '6.15' },
-            { assetId: '150', route: 'spot', available: '2.10613124' },
-            { assetId: '339', route: 'spot', available: '40.230704' },
-            { assetId: '0', route: 'perps', available: '0.6975' },
+            {
+              assetId: '0',
+              route: 'spot',
+              available: '102.54975228',
+              max: '102.54975228',
+            },
+            { assetId: '73', route: 'spot', available: '6.15', max: '6.15' },
+            {
+              assetId: '150',
+              route: 'spot',
+              available: '2.10613124',
+              max: '2.10613124',
+            },
+            {
+              assetId: '339',
+              route: 'spot',
+              available: '40.230704',
+              max: '40.230704',
+            },
+            {
+              assetId: '0',
+              route: 'perps',
+              available: '0.6975',
+              max: '0.6975',
+            },
           ]),
           hyperliquidAssets
         ).getWithdrawableBalances({ provider, address: userAddress })
@@ -2222,9 +2335,20 @@ describe('PerpsClient', () => {
           asset: hyperliquidAssets[0],
           route: 'spot',
           available: '102.54975228',
+          max: '102.54975228',
         },
-        { asset: hyperliquidAssets[1], route: 'spot', available: '6.15' },
-        { asset: hyperliquidAssets[2], route: 'spot', available: '2.10613124' },
+        {
+          asset: hyperliquidAssets[1],
+          route: 'spot',
+          available: '6.15',
+          max: '6.15',
+        },
+        {
+          asset: hyperliquidAssets[2],
+          route: 'spot',
+          available: '2.10613124',
+          max: '2.10613124',
+        },
       ])
     })
 

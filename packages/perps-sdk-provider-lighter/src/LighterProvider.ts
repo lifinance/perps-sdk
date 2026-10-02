@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  calculateTransferable,
   type DepositFlow,
   explorerTxUrl,
   explorerTxUrlFromBase,
@@ -9,8 +10,6 @@ import {
   getProviders,
   isActiveOrderStatus,
   localStorageAdapter,
-  maxOf,
-  minOf,
   PerpsError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
@@ -66,6 +65,7 @@ import type {
 import {
   ActionType,
   ActivityType,
+  isDecimalString,
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
@@ -1042,37 +1042,37 @@ export const createLighterProvider = (
       // account's free margin; every other perps-route asset releases none.
       const collateralBalances: Balance[] = marginAssets.map((a) => {
         const isSettlement = a.asset_id === collateral.assetIndex
+        const marginBalance = toRequiredBig(
+          a.margin_balance,
+          'margin_balance'
+        ).toFixed()
         return {
           ...toBalance(
             a,
             perpsCategory?.id ?? providerKey,
             isSettlement ? settlementAsset : registryAsset(a),
-            a.margin_balance
+            isDecimalString(a.margin_balance) ? a.margin_balance : marginBalance
           ),
           transferable: isSettlement
-            ? minOf(
-                maxOf(availableBalance, new Big(0)),
-                new Big(a.margin_balance)
-              ).toFixed()
+            ? calculateTransferable(availableBalance.toFixed(), marginBalance)
             : '0',
         }
       })
       const balances: Balance[] = heldAssets.map((a) => {
-        const balance = new Big(a.balance)
+        const balance = toRequiredBig(a.balance, 'balance')
         return {
           ...toBalance(
             a,
             LIGHTER_SPOT_CATEGORY_ID,
             registryAsset(a),
-            a.balance
+            isDecimalString(a.balance) ? a.balance : balance.toFixed()
           ),
-          transferable: minOf(
-            maxOf(
-              balance.minus(toRequiredBig(a.locked_balance, 'locked_balance')),
-              new Big(0)
-            ),
+          transferable: calculateTransferable(
             balance
-          ).toFixed(),
+              .minus(toRequiredBig(a.locked_balance, 'locked_balance'))
+              .toFixed(),
+            balance.toFixed()
+          ),
         }
       })
 

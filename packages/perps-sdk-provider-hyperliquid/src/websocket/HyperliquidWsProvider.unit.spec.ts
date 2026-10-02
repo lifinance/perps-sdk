@@ -2945,6 +2945,7 @@ describe('HyperliquidWsProvider', () => {
           valueUsd: '50',
           price: '0.5',
           locked: '10',
+          transferable: '90',
         },
         {
           categoryId: 'spot',
@@ -2958,6 +2959,7 @@ describe('HyperliquidWsProvider', () => {
           valueUsd: '500',
           price: '1',
           locked: '0',
+          transferable: '500',
         },
         {
           categoryId: 'spot',
@@ -2971,6 +2973,7 @@ describe('HyperliquidWsProvider', () => {
           // No market for GHOST → unpriced.
           valueUsd: '0',
           locked: '0',
+          transferable: '1',
         },
       ])
       // Contract invariant: a held Balance.asset.id equals that token's
@@ -4514,6 +4517,7 @@ describe('accountSummary channel', () => {
             units: '100',
             valueUsd: '4000',
             locked: '5',
+            transferable: '95',
           }),
         ])
       })

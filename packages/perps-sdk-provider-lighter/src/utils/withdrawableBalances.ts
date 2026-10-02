@@ -1,4 +1,8 @@
-import { maxOf, minOf, type ProviderWithdrawableBalance } from '@lifi/perps-sdk'
+import {
+  calculateTransferable,
+  calculateWithdrawMax,
+  type ProviderWithdrawableBalance,
+} from '@lifi/perps-sdk'
 import Big from 'big.js'
 import type { LtAccount } from '../types/account.js'
 import { toRequiredBig } from './decimal.js'
@@ -29,21 +33,32 @@ export const lighterWithdrawableBalances = (
       toRequiredBig(asset.locked_balance, 'locked_balance')
     )
     if (spot.gt(0)) {
-      rows.push({ assetId, route: 'spot', available: spot.toFixed() })
+      const available = spot.toFixed()
+      rows.push({
+        assetId,
+        route: 'spot',
+        available,
+        max: calculateWithdrawMax({ available }),
+      })
     }
     const marginBalance = toRequiredBig(asset.margin_balance, 'margin_balance')
     const perps =
       asset.asset_id === settlementAssetIndex
-        ? minOf(
-            maxOf(
-              toRequiredBig(account.available_balance, 'available_balance'),
-              new Big(0)
-            ),
-            marginBalance
+        ? calculateTransferable(
+            toRequiredBig(
+              account.available_balance,
+              'available_balance'
+            ).toFixed(),
+            marginBalance.toFixed()
           )
-        : marginBalance
-    if (perps.gt(0)) {
-      rows.push({ assetId, route: 'perps', available: perps.toFixed() })
+        : marginBalance.toFixed()
+    if (new Big(perps).gt(0)) {
+      rows.push({
+        assetId,
+        route: 'perps',
+        available: perps,
+        max: calculateWithdrawMax({ available: perps }),
+      })
     }
   }
   return rows

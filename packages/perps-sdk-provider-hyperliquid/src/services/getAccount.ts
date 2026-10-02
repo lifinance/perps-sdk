@@ -1,8 +1,7 @@
 import {
+  calculateTransferable,
   getMarketRegistry,
   getMarketsContext,
-  maxOf,
-  minOf,
   type ProviderGetAccountParams,
   parseDecimal,
   type SDKRequestOptions,
@@ -16,7 +15,7 @@ import type {
   HyperliquidDexAccountState,
   Position,
 } from '@lifi/perps-types'
-import Big from 'big.js'
+import type Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -83,13 +82,12 @@ const buildBalances = (
         const total = toWireBig(b.total, 'spotClearinghouseState.total')
         return {
           ...spotBalance(spotAssetFromToken(b), b.total, priceById),
-          transferable: minOf(
-            maxOf(
-              total.minus(toWireBig(b.hold, 'spotClearinghouseState.hold')),
-              new Big(0)
-            ),
+          transferable: calculateTransferable(
             total
-          ).toFixed(),
+              .minus(toWireBig(b.hold, 'spotClearinghouseState.hold'))
+              .toFixed(),
+            total.toFixed()
+          ),
         }
       }),
     quoteAssetIds
@@ -114,13 +112,13 @@ const buildBalances = (
         units: value.toFixed(),
         valueUsd: value.toFixed(),
         price: '1',
-        transferable: minOf(
-          maxOf(
-            toWireBig(state.withdrawable, 'clearinghouseState.withdrawable'),
-            new Big(0)
-          ),
-          value
-        ).toFixed(),
+        transferable: calculateTransferable(
+          toWireBig(
+            state.withdrawable,
+            'clearinghouseState.withdrawable'
+          ).toFixed(),
+          value.toFixed()
+        ),
       })
     }
   }

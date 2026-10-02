@@ -149,11 +149,13 @@ export type PositionsEvent = { channel: 'positions'; data: Position[] }
 /**
  * Spot holdings as typed {@link Balance}s, each carrying the venue-locked
  * portion (`locked` = reserved against open orders; `available = units − locked`).
+ * `transferable` is required here, so a live frame always carries the figure
+ * a REST snapshot carries.
  * @public
  */
 export type SpotBalancesEvent = {
   channel: 'spotBalances'
-  data: (Balance & { locked: DecimalString })[]
+  data: (Balance & { locked: DecimalString; transferable: DecimalString })[]
 }
 
 /**

@@ -1,4 +1,7 @@
-import type { ProviderWithdrawableBalance } from '@lifi/perps-sdk'
+import {
+  calculateWithdrawMax,
+  type ProviderWithdrawableBalance,
+} from '@lifi/perps-sdk'
 import type {
   HlAbstractionMode,
   HlClearinghouseState,
@@ -50,24 +53,26 @@ export const hyperliquidWithdrawableBalances = (
       )
       if (spot.gt(0)) {
         const assetId = String(balance.token)
-        rows.push({
+        const row = {
           assetId,
-          route: 'spot',
+          route: 'spot' as const,
           available: spot.toFixed(),
           ...feeFor(assetId),
-        })
+        }
+        rows.push({ ...row, max: calculateWithdrawMax(row) })
       }
     }
   }
 
   const perps = toWireBig(state.withdrawable, 'clearinghouseState.withdrawable')
   if (perps.gt(0)) {
-    rows.push({
+    const row = {
       assetId: quoteAssetId,
-      route: 'perps',
+      route: 'perps' as const,
       available: perps.toFixed(),
       ...feeFor(quoteAssetId),
-    })
+    }
+    rows.push({ ...row, max: calculateWithdrawMax(row) })
   }
 
   return rows
