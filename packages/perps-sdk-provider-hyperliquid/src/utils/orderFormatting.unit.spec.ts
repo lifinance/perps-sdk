@@ -1,5 +1,11 @@
-import { isDecimalString } from '@lifi/perps-sdk'
+import {
+  calculateOrderAmounts,
+  createPerpsClient,
+  isDecimalString,
+} from '@lifi/perps-sdk'
+import { type PerpsMarket, PositionMarginAdjustment } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { hyperliquidProvider } from '../HyperliquidProvider.js'
 import {
   getMaxPriceDecimals,
   snapOrderPrice,
@@ -200,5 +206,82 @@ describe('snapOrderPrice', () => {
     ['1500000000000000000000', 0],
   ] as const)('spells %s at %i szDecimals as a DecimalString', (price, dp) => {
     expect(isDecimalString(snapOrderPrice(price, dp))).toBe(true)
+  })
+})
+
+describe('calculateOrderAmounts over the Hyperliquid plugin', () => {
+  const sdk = createPerpsClient({
+    integrator: 'test-app',
+    apiKey: 'test-key',
+    providers: [hyperliquidProvider()],
+  })
+
+  const market = (szDecimals: number): PerpsMarket => ({
+    providerId: 'hyperliquid',
+    id: 'BTC',
+    categoryId: 'hyperliquid',
+    baseAsset: {
+      providerId: 'hyperliquid',
+      id: 'BTC',
+      displaySymbol: 'BTC',
+      logoURI: '',
+    },
+    quoteAsset: {
+      providerId: 'hyperliquid',
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: '',
+    },
+    szDecimals,
+    maxLeverage: 40,
+    onlyIsolated: false,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+  })
+
+  it('returns a held margin byte-identical and truncates the size onto szDecimals', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: market(5),
+        held: 'margin',
+        amount: '123.456789',
+        leverage: 3,
+        price: '61729.6',
+      })
+    ).toEqual({
+      margin: '123.456789',
+      size: '0.00599',
+      notional: '369.760304',
+    })
+  })
+
+  it('gives a held size in the Hyperliquid spelling, with no trailing zeros', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: market(5),
+        held: 'size',
+        amount: '0.00100',
+        leverage: 3,
+        price: '61729.6',
+      })
+    ).toEqual({
+      margin: `20.5765${'3'.repeat(36)}`,
+      size: '0.001',
+      notional: '61.7296',
+    })
+  })
+
+  it('keeps a sub-cent held notional when the lot grid accepts the size', () => {
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: market(0),
+        held: 'notional',
+        amount: '0.009',
+        leverage: 2,
+        price: '0.0001',
+      })
+    ).toEqual({ margin: '0.0045', size: '90', notional: '0.009' })
   })
 })

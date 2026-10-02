@@ -34,6 +34,19 @@ describe('calculateOrderAmounts', () => {
     expect(amounts).toEqual({ margin: '7', size: '200', notional: '14' })
   })
 
+  it('gives a held size in the venue spelling, not the typed trailing zeros', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 2 }),
+      held: 'size',
+      amount: '200.00',
+      leverage: 2,
+      price: '0.07',
+    })
+
+    expect(amounts).toEqual({ margin: '7', size: '200', notional: '14' })
+  })
+
   it('derives size and margin from a held notional', () => {
     const amounts = calculateOrderAmounts({
       sdk,
