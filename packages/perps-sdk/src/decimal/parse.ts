@@ -1,4 +1,4 @@
-import type { DecimalString } from '@lifi/perps-types'
+import { DECIMAL_PATTERN, type DecimalString } from '@lifi/perps-types'
 
 /**
  * Parse a string to a float, stripping common formatting artefacts.
@@ -53,4 +53,13 @@ export function parseDecimal(
   }
   const parsed = toFloat(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+/**
+ * Narrows an unknown value to a {@link DecimalString}.
+ *
+ * @public
+ */
+export function isDecimalString(value: unknown): value is DecimalString {
+  return typeof value === 'string' && DECIMAL_PATTERN.test(value)
 }

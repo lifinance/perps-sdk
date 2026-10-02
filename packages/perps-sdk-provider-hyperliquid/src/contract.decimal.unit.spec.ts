@@ -1,9 +1,5 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
-import {
-  isDecimalString,
-  type Market,
-  type MarketContext,
-} from '@lifi/perps-types'
+import { createPerpsClient, isDecimalString } from '@lifi/perps-sdk'
+import type { Market, MarketContext } from '@lifi/perps-types'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   HL_CLEARINGHOUSE_STATE,

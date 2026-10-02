@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseDecimal, stringToFloat } from './parse.js'
+import { isDecimalString, parseDecimal, stringToFloat } from './parse.js'
 
 describe('stringToFloat', () => {
   it('should parse a plain number', () => {
@@ -81,5 +81,47 @@ describe('parseDecimal', () => {
     expect(parseDecimal('10oops')).toBeUndefined()
     expect(stringToFloat('abc')).toBeNaN()
     expect(parseDecimal('abc')).toBeUndefined()
+  })
+})
+
+describe('isDecimalString', () => {
+  it.each([
+    '0',
+    '5',
+    '0.5',
+    '-1.25',
+    '123456789012345678901234567890.000000000000000001',
+    '0.000599',
+    '0.0006',
+  ])('accepts %j', (value) => {
+    expect(isDecimalString(value)).toBe(true)
+  })
+
+  it.each([
+    '',
+    ' 1',
+    '1 ',
+    '.5',
+    '1.',
+    '01',
+    '-0.',
+    '1e-7',
+    '1E7',
+    '1,000',
+    '$1',
+    '1 USD',
+    'NaN',
+    'Infinity',
+    '+1',
+  ])('rejects %j', (value) => {
+    expect(isDecimalString(value)).toBe(false)
+  })
+
+  it.each([null, undefined, 1])('rejects the non-string %j', (value) => {
+    expect(isDecimalString(value)).toBe(false)
+  })
+
+  it('accepts the signed zero that the backend pattern also accepts', () => {
+    expect(isDecimalString('-0')).toBe(true)
   })
 })

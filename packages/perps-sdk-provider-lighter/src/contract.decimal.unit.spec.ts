@@ -1,5 +1,5 @@
-import type { PerpsSDKClient } from '@lifi/perps-sdk'
-import { isDecimalString, PositionMarginAdjustment } from '@lifi/perps-types'
+import { isDecimalString, type PerpsSDKClient } from '@lifi/perps-sdk'
+import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
 import type { LtWsMarketStats } from './types/index.js'

@@ -1,10 +1,9 @@
-import { PerpsError } from '@lifi/perps-sdk'
 import {
-  PerpsErrorCode,
-  type Position,
+  PerpsError,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
-} from '@lifi/perps-types'
+} from '@lifi/perps-sdk'
+import { PerpsErrorCode, type Position } from '@lifi/perps-types'
 import Big from 'big.js'
 
 const NOTIONAL_FLOOR_RATIO = '0.1'

@@ -1,12 +1,18 @@
 /**
- * Display-tier position formulas. Every function takes and gives `number`;
- * exact decimal arithmetic happens internally with `DivBig`.
+ * Display-tier position formulas and margin-adjustment predicates. Every
+ * formula takes and gives `number`; exact decimal arithmetic happens
+ * internally with `DivBig`.
  *
  * Sign convention: long = +1, short = -1. Sizes passed to the `estimate*`
  * helpers are always non-negative magnitudes; direction is carried by
  * `isLong`.
  */
 
+import {
+  MarginMode,
+  type Position,
+  PositionMarginAdjustment,
+} from '@lifi/perps-types'
 import { areFinite, DivBig } from '../decimal/big.js'
 
 /**
@@ -359,3 +365,30 @@ export function calculateRealizedPnl(params: {
  * @deprecated Use `calculateRealizedPnl`. Removed in the next major.
  */
 export const realizedPnlOnClose = calculateRealizedPnl
+
+/**
+ * Whether this position can take a margin adjustment at all: it holds margin of
+ * its own and its market exposes individual position margin.
+ *
+ * @public
+ */
+export function positionSupportsMarginAdjustment(position: Position): boolean {
+  return (
+    position.marginMode === MarginMode.ISOLATED &&
+    position.market.positionMarginAdjustment !== PositionMarginAdjustment.NONE
+  )
+}
+
+/**
+ * Whether a removal is among the adjustments this position permits. An
+ * `ADD_ONLY` market takes adds and no withdrawal.
+ *
+ * @public
+ */
+export function positionSupportsMarginRemoval(position: Position): boolean {
+  return (
+    positionSupportsMarginAdjustment(position) &&
+    position.market.positionMarginAdjustment ===
+      PositionMarginAdjustment.ADD_AND_REMOVE
+  )
+}
