@@ -594,6 +594,37 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('logs and drops a kline frame with a missing figure instead of emitting it', () => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:AAPL-USD.P:1m', listener)
+
+      feed(p, {
+        type: 'update',
+        channel: 'kLinePerps',
+        data: {
+          m: 'AAPL-USD.P',
+          t: 1709648375,
+          s: 1709648340,
+          e: 1709648400,
+          h: 228.1,
+          l: 226.5,
+          c: 227.5,
+          v: 12345.67,
+          x: false,
+        },
+      })
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(errorLog).toHaveBeenCalledWith(
+        '[ondo:ws] message handler threw',
+        expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      )
+      errorLog.mockRestore()
+      p.close()
+    })
+
     it('keys consecutive updates within one bucket to the same bucket-open time so the forming candle updates in place', () => {
       const p = makeProvider()
       const listener = vi.fn()

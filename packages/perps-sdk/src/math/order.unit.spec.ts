@@ -1,4 +1,5 @@
 import {
+  type FeeTier,
   MarginMode,
   type MarketContext,
   type OrderbookLevel,
@@ -405,6 +406,7 @@ describe('buildQuote decimal spelling', () => {
     sizeUsd: number
     asks?: OrderbookLevel[]
     price?: MarketContext
+    feeTier?: FeeTier
   }): Quote =>
     buildQuote({
       provider: 'hyperliquid',
@@ -456,6 +458,18 @@ describe('buildQuote decimal spelling', () => {
     expect(() => quoteOf({ sizeUsd })).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
+  })
+
+  it('rejects a taker fee that does not parse to a finite number', () => {
+    expect(() =>
+      quoteOf({ sizeUsd: 100, feeTier: { maker: '0', taker: 'abc' } })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+  })
+
+  it('rejects a mark price that does not parse to a finite number', () => {
+    expect(() =>
+      quoteOf({ sizeUsd: 100, price: { ...perpsPrice, markPrice: 'abc' } })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })
 

@@ -920,6 +920,28 @@ describe('LighterProvider — account tier', () => {
     expect(isDecimalString(feeTier.taker)).toBe(true)
   })
 
+  it.each([
+    [
+      'a non-numeric',
+      { current_maker_fee_tick: 'abc', current_taker_fee_tick: 'abc' },
+    ],
+    ['an absent', {}],
+  ])('rejects getAccount with ValidationError on %s fee tick', async (_label, ticks) => {
+    overrideFetch((url) =>
+      url.includes('/api/v1/accountLimits')
+        ? respond({ code: 0, user_tier: 'STD', ...ticks })
+        : undefined
+    )
+    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    provider.bind(STUB_CLIENT)
+    await expect(
+      provider.getAccount(
+        { address: ADDRESS },
+        { lighterAuthToken: 'per-call-token' }
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+  })
+
   it('leaves the tier string absent on the unauthenticated read', async () => {
     const provider = lighterProvider({ storage: createMemoryStorage() })
     provider.bind(STUB_CLIENT)
