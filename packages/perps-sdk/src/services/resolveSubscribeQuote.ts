@@ -1,8 +1,10 @@
-import type {
-  FeeTier,
-  MarketContext,
-  OrderbookResponse,
+import {
+  type FeeTier,
+  type MarketContext,
+  type OrderbookResponse,
+  PerpsErrorCode,
 } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 import { buildQuote } from '../math/order.js'
 import type {
   PerpsSDKClient,
@@ -10,6 +12,7 @@ import type {
   QuoteListener,
 } from '../types/provider.js'
 import type { WsProvider } from '../websocket/types.js'
+import { wsLog } from '../websocket/wsLog.js'
 import { resolveQuoteMarket, resolveQuotePrice } from './resolveQuote.js'
 
 /**
@@ -37,6 +40,11 @@ export const QUOTE_THROTTLE_MS = 100
  * listeners once and cancels any pending trailing emission, so the wire
  * subscriptions' ref counts cannot be double-decremented.
  *
+ * A throw while building or delivering a streamed quote (an unparsable mark
+ * price, a throwing `onQuote`) is logged via `wsLog.listenerFailure` and the
+ * emission is skipped, on both the immediate and the trailing-timer path.
+ *
+ * @throws {PerpsError} `ValidationError` when `params.size` is not finite.
  * @throws {PerpsError} `MarketNotFound` when no market matches symbol+type.
  * @internal
  */
@@ -48,6 +56,12 @@ export async function resolveSubscribeQuote(
   feeTier: FeeTier,
   onQuote: QuoteListener
 ): Promise<() => void> {
+  if (!Number.isFinite(params.size)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Quote size must be a finite number, got ${params.size}`
+    )
+  }
   const market = await resolveQuoteMarket(client, provider, params)
   // REST snapshot seeds the context; the marketContext subscription below
   // keeps it live so streamed impact/funding track the moving market.
@@ -66,21 +80,25 @@ export async function resolveSubscribeQuote(
       return
     }
     lastEmitAt = Date.now()
-    onQuote(
-      buildQuote({
-        provider,
-        symbol: params.symbol,
-        type: params.type,
-        side: params.side,
-        sizeUsd: params.size,
-        market,
-        price: latestContext,
-        bids: latestBook.bids,
-        asks: latestBook.asks,
-        feeTier,
-        timestamp: Date.now(),
-      })
-    )
+    try {
+      onQuote(
+        buildQuote({
+          provider,
+          symbol: params.symbol,
+          type: params.type,
+          side: params.side,
+          sizeUsd: params.size,
+          market,
+          price: latestContext,
+          bids: latestBook.bids,
+          asks: latestBook.asks,
+          feeTier,
+          timestamp: Date.now(),
+        })
+      )
+    } catch (error) {
+      wsLog.listenerFailure(provider, 'quote', error)
+    }
   }
 
   const unsubscribeContext = await ws.subscribe(
