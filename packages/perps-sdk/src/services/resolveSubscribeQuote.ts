@@ -3,12 +3,12 @@ import type {
   MarketContext,
   OrderbookResponse,
 } from '@lifi/perps-types'
+import { buildQuote } from '../math/order.js'
 import type {
   PerpsSDKClient,
   ProviderGetQuoteParams,
   QuoteListener,
 } from '../types/provider.js'
-import { buildQuote } from '../utils/calculations.js'
 import type { WsProvider } from '../websocket/types.js'
 import { resolveQuoteMarket, resolveQuotePrice } from './resolveQuote.js'
 

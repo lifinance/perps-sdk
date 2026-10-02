@@ -60,4 +60,10 @@ describe('spotBalance', () => {
     expect(result.price).toBeUndefined()
     expect(result.valueUsd).toBe('0')
   })
+
+  it('gives NaN for a total that is not a decimal', () => {
+    expect(spotBalance(asset, '12abc', new Map([['150', 37.5]])).valueUsd).toBe(
+      'NaN'
+    )
+  })
 })

@@ -753,7 +753,7 @@ describe('Provider.referralCode', () => {
 })
 
 describe('Provider order-value minimums', () => {
-  it('carries minOrderValueUsd to feed validateMargin', () => {
+  it('carries minOrderValueUsd as the venue order-value floor', () => {
     expect(hyperliquidProvider.minOrderValueUsd).toBe(10)
   })
 

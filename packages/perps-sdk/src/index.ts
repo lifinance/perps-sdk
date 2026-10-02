@@ -17,8 +17,76 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export { requireProvider } from './client/requireProvider.js'
+export type {
+  BaseUnitsRounding,
+  ScaleToIntegerPolicy,
+} from './decimal/convert.js'
+export {
+  baseUnitsToDecimal,
+  decimalToBaseUnits,
+  fromBaseUnits,
+  fromBaseUnitsNumber,
+  scaleToInteger,
+} from './decimal/convert.js'
+export type { FormatOptions, RoundingMode } from './decimal/format.js'
+export {
+  formatCompactUsd,
+  formatNumber,
+  formatPrice,
+  formatSignedPercent,
+  formatSignedUsd,
+  formatUsd,
+} from './decimal/format.js'
+export { parseDecimal, stringToFloat } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
+export {
+  classifyFill,
+  classifyFillFromPosition,
+  FillClassification,
+} from './math/fills.js'
+export type { ExpectedPnl } from './math/order.js'
+export {
+  applySlippage,
+  buildQuote,
+  calculateExpectedPnl,
+  calculatePositionSize,
+  calculateRealizedPnlPercent,
+  calculateSize,
+  calculateTriggerPercent,
+  calculateTriggerPrice,
+  estimateFees,
+  estimateRealizedPnl,
+  expectedRealizedPnlForOpenOrder,
+  expectedRealizedPnlForTriggerOrder,
+  findMatchingPosition,
+  percentFromPrice,
+  priceFromPercent,
+  resolveCloseSize,
+  walkOrderbook,
+} from './math/order.js'
+export {
+  calculateEffectiveLeverage,
+  calculateLiquidationDistance,
+  calculateNotionalValue,
+  calculateRealizedPnl,
+  calculateRequiredMargin,
+  calculateRoe,
+  calculateUnrealizedPnl,
+  directionSign,
+  effectiveLeverage,
+  estimateAverageEntryPrice,
+  estimateIsolatedLiquidationPrice,
+  estimateLiquidationPrice,
+  estimateNewLeverage,
+  estimateUnrealizedPnl,
+  liquidationDistancePercent,
+  predictAverageEntryPrice,
+  predictNewLeverage,
+  predictUnrealizedPnl,
+  realizedPnlOnClose,
+  wouldImmediatelyLiquidate,
+} from './math/position.js'
 // Registries
 export {
   AssetRegistry,
@@ -179,24 +247,6 @@ export type {
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
-export type { ExpectedPnl } from './utils/calculations.js'
-export {
-  applySlippage,
-  buildQuote,
-  calculateExpectedPnl,
-  calculateNotionalValue,
-  calculatePositionSize,
-  calculateRealizedPnlPercent,
-  calculateRequiredMargin,
-  calculateRoe,
-  calculateUnrealizedPnl,
-  effectiveLeverage,
-  estimateFees,
-  liquidationDistancePercent,
-  percentFromPrice,
-  priceFromPercent,
-  walkOrderbook,
-} from './utils/calculations.js'
 export {
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
@@ -210,21 +260,8 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
-export { classifyFillFromPosition } from './utils/fillClassification.js'
-export type { FormatOptions, RoundingMode } from './utils/format.js'
-export {
-  formatCompactUsd,
-  formatNumber,
-  formatPrice,
-  formatSignedPercent,
-  formatSignedUsd,
-  formatUsd,
-} from './utils/format.js'
-export { maxOf, minOf } from './utils/math.js'
 export {
   ACTIVE_ORDER_STATUSES,
-  classifyFill,
-  FillClassification,
   isActiveOrderStatus,
   isRegularOrder,
   isStopLossOrder,
@@ -235,30 +272,6 @@ export {
   triggerConditionFor,
 } from './utils/orderClassification.js'
 export {
-  marginFromNotional,
-  marginFromSize,
-  sizeFromMargin,
-  sizeFromNotional,
-} from './utils/orderEntry.js'
-export {
-  expectedRealizedPnlForOpenOrder,
-  expectedRealizedPnlForTriggerOrder,
-  findMatchingPosition,
-  resolveCloseSize,
-} from './utils/orderMath.js'
-export { parseDecimal, stringToFloat } from './utils/parse.js'
-export {
-  directionSign,
-  estimateIsolatedLiquidationPrice,
-  predictAverageEntryPrice,
-  predictNewLeverage,
-  predictUnrealizedPnl,
-  realizedPnlOnClose,
-  wouldImmediatelyLiquidate,
-} from './utils/positionMath.js'
-export type { ScaleToIntegerPolicy } from './utils/scaleToInteger.js'
-export { scaleToInteger } from './utils/scaleToInteger.js'
-export {
   isSetupOptionFor,
   selectUserSetupActions,
 } from './utils/setupActions.js'
@@ -266,8 +279,6 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
-export { fromBaseUnits, fromBaseUnitsNumber } from './utils/units.js'
-export { validateMargin } from './utils/validation.js'
 export { createWarnOnce } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
@@ -294,3 +305,10 @@ export {
   WsProviderBase,
 } from './websocket/WsProviderBase.js'
 export { wsLog } from './websocket/wsLog.js'
+export {
+  marginFromNotional,
+  marginFromSize,
+  sizeFromMargin,
+  sizeFromNotional,
+} from './wire/orderAmounts.js'
+export { maxOf, minOf } from './wire/transferable.js'

@@ -1,6 +1,6 @@
 import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
-import { areFinite, DivBig, TruncBig } from './decimal.js'
+import { areFinite, DivBig, TruncBig } from './big.js'
 
 describe('DivBig', () => {
   it('divides to 40 decimal places without a change to the global Big.DP', () => {

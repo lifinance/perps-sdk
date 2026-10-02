@@ -5,7 +5,7 @@ import {
   marginFromSize,
   sizeFromMargin,
   sizeFromNotional,
-} from './orderEntry.js'
+} from './orderAmounts.js'
 
 // 2 ÷ 3 = 0.666…: truncation ends in 6, round-half-up would end in 7.
 const TWO_THIRDS_TRUNCATED = `0.${'6'.repeat(40)}`

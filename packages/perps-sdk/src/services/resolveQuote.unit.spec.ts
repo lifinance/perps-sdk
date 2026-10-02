@@ -112,8 +112,8 @@ describe('resolveQuote', () => {
     expect(quote.type).toBe('perps')
     // 100 USD @100 + 101 USD @101 → vwap 100.5, 2 base.
     expect(quote.expectedFillPrice).toBe('100.5')
-    expect(Number(quote.priceImpactBps)).toBeCloseTo(50)
-    expect(Number(quote.feeUsd)).toBeCloseTo(201 * 0.00045)
+    expect(Number(quote.priceImpactBps)).toBe(50)
+    expect(Number(quote.feeUsd)).toBe(0.09045)
     expect(quote.funding).toEqual(PRICES[0].funding)
     expect(quote.insufficientLiquidity).toBe(false)
   })
@@ -143,7 +143,7 @@ describe('resolveQuote', () => {
     )
 
     expect(quote.expectedFillPrice).toBe('99')
-    expect(Number(quote.priceImpactBps)).toBeCloseTo(100)
+    expect(Number(quote.priceImpactBps)).toBe(100)
   })
 
   it('flags insufficient liquidity when the book is too thin', async () => {

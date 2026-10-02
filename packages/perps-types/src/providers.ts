@@ -182,8 +182,7 @@ export interface Provider {
   /** Absent means no minimum advertised. */
   minDepositUsd?: number
   /**
-   * Minimum order notional value in USD. Feeds the SDK's `validateMargin`
-   * `minMarginUsd` parameter. Absent means no minimum advertised.
+   * Minimum order notional value in USD. Absent means no minimum advertised.
    */
   minOrderValueUsd?: number
   /**

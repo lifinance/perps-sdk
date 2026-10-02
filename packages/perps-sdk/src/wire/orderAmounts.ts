@@ -1,5 +1,5 @@
 import type Big from 'big.js'
-import { TruncBig } from './decimal.js'
+import { TruncBig } from '../decimal/big.js'
 
 /**
  * Base size the given margin buys at `leverage`: size = margin × leverage ÷ price.

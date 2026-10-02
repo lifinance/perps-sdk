@@ -154,7 +154,7 @@ describe('resolveSubscribeQuote', () => {
     expect(quote.type).toBe('perps')
     // 100 USD @100 + 101 USD @101 → vwap 100.5.
     expect(quote.expectedFillPrice).toBe('100.5')
-    expect(Number(quote.feeUsd)).toBeCloseTo(201 * 0.00045)
+    expect(Number(quote.feeUsd)).toBe(0.09045)
     expect(quote.funding).toEqual(PRICES[0].funding)
     expect(quote.insufficientLiquidity).toBe(false)
   })

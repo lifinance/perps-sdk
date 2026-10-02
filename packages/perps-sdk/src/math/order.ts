@@ -1,24 +1,34 @@
 /**
- * Universal perpetual futures calculation utilities.
- *
- * Pure functions for computing position-related values that any consumer
- * of the perps SDK would need. All parameters are required — no default
- * values for critical financial parameters.
+ * Display-tier order formulas. Every function takes and gives `number`;
+ * exact decimal arithmetic happens internally with `DivBig`.
  */
 
 import {
   type FeeTier,
   type Market,
   type MarketContext,
+  type Order,
   type OrderbookLevel,
+  OrderSide,
+  OrderStatus,
   PerpsErrorCode,
+  type Position,
+  PositionSide,
   type Quote,
   type QuoteSide,
+  type RegularOrder,
   type TradeType,
+  type TriggerOrder,
 } from '@lifi/perps-types'
 import type Big from 'big.js'
+import { areFinite, DivBig } from '../decimal/big.js'
 import { PerpsError } from '../errors/PerpsError.js'
-import { areFinite, DivBig } from './decimal.js'
+import {
+  isActiveOrderStatus,
+  isRegularOrder,
+  isTriggerOrder,
+} from '../utils/orderClassification.js'
+import { calculateRealizedPnl } from './position.js'
 
 /**
  * Calculate position size in asset units from margin.
@@ -29,11 +39,11 @@ import { areFinite, DivBig } from './decimal.js'
  * @returns Position size in asset units
  * @example
  * ```ts
- * calculatePositionSize(100, 10, 2000) // 0.5 (ETH at $2000)
+ * calculateSize(100, 10, 2000) // 0.5 (ETH at $2000)
  * ```
  * @public
  */
-export function calculatePositionSize(
+export function calculateSize(
   marginUsd: number,
   leverage: number,
   price: number
@@ -48,78 +58,9 @@ export function calculatePositionSize(
 }
 
 /**
- * Calculate notional value of a position.
- *
- * @param size - Position size in asset units
- * @param price - Current asset price
- * @returns Notional value in USD
- * @public
+ * @deprecated Use `calculateSize`. Removed in the next major.
  */
-export function calculateNotionalValue(size: number, price: number): number {
-  if (!areFinite(size, price)) {
-    return Number.NaN
-  }
-  return new DivBig(size).abs().times(price).toNumber()
-}
-
-/**
- * Calculate unrealized PnL.
- *
- * @param entryPrice - Position entry price
- * @param currentPrice - Current market price
- * @param size - Position size (positive for long, negative for short)
- * @returns Unrealized PnL in USD
- * @public
- */
-export function calculateUnrealizedPnl(
-  entryPrice: number,
-  currentPrice: number,
-  size: number
-): number {
-  if (!areFinite(entryPrice, currentPrice, size)) {
-    return Number.NaN
-  }
-  return new DivBig(currentPrice).minus(entryPrice).times(size).toNumber()
-}
-
-/**
- * Calculate return on equity (ROE) percentage.
- *
- * @param pnl - Profit/loss in USD
- * @param margin - Initial margin in USD
- * @returns ROE as percentage (e.g., 10 for 10%)
- * @public
- */
-export function calculateRoe(pnl: number, margin: number): number {
-  if (margin === 0) {
-    return 0
-  }
-  if (!areFinite(pnl, margin)) {
-    return Number.NaN
-  }
-  return new DivBig(pnl).div(margin).times(100).toNumber()
-}
-
-/**
- * Calculate required margin for a position.
- *
- * @param notionalValue - Position notional value in USD
- * @param leverage - Position leverage
- * @returns Required margin in USD
- * @public
- */
-export function calculateRequiredMargin(
-  notionalValue: number,
-  leverage: number
-): number {
-  if (leverage === 0) {
-    return notionalValue / leverage
-  }
-  if (!areFinite(notionalValue, leverage)) {
-    return Number.NaN
-  }
-  return new DivBig(notionalValue).div(leverage).toNumber()
-}
+export const calculatePositionSize = calculateSize
 
 /**
  * Estimate trading fees.
@@ -161,50 +102,6 @@ export function applySlippage(
     return price / multiplier.toNumber()
   }
   return new DivBig(price).div(multiplier).toNumber()
-}
-
-/**
- * Distance from the current price to the liquidation price, as a percentage of
- * the current price.
- *
- * @param liquidationPrice - The position's liquidation price
- * @param currentPrice - Current market price
- * @returns Absolute distance as a percentage, or 0 when current price is zero
- * @public
- */
-export function liquidationDistancePercent(params: {
-  liquidationPrice: number
-  currentPrice: number
-}): number {
-  const { liquidationPrice, currentPrice } = params
-  if (currentPrice === 0) {
-    return 0
-  }
-  return Math.abs((liquidationPrice - currentPrice) / currentPrice) * 100
-}
-
-/**
- * Effective leverage of an open position.
- *
- * leverage = positionValueUsd / marginUsd
- *
- * @param positionValueUsd - Position notional value in USD
- * @param marginUsd - Margin backing the position in USD
- * @returns Effective leverage, or 0 when margin is zero
- * @public
- */
-export function effectiveLeverage(params: {
-  positionValueUsd: number
-  marginUsd: number
-}): number {
-  const { positionValueUsd, marginUsd } = params
-  if (marginUsd === 0) {
-    return 0
-  }
-  if (!areFinite(positionValueUsd, marginUsd)) {
-    return Number.NaN
-  }
-  return new DivBig(positionValueUsd).div(marginUsd).toNumber()
 }
 
 /**
@@ -252,7 +149,7 @@ export function calculateExpectedPnl(
 }
 
 /**
- * Convert a percentage gain/loss to a target price.
+ * Calculate the trigger price that realises a percentage gain/loss.
  *
  * @param percent - Target gain/loss percentage (positive = profitable direction)
  * @param entryPrice - Position entry price
@@ -260,7 +157,7 @@ export function calculateExpectedPnl(
  * @param isLong - True for long positions, false for short
  * @public
  */
-export function priceFromPercent(
+export function calculateTriggerPrice(
   percent: number,
   entryPrice: number,
   leverage: number,
@@ -280,7 +177,12 @@ export function priceFromPercent(
 }
 
 /**
- * Convert a target price to a percentage gain/loss.
+ * @deprecated Use `calculateTriggerPrice`. Removed in the next major.
+ */
+export const priceFromPercent = calculateTriggerPrice
+
+/**
+ * Calculate the percentage gain/loss a trigger price realises.
  *
  * @param price - Target price
  * @param entryPrice - Position entry price
@@ -288,7 +190,7 @@ export function priceFromPercent(
  * @param isLong - True for long positions, false for short
  * @public
  */
-export function percentFromPrice(
+export function calculateTriggerPercent(
   price: number,
   entryPrice: number,
   leverage: number,
@@ -305,6 +207,11 @@ export function percentFromPrice(
     : new DivBig(entryPrice).minus(price)
   return priceDiff.div(entryPrice).times(leverage).times(100).toNumber()
 }
+
+/**
+ * @deprecated Use `calculateTriggerPercent`. Removed in the next major.
+ */
+export const percentFromPrice = calculateTriggerPercent
 
 /**
  * Calculate realized PnL as a percentage of position value at close.
@@ -462,3 +369,174 @@ export function buildQuote(input: BuildQuoteInput): Quote {
     timestamp: input.timestamp,
   }
 }
+
+/**
+ * Pick the matching open position for an order's market, if any.
+ *
+ * @param marketId - The order's `market.id`.
+ * @param positions - Open positions list (any market).
+ * @public
+ */
+export function findMatchingPosition(
+  marketId: string,
+  positions: readonly Position[]
+): Position | undefined {
+  return positions.find((p) => p.market.id === marketId)
+}
+
+/**
+ * Resolve the close-size against a position, applying the spec's cap rules:
+ *  - `orderSize === 0` is the Hyperliquid convention for "close entire
+ *    position" → close the full position size.
+ *  - Otherwise cap at the absolute position size; an order larger than the
+ *    position can only close what's open.
+ *
+ * Inputs are non-negative magnitudes.
+ * @public
+ */
+export function resolveCloseSize(
+  orderSize: number,
+  positionSize: number
+): number {
+  if (orderSize === 0) {
+    return positionSize
+  }
+  return Math.min(orderSize, positionSize)
+}
+
+/**
+ * Expected rPnL for a resting limit order against a matching position.
+ *
+ * Reducing requires opposite sides (long position + SELL, short position +
+ * BUY). Same-side orders add to the position and have no rPnL → `null`.
+ * Projects `remainingSize`, because an already-filled quantity has realised
+ * its PnL at the fill price rather than at this order's limit price. A
+ * `remainingSize` of zero leaves nothing to project.
+ */
+function regularOrderRealizedPnl(
+  order: RegularOrder,
+  position: Position | undefined
+): number | null {
+  if (!position || !isActiveOrderStatus(order.status)) {
+    return null
+  }
+
+  const isLong = position.side === PositionSide.LONG
+  const reducesPosition =
+    (isLong && order.side === OrderSide.SELL) ||
+    (!isLong && order.side === OrderSide.BUY)
+  if (!reducesPosition) {
+    return null
+  }
+
+  const limitPrice = Number.parseFloat(order.price ?? '')
+  const entryPrice = Number.parseFloat(position.entryPrice)
+  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
+  const positionSize = Math.abs(Number.parseFloat(position.size))
+  if (
+    !Number.isFinite(limitPrice) ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(orderSize) ||
+    !Number.isFinite(positionSize) ||
+    positionSize <= 0
+  ) {
+    return null
+  }
+
+  // `resolveCloseSize` reads a zero size as "close the whole position", a
+  // convention that belongs to an order's submitted size. `remainingSize` is
+  // the unfilled quantity, so zero means nothing is left to fill.
+  if (orderSize === 0) {
+    return null
+  }
+
+  const closeSize = resolveCloseSize(orderSize, positionSize)
+  return calculateRealizedPnl({
+    entryPrice,
+    closePrice: limitPrice,
+    closeSize,
+    isLong,
+  })
+}
+
+/** Project the unfilled closing quantity of an active trigger at its trigger price. */
+function triggerOrderRealizedPnl(
+  order: TriggerOrder,
+  position: Position | undefined
+): number | null {
+  if (
+    !position ||
+    !isActiveOrderStatus(order.status) ||
+    order.status === OrderStatus.PENDING
+  ) {
+    return null
+  }
+
+  const isLong = position.side === PositionSide.LONG
+  if (
+    (isLong && order.side !== OrderSide.SELL) ||
+    (!isLong && order.side !== OrderSide.BUY)
+  ) {
+    return null
+  }
+  const triggerPrice = Number.parseFloat(order.triggerPrice)
+  const entryPrice = Number.parseFloat(position.entryPrice)
+  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
+  const positionSize = Math.abs(Number.parseFloat(position.size))
+  if (
+    !Number.isFinite(triggerPrice) ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(orderSize) ||
+    !Number.isFinite(positionSize) ||
+    positionSize <= 0
+  ) {
+    return null
+  }
+  if (
+    orderSize === 0 &&
+    (Number.parseFloat(order.originalSize) !== 0 || !order.reduceOnly)
+  ) {
+    return null
+  }
+
+  const closeSize = resolveCloseSize(orderSize, positionSize)
+  return calculateRealizedPnl({
+    entryPrice,
+    closePrice: triggerPrice,
+    closeSize,
+    isLong,
+  })
+}
+
+/**
+ * Expected rPnL an unfilled order would realise against a matching position:
+ * a resting limit order prices off its limit, an armed trigger off its trigger
+ * price. A TWAP parent carries no single execution price, so it projects
+ * nothing.
+ *
+ * @returns Realised PnL if the order would reduce the position, otherwise
+ *   `null`.
+ * @public
+ */
+export function estimateRealizedPnl(
+  order: Order,
+  position: Position | undefined
+): number | null {
+  if (isTriggerOrder(order)) {
+    return triggerOrderRealizedPnl(order, position)
+  }
+  if (isRegularOrder(order)) {
+    return regularOrderRealizedPnl(order, position)
+  }
+  return null
+}
+
+/**
+ * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
+ */
+export const expectedRealizedPnlForOpenOrder = regularOrderRealizedPnl
+
+/**
+ * @deprecated Use `estimateRealizedPnl`. Removed in the next major.
+ */
+export const expectedRealizedPnlForTriggerOrder = triggerOrderRealizedPnl

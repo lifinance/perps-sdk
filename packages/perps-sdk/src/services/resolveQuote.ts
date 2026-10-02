@@ -6,12 +6,12 @@ import {
   type Quote,
 } from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
+import { buildQuote } from '../math/order.js'
 import type { SDKRequestOptions } from '../types/config.js'
 import type {
   PerpsSDKClient,
   ProviderGetQuoteParams,
 } from '../types/provider.js'
-import { buildQuote } from '../utils/calculations.js'
 import { getMarkets } from './getMarkets.js'
 import { getMarketsContext } from './getMarketsContext.js'
 import { getOrderbook } from './getOrderbook.js'
