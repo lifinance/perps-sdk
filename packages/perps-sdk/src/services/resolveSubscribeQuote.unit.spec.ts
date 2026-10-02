@@ -6,7 +6,7 @@ import type {
   Subscription,
   SubscriptionEvent,
 } from '@lifi/perps-types'
-import { PositionMarginAdjustment } from '@lifi/perps-types'
+import { PerpsErrorCode, PositionMarginAdjustment } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/handlers.js'
@@ -128,6 +128,7 @@ const setup = async () => {
 describe('resolveSubscribeQuote', () => {
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('subscribes to the orderbook and marketContext channels of the resolved market', async () => {
@@ -225,6 +226,74 @@ describe('resolveSubscribeQuote', () => {
     expect(quote.funding).toEqual(movedContext.funding)
     // Execution at mark after the move → 0 impact, not ~50bps phantom.
     expect(quote.priceImpactBps).toBe('0')
+  })
+
+  describe('a quote that cannot be built', () => {
+    const UNPARSABLE_MARK: MarketContext = {
+      ...PRICES[0],
+      markPrice: 'abc',
+    }
+    const QUOTE_FAILURE =
+      "[hyperliquid:ws] listener threw during 'quote' fan-out"
+
+    it('logs the failure on the immediate path and skips the emission', async () => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { onQuote, push, pushContext } = await setup()
+
+      pushContext(UNPARSABLE_MARK)
+      expect(() => push(BOOK)).not.toThrow()
+
+      expect(onQuote).not.toHaveBeenCalled()
+      expect(errorLog).toHaveBeenCalledWith(
+        QUOTE_FAILURE,
+        expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      )
+    })
+
+    it('logs the failure on the trailing-timer path and keeps streaming', async () => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { onQuote, push, pushContext } = await setup()
+      vi.useFakeTimers()
+
+      push(BOOK)
+      expect(onQuote).toHaveBeenCalledTimes(1)
+      pushContext(UNPARSABLE_MARK)
+      push(BOOK)
+      expect(() => vi.advanceTimersByTime(QUOTE_THROTTLE_MS)).not.toThrow()
+
+      expect(onQuote).toHaveBeenCalledTimes(1)
+      expect(errorLog).toHaveBeenCalledWith(
+        QUOTE_FAILURE,
+        expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      )
+
+      pushContext(PRICES[0])
+      vi.advanceTimersByTime(QUOTE_THROTTLE_MS)
+      push(BOOK)
+      expect(onQuote).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('rejects a non-finite size (%s) before it subscribes', async (size) => {
+    installMarkets([BTC_PERP])
+    const subscribe = vi.fn()
+
+    await expect(
+      resolveSubscribeQuote(
+        client,
+        'hyperliquid',
+        { subscribe },
+        { ...PARAMS, size },
+        FEE,
+        vi.fn()
+      )
+    ).rejects.toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+    expect(subscribe).not.toHaveBeenCalled()
   })
 
   it('releases the marketContext subscription when the orderbook subscribe fails', async () => {

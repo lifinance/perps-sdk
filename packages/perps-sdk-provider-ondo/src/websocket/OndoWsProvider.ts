@@ -3,6 +3,7 @@ import {
   getMarketRegistry,
   localStorageAdapter,
   type MarketRegistry,
+  numberToDecimalString,
   PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
@@ -815,11 +816,11 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       channel: 'candle',
       data: {
         t: kline.s * 1000,
-        o: String(kline.o),
-        h: String(kline.h),
-        l: String(kline.l),
-        c: String(kline.c),
-        v: String(kline.v),
+        o: numberToDecimalString(kline.o),
+        h: numberToDecimalString(kline.h),
+        l: numberToDecimalString(kline.l),
+        c: numberToDecimalString(kline.c),
+        v: numberToDecimalString(kline.v),
       },
     })
   }
