@@ -9,6 +9,7 @@ import type {
   ActivitiesResponse,
   ActivityType,
   AvailableToTrade,
+  DecimalString,
   FillsResponse,
   Market,
   MarketRef,
@@ -534,35 +535,47 @@ export interface PerpsProviderPlugin {
   ): AccountSummary
 
   /**
-   * Format an order price onto the venue's tick grid for `market`. This is
-   * the canonical, provider-correct formatting surface — venue tick rules
-   * differ per provider, so provider-agnostic consumers must route every
-   * order price through the market's own provider instead of applying one
-   * venue's rules to another's markets. Pure — does no I/O.
+   * Snap an order price onto the venue's tick grid for `market`, rounding
+   * half-up. This is the canonical, provider-correct price surface — venue
+   * tick rules differ per provider, so provider-agnostic consumers must route
+   * every order price through the market's own provider instead of applying
+   * one venue's rules to another's markets. Pure — does no I/O.
+   *
+   * Takes and gives a {@link DecimalString}. Never pass a `number`: above 15
+   * significant digits the value has already lost digits by the time it
+   * arrives.
    *
    * @returns The price as a wire-ready decimal string, trailing zeros
    *   stripped.
    * @throws {PerpsError} `ValidationError` when `market` lacks the tick
    *   metadata the venue's rules need (e.g. `Market.priceDecimals` absent).
    */
-  formatOrderPrice(market: Market, price: number): string
+  snapOrderPrice(market: Market, price: DecimalString): DecimalString
 
   /**
-   * Format an order size onto the venue's lot grid for `market`. Truncates
-   * (never rounds up) so the formatted size cannot exceed the user's intended
-   * size or available balance. Pure — does no I/O.
+   * Snap an order size onto the venue's lot grid for `market`, truncating
+   * toward zero (never rounding up) so the snapped size cannot exceed the
+   * user's intended size or available balance. Pure — does no I/O.
+   *
+   * Takes and gives a {@link DecimalString}. Never pass a `number`: above 15
+   * significant digits the value has already lost digits by the time it
+   * arrives.
    *
    * @param size - Size in base-asset units as a non-negative magnitude.
    * @returns The size as a wire-ready decimal string, trailing zeros
    *   stripped.
    */
-  formatOrderSize(market: Market, size: number): string
+  snapOrderSize(market: Market, size: DecimalString): DecimalString
 
   /**
    * Estimate the liquidation price of a new isolated position on `market`
    * using the venue's margin model. A preview helper — for existing
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —
    * does no I/O.
+   *
+   * Numbers, in and out, on purpose: this is a display-tier estimate that
+   * feeds a screen, not a wire amount. It is not a `snap*` method and must
+   * not be converted to {@link DecimalString}.
    *
    * @returns The estimated liquidation price, or `undefined` when the venue's
    *   model cannot be evaluated client-side (degenerate inputs, or `market`

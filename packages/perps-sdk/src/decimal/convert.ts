@@ -102,3 +102,63 @@ export const fromBaseUnits = baseUnitsToDecimal
 export function fromBaseUnitsNumber(amount: string, decimals: number): number {
   return parseDecimal(baseUnitsToDecimal(amount, decimals)) ?? 0
 }
+
+/**
+ * Round `value` down to `decimals` and pad the result to exactly that many
+ * decimal places. The padding is the point: this seeds a fixed-decimal input,
+ * where `'500.00'` and `'500'` are two renderings of one amount and the field
+ * wants the first. For a canonical wire amount with no trailing zeros, read
+ * the amount off `calculateOrderAmounts` or a provider snap instead.
+ *
+ * Exact decimal arithmetic throughout, so there is no 2^53 ceiling and no
+ * float artifact: `'0.01'` at 18 decimals gives
+ * `'0.010000000000000000'`, which `Number#toFixed` cannot.
+ *
+ * @throws {PerpsError} `ValidationError` when `value` is not a decimal
+ *   numeric string, or `decimals` is not a non-negative integer.
+ * @public
+ */
+export function truncateDecimal(
+  value: DecimalString,
+  decimals: number
+): DecimalString {
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid decimals for truncation: ${decimals}`
+    )
+  }
+  let parsed: Big
+  try {
+    parsed = new Big(value)
+  } catch {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid decimal string for truncation: '${value}'`
+    )
+  }
+  const truncated = parsed.round(decimals, Big.roundDown)
+  // big.js carries the sign through a round to zero; '-0.00' is not a spelling.
+  return (truncated.eq(0) ? new Big(0) : truncated).toFixed(decimals)
+}
+
+/**
+ * Spell a `number` as a {@link DecimalString} in plain notation: `1e-7`
+ * becomes `'0.0000001'`, never `'1e-7'`. The boundary helper for a venue or
+ * browser API that hands out numbers; a value already spelled as a decimal
+ * string must not round-trip through here, because above 15 significant
+ * digits the `number` has already lost digits.
+ *
+ * @throws {PerpsError} `ValidationError` when `value` is `NaN` or infinite.
+ * @public
+ */
+export function numberToDecimalString(value: number): DecimalString {
+  if (!Number.isFinite(value)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid number for decimal conversion: ${value}`
+    )
+  }
+  const parsed = new Big(value)
+  return (parsed.eq(0) ? new Big(0) : parsed).toFixed()
+}

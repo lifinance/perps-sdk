@@ -1,12 +1,13 @@
 /**
- * Hyperliquid order size and price formatting for exchange submission.
+ * Hyperliquid order size and price snapping for exchange submission.
  *
- * These encode Hyperliquid-specific order submission rules. Getting size/price
- * formatting wrong causes rejected orders.
+ * These encode Hyperliquid-specific order submission rules. Snapping a size or
+ * a price onto the wrong grid causes rejected orders.
  *
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size
  */
 
+import type { DecimalString } from '@lifi/perps-types'
 import Big from 'big.js'
 
 /**
@@ -36,28 +37,30 @@ export function getMaxPriceDecimals(
 }
 
 /**
- * Format a size value for order submission.
+ * Snap a size onto the asset's lot grid for order submission.
  *
  * Per Hyperliquid docs (tick-and-lot-size):
  * - Size must be rounded to the asset's szDecimals
  * - Trailing zeroes must be removed for signing
  *
- * @param size - The size value to format
+ * @param size - The size to snap, as a decimal string
  * @param szDecimals - Number of decimal places allowed for this asset (from meta)
- * @returns Size as a string with correct precision, no trailing zeros
+ * @returns Size as a decimal string with correct precision, no trailing zeros
  * @public
  */
-export function formatOrderSize(size: number, szDecimals: number): string {
+export function snapOrderSize(
+  size: DecimalString,
+  szDecimals: number
+): DecimalString {
   // Big.roundDown truncates toward zero — never round a size up, it could
-  // exceed available balance. Exact decimal arithmetic: flooring the float
-  // product dropped a lot step (0.29 * 100 === 28.999999999999996).
+  // exceed available balance.
   const truncated = new Big(size).round(szDecimals, Big.roundDown)
   // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
   return truncated.eq(0) ? '0' : truncated.toFixed()
 }
 
 /**
- * Format a price value for order submission.
+ * Snap a price onto the asset's tick grid for order submission.
  *
  * Per Hyperliquid docs (tick-and-lot-size):
  * - Maximum 5 significant figures
@@ -66,19 +69,20 @@ export function formatOrderSize(size: number, szDecimals: number): string {
  * - Trailing zeroes must be removed for signing
  *
  * Rounding is half-up (away from zero at exact halfway) on the true decimal
- * value, not on the binary float — (1.005).toFixed(2) would give '1.00'.
+ * value, which is why the price arrives as a string: `(1.005).toFixed(2)`
+ * would give `'1.00'`.
  *
- * @param price - The price value to format
+ * @param price - The price to snap, as a decimal string
  * @param szDecimals - The asset's szDecimals (affects max price decimals)
  * @param market - Optional market type (e.g. 'spot'). Defaults to perps rules.
- * @returns Price as a string with correct precision, no trailing zeros
+ * @returns Price as a decimal string with correct precision, no trailing zeros
  * @public
  */
-export function formatOrderPrice(
-  price: number,
+export function snapOrderPrice(
+  price: DecimalString,
   szDecimals: number,
   market?: string
-): string {
+): DecimalString {
   const maxPriceDecimals = getMaxPriceDecimals(szDecimals, market)
 
   let rounded = new Big(price).round(maxPriceDecimals, Big.roundHalfUp)

@@ -123,8 +123,6 @@ import {
 import { toWireBig } from './utils/decimal.js'
 import {
   estimateLiquidationPrice,
-  formatOrderPrice,
-  formatOrderSize,
   listOndoDepositAddress,
   mapDepositActivity,
   mapFill,
@@ -137,6 +135,8 @@ import {
   ondoWithdrawableBalances,
   positionRemovableMargin,
   requireOndoCollateralAsset,
+  snapOrderPrice,
+  snapOrderSize,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
 import {
@@ -1129,9 +1129,9 @@ export const ondoProvider = (
       return getAccountSummary(account)
     },
 
-    formatOrderPrice,
+    snapOrderPrice,
 
-    formatOrderSize,
+    snapOrderSize,
 
     estimateLiquidationPrice,
 

@@ -590,13 +590,13 @@ describe('OndoProvider — `type` field', () => {
   })
 })
 
-describe('OndoProvider — order formatting and liquidation surface', () => {
+describe('OndoProvider — order snapping and liquidation surface', () => {
   const market: PerpsMarket = MARKETS_RESPONSE.markets[0]
 
-  it('formats prices half-up and sizes truncated against the market decimals', () => {
+  it('snaps prices half-up and sizes truncated against the market decimals', () => {
     const provider = ondoProvider()
-    expect(provider.formatOrderPrice(market, 201.555)).toBe('201.56')
-    expect(provider.formatOrderSize(market, 0.129)).toBe('0.12')
+    expect(provider.snapOrderPrice(market, '201.555')).toBe('201.56')
+    expect(provider.snapOrderSize(market, '0.129')).toBe('0.12')
   })
 
   it('keeps per-user trading limits out of static market metadata', () => {
