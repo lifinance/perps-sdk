@@ -385,7 +385,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    * subscribe-time guard and the per-send resolve so both report one message.
    * Throws {@link PerpsError}: `SetupRequired` when the resolver yields no
    * token, the code the REST reads throw for the same missing credential, and
-   * `Unauthorized` when no resolver is wired.
+   * `SDKError` when no resolver is wired, which no account setup can fix.
    */
   private async requireAuthToken(
     channel: string,
@@ -394,7 +394,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const resolve = this.authTokenResolver()
     if (!resolve || !address) {
       throw new PerpsError(
-        PerpsErrorCode.Unauthorized,
+        PerpsErrorCode.SDKError,
         `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
           'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
       )

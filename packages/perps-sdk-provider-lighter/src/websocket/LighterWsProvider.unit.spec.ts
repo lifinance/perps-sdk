@@ -2485,20 +2485,26 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('throws an actionable error when no Lighter plugin is registered on the client', async () => {
+    it('throws SDKError when no Lighter plugin is registered on the client', async () => {
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
       })
       const provider = bareProviderFor(client)
-      ;(provider as any).rws.send = vi.fn()
+      const internals = provider as unknown as LighterWsProviderInternals
+      internals.rws.send = vi.fn()
 
       await expect(
         provider.subscribe(
           { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
-      ).rejects.toThrow(/no auth-token resolver was available/)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining(
+          'no auth-token resolver was available'
+        ),
+      })
       provider.close()
     })
 
