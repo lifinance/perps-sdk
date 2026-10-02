@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import {
   DECIMAL_PATTERN,
   MarginMode,
@@ -100,7 +100,9 @@ const DECLARED_NAME =
 const TYPEOF_ALIAS = /:\s*typeof\s+([A-Za-z_$][\w$]*)\s*$/
 
 function declarationsByName(declaration: string): Record<string, string> {
-  const byName: Record<string, string> = {}
+  // Null prototype: an identifier such as `toString` must not resolve to
+  // `Object.prototype` when a declaration names it.
+  const byName: Record<string, string> = Object.create(null)
   for (const statement of topLevelStatements(declaration)) {
     const name = DECLARED_NAME.exec(statement)?.[1]
     if (name) {
@@ -129,6 +131,84 @@ function resolveSignature(
   return statement
 }
 
+const IDENTIFIER = /[A-Za-z_$][\w$]*/g
+const IMPORT_BLOCK = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g
+
+/** Where a name a declaration references is declared. */
+interface DeclarationSite {
+  /** Declaration file holding the name. */
+  path: string
+  /** Name as that file spells it. */
+  name: string
+}
+
+interface DeclarationModule {
+  byName: Record<string, string>
+  /** Declaration site per name the module takes from a relative module. */
+  importedFrom: Record<string, DeclarationSite>
+}
+
+type ModuleLoader = (path: string) => DeclarationModule | undefined
+
+function parseModule(declaration: string, path: string): DeclarationModule {
+  const importedFrom: Record<string, DeclarationSite> = Object.create(null)
+  for (const [, block, from] of declaration.matchAll(IMPORT_BLOCK)) {
+    if (!from.startsWith('.')) {
+      continue
+    }
+    const target = join(dirname(path), from.replace(/\.js$/, '.d.ts'))
+    for (const raw of block.split(',')) {
+      const entry = raw.trim().replace(/^type\s+/, '')
+      if (!entry) {
+        continue
+      }
+      const [name, local] = entry.split(/\s+as\s+/)
+      importedFrom[local ?? name] = { path: target, name }
+    }
+  }
+  return { byName: declarationsByName(declaration), importedFrom }
+}
+
+/**
+ * The declaration text a public export exposes: its own statement plus every
+ * declaration that statement names, followed transitively through the module's
+ * relative imports. A type a public signature names belongs to the boundary
+ * even when no module exports it; a declaration no public signature reaches
+ * stays internal.
+ */
+function signatureClosure(
+  site: DeclarationSite,
+  load: ModuleLoader
+): string | undefined {
+  const seen = new Set<string>([`${site.path}#${site.name}`])
+  const queue: DeclarationSite[] = [site]
+  const reached: string[] = []
+  while (queue.length > 0) {
+    const current = queue.shift() as DeclarationSite
+    const module = load(current.path)
+    const statement = module && resolveSignature(current.name, module.byName)
+    if (!(module && statement)) {
+      continue
+    }
+    reached.push(statement)
+    for (const [identifier] of statement.matchAll(IDENTIFIER)) {
+      const next = module.byName[identifier]
+        ? { path: current.path, name: identifier }
+        : module.importedFrom[identifier]
+      if (!next) {
+        continue
+      }
+      const key = `${next.path}#${next.name}`
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      queue.push(next)
+    }
+  }
+  return reached.length > 0 ? reached.join('\n') : undefined
+}
+
 function returnTypeOf(statement: string): string | undefined {
   const normalised = statement.replace(/\s+/g, ' ').trim()
   return (
@@ -140,6 +220,8 @@ function returnTypeOf(statement: string): string | undefined {
 let entryExports: ExportedName[] = []
 /** Declaration text per public export name; absent for a pure value re-export. */
 const signatures: Record<string, string> = {}
+/** Signature plus every module-local declaration it names, per export name. */
+const boundaryText: Record<string, string> = {}
 /** Declaring module text per public export name, the conservative fallback. */
 const declaringModule: Record<string, string> = {}
 
@@ -153,17 +235,32 @@ beforeAll(() => {
   entryExports = parseEntryExports(entry)
 
   const textCache: Record<string, string> = {}
-  const declarationCache: Record<string, Record<string, string>> = {}
+  const moduleCache: Record<string, DeclarationModule> = {}
+  const load: ModuleLoader = (path) => {
+    if (moduleCache[path] === undefined) {
+      if (!existsSync(path)) {
+        return undefined
+      }
+      textCache[path] = readFileSync(path, 'utf8')
+      moduleCache[path] = parseModule(textCache[path], path)
+    }
+    return moduleCache[path]
+  }
+
   for (const { exported, local, from } of entryExports) {
     const path = join(TYPES_ROOT, from.replace(/\.js$/, '.d.ts'))
-    if (textCache[path] === undefined) {
-      textCache[path] = readFileSync(path, 'utf8')
-      declarationCache[path] = declarationsByName(textCache[path])
+    const module = load(path)
+    if (!module) {
+      continue
     }
     declaringModule[exported] = textCache[path]
-    const declaration = resolveSignature(local, declarationCache[path])
+    const declaration = resolveSignature(local, module.byName)
     if (declaration) {
       signatures[exported] = declaration
+    }
+    const closure = signatureClosure({ path, name: local }, load)
+    if (closure) {
+      boundaryText[exported] = closure
     }
   }
 })
@@ -184,14 +281,14 @@ describe('Big never crosses the public API boundary', () => {
       .map(({ exported }) => exported)
       .filter((name) => !ALLOWED_BIG_EXPORTS.includes(name))
       .filter((name) =>
-        mentionsBig(signatures[name] ?? declaringModule[name] ?? '')
+        mentionsBig(boundaryText[name] ?? declaringModule[name] ?? '')
       )
     expect(offenders).toEqual([])
   })
 
   it('keeps the allow-list honest — every entry is still a live violation', () => {
     const stale = ALLOWED_BIG_EXPORTS.filter(
-      (name) => !mentionsBig(signatures[name] ?? '')
+      (name) => !mentionsBig(boundaryText[name] ?? '')
     )
     expect(stale).toEqual([])
   })
@@ -199,6 +296,61 @@ describe('Big never crosses the public API boundary', () => {
   it.each(NEVER_EXPORTED)('does not export %s', (name) => {
     expect(entryExports.map((e) => e.exported)).not.toContain(name)
     expect(Object.keys(sdk)).not.toContain(name)
+  })
+})
+
+/**
+ * A two-module emit in the shape `tsc` produces: a public function returns a
+ * module-local interface that carries a `Big`, another takes an interface
+ * imported from a sibling module that carries one, a deprecated alias forwards
+ * to the first, and an internal helper takes a `Big` no export reaches.
+ */
+const ORDER_EMIT_PATH = '/emit/order.d.ts'
+const GRID_EMIT_PATH = '/emit/grid.d.ts'
+
+const EMIT: Record<string, string> = {
+  [ORDER_EMIT_PATH]: `
+import type Big from 'big.js';
+import type { Grid } from './grid.js';
+export declare function walkBook(levels: number[]): BookWalk;
+export declare const legacyWalkBook: typeof walkBook;
+export declare function snapSize(size: string, grid: Grid): string;
+export declare function sumSizes(levels: number[]): number;
+interface BookWalk {
+    vwap: number;
+    vwapBig: Big;
+}
+declare function parseLevel(level: string): Big;
+`,
+  [GRID_EMIT_PATH]: `
+import type Big from 'big.js';
+export interface Grid {
+    tick: Big;
+}
+`,
+}
+
+const loadEmit: ModuleLoader = (path) =>
+  EMIT[path] === undefined ? undefined : parseModule(EMIT[path], path)
+
+const emitClosure = (name: string): string =>
+  signatureClosure({ path: ORDER_EMIT_PATH, name }, loadEmit) ?? ''
+
+describe('the declaration scan follows named types to the Big they hide', () => {
+  it('reaches a Big on the module-local interface a signature returns', () => {
+    expect(mentionsBig(emitClosure('walkBook'))).toBe(true)
+  })
+
+  it('reaches it through a deprecated typeof alias as well', () => {
+    expect(mentionsBig(emitClosure('legacyWalkBook'))).toBe(true)
+  })
+
+  it('reaches it through an interface imported from a sibling module', () => {
+    expect(mentionsBig(emitClosure('snapSize'))).toBe(true)
+  })
+
+  it('leaves an internal Big no exported signature names alone', () => {
+    expect(mentionsBig(emitClosure('sumSizes'))).toBe(false)
   })
 })
 
@@ -345,14 +497,24 @@ describe('display-tier formulas give back numbers', () => {
   })
 })
 
-/** Sample inputs ≥ 1000, where a human formatter must group the digits. */
-const FORMAT_SAMPLES: Record<string, readonly unknown[]> = {
-  formatCompactUsd: [1234.5],
-  formatNumber: [1234.5],
-  formatPrice: [1234.5],
-  formatSignedPercent: [1234.5],
-  formatSignedUsd: [1234.5],
-  formatUsd: [1234.5],
+const EN_US = { locale: 'en-US' }
+
+/**
+ * One sample call per human formatter at an input of 1000 or more, with the
+ * marker that proves the output is for a screen: grouped digits, a compact
+ * magnitude suffix, or the percent sign `formatSignedPercent` carries in place
+ * of grouping.
+ */
+const FORMAT_SAMPLES: Record<
+  string,
+  { args: readonly unknown[]; marker: RegExp }
+> = {
+  formatCompactUsd: { args: [1234.5, EN_US], marker: /\d[KMB]$/ },
+  formatNumber: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
+  formatPrice: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
+  formatSignedPercent: { args: [1234.5, EN_US], marker: /\d%$/ },
+  formatSignedUsd: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
+  formatUsd: { args: [1234.5, EN_US], marker: /\d,\d{3}/ },
 }
 
 /** Sample inputs for every `decimal/convert.ts` export that gives a string. */
@@ -371,11 +533,12 @@ describe('format gives human strings, convert gives DecimalStrings', () => {
     expect(formatExports).toEqual(Object.keys(FORMAT_SAMPLES).sort())
   })
 
-  it('renders a grouped, non-DecimalString result for an input of 1000 or more', () => {
-    for (const [name, args] of Object.entries(FORMAT_SAMPLES)) {
+  it('renders a marked, non-DecimalString result for an input of 1000 or more', () => {
+    for (const [name, { args, marker }] of Object.entries(FORMAT_SAMPLES)) {
       const result = callExport(name, args)
       expect(typeof result, name).toBe('string')
       expect(String(result), name).not.toMatch(DECIMAL_PATTERN)
+      expect(String(result), name).toMatch(marker)
     }
   })
 
