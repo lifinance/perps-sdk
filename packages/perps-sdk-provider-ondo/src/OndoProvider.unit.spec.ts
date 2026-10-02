@@ -3,6 +3,7 @@ import {
   ETHEREUM_USDC,
   PerpsClient,
   PerpsError,
+  type PerpsProviderPlugin,
   type PerpsSDKClient,
 } from '@lifi/perps-sdk'
 import type {
@@ -40,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
+import { ONDO_PROVIDER_KEY } from './constants.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
@@ -616,7 +618,96 @@ describe('OndoProvider — order formatting and liquidation surface', () => {
   })
 })
 
-describe('OndoProvider — logged-out degrade paths', () => {
+// The data-read account-access contract: every read below throws
+// `SetupRequired` with no session and `Unauthorized` once the venue rejects the
+// session, and resolves its empty value on an account with no rows. Ondo opens
+// the venue account at the SIWE login, so a wallet with a session always has
+// an account and the contract has no no-account case.
+const SESSION_GATED_READS: ReadonlyArray<
+  [
+    string,
+    string,
+    (p: PerpsProviderPlugin) => Promise<unknown>,
+    { resolves: object } | undefined,
+  ]
+> = [
+  [
+    'getWithdrawableBalances',
+    'withdrawable balances read',
+    (p) => p.getWithdrawableBalances!({ address: ADDRESS }),
+    { resolves: [] },
+  ],
+  [
+    'getAvailableToTrade',
+    'available-to-trade read',
+    (p) => p.getAvailableToTrade!({ address: ADDRESS, marketId: 'AAPL-USD.P' }),
+    { resolves: { marketId: 'AAPL-USD.P' } },
+  ],
+  [
+    'getPositions',
+    'positions read',
+    (p) => p.getPositions({ address: ADDRESS }).then((r) => r.positions),
+    { resolves: [] },
+  ],
+  [
+    'getOrders',
+    'orders read',
+    (p) => p.getOrders({ address: ADDRESS }).then((r) => r.orders),
+    { resolves: [] },
+  ],
+  [
+    'getOrder',
+    'order lookup',
+    (p) => p.getOrder({ address: ADDRESS, id: 'ord-1' }),
+    undefined,
+  ],
+  [
+    'getFills',
+    'fills read',
+    (p) => p.getFills({ address: ADDRESS, limit: 5 }).then((r) => r.items),
+    { resolves: [] },
+  ],
+  [
+    'getActivity',
+    'activity read',
+    (p) => p.getActivity({ address: ADDRESS }).then((r) => r.items),
+    { resolves: [] },
+  ],
+  [
+    'getPortfolioHistory',
+    'portfolio history read',
+    (p) =>
+      p.getPortfolioHistory!({ address: ADDRESS, range: '7d' }).then(
+        (r) => r.points
+      ),
+    { resolves: [] },
+  ],
+  [
+    'getMarketSettings',
+    'market settings read',
+    (p) =>
+      p.getMarketSettings({
+        address: ADDRESS,
+        market: { marketId: 'AAPL-USD.P', categoryId: 'ondo' },
+      }),
+    { resolves: { marginMode: MarginMode.CROSS, leverage: 5 } },
+  ],
+]
+
+const sessionRequiredError = (read: string) => ({
+  code: PerpsErrorCode.SetupRequired,
+  message: `Ondo ${read} requires a session token. Run the SIWE login first.`,
+  tool: ONDO_PROVIDER_KEY,
+})
+
+const sessionRejectedError = (read: string) => ({
+  code: PerpsErrorCode.Unauthorized,
+  message: `Ondo ${read} failed: the venue rejected the session; sign in again.`,
+  tool: ONDO_PROVIDER_KEY,
+  cause: expect.any(OndoSessionExpiredError),
+})
+
+describe('OndoProvider — reads without a session', () => {
   it('getAccount returns an empty snapshot with a loggedIn: false config', async () => {
     const provider = loggedOutProvider()
     const account = await provider.getAccount({ address: ADDRESS })
@@ -641,49 +732,13 @@ describe('OndoProvider — logged-out degrade paths', () => {
     expect(recorded).toHaveLength(0)
   })
 
-  it('getPositions / getOrders / getFills / getActivity return empty pages without venue calls', async () => {
+  it.each(
+    SESSION_GATED_READS
+  )('%s throws SetupRequired without a venue call', async (_method, read, call) => {
     const provider = loggedOutProvider()
-
-    const positions = await provider.getPositions({ address: ADDRESS })
-    expect(positions.positions).toEqual([])
-    expect(positions.pagination).toEqual({ limit: 0, hasMore: false })
-
-    const orders = await provider.getOrders({ address: ADDRESS })
-    expect(orders.orders).toEqual([])
-
-    const fills = await provider.getFills({ address: ADDRESS, limit: 5 })
-    expect(fills.items).toEqual([])
-    expect(fills.pagination).toEqual({ limit: 5, hasMore: false })
-
-    const activity = await provider.getActivity({ address: ADDRESS })
-    expect(activity.items).toEqual([])
-
-    expect(recorded).toHaveLength(0)
-  })
-
-  it('getOrder throws when no session token is stored', async () => {
-    const provider = loggedOutProvider()
-    await expect(
-      provider.getOrder({ address: ADDRESS, id: 'ord-1' })
-    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
-  })
-
-  it('getWithdrawableBalances returns no row without a venue call', async () => {
-    const provider = loggedOutProvider()
-    await expect(
-      provider.getWithdrawableBalances!({ address: ADDRESS })
-    ).resolves.toEqual([])
-    expect(recorded).toHaveLength(0)
-  })
-
-  it('getAvailableToTrade resolves undefined without a venue call', async () => {
-    const provider = loggedOutProvider()
-    await expect(
-      provider.getAvailableToTrade!({
-        address: ADDRESS,
-        marketId: 'AAPL-USD.P',
-      })
-    ).resolves.toBeUndefined()
+    await expect(call(provider)).rejects.toMatchObject(
+      sessionRequiredError(read)
+    )
     expect(recorded).toHaveLength(0)
   })
 
@@ -693,6 +748,37 @@ describe('OndoProvider — logged-out degrade paths', () => {
       false
     )
     expect(recorded).toHaveLength(0)
+  })
+})
+
+describe('OndoProvider — data reads on an account with no rows', () => {
+  const EMPTY_FEEDS = [
+    '/v1/perps/orders',
+    '/v1/perps/fills',
+    '/v1/perps/funding_fees',
+    '/v1/perps/liquidation_history',
+    '/v1/wallet/deposits',
+    '/v1/wallet/withdrawals',
+    '/v1/portfolio/summary/graph',
+  ]
+
+  it.each(
+    SESSION_GATED_READS.flatMap(([method, , call, empty]) =>
+      empty === undefined ? [] : [[method, call, empty] as const]
+    )
+  )('%s resolves its empty value', async (_method, call, empty) => {
+    positionsResult = null
+    balanceResult = { ...BALANCE_RESULT, withdrawableMargin: '0' }
+    const venue = fetchMock.getMockImplementation()
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) =>
+        EMPTY_FEEDS.some((path) => String(url).includes(path))
+          ? respond({ success: true, result: [] })
+          : venue?.(url, init)
+    )
+    const { provider } = await loggedInProvider()
+
+    await expect(call(provider)).resolves.toMatchObject(empty.resolves)
   })
 })
 
@@ -1020,14 +1106,6 @@ describe('OndoProvider — getMarketSettings', () => {
       message: "Ondo field `leverage` must be positive: '0'",
       tool: 'ondo',
     })
-  })
-
-  it('throws the session-required error without a session', async () => {
-    const provider = loggedOutProvider()
-    await expect(
-      provider.getMarketSettings({ address: ADDRESS, market: perpsMarket })
-    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
-    expect(recorded).toEqual([])
   })
 
   it('rejects a market outside the perps category without a venue read', async () => {
@@ -1890,19 +1968,6 @@ describe('OndoProvider — getPortfolioHistory', () => {
     expect(authHeaderOf(graphCall)).toBe('Bearer ondo-jwt-token')
     expect(authHeaderOf(summaryCall)).toBe('Bearer ondo-jwt-token')
   })
-
-  it('returns no points and skips the venue when logged out', async () => {
-    const provider = loggedOutProvider()
-    const history = await provider.getPortfolioHistory!({
-      address: ADDRESS,
-      range: '7d',
-    })
-
-    expect(history).toEqual({ range: '7d', points: [] })
-    expect(
-      recorded.find((r) => r.url.includes('/v1/portfolio'))
-    ).toBeUndefined()
-  })
 })
 
 describe('OndoProvider — getActivity', () => {
@@ -2581,75 +2646,47 @@ describe('OndoProvider — getFills unresolvable market rows', () => {
 describe('OndoProvider — server-revoked session', () => {
   // A JWT the server revoked before it locally expired: `tokenStore.get`
   // returns it, but the venue answers 401 → `OndoSessionExpiredError`. Every
-  // authenticated read must evict the stale token and degrade gracefully so
+  // authenticated read must evict the stale token and throw `Unauthorized` so
   // the UI cannot soft-lock behind a token that still looks valid locally.
   const revokeSession = () =>
-    fetchMock.mockImplementation(async (url: string | URL) => {
-      const u = String(url)
-      if (u.includes('backend.test/v1/perps/markets')) {
-        return respond(MARKETS_RESPONSE)
+    fetchMock.mockImplementation(
+      async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('backend.test/v1/perps/markets')) {
+          return respond(MARKETS_RESPONSE)
+        }
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond({ providers: providersResult })
+        }
+        recorded.push({ url: u, init })
+        return respond({ success: false, error: 'token expired' }, 401)
       }
-      return respond({ success: false, error: 'token expired' }, 401)
-    })
+    )
 
-  it('getPositions evicts the token and returns an empty page', async () => {
+  it.each(
+    SESSION_GATED_READS
+  )('%s evicts the token and throws Unauthorized', async (_method, read, call) => {
     const { provider, store } = await loggedInProvider()
     revokeSession()
 
-    await expect(provider.getPositions({ address: ADDRESS })).resolves.toEqual({
-      provider: 'ondo',
-      positions: [],
-      pagination: { limit: 0, hasMore: false },
-    })
+    await expect(call(provider)).rejects.toMatchObject(
+      sessionRejectedError(read)
+    )
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
 
-  it('getOrders evicts the token and returns an empty page', async () => {
-    const { provider, store } = await loggedInProvider()
+  it.each(
+    SESSION_GATED_READS
+  )('%s throws SetupRequired on the call after the eviction', async (_method, read, call) => {
+    const { provider } = await loggedInProvider()
     revokeSession()
+    await call(provider).catch(() => undefined)
+    recorded = []
 
-    await expect(provider.getOrders({ address: ADDRESS })).resolves.toEqual({
-      provider: 'ondo',
-      orders: [],
-      pagination: { limit: 0, hasMore: false },
-    })
-    await expect(store.get(ADDRESS)).resolves.toBeNull()
-  })
-
-  it('getOrder evicts the token and throws the session-required error', async () => {
-    const { provider, store } = await loggedInProvider()
-    revokeSession()
-
-    await expect(
-      provider.getOrder({ address: ADDRESS, id: 'ord-1' })
-    ).rejects.toThrowError(/requires a session token/)
-    await expect(store.get(ADDRESS)).resolves.toBeNull()
-  })
-
-  it('getFills evicts the token and returns an empty page', async () => {
-    const { provider, store } = await loggedInProvider()
-    revokeSession()
-
-    await expect(
-      provider.getFills({ address: ADDRESS, limit: 5 })
-    ).resolves.toEqual({
-      provider: 'ondo',
-      items: [],
-      pagination: { limit: 5, hasMore: false },
-    })
-    await expect(store.get(ADDRESS)).resolves.toBeNull()
-  })
-
-  it('getActivity evicts the token and returns an empty page', async () => {
-    const { provider, store } = await loggedInProvider()
-    revokeSession()
-
-    await expect(provider.getActivity({ address: ADDRESS })).resolves.toEqual({
-      provider: 'ondo',
-      items: [],
-      pagination: { limit: 0, hasMore: false },
-    })
-    await expect(store.get(ADDRESS)).resolves.toBeNull()
+    await expect(call(provider)).rejects.toMatchObject(
+      sessionRequiredError(read)
+    )
+    expect(recorded).toHaveLength(0)
   })
 
   it('propagates non-session venue errors and keeps the token', async () => {

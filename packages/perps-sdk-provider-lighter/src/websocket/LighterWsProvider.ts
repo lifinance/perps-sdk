@@ -293,15 +293,6 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     const wireChannels = await this.resolveChannel(sub)
 
-    // Reject before any wire sub registers: a registered sub whose token can
-    // never be resolved is retried on every reopen without the caller ever
-    // seeing the failure.
-    for (const { channel, needsAuth, address } of wireChannels) {
-      if (needsAuth) {
-        await this.requireAuthToken(channel, address)
-      }
-    }
-
     // Acquired before the wire subs register, so a rejected spot-mark open
     // leaves no `user_stats`/`account_all` entry behind for the next replay.
     const releaseSpotMarks =
@@ -392,8 +383,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
    * The auth token a gated channel's subscribe frame carries, or a throw when
    * no resolver is wired or the resolver yields none. Shared by the
    * subscribe-time guard and the per-send resolve so both report one message.
-   * Throws {@link PerpsError} with `Unauthorized` so a caller branches on the
-   * code, as it does for the Ondo and Lighter REST auth failures.
+   * Throws {@link PerpsError}: `SetupRequired` when the resolver yields no
+   * token, the code the REST reads throw for the same missing credential, and
+   * `SDKError` when no resolver is wired, which no account setup can fix.
    */
   private async requireAuthToken(
     channel: string,
@@ -402,7 +394,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const resolve = this.authTokenResolver()
     if (!resolve || !address) {
       throw new PerpsError(
-        PerpsErrorCode.Unauthorized,
+        PerpsErrorCode.SDKError,
         `Lighter WS channel '${channel}' requires authentication but no auth-token resolver was available. ` +
           'Register `lighterProvider()` on the same client, or pass `resolveAuthToken` to `lighterWsProvider`.'
       )
@@ -410,7 +402,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const token = await resolve(address)
     if (!token) {
       throw new PerpsError(
-        PerpsErrorCode.Unauthorized,
+        PerpsErrorCode.SetupRequired,
         `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
       )
     }
@@ -534,13 +526,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       sub.channel === 'fills' ||
       sub.channel === 'positions'
     ) {
-      const accountIndex = await this.resolveAccountIndex(sub.address)
       const lighterChannel = LIGHTER_AUTH_CHANNEL[sub.channel]
       // `account_all_trades` is publicly readable per the Lighter WS spec —
       // an auth token only filters events to the user's own account, which
       // we don't currently use to scope further. Skip the token here so a
       // user without a registered API key still gets their fill stream.
       const needsAuth = sub.channel !== 'fills'
+      // Before the account lookup and before registration: a registered sub
+      // with no token would fail on every reopen without the caller seeing it.
+      if (needsAuth) {
+        await this.requireAuthToken(lighterChannel, sub.address)
+      }
+      const accountIndex = await this.resolveAccountIndex(sub.address)
       return [
         {
           channel: `${lighterChannel}/${accountIndex}`,
