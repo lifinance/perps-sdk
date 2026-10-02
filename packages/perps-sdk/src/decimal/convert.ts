@@ -48,12 +48,15 @@ export const decimalToBaseUnits = (
   return scaled.toNumber()
 }
 
+const BASE_UNITS_PATTERN = /^-?\d+$/
+
 /**
- * Convert a base-unit amount (bigint string) to a decimal string.
+ * Convert a base-unit amount (integer string) to a decimal string.
  *
  * @param amount - Amount in base units (e.g. "1000000" for 1 USDC)
  * @param decimals - Token decimals (e.g. 6 for USDC)
- * @returns Decimal string; `"0"` when `amount` is not a valid bigint
+ * @throws {PerpsError} `ValidationError` when `amount` is not an integer
+ *   string, or `decimals` is not a non-negative integer.
  * @example
  * ```ts
  * baseUnitsToDecimal('1000000', 6) // '1'
@@ -64,11 +67,19 @@ export function baseUnitsToDecimal(
   amount: DecimalString,
   decimals: number
 ): DecimalString {
-  try {
-    return formatUnits(BigInt(amount), decimals)
-  } catch {
-    return '0'
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`baseUnitsToDecimal(decimals)\`: ${decimals} is not a non-negative integer.`
+    )
   }
+  if (!BASE_UNITS_PATTERN.test(amount)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`baseUnitsToDecimal(amount)\`: '${amount}' is not an integer base-unit string.`
+    )
+  }
+  return formatUnits(BigInt(amount), decimals)
 }
 
 /**

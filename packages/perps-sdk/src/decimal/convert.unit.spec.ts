@@ -105,8 +105,33 @@ describe('baseUnitsToDecimal', () => {
     expect(baseUnitsToDecimal('500000', 6)).toBe('0.5')
   })
 
-  it('should return 0 for invalid input', () => {
-    expect(baseUnitsToDecimal('not-a-number', 6)).toBe('0')
+  it('converts a 30-digit integer exactly', () => {
+    expect(baseUnitsToDecimal('123456789012345678901234567890', 18)).toBe(
+      '123456789012.34567890123456789'
+    )
+  })
+
+  it.each([
+    'not-a-number',
+    '1.5',
+    '1e3',
+    '',
+  ])('rejects the non-integer string %j, naming the function and the value', (amount) => {
+    expectValidationError(
+      () => baseUnitsToDecimal(amount, 6),
+      new RegExp(`baseUnitsToDecimal\\(amount\\).*'${amount}'`)
+    )
+  })
+
+  it('rejects invalid decimals', () => {
+    expectValidationError(
+      () => baseUnitsToDecimal('1', -1),
+      /baseUnitsToDecimal\(decimals\).*-1/
+    )
+    expectValidationError(
+      () => baseUnitsToDecimal('1', 1.5),
+      /baseUnitsToDecimal\(decimals\).*1\.5/
+    )
   })
 
   it.each([
@@ -116,7 +141,7 @@ describe('baseUnitsToDecimal', () => {
     ['-500000', 6],
     ['1234500000', 6],
     ['0', 6],
-    ['not-a-number', 6],
+    ['123456789012345678901234567890', 18],
   ] as const)('spells %s at %i decimals as a DecimalString', (amount, dp) => {
     expect(baseUnitsToDecimal(amount, dp)).toMatch(DECIMAL_PATTERN)
   })
