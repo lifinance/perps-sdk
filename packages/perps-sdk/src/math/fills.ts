@@ -1,4 +1,8 @@
-import { FillClassification, OrderSide } from '@lifi/perps-types'
+import {
+  type DecimalString,
+  FillClassification,
+  OrderSide,
+} from '@lifi/perps-types'
 import { parseDecimal } from '../decimal/parse.js'
 
 /**
@@ -19,9 +23,9 @@ export { FillClassification }
  * @public
  */
 export function classifyFillFromPosition(
-  startPosition: string,
+  startPosition: DecimalString,
   side: string,
-  sz: string
+  sz: DecimalString
 ): FillClassification {
   const start = parseFloat(startPosition)
   const delta = side === 'B' ? parseFloat(sz) : -parseFloat(sz)
@@ -66,7 +70,7 @@ export function classifyFillFromPosition(
  */
 export function classifyFill(
   side: OrderSide,
-  realizedPnl: string | null | undefined
+  realizedPnl: DecimalString | null | undefined
 ): FillClassification {
   const isClose = realizedPnl != null && parseDecimal(realizedPnl) !== 0
   if (side === OrderSide.BUY) {

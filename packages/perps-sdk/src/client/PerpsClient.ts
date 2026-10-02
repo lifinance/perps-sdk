@@ -7,6 +7,7 @@ import type {
   ActionStep,
   AvailableToTrade,
   CreateActionResponse,
+  DecimalString,
   ExecuteActionResponse,
   MarketRef,
   MarketSettings,
@@ -753,7 +754,7 @@ export class PerpsClient {
    *   venue formula reads is malformed.
    * @public
    */
-  getPositionRemovableMargin(position: Position): string | undefined {
+  getPositionRemovableMargin(position: Position): DecimalString | undefined {
     return this.requireProvider(
       position.market.providerId
     ).positionRemovableMargin(position)
@@ -1448,7 +1449,7 @@ export class PerpsClient {
     address: Address
     market: MarketRef
     action: 'add' | 'remove'
-    amount: string
+    amount: DecimalString
   }): Promise<ExecuteActionResponse> {
     return this.execute({
       ...params,

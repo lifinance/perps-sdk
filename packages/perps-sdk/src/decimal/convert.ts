@@ -61,7 +61,7 @@ export const decimalToBaseUnits = (
  * @public
  */
 export function baseUnitsToDecimal(
-  amount: string,
+  amount: DecimalString,
   decimals: number
 ): DecimalString {
   try {
