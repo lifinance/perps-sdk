@@ -34,21 +34,21 @@ export interface BaseMarket {
   /**
    * Maximum decimal places the venue accepts for order prices on this market.
    * Some venues impose further constraints on top of this budget (e.g. a
-   * significant-figure cap), so always format prices through the provider's
-   * `formatOrderPrice` rather than applying this field directly.
+   * significant-figure cap), so always snap prices through the provider's
+   * `snapOrderPrice` rather than applying this field directly.
    */
   priceDecimals?: number
   /**
    * Exact price tick as a plain decimal string (e.g. `'0.25'`). Present when
    * the venue's grid is not a power of ten, where `priceDecimals` alone cannot
-   * describe the tick. Format prices through the provider's `formatOrderPrice`
+   * describe the tick. Snap prices through the provider's `snapOrderPrice`
    * rather than applying this field directly.
    */
   priceIncrement?: DecimalString
   /**
    * Exact size lot as a plain decimal string (e.g. `'0.05'`). Present when the
    * venue's grid is not a power of ten, where `szDecimals` alone cannot
-   * describe the lot. Format sizes through the provider's `formatOrderSize`
+   * describe the lot. Snap sizes through the provider's `snapOrderSize`
    * rather than applying this field directly.
    */
   sizeIncrement?: DecimalString

@@ -119,23 +119,23 @@ describe('hyperliquidProvider', () => {
       szDecimals: 2,
     }
 
-    it('formats prices with the HL 5-sig-fig + decimal-budget rules', () => {
+    it('snaps prices with the HL 5-sig-fig + decimal-budget rules', () => {
       const provider = hyperliquidProvider()
       // szDecimals 5 => 1 price decimal, then capped to 5 significant figures
-      expect(provider.formatOrderPrice(btcMarket, 50000.25)).toBe('50000')
-      expect(provider.formatOrderPrice(btcMarket, 1234.5)).toBe('1234.5')
+      expect(provider.snapOrderPrice(btcMarket, '50000.25')).toBe('50000')
+      expect(provider.snapOrderPrice(btcMarket, '1234.5')).toBe('1234.5')
     })
 
     it('grants spot markets the wider 8-decimal budget', () => {
       const provider = hyperliquidProvider()
       // szDecimals 2: perps budget is 4 decimals, spot budget is 6
-      expect(provider.formatOrderPrice(perpMarket, 0.00012345)).toBe('0.0001')
-      expect(provider.formatOrderPrice(spotMarket, 0.00012345)).toBe('0.000123')
+      expect(provider.snapOrderPrice(perpMarket, '0.00012345')).toBe('0.0001')
+      expect(provider.snapOrderPrice(spotMarket, '0.00012345')).toBe('0.000123')
     })
 
     it('truncates sizes to szDecimals', () => {
       const provider = hyperliquidProvider()
-      expect(provider.formatOrderSize(btcMarket, 0.123456)).toBe('0.12345')
+      expect(provider.snapOrderSize(btcMarket, '0.123456')).toBe('0.12345')
     })
 
     it('estimates liquidation with mmr derived from the market maxLeverage', () => {

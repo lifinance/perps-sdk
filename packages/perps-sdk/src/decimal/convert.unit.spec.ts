@@ -6,7 +6,9 @@ import {
   decimalToBaseUnits,
   fromBaseUnits,
   fromBaseUnitsNumber,
+  numberToDecimalString,
   scaleToInteger,
+  truncateDecimal,
 } from './convert.js'
 
 const expectValidationError = (fn: () => unknown, match: RegExp) => {
@@ -140,5 +142,103 @@ describe('fromBaseUnitsNumber', () => {
 
   it('should return 0 for invalid input', () => {
     expect(fromBaseUnitsNumber('bad', 6)).toBe(0)
+  })
+})
+
+describe('truncateDecimal', () => {
+  it.each([
+    ['500', 2, '500.00'],
+    ['1000.999', 2, '1000.99'],
+    ['0.0000006', 8, '0.00000060'],
+    ['-1.239', 2, '-1.23'],
+    ['7', 2, '7.00'],
+    ['0.1', 2, '0.10'],
+  ] as const)('pads %s at %i decimals to %s', (value, dp, expected) => {
+    expect(truncateDecimal(value, dp)).toBe(expected)
+  })
+
+  it('pads past the float grid, where toFixed on a number cannot', () => {
+    expect(truncateDecimal('0.01', 18)).toBe('0.010000000000000000')
+  })
+
+  it('truncates magnitudes beyond Number.MAX_SAFE_INTEGER exactly', () => {
+    expect(truncateDecimal('9007199254740993.129', 2)).toBe(
+      '9007199254740993.12'
+    )
+  })
+
+  it('expands exponent notation into plain digits', () => {
+    expect(truncateDecimal('1e-7', 8)).toBe('0.00000010')
+    expect(truncateDecimal('1.5e21', 2)).toBe('1500000000000000000000.00')
+  })
+
+  it('drops the sign when the truncation lands on zero', () => {
+    expect(truncateDecimal('-0.001', 2)).toBe('0.00')
+    expect(truncateDecimal('-0', 2)).toBe('0.00')
+  })
+
+  it('emits no decimal point at zero decimals', () => {
+    expect(truncateDecimal('1000.999', 0)).toBe('1000')
+  })
+
+  it.each([
+    ['500', 2],
+    ['1000.999', 2],
+    ['-1.239', 2],
+    ['-0.001', 2],
+    ['0.0000006', 8],
+    ['1000.999', 0],
+  ] as const)('spells %s at %i decimals as a DecimalString', (value, dp) => {
+    expect(truncateDecimal(value, dp)).toMatch(DECIMAL_PATTERN)
+  })
+
+  it.each([
+    '',
+    'abc',
+    '1.2.3',
+    '0x10',
+  ])('rejects the non-numeric value %j', (value) => {
+    expectValidationError(
+      () => truncateDecimal(value, 2),
+      /Invalid decimal string for truncation/
+    )
+  })
+
+  it.each([-1, 1.5, Number.NaN])('rejects the decimals %j', (dp) => {
+    expectValidationError(
+      () => truncateDecimal('1', dp),
+      /Invalid decimals for truncation/
+    )
+  })
+})
+
+describe('numberToDecimalString', () => {
+  it.each([
+    [1e-7, '0.0000001'],
+    [5e-7, '0.0000005'],
+    [-0, '0'],
+    [0, '0'],
+    [123456789.123, '123456789.123'],
+    [1.5e21, '1500000000000000000000'],
+    [-2.5, '-2.5'],
+  ] as const)('spells %j as %s', (value, expected) => {
+    expect(numberToDecimalString(value)).toBe(expected)
+  })
+
+  it.each([
+    1e-7, 5e-7, -0, 123456789.123, 1.5e21, -2.5,
+  ])('spells %j as a DecimalString', (value) => {
+    expect(numberToDecimalString(value)).toMatch(DECIMAL_PATTERN)
+  })
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])('rejects the non-finite number %j', (value) => {
+    expectValidationError(
+      () => numberToDecimalString(value),
+      /Invalid number for decimal conversion/
+    )
   })
 })

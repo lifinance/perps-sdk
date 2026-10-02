@@ -609,10 +609,10 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     maintenanceMarginRate: 0.012,
   }
 
-  it('formats prices and sizes against the Lighter decimal budgets', () => {
+  it('snaps prices and sizes against the Lighter decimal budgets', () => {
     const provider = lighterProvider()
-    expect(provider.formatOrderPrice(btcMarket, 50000.25)).toBe('50000.3')
-    expect(provider.formatOrderSize(btcMarket, 0.123456)).toBe('0.1234')
+    expect(provider.snapOrderPrice(btcMarket, '50000.25')).toBe('50000.3')
+    expect(provider.snapOrderSize(btcMarket, '0.123456')).toBe('0.1234')
   })
 
   it('estimates liquidation from the market maintenanceMarginRate', () => {

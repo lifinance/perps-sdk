@@ -183,6 +183,51 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Order amounts and venue grids
+
+Order amounts cross the API as a `DecimalString`: a plain decimal string with
+no grouping, exponent or currency sign. Never convert one to a `number`. A
+`number` holds 15 significant digits, so `Number('1234567.0000000001')` is
+`1234567` and the order loses a lot step before it reaches the venue.
+
+`snapOrderSize(sdk, market, size)` snaps a size onto the venue lot grid of the
+market's own provider. It truncates toward zero, so the snapped size never
+exceeds the size the user asked for. `snapOrderPrice(sdk, market, price)`
+snaps a price onto the venue tick grid and rounds half-up. Each one resolves
+the provider from `market.providerId`, so a caller never applies one venue's
+rules to another venue's market.
+
+`calculateOrderAmounts()` gives the three order-entry amounts from whichever
+one the user typed. It normalises the held field first, then derives the other
+two from that value, and it truncates every division, so a held margin always
+funds the size it buys:
+
+```ts
+import { calculateOrderAmounts } from '@lifi/perps-sdk'
+
+const amounts = calculateOrderAmounts({
+  sdk: client.client,
+  market,
+  held: 'margin',
+  amount: '100',
+  leverage: 5,
+  price: '1000',
+  // quoteDecimals defaults to 2, the minor unit of a USD quote asset.
+})
+// { margin: '100', size: '0.5', notional: '500' }, or null on a bad input
+```
+
+`truncateDecimal(value, decimals)` rounds a decimal string down and pads it to
+exactly `decimals` places, which seeds a fixed-decimal input field.
+`numberToDecimalString(value)` spells a `number` from a venue or browser API as
+a plain decimal string, so `1e-7` becomes `'0.0000001'`.
+
+A provider plugin implements the same two rules for its own venue:
+`snapOrderPrice(market: Market, price: DecimalString): DecimalString` and
+`snapOrderSize(market: Market, size: DecimalString): DecimalString`.
+`estimateLiquidationPrice()` stays on `number`, in and out: it is a
+display-tier estimate for a screen, not a wire amount.
+
 ## WebSocket
 
 `PerpsWsClient` streams prices, orderbook, and account events over WebSocket. Register a WS provider per DEX; `subscribe()` returns an unsubscribe function, and multiple listeners on the same channel share one wire subscription:
