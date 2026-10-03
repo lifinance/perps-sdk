@@ -2065,9 +2065,28 @@ describe('PerpsClient', () => {
           max: '11.009697536',
         },
       ])
-      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
-        address: userAddress,
-      })
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith(
+        { address: userAddress },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      const plugin = withRows([
+        { assetId: '3', route: 'perps', available: '10.9886', max: '10.9886' },
+      ])
+      const options = {
+        signal: new AbortController().signal,
+        lighterAuthToken: 'ro:1:token',
+      }
+      await clientWith(plugin).getWithdrawableBalances(
+        { provider, address: userAddress },
+        options
+      )
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
     })
 
     it('propagates a plugin read that throws', async () => {
