@@ -591,7 +591,7 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.leverage).toBeCloseTo(33.333_333, 5)
+      expect(fill.leverage).toBe(33.33)
     })
 
     it('leaves leverage unset on older rows missing the fraction', () => {

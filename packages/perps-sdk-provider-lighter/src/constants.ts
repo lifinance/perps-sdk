@@ -194,6 +194,15 @@ export const DEFAULT_TRADES_LIMIT = 50
 export const LIGHTER_FEE_TICK_SCALE = 1_000_000
 
 /**
+ * Decimal places a client may use for Lighter leverage. Lighter stores
+ * leverage as an integer basis-point IMF (`round(10000 / leverage)`), and at
+ * this precision a read-back leverage always re-saves the same IMF.
+ *
+ * @public
+ */
+export const LIGHTER_LEVERAGE_PRECISION = 2
+
+/**
  * Scale of the integer `initial_margin_fraction` values Lighter publishes on
  * trade rows and order-book details: the integer is a percent times 100, so
  * `500` is 5.00% and `200` is 2.00%. Account positions publish the same
