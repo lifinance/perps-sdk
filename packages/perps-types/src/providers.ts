@@ -191,11 +191,12 @@ export interface Provider {
    */
   minOrderValueUsd?: DecimalString
   /**
-   * Minimum order notional value in USD for reduce-only orders, when the
-   * provider applies a lower floor than `minOrderValueUsd`. Absent means
-   * reduce-only orders use the same floor as `minOrderValueUsd`.
+   * Minimum order notional value in USD for reduce-only orders, as a plain
+   * decimal string, when the provider applies a lower floor than
+   * `minOrderValueUsd`. Absent means reduce-only orders use the same floor as
+   * `minOrderValueUsd`.
    */
-  minReduceOrderValueUsd?: number
+  minReduceOrderValueUsd?: DecimalString
   /**
    * Minimum withdrawal notional in USD, as a plain decimal string. Absent
    * means no minimum advertised.
