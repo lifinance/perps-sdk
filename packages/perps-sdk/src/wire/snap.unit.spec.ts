@@ -82,3 +82,17 @@ describe('snapOrderPrice', () => {
     }
   })
 })
+
+describe('venueSnapSize', () => {
+  it('truncates a size just below a lot past 20 decimal places', () => {
+    expect(venueSnapSize(venueMarket(), '0.0099999999999999999999999')).toBe(
+      '0'
+    )
+    expect(
+      venueSnapSize(
+        venueMarket({ sizeIncrement: '0.5' }),
+        '0.99999999999999999999995'
+      )
+    ).toBe('0.5')
+  })
+})
