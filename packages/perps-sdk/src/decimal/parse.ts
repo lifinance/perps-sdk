@@ -1,4 +1,9 @@
-import { DECIMAL_PATTERN, type DecimalString } from '@lifi/perps-types'
+import {
+  DECIMAL_PATTERN,
+  type DecimalString,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 
 /**
  * Parse a string to a float, stripping common formatting artefacts.
@@ -57,4 +62,26 @@ export function parseDecimal(
  */
 export function isDecimalString(value: unknown): value is DecimalString {
   return typeof value === 'string' && DECIMAL_PATTERN.test(value)
+}
+
+/**
+ * Check a decimal input against the {@link DecimalString} contract, naming
+ * the field it came from, so a malformed amount fails at the SDK boundary
+ * instead of inside big.js.
+ *
+ * @returns `value`, unchanged.
+ * @throws {PerpsError} `ValidationError` naming `field`.
+ * @public
+ */
+export function validateDecimal(
+  value: DecimalString,
+  field: string
+): DecimalString {
+  if (!isDecimalString(value)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`${field}\`: '${value}' is not a decimal string.`
+    )
+  }
+  return value
 }
