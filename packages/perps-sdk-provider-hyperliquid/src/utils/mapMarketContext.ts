@@ -1,6 +1,7 @@
 import type { MarketContext } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { HlWsFastAssetCtx, HlWsPerpAssetCtx } from '../types/index.js'
+import { toMarketContextString } from './decimal.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
@@ -40,11 +41,11 @@ export const mapMarketContext = (
   const now = Date.now()
   const nextFundingTime =
     Math.ceil(now / NEXT_FUNDING_INTERVAL_MS) * NEXT_FUNDING_INTERVAL_MS
-  const markPrice = fast?.markPx != null ? fast.markPx : ctx.markPx
+  const markPrice = toMarketContextString(fast?.markPx) ?? ctx.markPx
 
   return {
     marketId,
-    midPrice: fast?.midPx != null ? fast.midPx : (ctx.midPx ?? ctx.markPx),
+    midPrice: toMarketContextString(fast?.midPx) ?? ctx.midPx ?? ctx.markPx,
     markPrice,
     oraclePrice: ctx.oraclePx,
     prevDayPrice: ctx.prevDayPx,

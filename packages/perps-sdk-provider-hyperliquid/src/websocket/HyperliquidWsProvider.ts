@@ -5,7 +5,6 @@ import {
   isActiveMarket,
   isActiveOrderStatus,
   type MarketRegistry,
-  numberToDecimalString,
   PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
@@ -67,7 +66,7 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import { HlAbstractionMode } from '../types/index.js'
-import { toWireBig } from '../utils/decimal.js'
+import { toMarketContextString, toWireBig } from '../utils/decimal.js'
 import {
   assetIsOutcome,
   decodeCompressedJson,
@@ -916,9 +915,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     if (perpCtx !== undefined) {
       return mapMarketContext(marketId, perpCtx, fast)
     }
-    const midPrice = fast?.midPx ?? fast?.markPx
-    const markPrice = fast?.markPx ?? fast?.midPx
-    if (midPrice != null && markPrice != null) {
+    const fastMid = toMarketContextString(fast?.midPx)
+    const fastMark = toMarketContextString(fast?.markPx)
+    const midPrice = fastMid ?? fastMark
+    const markPrice = fastMark ?? fastMid
+    if (midPrice !== undefined && markPrice !== undefined) {
       return { marketId, midPrice, markPrice }
     }
     return undefined
@@ -969,8 +970,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
     for (const [id, fast] of Object.entries(this.fastCtxByMarketId)) {
-      const mid = fast.midPx ?? fast.markPx
-      if (mid != null) {
+      const mid =
+        toMarketContextString(fast.midPx) ?? toMarketContextString(fast.markPx)
+      if (mid !== undefined) {
         map.set(id, Number(mid))
       }
     }
@@ -1609,13 +1611,6 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
 
-const toMarketContextString = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return numberToDecimalString(value)
-  }
-  return typeof value === 'string' ? value : undefined
-}
-
 const toMarketCapString = (
   price: unknown,
   circulatingSupply: unknown
@@ -1730,10 +1725,10 @@ function mapSpotMarketContext(
     return undefined
   }
 
-  const emittedMarkPrice = fast?.markPx != null ? fast.markPx : markPrice
+  const emittedMarkPrice = toMarketContextString(fast?.markPx) ?? markPrice
   return {
     marketId,
-    midPrice: fast?.midPx != null ? fast.midPx : midPrice,
+    midPrice: toMarketContextString(fast?.midPx) ?? midPrice,
     markPrice: emittedMarkPrice,
     prevDayPrice: toMarketContextString(ctx.prevDayPx),
     volume24h: toMarketContextString(ctx.dayNtlVlm),

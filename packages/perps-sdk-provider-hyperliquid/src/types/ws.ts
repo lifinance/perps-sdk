@@ -72,13 +72,14 @@ export type HlWsMessage = {
 
 /**
  * Per-coin entry from the compressed `fastAssetCtxs` feed (mark + mid only,
- * keyed by coin across all dexes). `midPx` is null when the book is empty;
+ * keyed by coin across all dexes). Hyperliquid documents the prices as numbers
+ * and its examples show strings. `midPx` is null when the book is empty;
  * fields are omitted from incremental frames when unchanged.
  * @public
  */
 export type HlWsFastAssetCtx = {
-  markPx?: string
-  midPx?: string | null
+  markPx?: HlWsNumberString
+  midPx?: HlWsNumberString | null
 }
 
 /**
