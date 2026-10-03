@@ -169,6 +169,11 @@ not the withdrawal ceiling: read `getWithdrawableBalances` for that.
 - Ondo: the `/v1/perps/balance` `withdrawableMargin`.
 - Hyperliquid spot rows: the `spotClearinghouseState` `total` minus `hold`.
 - Lighter spot rows: the asset `balance` minus `locked_balance`.
+- Lighter unified accounts: the settlement asset is one spot row and has no
+  collateral row. Its `units` is `balance` plus `margin_balance`. Its
+  `transferable` is `balance` minus `locked_balance`, plus `margin_balance` up
+  to `available_balance`. A `sendAsset` for a unified account fails with
+  `PooledCategoryTransfer`.
 
 `PerpsWsClient.streamsAvailableToTrade(provider)` tells a caller, before the
 first subscribe, whether the provider streams the `availableToTrade` channel.

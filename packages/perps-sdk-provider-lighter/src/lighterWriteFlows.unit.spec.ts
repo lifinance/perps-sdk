@@ -64,7 +64,8 @@ const ACCOUNT_PAYLOAD = {
       total_isolated_order_count: 0,
       pending_order_count: 0,
       transaction_time: 0,
-      account_trading_mode: 1,
+      // Simple mode: a unified account refuses SEND_ASSET before it signs.
+      account_trading_mode: 0,
       name: 'test',
       description: '',
     },
