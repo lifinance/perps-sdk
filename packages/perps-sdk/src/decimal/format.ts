@@ -69,6 +69,10 @@ function toFiniteNumber(value: FormatInput): number | null {
  * the guard digits are chopped: `99.999` at 2dp → `99.99`, `0.29` → `0.29`.
  */
 function truncateAbs(abs: number, decimals: number): number {
+  // `toFixed` emits exponent notation at >= 1e21; every double that large is an integer.
+  if (Number.isInteger(abs)) {
+    return abs
+  }
   const s = abs.toFixed(Math.min(decimals + FLOAT_GUARD_DIGITS, 100))
   const dot = s.indexOf('.')
   const cut = decimals === 0 ? dot : dot + 1 + decimals
