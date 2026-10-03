@@ -845,12 +845,14 @@ export class PerpsClient {
    * @public
    */
   async getWithdrawableBalances(
-    params: GetWithdrawableBalancesParams
+    params: GetWithdrawableBalancesParams,
+    options?: SDKRequestOptions
   ): Promise<WithdrawableBalance[] | undefined> {
     const plugin = this.requireProvider(params.provider)
-    const rows = await plugin.getWithdrawableBalances?.({
-      address: params.address,
-    })
+    const rows = await plugin.getWithdrawableBalances?.(
+      { address: params.address },
+      options
+    )
     if (rows === undefined) {
       return undefined
     }
