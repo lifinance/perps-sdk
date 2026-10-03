@@ -295,6 +295,12 @@ const ACCOUNT_PAYLOAD = {
   ],
 }
 
+// Simple mode keeps the settlement asset's spot and perps routes apart.
+const SIMPLE_ACCOUNT = {
+  ...ACCOUNT_PAYLOAD.accounts[0],
+  account_trading_mode: LT_ACCOUNT_TRADING_MODE_SIMPLE,
+}
+
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
 const APIKEYS_MATCHING_STORED_KEY = {
   code: 0,
@@ -1033,7 +1039,7 @@ describe('LighterProvider — referralPresent', () => {
 
 const accountWithAssets = (assets: unknown[]) => ({
   ...ACCOUNT_PAYLOAD,
-  accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
+  accounts: [{ ...SIMPLE_ACCOUNT, assets }],
 })
 
 const stubAccount = (assets: unknown[]) => {
@@ -1346,7 +1352,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         cross_asset_value: '450',
         assets: [
           {
@@ -1726,7 +1732,7 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         assets: [
           {
             symbol: 'USDC',
@@ -1970,7 +1976,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         cross_asset_value: '450',
         assets: [
           {
@@ -2102,7 +2108,7 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         assets: [
           {
             symbol: 'USDC',

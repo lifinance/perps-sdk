@@ -50,7 +50,8 @@ export const lighterPortfolioValue = (
 
 /**
  * Roll up settlement equity, spot holdings and non-settlement margin holdings.
- * Settlement margin is already included in `totalAssetValue`.
+ * The settlement asset counts as `totalAssetValue` plus its spot-route balance,
+ * so a row that pools both routes is not counted again.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Lighter one.
  * @public
@@ -61,14 +62,11 @@ export function getAccountSummary(
 ): AccountSummary {
   const config = lighterConfig(account)
   const settlement = LIGHTER_COLLATERAL_ASSETS[config.provider]
-  const holdings = [
-    ...account.balances,
-    ...account.collateralBalances.filter(
-      ({ asset }) =>
-        asset.id !== String(settlement.assetIndex) &&
-        asset.id !== settlement.displaySymbol
-    ),
-  ]
+  const holdings = [...account.balances, ...account.collateralBalances].filter(
+    ({ asset }) =>
+      asset.id !== String(settlement.assetIndex) &&
+      asset.id !== settlement.displaySymbol
+  )
 
   let marginUsed = new Big(0)
   let unrealizedPnl = new Big(0)
@@ -79,7 +77,9 @@ export function getAccountSummary(
 
   return {
     portfolioValue: lighterPortfolioValue(
-      toRequiredBig(config.totalAssetValue, 'totalAssetValue'),
+      toRequiredBig(config.totalAssetValue, 'totalAssetValue').plus(
+        toRequiredBig(config.settlementSpotBalance, 'settlementSpotBalance')
+      ),
       holdings.map((balance) => balance.valueUsd)
     ).toFixed(),
     availableMargin: atLeastZero(

@@ -91,6 +91,7 @@ const baseConfig: LighterAccountConfig = {
   crossAssetValue: '500',
   crossInitialMarginRequirement: '400',
   totalAssetValue: '500',
+  settlementSpotBalance: '0',
   accountTradingMode: 0,
   assetCollateral: [],
   readOnlyTokenApproved: false,
