@@ -206,6 +206,31 @@ describe('formatNumber', () => {
       formatNumber(1.23456, { decimals: 3, rounding: 'floor', locale: 'en-US' })
     ).toBe('1.234')
   })
+
+  it('floors a magnitude of 1e21 at 2 decimals', () => {
+    expect(
+      formatNumber('1000000000000000000000', {
+        rounding: 'floor',
+        locale: 'en-US',
+      })
+    ).toBe('1,000,000,000,000,000,000,000.00')
+  })
+
+  it('floors a magnitude above 1e21 at 0 decimals', () => {
+    expect(
+      formatNumber('2500000000000000000000', {
+        decimals: 0,
+        rounding: 'floor',
+        locale: 'en-US',
+      })
+    ).toBe('2,500,000,000,000,000,000,000')
+  })
+
+  it('floors a negative magnitude of 1e21 at 0 decimals', () => {
+    expect(
+      formatNumber(-1e21, { decimals: 0, rounding: 'floor', locale: 'en-US' })
+    ).toBe('-1,000,000,000,000,000,000,000')
+  })
 })
 
 describe('rounding option on the $/% wrappers', () => {
