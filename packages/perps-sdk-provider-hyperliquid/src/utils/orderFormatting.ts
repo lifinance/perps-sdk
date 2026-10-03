@@ -83,14 +83,15 @@ export function snapOrderPrice(
   szDecimals: number,
   market?: string
 ): DecimalString {
-  const maxPriceDecimals = getMaxPriceDecimals(szDecimals, market)
-
-  let rounded = new Big(price).round(maxPriceDecimals, Big.roundHalfUp)
-
-  // Integer prices bypass the 5 sig-fig rule; prec() is a no-op below 6 sig figs
-  if (!rounded.mod(1).eq(0)) {
-    rounded = rounded.prec(5, Big.roundHalfUp)
-  }
+  const value = new Big(price)
+  // Big's `e` is the base-10 exponent of the leading digit. Integer prices
+  // bypass the 5 sig-fig rule, so the sig-fig grid never goes coarser than 1.
+  const sigFigDecimals = Math.max(0, 4 - value.e)
+  const decimals = Math.min(
+    sigFigDecimals,
+    getMaxPriceDecimals(szDecimals, market)
+  )
+  const rounded = value.round(decimals, Big.roundHalfUp)
 
   // toFixed() with no dp always emits plain notation; eq(0) guards '-0'
   return rounded.eq(0) ? '0' : rounded.toFixed()
