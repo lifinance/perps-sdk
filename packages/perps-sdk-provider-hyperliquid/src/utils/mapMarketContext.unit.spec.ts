@@ -1,3 +1,4 @@
+import { isDecimalString } from '@lifi/perps-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HlWsPerpAssetCtx } from '../types/index.js'
 import { mapMarketContext } from './mapMarketContext.js'
@@ -83,6 +84,25 @@ describe('mapMarketContext (Hyperliquid)', () => {
     expect(
       mapMarketContext('BTC', { ...ctx, openInterest: '' }).openInterest
     ).toBe(undefined)
+  })
+
+  it.each([
+    [1e-7, '0.0000001'],
+    [1e21, '1000000000000000000000'],
+  ])('maps a numeric fast-feed price %s to a decimal string', (value, expected) => {
+    const result = mapMarketContext('BTC', ctx, { markPx: value, midPx: value })
+
+    expect(isDecimalString(result.markPrice)).toBe(true)
+    expect(isDecimalString(result.midPrice)).toBe(true)
+    expect(result.markPrice).toBe(expected)
+    expect(result.midPrice).toBe(expected)
+  })
+
+  it('keeps the asset-context prices when the fast context carries a null mid', () => {
+    const result = mapMarketContext('BTC', ctx, { midPx: null })
+
+    expect(result.midPrice).toBe('95001')
+    expect(result.markPrice).toBe('95000')
   })
 
   it('falls back to mark when the book is empty (midPx null)', () => {
