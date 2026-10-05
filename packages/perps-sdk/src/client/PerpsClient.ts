@@ -648,13 +648,16 @@ export class PerpsClient {
    *   backend account fetch fails.
    * @public
    */
-  async getAccount(params: {
-    provider: string
-    address: Address
-  }): Promise<GetAccountResult> {
+  async getAccount(
+    params: {
+      provider: string
+      address: Address
+    },
+    options?: SDKRequestOptions
+  ): Promise<GetAccountResult> {
     const plugin = this.requireProvider(params.provider)
     const [response, metadata] = await Promise.all([
-      fetchAccount(this.sdkClient, params),
+      fetchAccount(this.sdkClient, params, options),
       this.getProviderMetadata(params.provider),
     ])
     const settings = plugin.projectConfig(response.config, metadata.setup)
@@ -674,16 +677,19 @@ export class PerpsClient {
    * @throws {PerpsError} `Unauthorized` when the venue rejects the credential.
    * @public
    */
-  async getMarketSettings(params: {
-    provider: string
-    address: Address
-    market: MarketRef
-  }): Promise<MarketSettings> {
+  async getMarketSettings(
+    params: {
+      provider: string
+      address: Address
+      market: MarketRef
+    },
+    options?: SDKRequestOptions
+  ): Promise<MarketSettings> {
     const plugin = this.requireProvider(params.provider)
-    return plugin.getMarketSettings({
-      address: params.address,
-      market: params.market,
-    })
+    return plugin.getMarketSettings(
+      { address: params.address, market: params.market },
+      options
+    )
   }
 
   /**
@@ -787,8 +793,12 @@ export class PerpsClient {
    *   plugin's existence probe fails.
    * @public
    */
-  async accountExists(provider: string, address: Address): Promise<boolean> {
-    return this.requireProvider(provider).accountExists({ address })
+  async accountExists(
+    provider: string,
+    address: Address,
+    options?: SDKRequestOptions
+  ): Promise<boolean> {
+    return this.requireProvider(provider).accountExists({ address }, options)
   }
 
   /**
@@ -802,10 +812,11 @@ export class PerpsClient {
    * @public
    */
   async getDepositFlow(
-    params: GetDepositFlowParams
+    params: GetDepositFlowParams,
+    options?: SDKRequestOptions
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
-    return plugin.getDepositFlow?.({ address: params.address })
+    return plugin.getDepositFlow?.({ address: params.address }, options)
   }
 
   /**
@@ -819,10 +830,11 @@ export class PerpsClient {
    * @public
    */
   async getWithdrawFlow(
-    params: GetWithdrawFlowParams
+    params: GetWithdrawFlowParams,
+    options?: SDKRequestOptions
   ): Promise<WithdrawFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
-    return plugin.getWithdrawFlow?.({ address: params.address })
+    return plugin.getWithdrawFlow?.({ address: params.address }, options)
   }
 
   /**
@@ -845,12 +857,14 @@ export class PerpsClient {
    * @public
    */
   async getWithdrawableBalances(
-    params: GetWithdrawableBalancesParams
+    params: GetWithdrawableBalancesParams,
+    options?: SDKRequestOptions
   ): Promise<WithdrawableBalance[] | undefined> {
     const plugin = this.requireProvider(params.provider)
-    const rows = await plugin.getWithdrawableBalances?.({
-      address: params.address,
-    })
+    const rows = await plugin.getWithdrawableBalances?.(
+      { address: params.address },
+      options
+    )
     if (rows === undefined) {
       return undefined
     }

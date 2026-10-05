@@ -131,6 +131,20 @@ describe('PerpsErrorCode.RateLimitExceeded', () => {
   })
 })
 
+describe('PerpsErrorCode.PooledCategoryTransfer', () => {
+  it('carries the trading-range value 2027', () => {
+    expect(PerpsErrorCode.PooledCategoryTransfer).toBe(2027)
+  })
+
+  it('does not collide with an existing PerpsErrorCode value', () => {
+    const sameValue = Object.entries(PerpsErrorCode).filter(
+      ([, value]) => value === 2027
+    )
+
+    expect(sameValue).toEqual([['PooledCategoryTransfer', 2027]])
+  })
+})
+
 describe('PerpsErrorCode wire compatibility', () => {
   // `Partial` checks the key names only. The coverage test below is what makes
   // a member added to the enum fail instead of silently missing this map.
@@ -163,8 +177,9 @@ describe('PerpsErrorCode wire compatibility', () => {
     RateLimitExceeded: 2090,
   } as const satisfies Partial<Record<keyof typeof PerpsErrorCode, number>>
 
-  const unreleased =
-    [] as const satisfies readonly (keyof typeof PerpsErrorCode)[]
+  const unreleased = [
+    'PooledCategoryTransfer',
+  ] as const satisfies readonly (keyof typeof PerpsErrorCode)[]
 
   it('keeps every previously published code on its published value', () => {
     for (const [name, value] of Object.entries(published)) {

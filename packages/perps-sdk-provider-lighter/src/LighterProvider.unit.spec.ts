@@ -52,6 +52,7 @@ import {
   lighterProvider,
   lighterRhProvider,
 } from './LighterProvider.js'
+import { seedReadOnlyToken as seedStoredReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type {
   LtAccountPnL,
   LtLiqTrade,
@@ -185,6 +186,24 @@ const storageWithApiKey = async (
   return storage
 }
 
+/** Stores a read-only token that auth-gated reads resolve without a create call. */
+const seedReadOnlyToken = async (
+  storage: StorageAdapter,
+  token: string,
+  record: typeof STORED_API_KEY = STORED_API_KEY
+) =>
+  seedStoredReadOnlyToken(storage, {
+    address: ADDRESS,
+    token,
+    accountIndex: record.accountIndex,
+    providerKey: record.providerKey,
+  })
+
+const storageWithReadOnlyToken = async (
+  token: string,
+  record: typeof STORED_API_KEY = STORED_API_KEY
+) => seedReadOnlyToken(await storageWithApiKey(record), token, record)
+
 // ---------------------------------------------------------------------------
 // Test fixtures
 // ---------------------------------------------------------------------------
@@ -293,6 +312,12 @@ const ACCOUNT_PAYLOAD = {
       cross_asset_value: '500',
     },
   ],
+}
+
+// Simple mode keeps the settlement asset's spot and perps routes apart.
+const SIMPLE_ACCOUNT = {
+  ...ACCOUNT_PAYLOAD.accounts[0],
+  account_trading_mode: LT_ACCOUNT_TRADING_MODE_SIMPLE,
 }
 
 const APIKEYS_EMPTY = { code: 0, api_keys: [] }
@@ -592,7 +617,6 @@ describe('LighterProvider — provider-owned credential stores', () => {
     const optionKeys: (keyof LighterProviderOptions)[] = [
       'storage',
       'restUrl',
-      'authToken',
       'tokenLifetimeSeconds',
       'tokenRenewBufferSeconds',
     ]
@@ -629,27 +653,6 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
 })
 
 describe('LighterProvider — auth token plumbing', () => {
-  it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    const provider = lighterProvider({ storage })
-    provider.bind(STUB_CLIENT)
-    await provider.getAccount(
-      { address: ADDRESS },
-      {
-        lighterAuthToken: 'per-call-token',
-      }
-    )
-    const limitsCall = recorded.find((r) =>
-      r.url.includes('/api/v1/accountLimits')
-    )
-    expect(limitsCall).toBeDefined()
-    expect(authHeader(limitsCall)).toBe('per-call-token')
-  })
-
   // A fee-tier fetch failure must NOT be coerced into a fabricated 0%/0% fee
   // tier — that shows a trader fake fees. The error has to surface.
   it('propagates an accountLimits fetch error instead of masking it as a 0% fee tier', async () => {
@@ -663,55 +666,10 @@ describe('LighterProvider — auth token plumbing', () => {
       apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
       JSON.stringify(STORED_API_KEY)
     )
+    await seedReadOnlyToken(storage, 'caller-token')
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
-    await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'per-call-token' }
-      )
-    ).rejects.toThrow()
-  })
-
-  it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    const provider = lighterProvider({
-      storage,
-      authToken: 'pre-created-token',
-    })
-    provider.bind(STUB_CLIENT)
-    await provider.getAccount({ address: ADDRESS })
-    const limitsCall = recorded.find((r) =>
-      r.url.includes('/api/v1/accountLimits')
-    )
-    expect(authHeader(limitsCall)).toBe('pre-created-token')
-  })
-
-  it('accepts an async `authToken` source function', async () => {
-    let calls = 0
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    const provider = lighterProvider({
-      storage,
-      authToken: async () => {
-        calls++
-        return `dynamic-token-${calls}`
-      },
-    })
-    provider.bind(STUB_CLIENT)
-    await provider.getAccount({ address: ADDRESS })
-    expect(calls).toBeGreaterThanOrEqual(1)
-    const limitsCall = recorded.find((r) =>
-      r.url.includes('/api/v1/accountLimits')
-    )
-    expect(authHeader(limitsCall)).toBe('dynamic-token-1')
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow()
   })
 
   it('creates a read-only token on first use and forwards it (never the read-write token) on auth-gated reads', async () => {
@@ -870,12 +828,11 @@ describe('LighterProvider — account tier', () => {
     overrideFetch((url) =>
       url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
     ).toBeDefined()
@@ -883,12 +840,11 @@ describe('LighterProvider — account tier', () => {
   })
 
   it('leaves the tier string absent when accountLimits omits it', async () => {
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
     ).toBeDefined()
@@ -909,12 +865,11 @@ describe('LighterProvider — account tier', () => {
           })
         : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
-    const { feeTier } = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const { feeTier } = await provider.getAccount({ address: ADDRESS })
     expect(feeTier).toEqual({ maker: fee, taker: fee })
     expect(isDecimalString(feeTier.maker)).toBe(true)
     expect(isDecimalString(feeTier.taker)).toBe(true)
@@ -932,13 +887,12 @@ describe('LighterProvider — account tier', () => {
         ? respond({ code: 0, user_tier: 'STD', ...ticks })
         : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'per-call-token' }
-      )
+      provider.getAccount({ address: ADDRESS })
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
@@ -975,13 +929,11 @@ describe('LighterProvider — referralPresent', () => {
       ...STORED_API_KEY,
       appliedReferralCode: APPLIED_CODE,
     })
+    await seedReadOnlyToken(storage, 'ref-token')
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
 
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.config).toMatchObject({ referralPresent: true })
     expect(
@@ -1033,7 +985,7 @@ describe('LighterProvider — referralPresent', () => {
 
 const accountWithAssets = (assets: unknown[]) => ({
   ...ACCOUNT_PAYLOAD,
-  accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets }],
+  accounts: [{ ...SIMPLE_ACCOUNT, assets }],
 })
 
 const stubAccount = (assets: unknown[]) => {
@@ -1346,7 +1298,7 @@ describe('LighterProvider — getAccount balance asset identity', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         cross_asset_value: '450',
         assets: [
           {
@@ -1726,7 +1678,7 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         assets: [
           {
             symbol: 'USDC',
@@ -1970,7 +1922,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         cross_asset_value: '450',
         assets: [
           {
@@ -2102,7 +2054,7 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     ...ACCOUNT_PAYLOAD,
     accounts: [
       {
-        ...ACCOUNT_PAYLOAD.accounts[0],
+        ...SIMPLE_ACCOUNT,
         assets: [
           {
             symbol: 'USDC',
@@ -2406,43 +2358,6 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     )
     expect(JSON.parse(stored as string).token).toBe('ro-rejected')
   })
-
-  it('does NOT evict or retry when the caller supplied the auth token', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-
-    let createCount = 0
-    let limitsCalls = 0
-    overrideFetch((url) => {
-      if (url.includes('/api/v1/tokens/create')) {
-        createCount += 1
-        return respond(readOnlyTokenResponse('ro-should-not-create'))
-      }
-      if (url.includes('/api/v1/accountLimits')) {
-        limitsCalls += 1
-        return new Response('unauthorized', { status: 401 })
-      }
-      return undefined
-    })
-
-    const provider = lighterProvider({ storage })
-    provider.bind(STUB_CLIENT)
-
-    // The 401 surfaces rather than being masked as a 0% fee tier; with a
-    // caller-supplied token it is not the SDK's to self-heal.
-    await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'caller-token' }
-      )
-    ).rejects.toThrow()
-
-    expect(createCount).toBe(0) // never created an SDK-owned token
-    expect(limitsCalls).toBe(1) // 401 surfaced, not retried
-  })
 })
 
 describe('LighterProvider — registered-key auth gate', () => {
@@ -2555,11 +2470,7 @@ describe('LighterProvider — API-key slot readout', () => {
   })
 
   it('reports no slot and does not resolve a token when no record exists', async () => {
-    const authToken = vi.fn(async () => 'must-not-resolve')
-    const provider = lighterProvider({
-      storage: createMemoryStorage(),
-      authToken,
-    })
+    const provider = lighterProvider({ storage: createMemoryStorage() })
     provider.bind(STUB_CLIENT)
 
     const account = await provider.getAccount({ address: ADDRESS })
@@ -2569,7 +2480,6 @@ describe('LighterProvider — API-key slot readout', () => {
       apiKeyRegistered: false,
     })
     expect(recorded.some((r) => r.url.includes('/api/v1/apikeys'))).toBe(false)
-    expect(authToken).not.toHaveBeenCalled()
     expect(recorded.some((r) => r.url.includes('/api/v1/accountLimits'))).toBe(
       false
     )
@@ -2903,7 +2813,9 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-    const provider = lighterProvider({ authToken: 'caller-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
 
     const err = await provider
@@ -3081,7 +2993,9 @@ describe('LighterProvider — getOrders pagination contract', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-    const provider = lighterProvider({ authToken: 'caller-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
 
     const orders = await provider.getOrders({ address: ADDRESS, limit: 50 })
@@ -3094,7 +3008,9 @@ describe('LighterProvider — getOrders pagination contract', () => {
   })
 
   it('rejects a marketId the Lighter market list does not know', async () => {
-    const provider = lighterProvider({ authToken: 'caller-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     provider.bind(STUB_CLIENT)
 
     await expect(
@@ -3142,7 +3058,9 @@ describe('LighterProvider — reads without an auth token', () => {
         ? respond({ message: 'unauthorized' }, 401)
         : undefined
     )
-    const rejected = lighterProvider({ authToken: 'caller-token' })
+    const rejected = lighterProvider({
+      storage: await storageWithReadOnlyToken('caller-token'),
+    })
     rejected.bind(STUB_CLIENT)
     await expect(
       rejected.getOrders({ address: ADDRESS })
@@ -3273,7 +3191,7 @@ describe('LighterProvider — data-read account-access contract', () => {
       (p) => p.getAvailableToTrade!({ address: ADDRESS, marketId: '0' }),
       {
         'no credential': { resolves: { marketId: '0' } },
-        'rejected credential': { resolves: { marketId: '0' } },
+        'rejected credential': PerpsErrorCode.Unauthorized,
         'no account': PerpsErrorCode.AccountNotFound,
         empty: { resolves: { marketId: '0' } },
       },
@@ -3318,7 +3236,9 @@ describe('LighterProvider — data-read account-access contract', () => {
       return access[state](url, init)
     })
     const provider = lighterProvider(
-      state === 'no credential' ? {} : { authToken: 'caller-token' }
+      state === 'no credential'
+        ? {}
+        : { storage: await storageWithReadOnlyToken('caller-token') }
     )
     provider.bind(STUB_CLIENT)
 
@@ -3582,7 +3502,9 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
 
 describe('LighterProvider — getFills authed path', () => {
   it('forwards the read-only token to /api/v1/trades and maps fills', async () => {
-    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('pre-created-token'),
+    })
     provider.bind(STUB_CLIENT)
     const fills = await provider.getFills({ address: ADDRESS })
 
@@ -3677,7 +3599,9 @@ describe('LighterProvider — getPortfolioHistory', () => {
     overrideFetch((url) =>
       url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
     )
-    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('pre-created-token'),
+    })
     provider.bind(STUB_CLIENT)
 
     const history = await provider.getPortfolioHistory!({
@@ -3775,7 +3699,9 @@ describe('LighterProvider — getPortfolioHistory', () => {
         ? respond({ code: 200, resolution: '1h', pnl: null })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('pre-created-token'),
+    })
     provider.bind(STUB_CLIENT)
 
     await expect(
@@ -3786,26 +3712,6 @@ describe('LighterProvider — getPortfolioHistory', () => {
       volume: '0',
       totalPnl: undefined,
     })
-    expect(pnlCalls()).toHaveLength(1)
-  })
-
-  it('does not swap a caller-owned token after a rejection', async () => {
-    overrideFetch((url) =>
-      url.includes('/api/v1/pnl')
-        ? respond({ code: 21100, message: 'account not found' }, 401)
-        : undefined
-    )
-    const provider = lighterProvider({ authToken: 'caller-token' })
-    provider.bind(STUB_CLIENT)
-
-    const err = await provider.getPortfolioHistory!({
-      address: ADDRESS,
-      range: '24h',
-    })
-      .then(() => undefined)
-      .catch((e) => e)
-    expect(err).toBeInstanceOf(PerpsError)
-    expect(err.code).toBe(PerpsErrorCode.Unauthorized)
     expect(pnlCalls()).toHaveLength(1)
   })
 })
@@ -3889,7 +3795,9 @@ describe('LighterProvider — normalisation', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const result = await provider.getActivity({
       address: ADDRESS,
@@ -3947,7 +3855,9 @@ describe('LighterProvider — getActivity liquidation mapping', () => {
         ? respond({ code: 0, liquidations: [row] })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const result = await provider.getActivity({
       address: ADDRESS,
@@ -4131,7 +4041,9 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
 
   it('returns every row exactly once across paged calls (limit < merged count)', async () => {
     stubPagedHistory()
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const seen: string[] = []
@@ -4160,7 +4072,9 @@ describe('LighterProvider — getActivity paging never drops rows', () => {
 
   it('keeps hasMore true while a sliced overflow tail remains', async () => {
     stubPagedHistory()
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const page1 = await provider.getActivity({
       address: ADDRESS,
@@ -4248,7 +4162,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 
   it('maps a transfer asset_id to its backend registry entry', async () => {
     stubWithTransfer(3)
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -4264,7 +4180,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 
   it('rejects an unresolved transfer asset_id', async () => {
     stubWithTransfer(777)
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getActivity({
@@ -4276,7 +4194,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 
   it('links a settled transfer tx hash to the Lighter explorer', async () => {
     stubWithTransfer(3, SETTLED_TX_HASH)
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -4290,7 +4210,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 
   it('omits the explorer link when Lighter reports a placeholder transfer tx hash', async () => {
     stubWithTransfer(3, PLACEHOLDER_TX_HASH)
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const { items } = await provider.getActivity({
       address: ADDRESS,
@@ -4302,7 +4224,9 @@ describe('LighterProvider — getActivity transfer token registry', () => {
 
   it('fetches /perps/assets per getActivity call (no client-side memo; backend caches)', async () => {
     stubWithTransfer(3)
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     await provider.getActivity({
       address: ADDRESS,
@@ -4436,7 +4360,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('names the deposit and withdrawal asset from the token registry', async () => {
     stubHistory({ deposits: [depositRow(3)], withdraws: [withdrawRow(3)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4463,7 +4389,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     ActivityType.WITHDRAWAL,
   ])('rejects an unresolved %s asset without dropping its row', async (type) => {
     stubHistory({ deposits: [depositRow(777)], withdraws: [withdrawRow(777)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getActivity({ address: ADDRESS, type: [type] })
@@ -4475,7 +4403,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     ActivityType.WITHDRAWAL,
     ActivityType.TRANSFER,
   ])('rejects a legacy %s overflow row instead of returning its display string', async (type) => {
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const cursor = Buffer.from(
       JSON.stringify({
@@ -4500,7 +4430,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('names USDG as the deposit asset on the Robinhood deployment', async () => {
     stubHistory({ deposits: [depositRow(4)], assets: RH_ASSETS_RESPONSE })
-    const provider = lighterRhProvider({ authToken: 'tok' })
+    const provider = lighterRhProvider({
+      storage: await storageWithReadOnlyToken('tok', RH_STORED_API_KEY),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4517,7 +4449,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('links the mainnet bridge rows to the Ethereum explorer', async () => {
     stubHistory({ deposits: [depositRow(3)], withdraws: [withdrawRow(3)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4539,7 +4473,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
       withdraws: [withdrawRow(4)],
       assets: RH_ASSETS_RESPONSE,
     })
-    const provider = lighterRhProvider({ authToken: 'tok' })
+    const provider = lighterRhProvider({
+      storage: await storageWithReadOnlyToken('tok', RH_STORED_API_KEY),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4562,7 +4498,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
         transferRow('t1', 42, 99),
       ],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4575,7 +4513,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('reports the transfer fee on fees and no longer on meta', async () => {
     stubHistory({ transfers: [transferRow('t1', 42, 99, { fee: '0.25' })] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4593,7 +4533,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('keeps a reported zero transfer fee', async () => {
     stubHistory({ transfers: [transferRow('t1', 42, 99, { fee: '0' })] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4613,7 +4555,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
     stubHistory({
       transfers: [transferRow('t1', 42, 99, { asset_id: 0, fee: '0.4' })],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4635,7 +4579,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
       transfers: [transferRow('t1', 42, 99, { asset_id: 4, fee: '0.5' })],
       assets: RH_ASSETS_RESPONSE,
     })
-    const provider = lighterRhProvider({ authToken: 'tok' })
+    const provider = lighterRhProvider({
+      storage: await storageWithReadOnlyToken('tok', RH_STORED_API_KEY),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4653,7 +4599,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('reports the liquidation metrics Lighter carries on the row', async () => {
     stubHistory({ liquidations: [liquidationRow(7, 1700000002000)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4681,7 +4629,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
         liquidationRow(8, 1700000002000),
       ],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -4694,7 +4644,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('skips the market list for a ledger-only request', async () => {
     stubHistory({ deposits: [depositRow(3)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await provider.getActivity({
@@ -4715,7 +4667,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
 
   it('skips the asset list for a liquidation-only request', async () => {
     stubHistory({ liquidations: [liquidationRow(7, 1700000002000)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await provider.getActivity({
@@ -4743,7 +4697,9 @@ describe('LighterProvider — getActivity ledger and liquidation surfaces', () =
         liquidationRow(8, 1700000001000),
       ],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const drain = async (type: ActivityType[]): Promise<string[]> => {
@@ -4919,7 +4875,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
   it('drops a funding row whose market the registry cannot resolve', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubHistory({ fundings: [fundingRow(1, 999)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     const { items } = await provider.getActivity({
@@ -4936,7 +4894,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
   it('drops a liquidation row whose market the registry cannot resolve', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubHistory({ liquidations: [liquidationRow(7, 998)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     const { items } = await provider.getActivity({
@@ -4956,7 +4916,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
       fundings: [fundingRow(2, 1)],
       liquidations: [liquidationRow(8, 1)],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     const { items } = await provider.getActivity({
@@ -4981,7 +4943,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
 
   it('propagates a failed funding fetch instead of returning an empty feed', async () => {
     stubHistory({ fundingStatus: 400 })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     await expect(
@@ -4991,7 +4955,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
 
   it('propagates a failed liquidation fetch instead of returning an empty feed', async () => {
     stubHistory({ liquidationStatus: 400 })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     await expect(
@@ -5002,7 +4968,9 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
 
 describe('LighterProvider — getOrder', () => {
   it('rejects tx-hash-shaped ids with OrderNotFound + guidance', async () => {
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const txHashShape = '0'.repeat(80) // valid 80-hex shape
     await expect(
@@ -5097,8 +5065,10 @@ describe('LighterProvider — one-call order reads', () => {
   const requestsTo = (path: string): Recorded[] =>
     recorded.filter((r) => r.url.includes(path))
 
-  const boundProvider = (): LighterPerpsProvider => {
-    const provider = lighterProvider({ authToken: 'tok' })
+  const boundProvider = async (): Promise<LighterPerpsProvider> => {
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     return provider
   }
@@ -5127,7 +5097,7 @@ describe('LighterProvider — one-call order reads', () => {
       return undefined
     })
 
-    const orders = await boundProvider().getOrders({ address: ADDRESS })
+    const orders = await (await boundProvider()).getOrders({ address: ADDRESS })
 
     const active = requestsTo('/api/v1/accountActiveOrders')
     expect(active).toHaveLength(1)
@@ -5160,7 +5130,7 @@ describe('LighterProvider — one-call order reads', () => {
       return undefined
     })
 
-    const orders = await boundProvider().getOrders({
+    const orders = await (await boundProvider()).getOrders({
       address: ADDRESS,
       marketId: '1',
     })
@@ -5178,7 +5148,7 @@ describe('LighterProvider — one-call order reads', () => {
         : undefined
     )
 
-    const order = await boundProvider().getOrder({
+    const order = await (await boundProvider()).getOrder({
       address: ADDRESS,
       id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
     })
@@ -5210,7 +5180,7 @@ describe('LighterProvider — one-call order reads', () => {
         : undefined
     )
 
-    const order = await boundProvider().getOrder({
+    const order = await (await boundProvider()).getOrder({
       address: ADDRESS,
       id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}8`,
     })
@@ -5239,7 +5209,7 @@ describe('LighterProvider — one-call order reads', () => {
         : undefined
     )
 
-    const order = await boundProvider().getOrder({
+    const order = await (await boundProvider()).getOrder({
       address: ADDRESS,
       id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
     })
@@ -5257,7 +5227,7 @@ describe('LighterProvider — one-call order reads', () => {
     )
 
     await expect(
-      boundProvider().getOrder({
+      (await boundProvider()).getOrder({
         address: ADDRESS,
         id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
       })
@@ -5272,7 +5242,7 @@ describe('LighterProvider — one-call order reads', () => {
     )
 
     await expect(
-      boundProvider().getOrder({
+      (await boundProvider()).getOrder({
         address: ADDRESS,
         id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}7`,
       })
@@ -5282,7 +5252,7 @@ describe('LighterProvider — one-call order reads', () => {
 
   it('rejects a client-order-index id whose suffix is not a decimal integer', async () => {
     await expect(
-      boundProvider().getOrder({
+      (await boundProvider()).getOrder({
         address: ADDRESS,
         id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}abc`,
       })
@@ -5297,7 +5267,7 @@ describe('LighterProvider — one-call order reads', () => {
         : undefined
     )
 
-    const order = await boundProvider().getOrder({
+    const order = await (await boundProvider()).getOrder({
       address: ADDRESS,
       id: '900',
     })
@@ -5322,7 +5292,7 @@ describe('LighterProvider — one-call order reads', () => {
       return undefined
     })
 
-    const order = await boundProvider().getOrder({
+    const order = await (await boundProvider()).getOrder({
       address: ADDRESS,
       id: '900',
     })
@@ -5393,7 +5363,9 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
       throw new Error(`Unhandled URL in test: ${u}`)
     })
 
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
     const result = await provider.getFills({ address: ADDRESS })
 
@@ -5467,7 +5439,9 @@ describe('LighterProvider — getFills unresolvable market rows', () => {
   it('drops a trade row whose market the registry cannot resolve', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubTrades({ trades: [tradeRow(7, 999), tradeRow(8, 0)] })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     const { items } = await provider.getFills({ address: ADDRESS })
@@ -5483,7 +5457,9 @@ describe('LighterProvider — getFills unresolvable market rows', () => {
       markets: { markets: [...MARKETS_RESPONSE.markets, DELISTED_MARKET] },
       trades: [tradeRow(9, 1)],
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     const { items } = await provider.getFills({ address: ADDRESS })
@@ -5497,7 +5473,9 @@ describe('LighterProvider — getFills unresolvable market rows', () => {
 
   it('propagates a failed trades fetch instead of returning an empty page', async () => {
     stubTrades({ tradesStatus: 400 })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(client)
 
     await expect(provider.getFills({ address: ADDRESS })).rejects.toThrow(
@@ -5626,16 +5604,15 @@ describe('LighterProvider — two deployments on one client', () => {
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
       JSON.stringify(RH_STORED_API_KEY)
     )
+    await seedReadOnlyToken(storage, 'main-tok')
     const main = lighterProvider({ storage })
+    await seedReadOnlyToken(storage, 'rh-tok', RH_STORED_API_KEY)
     const rh = lighterRhProvider({ storage })
     main.bind(STUB_CLIENT)
     rh.bind(STUB_CLIENT)
 
-    await main.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'main-tok' }
-    )
-    await rh.getAccount({ address: ADDRESS }, { lighterAuthToken: 'rh-tok' })
+    await main.getAccount({ address: ADDRESS })
+    await rh.getAccount({ address: ADDRESS })
 
     const limitsCalls = recorded.filter((r) =>
       r.url.includes('/api/v1/accountLimits')
@@ -6402,7 +6379,9 @@ describe('LighterProvider — null wire lists', () => {
         ? respond(ACCOUNT_WITH_NULL_LISTS)
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await expect(provider.getPositions({ address: ADDRESS })).resolves.toEqual(
@@ -6416,7 +6395,9 @@ describe('LighterProvider — null wire lists', () => {
         ? respond(ACCOUNT_WITH_NULL_LISTS)
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const account = await provider.getAccount({ address: ADDRESS })
@@ -6433,7 +6414,9 @@ describe('LighterProvider — null wire lists', () => {
       }
       return undefined
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const orders = await provider.getOrders({ address: ADDRESS })
@@ -6453,7 +6436,9 @@ describe('LighterProvider — null wire lists', () => {
       }
       return undefined
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await expect(
@@ -6467,7 +6452,9 @@ describe('LighterProvider — null wire lists', () => {
         ? respond({ code: 0, next_cursor: '', trades: null })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const fills = await provider.getFills({ address: ADDRESS })
@@ -6494,7 +6481,9 @@ describe('LighterProvider — null wire lists', () => {
       }
       return undefined
     })
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const activity = await provider.getActivity({ address: ADDRESS })
@@ -6516,7 +6505,9 @@ describe('LighterProvider — null wire lists', () => {
     overrideFetch((u) =>
       u.includes(path) ? respond({ code: 0, ...body }) : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const activity = await provider.getActivity({
@@ -6557,7 +6548,9 @@ describe('LighterProvider — null wire lists', () => {
           })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({
@@ -6575,7 +6568,9 @@ describe('LighterProvider — null wire lists', () => {
 
 describe('LighterProvider — history market filters', () => {
   it('sends no market filter on positionFunding and keeps the wildcard on liquidations', async () => {
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await provider.getActivity({
@@ -6603,7 +6598,9 @@ describe('LighterProvider — history market filters', () => {
         ? respond({ code: 0, next_cursor: '', orders: [] })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     await expect(
@@ -6647,7 +6644,9 @@ describe('LighterProvider — transfer type variants', () => {
           })
         : undefined
     )
-    const provider = lighterProvider({ authToken: 'tok' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
     provider.bind(STUB_CLIENT)
 
     const { items } = await provider.getActivity({

@@ -3,6 +3,7 @@ import type { AccountSummary } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider, lighterRhProvider } from './LighterProvider.js'
+import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import { LighterWsProvider } from './websocket/LighterWsProvider.js'
 
 const { Socket } = vi.hoisted(() => {
@@ -52,17 +53,20 @@ const asset = (
   multiplier: '1',
 })
 // Account 12's public REST holdings, recorded 2026-10-01; marks are deterministic.
-const holdings = (settlement: string) => [
+const holdings = (settlement: string, collateralBalance: string) => [
   asset(1, 'ETH', '0', '0.00709091'),
   asset(2, 'LIT', '8.00004674', '0'),
-  asset(3, settlement, '0', '13.89182545205'),
+  asset(3, settlement, collateralBalance, '13.89182545205'),
 ]
 const respond = (body: unknown) =>
   new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
   })
 
-function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
+async function setup(
+  providerId: 'lighter' | 'lighter-rh' = 'lighter',
+  collateralBalance = '0'
+) {
   const settlement = providerId === 'lighter' ? 'USDC' : 'USDG'
   const descriptor = (id: string, displaySymbol: string) => ({
     providerId,
@@ -70,7 +74,7 @@ function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
     displaySymbol,
     logoURI: '',
   })
-  const assets = holdings(settlement)
+  const assets = holdings(settlement, collateralBalance)
   const quoteAsset = descriptor(settlement, settlement)
   const markets = [
     { id: '2048', baseAsset: descriptor('1', 'ETH') },
@@ -180,11 +184,24 @@ function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
           ],
         })
       }
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({ code: 200, api_keys: [] })
+      }
       throw new Error(`Unexpected request: ${url}`)
     })
   )
+  const options = {
+    storage: await storageWithReadOnlyToken({
+      address: ADDRESS,
+      token: 'test-token',
+      accountIndex: 12,
+      providerKey: providerId,
+    }),
+  }
   const provider =
-    providerId === 'lighter' ? lighterProvider() : lighterRhProvider()
+    providerId === 'lighter'
+      ? lighterProvider(options)
+      : lighterRhProvider(options)
   const client = createPerpsClient({
     integrator: 'test',
     apiKey: 'test',
@@ -204,8 +221,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function subscribe(authenticated = false) {
-  const { client, assets } = setup()
+async function subscribe(authenticated = false, collateralBalance = '0') {
+  const { client, assets } = await setup('lighter', collateralBalance)
   const stream = new LighterWsProvider(
     'ws://test',
     'lighter',
@@ -275,18 +292,18 @@ describe('Lighter non-settlement margin holdings', () => {
     'lighter',
     'lighter-rh',
   ] as const)('includes margin-route holdings without recounting %s settlement equity', async (providerId) => {
-    const { provider } = setup(providerId)
+    const { provider } = await setup(providerId)
     const account = await provider.getAccount({ address: ADDRESS })
     expect(getAccountSummary(account, []).portfolioValue).toBe('36.07369174')
     expect(getAccountSummary(account, []).availableMargin).toBe(EQUITY)
   })
 
   it('anchors portfolio history to spot plus non-settlement margin holdings', async () => {
-    const { provider } = setup()
-    const history = await provider.getPortfolioHistory!(
-      { address: ADDRESS, range: '24h' },
-      { lighterAuthToken: 'test-token' }
-    )
+    const { provider } = await setup()
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
     expect(history.points).toEqual([
       { timestamp: 1_741_000_000_000, accountValue: '34.07369174', pnl: '0' },
       { timestamp: 1_741_003_600_000, accountValue: '36.07369174', pnl: '2' },
@@ -325,5 +342,15 @@ describe('Lighter non-settlement margin holdings', () => {
     sendAssets(assets, true)
     sendAssets([asset(1, 'ETH', '0', '0.002')], true)
     expect(summaries.at(-1)?.portfolioValue).toBe('17.891825')
+  })
+
+  it('values a unified spot-route settlement balance once over REST and websocket', async () => {
+    const { provider } = await setup('lighter', '2')
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(getAccountSummary(account, []).portfolioValue).toBe('38.07369174')
+
+    const { summaries, sendAssets, assets } = await subscribe(false, '2')
+    sendAssets(assets, true)
+    expect(summaries.at(-1)?.portfolioValue).toBe('38.07369174')
   })
 })
