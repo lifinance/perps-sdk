@@ -2435,7 +2435,8 @@ describe('LighterWsProvider', () => {
       })
 
       it('resolves the token through the co-registered Lighter plugin', async () => {
-        const authToken = vi.fn(() => 'plugin-token')
+        const plugin = lighterProvider()
+        vi.spyOn(plugin, 'resolveAuthToken').mockResolvedValue('plugin-token')
         const provider = new LighterWsProvider(
           'ws://127.0.0.1:1',
           'lighter',
@@ -2443,7 +2444,7 @@ describe('LighterWsProvider', () => {
           createPerpsClient({
             integrator: 'test-app',
             apiKey: 'test-key',
-            providers: [lighterProvider({ authToken })],
+            providers: [plugin],
           })
         )
 
@@ -2512,11 +2513,14 @@ describe('LighterWsProvider', () => {
       // Rotation driven by the test, not by a per-call counter: the token in
       // flight is whatever the venue's credential is at resolve time.
       let issued = 'token-1'
-      const authToken = vi.fn(() => issued)
+      const plugin = lighterProvider()
+      const authToken = vi
+        .spyOn(plugin, 'resolveAuthToken')
+        .mockImplementation(async () => issued)
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [lighterProvider({ authToken })],
+        providers: [plugin],
       })
       const provider = bareProviderFor(client)
       const send = vi.fn()
@@ -2607,10 +2611,12 @@ describe('LighterWsProvider', () => {
     })
 
     it('registers the gated wire sub while connecting when a token resolves, and sends it on the open replay', async () => {
+      const plugin = lighterProvider()
+      vi.spyOn(plugin, 'resolveAuthToken').mockResolvedValue('token-1')
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
-        providers: [lighterProvider({ authToken: () => 'token-1' })],
+        providers: [plugin],
       })
       const provider = connectingProviderFor(client)
       const send = vi.fn()
@@ -2662,7 +2668,7 @@ describe('LighterWsProvider', () => {
     })
 
     it('throws SetupRequired on an auth channel when the plugin resolves no token', async () => {
-      // `lighterProvider()` with no authToken/keyStore resolves `undefined`.
+      // `lighterProvider()` with no stored API key resolves `undefined`.
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
