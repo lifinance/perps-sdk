@@ -431,6 +431,18 @@ const functionExportsFrom = (from: (specifier: string) => boolean): string[] =>
     .filter((name) => typeof sdkExports[name] === 'function')
     .sort()
 
+describe('compare gives booleans', () => {
+  it('exports isDecimalStringGreaterThan from decimal/compare.ts', () => {
+    expect(
+      functionExportsFrom((from) => from === './decimal/compare.js')
+    ).toEqual(['isDecimalStringGreaterThan'])
+  })
+
+  it('gives a boolean, never a Big', () => {
+    expect(sdk.isDecimalStringGreaterThan('1.0000000000000001', '1')).toBe(true)
+  })
+})
+
 /** One sample call per `decimal/convert.ts` function. */
 const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
   baseUnitsToDecimal: ['1234500000', 6],

@@ -17,6 +17,7 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export { requireProvider } from './client/requireProvider.js'
+export { isDecimalStringGreaterThan } from './decimal/compare.js'
 export type { BaseUnitsRounding } from './decimal/convert.js'
 export {
   baseUnitsToDecimal,
