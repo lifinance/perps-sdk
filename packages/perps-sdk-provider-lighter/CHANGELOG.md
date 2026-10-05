@@ -1,5 +1,27 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 35.0.0
+
+### Major Changes
+
+- [#580](https://github.com/lifinance/perps-sdk/pull/580) [`e41117d`](https://github.com/lifinance/perps-sdk/commit/e41117dd078c638e66f652abd689e80ac4f8a6d7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter unified accounts now report the settlement asset (USDC on mainnet, USDG on the Robinhood deployment) as one `spot` balance row. Its `units` is the spot-route `balance` plus the perps-route `margin_balance`, and its `transferable` is the free spot route plus the perps route up to `available_balance`, floored at 0 and capped at `units`. In unified mode, `collateralBalances` has no settlement-asset row. Simple accounts keep the two separate rows.
+
+  `LighterAccountConfig` gains the required `collateralSpotBalance`, the spot-route `balance` of the collateral asset. The Lighter `getAccountSummary` adds it to `totalAssetValue` and skips every settlement row, so `portfolioValue` and `availableMargin` keep the same figures for both modes.
+
+  A Lighter `SEND_ASSET` (perps↔spot transfer on the same account) for a unified account now fails before it signs with the new `PerpsErrorCode.PooledCategoryTransfer` (2027).
+
+- [#590](https://github.com/lifinance/perps-sdk/pull/590) [`8f9ca62`](https://github.com/lifinance/perps-sdk/commit/8f9ca62b69d016a6eb636a2db0995872b39d2793) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsClient.getAccount`, `getMarketSettings`, `accountExists`, `getDepositFlow` and `getWithdrawFlow` accept an optional `SDKRequestOptions` argument and send it to the provider plugin read.
+
+  BREAKING: `SDKRequestOptions.lighterAuthToken` is removed. `SDKRequestOptions` has only `signal`.
+
+  BREAKING: the `authToken` option of `lighterProvider` and `lighterRhProvider` is removed. The Lighter provider resolves the auth token only from the API key and the read-only token in the storage adapter, and throws `SetupRequired` when the storage adapter gives no token.
+
+### Patch Changes
+
+- Updated dependencies [[`e41117d`](https://github.com/lifinance/perps-sdk/commit/e41117dd078c638e66f652abd689e80ac4f8a6d7), [`20090d7`](https://github.com/lifinance/perps-sdk/commit/20090d7da5be790606ecae83e3ed73f63b8deacb), [`8f9ca62`](https://github.com/lifinance/perps-sdk/commit/8f9ca62b69d016a6eb636a2db0995872b39d2793)]:
+  - @lifi/perps-types@20.1.0
+  - @lifi/perps-sdk@23.0.0
+
 ## 34.0.0
 
 ### Major Changes

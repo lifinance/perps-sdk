@@ -34,6 +34,13 @@ export enum PerpsErrorCode {
   OrderNotFound = 2024,
   PositionNotFound = 2025,
   AccountNotFound = 2026,
+  /**
+   * The account pools the settlement asset across its categories (for example
+   * a Lighter unified account), so a transfer of that asset between two of its
+   * own categories has nothing to move. Definitive while the account mode
+   * stays the same.
+   */
+  PooledCategoryTransfer = 2027,
 
   // Nonce errors (2040-2049)
   InvalidNonce = 2040,

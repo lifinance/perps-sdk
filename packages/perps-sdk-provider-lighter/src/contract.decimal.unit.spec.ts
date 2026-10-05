@@ -2,6 +2,7 @@ import { isDecimalString, type PerpsSDKClient } from '@lifi/perps-sdk'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
+import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type { LtWsMarketStats } from './types/index.js'
 import { mapMarketContext } from './utils/mapMarketContext.js'
 
@@ -409,11 +410,20 @@ describe('lighter emits a DecimalString on every typed field', () => {
         if (u.includes('/api/v1/account?')) {
           return respond(ACCOUNT_PAYLOAD)
         }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond({ code: 200, api_keys: [] })
+        }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
     )
 
-    const provider = lighterProvider({ authToken: 'read-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken({
+        address: ADDRESS,
+        token: 'read-token',
+        accountIndex: ACCOUNT_INDEX,
+      }),
+    })
     provider.bind(STUB_CLIENT)
     reads = {
       account: await provider.getAccount({ address: ADDRESS }),

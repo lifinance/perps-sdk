@@ -1642,6 +1642,26 @@ describe('PerpsClient', () => {
       expect(result.marginUsed).toBe(mockAccount.marginUsed)
     })
 
+    it('delegates the request options to the plugin account read', async () => {
+      const stub = buildStubProvider()
+      const stubbedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [stub],
+      })
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await stubbedClient.getAccount(
+        { provider, address: userAddress },
+        options
+      )
+      expect(stub.getAccount).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
+    })
+
     it('throws when no plugin is registered for the provider', async () => {
       const noProviderClient = new PerpsClient({
         integrator: 'test-app',
@@ -1682,7 +1702,22 @@ describe('PerpsClient', () => {
       await expect(
         stubbedClient.accountExists(provider, userAddress)
       ).resolves.toBe(true)
-      expect(stubAccountExists).toHaveBeenCalledWith({ address: userAddress })
+      expect(stubAccountExists).toHaveBeenCalledWith(
+        { address: userAddress },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      stubAccountExists.mockResolvedValue(true)
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await stubbedClient.accountExists(provider, userAddress, options)
+      expect(stubAccountExists).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
     })
 
     it('returns false when the plugin reports the account does not exist', async () => {
@@ -1744,7 +1779,25 @@ describe('PerpsClient', () => {
           address: userAddress,
         })
       ).resolves.toEqual(flow)
-      expect(getDepositFlow).toHaveBeenCalledWith({ address: userAddress })
+      expect(getDepositFlow).toHaveBeenCalledWith(
+        { address: userAddress },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      const getDepositFlow = vi.fn(async () => flow)
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await clientWith({ getDepositFlow }).getDepositFlow(
+        { provider, address: userAddress },
+        options
+      )
+      expect(getDepositFlow).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
     })
 
     it('resolves undefined when the plugin does not implement discovery', async () => {
@@ -1805,7 +1858,25 @@ describe('PerpsClient', () => {
           address: userAddress,
         })
       ).resolves.toEqual(flow)
-      expect(getWithdrawFlow).toHaveBeenCalledWith({ address: userAddress })
+      expect(getWithdrawFlow).toHaveBeenCalledWith(
+        { address: userAddress },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      const getWithdrawFlow = vi.fn(async () => flow)
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await clientWith({ getWithdrawFlow }).getWithdrawFlow(
+        { provider, address: userAddress },
+        options
+      )
+      expect(getWithdrawFlow).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
     })
 
     it('resolves undefined when the plugin does not implement discovery', async () => {
@@ -2065,9 +2136,27 @@ describe('PerpsClient', () => {
           max: '11.009697536',
         },
       ])
-      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith({
-        address: userAddress,
-      })
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith(
+        { address: userAddress },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      const plugin = withRows([
+        { assetId: '3', route: 'perps', available: '10.9886', max: '10.9886' },
+      ])
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await clientWith(plugin).getWithdrawableBalances(
+        { provider, address: userAddress },
+        options
+      )
+      expect(plugin.getWithdrawableBalances).toHaveBeenCalledWith(
+        { address: userAddress },
+        options
+      )
     })
 
     it('propagates a plugin read that throws', async () => {
@@ -2446,10 +2535,28 @@ describe('PerpsClient', () => {
           market,
         })
       ).resolves.toEqual(settings)
-      expect(getMarketSettings).toHaveBeenCalledWith({
-        address: userAddress,
-        market,
-      })
+      expect(getMarketSettings).toHaveBeenCalledWith(
+        { address: userAddress, market },
+        undefined
+      )
+    })
+
+    it('delegates the request options to the plugin read', async () => {
+      const getMarketSettings = vi.fn(async () => ({
+        marginMode: MarginMode.CROSS,
+        leverage: 20,
+      }))
+      const options = {
+        signal: new AbortController().signal,
+      }
+      await clientWith({ getMarketSettings }).getMarketSettings(
+        { provider, address: userAddress, market },
+        options
+      )
+      expect(getMarketSettings).toHaveBeenCalledWith(
+        { address: userAddress, market },
+        options
+      )
     })
 
     it('propagates the provider validation error for a spot market', async () => {
