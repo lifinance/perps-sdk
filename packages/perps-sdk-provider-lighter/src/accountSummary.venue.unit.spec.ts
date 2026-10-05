@@ -3,6 +3,7 @@ import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider } from './LighterProvider.js'
+import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 
 // ---------------------------------------------------------------------------
 // Recorded venue snapshot: Lighter `GET /api/v1/account?by=l1_address` for
@@ -551,6 +552,9 @@ describe('accountSummary.venue', () => {
         if (u.includes('/api/v1/pnl?')) {
           return respond(PNL_PAYLOAD)
         }
+        if (u.includes('/api/v1/apikeys')) {
+          return respond({ code: 200, api_keys: [] })
+        }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
     )
@@ -603,7 +607,13 @@ describe('accountSummary.venue', () => {
 
   it('getPortfolioHistory ends on AccountSummary.portfolioValue, spot route included', async () => {
     const { summary } = await load()
-    const provider = lighterProvider({ authToken: 'pre-created-token' })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken({
+        address: ADDRESS,
+        token: 'pre-created-token',
+        accountIndex: 7684,
+      }),
+    })
     provider.bind(STUB_CLIENT)
     const history = await provider.getPortfolioHistory?.({
       address: ADDRESS,

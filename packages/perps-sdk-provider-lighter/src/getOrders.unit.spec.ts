@@ -11,6 +11,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
+import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type { LtOrder } from './types/order.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -77,7 +78,7 @@ const order = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   ...overrides,
 })
 
-function setup(
+async function setup(
   active: LtOrder[] | null,
   inactive: LtOrder[] | null = [],
   nextCursor = '',
@@ -119,7 +120,11 @@ function setup(
     providers: [
       lighterProvider({
         restUrl: 'https://lighter.test',
-        authToken: 'read-token',
+        storage: await storageWithReadOnlyToken({
+          address: ADDRESS,
+          token: 'read-token',
+          accountIndex: 42,
+        }),
       }),
     ],
   })
@@ -132,7 +137,7 @@ function setup(
 
 describe('Lighter getOrders lifecycle reads', () => {
   it('returns running TWAP parents and regular children from the active endpoint', async () => {
-    const { provider, requests } = setup([
+    const { provider, requests } = await setup([
       order(),
       order({
         order_index: 90,
@@ -169,7 +174,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('reads terminal TWAPs and expired orders from history and preserves pagination', async () => {
-    const { provider, requests } = setup(
+    const { provider, requests } = await setup(
       [],
       [
         order({ status: 'filled' }),
@@ -207,7 +212,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('combines active and terminal filters without retaining unrequested statuses', async () => {
-    const { provider, requests } = setup(
+    const { provider, requests } = await setup(
       [order(), order({ order_index: 89, filled_base_amount: '0' })],
       [order({ order_index: 90, status: 'filled' })]
     )
@@ -224,7 +229,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('does not repeat the active snapshot on a mixed history continuation page', async () => {
-    const { provider, requests } = setup(
+    const { provider, requests } = await setup(
       [order()],
       [order({ order_index: 90, status: 'filled' })]
     )
@@ -244,7 +249,11 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('preserves the history cursor when the status filter removes the entire page', async () => {
-    const { provider } = setup([], [order({ status: 'filled' })], 'continue')
+    const { provider } = await setup(
+      [],
+      [order({ status: 'filled' })],
+      'continue'
+    )
     const result = await provider.getOrders({
       address: ADDRESS,
       statuses: [OrderStatus.CANCELLED],
@@ -260,21 +269,21 @@ describe('Lighter getOrders lifecycle reads', () => {
     undefined,
     [OrderStatus.FILLED],
   ])('accepts null venue lists with statuses %s', async (statuses) => {
-    const { provider } = setup(null, null)
+    const { provider } = await setup(null, null)
     expect(
       (await provider.getOrders({ address: ADDRESS, statuses })).orders
     ).toEqual([])
   })
 
   it('does not request an endpoint for an empty status filter', async () => {
-    const { provider, requests } = setup([])
+    const { provider, requests } = await setup([])
     const result = await provider.getOrders({ address: ADDRESS, statuses: [] })
     expect(result.orders).toEqual([])
     expect(requests).toEqual([])
   })
 
   it('drops a history row whose market the registry cannot resolve', async () => {
-    const { provider } = setup(
+    const { provider } = await setup(
       [],
       [
         order({ status: 'filled' }),
@@ -289,7 +298,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('keeps a history row whose market is delisted', async () => {
-    const { provider } = setup(
+    const { provider } = await setup(
       [],
       [order({ order_index: 91, market_index: 2, status: 'filled' })],
       '',
@@ -303,7 +312,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('rejects a market id that the registry does not contain', async () => {
-    const { provider } = setup([])
+    const { provider } = await setup([])
     await expect(
       provider.getOrders({ address: ADDRESS, marketId: 'LIT/USDC' })
     ).rejects.toMatchObject({
@@ -313,7 +322,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   })
 
   it('uses the same order shape for list reads and single-order reads', async () => {
-    const { provider } = setup(
+    const { provider } = await setup(
       [],
       [order({ status: 'filled', client_order_index: 7 })]
     )

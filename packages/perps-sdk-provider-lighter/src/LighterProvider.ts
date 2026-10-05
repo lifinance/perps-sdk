@@ -269,10 +269,9 @@ interface ReadOnlyCreationBackoff {
  * manager are created per plugin instance.
  *
  * Auth-token resolution order for the auth-gated reads:
- *   1. Constructor `authToken` (string or async factory)
- *   2. Persisted long-lived read-only token, keyed on the resolved Lighter
+ *   1. Persisted long-lived read-only token, keyed on the resolved Lighter
  *      `accountIndex`
- *   3. Fresh 1h create via this instance's WASM signer + the user's registered
+ *   2. Fresh 1h create via this instance's WASM signer + the user's registered
  *      API key
  *
  * Status reads report the account's state and do not throw for a missing
@@ -286,9 +285,9 @@ interface ReadOnlyCreationBackoff {
  *   - `SetupRequired` when none of these sources yields a token. The SDK
  *     sends no venue request. `getOrders`, `getOrder`, `getFills`,
  *     `getPortfolioHistory` and `getActivity` need a token.
- *   - `Unauthorized` when Lighter rejects the token that was sent. An
- *     SDK-owned read-only token that Lighter reports as revoked is replaced
- *     and the read retried once first.
+ *   - `Unauthorized` when Lighter rejects the token that was sent. A
+ *     read-only token that Lighter reports as revoked is replaced and the
+ *     read retried once first.
  *   - `AccountNotFound` when the wallet has no Lighter account. This also
  *     applies to `getPositions`, `getWithdrawableBalances` and
  *     `getAvailableToTrade`, which need no token. `getAvailableToTrade`
@@ -311,8 +310,6 @@ export interface LighterProviderOptions {
    * instance's signer and read-only token manager follow this URL.
    */
   restUrl?: string
-  /** Pre-created Lighter read-only bearer, bypassing SDK token resolution. */
-  authToken?: string | (() => string | Promise<string>)
   /** Token lifetime for on-demand standard-token creates (Lighter caps at 8h). Default 1h. */
   tokenLifetimeSeconds?: number
   /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
@@ -380,12 +377,6 @@ export const createLighterProvider = (
   const explorerTxBaseUrl = deployment.explorerTxBaseUrl
   const bridgeChainId = deployment.bridgeChainId
   const collateral = deployment.collateral
-  const authTokenSource: (() => string | Promise<string>) | undefined =
-    typeof options.authToken === 'function'
-      ? options.authToken
-      : options.authToken !== undefined
-        ? () => options.authToken as string
-        : undefined
   const storage = options.storage ?? localStorageAdapter
   const signer = new LighterSigner({
     apiUrl: restUrl,
@@ -459,27 +450,20 @@ export const createLighterProvider = (
 
   /**
    * Resolve the bearer token for auth-gated reads. Priority:
-   *   1. Constructor-supplied token source.
-   *   2. A stored read-only token — preferred for reads: it is read-only, so
+   *   1. A stored read-only token — preferred for reads: it is read-only, so
    *      forwarding it (incl. to the backend) cannot authorise writes.
-   *   3. A read-only token created on first use (via signer + registered API
+   *   2. A read-only token created on first use (via signer + registered API
    *      key) and persisted for reuse.
-   *   4. A standard auth token (read+write, 8h max) as a last resort — used
+   *   3. A standard auth token (read+write, 8h max) as a last resort — used
    *      as the credential that authorises read-only token creation, and as
    *      the fallback while creation is failing, bounded by the
    *      creation-retry backoff.
    * Returns `undefined` when no source can produce a token.
    */
   const resolveAuthToken = async (
-    address?: Address,
+    address: Address,
     knownApiKey?: LighterApiKey
   ): Promise<string | undefined> => {
-    if (authTokenSource !== undefined) {
-      return authTokenSource()
-    }
-    if (address === undefined) {
-      return undefined
-    }
     const apiKey = knownApiKey ?? (await keyStore.get(address))
     if (apiKey === null) {
       return undefined
@@ -568,8 +552,8 @@ export const createLighterProvider = (
     if (token === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SetupRequired,
-        `Lighter ${read} requires an auth token. Pass \`authToken\` to ` +
-          'lighterProvider, or register an API key + signer for on-demand creation.'
+        `Lighter ${read} requires an auth token. Register an API key + signer ` +
+          'for on-demand creation.'
       )
     }
     return token
@@ -637,8 +621,7 @@ export const createLighterProvider = (
     try {
       return await run(token)
     } catch (err) {
-      const sdkOwnsToken = authTokenSource === undefined
-      if (!(err instanceof LighterTokenRevokedError) || !sdkOwnsToken) {
+      if (!(err instanceof LighterTokenRevokedError)) {
         throw err
       }
       const fresh = await replaceRevokedReadOnlyToken(address, token)
@@ -1531,8 +1514,7 @@ export const createLighterProvider = (
       params: ProviderGetPortfolioHistoryParams,
       opts?: SDKRequestOptions
     ): Promise<PortfolioHistoryResponse> {
-      const sdkOwnsToken = authTokenSource === undefined
-      const apiKey = sdkOwnsToken ? await keyStore.get(params.address) : null
+      const apiKey = await keyStore.get(params.address)
       const token = await requireAuthToken(
         'portfolio history read',
         params.address,

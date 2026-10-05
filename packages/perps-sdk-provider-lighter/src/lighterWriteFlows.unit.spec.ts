@@ -483,10 +483,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
 
   /** A provider holding a registered local API key, with the request log cleared. */
   const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
-    const provider = lighterProvider({
-      storage: createMemoryStorage(),
-      authToken: 'tier-read-token',
-    })
+    const provider = lighterProvider({ storage: createMemoryStorage() })
     clientFor(provider)
     const [registered] = (await provider.signActions!(
       SigningMethod.WASM_BLOB,
@@ -546,10 +543,7 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
   })
 
   it('reads neither the descriptors nor the tier without a local API key', async () => {
-    const provider = lighterProvider({
-      storage: createMemoryStorage(),
-      authToken: 'tier-read-token',
-    })
+    const provider = lighterProvider({ storage: createMemoryStorage() })
     clientFor(provider)
 
     await expect(

@@ -3,6 +3,7 @@ import type { AccountSummary } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider, lighterRhProvider } from './LighterProvider.js'
+import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import { LighterWsProvider } from './websocket/LighterWsProvider.js'
 
 const { Socket } = vi.hoisted(() => {
@@ -62,7 +63,7 @@ const respond = (body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
+async function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
   const settlement = providerId === 'lighter' ? 'USDC' : 'USDG'
   const descriptor = (id: string, displaySymbol: string) => ({
     providerId,
@@ -180,10 +181,20 @@ function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
           ],
         })
       }
+      if (url.includes('/api/v1/apikeys')) {
+        return respond({ code: 200, api_keys: [] })
+      }
       throw new Error(`Unexpected request: ${url}`)
     })
   )
-  const options = { authToken: 'test-token' }
+  const options = {
+    storage: await storageWithReadOnlyToken({
+      address: ADDRESS,
+      token: 'test-token',
+      accountIndex: 12,
+      providerKey: providerId,
+    }),
+  }
   const provider =
     providerId === 'lighter'
       ? lighterProvider(options)
@@ -208,7 +219,7 @@ afterEach(() => {
 })
 
 async function subscribe(authenticated = false) {
-  const { client, assets } = setup()
+  const { client, assets } = await setup()
   const stream = new LighterWsProvider(
     'ws://test',
     'lighter',
@@ -278,14 +289,14 @@ describe('Lighter non-settlement margin holdings', () => {
     'lighter',
     'lighter-rh',
   ] as const)('includes margin-route holdings without recounting %s settlement equity', async (providerId) => {
-    const { provider } = setup(providerId)
+    const { provider } = await setup(providerId)
     const account = await provider.getAccount({ address: ADDRESS })
     expect(getAccountSummary(account, []).portfolioValue).toBe('36.07369174')
     expect(getAccountSummary(account, []).availableMargin).toBe(EQUITY)
   })
 
   it('anchors portfolio history to spot plus non-settlement margin holdings', async () => {
-    const { provider } = setup()
+    const { provider } = await setup()
     const history = await provider.getPortfolioHistory!({
       address: ADDRESS,
       range: '24h',
