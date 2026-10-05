@@ -52,17 +52,20 @@ const asset = (
   multiplier: '1',
 })
 // Account 12's public REST holdings, recorded 2026-10-01; marks are deterministic.
-const holdings = (settlement: string) => [
+const holdings = (settlement: string, settlementSpot: string) => [
   asset(1, 'ETH', '0', '0.00709091'),
   asset(2, 'LIT', '8.00004674', '0'),
-  asset(3, settlement, '0', '13.89182545205'),
+  asset(3, settlement, settlementSpot, '13.89182545205'),
 ]
 const respond = (body: unknown) =>
   new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
   })
 
-function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
+function setup(
+  providerId: 'lighter' | 'lighter-rh' = 'lighter',
+  settlementSpot = '0'
+) {
   const settlement = providerId === 'lighter' ? 'USDC' : 'USDG'
   const descriptor = (id: string, displaySymbol: string) => ({
     providerId,
@@ -70,7 +73,7 @@ function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
     displaySymbol,
     logoURI: '',
   })
-  const assets = holdings(settlement)
+  const assets = holdings(settlement, settlementSpot)
   const quoteAsset = descriptor(settlement, settlement)
   const markets = [
     { id: '2048', baseAsset: descriptor('1', 'ETH') },
@@ -204,8 +207,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function subscribe(authenticated = false) {
-  const { client, assets } = setup()
+async function subscribe(authenticated = false, settlementSpot = '0') {
+  const { client, assets } = setup('lighter', settlementSpot)
   const stream = new LighterWsProvider(
     'ws://test',
     'lighter',
@@ -325,5 +328,15 @@ describe('Lighter non-settlement margin holdings', () => {
     sendAssets(assets, true)
     sendAssets([asset(1, 'ETH', '0', '0.002')], true)
     expect(summaries.at(-1)?.portfolioValue).toBe('17.891825')
+  })
+
+  it('values a unified spot-route settlement balance once over REST and websocket', async () => {
+    const { provider } = setup('lighter', '2')
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(getAccountSummary(account, []).portfolioValue).toBe('38.07369174')
+
+    const { summaries, sendAssets, assets } = await subscribe(false, '2')
+    sendAssets(assets, true)
+    expect(summaries.at(-1)?.portfolioValue).toBe('38.07369174')
   })
 })

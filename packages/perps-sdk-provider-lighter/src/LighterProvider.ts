@@ -125,6 +125,7 @@ import type {
 } from './types/index.js'
 import {
   LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_ACCOUNT_TRADING_MODE_UNIFIED,
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from './types/index.js'
@@ -162,6 +163,11 @@ import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
+import {
+  pooledSettlementSpendable,
+  pooledSettlementUnits,
+  settlementSpotBalance,
+} from './utils/settlementPool.js'
 import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
@@ -880,6 +886,20 @@ export const createLighterProvider = (
   }
 
   /**
+   * Refuse a SEND_ASSET for a unified account. Its settlement asset is one pool
+   * across both routes, so a perps↔spot transfer has nothing to move.
+   */
+  const assertSendAssetMode = async (address: Address): Promise<void> => {
+    const account = await fetchDetailedAccount(apiClient(), address)
+    if (account.account_trading_mode === LT_ACCOUNT_TRADING_MODE_UNIFIED) {
+      throw new PerpsError(
+        PerpsErrorCode.PooledCategoryTransfer,
+        'Lighter unified accounts pool the settlement asset across perps and spot; a transfer between them has nothing to move'
+      )
+    }
+  }
+
+  /**
    * Refuse an order signature for a tier no ACCOUNT_TYPE option binds. An
    * unreadable descriptor or tier fails open: the venue itself
    * rejects an ineligible account with body code 21520.
@@ -1024,12 +1044,21 @@ export const createLighterProvider = (
       )
       // Each asset has a spot route (`balance`) and a perps route
       // (`margin_balance`). The instance's settlement asset is valued 1:1; an
-      // asset no spot market prices keeps a zero USD value.
+      // asset no spot market prices keeps a zero USD value. A unified account
+      // pools both settlement routes into one spot row.
+      const isPooled = (asset: LtAccountAsset): boolean =>
+        account.account_trading_mode === LT_ACCOUNT_TRADING_MODE_UNIFIED &&
+        asset.asset_id === collateral.assetIndex
       const heldAssets = account.assets.filter((asset) =>
-        toRequiredBig(asset.balance, 'balance').gt(0)
+        (isPooled(asset)
+          ? pooledSettlementUnits(asset)
+          : toRequiredBig(asset.balance, 'balance')
+        ).gt(0)
       )
-      const marginAssets = account.assets.filter((asset) =>
-        toRequiredBig(asset.margin_balance, 'margin_balance').gt(0)
+      const marginAssets = account.assets.filter(
+        (asset) =>
+          !isPooled(asset) &&
+          toRequiredBig(asset.margin_balance, 'margin_balance').gt(0)
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
@@ -1094,6 +1123,16 @@ export const createLighterProvider = (
         }
       })
       const balances: Balance[] = heldAssets.map((a) => {
+        if (isPooled(a)) {
+          const units = pooledSettlementUnits(a).toFixed()
+          return {
+            ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), units),
+            transferable: calculateTransferable(
+              pooledSettlementSpendable(a, availableBalance).toFixed(),
+              units
+            ),
+          }
+        }
         const balance = toRequiredBig(a.balance, 'balance')
         return {
           ...toBalance(
@@ -1132,6 +1171,10 @@ export const createLighterProvider = (
         crossAssetValue: account.cross_asset_value,
         crossInitialMarginRequirement: account.cross_initial_margin_requirement,
         totalAssetValue: account.total_asset_value,
+        settlementSpotBalance: settlementSpotBalance(
+          account.assets,
+          collateral.assetIndex
+        ),
         userTierName: limitsResult?.user_tier_name,
         accountTradingMode:
           account.account_trading_mode ?? LT_ACCOUNT_TRADING_MODE_SIMPLE,
@@ -1874,6 +1917,9 @@ export const createLighterProvider = (
     ): Promise<SignedActionStep[]> {
       if (steps.some((step) => ORDER_PLACEMENT_ACTIONS.has(step.action))) {
         await assertOrderTier(address)
+      }
+      if (steps.some((step) => step.action === ActionType.SEND_ASSET)) {
+        await assertSendAssetMode(address)
       }
       return lighterSignActions(
         {

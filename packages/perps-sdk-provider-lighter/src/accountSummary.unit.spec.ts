@@ -81,6 +81,7 @@ const account = (
     crossAssetValue,
     crossInitialMarginRequirement: '0',
     totalAssetValue,
+    settlementSpotBalance: '0',
     accountTradingMode: 0,
     assetCollateral: [],
     readOnlyTokenApproved: true,
@@ -139,33 +140,63 @@ describe('getAccountSummary', () => {
     expect(summary.portfolioValue).toBe('11.679579')
   })
 
-  it('adds every spot balance row value to total_asset_value', () => {
+  it('adds every non-settlement spot row value and the settlement spot balance to total_asset_value', () => {
     const summary = getAccountSummary(
-      account('800', '1000', [
-        balance('250'),
-        { ...balance('814.23'), asset: { ...USDC, id: '1' } },
-        { ...balance('0'), asset: { ...USDC, id: '0' } },
-      ]),
+      account(
+        '800',
+        '1000',
+        [
+          balance('250'),
+          { ...balance('814.23'), asset: { ...USDC, id: '1' } },
+          { ...balance('0'), asset: { ...USDC, id: '0' } },
+        ],
+        'lighter',
+        { settlementSpotBalance: '250' }
+      ),
       [position('200', '0')]
     )
     expect(summary.portfolioValue).toBe('2064.23')
   })
 
-  it('counts the settlement token once per route and never adds the collateral row', () => {
-    // total_asset_value carries the perps-route USDC; the spot row carries the
-    // spot-route USDC; the collateral row is the perps-route holding inside
-    // total_asset_value.
+  it('counts the settlement token once per route and never adds a settlement row', () => {
+    // total_asset_value carries the perps-route USDC and settlementSpotBalance
+    // the spot-route USDC, so the settlement rows add nothing.
     const summary = getAccountSummary(
-      account('800', '1000', [balance('103.00085138124')]),
+      account('800', '1000', [balance('103.00085138124')], 'lighter', {
+        settlementSpotBalance: '103.00085138124',
+      }),
       []
     )
     expect(summary.portfolioValue).toBe('1103.00085138124')
     expect(summary.availableMargin).toBe('800')
   })
 
+  it('counts a unified pooled settlement row once', () => {
+    const pooled: Balance = {
+      categoryId: 'spot',
+      asset: { ...USDC, id: '3' },
+      units: '1003',
+      valueUsd: '1003',
+      transferable: '803',
+    }
+    const summary = getAccountSummary(
+      {
+        ...account('800', '1000', [pooled], 'lighter', {
+          accountTradingMode: 1,
+          settlementSpotBalance: '3',
+        }),
+        collateralBalances: [],
+      },
+      []
+    )
+    expect(summary.portfolioValue).toBe('1003')
+  })
+
   it('writes a dust total in plain decimal notation', () => {
     const summary = getAccountSummary(
-      account('0.00000001', '0', [balance('0.00000001')]),
+      account('0.00000001', '0', [balance('0.00000001')], 'lighter', {
+        settlementSpotBalance: '0.00000001',
+      }),
       [position('0.00000001', '-0.00000001')]
     )
     expect(summary).toEqual({
@@ -177,7 +208,16 @@ describe('getAccountSummary', () => {
   })
 
   it('rejects a non-decimal spot balance value', () => {
-    const broken = account('800', '1000', [balance('n/a')])
+    const broken = account('800', '1000', [
+      { ...balance('n/a'), asset: { ...USDC, id: '1' } },
+    ])
+    expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
+  })
+
+  it('rejects a non-decimal settlement spot balance', () => {
+    const broken = account('800', '1000', [], 'lighter', {
+      settlementSpotBalance: 'n/a',
+    })
     expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
   })
 
