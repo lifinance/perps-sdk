@@ -24,8 +24,8 @@ export const pooledSettlementSpendable = (
     .plus(marginBalance.lt(availableBalance) ? marginBalance : availableBalance)
 }
 
-/** Spot-route `balance` of the settlement asset; `'0'` when the account holds none. */
-export const settlementSpotBalance = (
+/** Spot-route `balance` of the collateral asset; `'0'` when the account holds none. */
+export const collateralSpotBalance = (
   assets: readonly LtAccountAsset[],
   settlementAssetIndex: number
 ): string => {

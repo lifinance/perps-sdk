@@ -78,7 +78,7 @@ export function getAccountSummary(
   return {
     portfolioValue: lighterPortfolioValue(
       toRequiredBig(config.totalAssetValue, 'totalAssetValue').plus(
-        toRequiredBig(config.settlementSpotBalance, 'settlementSpotBalance')
+        toRequiredBig(config.collateralSpotBalance, 'collateralSpotBalance')
       ),
       holdings.map((balance) => balance.valueUsd)
     ).toFixed(),
