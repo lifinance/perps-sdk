@@ -1,5 +1,24 @@
 # @lifi/perps-sdk
 
+## 23.0.0
+
+### Major Changes
+
+- [#590](https://github.com/lifinance/perps-sdk/pull/590) [`8f9ca62`](https://github.com/lifinance/perps-sdk/commit/8f9ca62b69d016a6eb636a2db0995872b39d2793) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsClient.getAccount`, `getMarketSettings`, `accountExists`, `getDepositFlow` and `getWithdrawFlow` accept an optional `SDKRequestOptions` argument and send it to the provider plugin read.
+
+  BREAKING: `SDKRequestOptions.lighterAuthToken` is removed. `SDKRequestOptions` has only `signal`.
+
+  BREAKING: the `authToken` option of `lighterProvider` and `lighterRhProvider` is removed. The Lighter provider resolves the auth token only from the API key and the read-only token in the storage adapter, and throws `SetupRequired` when the storage adapter gives no token.
+
+### Minor Changes
+
+- [#581](https://github.com/lifinance/perps-sdk/pull/581) [`20090d7`](https://github.com/lifinance/perps-sdk/commit/20090d7da5be790606ecae83e3ed73f63b8deacb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsClient.getWithdrawableBalances` accepts an optional second argument `options?: SDKRequestOptions` and sends it to the provider plugin read. A caller can now give an abort `signal` to this read, as to the other account reads.
+
+### Patch Changes
+
+- Updated dependencies [[`e41117d`](https://github.com/lifinance/perps-sdk/commit/e41117dd078c638e66f652abd689e80ac4f8a6d7)]:
+  - @lifi/perps-types@20.1.0
+
 ## 22.0.0
 
 ### Major Changes
