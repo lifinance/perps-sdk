@@ -164,9 +164,9 @@ import {
   normalizeLighterPublicKey,
 } from './utils/registeredApiKey.js'
 import {
+  collateralSpotBalance,
   pooledSettlementSpendable,
   pooledSettlementUnits,
-  settlementSpotBalance,
 } from './utils/settlementPool.js'
 import { spotPriceByAssetId, spotValuation } from './utils/spotPrice.js'
 import { isPlaceholderTxHash } from './utils/txHash.js'
@@ -1144,7 +1144,7 @@ export const createLighterProvider = (
         crossAssetValue: account.cross_asset_value,
         crossInitialMarginRequirement: account.cross_initial_margin_requirement,
         totalAssetValue: account.total_asset_value,
-        settlementSpotBalance: settlementSpotBalance(
+        collateralSpotBalance: collateralSpotBalance(
           account.assets,
           collateral.assetIndex
         ),

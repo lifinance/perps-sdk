@@ -3,9 +3,9 @@ import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountAsset } from '../types/account.js'
 import {
+  collateralSpotBalance,
   pooledSettlementSpendable,
   pooledSettlementUnits,
-  settlementSpotBalance,
 } from './settlementPool.js'
 
 const usdc = (
@@ -58,10 +58,10 @@ describe('pooledSettlementSpendable', () => {
   })
 })
 
-describe('settlementSpotBalance', () => {
+describe('collateralSpotBalance', () => {
   it('reads the spot route of the settlement asset', () => {
     expect(
-      settlementSpotBalance(
+      collateralSpotBalance(
         [
           { ...usdc('9', '0', '0'), asset_id: 1 },
           usdc('60524.61222039', '0', '1'),
@@ -72,6 +72,6 @@ describe('settlementSpotBalance', () => {
   })
 
   it('returns 0 when the account holds no settlement asset', () => {
-    expect(settlementSpotBalance([], 3)).toBe('0')
+    expect(collateralSpotBalance([], 3)).toBe('0')
   })
 })

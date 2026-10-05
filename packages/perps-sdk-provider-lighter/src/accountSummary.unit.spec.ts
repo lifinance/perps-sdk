@@ -81,7 +81,7 @@ const account = (
     crossAssetValue,
     crossInitialMarginRequirement: '0',
     totalAssetValue,
-    settlementSpotBalance: '0',
+    collateralSpotBalance: '0',
     accountTradingMode: 0,
     assetCollateral: [],
     readOnlyTokenApproved: true,
@@ -151,7 +151,7 @@ describe('getAccountSummary', () => {
           { ...balance('0'), asset: { ...USDC, id: '0' } },
         ],
         'lighter',
-        { settlementSpotBalance: '250' }
+        { collateralSpotBalance: '250' }
       ),
       [position('200', '0')]
     )
@@ -159,11 +159,11 @@ describe('getAccountSummary', () => {
   })
 
   it('counts the settlement token once per route and never adds a settlement row', () => {
-    // total_asset_value carries the perps-route USDC and settlementSpotBalance
+    // total_asset_value carries the perps-route USDC and collateralSpotBalance
     // the spot-route USDC, so the settlement rows add nothing.
     const summary = getAccountSummary(
       account('800', '1000', [balance('103.00085138124')], 'lighter', {
-        settlementSpotBalance: '103.00085138124',
+        collateralSpotBalance: '103.00085138124',
       }),
       []
     )
@@ -183,7 +183,7 @@ describe('getAccountSummary', () => {
       {
         ...account('800', '1000', [pooled], 'lighter', {
           accountTradingMode: 1,
-          settlementSpotBalance: '3',
+          collateralSpotBalance: '3',
         }),
         collateralBalances: [],
       },
@@ -195,7 +195,7 @@ describe('getAccountSummary', () => {
   it('writes a dust total in plain decimal notation', () => {
     const summary = getAccountSummary(
       account('0.00000001', '0', [balance('0.00000001')], 'lighter', {
-        settlementSpotBalance: '0.00000001',
+        collateralSpotBalance: '0.00000001',
       }),
       [position('0.00000001', '-0.00000001')]
     )
@@ -216,7 +216,7 @@ describe('getAccountSummary', () => {
 
   it('rejects a non-decimal settlement spot balance', () => {
     const broken = account('800', '1000', [], 'lighter', {
-      settlementSpotBalance: 'n/a',
+      collateralSpotBalance: 'n/a',
     })
     expect(() => getAccountSummary(broken, [])).toThrow(PerpsError)
   })

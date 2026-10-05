@@ -633,11 +633,11 @@ export interface LighterAccountConfig {
    */
   totalAssetValue: DecimalString
   /**
-   * Lighter spot-route `balance` of the settlement asset: the part of its
+   * Lighter spot-route `balance` of the collateral asset: the part of its
    * holding that `totalAssetValue` excludes. A decimal string in quote-asset
    * units.
    */
-  settlementSpotBalance: DecimalString
+  collateralSpotBalance: DecimalString
   /**
    * Lighter `user_tier_name` from `/accountLimits`, in the tier vocabulary
    * `changeAccountTier` accepts. Absent on an unauthenticated read, which

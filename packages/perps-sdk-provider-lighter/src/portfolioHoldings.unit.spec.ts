@@ -53,10 +53,10 @@ const asset = (
   multiplier: '1',
 })
 // Account 12's public REST holdings, recorded 2026-10-01; marks are deterministic.
-const holdings = (settlement: string, settlementSpot: string) => [
+const holdings = (settlement: string, collateralBalance: string) => [
   asset(1, 'ETH', '0', '0.00709091'),
   asset(2, 'LIT', '8.00004674', '0'),
-  asset(3, settlement, settlementSpot, '13.89182545205'),
+  asset(3, settlement, collateralBalance, '13.89182545205'),
 ]
 const respond = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -65,7 +65,7 @@ const respond = (body: unknown) =>
 
 async function setup(
   providerId: 'lighter' | 'lighter-rh' = 'lighter',
-  settlementSpot = '0'
+  collateralBalance = '0'
 ) {
   const settlement = providerId === 'lighter' ? 'USDC' : 'USDG'
   const descriptor = (id: string, displaySymbol: string) => ({
@@ -74,7 +74,7 @@ async function setup(
     displaySymbol,
     logoURI: '',
   })
-  const assets = holdings(settlement, settlementSpot)
+  const assets = holdings(settlement, collateralBalance)
   const quoteAsset = descriptor(settlement, settlement)
   const markets = [
     { id: '2048', baseAsset: descriptor('1', 'ETH') },
@@ -221,8 +221,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function subscribe(authenticated = false, settlementSpot = '0') {
-  const { client, assets } = await setup('lighter', settlementSpot)
+async function subscribe(authenticated = false, collateralBalance = '0') {
+  const { client, assets } = await setup('lighter', collateralBalance)
   const stream = new LighterWsProvider(
     'ws://test',
     'lighter',
