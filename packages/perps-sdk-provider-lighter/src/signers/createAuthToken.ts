@@ -33,8 +33,7 @@ export interface CreateAuthTokenInputs {
  * endpoints (`getOrders`, `getOrder`, `getActivity`, etc.).
  *
  * This utility carries no SDK-wide coupling — pass an explicit `signer` +
- * `apiKey` and consume the returned bearer however the caller likes
- * (per-call `options.lighterAuthToken`, persisted cache, etc.).
+ * `apiKey` and consume the returned bearer however the caller likes.
  * @public
  */
 export async function createAuthToken(

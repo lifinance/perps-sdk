@@ -183,8 +183,11 @@ function setup(providerId: 'lighter' | 'lighter-rh' = 'lighter') {
       throw new Error(`Unexpected request: ${url}`)
     })
   )
+  const options = { authToken: 'test-token' }
   const provider =
-    providerId === 'lighter' ? lighterProvider() : lighterRhProvider()
+    providerId === 'lighter'
+      ? lighterProvider(options)
+      : lighterRhProvider(options)
   const client = createPerpsClient({
     integrator: 'test',
     apiKey: 'test',
@@ -283,10 +286,10 @@ describe('Lighter non-settlement margin holdings', () => {
 
   it('anchors portfolio history to spot plus non-settlement margin holdings', async () => {
     const { provider } = setup()
-    const history = await provider.getPortfolioHistory!(
-      { address: ADDRESS, range: '24h' },
-      { lighterAuthToken: 'test-token' }
-    )
+    const history = await provider.getPortfolioHistory!({
+      address: ADDRESS,
+      range: '24h',
+    })
     expect(history.points).toEqual([
       { timestamp: 1_741_000_000_000, accountValue: '34.07369174', pnl: '0' },
       { timestamp: 1_741_003_600_000, accountValue: '36.07369174', pnl: '2' },

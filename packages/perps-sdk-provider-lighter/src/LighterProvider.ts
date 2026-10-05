@@ -269,11 +269,10 @@ interface ReadOnlyCreationBackoff {
  * manager are created per plugin instance.
  *
  * Auth-token resolution order for the auth-gated reads:
- *   1. Per-call `options.lighterAuthToken`
- *   2. Constructor `authToken` (string or async factory)
- *   3. Persisted long-lived read-only token, keyed on the resolved Lighter
+ *   1. Constructor `authToken` (string or async factory)
+ *   2. Persisted long-lived read-only token, keyed on the resolved Lighter
  *      `accountIndex`
- *   4. Fresh 1h create via this instance's WASM signer + the user's registered
+ *   3. Fresh 1h create via this instance's WASM signer + the user's registered
  *      API key
  *
  * Status reads report the account's state and do not throw for a missing
@@ -344,8 +343,8 @@ interface CachedStandardToken {
 export interface LighterPerpsProvider extends PerpsProviderPlugin {
   /**
    * Resolve a Lighter auth token for `address`, following the resolution order
-   * documented on {@link LighterProviderOptions} (the per-call override does not
-   * apply here). Returns `undefined` when no source can produce a token.
+   * documented on {@link LighterProviderOptions}. Returns `undefined` when no
+   * source can produce a token.
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
 }
@@ -460,26 +459,21 @@ export const createLighterProvider = (
 
   /**
    * Resolve the bearer token for auth-gated reads. Priority:
-   *   1. Per-call override (`options.lighterAuthToken`).
-   *   2. Constructor-supplied token source.
-   *   3. A stored read-only token — preferred for reads: it is read-only, so
+   *   1. Constructor-supplied token source.
+   *   2. A stored read-only token — preferred for reads: it is read-only, so
    *      forwarding it (incl. to the backend) cannot authorise writes.
-   *   4. A read-only token created on first use (via signer + registered API
+   *   3. A read-only token created on first use (via signer + registered API
    *      key) and persisted for reuse.
-   *   5. A standard auth token (read+write, 8h max) as a last resort — used
+   *   4. A standard auth token (read+write, 8h max) as a last resort — used
    *      as the credential that authorises read-only token creation, and as
    *      the fallback while creation is failing, bounded by the
    *      creation-retry backoff.
    * Returns `undefined` when no source can produce a token.
    */
   const resolveAuthToken = async (
-    opts: SDKRequestOptions | undefined,
     address?: Address,
     knownApiKey?: LighterApiKey
   ): Promise<string | undefined> => {
-    if (opts?.lighterAuthToken !== undefined) {
-      return opts.lighterAuthToken
-    }
     if (authTokenSource !== undefined) {
       return authTokenSource()
     }
@@ -567,17 +561,15 @@ export const createLighterProvider = (
   /** {@link resolveAuthToken}, throwing `SetupRequired` when no source yields a token. */
   const requireAuthToken = async (
     read: string,
-    opts: SDKRequestOptions | undefined,
     address: Address,
     knownApiKey?: LighterApiKey
   ): Promise<string> => {
-    const token = await resolveAuthToken(opts, address, knownApiKey)
+    const token = await resolveAuthToken(address, knownApiKey)
     if (token === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SetupRequired,
         `Lighter ${read} requires an auth token. Pass \`authToken\` to ` +
-          'lighterProvider, register an API key + signer for on-demand creation, or ' +
-          'forward `options.lighterAuthToken` on the call.'
+          'lighterProvider, or register an API key + signer for on-demand creation.'
       )
     }
     return token
@@ -638,7 +630,6 @@ export const createLighterProvider = (
   }
 
   const retryOnRevoked = async <T>(
-    opts: SDKRequestOptions | undefined,
     address: Address,
     token: string,
     run: (token: string) => Promise<T>
@@ -646,8 +637,7 @@ export const createLighterProvider = (
     try {
       return await run(token)
     } catch (err) {
-      const sdkOwnsToken =
-        opts?.lighterAuthToken === undefined && authTokenSource === undefined
+      const sdkOwnsToken = authTokenSource === undefined
       if (!(err instanceof LighterTokenRevokedError) || !sdkOwnsToken) {
         throw err
       }
@@ -908,11 +898,11 @@ export const createLighterProvider = (
     }
     let userTierName: string | undefined
     try {
-      const token = await resolveAuthToken(undefined, address, localKey)
+      const token = await resolveAuthToken(address, localKey)
       const limits =
         token === undefined
           ? undefined
-          : await retryOnRevoked(undefined, address, token, (resolvedToken) =>
+          : await retryOnRevoked(address, token, (resolvedToken) =>
               fetchAccountLimits(
                 apiClient(),
                 localKey.accountIndex,
@@ -951,7 +941,7 @@ export const createLighterProvider = (
     },
 
     resolveAuthToken(address: Address): Promise<string | undefined> {
-      return resolveAuthToken(undefined, address)
+      return resolveAuthToken(address)
     },
 
     async getAccount(
@@ -981,7 +971,7 @@ export const createLighterProvider = (
           normalizeLighterPublicKey(registeredKey.public_key)
       // Status read: a missing or stale credential reports `apiKeyRegistered: false`, not a throw.
       const token = apiKeyRegistered
-        ? await resolveAuthToken(opts, params.address, localKey)
+        ? await resolveAuthToken(params.address, localKey)
         : undefined
 
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -994,7 +984,7 @@ export const createLighterProvider = (
           getMarketsContext(requireClient(), { provider: providerKey }, opts),
           token === undefined
             ? Promise.resolve(undefined)
-            : retryOnRevoked(opts, params.address, token, (resolvedToken) =>
+            : retryOnRevoked(params.address, token, (resolvedToken) =>
                 fetchAccountLimits(client, account.index, resolvedToken)
               ),
           apiKeyRegistered
@@ -1305,7 +1295,7 @@ export const createLighterProvider = (
       if (statuses.size === 0) {
         return empty
       }
-      const token = await requireAuthToken('orders read', opts, params.address)
+      const token = await requireAuthToken('orders read', params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1327,7 +1317,6 @@ export const createLighterProvider = (
         }
       }
       const [activeResponse, inactiveResponse] = await retryOnRevoked(
-        opts,
         params.address,
         token,
         (t) =>
@@ -1394,7 +1383,7 @@ export const createLighterProvider = (
       params: ProviderGetOrderParams,
       opts?: SDKRequestOptions
     ): Promise<Order> {
-      const token = await requireAuthToken('order lookup', opts, params.address)
+      const token = await requireAuthToken('order lookup', params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1437,7 +1426,7 @@ export const createLighterProvider = (
               `"${clientOrderIndex}" is not a decimal integer.`
           )
         }
-        const orders = await retryOnRevoked(opts, params.address, token, (t) =>
+        const orders = await retryOnRevoked(params.address, token, (t) =>
           fetchOrdersByClientOrderIndex(
             client,
             t,
@@ -1461,7 +1450,7 @@ export const createLighterProvider = (
       const byOrderIndex = (o: LtOrder): boolean =>
         String(o.order_index) === params.id
 
-      const active = await retryOnRevoked(opts, params.address, token, (t) =>
+      const active = await retryOnRevoked(params.address, token, (t) =>
         fetchActiveOrders(
           client,
           t,
@@ -1474,7 +1463,7 @@ export const createLighterProvider = (
         return detail(activeHit)
       }
 
-      const inactive = await retryOnRevoked(opts, params.address, token, (t) =>
+      const inactive = await retryOnRevoked(params.address, token, (t) =>
         client.getAuthed<LtOrdersResponse>('/api/v1/accountInactiveOrders', t, {
           account_index: account.index,
           market_id: LIGHTER_ALL_MARKETS_WILDCARD,
@@ -1492,7 +1481,7 @@ export const createLighterProvider = (
       params: ProviderGetFillsParams,
       opts?: SDKRequestOptions
     ): Promise<FillsResponse> {
-      const token = await requireAuthToken('fills read', opts, params.address)
+      const token = await requireAuthToken('fills read', params.address)
 
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
@@ -1511,12 +1500,8 @@ export const createLighterProvider = (
         queryParams.cursor = params.cursor
       }
 
-      const response = await retryOnRevoked(
-        opts,
-        params.address,
-        token,
-        (tok) =>
-          client.getAuthed<LtTradesResponse>('/api/v1/trades', tok, queryParams)
+      const response = await retryOnRevoked(params.address, token, (tok) =>
+        client.getAuthed<LtTradesResponse>('/api/v1/trades', tok, queryParams)
       )
 
       // `get`, not `require`: a market id the backend list no longer carries
@@ -1546,12 +1531,10 @@ export const createLighterProvider = (
       params: ProviderGetPortfolioHistoryParams,
       opts?: SDKRequestOptions
     ): Promise<PortfolioHistoryResponse> {
-      const sdkOwnsToken =
-        opts?.lighterAuthToken === undefined && authTokenSource === undefined
+      const sdkOwnsToken = authTokenSource === undefined
       const apiKey = sdkOwnsToken ? await keyStore.get(params.address) : null
       const token = await requireAuthToken(
         'portfolio history read',
-        opts,
         params.address,
         apiKey ?? undefined
       )
@@ -1580,23 +1563,24 @@ export const createLighterProvider = (
       // fallback sits outside `retryOnRevoked`, so a revocation the standard
       // token reports never replaces the read-only one. The key is re-read at
       // retry time because `REGISTER_API_KEY` can rotate it.
-      const response = await retryOnRevoked(
-        opts,
-        params.address,
-        token,
-        read
-      ).catch(async (err: unknown) => {
-        if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
-          throw err
+      const response = await retryOnRevoked(params.address, token, read).catch(
+        async (err: unknown) => {
+          if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
+            throw err
+          }
+          const current = (await keyStore.get(params.address)) ?? apiKey
+          return read(
+            await getStandardAuthToken(
+              params.address,
+              current.apiKeyPrivateKey,
+              {
+                apiKeyIndex: current.apiKeyIndex,
+                accountIndex: current.accountIndex,
+              }
+            )
+          )
         }
-        const current = (await keyStore.get(params.address)) ?? apiKey
-        return read(
-          await getStandardAuthToken(params.address, current.apiKeyPrivateKey, {
-            apiKeyIndex: current.apiKeyIndex,
-            accountIndex: current.accountIndex,
-          })
-        )
-      })
+      )
 
       return mapPortfolioHistory(
         params.range,
@@ -1609,11 +1593,7 @@ export const createLighterProvider = (
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
     ): Promise<ActivitiesResponse> {
-      const token = await requireAuthToken(
-        'activity read',
-        opts,
-        params.address
-      )
+      const token = await requireAuthToken('activity read', params.address)
 
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(opts)
@@ -1623,7 +1603,7 @@ export const createLighterProvider = (
       // Markets identify funding and liquidation rows; assets identify ledger
       // rows. A request for one surface must not pull the other's registry.
       const [history] = await Promise.all([
-        retryOnRevoked(opts, params.address, token, (t) =>
+        retryOnRevoked(params.address, token, (t) =>
           fetchAllHistory(
             client,
             t,

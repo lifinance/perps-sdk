@@ -629,27 +629,6 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
 })
 
 describe('LighterProvider — auth token plumbing', () => {
-  it('forwards a per-call `lighterAuthToken` to auth-gated endpoints', async () => {
-    const storage = createMemoryStorage()
-    await storage.set(
-      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
-      JSON.stringify(STORED_API_KEY)
-    )
-    const provider = lighterProvider({ storage })
-    provider.bind(STUB_CLIENT)
-    await provider.getAccount(
-      { address: ADDRESS },
-      {
-        lighterAuthToken: 'per-call-token',
-      }
-    )
-    const limitsCall = recorded.find((r) =>
-      r.url.includes('/api/v1/accountLimits')
-    )
-    expect(limitsCall).toBeDefined()
-    expect(authHeader(limitsCall)).toBe('per-call-token')
-  })
-
   // A fee-tier fetch failure must NOT be coerced into a fabricated 0%/0% fee
   // tier — that shows a trader fake fees. The error has to surface.
   it('propagates an accountLimits fetch error instead of masking it as a 0% fee tier', async () => {
@@ -663,17 +642,12 @@ describe('LighterProvider — auth token plumbing', () => {
       apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
       JSON.stringify(STORED_API_KEY)
     )
-    const provider = lighterProvider({ storage })
+    const provider = lighterProvider({ storage, authToken: 'caller-token' })
     provider.bind(STUB_CLIENT)
-    await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'per-call-token' }
-      )
-    ).rejects.toThrow()
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow()
   })
 
-  it('uses a pre-created `authToken` from constructor when no per-call override', async () => {
+  it('uses a pre-created `authToken` from the constructor', async () => {
     const storage = createMemoryStorage()
     await storage.set(
       apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
@@ -870,12 +844,12 @@ describe('LighterProvider — account tier', () => {
     overrideFetch((url) =>
       url.includes('/api/v1/accountLimits') ? limitsWith(tier) : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithApiKey(),
+      authToken: 'caller-token',
+    })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
     ).toBeDefined()
@@ -883,12 +857,12 @@ describe('LighterProvider — account tier', () => {
   })
 
   it('leaves the tier string absent when accountLimits omits it', async () => {
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithApiKey(),
+      authToken: 'caller-token',
+    })
     provider.bind(STUB_CLIENT)
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
     expect(
       recorded.find((r) => r.url.includes('/api/v1/accountLimits'))
     ).toBeDefined()
@@ -909,12 +883,12 @@ describe('LighterProvider — account tier', () => {
           })
         : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithApiKey(),
+      authToken: 'caller-token',
+    })
     provider.bind(STUB_CLIENT)
-    const { feeTier } = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'per-call-token' }
-    )
+    const { feeTier } = await provider.getAccount({ address: ADDRESS })
     expect(feeTier).toEqual({ maker: fee, taker: fee })
     expect(isDecimalString(feeTier.maker)).toBe(true)
     expect(isDecimalString(feeTier.taker)).toBe(true)
@@ -932,13 +906,13 @@ describe('LighterProvider — account tier', () => {
         ? respond({ code: 0, user_tier: 'STD', ...ticks })
         : undefined
     )
-    const provider = lighterProvider({ storage: await storageWithApiKey() })
+    const provider = lighterProvider({
+      storage: await storageWithApiKey(),
+      authToken: 'caller-token',
+    })
     provider.bind(STUB_CLIENT)
     await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'per-call-token' }
-      )
+      provider.getAccount({ address: ADDRESS })
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
@@ -975,13 +949,10 @@ describe('LighterProvider — referralPresent', () => {
       ...STORED_API_KEY,
       appliedReferralCode: APPLIED_CODE,
     })
-    const provider = lighterProvider({ storage })
+    const provider = lighterProvider({ storage, authToken: 'ref-token' })
     provider.bind(STUB_CLIENT)
 
-    const account = await provider.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'ref-token' }
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.config).toMatchObject({ referralPresent: true })
     expect(
@@ -2428,17 +2399,12 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       return undefined
     })
 
-    const provider = lighterProvider({ storage })
+    const provider = lighterProvider({ storage, authToken: 'caller-token' })
     provider.bind(STUB_CLIENT)
 
     // The 401 surfaces rather than being masked as a 0% fee tier; with a
     // caller-supplied token it is not the SDK's to self-heal.
-    await expect(
-      provider.getAccount(
-        { address: ADDRESS },
-        { lighterAuthToken: 'caller-token' }
-      )
-    ).rejects.toThrow()
+    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow()
 
     expect(createCount).toBe(0) // never created an SDK-owned token
     expect(limitsCalls).toBe(1) // 401 surfaced, not retried
@@ -5626,16 +5592,13 @@ describe('LighterProvider — two deployments on one client', () => {
       apiKeyStorageKey(LIGHTER_RH_PROVIDER_KEY, ADDRESS),
       JSON.stringify(RH_STORED_API_KEY)
     )
-    const main = lighterProvider({ storage })
-    const rh = lighterRhProvider({ storage })
+    const main = lighterProvider({ storage, authToken: 'main-tok' })
+    const rh = lighterRhProvider({ storage, authToken: 'rh-tok' })
     main.bind(STUB_CLIENT)
     rh.bind(STUB_CLIENT)
 
-    await main.getAccount(
-      { address: ADDRESS },
-      { lighterAuthToken: 'main-tok' }
-    )
-    await rh.getAccount({ address: ADDRESS }, { lighterAuthToken: 'rh-tok' })
+    await main.getAccount({ address: ADDRESS })
+    await rh.getAccount({ address: ADDRESS })
 
     const limitsCalls = recorded.filter((r) =>
       r.url.includes('/api/v1/accountLimits')

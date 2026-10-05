@@ -1651,7 +1651,6 @@ describe('PerpsClient', () => {
       })
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await stubbedClient.getAccount(
         { provider, address: userAddress },
@@ -1713,7 +1712,6 @@ describe('PerpsClient', () => {
       stubAccountExists.mockResolvedValue(true)
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await stubbedClient.accountExists(provider, userAddress, options)
       expect(stubAccountExists).toHaveBeenCalledWith(
@@ -1791,7 +1789,6 @@ describe('PerpsClient', () => {
       const getDepositFlow = vi.fn(async () => flow)
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await clientWith({ getDepositFlow }).getDepositFlow(
         { provider, address: userAddress },
@@ -1871,7 +1868,6 @@ describe('PerpsClient', () => {
       const getWithdrawFlow = vi.fn(async () => flow)
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await clientWith({ getWithdrawFlow }).getWithdrawFlow(
         { provider, address: userAddress },
@@ -2152,7 +2148,6 @@ describe('PerpsClient', () => {
       ])
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await clientWith(plugin).getWithdrawableBalances(
         { provider, address: userAddress },
@@ -2553,7 +2548,6 @@ describe('PerpsClient', () => {
       }))
       const options = {
         signal: new AbortController().signal,
-        lighterAuthToken: 'ro:1:token',
       }
       await clientWith({ getMarketSettings }).getMarketSettings(
         { provider, address: userAddress, market },
