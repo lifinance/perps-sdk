@@ -268,13 +268,19 @@ passes through a `number`:
   provider.
 - `calculateWithdrawMax(row)` gives `WithdrawableBalance.max` from
   `available`, `withdrawalFee` and `isFeeDeducted`.
-- `calculateRefuelAmount({ gasUsd, priceUsd, decimals })` divides the
-  recommended gas value by the source-token price, rounds **up** onto the
-  token grid and keeps trailing zeros to `decimals`, so a refuel never lands
-  short. It gives `undefined` when either input is not greater than zero.
+- `calculateRefuelAmount({ recommendedAmount, recommendedUsd, nativeBalance, priceUsd, decimals })`
+  gives the source-token amount that buys the native gas deficit. The
+  deficit is `recommendedAmount` minus `nativeBalance`, both in base units,
+  valued pro rata on `recommendedUsd`. The helper adds
+  `REFUEL_FEE_MARGIN_PERCENT` (20%) for the route fees, divides by
+  `priceUsd`, rounds **up** onto the token grid and keeps trailing zeros to
+  `decimals`, so a refuel never lands short. It gives `undefined` when the
+  wallet already holds the recommendation, or when the recommendation, its
+  USD value or the price is not greater than zero.
 
 Each one throws `PerpsError(ValidationError)`, naming the field, when an
-input is not a `DecimalString`.
+input is not a `DecimalString`. `calculateRefuelAmount` also throws when a
+base-unit input is not an integer string.
 
 ## Numbers
 
