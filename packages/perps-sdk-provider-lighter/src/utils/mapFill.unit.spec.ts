@@ -5,6 +5,7 @@ import {
   LiquidityRole,
   OrderSide,
   OrderType,
+  PerpsErrorCode,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtTrade } from '../types/index.js'
@@ -1001,5 +1002,11 @@ describe('mapFill (Lighter)', () => {
       expect(fill.startPosition).toBe('2')
       expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
     })
+  })
+
+  it('throws ValidationError for a trade with a malformed size', () => {
+    expect(() =>
+      mapFill(baseTrade({ size: '10oops' }), ACCOUNT_INDEX, MARKET)
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })

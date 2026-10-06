@@ -4,6 +4,7 @@ import {
   LiquidityRole,
   OrderSide,
   OrderType,
+  PerpsErrorCode,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
@@ -347,6 +348,12 @@ describe('mapFill (Hyperliquid)', () => {
         baseFill({ coin: 'ETH', side: 'B', sz: '1', startPosition: '0' })
       )
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)
+    })
+
+    it('throws ValidationError for a perp fill with a malformed startPosition', () => {
+      expect(() => map(baseFill({ startPosition: '10oops' }))).toThrow(
+        expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      )
     })
   })
 })
