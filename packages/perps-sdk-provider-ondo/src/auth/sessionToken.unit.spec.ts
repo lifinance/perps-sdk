@@ -3,8 +3,10 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoAuthToken } from '../types/auth.js'
+import { OndoSessionExpiredError } from '../utils/apiClient.js'
 import { OndoTokenStore } from './OndoTokenStore.js'
 import {
+  ondoSessionRejectedError,
   ondoSessionRequiredError,
   requireOndoSessionToken,
 } from './sessionToken.js'
@@ -35,6 +37,23 @@ describe('ondoSessionRequiredError', () => {
       message: 'Run the SIWE login first.',
       tool: ONDO_PROVIDER_KEY,
     })
+  })
+})
+
+describe('ondoSessionRejectedError', () => {
+  it('builds an Unauthorized PerpsError carrying the venue cause', () => {
+    const cause = new OndoSessionExpiredError('/v1/perps/balance')
+
+    const error = ondoSessionRejectedError('account summary', cause)
+
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.Unauthorized,
+      message:
+        'Ondo account summary failed: the venue rejected the session; sign in again.',
+      tool: ONDO_PROVIDER_KEY,
+    })
+    expect(error.cause).toBe(cause)
   })
 })
 

@@ -28,6 +28,7 @@ import {
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { OndoTokenStore } from '../auth/OndoTokenStore.js'
+import { ondoSessionRejectedError } from '../auth/sessionToken.js'
 import {
   DEFAULT_ONDO_API_URL,
   DEFAULT_ONDO_WS_URL,
@@ -703,13 +704,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         throw err
       }
       await this.tokenStore.remove(address)
-      const error = new PerpsError(
-        PerpsErrorCode.Unauthorized,
-        'Ondo account summary failed: the venue rejected the session; sign in again.'
-      )
-      error.tool = ONDO_PROVIDER_KEY
-      error.cause = err
-      throw error
+      throw ondoSessionRejectedError('account summary', err)
     }
     return {
       walletBalance: balance.walletBalance,
