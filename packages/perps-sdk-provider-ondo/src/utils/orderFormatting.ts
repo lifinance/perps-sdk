@@ -17,6 +17,15 @@ import {
 } from '@lifi/perps-types'
 import Big from 'big.js'
 
+// At DP 0, `div` rounds the exact quotient once, straight to a whole step count.
+const TickBig = Big()
+TickBig.DP = 0
+TickBig.RM = Big.roundHalfUp
+
+const LotBig = Big()
+LotBig.DP = 0
+LotBig.RM = Big.roundDown
+
 const powerOfTenIncrement = (decimals: number): Big => new Big(`1e-${decimals}`)
 
 const priceGrid = (market: Market): Big => {
@@ -48,10 +57,7 @@ export function snapOrderPrice(
   price: DecimalString
 ): DecimalString {
   const increment = priceGrid(market)
-  const snapped = new Big(price)
-    .div(increment)
-    .round(0, Big.roundHalfUp)
-    .times(increment)
+  const snapped = new TickBig(price).div(increment).times(increment)
   return snapped.eq(0) ? '0' : snapped.toFixed()
 }
 
@@ -72,9 +78,6 @@ export function snapOrderSize(
     market.sizeIncrement !== undefined
       ? new Big(market.sizeIncrement)
       : powerOfTenIncrement(market.szDecimals)
-  const snapped = new Big(size)
-    .div(increment)
-    .round(0, Big.roundDown)
-    .times(increment)
+  const snapped = new LotBig(size).div(increment).times(increment)
   return snapped.eq(0) ? '0' : snapped.toFixed()
 }
