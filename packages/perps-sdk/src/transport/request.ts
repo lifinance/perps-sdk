@@ -20,6 +20,11 @@ import {
 export interface RequestOptions extends RequestInit {
   /** Per-call retry override. Falls back to the resolved client-level policy. */
   retry?: RetryPolicy | false
+  /**
+   * Send `x-lifi-perps-sdk`. Defaults to `true`. The LI.FI API CORS preflight
+   * does not allow the header, so a browser blocks a LI.FI API call that sends it.
+   */
+  perpsSdkHeader?: boolean
   /** Successful response metadata, delivered only after JSON decoding. */
   onResponse?: (
     headers: Headers,
@@ -40,7 +45,7 @@ export async function request<T>(
   options: RequestOptions = {},
   sdkOptions?: SDKRequestOptions
 ): Promise<T> {
-  const { retry, onResponse, ...fetchInit } = options
+  const { retry, onResponse, perpsSdkHeader = true, ...fetchInit } = options
   const policy =
     retry !== undefined
       ? resolveRetryPolicy(LIFI_RETRY_DEFAULTS, retry, LIFI_REQUEST_KEY)
@@ -48,7 +53,7 @@ export async function request<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'x-lifi-perps-sdk': version,
+    ...(perpsSdkHeader && { 'x-lifi-perps-sdk': version }),
     ...(fetchInit.headers as Record<string, string>),
   }
 
