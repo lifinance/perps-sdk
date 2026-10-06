@@ -78,6 +78,10 @@ import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
+import {
+  ondoSessionRequiredError,
+  requireOndoSessionToken,
+} from './auth/sessionToken.js'
 import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
@@ -302,12 +306,9 @@ export const ondoProvider = (
   }
 
   const sessionRequired = (read: string) => (): never => {
-    const error = new PerpsError(
-      PerpsErrorCode.SetupRequired,
+    throw ondoSessionRequiredError(
       `Ondo ${read} requires a session token. Run the SIWE login first.`
     )
-    error.tool = ONDO_PROVIDER_KEY
-    throw error
   }
 
   const sessionRejected =
@@ -1165,12 +1166,7 @@ export const ondoProvider = (
       if (action !== ActionType.WITHDRAWAL) {
         return {}
       }
-      const token = await tokenStore.get(address)
-      if (token === null) {
-        throw new OndoSessionExpiredError(
-          `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-        )
-      }
+      const token = await requireOndoSessionToken(tokenStore, address)
       return { params: { accountId: token.accountId } }
     },
 
