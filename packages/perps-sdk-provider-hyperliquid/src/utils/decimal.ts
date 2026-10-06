@@ -1,4 +1,4 @@
-import { numberToDecimalString, PerpsError } from '@lifi/perps-sdk'
+import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 
@@ -18,15 +18,4 @@ export const toWireBig = (value: string, field: string): Big => {
       `Hyperliquid field \`${field}\` is not a valid decimal: '${value}'`
     )
   }
-}
-
-/**
- * Decimal string for a Hyperliquid context field that the venue sends as a
- * string or a number. Any other value is absent.
- */
-export const toMarketContextString = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return numberToDecimalString(value)
-  }
-  return typeof value === 'string' ? value : undefined
 }

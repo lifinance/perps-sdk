@@ -128,7 +128,7 @@ const encodeCompressed = async (payload: unknown): Promise<string> => {
 // async DecompressionStream queue, so callers must `vi.waitFor` the resulting
 // emission rather than asserting against a fixed decode-time budget.
 const seedFast = async (
-  ctxs: Record<string, { markPx?: unknown; midPx?: unknown }>
+  ctxs: Record<string, { markPx?: string; midPx?: string | null }>
 ) => {
   const data = await encodeCompressed(ctxs)
   getMockRwsInstance().simulateMessage(
@@ -1987,111 +1987,6 @@ describe('HyperliquidWsProvider', () => {
           midPrice: '3411',
           markPrice: '3412',
         })
-      })
-    })
-
-    describe.each([
-      { label: '1e-7', value: 1e-7, expected: '0.0000001' },
-      { label: '1e21', value: 1e21, expected: '1000000000000000000000' },
-    ])('numeric fastAssetCtxs prices at $label', ({ value, expected }) => {
-      const expectDecimalPrices = (context: {
-        midPrice: string
-        markPrice: string
-      }) => {
-        expect(isDecimalString(context.midPrice)).toBe(true)
-        expect(isDecimalString(context.markPrice)).toBe(true)
-        expect(context.midPrice).toBe(expected)
-        expect(context.markPrice).toBe(expected)
-      }
-
-      it('emits decimal strings on the perp path', async () => {
-        const provider = createProvider()
-        const listener = vi.fn()
-        await provider.subscribe(
-          { channel: 'marketsContext', dex: 'hyperliquid' },
-          listener
-        )
-        seedMids({ BTC: '95000' })
-
-        await seedFast({ BTC: { midPx: value, markPx: value } })
-
-        await vi.waitFor(() => {
-          expectDecimalPrices(listener.mock.calls.at(-1)?.[0].data.BTC)
-        })
-      })
-
-      it('emits decimal strings on the fast-only perp path', async () => {
-        const provider = createProvider()
-        const listener = vi.fn()
-        await provider.subscribe(
-          { channel: 'marketsContext', dex: 'hyperliquid' },
-          listener
-        )
-
-        await seedFast({ ETH: { midPx: value, markPx: value } })
-
-        await vi.waitFor(() => {
-          expectDecimalPrices(listener.mock.calls.at(-1)?.[0].data.ETH)
-        })
-      })
-
-      it('emits decimal strings on the spot path', async () => {
-        const provider = createEnrichingProvider([
-          ...HL_MARKETS,
-          HL_SPOT_MARKET,
-        ])
-        const listener = vi.fn()
-        await provider.subscribe(
-          { channel: 'marketsContext', dex: 'hyperliquid' },
-          listener
-        )
-        getMockRwsInstance().simulateMessage(
-          JSON.stringify({
-            channel: 'sac',
-            data: await encodeCompressed({
-              [HL_SPOT_MARKET.id]: { markPx: '0.1', midPx: '0.1' },
-            }),
-          })
-        )
-        await vi.waitFor(() => {
-          expect(
-            listener.mock.calls.at(-1)?.[0].data[HL_SPOT_MARKET.id]
-          ).toBeDefined()
-        })
-
-        await seedFast({ [HL_SPOT_MARKET.id]: { midPx: value, markPx: value } })
-
-        await vi.waitFor(() => {
-          expectDecimalPrices(
-            listener.mock.calls.at(-1)?.[0].data[HL_SPOT_MARKET.id]
-          )
-        })
-      })
-    })
-
-    it('treats a fastAssetCtxs price that is neither a string nor a number as absent', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
-      seedMids({ BTC: '95000' })
-
-      await seedFast({
-        BTC: { midPx: { px: '1' }, markPx: true },
-        ETH: { midPx: [3400], markPx: { px: '3401' } },
-        SOL: { midPx: '150', markPx: '150' },
-      })
-
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.SOL).toBeDefined()
-        expect(event.data.BTC).toMatchObject({
-          midPrice: '95000',
-          markPrice: '95000',
-        })
-        expect(event.data.ETH).toBeUndefined()
       })
     })
 
