@@ -113,10 +113,22 @@ describe('positionRemovableMargin', () => {
   it.each([
     ['marginUsed', { marginUsed: '0' }],
     ['marginUsed', { marginUsed: 'n/a' }],
+    ['marginUsed', { marginUsed: '1e-8' }],
     ['unrealizedPnl', { unrealizedPnl: 'n/a' }],
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
     expect(() => positionRemovableMargin(position(overrides))).toThrowError(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('names Position.marginUsed when it holds an exponent string', () => {
+    expect(() =>
+      positionRemovableMargin(position({ marginUsed: '1e-8' }))
+    ).toThrowError(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining('Position.marginUsed'),
+      })
     )
   })
 })

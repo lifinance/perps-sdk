@@ -653,6 +653,7 @@ describe('calculateOrderAmounts at the public entry point', () => {
 describe('runtime helpers that perps-types does not own', () => {
   it('exports them from @lifi/perps-sdk', () => {
     expect(typeof sdk.isDecimalString).toBe('function')
+    expect(typeof sdk.validateDecimalString).toBe('function')
     expect(typeof sdk.positionSupportsMarginAdjustment).toBe('function')
     expect(typeof sdk.positionSupportsMarginRemoval).toBe('function')
   })

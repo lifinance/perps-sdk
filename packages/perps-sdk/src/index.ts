@@ -34,7 +34,11 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './decimal/format.js'
-export { isDecimalString, parseDecimal } from './decimal/parse.js'
+export {
+  isDecimalString,
+  parseDecimal,
+  validateDecimalString,
+} from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {
