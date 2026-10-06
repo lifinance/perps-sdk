@@ -6337,7 +6337,7 @@ describe('LighterProvider — getMarketSettings', () => {
     })
   })
 
-  it('preserves fractional venue leverage without two-decimal rounding', async () => {
+  it('rounds fractional venue leverage to two decimal places', async () => {
     accountResponse = () =>
       respond(
         withPositions([
@@ -6350,7 +6350,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 100 / 60,
+      leverage: 1.67,
     })
   })
 

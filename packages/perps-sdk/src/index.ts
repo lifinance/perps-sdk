@@ -17,6 +17,7 @@ export {
 } from './client/createPerpsClient.js'
 export { PerpsClient } from './client/PerpsClient.js'
 export { requireProvider } from './client/requireProvider.js'
+export { isDecimalStringGreaterThan } from './decimal/compare.js'
 export type { BaseUnitsRounding } from './decimal/convert.js'
 export {
   baseUnitsToDecimal,
@@ -33,7 +34,11 @@ export {
   formatSignedUsd,
   formatUsd,
 } from './decimal/format.js'
-export { isDecimalString, parseDecimal } from './decimal/parse.js'
+export {
+  isDecimalString,
+  parseDecimal,
+  validateDecimalString,
+} from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {

@@ -1,16 +1,20 @@
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
-import { LIGHTER_IMF_PERCENT_SCALE } from '../constants.js'
+import {
+  LIGHTER_IMF_PERCENT_SCALE,
+  LIGHTER_LEVERAGE_PRECISION,
+} from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 import { toPositiveRequiredBig, toRequiredBig } from './decimal.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
- * arithmetic before conversion to `number`. This value is for displaying the
- * venue setting; provider risk calculations consume the original decimal IMF
- * instead. `undefined` for a non-positive or unparsable IMF.
+ * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION` before
+ * conversion to `number`, so the value a client reads is the value it saved.
+ * Provider risk calculations consume the original decimal IMF instead.
+ * `undefined` for a non-positive or unparsable IMF.
  * @public
  */
 export const leverageFromImf = (imf: string): number | undefined => {
@@ -23,7 +27,10 @@ export const leverageFromImf = (imf: string): number | undefined => {
   if (parsed.lte(0)) {
     return undefined
   }
-  return new Big(100).div(parsed).toNumber()
+  return new Big(100)
+    .div(parsed)
+    .round(LIGHTER_LEVERAGE_PRECISION, Big.roundHalfUp)
+    .toNumber()
 }
 
 /**

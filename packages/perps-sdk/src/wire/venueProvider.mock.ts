@@ -24,6 +24,11 @@ export const venueMarket = (overrides: Partial<BaseMarket> = {}): Market => ({
   ...overrides,
 })
 
+// At DP 0, `div` truncates the exact quotient once, straight to a lot count.
+const LotBig = Big()
+LotBig.DP = 0
+LotBig.RM = Big.roundDown
+
 const lotGrid = (market: Market): Big =>
   market.sizeIncrement !== undefined
     ? new Big(market.sizeIncrement)
@@ -35,10 +40,7 @@ export const venueSnapSize = (
   size: DecimalString
 ): DecimalString => {
   const increment = lotGrid(market)
-  const snapped = new Big(size)
-    .div(increment)
-    .round(0, Big.roundDown)
-    .times(increment)
+  const snapped = new LotBig(size).div(increment).times(increment)
   return snapped.eq(0) ? '0' : snapped.toFixed()
 }
 
