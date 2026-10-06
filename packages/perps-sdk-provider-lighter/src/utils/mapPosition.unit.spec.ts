@@ -5,12 +5,18 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
+import { LIGHTER_LEVERAGE_PRECISION } from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from '../types/index.js'
-import { leverageFromScaledImf, mapPosition } from './mapPosition.js'
+import {
+  leverageFromImf,
+  leverageFromScaledImf,
+  mapPosition,
+} from './mapPosition.js'
+import { leverageToFraction } from './wireEncoding.js'
 
 const SYMBOL = 'BTC'
 const MARKET: PerpsMarketDisplay = {
@@ -170,12 +176,16 @@ describe('mapPosition (Lighter)', () => {
         mapPosition(basePosition({ initial_margin_fraction: '12.50' }), MARKET)
           .leverage
       ).toBe(8)
-      // Fractional IMFs must not round to whole or two-decimal display
-      // leverage. Risk calculations consume the exact IMF separately.
+      // Display leverage rounds to the venue leverage precision. Risk
+      // calculations consume the exact IMF separately.
       expect(
         mapPosition(basePosition({ initial_margin_fraction: '45.00' }), MARKET)
           .leverage
-      ).toBe(100 / 45)
+      ).toBe(2.22)
+      expect(
+        mapPosition(basePosition({ initial_margin_fraction: '33.33' }), MARKET)
+          .leverage
+      ).toBe(3)
       expect(
         mapPosition(
           basePosition({
@@ -261,7 +271,8 @@ describe('leverageFromScaledImf', () => {
   it('reads a basis-point IMF as display leverage', () => {
     expect(leverageFromScaledImf(500)).toBe(20)
     expect(leverageFromScaledImf(200)).toBe(50)
-    expect(leverageFromScaledImf(666)).toBe(100 / 6.66)
+    expect(leverageFromScaledImf(666)).toBe(15.02)
+    expect(leverageFromScaledImf(3333)).toBe(3)
   })
 
   it('is undefined for a non-positive IMF', () => {
@@ -271,5 +282,35 @@ describe('leverageFromScaledImf', () => {
 
   it('is undefined for an unparsable IMF', () => {
     expect(leverageFromScaledImf(Number.NaN)).toBeUndefined()
+  })
+})
+
+describe('leverageFromImf', () => {
+  it.each([
+    ['33.33', 3],
+    ['16.67', 6],
+    ['14.29', 7],
+    ['11.11', 9],
+    ['40.00', 2.5],
+  ])('reads IMF %s back as %s', (imf, leverage) => {
+    expect(leverageFromImf(imf)).toBe(leverage)
+  })
+
+  it('rounds half up at the third decimal place', () => {
+    expect(leverageFromImf('8')).toBe(12.5)
+    expect(leverageFromImf('16')).toBe(6.25)
+    expect(leverageFromImf('32')).toBe(3.13)
+  })
+
+  it('reads every leverage at the precision back to a value that re-saves the same IMF', () => {
+    const steps = 10 ** LIGHTER_LEVERAGE_PRECISION
+    for (let step = steps; step <= 100 * steps; step++) {
+      const fraction = leverageToFraction(step / steps)
+      const readBack = leverageFromScaledImf(fraction)
+      if (readBack === undefined) {
+        expect.unreachable(`IMF ${fraction} has no read-back`)
+      }
+      expect(leverageToFraction(readBack)).toBe(fraction)
+    }
   })
 })
