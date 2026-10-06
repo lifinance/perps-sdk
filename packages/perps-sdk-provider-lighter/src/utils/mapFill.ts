@@ -2,6 +2,7 @@ import {
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
+  validateDecimalString,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
@@ -10,6 +11,9 @@ import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
 import { isPlaceholderTxHash } from './txHash.js'
+
+const tradeDecimal = (value: string, field: string): Big =>
+  new Big(validateDecimalString(value, `LtTrade.${field}`))
 
 /**
  * Fee charged on a fill, in the market's quote asset. Lighter publishes the
@@ -27,7 +31,7 @@ const tickToFeeAmount = (
   ownTick: number,
   integratorTick: number | undefined
 ): string =>
-  new Big(notional)
+  tradeDecimal(notional, 'usd_amount')
     .times(new Big(ownTick).plus(integratorTick ?? 0))
     .div(LIGHTER_FEE_TICK_SCALE)
     .toFixed()
@@ -47,6 +51,7 @@ const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
  * exactly zero — mirroring the Hyperliquid mapper's `null`-for-zero convention.
  */
 const deriveRealizedPnl = (
+  role: 'maker' | 'taker',
   startPosition: string,
   entryQuoteBefore: string | undefined,
   fillSize: string,
@@ -56,7 +61,7 @@ const deriveRealizedPnl = (
   if (entryQuoteBefore === undefined) {
     return undefined
   }
-  const start = new Big(startPosition)
+  const start = tradeDecimal(startPosition, `${role}_position_size_before`)
   if (start.eq(0)) {
     return undefined
   }
@@ -67,12 +72,14 @@ const deriveRealizedPnl = (
   }
 
   const absStart = start.abs()
-  const fill = new Big(fillSize)
+  const fill = tradeDecimal(fillSize, 'size')
   // A fill larger than the open size flips the position; only the portion that
   // unwinds the existing position realizes PnL.
   const closedSize = fill.gt(absStart) ? absStart : fill
-  const avgEntry = new Big(entryQuoteBefore).abs().div(absStart)
-  const price = new Big(fillPrice)
+  const avgEntry = tradeDecimal(entryQuoteBefore, `${role}_entry_quote_before`)
+    .abs()
+    .div(absStart)
+  const price = tradeDecimal(fillPrice, 'price')
   const pnl = isLong
     ? price.minus(avgEntry).times(closedSize)
     : avgEntry.minus(price).times(closedSize)
@@ -135,6 +142,7 @@ export const mapFill = (
           },
     leverage: leverageFromTradeImf(imfBefore),
     realizedPnl: deriveRealizedPnl(
+      isMaker ? 'maker' : 'taker',
       startPosition,
       entryQuoteBefore,
       trade.size,

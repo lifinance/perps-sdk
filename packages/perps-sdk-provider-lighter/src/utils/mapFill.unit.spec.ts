@@ -1009,4 +1009,47 @@ describe('mapFill (Lighter)', () => {
       mapFill(baseTrade({ size: '10oops' }), ACCOUNT_INDEX, MARKET)
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
+
+  // The viewer is the maker buyer in the base fixture, so a short snapshot makes
+  // the fill reducing and every input reaches the realized PnL math.
+  describe('malformed decimal inputs', () => {
+    const reducingFill: Partial<LtTrade> = {
+      maker_position_size_before: '-2',
+      maker_entry_quote_before: '80000',
+    }
+
+    it.each([
+      [
+        'maker_position_size_before',
+        { maker_position_size_before: '10oops', maker_entry_quote_before: '1' },
+      ],
+      [
+        'taker_position_size_before',
+        {
+          is_maker_ask: true,
+          taker_position_size_before: '10oops',
+          taker_entry_quote_before: '1',
+        },
+      ],
+      [
+        'maker_entry_quote_before',
+        { ...reducingFill, maker_entry_quote_before: 'abc' },
+      ],
+      ['size', { ...reducingFill, size: '1e' }],
+      ['price', { ...reducingFill, price: 'NaN' }],
+      ['usd_amount', { usd_amount: '2,000' }],
+    ] satisfies [
+      string,
+      Partial<LtTrade>,
+    ][])('throws ValidationError naming %s', (field, overrides) => {
+      expect(() =>
+        mapFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
+      ).toThrow(
+        expect.objectContaining({
+          code: PerpsErrorCode.ValidationError,
+          message: expect.stringContaining(`LtTrade.${field}`),
+        })
+      )
+    })
+  })
 })
