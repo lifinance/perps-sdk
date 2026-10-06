@@ -190,7 +190,7 @@ const lighterProvider: Provider = {
   funding: hourlyProviderFunding,
   chainId: 3586256,
   minOrderValueUsd: '10',
-  minReduceOrderValueUsd: 1,
+  minReduceOrderValueUsd: '1',
   minDepositUsd: '5',
   minWithdrawalUsd: '5',
   depositFeeUsd: '0',
@@ -763,7 +763,7 @@ describe('Provider order-value minimums', () => {
 
   it('carries an optional separate reduce-only floor', () => {
     expect(lighterProvider.minOrderValueUsd).toBe('10')
-    expect(lighterProvider.minReduceOrderValueUsd).toBe(1)
+    expect(lighterProvider.minReduceOrderValueUsd).toBe('1')
   })
 
   it('admits a provider that advertises no order-value minimum', () => {
@@ -832,6 +832,7 @@ describe('Provider monetary fields', () => {
   const monetaryFields = [
     'minDepositUsd',
     'minOrderValueUsd',
+    'minReduceOrderValueUsd',
     'minWithdrawalUsd',
     'depositFeeUsd',
     'withdrawalFeeUsd',
