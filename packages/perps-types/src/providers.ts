@@ -176,6 +176,11 @@ export interface Provider {
   /** Global funding metadata shared by all markets at this provider. */
   funding?: ProviderFunding
   /**
+   * Number of decimal places a client may use for leverage on this provider.
+   * Absent means integer leverage (0).
+   */
+  leveragePrecision?: number
+  /**
    * Settlement chain id for this venue, aligned to `@lifi/types` `ChainId`
    * values. Absent when the provider has no settlement chain.
    */

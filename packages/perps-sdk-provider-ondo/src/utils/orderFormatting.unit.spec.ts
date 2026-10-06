@@ -63,6 +63,18 @@ describe('snapOrderPrice', () => {
     expect(snapOrderPrice(market, '100.13')).toBe('100.25')
   })
 
+  it('rounds down a price just below the half tick past 20 decimal places', () => {
+    expect(snapOrderPrice(marketFixture(), '0.0049999999999999999999999')).toBe(
+      '0'
+    )
+    expect(
+      snapOrderPrice(
+        marketFixture({ priceIncrement: '0.5' }),
+        '0.24999999999999999999995'
+      )
+    ).toBe('0')
+  })
+
   it('strips trailing zeros', () => {
     expect(snapOrderPrice(marketFixture(), '201.5')).toBe('201.5')
     expect(snapOrderPrice(marketFixture(), '200')).toBe('200')
@@ -138,6 +150,18 @@ describe('snapOrderSize', () => {
         '42.8571428571428571428571428571428571428571'
       )
     ).toBe('42.85')
+  })
+
+  it('truncates a size just below a lot past 20 decimal places', () => {
+    expect(snapOrderSize(marketFixture(), '0.0099999999999999999999999')).toBe(
+      '0'
+    )
+    expect(
+      snapOrderSize(
+        marketFixture({ sizeIncrement: '0.5' }),
+        '0.99999999999999999999995'
+      )
+    ).toBe('0.5')
   })
 
   it('strips trailing zeros', () => {

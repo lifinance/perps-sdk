@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 35.1.0
+
+### Minor Changes
+
+- [#589](https://github.com/lifinance/perps-sdk/pull/589) [`a950fd6`](https://github.com/lifinance/perps-sdk/commit/a950fd63c2ca8394160fed86a5ecc228435ef894) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `Provider.leveragePrecision` and the Lighter `LIGHTER_LEVERAGE_PRECISION` constant (2). Lighter `getMarketSettings`, `Position.leverage` and `Fill.leverage` now round the read-back leverage half-up to 2 decimal places, so a 3x setting reads back as `3`, not `3.0003`.
+
+### Patch Changes
+
+- [#585](https://github.com/lifinance/perps-sdk/pull/585) [`1e978ff`](https://github.com/lifinance/perps-sdk/commit/1e978ff2191b36ae1f1c6a6c056d032a7160dc20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Export `validateDecimalString` from `@lifi/perps-sdk`. The Hyperliquid and Lighter `positionRemovableMargin` now reject exponent strings in `Position` decimal fields with a `ValidationError`.
+
+- Updated dependencies [[`a950fd6`](https://github.com/lifinance/perps-sdk/commit/a950fd63c2ca8394160fed86a5ecc228435ef894)]:
+  - @lifi/perps-types@20.2.0
+
 ## 35.0.0
 
 ### Major Changes

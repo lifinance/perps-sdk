@@ -42,6 +42,11 @@ describe('leverageToFraction', () => {
     expect(leverageToFraction(3)).toBe(3333)
   })
 
+  it('accepts decimal leverage', () => {
+    expect(leverageToFraction(2.5)).toBe(4000)
+    expect(leverageToFraction(3.33)).toBe(3003)
+  })
+
   it('throws on non-positive leverage', () => {
     expectValidationError(() => leverageToFraction(0), /Invalid leverage/)
     expectValidationError(() => leverageToFraction(-2), /Invalid leverage/)

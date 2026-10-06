@@ -183,6 +183,28 @@ describe('snapOrderPrice', () => {
     expect(snapOrderPrice('0.123455', 0)).toBe('0.12346')
   })
 
+  it('should round once on the true value, not twice', () => {
+    expect(snapOrderPrice('12.34449', 2)).toBe('12.344')
+  })
+
+  it('should round half-up where the 5 significant figures bind', () => {
+    expect(snapOrderPrice('12.34449', 0)).toBe('12.344')
+    expect(snapOrderPrice('12.3445', 2)).toBe('12.345')
+    expect(snapOrderPrice('-12.3445', 2)).toBe('-12.345')
+  })
+
+  it('should round half-up where the decimal budget binds', () => {
+    expect(snapOrderPrice('1.23449', 4)).toBe('1.23')
+    expect(snapOrderPrice('1.235', 4)).toBe('1.24')
+    expect(snapOrderPrice('-1.235', 4)).toBe('-1.24')
+  })
+
+  it('should snap a non-integer price above 5 significant figures to the nearest integer', () => {
+    expect(snapOrderPrice('123456.7', 0)).toBe('123457')
+    expect(snapOrderPrice('123456.5', 0)).toBe('123457')
+    expect(snapOrderPrice('123456.00001', 0)).toBe('123456')
+  })
+
   it('should emit plain notation for prices at or above 1e21', () => {
     expect(snapOrderPrice('1500000000000000000000', 0)).toBe(
       '1500000000000000000000'

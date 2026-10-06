@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 26.0.1
+
+### Patch Changes
+
+- [#582](https://github.com/lifinance/perps-sdk/pull/582) [`1826db4`](https://github.com/lifinance/perps-sdk/commit/1826db4727e7acdff773218249f2423d07b6c49b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Ondo `snapOrderSize` and `snapOrderPrice` now round the exact `value ÷ increment` quotient once. A size with more than 20 decimal places no longer rounds up by one lot, and a price with more than 20 decimal places no longer rounds up across the half tick.
+
+- Updated dependencies [[`a950fd6`](https://github.com/lifinance/perps-sdk/commit/a950fd63c2ca8394160fed86a5ecc228435ef894)]:
+  - @lifi/perps-types@20.2.0
+
 ## 26.0.0
 
 ### Patch Changes
