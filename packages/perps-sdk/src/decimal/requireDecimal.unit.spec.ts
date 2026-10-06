@@ -1,11 +1,11 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { validateDecimal } from './parse.js'
+import { validateDecimalString } from './parse.js'
 import { requireDecimal } from './requireDecimal.js'
 
-describe('validateDecimal', () => {
+describe('validateDecimalString', () => {
   it.each(['0', '1.5', '-2.25', '100'])('returns %s unchanged', (value) => {
-    expect(validateDecimal(value, 'amount')).toBe(value)
+    expect(validateDecimalString(value, 'amount')).toBe(value)
   })
 
   it.each([
@@ -16,7 +16,7 @@ describe('validateDecimal', () => {
     ' 1',
     '1,000',
   ])('throws ValidationError naming the field for %j', (value) => {
-    expect(() => validateDecimal(value, 'amount')).toThrowError(
+    expect(() => validateDecimalString(value, 'amount')).toThrowError(
       expect.objectContaining({
         code: PerpsErrorCode.ValidationError,
         message: expect.stringContaining('`amount`'),

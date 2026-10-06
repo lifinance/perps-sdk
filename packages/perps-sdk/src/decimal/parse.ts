@@ -73,7 +73,7 @@ export function isDecimalString(value: unknown): value is DecimalString {
  * @throws {PerpsError} `ValidationError` naming `field`.
  * @public
  */
-export function validateDecimal(
+export function validateDecimalString(
   value: DecimalString,
   field: string
 ): DecimalString {

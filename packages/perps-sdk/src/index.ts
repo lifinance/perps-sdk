@@ -36,7 +36,7 @@ export {
 export {
   isDecimalString,
   parseDecimal,
-  validateDecimal,
+  validateDecimalString,
 } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'

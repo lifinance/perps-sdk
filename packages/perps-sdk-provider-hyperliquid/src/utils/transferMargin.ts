@@ -2,7 +2,7 @@ import {
   PerpsError,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
-  validateDecimal,
+  validateDecimalString,
 } from '@lifi/perps-sdk'
 import {
   type DecimalString,
@@ -15,7 +15,7 @@ const NOTIONAL_FLOOR_RATIO = '0.1'
 const AMOUNT_DECIMALS = 6
 
 function positionAmount(value: DecimalString, field: string): Big {
-  return new Big(validateDecimal(value, `Position.${field}`))
+  return new Big(validateDecimalString(value, `Position.${field}`))
 }
 
 function positivePositionAmount(value: DecimalString, field: string): Big {
