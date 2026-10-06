@@ -1,4 +1,8 @@
-import { FillClassification, OrderSide } from '@lifi/perps-types'
+import {
+  FillClassification,
+  OrderSide,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { classifyFill, classifyFillFromPosition } from './fills.js'
 
@@ -143,9 +147,56 @@ describe('classifyFill (deprecated — PnL heuristic)', () => {
     )
   })
 
-  it('reads an unparseable realizedPnl as a close, as a non-zero value does', () => {
-    expect(classifyFill(OrderSide.BUY, 'n/a')).toBe(
-      FillClassification.CLOSED_SHORT
+  it.each([
+    'abc',
+    '10oops',
+    '1e-8',
+    '',
+    'n/a',
+  ])('throws ValidationError naming realizedPnl for %j', (realizedPnl) => {
+    expect(() => classifyFill(OrderSide.BUY, realizedPnl)).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining('classifyFill(realizedPnl)'),
+      })
+    )
+  })
+})
+
+describe('classifyFillFromPosition validation', () => {
+  const malformed = ['abc', '10oops', '1e-8', '']
+
+  it.each(
+    malformed
+  )('throws ValidationError naming startPosition for %j', (startPosition) => {
+    expect(() => classifyFillFromPosition(startPosition, 'B', '1')).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(
+          'classifyFillFromPosition(startPosition)'
+        ),
+      })
+    )
+  })
+
+  it.each(malformed)('throws ValidationError naming sz for %j', (sz) => {
+    expect(() => classifyFillFromPosition('1', 'A', sz)).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining('classifyFillFromPosition(sz)'),
+      })
+    )
+  })
+
+  it('compares exactly where float addition rounds', () => {
+    expect(classifyFillFromPosition('0.3', 'A', '0.1')).toBe(
+      FillClassification.REDUCED_LONG
+    )
+    expect(classifyFillFromPosition('0.3', 'A', '0.3')).toBe(
+      FillClassification.CLOSED_LONG
+    )
+    expect(classifyFillFromPosition('1.0000000000000001', 'A', '1')).toBe(
+      FillClassification.REDUCED_LONG
     )
   })
 })
