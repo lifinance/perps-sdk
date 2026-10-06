@@ -33,3 +33,11 @@ export {
   resolveTimeInForce,
 } from './wireEncoding.js'
 export { lighterWithdrawableBalances } from './withdrawableBalances.js'
+export type {
+  LighterFastWithdrawal,
+  LighterWithdrawalOptions,
+} from './withdrawalTypes.js'
+export {
+  lighterFastWithdrawal,
+  lighterWithdrawalTypes,
+} from './withdrawalTypes.js'

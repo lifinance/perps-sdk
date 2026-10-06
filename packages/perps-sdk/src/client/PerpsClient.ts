@@ -60,6 +60,7 @@ import type {
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
+  GetWithdrawalTypesParams,
   GetWithdrawFlowParams,
   ModifyOrdersParams,
   PerpsClientOptions,
@@ -85,7 +86,11 @@ import type {
   SignActionProgress,
   SignActionsContext,
 } from '../types/provider.js'
-import type { WithdrawableBalance, WithdrawFlow } from '../types/withdrawal.js'
+import type {
+  WithdrawableBalance,
+  WithdrawalSourceTypes,
+  WithdrawFlow,
+} from '../types/withdrawal.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -838,8 +843,9 @@ export class PerpsClient {
   }
 
   /**
-   * The `(asset, route)` selections `params.address` can actually withdraw at
-   * `params.provider`. The venue owns how its balances split across routes;
+   * The `(asset, category)` selections `params.address` can actually withdraw
+   * at `params.provider`. The venue owns how its balances split across
+   * categories;
    * this join adds the core `/assets` metadata — precision, L1 identity and
    * the per-asset minimum — and drops every row the minimum rules out, plus
    * any row whose asset the provider's registry does not carry, since without
@@ -893,7 +899,12 @@ export class PerpsClient {
       }
       if (row.withdrawalFee === undefined) {
         return [
-          { asset, route: row.route, available: row.available, max: row.max },
+          {
+            asset,
+            categoryId: row.categoryId,
+            available: row.available,
+            max: row.max,
+          },
         ]
       }
       if (!isNonNegativeDecimal(row.withdrawalFee)) {
@@ -905,7 +916,7 @@ export class PerpsClient {
       return [
         {
           asset,
-          route: row.route,
+          categoryId: row.categoryId,
           available: row.available,
           max: row.max,
           withdrawalFee: row.withdrawalFee,
@@ -915,6 +926,25 @@ export class PerpsClient {
         },
       ]
     })
+  }
+
+  /**
+   * The withdrawal types `params.address` can choose per holding at
+   * `params.provider`, each with its cap and the `withdrawalOptions` to pass
+   * unchanged in `WithdrawalParams`.
+   *
+   * @returns `undefined` when the registered plugin declares no withdrawal
+   *   types read.
+   * @throws {PerpsError} When the provider plugin is not registered, or when
+   *   the plugin read fails.
+   * @public
+   */
+  async getWithdrawalTypes(
+    params: GetWithdrawalTypesParams,
+    options?: SDKRequestOptions
+  ): Promise<WithdrawalSourceTypes[] | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getWithdrawalTypes?.({ address: params.address }, options)
   }
 
   /**
