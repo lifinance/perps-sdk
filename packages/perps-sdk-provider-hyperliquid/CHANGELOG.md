@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 25.0.0
+
+### Major Changes
+
+- [#583](https://github.com/lifinance/perps-sdk/pull/583) [`68b3a02`](https://github.com/lifinance/perps-sdk/commit/68b3a0293d5bf52433cd69353eff5d6075e6cbb7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `snapOrderPrice` now rounds the true price half-up once, to the tighter of 5 significant figures and the market decimal budget. Some prices change by one tick: `'12.34449'` at `szDecimals: 2` now gives `'12.344'` (was `'12.345'`), and a non-integer price above 5 significant figures now snaps to the nearest integer (`'123456.7'` gives `'123457'`, was `'123460'`).
+
+### Patch Changes
+
+- [#585](https://github.com/lifinance/perps-sdk/pull/585) [`1e978ff`](https://github.com/lifinance/perps-sdk/commit/1e978ff2191b36ae1f1c6a6c056d032a7160dc20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Export `validateDecimalString` from `@lifi/perps-sdk`. The Hyperliquid and Lighter `positionRemovableMargin` now reject exponent strings in `Position` decimal fields with a `ValidationError`.
+
+- Updated dependencies [[`a950fd6`](https://github.com/lifinance/perps-sdk/commit/a950fd63c2ca8394160fed86a5ecc228435ef894)]:
+  - @lifi/perps-types@20.2.0
+
 ## 24.0.0
 
 ### Patch Changes
