@@ -907,7 +907,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const raw = collectAuthChannelItems<LtTrade>(msg, 'trades')
     const fills: Fill[] = raw.flatMap((t) => {
       const market = this.registry?.get(String(t.market_id))
-      return market ? [mapFill(t, accountIndex, market)] : []
+      const mapped = market && mapFill(t, accountIndex, market)
+      return mapped ? [mapped] : []
     })
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
   }
@@ -1032,8 +1033,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     let state = this.orderbooks.get(marketId)
     if (!state || isSnapshot) {
       state = {
-        bids: new OrderBookSide(bidOrder),
-        asks: new OrderBookSide(askOrder),
+        bids: new OrderBookSide(bidOrder, this.providerKey),
+        asks: new OrderBookSide(askOrder, this.providerKey),
         assetId,
       }
       this.orderbooks.set(marketId, state)

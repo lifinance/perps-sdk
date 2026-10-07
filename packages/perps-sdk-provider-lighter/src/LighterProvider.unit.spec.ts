@@ -3618,6 +3618,49 @@ describe('LighterProvider — getPositions skips a bad row', () => {
   })
 })
 
+describe('LighterProvider — getAccount refuses a bad open position', () => {
+  it('throws instead of a total that leaves the position out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const badRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: 'rest-bad-value',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], positions: [badRow] }],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('market 0'),
+    })
+    warn.mockRestore()
+  })
+})
+
 describe('LighterProvider — per-user reads without a Lighter account', () => {
   const accountNotFound: FetchOverride = (url) =>
     url.includes('/api/v1/account?')
@@ -3779,13 +3822,13 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
   it.each([
     ['marginUsed', isolatedPosition('not-a-decimal', '0')],
     ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
-  ])('rejects a malformed position %s', async (field, malformed) => {
+  ])('rejects a malformed position %s', async (_field, malformed) => {
     positions = [malformed]
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
     await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
-      new RegExp(field)
+      /account totals are unknown/
     )
   })
 })

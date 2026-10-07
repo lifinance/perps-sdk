@@ -316,6 +316,45 @@ describe('mapOrder', () => {
     expect(mapped?.filledSize).toBe('1')
     expect(mapped).not.toHaveProperty('averagePrice')
   })
+
+  it.each<[string, OndoOrder | OndoTwapOrder]>([
+    ['price', orderFixture({ price: 'bad-limit' })],
+    ['triggerPrice', orderFixture({ type: 'stopMarket', triggerPrice: '' })],
+    [
+      'price',
+      orderFixture({
+        stopOrderType: 'stopLoss',
+        triggerPrice: '190',
+        price: 'x',
+      }),
+    ],
+    ['createdAt', orderFixture({ createdAt: 'not a time' })],
+    ['updatedAt', orderFixture({ status: 'canceled', canceledAt: 'never' })],
+    ['startTime', twapFixture({ startTime: 'soon' })],
+  ])('skips a row with an invalid %s and warns', (field, row) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(row, MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`[ondo] skipping order row: \`${field}\``)
+    )
+    warn.mockRestore()
+  })
+
+  it('omits the price of a market order when the venue price is invalid', () => {
+    const mapped = mapOrder(
+      orderFixture({ type: 'market', price: 'n/a', timeInForce: undefined }),
+      MARKET
+    )
+    expect(mapped?.type).toBe(OrderType.MARKET)
+    expect(mapped).not.toHaveProperty('price')
+  })
+
+  it('omits the TWAP averagePrice when avgFilledPrice is invalid', () => {
+    const mapped = mapOrder(twapFixture({ avgFilledPrice: 'abc' }), MARKET)
+    expect(mapped?.filledSize).toBe('4')
+    expect(mapped).not.toHaveProperty('averagePrice')
+  })
 })
 
 describe('mapOrderUpdates', () => {
@@ -357,7 +396,8 @@ describe('mapOrderUpdates', () => {
       )
     ).toEqual({ orders: [], terminated: ['cancelled'] })
   })
-  it('drops an unmappable row and keeps the rest of the frame', () => {
+  it('drops an unmappable row, logs it, and keeps the rest of the frame', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const unmappable: OndoOrder = JSON.parse(
       JSON.stringify({
         ...orderFixture({ orderId: 'unmappable' }),
@@ -376,5 +416,9 @@ describe('mapOrderUpdates', () => {
       orders: [expect.objectContaining({ orderId: 'cancelled' })],
       terminated: ['cancelled'],
     })
+    expect(warn).toHaveBeenCalledWith(
+      '[ondo:ws] skipping order row: Unsupported Ondo order status: unknown'
+    )
+    warn.mockRestore()
   })
 })

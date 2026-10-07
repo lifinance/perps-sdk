@@ -2,6 +2,7 @@ import {
   decimalStringToNumber,
   isDecimalString,
   isDecimalStringZero,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type { LtWsOrderBook } from '../types/index.js'
 
@@ -25,28 +26,34 @@ export class OrderBookSide {
   private readonly byPrice = new Map<string, BookLevel>()
   private readonly levels: BookLevel[] = []
 
-  constructor(private readonly order: PriceOrder) {}
+  constructor(
+    private readonly order: PriceOrder,
+    private readonly providerKey: string
+  ) {}
 
-  /** Applies snapshot or delta levels; a zero size deletes the level. */
+  /**
+   * Applies snapshot or delta levels; a zero size deletes the level. A level
+   * with an invalid size also deletes the level at its price, so the book
+   * never keeps a size the venue has replaced.
+   */
   apply(updates: LtWsOrderBook['bids']): void {
     for (const { price, size } of updates) {
       const priceNum = decimalStringToNumber(price)
-      if (priceNum === undefined || !isDecimalString(size)) {
+      if (priceNum === undefined) {
+        wsLog.skippedRow(this.providerKey, 'order book level', 'price', price)
+        continue
+      }
+      if (!isDecimalString(size)) {
+        wsLog.skippedRow(this.providerKey, 'order book level', 'size', size)
+        this.remove(price)
+        continue
+      }
+      if (isDecimalStringZero(size)) {
+        this.remove(price)
         continue
       }
       const existing = this.byPrice.get(price)
-      if (isDecimalStringZero(size)) {
-        if (existing) {
-          this.byPrice.delete(price)
-          this.levels.splice(
-            this.levels.indexOf(
-              existing,
-              this.bound(existing.priceNum, (c) => c >= 0)
-            ),
-            1
-          )
-        }
-      } else if (existing) {
+      if (existing) {
         existing.size = size
       } else {
         const level = { price, size, priceNum }
@@ -64,6 +71,21 @@ export class OrderBookSide {
 
   toLevels(): Array<{ price: string; size: string }> {
     return this.levels.map(({ price, size }) => ({ price, size }))
+  }
+
+  private remove(price: string): void {
+    const existing = this.byPrice.get(price)
+    if (existing === undefined) {
+      return
+    }
+    this.byPrice.delete(price)
+    this.levels.splice(
+      this.levels.indexOf(
+        existing,
+        this.bound(existing.priceNum, (c) => c >= 0)
+      ),
+      1
+    )
   }
 
   private bound(priceNum: number, isPast: (cmp: number) => boolean): number {

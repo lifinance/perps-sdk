@@ -118,6 +118,8 @@ export interface OndoWsProviderOptions {
   storage?: StorageAdapter
 }
 
+const BOOK_LEVEL_ROW = 'order book level'
+
 /**
  * Ondo WebSocket provider (extends {@link WsProviderBase}): subscribes to
  * Ondo's WS channels (orderbook, trades, candles, market context, orders,
@@ -789,9 +791,15 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         levels
           .flatMap(([price, size]) => {
             const priceNum = decimalStringToNumber(price)
-            return priceNum === undefined || !isDecimalString(size)
-              ? []
-              : [{ price, size, priceNum }]
+            if (priceNum === undefined) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'price', price)
+              return []
+            }
+            if (!isDecimalString(size)) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'size', size)
+              return []
+            }
+            return [{ price, size, priceNum }]
           })
           .sort((a, b) => direction * (a.priceNum - b.priceNum))
           .map(({ price, size }) => ({ price, size }))
@@ -937,8 +945,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const mapped = []
     for (const fill of fills) {
       const market = this.resolveMarket(fill.market)
-      if (market !== undefined) {
-        mapped.push(mapFill(fill, market))
+      const mappedFill = market && mapFill(fill, market)
+      if (mappedFill !== undefined) {
+        mapped.push(mappedFill)
       }
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })

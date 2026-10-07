@@ -94,7 +94,7 @@ const buildBalances = (
           )
         )
         return {
-          ...spotBalance(spotAssetFromToken(b), b.total, priceById),
+          ...spotBalance(spotAssetFromToken(b), total.toFixed(), priceById),
           transferable: calculateTransferable(
             total
               .minus(
@@ -233,10 +233,10 @@ export const getAccount = async (
   const priceById = spotPriceById(
     markets,
     new Map(
-      prices.map((p) => [
-        p.marketId,
-        decimalStringToNumber(p.markPrice) ?? Number.NaN,
-      ])
+      prices.flatMap((p) => {
+        const markPrice = decimalStringToNumber(p.markPrice)
+        return markPrice === undefined ? [] : [[p.marketId, markPrice] as const]
+      })
     )
   )
 

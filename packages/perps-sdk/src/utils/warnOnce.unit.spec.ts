@@ -59,4 +59,14 @@ describe('warnSkippedVenueRow', () => {
       "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'xyz'",
     ])
   })
+
+  it('names the expected kind and cuts a long value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    warnSkippedVenueRow('ondo', 'fill', 'time', 'x'.repeat(100), 'timestamp')
+
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] skipping fill row: \`time\` is not a valid timestamp: '${'x'.repeat(64)}…'`
+    )
+  })
 })

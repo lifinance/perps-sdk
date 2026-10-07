@@ -93,6 +93,12 @@ describe('mapPosition', () => {
   it.each([
     ['netQuantity', { netQuantity: 'abc' }, 'abc'],
     ['leverage', { leverage: 'n/a' }, 'n/a'],
+    ['averageEntryPrice', { averageEntryPrice: 'x' }, 'x'],
+    ['markPrice', { markPrice: '' }, ''],
+    ['liquidationPrice', { liquidationPrice: 'NaN' }, 'NaN'],
+    ['unrealizedPnl', { unrealizedPnl: '1,0' }, '1,0'],
+    ['netFundingSinceNeutral', { netFundingSinceNeutral: '?' }, '?'],
+    ['usedMargin', { usedMargin: 'none' }, 'none'],
   ] as const)('skips the row and warns when %s is invalid', (field, overrides, value) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 

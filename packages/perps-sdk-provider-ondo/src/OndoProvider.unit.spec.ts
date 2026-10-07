@@ -389,6 +389,7 @@ let depositAddressResult: unknown
 let addressBookResult: unknown
 /** `GET /v1/perps/positions` result; `null` mirrors an empty venue collection. */
 let positionsResult: OndoPosition[] | null
+let orderDetailResult: OndoOrder
 let providersResult: Provider[]
 /** `GET /v1/perps/balance` result. */
 let balanceResult: OndoBalanceSummary
@@ -447,6 +448,7 @@ beforeEach(() => {
   depositAddressResult = []
   addressBookResult = { addressBook: [] }
   positionsResult = [POSITION_RESULT]
+  orderDetailResult = ORDER_OPEN
   providersResult = [ACCOUNT_PROVIDER_METADATA]
   balanceResult = BALANCE_RESULT
   maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
@@ -483,7 +485,7 @@ beforeEach(() => {
       return respond(envelope([]))
     }
     if (u.includes('/v1/perps/orders/')) {
-      return respond(envelope(ORDER_OPEN))
+      return respond(envelope(orderDetailResult))
     }
     if (u.includes('/v1/perps/orders')) {
       return respond({
@@ -1921,6 +1923,15 @@ describe('OndoProvider — getOrder', () => {
 
     const call = recorded.find((r) => r.url.includes('/v1/perps/orders/ord-1'))
     expect(call).toBeDefined()
+  })
+
+  it('rejects with OrderNotFound when the venue row is invalid', async () => {
+    orderDetailResult = { ...ORDER_OPEN, price: 'bad' }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getOrder({ address: ADDRESS, id: 'ord-1' })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
   })
 })
 

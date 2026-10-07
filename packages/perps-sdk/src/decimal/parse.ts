@@ -10,7 +10,7 @@ function toFloat(value: string): number {
   if (!value) {
     return 0
   }
-  const cleaned = value.trim().replace(/[$%]/g, '').replace(/,/g, '').trim()
+  const cleaned = value.replace(/[\s$%,]/g, '')
   if (!cleaned) {
     return 0
   }
@@ -93,12 +93,15 @@ export function validateDecimalString(
   return value
 }
 
+const MAX_SPELLED_EXPONENT = 1000
+
 /**
  * Read a venue value as a {@link DecimalString} for display. A number or an
  * exponent string is spelled out in full; a value already in the pattern is
  * returned unchanged.
  *
- * @returns `undefined` for any value that is not a finite decimal. Never throws.
+ * @returns `undefined` for any value that is not a finite decimal, or whose
+ *   exponent is above 1000 in magnitude. Never throws.
  * @public
  */
 export function asDecimalString(value: unknown): DecimalString | undefined {
@@ -111,12 +114,17 @@ export function asDecimalString(value: unknown): DecimalString | undefined {
   if (typeof value === 'number' && !Number.isFinite(value)) {
     return undefined
   }
+  let parsed: Big
   try {
-    const parsed = new Big(value)
-    return (parsed.eq(0) ? new Big(0) : parsed).toFixed()
+    parsed = new Big(value)
   } catch {
     return undefined
   }
+  // Spelling out an unbounded exponent builds a string of that many digits.
+  if (Math.abs(parsed.e) > MAX_SPELLED_EXPONENT) {
+    return undefined
+  }
+  return (parsed.eq(0) ? new Big(0) : parsed).toFixed()
 }
 
 /**

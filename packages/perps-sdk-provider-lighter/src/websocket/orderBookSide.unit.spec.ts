@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   askOrder,
   bidOrder,
@@ -104,7 +104,7 @@ const replaySide = (
 ) => {
   const incrementalCount = countingOrder(order)
   const referenceCount = countingOrder(order)
-  const side = new OrderBookSide(incrementalCount.order)
+  const side = new OrderBookSide(incrementalCount.order, 'lighter')
   const reference = new FullSortReference(referenceCount.order)
 
   side.apply(replay.snapshot)
@@ -180,7 +180,7 @@ describe('OrderBookSide', () => {
   })
 
   it('places a new level after an equal price, as a stable sort does', () => {
-    const side = new OrderBookSide(askOrder)
+    const side = new OrderBookSide(askOrder, 'lighter')
     side.apply([
       { price: '100', size: '1' },
       { price: '101', size: '2' },
@@ -200,18 +200,45 @@ describe('OrderBookSide', () => {
   })
 
   it('ignores a deletion of a price that is not in the book', () => {
-    const side = new OrderBookSide(bidOrder)
+    const side = new OrderBookSide(bidOrder, 'lighter')
     side.apply([{ price: '100', size: '1' }])
     side.apply([{ price: '99', size: '0' }])
     expect(side.toLevels()).toEqual([{ price: '100', size: '1' }])
   })
 
   it('returns a fresh array that a caller cannot use to change the book', () => {
-    const side = new OrderBookSide(bidOrder)
+    const side = new OrderBookSide(bidOrder, 'lighter')
     side.apply([{ price: '100', size: '1' }])
     const first = side.toLevels()
     first[0].size = '9'
     first.pop()
     expect(side.toLevels()).toEqual([{ price: '100', size: '1' }])
+  })
+
+  it('skips a level with an invalid price and logs it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const side = new OrderBookSide(bidOrder, 'lighter')
+    side.apply([
+      { price: 'bad-price', size: '1' },
+      { price: '100', size: '1' },
+    ])
+    expect(side.toLevels()).toEqual([{ price: '100', size: '1' }])
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[lighter:ws] skipping order book level row')
+    )
+    warn.mockRestore()
+  })
+
+  it('removes the level at a price whose new size is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const side = new OrderBookSide(bidOrder, 'lighter')
+    side.apply([
+      { price: '100', size: '1' },
+      { price: '101', size: '2' },
+    ])
+    side.apply([{ price: '101', size: 'bad-size' }])
+    expect(side.toLevels()).toEqual([{ price: '100', size: '1' }])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('`size`'))
+    warn.mockRestore()
   })
 })

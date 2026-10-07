@@ -1,13 +1,16 @@
 import {
+  asDecimalString,
+  asIsoTimestamp,
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
   isDecimalString,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
 import Big from 'big.js'
-import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
+import { LIGHTER_FEE_TICK_SCALE, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
 import { isPlaceholderTxHash } from './txHash.js'
@@ -99,7 +102,28 @@ export const mapFill = (
   trade: LtTrade,
   accountIndex: number,
   market: MarketDisplay
-): Fill => {
+): Fill | undefined => {
+  const size = asDecimalString(trade.size)
+  if (size === undefined) {
+    warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'fill', 'size', trade.size)
+    return undefined
+  }
+  const price = asDecimalString(trade.price)
+  if (price === undefined) {
+    warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'fill', 'price', trade.price)
+    return undefined
+  }
+  const createdAt = asIsoTimestamp(trade.timestamp)
+  if (createdAt === undefined) {
+    warnSkippedVenueRow(
+      LIGHTER_PROVIDER_KEY,
+      'fill',
+      'timestamp',
+      trade.timestamp,
+      'timestamp'
+    )
+    return undefined
+  }
   const isBuyer = trade.bid_account_id === accountIndex
   const isMaker =
     (trade.is_maker_ask && !isBuyer) || (!trade.is_maker_ask && isBuyer)
@@ -132,8 +156,8 @@ export const mapFill = (
     market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
     type: OrderType.LIMIT,
-    size: trade.size,
-    price: trade.price,
+    size,
+    price,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Lighter charges the fill fee in the market's quote asset.
     fee:
@@ -144,17 +168,17 @@ export const mapFill = (
     realizedPnl: deriveRealizedPnl(
       startPosition,
       entryQuoteBefore,
-      trade.size,
-      trade.price,
+      size,
+      price,
       isBuyer
     ),
     startPosition,
     classification: classifyFillFromPosition(
       startPosition,
       isBuyer ? OrderSide.BUY : OrderSide.SELL,
-      trade.size
+      size
     ),
-    createdAt: new Date(trade.timestamp).toISOString(),
+    createdAt,
     explorerLink: isPlaceholderTxHash(trade.tx_hash)
       ? undefined
       : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),

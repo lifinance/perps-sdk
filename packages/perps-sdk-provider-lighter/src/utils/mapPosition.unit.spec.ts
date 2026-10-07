@@ -234,6 +234,14 @@ describe('mapPosition (Lighter)', () => {
       ['initial_margin_fraction', { initial_margin_fraction: 'n/a' }],
       ['position', { position: 'abc' }],
       ['position_value', { position_value: '' }],
+      ['avg_entry_price', { avg_entry_price: 'x' }],
+      ['liquidation_price', { liquidation_price: 'NaN' }],
+      ['unrealized_pnl', { unrealized_pnl: '1,000' }],
+      ['total_funding_paid_out', { total_funding_paid_out: '?' }],
+      [
+        'allocated_margin',
+        { margin_mode: LT_MARGIN_MODE_ISOLATED, allocated_margin: 'none' },
+      ],
     ])('skips the row and warns when %s is invalid (%o)', (field, overrides) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 

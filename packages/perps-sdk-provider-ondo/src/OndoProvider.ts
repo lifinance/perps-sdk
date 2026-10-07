@@ -960,7 +960,8 @@ export const ondoProvider = (
 
           const items = page.result.flatMap((fill): Fill[] => {
             const market = marketDisplay(fill.market)
-            return market === undefined ? [] : [mapFill(fill, market)]
+            const mapped = market && mapFill(fill, market)
+            return mapped ? [mapped] : []
           })
 
           const nextCursor = page.pageInfo?.nextCursor

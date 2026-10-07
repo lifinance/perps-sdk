@@ -32,6 +32,8 @@ describe('formattedStringToNumber', () => {
     ['  $ 42  ', 42],
     ['12.5%', 12.5],
     ['12 USD', 12],
+    ['- 5', -5],
+    ['-$ 5', -5],
   ])('parses %j to %j', (input, expected) => {
     expect(formattedStringToNumber(input)).toBe(expected)
   })
@@ -84,6 +86,7 @@ describe('asDecimalString', () => {
     [1e-7, '0.0000001'],
     [0, '0'],
     [-0, '0'],
+    ['1e-400', `0.${'0'.repeat(399)}1`],
   ])('spells %j out as %j', (value, expected) => {
     expect(asDecimalString(value)).toBe(expected)
   })
@@ -102,6 +105,8 @@ describe('asDecimalString', () => {
     true,
     {},
     [],
+    '1e999999999',
+    '1e-999999999',
   ])('gives undefined for %j without a throw', (value) => {
     expect(asDecimalString(value)).toBeUndefined()
   })

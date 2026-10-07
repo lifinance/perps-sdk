@@ -1,5 +1,6 @@
 import {
   MarginMode,
+  PerpsErrorCode,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
@@ -88,6 +89,15 @@ describe('perpsTotals', () => {
     expect(accountValue.toFixed()).toBe('0.3')
   })
 
+  it.each([
+    ['accountValue', dexState('n/a', '0')],
+    ['totalMarginUsed', dexState('1', '')],
+  ])('throws an SDKError when %s is not a decimal', (_field, state) => {
+    expect(() => perpsTotals([state])).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.SDKError })
+    )
+  })
+
   it('skips a sub-dex that carries no marginSummary', () => {
     const { accountValue, marginUsed } = perpsTotals([
       dexState('1000', '400'),
@@ -111,5 +121,11 @@ describe('sumUnrealizedPnl', () => {
         position('-0.05'),
       ]).toFixed()
     ).toBe('0.25')
+  })
+
+  it('throws an SDKError when a position unrealizedPnl is not a decimal', () => {
+    expect(() => sumUnrealizedPnl([position('NaN')])).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.SDKError })
+    )
   })
 })

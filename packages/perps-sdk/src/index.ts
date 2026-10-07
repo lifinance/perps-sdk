@@ -261,6 +261,7 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
+export { asIsoTimestamp } from './utils/isoTimestamp.js'
 export {
   ACTIVE_ORDER_STATUSES,
   isActiveOrderStatus,

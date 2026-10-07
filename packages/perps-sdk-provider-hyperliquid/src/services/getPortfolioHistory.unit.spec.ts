@@ -1,6 +1,6 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { PerpsErrorCode, type PortfolioHistoryRange } from '@lifi/perps-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import {
@@ -158,6 +158,46 @@ describe('Hyperliquid getPortfolioHistory', () => {
       { timestamp: 1_741_053_600_000, accountValue: '1007.0', pnl: '5.0' },
     ])
     expect(result.totalPnl).toBe('5.0')
+  })
+
+  it('skips invalid samples and an invalid volume, and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock({
+      portfolio: [
+        [
+          'perpDay',
+          {
+            accountValueHistory: [
+              [1_741_046_400_000, '1000.0'],
+              [1_741_050_000_000, 'n/a'],
+            ] as [number, string][],
+            pnlHistory: [
+              [1_741_046_400_000, '2.0'],
+              [1_741_050_000_000, ''],
+            ] as [number, string][],
+            vlm: 'NaN',
+          },
+        ],
+      ],
+      userAbstraction: null,
+    })
+    restore = installed.restore
+
+    const result = await getPortfolioHistory(ctx, {
+      address: ADDRESS,
+      range: '24h',
+    })
+
+    expect(result).toEqual({
+      range: '24h',
+      points: [
+        { timestamp: 1_741_046_400_000, accountValue: '1000.0', pnl: '2.0' },
+      ],
+      volume: undefined,
+      totalPnl: '2.0',
+    })
+    expect(warn).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
   })
 
   it('throws a ThirdPartyError when the two series share no timestamp', async () => {

@@ -1,5 +1,6 @@
-import { decimalStringToNumber, numberToDecimalString } from '@lifi/perps-sdk'
-import type { Asset, Balance, Market } from '@lifi/perps-types'
+import { numberToDecimalString, validateDecimalString } from '@lifi/perps-sdk'
+import type { Asset, Balance, DecimalString, Market } from '@lifi/perps-types'
+import Big from 'big.js'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlSpotBalance } from '../types/index.js'
 import { spotLogoURI } from './assetLogo.js'
@@ -44,7 +45,7 @@ export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
 /** Assemble a typed spot {@link Balance}; `total` is native token units and its unit price and USD value use `priceById`. @public */
 export const spotBalance = (
   asset: Asset,
-  total: string,
+  total: DecimalString,
   priceById: Map<string, number>
 ): Balance => {
   const price = priceById.get(asset.id) ?? 0
@@ -52,9 +53,9 @@ export const spotBalance = (
     categoryId: SPOT_MARKET_ID,
     asset,
     units: total,
-    valueUsd: numberToDecimalString(
-      (decimalStringToNumber(total) ?? Number.NaN) * price
-    ),
+    valueUsd: new Big(validateDecimalString(total, 'total'))
+      .times(numberToDecimalString(price))
+      .toFixed(),
     // A zero entry means the map holds no mark for the asset, not a free asset.
     ...(price > 0 ? { price: numberToDecimalString(price) } : {}),
   }

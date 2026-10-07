@@ -1,5 +1,10 @@
-import { isDecimalStringZero } from '@lifi/perps-sdk'
-import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
+import { isDecimalStringZero, PerpsError } from '@lifi/perps-sdk'
+import {
+  PerpsErrorCode,
+  type PerpsMarketDisplay,
+  type Position,
+} from '@lifi/perps-types'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { mapPosition } from './mapPosition.js'
 
@@ -26,4 +31,27 @@ export const mapOpenPositions = (
   positions.filter(isOpenPosition).flatMap((p) => {
     const position = mapPosition(p, resolveMarket(p.market_id))
     return position === undefined ? [] : [position]
+  })
+
+/**
+ * Map every open Lighter position for account totals, which must not leave a
+ * position out.
+ *
+ * @throws {PerpsError} `SDKError` when `mapPosition` skips an open row.
+ */
+export const requireOpenPositions = (
+  positions: LtAccountPosition[],
+  resolveMarket: (marketId: number) => PerpsMarketDisplay
+): Position[] =>
+  positions.filter(isOpenPosition).map((p) => {
+    const position = mapPosition(p, resolveMarket(p.market_id))
+    if (position !== undefined) {
+      return position
+    }
+    const error = new PerpsError(
+      PerpsErrorCode.SDKError,
+      `${LIGHTER_PROVIDER_KEY} position for market ${p.market_id} is not valid, so the account totals are unknown.`
+    )
+    error.tool = LIGHTER_PROVIDER_KEY
+    throw error
   })

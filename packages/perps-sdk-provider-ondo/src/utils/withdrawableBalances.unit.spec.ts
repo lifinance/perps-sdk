@@ -1,3 +1,4 @@
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { OndoBalanceSummary } from '../types/wire.js'
 import { ondoWithdrawableBalances } from './withdrawableBalances.js'
@@ -46,5 +47,14 @@ describe('ondoWithdrawableBalances', () => {
 
   it('returns no row and reads no fee when nothing is withdrawable', () => {
     expect(ondoWithdrawableBalances('usdc', balance('0'), 'n/a')).toEqual([])
+  })
+
+  it.each([
+    ['withdrawableMargin', balance('n/a'), undefined],
+    ['withdrawalFeeUSD', balance('599'), '1,5'],
+  ])('throws an SDKError when %s is not a decimal', (_field, summary, fee) => {
+    expect(() => ondoWithdrawableBalances('usdc', summary, fee)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.SDKError })
+    )
   })
 })

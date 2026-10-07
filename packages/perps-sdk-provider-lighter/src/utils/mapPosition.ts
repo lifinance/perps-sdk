@@ -49,8 +49,8 @@ const skipPosition = (field: string, value: unknown): undefined => {
 
 /**
  * Map a raw Lighter account position to the generic Position type. A row with
- * an invalid size, position value or a non-positive initial margin fraction
- * gives `undefined`.
+ * a non-positive initial margin fraction, or an invalid size, value, price,
+ * PnL, funding or isolated margin, gives `undefined`.
  * @param market - Backend-resolved market identity for `pos.market_id`.
  * @public
  */
@@ -70,28 +70,47 @@ export const mapPosition = (
   if (imfDecimal === undefined || new Big(imfDecimal).lte(0)) {
     return skipPosition('initial_margin_fraction', pos.initial_margin_fraction)
   }
-  const size = new Big(sizeDecimal)
+  const entryPrice = asDecimalString(pos.avg_entry_price)
+  if (entryPrice === undefined) {
+    return skipPosition('avg_entry_price', pos.avg_entry_price)
+  }
+  const liquidationPrice = asDecimalString(pos.liquidation_price)
+  if (liquidationPrice === undefined) {
+    return skipPosition('liquidation_price', pos.liquidation_price)
+  }
+  const unrealizedPnl = asDecimalString(pos.unrealized_pnl)
+  if (unrealizedPnl === undefined) {
+    return skipPosition('unrealized_pnl', pos.unrealized_pnl)
+  }
+  const accruedFunding = asDecimalString(pos.total_funding_paid_out ?? '0')
+  if (accruedFunding === undefined) {
+    return skipPosition('total_funding_paid_out', pos.total_funding_paid_out)
+  }
   const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
+  const allocatedMargin = isIsolated
+    ? asDecimalString(pos.allocated_margin)
+    : undefined
+  if (isIsolated && allocatedMargin === undefined) {
+    return skipPosition('allocated_margin', pos.allocated_margin)
+  }
+  const size = new Big(sizeDecimal)
   const positionValue = new Big(positionValueDecimal).abs()
   const initialMarginRequirement = positionValue.times(imfDecimal).div(100)
-  const marginUsed = isIsolated
-    ? pos.allocated_margin
-    : initialMarginRequirement.toFixed()
 
   return {
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size: size.abs().toFixed(),
-    entryPrice: pos.avg_entry_price,
+    entryPrice,
     markPrice:
       positionValue.eq(0) || size.eq(0)
         ? '0'
         : positionValue.div(size.abs()).toFixed(),
-    liquidationPrice: pos.liquidation_price,
-    unrealizedPnl: pos.unrealized_pnl,
-    accruedFunding: pos.total_funding_paid_out ?? '0',
+    liquidationPrice,
+    unrealizedPnl,
+    accruedFunding,
     leverage: leverageFromImf(imfDecimal) ?? 1,
-    marginUsed,
+    marginUsed: allocatedMargin ?? initialMarginRequirement.toFixed(),
     initialMarginRequirement: initialMarginRequirement.toFixed(),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }

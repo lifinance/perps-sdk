@@ -1,4 +1,4 @@
-import type { Asset, Balance } from '@lifi/perps-types'
+import { type Asset, type Balance, PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { partitionSpotBalances } from './spotCollateral.js'
 
@@ -20,6 +20,12 @@ const bal = (id: string, displaySymbol: string, valueUsd: string): Balance => ({
 const quoteAssetIds = new Set(['0'])
 
 describe('partitionSpotBalances', () => {
+  it('throws an SDKError when a balance has units that are not a decimal', () => {
+    expect(() =>
+      partitionSpotBalances([bal('0', 'USDC', '1e')], quoteAssetIds)
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.SDKError }))
+  })
+
   it('classifies a quote asset as full-value collateral', () => {
     const { collateralBalances, balances } = partitionSpotBalances(
       [bal('0', 'USDC', '1000')],

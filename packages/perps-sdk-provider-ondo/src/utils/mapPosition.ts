@@ -10,10 +10,27 @@ import Big from 'big.js'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoPosition } from '../types/wire.js'
 
+const REQUIRED_DECIMAL_FIELDS = [
+  'averageEntryPrice',
+  'markPrice',
+  'liquidationPrice',
+  'unrealizedPnl',
+  'netFundingSinceNeutral',
+  'usedMargin',
+] as const
+
+const invalidField = (pos: OndoPosition): [string, unknown] => {
+  const field =
+    REQUIRED_DECIMAL_FIELDS.find(
+      (name) => asDecimalString(pos[name]) === undefined
+    ) ?? REQUIRED_DECIMAL_FIELDS[0]
+  return [field, pos[field]]
+}
+
 /**
  * Map a raw Ondo position to the generic Position type. Ondo margin accounts
- * are cross-margined only. A row with an invalid `netQuantity` or `leverage`
- * gives `undefined`.
+ * are cross-margined only. A row with an invalid quantity, leverage, price,
+ * PnL, funding or margin gives `undefined`.
  *
  * @param market - Backend-resolved market identity for `pos.market`.
  * @public
@@ -37,18 +54,36 @@ export const mapPosition = (
     warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'position', 'leverage', pos.leverage)
     return undefined
   }
+  const entryPrice = asDecimalString(pos.averageEntryPrice)
+  const markPrice = asDecimalString(pos.markPrice)
+  const liquidationPrice = asDecimalString(pos.liquidationPrice)
+  const unrealizedPnl = asDecimalString(pos.unrealizedPnl)
+  const accruedFunding = asDecimalString(pos.netFundingSinceNeutral)
+  const usedMargin = asDecimalString(pos.usedMargin)
+  if (
+    entryPrice === undefined ||
+    markPrice === undefined ||
+    liquidationPrice === undefined ||
+    unrealizedPnl === undefined ||
+    accruedFunding === undefined ||
+    usedMargin === undefined
+  ) {
+    const [field, value] = invalidField(pos)
+    warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'position', field, value)
+    return undefined
+  }
   return {
     market,
     side: pos.direction === 'short' ? PositionSide.SHORT : PositionSide.LONG,
     size: new Big(netQuantity).abs().toFixed(),
-    entryPrice: pos.averageEntryPrice,
-    markPrice: pos.markPrice,
-    liquidationPrice: pos.liquidationPrice,
-    unrealizedPnl: pos.unrealizedPnl,
-    accruedFunding: pos.netFundingSinceNeutral,
+    entryPrice,
+    markPrice,
+    liquidationPrice,
+    unrealizedPnl,
+    accruedFunding,
     leverage,
-    marginUsed: pos.usedMargin,
-    initialMarginRequirement: pos.usedMargin,
+    marginUsed: usedMargin,
+    initialMarginRequirement: usedMargin,
     marginMode: MarginMode.CROSS,
   }
 }

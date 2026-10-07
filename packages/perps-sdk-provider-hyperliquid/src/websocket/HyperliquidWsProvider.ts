@@ -26,6 +26,7 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   Balance,
+  DecimalString,
   MarketContext,
   Order,
   OrderbookLevel,
@@ -39,6 +40,7 @@ import { type Address, isAddress } from 'viem'
 import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
+  PROVIDER_KEY,
   SPOT_MARKET_ID,
 } from '../constants.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
@@ -1203,7 +1205,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             return []
           }
           const market = this.registry?.get(f.coin)
-          return market ? [mapFill(f as HlUserFill, market)] : []
+          const mapped = market && mapFill(f as HlUserFill, market)
+          return mapped ? [mapped] : []
         })
     this.emit(`userFills:${data.user.toLowerCase()}`, {
       channel: 'fills',
@@ -1570,7 +1573,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         )
       )
       return {
-        ...spotBalance(spotAssetFromToken(balance), balance.total, priceById),
+        ...spotBalance(spotAssetFromToken(balance), total.toFixed(), priceById),
         locked: balance.hold,
         transferable: calculateTransferable(
           total
@@ -1765,10 +1768,30 @@ function mapSpotMarketContext(
   }
 }
 
+const BOOK_LEVEL_ROW = 'order book level'
+
+/** The venue price as a decimal, or `undefined` after a logged skip. */
+function bookLevelPrice(price: string): DecimalString | undefined {
+  const levelPrice = asDecimalString(price)
+  if (levelPrice === undefined) {
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'price', price)
+  }
+  return levelPrice
+}
+
+/** The venue size as a decimal, or `undefined` after a logged skip. */
+function bookLevelSize(size: string): DecimalString | undefined {
+  const levelSize = asDecimalString(size)
+  if (levelSize === undefined) {
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'size', size)
+  }
+  return levelSize
+}
+
 /** One order-book level, or none when the venue price or size is invalid. */
 function toOrderbookLevel(price: string, size: string): OrderbookLevel[] {
-  const levelPrice = asDecimalString(price)
-  const levelSize = asDecimalString(size)
+  const levelPrice = bookLevelPrice(price)
+  const levelSize = levelPrice === undefined ? undefined : bookLevelSize(size)
   return levelPrice === undefined || levelSize === undefined
     ? []
     : [{ price: levelPrice, size: levelSize }]
@@ -1798,14 +1821,16 @@ function applyCompressedL2Side(
     }
   }
   for (const update of updates) {
-    const [level] = toOrderbookLevel(update.p, update.s)
-    if (level === undefined) {
+    const price = bookLevelPrice(update.p)
+    if (price === undefined) {
       continue
     }
-    if (isDecimalStringZero(level.size)) {
-      byPrice.delete(level.price)
+    const size = bookLevelSize(update.s)
+    // A level whose new size is unknown must not keep its old size.
+    if (size === undefined || isDecimalStringZero(size)) {
+      byPrice.delete(price)
     } else {
-      byPrice.set(level.price, level.size)
+      byPrice.set(price, size)
     }
   }
 

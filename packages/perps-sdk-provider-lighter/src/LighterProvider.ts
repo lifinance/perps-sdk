@@ -166,6 +166,7 @@ import {
   toIsoFromMs,
   toIsoFromSeconds,
 } from './utils/index.js'
+import { requireOpenPositions } from './utils/mapOpenPositions.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -1081,8 +1082,9 @@ export const createLighterProvider = (
             ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
             : Promise.resolve(undefined),
         ])
-      const positions: Position[] = mapOpenPositions(account.positions, (id) =>
-        toPerpsMarketDisplay(registry.require(String(id)))
+      const positions: Position[] = requireOpenPositions(
+        account.positions,
+        (id) => toPerpsMarketDisplay(registry.require(String(id)))
       )
 
       const totalMarginUsed = positions.reduce(
@@ -1695,10 +1697,8 @@ export const createLighterProvider = (
       // resolves, so its rows stay.
       const items = wireList(response.trades).flatMap((t): Fill[] => {
         const market = registry.get(String(t.market_id))
-        if (market === undefined) {
-          return []
-        }
-        return [mapFill(t, account.index, market)]
+        const mapped = market && mapFill(t, account.index, market)
+        return mapped ? [mapped] : []
       })
 
       return {

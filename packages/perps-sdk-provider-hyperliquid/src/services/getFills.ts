@@ -67,7 +67,8 @@ export const getFills = async (
           return []
         }
         const market = registry.get(fill.coin)
-        return market === undefined ? [] : [mapFill(fill, market)]
+        const mapped = market && mapFill(fill, market)
+        return mapped ? [mapped] : []
       })
       return { items, saturated: false }
     },
