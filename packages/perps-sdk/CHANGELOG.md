@@ -1,5 +1,77 @@
 # @lifi/perps-sdk
 
+## 24.0.0
+
+### Major Changes
+
+- [#600](https://github.com/lifinance/perps-sdk/pull/600) [`dba4b08`](https://github.com/lifinance/perps-sdk/commit/dba4b0834f326ed23cb7333b8adc440bdd8c400c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `classifyFillFromPosition` takes `side` as an `OrderSide` in place of the Hyperliquid wire letter `'B'` / `'A'`. `classifyFillFromPosition` and `classifyFill` compare with exact decimal arithmetic. On a malformed decimal string they give the new `FillClassification.BUY` or `FillClassification.SELL` and do not throw, so one malformed venue fill still maps and the other fills are not lost.
+
+- [#596](https://github.com/lifinance/perps-sdk/pull/596) [`e1b82a0`](https://github.com/lifinance/perps-sdk/commit/e1b82a00bc325ff8e060b2c35d42f812e9dd759d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Withdrawals now name their source holding and withdrawal type.
+
+  - `@lifi/perps-types` adds `WithdrawalAssetRef` (`categoryId` and `asset.id`, so a `Balance` is assignable to it) and the `WithdrawalType` enum (`FAST`, `STANDARD`, `NATIVE`, `BRIDGE`). `WithdrawalParams` takes `source?: WithdrawalAssetRef` and `withdrawalOptions?: Record<string, unknown>`. Breaking: `WithdrawalParams.assetId`, `WithdrawalParams.route` and the `WithdrawalRoute` type are removed.
+  - `@lifi/perps-sdk`: breaking: `ProviderWithdrawableBalance` and `WithdrawableBalance` carry `categoryId` (the provider category id, the same value as `Balance.categoryId`) in place of `route`. New `PerpsClient.getWithdrawalTypes({ provider, address })` returns one row per withdrawable holding with its `WithdrawalType` options, each with its own `max` and the `withdrawalOptions` to pass unchanged in `WithdrawalParams`. It resolves `undefined` when the provider plugin does not implement the optional `getWithdrawalTypes`.
+  - `@lifi/perps-sdk-provider-lighter` implements `getWithdrawalTypes` on `lighterProvider()` and `lighterRhProvider()`. Every row offers `STANDARD`. The collateral asset's perps row also offers `FAST` when `/api/v1/fastwithdraw/info` names an operator account, capped at the lower of the row `max`, `withdraw_limit` and `max_withdrawal_amount`, with the fee from `/api/v1/transferFeeInfo`. No API key, a failed read or a code other than 200 gives `STANDARD` only. New exports: `LighterWithdrawalOptions`, `LighterFastWithdrawal`, `lighterFastWithdrawal`, `lighterWithdrawalTypes` and `LtTransferFeeInfoResponse`. Breaking: `lighterWithdrawableBalances` takes the perps category id as a third argument, and its rows carry `categoryId`.
+  - `@lifi/perps-sdk-provider-hyperliquid` and `@lifi/perps-sdk-provider-ondo`: breaking: withdrawable rows carry `categoryId` (`spot` or the provider key) in place of `route`.
+
+- [#605](https://github.com/lifinance/perps-sdk/pull/605) [`6f84de1`](https://github.com/lifinance/perps-sdk/commit/6f84de11669eebf6ed637cdfd7fbbc871e4d6c33) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `calculateRefuelAmount` now sizes the refuel from the native gas deficit. `RefuelAmountInput` replaces `gasUsd` with `recommendedAmount` and `recommendedUsd` (the LI.FI gas suggestion), and adds `nativeBalance` (the wallet's native balance in base units). The result covers the recommendation minus the held balance, plus the new exported `REFUEL_FEE_MARGIN_PERCENT` (20%) for route fees, and is `undefined` when the wallet already holds the recommendation. `getGasRecommendation` no longer sends the `x-lifi-perps-sdk` header, which the LI.FI API CORS preflight rejects, so a browser call no longer fails with "Failed to fetch". Requests to the perps backend still send the header.
+
+- [#608](https://github.com/lifinance/perps-sdk/pull/608) [`3a2890c`](https://github.com/lifinance/perps-sdk/commit/3a2890cf5917e5817d3a6a21550260ca09237af8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Exact decimal-string arithmetic. One bad venue value no longer fails a whole list.
+
+  `@lifi/perps-sdk`:
+
+  - All calculations use Big.js internally. A public function takes a `DecimalString` and gives a `DecimalString`. No `Big` and no float crosses the public boundary.
+  - Each fallible function `X` throws a `PerpsError`. Its pair `safeX` gives `undefined` and logs one warning with the error and the stack trace. There is no default parameter: the caller writes `?? fallback`.
+  - The `math/` formulas take and give `DecimalString`. Each formula has a `safe` pair, for example `calculateNotionalValue` / `safeCalculateNotionalValue`.
+  - Added the arithmetic functions `addDecimalString`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half up), `divideDecimalStringRoundDown` (40 places, toward zero) and `absDecimalString`, each with a `safe` pair.
+  - Added the compare functions `isDecimalStringGreaterThan`, `isDecimalStringZero` and `compareDecimalStrings`, each with a `safe` pair.
+  - Added `roundDecimalString(value, decimals, rounding)` with the rounding `'truncate'`, `'round'` or `'up'`, and its `safe` pair.
+  - Added `unknownToDecimalString(value, field, tool)`. It gives a `DecimalString` for a decimal string or a finite number, and throws `SDKError` that names the field and the provider for all other values.
+  - Added `timestampToIsoString` / `safeTimestampToIsoString`.
+  - Added `warnSkippedVenueRow`, `wsLog.skippedRow` and `wsLog.droppedRow`. The providers use them to log each skipped row once.
+  - Removed `parseDecimal`. There is no alias. Use `decimalStringToNumber` (throws) or `safeDecimalStringToNumber` (gives `undefined`), only for a chart or pixel value.
+  - Removed `validateDecimalString`. Use `isDecimalString` for a format test.
+  - Renamed `baseUnitsToDecimal` → `scaledIntegerToDecimalString`, with a `safe` pair.
+  - Replaced `decimalToBaseUnits` with `decimalStringToScaledInteger(value, decimals, rounding)`, with a `safe` pair. It gives a `number` and throws above `Number.MAX_SAFE_INTEGER`.
+  - Replaced `applySlippage` with `applySlippageToPrice`, which takes and gives a `DecimalString`, with a `safe` pair.
+  - Removed `areFinite`, `toFiniteNumber`, `toLocaleString` and `truncateAbs`. The `format*` functions use Big.js and show a bad string unchanged.
+  - `subscribeQuote` takes `size` as a `DecimalString`.
+
+  `@lifi/perps-types`:
+
+  - `Position.leverage`, `MarketSettings.leverage` and `Fill.leverage` are `DecimalString`.
+  - `Position.markPrice`, `Position.accruedFunding`, `Position.leverage`, `Position.initialMarginRequirement`, `TriggerOrder.triggerPrice`, `AccountResponse.marginUsed` and `AccountResponse.unrealizedPnl` are optional. A provider leaves the field out when the venue value is not valid.
+
+  Provider packages:
+
+  - Removed the provider decimal helpers: Hyperliquid `toWireBig`, Lighter `toRequiredBig`, `toPositiveRequiredBig` and `toBigOrNull`, and Ondo `toWireBig`.
+  - A value that becomes or limits a venue action (size, price, margin, fee, withdraw, transfer and deposit amounts) throws `ValidationError` or `SDKError` when it is not valid. It never becomes `0` or a default.
+  - A display value shows the venue string unchanged, with no test. The row stays. A value derived with arithmetic that is not valid gives an absent field and one warning.
+  - A row skips only when an identity field (id, market), an order size, a position size or a row time is not valid.
+  - An account total is a safe add over all rows. One bad term gives an absent total, never a partial sum.
+  - The WebSocket order books skip a level with an invalid price. A book update with a valid price and an invalid size removes the old level at that price. The Lighter and Ondo books sort with an exact decimal compare.
+  - Added Lighter `isOpenPosition`. A position row with a non-zero size or an invalid size is open, so an invalid size does not drop the position.
+  - Hyperliquid `spotBalance` takes `total` as a `DecimalString`.
+  - The account and balance decimal errors start with the lowercase provider key, for example `ondo field ...`.
+
+### Minor Changes
+
+- [#601](https://github.com/lifinance/perps-sdk/pull/601) [`bc9d3c9`](https://github.com/lifinance/perps-sdk/commit/bc9d3c90a3b18d504ddac0378f7e83af358bac5b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `estimateLiquidationPriceAtMarketRate` to `@lifi/perps-sdk`, which estimates the liquidation price from `market.maintenanceMarginRate`. Remove the `estimateLiquidationPrice` export from the Lighter and Ondo provider roots; use the SDK helper or the provider plugin method instead.
+
+- [#603](https://github.com/lifinance/perps-sdk/pull/603) [`4fa39e6`](https://github.com/lifinance/perps-sdk/commit/4fa39e6d0e419d046af83b2726c1b357738b1ab7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `isDecimalStringZero(value)`, an exact zero check on a venue decimal string that gives `false`, and never throws, when the value is malformed.
+
+  The fill mappers fail open on a malformed venue decimal. Lighter `mapFill` leaves out `realizedPnl` or `fee` when one of their inputs is malformed. Ondo `mapFill` leaves out `fee` when `fee` or `feeRebate` is malformed, and gives `FillClassification.BUY` or `SELL` when the fill has no `direction`. One bad row no longer hides the whole fills list.
+
+  The open-position checks use an exact zero check. Hyperliquid `isOpenAssetPosition`, and the new Lighter and Ondo `isOpenPosition`, drop a row only when its size is a decimal string equal to zero, in both the REST and the WebSocket paths.
+
+### Patch Changes
+
+- [#604](https://github.com/lifinance/perps-sdk/pull/604) [`6eac2b9`](https://github.com/lifinance/perps-sdk/commit/6eac2b966e0b8b46310a269c6c70171c175fdd9c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsWsClient` now sends one `/providers` request when it initializes several venues at the same time.
+
+- [#607](https://github.com/lifinance/perps-sdk/pull/607) [`5ffc225`](https://github.com/lifinance/perps-sdk/commit/5ffc225eb82896ed54b4cae49d4caa4b1175a1d4) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `warnSkippedVenueRow`, `wsLog.skippedRow` and `wsLog.droppedRow` remember only the provider, row and field of a skipped row, not the venue value. Each warns once per provider, row and field, so a second bad value for the same field does not warn again.
+
+- Updated dependencies [[`f9a708b`](https://github.com/lifinance/perps-sdk/commit/f9a708b66aca1e4de7871861a780589105a48a1e), [`dba4b08`](https://github.com/lifinance/perps-sdk/commit/dba4b0834f326ed23cb7333b8adc440bdd8c400c), [`e1b82a0`](https://github.com/lifinance/perps-sdk/commit/e1b82a00bc325ff8e060b2c35d42f812e9dd759d), [`3a2890c`](https://github.com/lifinance/perps-sdk/commit/3a2890cf5917e5817d3a6a21550260ca09237af8)]:
+  - @lifi/perps-types@21.0.0
+
 ## 23.1.0
 
 ### Minor Changes
