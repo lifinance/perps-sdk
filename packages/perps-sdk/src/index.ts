@@ -71,6 +71,7 @@ export {
   calculateUnrealizedPnl,
   estimateAverageEntryPrice,
   estimateLiquidationPrice,
+  estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
   estimateUnrealizedPnl,
   positionSupportsMarginAdjustment,

@@ -5,6 +5,7 @@ import {
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
+  estimateLiquidationPriceAtMarketRate,
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
@@ -120,7 +121,6 @@ import {
 } from './utils/apiClient.js'
 import { toWireBig } from './utils/decimal.js'
 import {
-  estimateLiquidationPrice,
   listOndoDepositAddress,
   mapDepositActivity,
   mapFill,
@@ -1147,7 +1147,7 @@ export const ondoProvider = (
 
     snapOrderSize,
 
-    estimateLiquidationPrice,
+    estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
 

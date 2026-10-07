@@ -2,6 +2,7 @@ import {
   ACTIVE_ORDER_STATUSES,
   calculateTransferable,
   type DepositFlow,
+  estimateLiquidationPriceAtMarketRate,
   explorerTxUrl,
   explorerTxUrlFromBase,
   getAssetRegistry,
@@ -142,7 +143,6 @@ import {
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
-  estimateLiquidationPrice,
   fetchDetailedAccount,
   leverageFromImf,
   lighterAsset,
@@ -1826,7 +1826,7 @@ export const createLighterProvider = (
 
     snapOrderSize,
 
-    estimateLiquidationPrice,
+    estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
 
