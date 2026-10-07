@@ -5,7 +5,6 @@ import {
   LiquidityRole,
   OrderSide,
   OrderType,
-  PerpsErrorCode,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtTrade } from '../types/index.js'
@@ -1004,10 +1003,9 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
-  it('throws ValidationError for a trade with a malformed size', () => {
-    expect(() =>
-      mapFill(baseTrade({ size: '10oops' }), ACCOUNT_INDEX, MARKET)
-    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+  it('maps a trade with a malformed size and classifies it by side', () => {
+    const fill = mapFill(baseTrade({ size: '10oops' }), ACCOUNT_INDEX, MARKET)
+    expect(fill.classification).toBe(FillClassification.BUY)
   })
 
   // The viewer is the maker buyer in the base fixture, so a short snapshot makes

@@ -150,11 +150,9 @@ export const mapFill = (
       isBuyer
     ),
     startPosition,
-    // `classifyFillFromPosition` takes an HL-encoded side: `'B'` for buy,
-    // anything else for sell.
     classification: classifyFillFromPosition(
       startPosition,
-      isBuyer ? 'B' : 'A',
+      isBuyer ? OrderSide.BUY : OrderSide.SELL,
       trade.size
     ),
     createdAt: new Date(trade.timestamp).toISOString(),

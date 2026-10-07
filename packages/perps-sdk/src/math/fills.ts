@@ -3,7 +3,8 @@ import {
   FillClassification,
   OrderSide,
 } from '@lifi/perps-types'
-import { requireDecimal } from '../decimal/requireDecimal.js'
+import Big from 'big.js'
+import { isDecimalString } from '../decimal/parse.js'
 
 /**
  * Re-exported fill taxonomy used by {@link classifyFillFromPosition}.
@@ -18,23 +19,24 @@ export { FillClassification }
  *
  * @param startPosition Signed position held BEFORE this fill (`> 0` long,
  *   `< 0` short, `0` flat).
- * @param side Hyperliquid-style: `'B'` for buy, anything else for sell.
  * @param sz Unsigned fill size.
- * @throws {PerpsError} `ValidationError` when `startPosition` or `sz` is not a
- *   decimal string.
+ * @returns `BUY` or `SELL` when `startPosition` or `sz` is not a decimal
+ *   string, so one malformed venue fill still maps.
  * @public
  */
 export function classifyFillFromPosition(
   startPosition: DecimalString,
-  side: string,
+  side: OrderSide,
   sz: DecimalString
 ): FillClassification {
-  const start = requireDecimal(
-    startPosition,
-    'classifyFillFromPosition(startPosition)'
-  )
-  const size = requireDecimal(sz, 'classifyFillFromPosition(sz)')
-  const end = side === 'B' ? start.plus(size) : start.minus(size)
+  if (!isDecimalString(startPosition) || !isDecimalString(sz)) {
+    return side === OrderSide.BUY
+      ? FillClassification.BUY
+      : FillClassification.SELL
+  }
+  const start = new Big(startPosition)
+  const size = new Big(sz)
+  const end = side === OrderSide.BUY ? start.plus(size) : start.minus(size)
 
   if (start.eq(0)) {
     return end.gt(0)
@@ -71,17 +73,20 @@ export function classifyFillFromPosition(
  * Classify a fill as open or close based on realizedPnl.
  * @deprecated Use `Fill.classification` instead — it uses startPosition
  * for accurate open/increase/reduce/close/reverse classification.
- * @throws {PerpsError} `ValidationError` when `realizedPnl` is a string that
- *   is not a decimal string.
+ * @returns `BUY` or `SELL` when `realizedPnl` is a string that is not a
+ *   decimal string.
  * @public
  */
 export function classifyFill(
   side: OrderSide,
   realizedPnl: DecimalString | null | undefined
 ): FillClassification {
-  const isClose =
-    realizedPnl != null &&
-    !requireDecimal(realizedPnl, 'classifyFill(realizedPnl)').eq(0)
+  if (realizedPnl != null && !isDecimalString(realizedPnl)) {
+    return side === OrderSide.BUY
+      ? FillClassification.BUY
+      : FillClassification.SELL
+  }
+  const isClose = realizedPnl != null && !new Big(realizedPnl).eq(0)
   if (side === OrderSide.BUY) {
     return isClose
       ? FillClassification.CLOSED_SHORT
