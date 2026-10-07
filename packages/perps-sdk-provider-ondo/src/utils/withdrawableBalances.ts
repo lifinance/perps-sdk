@@ -8,8 +8,8 @@ import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoBalanceSummary } from '../types/wire.js'
 
 /**
- * The single route an Ondo withdrawal draws on: `withdrawableMargin`, the
- * venue's own figure for the margin the account can take out. A route with
+ * The single category an Ondo withdrawal draws on: `withdrawableMargin`, the
+ * venue's own figure for the margin the account can take out. A category with
  * nothing left to draw carries no row, and the caller applies the per-asset
  * venue minimum.
  *
@@ -37,7 +37,7 @@ export const ondoWithdrawableBalances = (
   }
   const row = {
     assetId,
-    route: 'perps' as const,
+    categoryId: ONDO_PROVIDER_KEY,
     available: available.toFixed(),
     ...(withdrawalFeeUsd === undefined
       ? {}

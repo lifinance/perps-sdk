@@ -214,7 +214,7 @@ describe('accountSummary.venue', () => {
     ).resolves.toEqual([
       {
         assetId: ONDO_COLLATERAL_ASSET.id,
-        route: 'perps',
+        categoryId: 'ondo',
         available: BALANCE.withdrawableMargin,
         max: BALANCE.withdrawableMargin,
         withdrawalFee: ACCOUNT_INFO_RESULT.withdrawalFeeUSD,

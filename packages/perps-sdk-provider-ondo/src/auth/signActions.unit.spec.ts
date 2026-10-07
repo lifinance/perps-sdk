@@ -12,6 +12,7 @@ import { createWalletClient, http, verifyMessage } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
+import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoApiKey, OndoAuthToken } from '../types/auth.js'
 import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
 import {
@@ -34,6 +35,12 @@ const userWallet = createWalletClient({
   chain: mainnet,
   transport: http('http://localhost'),
 })
+
+const SESSION_REQUIRED = {
+  code: PerpsErrorCode.SetupRequired,
+  tool: ONDO_PROVIDER_KEY,
+  message: `No valid Ondo session token stored for ${account.address}. Run the SIWE login first.`,
+}
 
 const nowSecs = () => Math.floor(Date.now() / 1000)
 
@@ -479,8 +486,9 @@ describe('ondoSignActions — HMAC', () => {
     expect(first[0].hmac.keyId).toBe(second[0].hmac.keyId)
   })
 
-  it('throws OndoSessionExpiredError when key creation is required but no session token is stored', async () => {
-    const deps = makeDeps(vi.fn<typeof fetch>())
+  it('throws SetupRequired when key creation is required but no session token is stored', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
 
     await expect(
       ondoSignActions(
@@ -489,7 +497,8 @@ describe('ondoSignActions — HMAC', () => {
         [PLACE_ORDER_STEP],
         account.address
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject(SESSION_REQUIRED)
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('rejects steps without a request under the hmac method', async () => {
@@ -982,7 +991,7 @@ describe('ondoSignActions — SESSION', () => {
     await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
   })
 
-  it('throws OndoSessionExpiredError for the terms step without a stored session token', async () => {
+  it('throws SetupRequired for the terms step without a stored session token', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
     const deps = makeDeps(fetchImpl)
 
@@ -993,7 +1002,7 @@ describe('ondoSignActions — SESSION', () => {
         [TERMS_STEP],
         account.address
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject(SESSION_REQUIRED)
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
@@ -1162,8 +1171,9 @@ describe('ondoSignActions — SESSION', () => {
     ).rejects.toThrow(/deposit-address response is malformed/)
   })
 
-  it('uses the existing session-expiry path for a missing or rejected JWT', async () => {
-    const missing = makeDeps(vi.fn<typeof fetch>())
+  it('throws SetupRequired for a missing JWT and the session-expiry error for a rejected JWT', async () => {
+    const missingFetch = vi.fn<typeof fetch>()
+    const missing = makeDeps(missingFetch)
     await expect(
       ondoSignActions(
         missing,
@@ -1171,7 +1181,8 @@ describe('ondoSignActions — SESSION', () => {
         [CREATE_DEPOSIT_STEP],
         account.address
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject(SESSION_REQUIRED)
+    expect(missingFetch).not.toHaveBeenCalled()
 
     const rejectedFetch = vi
       .fn<typeof fetch>()
@@ -1214,7 +1225,7 @@ describe('ondoSignActions — SESSION', () => {
     )
   })
 
-  it('throws OndoSessionExpiredError for a request-bearing session step without a stored session token', async () => {
+  it('throws SetupRequired for a request-bearing session step without a stored session token', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
     const deps = makeDeps(fetchImpl)
 
@@ -1225,7 +1236,7 @@ describe('ondoSignActions — SESSION', () => {
         [REFERRAL_SESSION_STEP],
         account.address
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject(SESSION_REQUIRED)
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
@@ -1306,7 +1317,7 @@ describe('ondoSignActions — SESSION', () => {
     ).resolves.toBe(true)
   })
 
-  it('throws OndoSessionExpiredError for the withdrawal-address step without a stored session token', async () => {
+  it('throws SetupRequired for the withdrawal-address step without a stored session token', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
     const deps = makeDeps(fetchImpl)
 
@@ -1318,7 +1329,7 @@ describe('ondoSignActions — SESSION', () => {
         account.address,
         { userWallet }
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject(SESSION_REQUIRED)
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 

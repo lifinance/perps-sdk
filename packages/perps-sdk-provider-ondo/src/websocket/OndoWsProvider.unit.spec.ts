@@ -11,7 +11,12 @@ import {
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_ONDO_API_URL, DEFAULT_ONDO_WS_URL } from '../constants.js'
+import {
+  DEFAULT_ONDO_API_URL,
+  DEFAULT_ONDO_WS_URL,
+  ONDO_PROVIDER_KEY,
+} from '../constants.js'
+import { OndoApiError, OndoSessionExpiredError } from '../utils/index.js'
 import { OndoWsProvider, ondoWsProvider } from './OndoWsProvider.js'
 
 // The market registry fetches `${apiUrl}/markets` over HTTP — served by the
@@ -2225,6 +2230,252 @@ describe('OndoWsProvider', () => {
       )
       expect(positionsSubs).toHaveLength(1)
       p.close()
+    })
+
+    describe('venue session rejection', () => {
+      /**
+       * Each `/v1/perps/balance` read takes the next scripted HTTP status and
+       * waits for its gate; the last entry serves every further read. Returns
+       * the Authorization header of every read and every fetched URL.
+       */
+      const stubBalanceStatuses = (
+        reads: { status: number; gate?: Promise<void> }[]
+      ) => {
+        const authHeaders: string[] = []
+        const urls: string[] = []
+        vi.stubGlobal(
+          'fetch',
+          async (
+            input: RequestInfo | URL,
+            init?: RequestInit
+          ): Promise<Response> => {
+            const url = input.toString()
+            urls.push(url)
+            if (url.includes('/markets')) {
+              return Response.json({ markets: ONDO_MARKETS })
+            }
+            if (!url.includes('/v1/perps/balance')) {
+              throw new Error(`Unexpected fetch: ${url}`)
+            }
+            const read = reads[Math.min(authHeaders.length, reads.length - 1)]
+            authHeaders.push(
+              new Headers(init?.headers).get('Authorization') ?? ''
+            )
+            await read.gate
+            return read.status === 200
+              ? Response.json({ success: true, result: BALANCE })
+              : Response.json(
+                  { success: false, message: 'balance unavailable' },
+                  { status: read.status }
+                )
+          }
+        )
+        return { authHeaders, urls }
+      }
+
+      const gate = () => {
+        let open!: () => void
+        const promise = new Promise<void>((resolve) => {
+          open = resolve
+        })
+        return { promise, open }
+      }
+
+      it('evicts the stored session and rejects with Unauthorized on a seed 401', async () => {
+        stubBalanceStatuses([{ status: 401 }])
+        const storage = seededStorage()
+        const p = makeProvider(storage)
+        stubSocket(p)
+        const listener = vi.fn()
+
+        try {
+          const error = await subscribeSummary(p, listener).catch(
+            (err: unknown) => err
+          )
+
+          expect(error).toMatchObject({
+            code: PerpsErrorCode.Unauthorized,
+            tool: ONDO_PROVIDER_KEY,
+            cause: expect.any(OndoSessionExpiredError),
+          })
+          expect(await storage.get(SESSION_KEY)).toBeNull()
+          expect(listener).not.toHaveBeenCalled()
+        } finally {
+          p.close()
+        }
+      })
+
+      it.each([
+        'accountSummary',
+        'orderUpdates',
+        'fills',
+        'positions',
+      ] as const)('throws SetupRequired for a later %s subscribe without a venue request', async (channel) => {
+        const { urls } = stubBalanceStatuses([{ status: 401 }])
+        const p = makeProvider()
+        const send = stubSocket(p)
+
+        try {
+          await expect(subscribeSummary(p, vi.fn())).rejects.toMatchObject({
+            code: PerpsErrorCode.Unauthorized,
+          })
+          send.mockClear()
+          urls.length = 0
+
+          await expect(
+            p.subscribe({ channel, dex: 'ondo', address: TEST_ADDR }, vi.fn())
+          ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+          expect(urls).toEqual([])
+          expect(send).not.toHaveBeenCalled()
+        } finally {
+          p.close()
+        }
+      })
+
+      it('evicts the stored session on a refresh 401 and emits nothing more', async () => {
+        const { authHeaders } = stubBalanceStatuses([
+          { status: 200 },
+          { status: 401 },
+        ])
+        const storage = seededStorage()
+        const p = makeProvider(storage)
+        stubSocket(p)
+        const listener = vi.fn()
+
+        try {
+          await subscribeSummary(p, listener)
+          feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+
+          await vi.waitFor(async () =>
+            expect(await storage.get(SESSION_KEY)).toBeNull()
+          )
+          expect(authHeaders).toEqual(['Bearer jwt-abc', 'Bearer jwt-abc'])
+          expect(listener).toHaveBeenCalledTimes(1)
+        } finally {
+          p.close()
+        }
+      })
+
+      it('keeps the session and propagates a non-401 seed error unchanged', async () => {
+        stubBalanceStatuses([{ status: 500 }])
+        const storage = seededStorage()
+        const p = makeProvider(storage)
+        stubSocket(p)
+
+        try {
+          await expect(subscribeSummary(p, vi.fn())).rejects.toBeInstanceOf(
+            OndoApiError
+          )
+          expect(await storage.get(SESSION_KEY)).not.toBeNull()
+        } finally {
+          p.close()
+        }
+      })
+
+      it('keeps the session on a non-401 refresh error', async () => {
+        const { authHeaders } = stubBalanceStatuses([
+          { status: 200 },
+          { status: 500 },
+        ])
+        const storage = seededStorage()
+        const p = makeProvider(storage)
+        stubSocket(p)
+
+        try {
+          await subscribeSummary(p, vi.fn())
+          feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+
+          await vi.waitFor(() => expect(authHeaders).toHaveLength(2))
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          expect(await storage.get(SESSION_KEY)).not.toBeNull()
+        } finally {
+          p.close()
+        }
+      })
+
+      it('evicts only the read wallet when a seed superseded by a close is rejected', async () => {
+        vi.useFakeTimers()
+        const held = gate()
+        stubBalanceStatuses([
+          { status: 401, gate: held.promise },
+          { status: 200 },
+        ])
+        const storage = seededBothStorage()
+        const p = makeProvider(storage)
+        p.close()
+        stubSocket(p)
+        const oldListener = vi.fn()
+        const listener = vi.fn()
+
+        try {
+          const opening = subscribeSummary(p, oldListener)
+          const rejected = expect(opening).rejects.toMatchObject({
+            code: PerpsErrorCode.Unauthorized,
+          })
+          await vi.advanceTimersByTimeAsync(0)
+          p.close()
+          await p.subscribe(
+            { channel: 'accountSummary', dex: 'ondo', address: OTHER_ADDR },
+            listener
+          )
+          held.open()
+          await rejected
+
+          expect(await storage.get(SESSION_KEY)).toBeNull()
+          expect(await storage.get(OTHER_SESSION_KEY)).not.toBeNull()
+          expect(oldListener).not.toHaveBeenCalled()
+          expect(listener).toHaveBeenCalledTimes(1)
+        } finally {
+          p.close()
+        }
+      })
+
+      it('evicts only the read wallet when a refresh superseded by a wallet switch is rejected', async () => {
+        vi.useFakeTimers()
+        const held = gate()
+        const { authHeaders } = stubBalanceStatuses([
+          { status: 200 },
+          { status: 401, gate: held.promise },
+          { status: 200 },
+        ])
+        const storage = seededBothStorage()
+        const p = makeProvider(storage)
+        p.close()
+        stubSocket(p)
+        const oldListener = vi.fn()
+        const listener = vi.fn()
+
+        try {
+          const opening = subscribeSummary(p, oldListener)
+          await vi.advanceTimersByTimeAsync(0)
+          const unsubscribe = await opening
+          feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+          await vi.advanceTimersByTimeAsync(0)
+          unsubscribe()
+          await vi.advanceTimersByTimeAsync(300)
+
+          const reopening = p.subscribe(
+            { channel: 'accountSummary', dex: 'ondo', address: OTHER_ADDR },
+            listener
+          )
+          await vi.advanceTimersByTimeAsync(0)
+          await reopening
+          held.open()
+          await vi.advanceTimersByTimeAsync(0)
+
+          expect(authHeaders).toEqual([
+            'Bearer jwt-a',
+            'Bearer jwt-a',
+            'Bearer jwt-b',
+          ])
+          expect(await storage.get(SESSION_KEY)).toBeNull()
+          expect(await storage.get(OTHER_SESSION_KEY)).not.toBeNull()
+          expect(oldListener).toHaveBeenCalledTimes(1)
+          expect(listener).toHaveBeenCalledTimes(1)
+        } finally {
+          p.close()
+        }
+      })
     })
 
     it('throws SetupRequired when no session token is stored', async () => {

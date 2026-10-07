@@ -1,9 +1,6 @@
 import {
   cachePromise,
-  decimalStringToNumber,
   getMarketRegistry,
-  isDecimalString,
-  isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
   type PerpsProvider,
@@ -52,7 +49,6 @@ import type {
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
-  LtWsOrderBook,
   LtWsOrderBookMessage,
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
@@ -69,6 +65,7 @@ import {
   mapPosition,
 } from '../utils/index.js'
 import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
+import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
@@ -143,16 +140,6 @@ interface SubState {
   needsAuth: boolean
 }
 
-/**
- * A maintained book level, keyed in {@link OrderbookState} by its price string.
- * `priceNum` is the price parsed once on insert so the emit-time sort orders by
- * a cached number instead of re-parsing every price on every comparison.
- */
-interface BookLevel {
-  size: string
-  priceNum: number
-}
-
 /** Settlement equity and per-asset route quantities for account valuation. */
 interface AccountSummaryInputs {
   perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
@@ -161,8 +148,8 @@ interface AccountSummaryInputs {
 }
 
 interface OrderbookState {
-  bids: Map<string, BookLevel>
-  asks: Map<string, BookLevel>
+  bids: OrderBookSide
+  asks: OrderBookSide
   assetId: string
 }
 
@@ -1044,20 +1031,24 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     let state = this.orderbooks.get(marketId)
     if (!state || isSnapshot) {
-      state = { bids: new Map(), asks: new Map(), assetId }
+      state = {
+        bids: new OrderBookSide(bidOrder),
+        asks: new OrderBookSide(askOrder),
+        assetId,
+      }
       this.orderbooks.set(marketId, state)
     }
 
-    applyLevels(state.bids, msg.order_book.bids)
-    applyLevels(state.asks, msg.order_book.asks)
+    state.bids.apply(msg.order_book.bids)
+    state.asks.apply(msg.order_book.asks)
 
     this.emit(`orderbook:${assetId}`, {
       channel: 'orderbook',
       data: {
         provider: this.providerKey,
         marketId: assetId,
-        bids: mapToLevels(state.bids, true),
-        asks: mapToLevels(state.asks, false),
+        bids: state.bids.toLevels(),
+        asks: state.asks.toLevels(),
         timestamp: Date.now(),
       },
     })
@@ -1157,38 +1148,6 @@ function isMarketStatsEntry(
   value: unknown
 ): value is LtWsMarketStats | LtWsSpotMarketStats {
   return isObject(value) && typeof value.market_id === 'number'
-}
-
-function applyLevels(
-  book: Map<string, BookLevel>,
-  levels: LtWsOrderBook['bids']
-): void {
-  for (const level of levels) {
-    const priceNum = decimalStringToNumber(level.price)
-    if (priceNum === undefined || !isDecimalString(level.size)) {
-      continue
-    }
-    if (isDecimalStringZero(level.size)) {
-      book.delete(level.price)
-    } else {
-      const existing = book.get(level.price)
-      if (existing) {
-        existing.size = level.size
-      } else {
-        book.set(level.price, { size: level.size, priceNum })
-      }
-    }
-  }
-}
-
-function mapToLevels(
-  book: Map<string, BookLevel>,
-  descending: boolean
-): Array<{ price: string; size: string }> {
-  const entries = [...book].sort(([, a], [, b]) =>
-    descending ? b.priceNum - a.priceNum : a.priceNum - b.priceNum
-  )
-  return entries.map(([price, { size }]) => ({ price, size }))
 }
 
 /**

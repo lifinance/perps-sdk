@@ -27,7 +27,7 @@ export type GetWithdrawableBalancesParams =
   ProviderGetWithdrawableBalancesParams
 
 /**
- * The `(asset, route)` pairs `params.address` can withdraw from Hyperliquid,
+ * The `(asset, category)` pairs `params.address` can withdraw from Hyperliquid,
  * read from the venue's own `withdrawable` and spot `total`/`hold` figures.
  * Hyperliquid charges its flat withdrawal fee in USDC, so the backend's
  * `withdrawalFeeUsd` is the fee in quote-asset units on every USDC row.

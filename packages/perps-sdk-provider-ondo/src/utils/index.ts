@@ -26,7 +26,6 @@ export {
   type OndoDepositPolicyMarker,
   parseOndoDepositAddress,
 } from './depositAddress.js'
-export { estimateLiquidationPrice } from './liquidation.js'
 export {
   mapDepositActivity,
   mapFundingActivity,

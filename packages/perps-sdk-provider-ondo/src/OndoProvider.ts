@@ -5,6 +5,7 @@ import {
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
+  estimateLiquidationPriceAtMarketRate,
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
@@ -80,6 +81,11 @@ import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
+import {
+  ondoSessionRejectedError,
+  ondoSessionRequiredError,
+  requireOndoSessionToken,
+} from './auth/sessionToken.js'
 import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
@@ -121,7 +127,6 @@ import {
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
 import {
-  estimateLiquidationPrice,
   listOndoDepositAddress,
   mapDepositActivity,
   mapFill,
@@ -303,24 +308,15 @@ export const ondoProvider = (
   }
 
   const sessionRequired = (read: string) => (): never => {
-    const error = new PerpsError(
-      PerpsErrorCode.SetupRequired,
+    throw ondoSessionRequiredError(
       `Ondo ${read} requires a session token. Run the SIWE login first.`
     )
-    error.tool = ONDO_PROVIDER_KEY
-    throw error
   }
 
   const sessionRejected =
     (read: string) =>
     (cause: OndoSessionExpiredError): never => {
-      const error = new PerpsError(
-        PerpsErrorCode.Unauthorized,
-        `Ondo ${read} failed: the venue rejected the session; sign in again.`
-      )
-      error.tool = ONDO_PROVIDER_KEY
-      error.cause = cause
-      throw error
+      throw ondoSessionRejectedError(read, cause)
     }
 
   // A data read throws the account's state: an empty result would be
@@ -1165,7 +1161,7 @@ export const ondoProvider = (
 
     snapOrderSize,
 
-    estimateLiquidationPrice,
+    estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
 
@@ -1183,12 +1179,7 @@ export const ondoProvider = (
       if (action !== ActionType.WITHDRAWAL) {
         return {}
       }
-      const token = await tokenStore.get(address)
-      if (token === null) {
-        throw new OndoSessionExpiredError(
-          `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-        )
-      }
+      const token = await requireOndoSessionToken(tokenStore, address)
       return { params: { accountId: token.accountId } }
     },
 

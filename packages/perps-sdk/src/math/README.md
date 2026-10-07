@@ -8,6 +8,7 @@ Some helpers read SDK structures instead:
 
 - `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`.
 - `findMatchingPosition`, `walkOrderbook` and `buildQuote` take positions, book levels or a quote input.
+- `estimateLiquidationPriceAtMarketRate(market, params)` takes a `PerpsMarket` and the entry, leverage and side, and gives a `number | undefined`.
 - `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` take a `Position` and give a `boolean`.
 - `classifyFill` and `classifyFillFromPosition` take `DecimalString`s and give a `FillClassification`. Each gives `BUY` or `SELL` on a malformed decimal string and never throws.
 - `applySlippageToPrice(price, slippagePercent, isBuy)` is order-entry code. It takes and gives a `DecimalString`, throws a `ValidationError` on an invalid price, and does not round. Snap the result to the market tick before it goes to a venue.

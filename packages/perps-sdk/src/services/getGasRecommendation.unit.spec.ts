@@ -44,6 +44,24 @@ describe('getGasRecommendation', () => {
     expect(result).toEqual(available)
   })
 
+  it('sends no x-lifi-perps-sdk header, which the LI.FI API CORS preflight rejects', async () => {
+    let headers: Headers | undefined
+    server.use(
+      http.get(`${LIFI_API_URL}/gas/suggestion/:chain`, ({ request }) => {
+        headers = request.headers
+        return HttpResponse.json(available)
+      })
+    )
+
+    await getGasRecommendation(client, { chainId: 1 })
+
+    expect(Object.fromEntries(headers ?? [])).toEqual({
+      'content-type': 'application/json',
+      'x-lifi-api-key': 'test-key',
+      'x-lifi-integrator': 'test-app',
+    })
+  })
+
   it('returns the unavailable suggestion for a chain LI.FI cannot source gas on', async () => {
     server.use(
       http.get(`${LIFI_API_URL}/gas/suggestion/4663`, () =>
