@@ -106,8 +106,8 @@ function requireNonZeroDivisor(divisor: string): Big {
 /**
  * `a ÷ b` to 40 decimal places, rounded half up.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal
- *   string or `b` is zero.
+ * @throws {PerpsError} `ValidationError` when an input does not match the
+ *   decimal pattern or `b` is zero.
  * @public
  */
 export function divideDecimalString(a: string, b: string): string {
@@ -129,8 +129,8 @@ export const safeDivideDecimalString = createSafeFunction(
  * `a ÷ b` to 40 decimal places, truncated toward zero, so a derived amount
  * never exceeds the exact quotient.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal
- *   string or `b` is zero.
+ * @throws {PerpsError} `ValidationError` when an input does not match the
+ *   decimal pattern or `b` is zero.
  * @public
  */
 export function divideDecimalStringRoundDown(a: string, b: string): string {

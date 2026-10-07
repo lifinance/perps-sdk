@@ -157,6 +157,17 @@ describe('hyperliquidProvider', () => {
       })
       expect(liq).toBe('45454.5454545454545454545454545454545454545455')
     })
+
+    it('throws a ValidationError when it estimates liquidation at zero leverage', () => {
+      const provider = hyperliquidProvider()
+      expect(() =>
+        provider.estimateLiquidationPrice(perpMarket, {
+          entryPrice: '50000',
+          leverage: '0',
+          isLong: true,
+        })
+      ).toThrow('`leverage` must not be zero.')
+    })
   })
 
   it('routes account-level reads through the default api.hyperliquid.xyz base URL', async () => {

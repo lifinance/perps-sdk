@@ -599,9 +599,10 @@ export interface PerpsProviderPlugin {
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —
    * does no I/O.
    *
-   * @returns The estimated liquidation price, or `undefined` when the venue's
-   *   model cannot be evaluated client-side (degenerate inputs, or `market`
-   *   lacks the margin metadata the model needs).
+   * @returns The estimated liquidation price, or `undefined` when `market`
+   *   lacks the margin metadata the model needs.
+   * @throws {PerpsError} `ValidationError` when an input does not match the
+   *   decimal pattern or is degenerate, such as a zero leverage.
    */
   estimateLiquidationPrice(
     market: PerpsMarket,

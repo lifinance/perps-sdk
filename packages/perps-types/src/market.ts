@@ -80,11 +80,11 @@ export interface PerpsMarket extends BaseMarket {
   /** Whether individual position margin can be added and/or removed. */
   positionMarginAdjustment: PositionMarginAdjustment
   /**
-   * Venue maintenance margin rate for this market as a fraction (e.g. `0.012`
+   * Venue maintenance margin rate for this market as a fraction (`'0.012'`
    * = 1.2%). Feeds client-side liquidation-price estimates via the `estimateLiquidationPriceAtMarketRate`
    * in `@lifi/perps-sdk`.
    */
-  maintenanceMarginRate?: number
+  maintenanceMarginRate?: DecimalString
 }
 
 /**

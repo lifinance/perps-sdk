@@ -27,6 +27,8 @@ export { hlInfoOptions, infoRequest } from './infoClient.js'
 export {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
+  safeCalculateLiquidationPrice,
+  safeCalculateMaintenanceMarginRate,
 } from './liquidation.js'
 export {
   mapFundingActivity,

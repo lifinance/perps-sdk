@@ -293,6 +293,7 @@ export type {
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
+export { createSafeFunction } from './utils/createSafeFunction.js'
 export {
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,

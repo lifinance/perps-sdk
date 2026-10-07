@@ -76,8 +76,8 @@ export const sumUnrealizedPnl = (
   )
 
 /**
- * Sum every term, or `undefined` with a warning when any term is not a
- * decimal string. A bad term never gives a partial sum.
+ * Sum every term, or `undefined` with a warning when any term does not match the
+ * decimal pattern. A bad term never gives a partial sum.
  */
 export const safeSumDecimalStrings = (
   terms: readonly string[]

@@ -632,7 +632,7 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
   const btcMarket = {
     ...MARKETS_RESPONSE.markets[0],
     priceDecimals: 1,
-    maintenanceMarginRate: 0.012,
+    maintenanceMarginRate: '0.012',
   }
 
   it('snaps prices and sizes against the Lighter decimal budgets', () => {

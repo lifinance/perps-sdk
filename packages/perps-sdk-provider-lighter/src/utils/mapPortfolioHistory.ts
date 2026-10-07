@@ -69,8 +69,8 @@ function getCumulativeNetFlow(snapshot: LtPnLEntry): string {
  * Historical account values are anchored to the current account value. A
  * snapshot with a non-finite value is skipped.
  *
- * @throws {PerpsError} `ValidationError` when `currentValue` is not a decimal
- *   string.
+ * @throws {PerpsError} `ValidationError` when `currentValue` does not match the
+ *   decimal pattern.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,

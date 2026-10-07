@@ -25,8 +25,8 @@ import { assetIsOutcome } from './assetId.js'
  * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
  *   quote-asset row. Hyperliquid deducts it from the requested amount. Absent
  *   leaves every row without a fee.
- * @throws {PerpsError} `SDKError` when the fee or a venue figure is not a
- * decimal.
+ * @throws {PerpsError} `SDKError` when the fee or a venue figure does not match the
+ * decimal pattern.
  * @public
  */
 export const hyperliquidWithdrawableBalances = (

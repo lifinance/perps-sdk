@@ -104,8 +104,14 @@ describe('calculateRoe', () => {
     expect(calculateRoe('-200', '1000')).toBe('-20')
   })
 
-  it('should return zero when margin is zero', () => {
-    expect(calculateRoe('500', '0')).toBe('0')
+  it('throws a ValidationError that names a zero margin', () => {
+    expect(() => calculateRoe('500', '0')).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: '`margin` must not be zero.',
+      })
+    )
+    expect(safeCalculateRoe('500', '0')).toBeUndefined()
   })
 
   it('should handle 100% gain', () => {
@@ -181,13 +187,13 @@ describe('calculateLiquidationDistance', () => {
     ).toBe('0')
   })
 
-  it('should return zero when current price is zero', () => {
-    expect(
+  it('throws a ValidationError that names a zero current price', () => {
+    expect(() =>
       calculateLiquidationDistance({
         liquidationPrice: '45000',
         currentPrice: '0',
       })
-    ).toBe('0')
+    ).toThrow('`currentPrice` must not be zero.')
   })
 
   it('should return zero when liquidation price is zero', () => {
@@ -221,10 +227,10 @@ describe('calculateEffectiveLeverage', () => {
     ).toBe('1')
   })
 
-  it('should return zero when margin is zero', () => {
-    expect(
+  it('throws a ValidationError that names a zero margin', () => {
+    expect(() =>
       calculateEffectiveLeverage({ positionValueUsd: '10000', marginUsd: '0' })
-    ).toBe('0')
+    ).toThrow('`marginUsd` must not be zero.')
   })
 
   it('should return zero for zero notional', () => {
@@ -268,26 +274,31 @@ describe('estimateLiquidationPrice', () => {
     expect(liq).toBe('108.9108910891089108910891089108910891089109')
   })
 
-  it('returns undefined for zero leverage', () => {
-    expect(
-      estimateLiquidationPrice({
-        entryPrice: '100',
-        leverage: '0',
-        isLong: true,
-        maintenanceMarginRate: '0.01',
+  it('throws a ValidationError that names a zero leverage', () => {
+    const params = {
+      entryPrice: '100',
+      leverage: '0',
+      isLong: true,
+      maintenanceMarginRate: '0.01',
+    }
+    expect(() => estimateLiquidationPrice(params)).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: '`leverage` must not be zero.',
       })
-    ).toBeUndefined()
+    )
+    expect(safeEstimateLiquidationPrice(params)).toBeUndefined()
   })
 
-  it('returns undefined for a degenerate denominator', () => {
-    expect(
-      estimateLiquidationPrice({
-        entryPrice: '100',
-        leverage: '10',
-        isLong: true,
-        maintenanceMarginRate: '1',
-      })
-    ).toBeUndefined()
+  it.each([
+    { isLong: true, maintenanceMarginRate: '1' },
+    { isLong: false, maintenanceMarginRate: '-1' },
+  ])('throws a ValidationError for a zero denominator (%o)', (input) => {
+    expect(() =>
+      estimateLiquidationPrice({ entryPrice: '100', leverage: '10', ...input })
+    ).toThrow(
+      `\`maintenanceMarginRate\` must not be ${input.maintenanceMarginRate} for this side.`
+    )
   })
 })
 
@@ -313,7 +324,7 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     maxLeverage: 50,
     onlyIsolated: false,
     positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
-    maintenanceMarginRate: 0.012,
+    maintenanceMarginRate: '0.012',
     ...overrides,
   })
 
@@ -341,7 +352,7 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     // entry * (1 - 1/leverage) / (1 - mmr) = 95 * 0.9 / 0.95
     expect(
       estimateLiquidationPriceAtMarketRate(
-        market({ maintenanceMarginRate: 0.05 }),
+        market({ maintenanceMarginRate: '0.05' }),
         { entryPrice: '95', leverage: '10', isLong: true }
       )
     ).toBe('90')
@@ -356,14 +367,14 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     ).toBeUndefined()
   })
 
-  it('returns undefined for zero leverage', () => {
-    expect(
+  it('throws a ValidationError for zero leverage', () => {
+    expect(() =>
       estimateLiquidationPriceAtMarketRate(market({}), {
         entryPrice: '61729.6',
         leverage: '0',
         isLong: true,
       })
-    ).toBeUndefined()
+    ).toThrow('`leverage` must not be zero.')
   })
 })
 
@@ -410,14 +421,15 @@ describe('estimateAverageEntryPrice', () => {
     expect(avg).toBe('123.45')
   })
 
-  it('returns undefined when both sizes are zero', () => {
-    const avg = estimateAverageEntryPrice({
-      currentSize: '0',
-      currentEntry: '0',
-      addSize: '0',
-      fillPrice: '0',
-    })
-    expect(avg).toBeUndefined()
+  it('throws a ValidationError when the combined size is not positive', () => {
+    expect(() =>
+      estimateAverageEntryPrice({
+        currentSize: '0',
+        currentEntry: '0',
+        addSize: '0',
+        fillPrice: '0',
+      })
+    ).toThrow('`currentSize + addSize` must be positive.')
   })
 
   it.each([
@@ -456,15 +468,15 @@ describe('estimateNewLeverage', () => {
     expect(lev).toBe('7.5')
   })
 
-  it('returns undefined when total margin is non-positive', () => {
-    expect(
+  it('throws a ValidationError when the total margin is not positive', () => {
+    expect(() =>
       estimateNewLeverage({
         currentNotional: '0',
         currentMargin: '0',
         addNotional: '0',
         addMargin: '0',
       })
-    ).toBeUndefined()
+    ).toThrow('`currentMargin + addMargin` must be positive.')
   })
 })
 

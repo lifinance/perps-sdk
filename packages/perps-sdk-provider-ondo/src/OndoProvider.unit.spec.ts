@@ -147,7 +147,7 @@ const MARKETS_RESPONSE = {
       maxLeverage: 20,
       onlyIsolated: false,
       positionMarginAdjustment: PositionMarginAdjustment.NONE,
-      maintenanceMarginRate: 0.02,
+      maintenanceMarginRate: '0.02',
       funding: { rate: '0.0001', nextFundingTime: 0 },
     },
   ],
