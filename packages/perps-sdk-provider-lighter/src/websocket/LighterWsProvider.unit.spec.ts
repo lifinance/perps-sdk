@@ -2048,9 +2048,10 @@ describe('LighterWsProvider', () => {
           },
         })
 
-      ;(p as any).handleMessage(stats('800'))
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(stats('800'))
       expect(() =>
-        (p as any).handleMessage(stats('not-a-decimal'))
+        internals.handleMessage(stats('not-a-decimal'))
       ).not.toThrow()
 
       expect(listener).toHaveBeenCalledOnce()

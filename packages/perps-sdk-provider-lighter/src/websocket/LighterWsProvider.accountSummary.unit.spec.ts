@@ -173,6 +173,13 @@ const restPortfolioValue = async (client: PerpsSDKClient) => {
   return getAccountSummary(account, positions).portfolioValue
 }
 
+const backendClient = (): PerpsSDKClient =>
+  ({
+    config: { apiUrl: 'https://backend.test/v1/perps' },
+    providers: [],
+    getProvider: () => undefined,
+  }) as unknown as PerpsSDKClient
+
 const streamedSummaries = async (
   client: PerpsSDKClient,
   totalAssetValue: string,
@@ -256,11 +263,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
     it.each(
       FRAME_ORDERS.map((order) => [order.join(', '), order] as const)
     )('streams the REST portfolioValue after the frames %s', async (_label, order) => {
-      const client = {
-        config: { apiUrl: 'https://backend.test/v1/perps' },
-        providers: [],
-        getProvider: () => undefined,
-      } as unknown as PerpsSDKClient
+      const client = backendClient()
 
       const rest = await restPortfolioValue(client)
       const streamed = await streamedSummaries(client, totalAssetValue, order)
@@ -274,11 +277,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
   // LIGHTER_SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
   it('streams the REST portfolioValue when /providers names a different spot category id', async () => {
     stubFetch('0', 'cash')
-    const client = {
-      config: { apiUrl: 'https://backend.test/v1/perps' },
-      providers: [],
-      getProvider: () => undefined,
-    } as unknown as PerpsSDKClient
+    const client = backendClient()
 
     const rest = await restPortfolioValue(client)
     const streamed = await streamedSummaries(client, '0', FRAME_ORDERS[0])
@@ -291,11 +290,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
   it('emits no summary and warns when a held asset mark does not match the decimal pattern', async () => {
     stubFetch('0')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const client = {
-      config: { apiUrl: 'https://backend.test/v1/perps' },
-      providers: [],
-      getProvider: () => undefined,
-    } as unknown as PerpsSDKClient
+    const client = backendClient()
 
     const streamed = await streamedSummaries(
       client,
