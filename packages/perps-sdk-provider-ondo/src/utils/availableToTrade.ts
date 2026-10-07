@@ -1,14 +1,16 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import {
+  compareDecimalStrings,
+  divideDecimalStringRoundDown,
+  isDecimalStringGreaterThan,
+  multiplyDecimalString,
+  PerpsError,
+  roundDecimalString,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type { AvailableToTrade } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrderSizes } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
-
-// A max amount must never exceed the exact cap, so the division truncates.
-const TruncatingBig = Big()
-TruncatingBig.RM = Big.roundDown
 
 const outOfRange = (
   field: string,
@@ -23,20 +25,20 @@ const outOfRange = (
   return error
 }
 
-const toPositiveBig = (value: string, field: string): Big => {
-  const parsed = toWireBig(value, field)
-  if (parsed.lte(0)) {
+const toPositiveDecimalString = (value: string, field: string): string => {
+  const decimal = unknownToDecimalString(value, field, ONDO_PROVIDER_KEY)
+  if (!isDecimalStringGreaterThan(decimal, '0')) {
     throw outOfRange(field, value, 'positive')
   }
-  return parsed
+  return decimal
 }
 
-const toNonNegativeBig = (value: string, field: string): Big => {
-  const parsed = toWireBig(value, field)
-  if (parsed.lt(0)) {
+const toNonNegativeDecimalString = (value: string, field: string): string => {
+  const decimal = unknownToDecimalString(value, field, ONDO_PROVIDER_KEY)
+  if (compareDecimalStrings(decimal, '0') < 0) {
     throw outOfRange(field, value, 'non-negative')
   }
-  return parsed
+  return decimal
 }
 
 /**
@@ -54,13 +56,20 @@ export const ondoAvailableToTrade = (
   leverage: string,
   markPrice: string
 ): Pick<AvailableToTrade, 'buy' | 'sell'> => {
-  const lev = toPositiveBig(leverage, 'leverage.leverage')
-  const mark = toPositiveBig(markPrice, 'markPrice.markPrice')
+  const lev = toPositiveDecimalString(leverage, 'leverage.leverage')
+  const mark = toPositiveDecimalString(markPrice, 'markPrice.markPrice')
   const toMargin = (baseSize: string, field: string): string =>
-    new TruncatingBig(toNonNegativeBig(baseSize, field))
-      .times(mark)
-      .div(lev)
-      .toFixed()
+    roundDecimalString(
+      divideDecimalStringRoundDown(
+        multiplyDecimalString(
+          toNonNegativeDecimalString(baseSize, field),
+          mark
+        ),
+        lev
+      ),
+      20,
+      'truncate'
+    )
   return {
     buy: toMargin(sizes.maxBidBaseSize, 'maxOrderSize.maxBidBaseSize'),
     sell: toMargin(sizes.maxAskBaseSize, 'maxOrderSize.maxAskBaseSize'),

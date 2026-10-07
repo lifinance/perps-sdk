@@ -1,6 +1,8 @@
 import {
+  addDecimalString,
   cachePromise,
   getMarketRegistry,
+  isDecimalStringGreaterThan,
   type MarketRegistry,
   PerpsError,
   type PerpsProvider,
@@ -10,7 +12,9 @@ import {
   ReconnectingWebSocket,
   resolveRetryPolicy,
   resolveSubscribeQuote,
+  subtractDecimalString,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
   WsProviderBase,
   type WsProviderFactory,
   type WsProviderFactoryParams,
@@ -24,7 +28,6 @@ import {
   type Position,
   type Subscription,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
 import { lighterPortfolioValue } from '../accountSummary.js'
 import {
@@ -48,7 +51,6 @@ import type {
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
-  LtWsOrderBook,
   LtWsOrderBookMessage,
   LtWsSpotMarketStats,
   LtWsSpotMarketStatsAllMessage,
@@ -58,13 +60,14 @@ import type {
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
   fetchDetailedAccount,
+  isOpenPosition,
   mapFill,
   mapMarketContext,
   mapOrderUpdates,
   mapPosition,
-  toRequiredBig,
 } from '../utils/index.js'
 import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
+import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
@@ -139,26 +142,16 @@ interface SubState {
   needsAuth: boolean
 }
 
-/**
- * A maintained book level, keyed in {@link OrderbookState} by its price string.
- * `priceNum` is the price parsed once on insert so the emit-time sort orders by
- * a cached number instead of re-parsing every price on every comparison.
- */
-interface BookLevel {
-  size: string
-  priceNum: number
-}
-
 /** Settlement equity and per-asset route quantities for account valuation. */
 interface AccountSummaryInputs {
-  perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
-  balances?: Map<number, { spot: Big; margin: Big }>
+  perps?: { equity: string } & Omit<AccountSummary, 'portfolioValue'>
+  balances?: Map<number, { spot: string; margin: string }>
   lastPortfolioValue?: string
 }
 
 interface OrderbookState {
-  bids: Map<string, BookLevel>
-  asks: Map<string, BookLevel>
+  bids: OrderBookSide
+  asks: OrderBookSide
   assetId: string
 }
 
@@ -730,38 +723,47 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
 
-    const portfolio = toRequiredBig(
+    const portfolio = unknownToDecimalString(
       stats.portfolio_value,
-      'stats.portfolio_value'
+      'stats.portfolio_value',
+      this.providerKey
     )
-    const collateral = toRequiredBig(stats.collateral, 'stats.collateral')
+    const collateral = unknownToDecimalString(
+      stats.collateral,
+      'stats.collateral',
+      this.providerKey
+    )
 
-    let available: Big
-    let marginUsed: Big
+    let available: string
+    let marginUsed: string
     if (stats.cross_stats === undefined) {
       // Compatibility with legacy gateways that omitted the entire
       // cross_stats object.
-      available = toRequiredBig(
+      available = unknownToDecimalString(
         stats.available_balance,
-        'stats.available_balance'
+        'stats.available_balance',
+        this.providerKey
       )
-      marginUsed = portfolio.minus(available)
+      marginUsed = subtractDecimalString(portfolio, available)
     } else {
-      const crossCollateral = toRequiredBig(
+      const crossCollateral = unknownToDecimalString(
         stats.cross_stats.collateral,
-        'stats.cross_stats.collateral'
+        'stats.cross_stats.collateral',
+        this.providerKey
       )
-      const crossPortfolio = toRequiredBig(
+      const crossPortfolio = unknownToDecimalString(
         stats.cross_stats.portfolio_value,
-        'stats.cross_stats.portfolio_value'
+        'stats.cross_stats.portfolio_value',
+        this.providerKey
       )
-      available = toRequiredBig(
+      available = unknownToDecimalString(
         stats.cross_stats.available_balance,
-        'stats.cross_stats.available_balance'
+        'stats.cross_stats.available_balance',
+        this.providerKey
       )
-      const isolatedMargin = collateral.minus(crossCollateral)
-      const crossMargin = crossPortfolio.minus(available)
-      marginUsed = isolatedMargin.plus(crossMargin)
+      const isolatedMargin = subtractDecimalString(collateral, crossCollateral)
+      const crossMargin = subtractDecimalString(crossPortfolio, available)
+      marginUsed = addDecimalString(isolatedMargin, crossMargin)
     }
 
     const inputs = this.accountSummaryInputs.get(address)
@@ -770,9 +772,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     inputs.perps = {
       equity: portfolio,
-      availableMargin: available.toFixed(),
-      marginUsed: marginUsed.toFixed(),
-      unrealizedPnl: portfolio.minus(collateral).toFixed(),
+      availableMargin: available,
+      marginUsed,
+      unrealizedPnl: subtractDecimalString(portfolio, collateral),
     }
     this.emitAccountSummary(address)
   }
@@ -793,14 +795,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     const parsed = Object.values(msg.assets ?? {}).map((asset) => ({
       assetId: asset.asset_id,
-      spot: toRequiredBig(asset.balance, 'balance'),
+      spot: unknownToDecimalString(asset.balance, 'balance', this.providerKey),
       margin:
         asset.margin_balance === undefined
           ? undefined
-          : toRequiredBig(asset.margin_balance, 'margin_balance'),
+          : unknownToDecimalString(
+              asset.margin_balance,
+              'margin_balance',
+              this.providerKey
+            ),
     }))
     const balances = isSnapshot
-      ? new Map<number, { spot: Big; margin: Big }>()
+      ? new Map<number, { spot: string; margin: string }>()
       : inputs.balances
     if (balances === undefined) {
       return
@@ -808,7 +814,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     for (const { assetId, spot, margin } of parsed) {
       balances.set(assetId, {
         spot,
-        margin: margin ?? balances.get(assetId)?.margin ?? new Big(0),
+        margin: margin ?? balances.get(assetId)?.margin ?? '0',
       })
     }
     inputs.balances = balances
@@ -827,10 +833,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         ([assetId, { spot, margin }]) =>
           [
             assetId,
-            assetId === settlementAssetIndex ? spot : spot.plus(margin),
+            assetId === settlementAssetIndex
+              ? spot
+              : addDecimalString(spot, margin),
           ] as const
       )
-      .filter(([, balance]) => balance.gt(0))
+      .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
     const spotPrices = spotPriceByAssetId(
       this.registry?.markets ?? [],
       LIGHTER_SPOT_CATEGORY_ID,
@@ -845,14 +853,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       inputs.perps.equity,
       held.map(
         ([assetId, balance]) =>
-          spotValuation(
-            assetId,
-            balance.toFixed(),
-            settlementAssetIndex,
-            spotPrices
-          ).valueUsd
+          spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
+            .valueUsd
       )
-    ).toFixed()
+    )
     if (onlyOnChange && portfolioValue === inputs.lastPortfolioValue) {
       return
     }
@@ -887,7 +891,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const raw = collectAuthChannelItems<LtTrade>(msg, 'trades')
     const fills: Fill[] = raw.flatMap((t) => {
       const market = this.registry?.get(String(t.market_id))
-      return market ? [mapFill(t, accountIndex, market)] : []
+      const mapped = market && mapFill(t, accountIndex, market)
+      return mapped ? [mapped] : []
     })
     this.emit(`fills:${address}`, { channel: 'fills', data: fills })
   }
@@ -910,13 +915,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       this.positionsByAddress.set(address, state)
     }
     for (const p of raw) {
-      if (Number.parseFloat(p.position) === 0) {
-        state.delete(p.market_id)
-      } else {
+      if (isOpenPosition(p)) {
         const market = this.registry?.get(String(p.market_id))
-        if (market) {
-          state.set(p.market_id, mapPosition(p, toPerpsMarketDisplay(market)))
+        const position = market
+          ? mapPosition(p, toPerpsMarketDisplay(market))
+          : undefined
+        if (position) {
+          state.set(p.market_id, position)
+        } else {
+          state.delete(p.market_id)
         }
+      } else {
+        state.delete(p.market_id)
       }
     }
     this.emit(`positions:${address}`, {
@@ -1006,20 +1016,24 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     let state = this.orderbooks.get(marketId)
     if (!state || isSnapshot) {
-      state = { bids: new Map(), asks: new Map(), assetId }
+      state = {
+        bids: new OrderBookSide(bidOrder, this.providerKey),
+        asks: new OrderBookSide(askOrder, this.providerKey),
+        assetId,
+      }
       this.orderbooks.set(marketId, state)
     }
 
-    applyLevels(state.bids, msg.order_book.bids)
-    applyLevels(state.asks, msg.order_book.asks)
+    state.bids.apply(msg.order_book.bids)
+    state.asks.apply(msg.order_book.asks)
 
     this.emit(`orderbook:${assetId}`, {
       channel: 'orderbook',
       data: {
         provider: this.providerKey,
         marketId: assetId,
-        bids: mapToLevels(state.bids, true),
-        asks: mapToLevels(state.asks, false),
+        bids: state.bids.toLevels(),
+        asks: state.asks.toLevels(),
         timestamp: Date.now(),
       },
     })
@@ -1119,37 +1133,6 @@ function isMarketStatsEntry(
   value: unknown
 ): value is LtWsMarketStats | LtWsSpotMarketStats {
   return isObject(value) && typeof value.market_id === 'number'
-}
-
-function applyLevels(
-  book: Map<string, BookLevel>,
-  levels: LtWsOrderBook['bids']
-): void {
-  for (const level of levels) {
-    if (level.size === '0' || Number(level.size) === 0) {
-      book.delete(level.price)
-    } else {
-      const existing = book.get(level.price)
-      if (existing) {
-        existing.size = level.size
-      } else {
-        book.set(level.price, {
-          size: level.size,
-          priceNum: Number(level.price),
-        })
-      }
-    }
-  }
-}
-
-function mapToLevels(
-  book: Map<string, BookLevel>,
-  descending: boolean
-): Array<{ price: string; size: string }> {
-  const entries = [...book].sort(([, a], [, b]) =>
-    descending ? b.priceNum - a.priceNum : a.priceNum - b.priceNum
-  )
-  return entries.map(([price, { size }]) => ({ price, size }))
 }
 
 /**

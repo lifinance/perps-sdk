@@ -27,3 +27,47 @@ export const createWarnOnce = (): ((key: string, message: string) => void) => {
     console.warn(message)
   }
 }
+
+const MAX_VALUE_CHARS = 64
+
+/**
+ * Describe a skipped venue row. The venue value is cut to a fixed length, so
+ * a warner key built from the text stays small.
+ *
+ * @internal
+ */
+export const skippedRowMessage = (
+  source: string,
+  row: string,
+  field: string,
+  value: unknown,
+  expected: string
+): string => {
+  const text = String(value)
+  const shown =
+    text.length > MAX_VALUE_CHARS ? `${text.slice(0, MAX_VALUE_CHARS)}…` : text
+  return `[${source}] skipping ${row} row: \`${field}\` is not a valid ${expected}: '${shown}'`
+}
+
+const warnSkippedRowOnce = createWarnOnce()
+
+/**
+ * Warn once for each provider, row, field and expected kind that a provider
+ * mapper skipped a venue row because a required field is not valid. The key
+ * holds no venue value, so a second bad value for the same field stays silent.
+ *
+ * @param expected - What the field must be. Defaults to `'decimal'`.
+ * @internal
+ */
+export const warnSkippedVenueRow = (
+  provider: string,
+  row: string,
+  field: string,
+  value: unknown,
+  expected = 'decimal'
+): void => {
+  warnSkippedRowOnce(
+    `${provider}|${row}|${field}|${expected}`,
+    skippedRowMessage(provider, row, field, value, expected)
+  )
+}

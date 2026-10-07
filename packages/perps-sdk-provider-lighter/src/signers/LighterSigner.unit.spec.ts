@@ -934,7 +934,7 @@ describe('LighterSigner', () => {
     await expect(failure).rejects.toBeInstanceOf(PerpsError)
     await expect(failure).rejects.toMatchObject({
       code: PerpsErrorCode.ValidationError,
-      message: expect.stringMatching(/decimalToBaseUnits\(value\).*'1e-7'/),
+      message: "'1e-7' is not a decimal string.",
     })
     expect(signWithdraw).not.toHaveBeenCalled()
   })

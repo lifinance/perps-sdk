@@ -38,7 +38,7 @@ describe('mapMarket (Hyperliquid)', () => {
   it('maps the matching market-order tier and documented limit-order multiple', () => {
     const result = mapMarket(universe, 'hyperliquid', maxMarketOrderNtls)
 
-    expect(result.maxMarketOrderUsd).toBe('30000000')
+    expect(result.maxMarketOrderUsd).toBe('30000000.0')
     expect(result.maxLimitOrderUsd).toBe('300000000')
   })
 
@@ -49,7 +49,7 @@ describe('mapMarket (Hyperliquid)', () => {
       maxMarketOrderNtls
     )
 
-    expect(result.maxMarketOrderUsd).toBe('500000')
+    expect(result.maxMarketOrderUsd).toBe('500000.0')
     expect(result.maxLimitOrderUsd).toBe('5000000')
   })
 
@@ -57,7 +57,7 @@ describe('mapMarket (Hyperliquid)', () => {
     const ascending: HlMaxMarketOrderNtls = [...maxMarketOrderNtls].reverse()
     const result = mapMarket(universe, 'hyperliquid', ascending)
 
-    expect(result.maxMarketOrderUsd).toBe('30000000')
+    expect(result.maxMarketOrderUsd).toBe('30000000.0')
     expect(result.maxLimitOrderUsd).toBe('300000000')
   })
 
@@ -68,7 +68,7 @@ describe('mapMarket (Hyperliquid)', () => {
       maxMarketOrderNtls
     )
 
-    expect(result.maxMarketOrderUsd).toBe('5000000')
+    expect(result.maxMarketOrderUsd).toBe('5000000.0')
     expect(result.maxLimitOrderUsd).toBe('50000000')
   })
 

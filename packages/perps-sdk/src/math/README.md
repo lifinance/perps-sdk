@@ -1,12 +1,14 @@
 # `math/`
 
-Display tier. Inputs are `parseDecimal`ed numbers; outputs are for `format*`. Never send a result to a venue — use `wire/`.
+Trading formulas. Every formula takes and gives decimal strings, alone or in a `params` object. Arithmetic is exact `big.js`, with division to 40 decimal places, and no `Big` crosses the module boundary.
 
-The formulas take `number` amounts, alone or in a `params` object, and give a `number`, a `number | null`, or an object of `number`s. Exact decimal arithmetic happens internally with `DivBig`, and no `Big` crosses the module boundary.
+Each formula `X` throws `PerpsError(ValidationError)` on an input that is not a decimal string, and has a `safeX` pair that logs a warning and gives `undefined`. A money-path caller uses `X`; a display caller uses `safeX`.
 
 Some helpers read SDK structures instead:
 
-- `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`.
+- `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`, and gives a decimal string or `null`.
 - `findMatchingPosition`, `walkOrderbook` and `buildQuote` take positions, book levels or a quote input.
+- `estimateLiquidationPriceAtMarketRate(market, params)` takes a `PerpsMarket` and the entry, leverage and side, and gives a decimal string or `undefined`.
 - `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` take a `Position` and give a `boolean`.
-- `classifyFill` and `classifyFillFromPosition` take `DecimalString`s and give a `FillClassification`.
+- `classifyFill` and `classifyFillFromPosition` take decimal strings and give a `FillClassification`. Each gives `BUY` or `SELL` on a malformed decimal string and never throws.
+- `applySlippageToPrice(price, slippagePercent, isBuy)` is order-entry code. It does not round. Snap the result to the market tick before it goes to a venue.

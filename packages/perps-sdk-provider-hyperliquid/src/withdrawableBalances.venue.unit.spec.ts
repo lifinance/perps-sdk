@@ -62,34 +62,34 @@ describe('getWithdrawableBalances.venue: unified account', () => {
     expect(rows).toEqual([
       {
         assetId: '0',
-        route: 'spot',
+        categoryId: 'spot',
         available: '102.54975228',
         max: '102.54975228',
         withdrawalFee: '1',
         isFeeDeducted: true,
       },
-      { assetId: '73', route: 'spot', available: '6.15', max: '6.15' },
+      { assetId: '73', categoryId: 'spot', available: '6.15', max: '6.15' },
       {
         assetId: '150',
-        route: 'spot',
+        categoryId: 'spot',
         available: '2.10613124',
         max: '2.10613124',
       },
       {
         assetId: '339',
-        route: 'spot',
+        categoryId: 'spot',
         available: '40.230704',
         max: '40.230704',
       },
       {
         assetId: '734',
-        route: 'spot',
+        categoryId: 'spot',
         available: '68598.161692',
         max: '68598.161692',
       },
       {
         assetId: '0',
-        route: 'perps',
+        categoryId: 'hyperliquid',
         available: '0.6975',
         max: '0.6975',
         withdrawalFee: '1',
@@ -100,9 +100,9 @@ describe('getWithdrawableBalances.venue: unified account', () => {
 
   it('draws the perps row from clearinghouseState.withdrawable', async () => {
     const rows = await load(UNIFIED_SNAPSHOT, UNIFIED_MARKETS, UNIFIED_PRICES)
-    expect(rows.find((row) => row.route === 'perps')?.available).toBe(
-      UNIFIED_SNAPSHOT.clearinghouseState.withdrawable
-    )
+    expect(
+      rows.find((row) => row.categoryId === 'hyperliquid')?.available
+    ).toBe(UNIFIED_SNAPSHOT.clearinghouseState.withdrawable)
   })
 })
 
@@ -163,7 +163,7 @@ describe('getWithdrawableBalances.venue: withdrawal fee', () => {
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message:
-        "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
+        "hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
     })
   })
 })
@@ -186,34 +186,39 @@ describe('getWithdrawableBalances.venue: portfolio margin account', () => {
     expect(rows).toEqual([
       {
         assetId: '0',
-        route: 'spot',
+        categoryId: 'spot',
         available: '3573826.69076083',
         max: '3573826.69076083',
         withdrawalFee: '1',
         isFeeDeducted: true,
       },
-      { assetId: '146', route: 'spot', available: '7.43118', max: '7.43118' },
+      {
+        assetId: '146',
+        categoryId: 'spot',
+        available: '7.43118',
+        max: '7.43118',
+      },
       {
         assetId: '150',
-        route: 'spot',
+        categoryId: 'spot',
         available: '0.00338262',
         max: '0.00338262',
       },
       {
         assetId: '154',
-        route: 'spot',
+        categoryId: 'spot',
         available: '0.01435139',
         max: '0.01435139',
       },
       {
         assetId: '307',
-        route: 'spot',
+        categoryId: 'spot',
         available: '220.32122253',
         max: '220.32122253',
       },
       {
         assetId: '734',
-        route: 'spot',
+        categoryId: 'spot',
         available: '6923.026638',
         max: '6923.026638',
       },

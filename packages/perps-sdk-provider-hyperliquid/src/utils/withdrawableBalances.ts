@@ -1,7 +1,11 @@
 import {
   calculateWithdrawMax,
+  isDecimalStringGreaterThan,
   type ProviderWithdrawableBalance,
+  subtractDecimalString,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
+import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type {
   HlAbstractionMode,
   HlClearinghouseState,
@@ -9,19 +13,20 @@ import type {
 } from '../types/index.js'
 import { isUnifiedAbstraction } from './abstractionMode.js'
 import { assetIsOutcome } from './assetId.js'
-import { toWireBig } from './decimal.js'
 
 /**
- * Split a Hyperliquid account's venue figures into the routes a withdrawal
- * draws on. A unified or portfolio-margin account holds its collateral in spot,
+ * Split a Hyperliquid account's venue figures into the categories a
+ * withdrawal draws on. A unified or portfolio-margin account holds its collateral in spot,
  * so each spot token adds the part of `total` that no order or margin holds. A
- * route with nothing left to draw carries no row, and the caller applies the
+ * category with nothing left to draw carries no row, and the caller applies the
  * per-asset venue minimum.
  *
- * @param quoteAssetId - `Asset.id` the perps-route row is keyed by.
+ * @param quoteAssetId - `Asset.id` the perps-category row is keyed by.
  * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
  *   quote-asset row. Hyperliquid deducts it from the requested amount. Absent
  *   leaves every row without a fee.
+ * @throws {PerpsError} `SDKError` when the fee or a venue figure is not a
+ * decimal.
  * @public
  */
 export const hyperliquidWithdrawableBalances = (
@@ -35,7 +40,11 @@ export const hyperliquidWithdrawableBalances = (
   const fee =
     withdrawalFee === undefined
       ? undefined
-      : toWireBig(withdrawalFee, 'providers.withdrawalFeeUsd').toFixed()
+      : unknownToDecimalString(
+          withdrawalFee,
+          'providers.withdrawalFeeUsd',
+          PROVIDER_KEY
+        )
   const feeFor = (
     assetId: string
   ): Pick<ProviderWithdrawableBalance, 'withdrawalFee' | 'isFeeDeducted'> =>
@@ -48,15 +57,20 @@ export const hyperliquidWithdrawableBalances = (
       if (assetIsOutcome(balance.coin)) {
         continue
       }
-      const spot = toWireBig(balance.total, 'spotBalance.total').minus(
-        toWireBig(balance.hold, 'spotBalance.hold')
+      const spot = subtractDecimalString(
+        unknownToDecimalString(
+          balance.total,
+          'spotBalance.total',
+          PROVIDER_KEY
+        ),
+        unknownToDecimalString(balance.hold, 'spotBalance.hold', PROVIDER_KEY)
       )
-      if (spot.gt(0)) {
+      if (isDecimalStringGreaterThan(spot, '0')) {
         const assetId = String(balance.token)
         const row = {
           assetId,
-          route: 'spot' as const,
-          available: spot.toFixed(),
+          categoryId: SPOT_MARKET_ID,
+          available: spot,
           ...feeFor(assetId),
         }
         rows.push({ ...row, max: calculateWithdrawMax(row) })
@@ -64,12 +78,16 @@ export const hyperliquidWithdrawableBalances = (
     }
   }
 
-  const perps = toWireBig(state.withdrawable, 'clearinghouseState.withdrawable')
-  if (perps.gt(0)) {
+  const perps = unknownToDecimalString(
+    state.withdrawable,
+    'clearinghouseState.withdrawable',
+    PROVIDER_KEY
+  )
+  if (isDecimalStringGreaterThan(perps, '0')) {
     const row = {
       assetId: quoteAssetId,
-      route: 'perps' as const,
-      available: perps.toFixed(),
+      categoryId: PROVIDER_KEY,
+      available: perps,
       ...feeFor(quoteAssetId),
     }
     rows.push({ ...row, max: calculateWithdrawMax(row) })

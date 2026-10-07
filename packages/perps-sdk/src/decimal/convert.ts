@@ -1,44 +1,92 @@
-import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { formatUnits } from 'viem'
 import { PerpsError } from '../errors/PerpsError.js'
-import { requireDecimal } from './requireDecimal.js'
+import { createSafeFunction } from '../utils/createSafeFunction.js'
+import { bigToDecimalString, decimalStringToBig } from './decimalStringToBig.js'
+import { isDecimalString } from './parse.js'
 
 /**
- * Off-grid resolution for {@link decimalToBaseUnits}:
- * - `truncate` — toward zero, for sizes and collateral amounts. The wire
- *   value never exceeds the caller's intent.
- * - `round` — half away from zero, for prices, which snap to the nearest
- *   tick.
+ * Off-grid resolution for {@link roundDecimalString}:
+ * - `truncate`: toward zero, for sizes and collateral amounts. The result
+ *   never exceeds the caller's intent.
+ * - `round`: half away from zero, for prices, which snap to the nearest tick.
+ * - `up`: away from zero, for an amount that must cover a target.
  * @public
  */
-export type BaseUnitsRounding = 'truncate' | 'round'
+export type DecimalRounding = 'truncate' | 'round' | 'up'
+
+const BIG_ROUNDING = {
+  truncate: Big.roundDown,
+  round: Big.roundHalfUp,
+  up: Big.roundUp,
+} as const
 
 /**
- * Scale a decimal string to a scaled integer in exact decimal arithmetic — an
- * on-grid input maps to its exact scaled integer with no binary float
- * artifacts (`'0.29'` at 2 decimals is 29, never 28). Off-grid input resolves
- * per `rounding`; there is no silent default.
+ * Round a decimal string to `decimals` places with exact decimal arithmetic.
+ * The result has no trailing zeros: `roundDecimalString('1.50', 1, 'round')`
+ * is `'1.5'`.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a
- *   {@link DecimalString}, `decimals` is not a non-negative integer, or the scaled
- *   result's magnitude exceeds `Number.MAX_SAFE_INTEGER`.
+ * @throws {PerpsError} `ValidationError` when `value` is not a decimal string,
+ *   or `decimals` is not a non-negative integer.
  * @public
  */
-export const decimalToBaseUnits = (
-  value: DecimalString,
+export function roundDecimalString(
+  value: string,
   decimals: number,
-  rounding: BaseUnitsRounding
-): number => {
+  rounding: DecimalRounding
+): string {
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid decimals for rounding: ${decimals}`
+    )
+  }
+  return bigToDecimalString(
+    decimalStringToBig(value).round(decimals, BIG_ROUNDING[rounding])
+  )
+}
+
+/**
+ * {@link roundDecimalString}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeRoundDecimalString = createSafeFunction(
+  'roundDecimalString',
+  roundDecimalString
+)
+
+/**
+ * Scale a decimal string to an integer at `decimals` places in exact decimal
+ * arithmetic: `'0.29'` at 2 decimals is 29, never 28. Off-grid input resolves
+ * per `rounding`. No `$`, `%` or `,` is removed first.
+ *
+ * @throws {PerpsError} `ValidationError` when `value` is not a decimal string,
+ *   `decimals` is not a non-negative integer, or the result's magnitude
+ *   exceeds `Number.MAX_SAFE_INTEGER`.
+ * @public
+ */
+export function decimalStringToScaledInteger(
+  value: string,
+  decimals: number,
+  rounding: DecimalRounding
+): number {
+  if (!isDecimalString(value)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `'${value}' is not a decimal string.`
+    )
+  }
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
       `Invalid decimals for integer scaling: ${decimals}`
     )
   }
-  const scaled = requireDecimal(value, 'decimalToBaseUnits(value)')
+  const scaled = new Big(value)
     .times(new Big(10).pow(decimals))
-    .round(0, rounding === 'truncate' ? Big.roundDown : Big.roundHalfUp)
+    .round(0, BIG_ROUNDING[rounding])
   if (scaled.abs().gt(Number.MAX_SAFE_INTEGER)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
@@ -48,39 +96,56 @@ export const decimalToBaseUnits = (
   return scaled.toNumber()
 }
 
-const BASE_UNITS_PATTERN = /^-?\d+$/
-
 /**
- * Convert a base-unit amount (integer string) to a decimal string.
+ * {@link decimalStringToScaledInteger}, or `undefined` with a warning when it
+ * throws.
  *
- * @param amount - Amount in base units (e.g. "1000000" for 1 USDC)
- * @param decimals - Token decimals (e.g. 6 for USDC)
- * @throws {PerpsError} `ValidationError` when `amount` is not an integer
- *   string, or `decimals` is not a non-negative integer.
- * @example
- * ```ts
- * baseUnitsToDecimal('1000000', 6) // '1'
- * ```
  * @public
  */
-export function baseUnitsToDecimal(
-  amount: DecimalString,
+export const safeDecimalStringToScaledInteger = createSafeFunction(
+  'decimalStringToScaledInteger',
+  decimalStringToScaledInteger
+)
+
+export const BASE_UNITS_PATTERN = /^-?\d+$/
+
+/**
+ * Convert a scaled integer string (a token amount in base units) to a decimal
+ * string: `scaledIntegerToDecimalString('1000000', 6)` is `'1'`.
+ *
+ * @throws {PerpsError} `ValidationError` when `amount` is not an integer
+ *   string, or `decimals` is not a non-negative integer.
+ * @public
+ */
+export function scaledIntegerToDecimalString(
+  amount: string,
   decimals: number
-): DecimalString {
+): string {
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid \`baseUnitsToDecimal(decimals)\`: ${decimals} is not a non-negative integer.`
+      `Invalid \`scaledIntegerToDecimalString(decimals)\`: ${decimals} is not a non-negative integer.`
     )
   }
   if (!BASE_UNITS_PATTERN.test(amount)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid \`baseUnitsToDecimal(amount)\`: '${amount}' is not an integer base-unit string.`
+      `Invalid \`scaledIntegerToDecimalString(amount)\`: '${amount}' is not an integer base-unit string.`
     )
   }
   return formatUnits(BigInt(amount), decimals)
 }
+
+/**
+ * {@link scaledIntegerToDecimalString}, or `undefined` with a warning when it
+ * throws.
+ *
+ * @public
+ */
+export const safeScaledIntegerToDecimalString = createSafeFunction(
+  'scaledIntegerToDecimalString',
+  scaledIntegerToDecimalString
+)
 
 /**
  * Round `value` down to `decimals` and pad the result to exactly that many
@@ -94,26 +159,30 @@ export function baseUnitsToDecimal(
  * `'0.010000000000000000'`, which `Number#toFixed` cannot.
  *
  * @throws {PerpsError} `ValidationError` when `value` is not a
- *   {@link DecimalString}, or `decimals` is not a non-negative integer.
+ *   decimal string, or `decimals` is not a non-negative integer.
  * @public
  */
-export function truncateDecimal(
-  value: DecimalString,
-  decimals: number
-): DecimalString {
+export function truncateDecimal(value: string, decimals: number): string {
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
       `Invalid decimals for truncation: ${decimals}`
     )
   }
-  const truncated = requireDecimal(value, 'truncateDecimal(value)').round(
-    decimals,
-    Big.roundDown
-  )
+  const truncated = decimalStringToBig(value).round(decimals, Big.roundDown)
   // big.js carries the sign through a round to zero; '-0.00' is not a spelling.
   return (truncated.eq(0) ? new Big(0) : truncated).toFixed(decimals)
 }
+
+/**
+ * {@link truncateDecimal}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeTruncateDecimal = createSafeFunction(
+  'truncateDecimal',
+  truncateDecimal
+)
 
 /**
  * Spell a `number` as a {@link DecimalString} in plain notation: `1e-7`
@@ -125,7 +194,7 @@ export function truncateDecimal(
  * @throws {PerpsError} `ValidationError` when `value` is `NaN` or infinite.
  * @public
  */
-export function numberToDecimalString(value: number): DecimalString {
+export function numberToDecimalString(value: number): string {
   if (!Number.isFinite(value)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
@@ -135,3 +204,13 @@ export function numberToDecimalString(value: number): DecimalString {
   const parsed = new Big(value)
   return (parsed.eq(0) ? new Big(0) : parsed).toFixed()
 }
+
+/**
+ * {@link numberToDecimalString}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeNumberToDecimalString = createSafeFunction(
+  'numberToDecimalString',
+  numberToDecimalString
+)

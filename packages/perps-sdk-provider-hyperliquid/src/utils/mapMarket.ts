@@ -1,6 +1,6 @@
+import { safeMultiplyDecimalString } from '@lifi/perps-sdk'
 import type { PerpsMarket } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlMaxMarketOrderNtls, HlUniverseItem } from '../types/index.js'
 import { calculateMaintenanceMarginRate } from './liquidation.js'
@@ -10,7 +10,7 @@ import { getMaxPriceDecimals } from './orderFormatting.js'
 /** Hyperliquid quotes every perp market in USDC. */
 const QUOTE_SYMBOL = 'USDC'
 /** Hyperliquid documents the limit-order notional cap as 10x the market-order cap. */
-const LIMIT_ORDER_VALUE_MULTIPLIER = 10
+const LIMIT_ORDER_VALUE_MULTIPLIER = '10'
 
 type MarketOrderLimits = Pick<
   PerpsMarket,
@@ -28,19 +28,21 @@ const mapMarketOrderLimits = (
   if (selected === undefined) {
     return {}
   }
-  const maxMarketOrderUsd = new Big(selected[1])
-  return {
-    maxMarketOrderUsd: maxMarketOrderUsd.toFixed(),
-    maxLimitOrderUsd: maxMarketOrderUsd
-      .times(LIMIT_ORDER_VALUE_MULTIPLIER)
-      .toFixed(),
+  const [, maxMarketOrderUsd] = selected
+  const maxLimitOrderUsd = safeMultiplyDecimalString(
+    maxMarketOrderUsd,
+    LIMIT_ORDER_VALUE_MULTIPLIER
+  )
+  if (maxLimitOrderUsd === undefined) {
+    return {}
   }
+  return { maxMarketOrderUsd, maxLimitOrderUsd }
 }
 
 /**
  * Map Hyperliquid universe metadata and optional `maxMarketOrderNtls` tiers to
- * a {@link PerpsMarket}. Missing tiers leave both order caps unset. Live stats
- * stay on {@link MarketContext}; callers supply the provider category id
+ * a {@link PerpsMarket}. Missing tiers or an invalid cap leave both order caps
+ * unset. Live stats stay on {@link MarketContext}; callers supply the provider category id
  * because the coin string does not contain it.
  * @public
  */

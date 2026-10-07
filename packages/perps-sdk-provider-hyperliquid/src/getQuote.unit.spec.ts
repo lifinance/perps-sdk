@@ -92,7 +92,7 @@ describe('hyperliquidProvider.getQuote', () => {
     const quote = await makeProvider().getQuote({
       symbol: 'BTC',
       side: 'buy',
-      size: 201,
+      size: '201',
       type: 'perps',
     })
 
@@ -113,7 +113,7 @@ describe('hyperliquidProvider.getQuote', () => {
       makeProvider().getQuote({
         symbol: 'DOGE',
         side: 'buy',
-        size: 10,
+        size: '10',
         type: 'perps',
       })
     ).rejects.toThrow(/No perps market found/)

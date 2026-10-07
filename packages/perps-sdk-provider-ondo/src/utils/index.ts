@@ -26,7 +26,6 @@ export {
   type OndoDepositPolicyMarker,
   parseOndoDepositAddress,
 } from './depositAddress.js'
-export { estimateLiquidationPrice } from './liquidation.js'
 export {
   mapDepositActivity,
   mapFundingActivity,
@@ -35,7 +34,7 @@ export {
 } from './mapActivity.js'
 export { mapFill } from './mapFill.js'
 export { mapOrder, mapOrderStatus, mapOrderUpdates } from './mapOrder.js'
-export { mapOpenPositions, mapPosition } from './mapPosition.js'
+export { isOpenPosition, mapOpenPositions, mapPosition } from './mapPosition.js'
 export { intervalFromBarSpan, mapInterval } from './ohlcvInterval.js'
 export { ondoAsset } from './ondoAsset.js'
 export { snapOrderPrice, snapOrderSize } from './orderFormatting.js'

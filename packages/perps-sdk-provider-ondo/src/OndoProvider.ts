@@ -5,9 +5,11 @@ import {
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
+  estimateLiquidationPriceAtMarketRate,
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isDecimalStringGreaterThan,
   localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
@@ -36,6 +38,7 @@ import {
   toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
   type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import type {
@@ -48,6 +51,7 @@ import type {
   ActivitiesResponse,
   ActivityItem,
   AvailableToTrade,
+  DepositActivity,
   Fill,
   FillsResponse,
   FundingActivity,
@@ -78,6 +82,11 @@ import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
+import {
+  ondoSessionRejectedError,
+  ondoSessionRequiredError,
+  requireOndoSessionToken,
+} from './auth/sessionToken.js'
 import { ondoSignActions } from './auth/signActions.js'
 import {
   DEFAULT_ONDO_API_URL,
@@ -118,9 +127,7 @@ import {
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
-import { toWireBig } from './utils/decimal.js'
 import {
-  estimateLiquidationPrice,
   listOndoDepositAddress,
   mapDepositActivity,
   mapFill,
@@ -302,24 +309,15 @@ export const ondoProvider = (
   }
 
   const sessionRequired = (read: string) => (): never => {
-    const error = new PerpsError(
-      PerpsErrorCode.SetupRequired,
+    throw ondoSessionRequiredError(
       `Ondo ${read} requires a session token. Run the SIWE login first.`
     )
-    error.tool = ONDO_PROVIDER_KEY
-    throw error
   }
 
   const sessionRejected =
     (read: string) =>
     (cause: OndoSessionExpiredError): never => {
-      const error = new PerpsError(
-        PerpsErrorCode.Unauthorized,
-        `Ondo ${read} failed: the venue rejected the session; sign in again.`
-      )
-      error.tool = ONDO_PROVIDER_KEY
-      error.cause = cause
-      throw error
+      throw ondoSessionRejectedError(read, cause)
     }
 
   // A data read throws the account's state: an empty result would be
@@ -392,9 +390,10 @@ export const ondoProvider = (
             requirePerpsMarketDisplay
           )
 
-          const walletBalance = toWireBig(
+          const walletBalance = unknownToDecimalString(
             balance.walletBalance,
-            'balance.walletBalance'
+            'balance.walletBalance',
+            ONDO_PROVIDER_KEY
           )
 
           // The backend owns the collateral identity; the venue supplies its
@@ -403,7 +402,7 @@ export const ondoProvider = (
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
             balances: [],
-            collateralBalances: walletBalance.gt(0)
+            collateralBalances: isDecimalStringGreaterThan(walletBalance, '0')
               ? [
                   {
                     categoryId: ONDO_PROVIDER_KEY,
@@ -412,11 +411,12 @@ export const ondoProvider = (
                     valueUsd: balance.walletBalance,
                     price: '1',
                     transferable: calculateTransferable(
-                      toWireBig(
+                      unknownToDecimalString(
                         balance.withdrawableMargin,
-                        'balance.withdrawableMargin'
-                      ).toFixed(),
-                      walletBalance.toFixed()
+                        'balance.withdrawableMargin',
+                        ONDO_PROVIDER_KEY
+                      ),
+                      walletBalance
                     ),
                   },
                 ]
@@ -507,8 +507,12 @@ export const ondoProvider = (
             error.tool = ONDO_PROVIDER_KEY
             throw error
           }
-          const leverage = toWireBig(row.leverage, 'leverage')
-          if (leverage.lte(0)) {
+          const leverage = unknownToDecimalString(
+            row.leverage,
+            'leverage',
+            ONDO_PROVIDER_KEY
+          )
+          if (!isDecimalStringGreaterThan(leverage, '0')) {
             const error = new PerpsError(
               PerpsErrorCode.SDKError,
               `Ondo field \`leverage\` must be positive: '${row.leverage}'`
@@ -516,7 +520,10 @@ export const ondoProvider = (
             error.tool = ONDO_PROVIDER_KEY
             throw error
           }
-          return { marginMode: MarginMode.CROSS, leverage: leverage.toNumber() }
+          return {
+            marginMode: MarginMode.CROSS,
+            leverage,
+          }
         }
       )
     },
@@ -915,7 +922,16 @@ export const ondoProvider = (
               }),
             marketRegistry().sync(),
           ])
-          return mapOrder(order, requireMarketDisplay(order.market))
+          const mapped = mapOrder(order, requireMarketDisplay(order.market))
+          if (mapped === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.OrderNotFound,
+              `Ondo order ${params.id} not found: the venue row is invalid`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          return mapped
         }
       )
     },
@@ -946,7 +962,8 @@ export const ondoProvider = (
 
           const items = page.result.flatMap((fill): Fill[] => {
             const market = marketDisplay(fill.market)
-            return market === undefined ? [] : [mapFill(fill, market)]
+            const mapped = market && mapFill(fill, market)
+            return mapped ? [mapped] : []
           })
 
           const nextCursor = page.pageInfo?.nextCursor
@@ -1063,16 +1080,18 @@ export const ondoProvider = (
           const items: ActivityItem[] = [
             ...fundings.result.flatMap((f): FundingActivity[] => {
               const market = marketDisplay(f.market)
-              return market === undefined ? [] : [mapFundingActivity(f, market)]
+              const activity =
+                market === undefined ? null : mapFundingActivity(f, market)
+              return activity === null ? [] : [activity]
             }),
             // A liquidation event that names no position is dropped: the
             // public contract guarantees a non-empty `liquidatedPositions`.
             ...liquidations.result
               .map((l) => mapLiquidationActivity(l, marketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
-            ...(deposits ?? []).map((deposit) =>
-              mapDepositActivity(deposit, assetRegistry)
-            ),
+            ...(deposits ?? [])
+              .map((deposit) => mapDepositActivity(deposit, assetRegistry))
+              .filter((a): a is DepositActivity => a !== null),
             // A withdrawal Ondo reports as failed or cancelled moved no value,
             // and `WithdrawalActivity` carries no status to say so.
             ...(withdrawals ?? [])
@@ -1147,7 +1166,7 @@ export const ondoProvider = (
 
     snapOrderSize,
 
-    estimateLiquidationPrice,
+    estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
 
@@ -1165,12 +1184,7 @@ export const ondoProvider = (
       if (action !== ActionType.WITHDRAWAL) {
         return {}
       }
-      const token = await tokenStore.get(address)
-      if (token === null) {
-        throw new OndoSessionExpiredError(
-          `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-        )
-      }
+      const token = await requireOndoSessionToken(tokenStore, address)
       return { params: { accountId: token.accountId } }
     },
 

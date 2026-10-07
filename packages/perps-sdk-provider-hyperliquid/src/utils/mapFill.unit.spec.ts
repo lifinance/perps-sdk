@@ -1,13 +1,21 @@
-import type { MarketDisplay } from '@lifi/perps-types'
+import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
   LiquidityRole,
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './mapFill.js'
+
+const mapValidFill = (...args: Parameters<typeof mapFill>): Fill => {
+  const fill = mapFill(...args)
+  if (fill === undefined) {
+    throw new Error('mapFill skipped a valid row')
+  }
+  return fill
+}
 
 const ETH_MARKET: MarketDisplay = {
   providerId: 'hyperliquid',
@@ -45,7 +53,7 @@ const spotMarket = (id: string): MarketDisplay => ({
   },
 })
 
-const map = (fill: HlUserFill) => mapFill(fill, ETH_MARKET)
+const map = (fill: HlUserFill) => mapValidFill(fill, ETH_MARKET)
 
 const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
   tid: 12345,
@@ -66,13 +74,13 @@ const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
 describe('classifyFillFromPosition', () => {
   describe('starting flat (start === 0)', () => {
     it('classifies a buy as OPENED_LONG', () => {
-      expect(classifyFillFromPosition('0', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.BUY, '1')).toBe(
         FillClassification.OPENED_LONG
       )
     })
 
     it('classifies a sell as OPENED_SHORT', () => {
-      expect(classifyFillFromPosition('0', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.SELL, '1')).toBe(
         FillClassification.OPENED_SHORT
       )
     })
@@ -80,25 +88,25 @@ describe('classifyFillFromPosition', () => {
 
   describe('starting long (start > 0)', () => {
     it('classifies a sell that fully unwinds as CLOSED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '1')).toBe(
         FillClassification.CLOSED_LONG
       )
     })
 
     it('classifies a sell that flips negative as SWITCHED_SHORT', () => {
-      expect(classifyFillFromPosition('1', 'A', '2')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '2')).toBe(
         FillClassification.SWITCHED_SHORT
       )
     })
 
     it('classifies a buy that grows the position as INCREASED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.BUY, '1')).toBe(
         FillClassification.INCREASED_LONG
       )
     })
 
     it('classifies a partial sell as REDUCED_LONG', () => {
-      expect(classifyFillFromPosition('2', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('2', OrderSide.SELL, '1')).toBe(
         FillClassification.REDUCED_LONG
       )
     })
@@ -106,25 +114,25 @@ describe('classifyFillFromPosition', () => {
 
   describe('starting short (start < 0)', () => {
     it('classifies a buy that fully unwinds as CLOSED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '1')).toBe(
         FillClassification.CLOSED_SHORT
       )
     })
 
     it('classifies a buy that flips positive as SWITCHED_LONG', () => {
-      expect(classifyFillFromPosition('-1', 'B', '2')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '2')).toBe(
         FillClassification.SWITCHED_LONG
       )
     })
 
     it('classifies a sell that deepens the short as INCREASED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.SELL, '1')).toBe(
         FillClassification.INCREASED_SHORT
       )
     })
 
     it('classifies a partial buy as REDUCED_SHORT', () => {
-      expect(classifyFillFromPosition('-2', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-2', OrderSide.BUY, '1')).toBe(
         FillClassification.REDUCED_SHORT
       )
     })
@@ -190,7 +198,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('keeps a spot fill fee in the feeToken the venue charged, not the base asset', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: 'PURR/USDC', fee: '0.05', feeToken: 'PURR' }),
         spotMarket('PURR/USDC')
       )
@@ -295,7 +303,7 @@ describe('mapFill (Hyperliquid)', () => {
 
   describe('classification', () => {
     it('routes spot fills (@-indexed pair) on the buy side to SPOT_BUY', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: '@230', side: 'B' }),
         spotMarket('@230')
       )
@@ -303,7 +311,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('preserves closedPnl "0" on SPOT_BUY fills so downstream can render neutral PnL', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: '@230', side: 'B', closedPnl: '0' }),
         spotMarket('@230')
       )
@@ -311,7 +319,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('routes spot fills on the sell side to SPOT_SELL', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: '@230', side: 'A' }),
         spotMarket('@230')
       )
@@ -319,7 +327,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('preserves closedPnl "0" on SPOT_SELL fills so downstream can render neutral PnL', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: '@230', side: 'A', closedPnl: '0' }),
         spotMarket('@230')
       )
@@ -327,7 +335,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('routes canonical-pair spot fills (PURR/USDC) on the buy side to SPOT_BUY', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: 'PURR/USDC', side: 'B' }),
         spotMarket('PURR/USDC')
       )
@@ -335,7 +343,7 @@ describe('mapFill (Hyperliquid)', () => {
     })
 
     it('routes canonical-pair spot fills on the sell side to SPOT_SELL', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseFill({ coin: 'PURR/USDC', side: 'A' }),
         spotMarket('PURR/USDC')
       )
@@ -348,5 +356,41 @@ describe('mapFill (Hyperliquid)', () => {
       )
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)
     })
+
+    it('maps a perp fill with a malformed startPosition and classifies it by side', () => {
+      const fill = map(baseFill({ startPosition: '10oops', side: 'A' }))
+      expect(fill.classification).toBe(FillClassification.SELL)
+    })
+  })
+})
+
+describe('mapFill (Hyperliquid) invalid rows', () => {
+  it('keeps a fill with a non-decimal sz as the raw venue string', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(baseFill({ sz: '10oops' }), ETH_MARKET)).toMatchObject({
+      size: '10oops',
+      filledSize: '10oops',
+    })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('keeps a fill with a non-decimal px as the raw venue string', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(baseFill({ px: '' }), ETH_MARKET)).toMatchObject({
+      price: '',
+    })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('skips a fill with an invalid time and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(baseFill({ time: Number.NaN }), ETH_MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('skipping fill row: `time`')
+    )
+    warn.mockRestore()
   })
 })

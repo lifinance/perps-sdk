@@ -43,7 +43,7 @@ describe('getMarketSettings', () => {
         address: ADDRESS,
         market: { marketId: 'BTC', categoryId: MAIN_MARKET_ID },
       })
-    ).resolves.toEqual({ marginMode: MarginMode.CROSS, leverage: 20 })
+    ).resolves.toEqual({ marginMode: MarginMode.CROSS, leverage: '20' })
     expect(requests).toHaveLength(2)
     expect(requests.at(-1)?.body).toEqual({
       type: 'activeAssetData',
@@ -69,7 +69,7 @@ describe('getMarketSettings', () => {
         address: ADDRESS,
         market: { marketId: 'ETH', categoryId: MAIN_MARKET_ID },
       })
-    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: 3 })
+    ).resolves.toEqual({ marginMode: MarginMode.ISOLATED, leverage: '3' })
   })
 
   it('throws SDKError when activeAssetData carries no leverage', async () => {

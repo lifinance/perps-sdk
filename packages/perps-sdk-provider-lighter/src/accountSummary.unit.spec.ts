@@ -12,7 +12,6 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import { getAccountSummary, lighterPortfolioValue } from './accountSummary.js'
 
@@ -50,7 +49,7 @@ const position = (
   liquidationPrice: '50',
   unrealizedPnl,
   accruedFunding: '0',
-  leverage: 10,
+  leverage: '10',
   marginUsed,
   initialMarginRequirement: marginUsed,
   marginMode,
@@ -261,18 +260,14 @@ describe('getAccountSummary', () => {
 
 describe('lighterPortfolioValue', () => {
   it('adds every spot value to the perps equity', () => {
-    expect(
-      lighterPortfolioValue(new Big('12.5'), ['50.25', '0', '0.1']).toFixed()
-    ).toBe('62.85')
+    expect(lighterPortfolioValue('12.5', ['50.25', '0', '0.1'])).toBe('62.85')
   })
 
   it('returns the perps equity without spot values', () => {
-    expect(lighterPortfolioValue(new Big('7'), []).toFixed()).toBe('7')
+    expect(lighterPortfolioValue('7', [])).toBe('7')
   })
 
   it('rejects a non-decimal spot value', () => {
-    expect(() => lighterPortfolioValue(new Big('7'), ['n/a'])).toThrow(
-      PerpsError
-    )
+    expect(() => lighterPortfolioValue('7', ['n/a'])).toThrow(PerpsError)
   })
 })

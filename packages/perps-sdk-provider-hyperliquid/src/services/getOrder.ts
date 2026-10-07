@@ -24,6 +24,15 @@ import { requireAccountExists } from './getAccountExists.js'
  */
 export type GetOrderParams = ProviderGetOrderParams
 
+const orderNotFound = (id: string): PerpsError => {
+  const err = new PerpsError(
+    PerpsErrorCode.OrderNotFound,
+    `Order not found: ${id}`
+  )
+  err.tool = PROVIDER_KEY
+  return err
+}
+
 /**
  * Read getOrder direct from the Hyperliquid REST API.
  *
@@ -70,17 +79,16 @@ export const getOrder = async (
     if (twap !== undefined) {
       const registry = getMarketRegistry(client, PROVIDER_KEY)
       await registry.sync()
-      return mapOrder(twap, registry.require(twap.state.coin))
+      const order = mapOrder(twap, registry.require(twap.state.coin))
+      if (order === undefined) {
+        throw orderNotFound(params.id)
+      }
+      return order
     }
   }
 
   if (status.status !== 'order' || assetIsOutcome(status.order.order.coin)) {
-    const err = new PerpsError(
-      PerpsErrorCode.OrderNotFound,
-      `Order not found: ${params.id}`
-    )
-    err.tool = PROVIDER_KEY
-    throw err
+    throw orderNotFound(params.id)
   }
 
   const registry = getMarketRegistry(client, PROVIDER_KEY)
@@ -89,6 +97,9 @@ export const getOrder = async (
     status.order,
     registry.require(status.order.order.coin)
   )
+  if (order === undefined) {
+    throw orderNotFound(params.id)
+  }
   const [linked] = await withExplorerLinks([order], params.address, infoOpts)
   return linked
 }

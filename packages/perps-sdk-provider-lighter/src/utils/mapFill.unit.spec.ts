@@ -1,14 +1,22 @@
 import { isDecimalString } from '@lifi/perps-sdk'
-import type { MarketDisplay } from '@lifi/perps-types'
+import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
   LiquidityRole,
   OrderSide,
   OrderType,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
+
+const mapValidFill = (...args: Parameters<typeof mapFill>): Fill => {
+  const fill = mapFill(...args)
+  if (fill === undefined) {
+    throw new Error('mapFill skipped a valid row')
+  }
+  return fill
+}
 
 const ACCOUNT_INDEX = 42
 // Lighter's Premium base fee schedule on the 1e6 tick scale: 0.0040% maker and
@@ -74,23 +82,25 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
 
 describe('mapFill (Lighter)', () => {
   it('stringifies trade_id into Fill.id', () => {
-    expect(mapFill(baseTrade({ trade_id: 7 }), ACCOUNT_INDEX, MARKET).id).toBe(
-      '7'
-    )
+    expect(
+      mapValidFill(baseTrade({ trade_id: 7 }), ACCOUNT_INDEX, MARKET).id
+    ).toBe('7')
   })
 
   it('carries the resolved market identity onto the fill verbatim', () => {
-    expect(mapFill(baseTrade(), ACCOUNT_INDEX, MARKET).market).toEqual(MARKET)
+    expect(mapValidFill(baseTrade(), ACCOUNT_INDEX, MARKET).market).toEqual(
+      MARKET
+    )
   })
 
   it('reports the execution type without an order lifecycle status', () => {
-    const fill = mapFill(baseTrade(), ACCOUNT_INDEX, MARKET)
+    const fill = mapValidFill(baseTrade(), ACCOUNT_INDEX, MARKET)
     expect(fill.type).toBe(OrderType.LIMIT)
     expect(fill).not.toHaveProperty('status')
   })
 
   it('serialises timestamp as ISO string', () => {
-    const fill = mapFill(
+    const fill = mapValidFill(
       baseTrade({ timestamp: 1_700_000_000_000 }),
       ACCOUNT_INDEX,
       MARKET
@@ -102,7 +112,7 @@ describe('mapFill (Lighter)', () => {
   // of the trade (bid_account_id === accountIndex XOR is_maker_ask).
   describe('side + maker/taker truth table', () => {
     it('viewer on bid + is_maker_ask=true → BUY taker → taker fee', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -118,7 +128,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('viewer on bid + is_maker_ask=false → BUY maker → maker fee', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -134,7 +144,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('viewer on ask + is_maker_ask=true → SELL maker → maker fee', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -150,7 +160,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('viewer on ask + is_maker_ask=false → SELL taker → taker fee', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -168,7 +178,7 @@ describe('mapFill (Lighter)', () => {
 
   describe('classification', () => {
     it('opens a long when a flat viewer buys', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -184,7 +194,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('opens a short when a flat viewer sells', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -200,7 +210,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('closes a long when a viewer sells the exact long size', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -216,7 +226,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('closes a short when a viewer buys the exact short size', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -232,7 +242,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reduces a long on a partial sell', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -248,7 +258,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reduces a short on a partial buy', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -264,7 +274,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('increases a long when an already-long viewer buys more', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -280,7 +290,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('increases a short when an already-short viewer sells more', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -296,7 +306,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('switches long → short when a long viewer over-sells', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -312,7 +322,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('switches short → long when a short viewer over-buys', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -331,7 +341,7 @@ describe('mapFill (Lighter)', () => {
     // `*_position_size_before` to read; the counterparty's snapshot can be in
     // a different position state.
     it('reads taker_position_size_before when the viewer is the taker', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -347,7 +357,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reads maker_position_size_before when the viewer is the maker', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -364,7 +374,7 @@ describe('mapFill (Lighter)', () => {
 
     it('classifies the closing fill in an OPEN→CLOSE sequence as CLOSED_LONG', () => {
       // Fill 1: viewer buys 1 from flat → OPENED_LONG
-      const open = mapFill(
+      const open = mapValidFill(
         baseTrade({
           trade_id: 1,
           bid_account_id: ACCOUNT_INDEX,
@@ -380,7 +390,7 @@ describe('mapFill (Lighter)', () => {
       expect(open.classification).toBe(FillClassification.OPENED_LONG)
 
       // Fill 2: viewer sells 1, now long 1 → CLOSED_LONG (not OPENED_SHORT)
-      const close = mapFill(
+      const close = mapValidFill(
         baseTrade({
           trade_id: 2,
           ask_account_id: ACCOUNT_INDEX,
@@ -397,7 +407,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('classifies the second fill in an OPEN→OVERSELL sequence as SWITCHED_SHORT', () => {
-      const switchSell = mapFill(
+      const switchSell = mapValidFill(
         baseTrade({
           trade_id: 2,
           ask_account_id: ACCOUNT_INDEX,
@@ -421,7 +431,7 @@ describe('mapFill (Lighter)', () => {
       // viewer on bid + is_maker_ask=true → viewer is taker
       [true, LiquidityRole.TAKER],
     ])('viewer on bid with is_maker_ask: %s → liquidity: %s', (is_maker_ask, expected) => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -436,7 +446,7 @@ describe('mapFill (Lighter)', () => {
 
   describe('orderId selects bid_id / ask_id by viewer side', () => {
     it('buyer path: viewer on bid → orderId from bid_id', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -450,7 +460,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('seller path: viewer on ask → orderId from ask_id', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -466,7 +476,7 @@ describe('mapFill (Lighter)', () => {
 
   describe('explorerLink', () => {
     it('links the L2 tx hash to the Lighter explorer', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ tx_hash: '0000abcd' }),
         ACCOUNT_INDEX,
         MARKET
@@ -477,12 +487,16 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('omits the link when the tx hash is empty', () => {
-      const fill = mapFill(baseTrade({ tx_hash: '' }), ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(
+        baseTrade({ tx_hash: '' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
       expect(fill.explorerLink).toBeUndefined()
     })
 
     it('omits the link when Lighter reports a placeholder tx hash', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ tx_hash: PLACEHOLDER_TX_HASH }),
         ACCOUNT_INDEX,
         MARKET
@@ -491,7 +505,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('links a settled 40-byte tx hash to the Lighter explorer', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ tx_hash: SETTLED_TX_HASH }),
         ACCOUNT_INDEX,
         MARKET
@@ -504,7 +518,7 @@ describe('mapFill (Lighter)', () => {
 
   describe('optional fee fields', () => {
     it('returns undefined fee when the taker tick is absent on a taker fill', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -519,7 +533,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('returns undefined fee when the maker tick is absent on a maker fill', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -535,7 +549,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it("reads the fee asset from the market's quote asset", () => {
-      const fill = mapFill(baseTrade(), ACCOUNT_INDEX, {
+      const fill = mapValidFill(baseTrade(), ACCOUNT_INDEX, {
         ...MARKET,
         quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDT' },
       })
@@ -549,7 +563,7 @@ describe('mapFill (Lighter)', () => {
   // default/min_initial_margin_fraction integers.
   describe('leverage from the pre-trade initial margin fraction', () => {
     it("reads the maker fraction on a maker fill and ignores the taker's", () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -561,11 +575,11 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.liquidity).toBe(LiquidityRole.MAKER)
-      expect(fill.leverage).toBe(20)
+      expect(fill.leverage).toBe('20')
     })
 
     it("reads the taker fraction on a taker fill and ignores the maker's", () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -577,11 +591,11 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.liquidity).toBe(LiquidityRole.TAKER)
-      expect(fill.leverage).toBe(50)
+      expect(fill.leverage).toBe('50')
     })
 
     it('reports a fractional multiple when the reciprocal does not divide', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -591,19 +605,19 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.leverage).toBe(33.33)
+      expect(fill.leverage).toBe('33.33')
     })
 
     it('leaves leverage unset on older rows missing the fraction', () => {
       expect(
-        mapFill(baseTrade(), ACCOUNT_INDEX, MARKET).leverage
+        mapValidFill(baseTrade(), ACCOUNT_INDEX, MARKET).leverage
       ).toBeUndefined()
     })
 
     it.each([
       0, -100,
     ])('leaves leverage unset when the venue reports the fraction %i', (fraction) => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -621,7 +635,7 @@ describe('mapFill (Lighter)', () => {
     // The tick is a rate, not an amount: the same tick on twice the notional
     // charges twice the fee.
     it('doubles the fee when the notional doubles at a fixed tick', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ usd_amount: '4000' }),
         ACCOUNT_INDEX,
         MARKET
@@ -641,7 +655,7 @@ describe('mapFill (Lighter)', () => {
     } satisfies Partial<LtTrade>
 
     it('scales the maker tick by the notional on a live trade row', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ ...liveRow, is_maker_ask: false }),
         ACCOUNT_INDEX,
         MARKET
@@ -651,7 +665,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('scales the taker tick by the notional on a live trade row', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ ...liveRow, is_maker_ask: true }),
         ACCOUNT_INDEX,
         MARKET
@@ -661,12 +675,16 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reports a zero fee for a zero tick on a maker fill', () => {
-      const fill = mapFill(baseTrade({ maker_fee: 0 }), ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(
+        baseTrade({ maker_fee: 0 }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
       expect(fill.fee).toEqual({ amount: '0', asset: 'USDC' })
     })
 
     it('reports a zero fee for a zero tick on a taker fill', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -684,7 +702,7 @@ describe('mapFill (Lighter)', () => {
     // product rather than dropping the fee, so a consumer never has to tell a
     // zero-notional row apart from a row that carries no tick at all.
     it('reports a zero fee for a zero notional at a non-zero tick', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ usd_amount: '0', maker_fee: MAKER_TICK }),
         ACCOUNT_INDEX,
         MARKET
@@ -696,7 +714,7 @@ describe('mapFill (Lighter)', () => {
     // instead of a charge. `Fee.amount` is a signed decimal string and the Ondo
     // mapper already emits a negative amount when a rebate exceeds the fee.
     it('reports a negative fee for a rebate tick', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ maker_fee: -MAKER_TICK }),
         ACCOUNT_INDEX,
         MARKET
@@ -737,19 +755,19 @@ describe('mapFill (Lighter)', () => {
     } satisfies Partial<LtTrade>
 
     it('sums the maker tick and the integrator maker tick on a live trade row', () => {
-      const fill = mapFill(baseTrade(liveMakerRow), ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(baseTrade(liveMakerRow), ACCOUNT_INDEX, MARKET)
       expect(fill.liquidity).toBe(LiquidityRole.MAKER)
       expect(fill.fee).toEqual({ amount: '0.003443132', asset: 'USDC' })
     })
 
     it('sums the taker tick and the integrator taker tick on a live trade row', () => {
-      const fill = mapFill(baseTrade(liveTakerRow), ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(baseTrade(liveTakerRow), ACCOUNT_INDEX, MARKET)
       expect(fill.liquidity).toBe(LiquidityRole.TAKER)
       expect(fill.fee).toEqual({ amount: '0.0200454768', asset: 'USDC' })
     })
 
     it('reports the side tick alone when the row carries no integrator tick', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ ...liveMakerRow, integrator_maker_fee: undefined }),
         ACCOUNT_INDEX,
         MARKET
@@ -758,7 +776,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('ignores the integrator tick of the other side', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ ...liveMakerRow, integrator_taker_fee: 900 }),
         ACCOUNT_INDEX,
         MARKET
@@ -770,7 +788,7 @@ describe('mapFill (Lighter)', () => {
     // integrator tick alone sets the amount. Contrast the absent-tick case
     // below, which reports no fee at all.
     it('sums an explicit zero side tick with the integrator tick', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ maker_fee: 0, integrator_maker_fee: 100 }),
         ACCOUNT_INDEX,
         MARKET
@@ -780,7 +798,7 @@ describe('mapFill (Lighter)', () => {
 
     // Live rows carry an integrator tick for a side whose own tick is absent.
     it('returns undefined fee when only the integrator tick is present', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({ ...liveMakerRow, maker_fee: undefined }),
         ACCOUNT_INDEX,
         MARKET
@@ -791,7 +809,7 @@ describe('mapFill (Lighter)', () => {
 
   describe('realizedPnl derivation', () => {
     it('derives PnL when a long is closed (entry 40000, exit 50000)', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -811,7 +829,7 @@ describe('mapFill (Lighter)', () => {
       ['a sub-micro', '1.0000001', '0.0000001'],
       ['a 1e21', '1000000000000000000001', '1000000000000000000000'],
     ])('spells %s realized PnL without an exponent', (_label, price, pnl) => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -829,7 +847,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('derives PnL when a short is closed (entry 50000, exit 40000)', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -847,7 +865,7 @@ describe('mapFill (Lighter)', () => {
 
     it('realizes only the closed portion when a sell flips a long short', () => {
       // Long 1 @ 40000, sell 2 @ 50000 → only the 1 closed unit realizes PnL.
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -865,7 +883,7 @@ describe('mapFill (Lighter)', () => {
 
     it('partially reduces a long, scaling avg entry by the closed size', () => {
       // Long 2 with entry quote 80000 (avg 40000), sell 1 @ 50000 → 10000.
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -882,7 +900,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reads the maker entry quote when the viewer is the maker', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -901,7 +919,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('leaves realizedPnl unset when opening a position', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -918,7 +936,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('leaves realizedPnl unset when increasing an existing long', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
@@ -935,7 +953,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('leaves realizedPnl unset on older rows missing the entry quote', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -952,7 +970,7 @@ describe('mapFill (Lighter)', () => {
     })
 
     it('reports null (not a value) when a close realizes exactly zero', () => {
-      const fill = mapFill(
+      const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
@@ -981,7 +999,7 @@ describe('mapFill (Lighter)', () => {
         is_maker_ask: isMakerAsk,
       })
 
-      const fill = mapFill(trade, ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(trade, ACCOUNT_INDEX, MARKET)
 
       expect(fill.liquidity).toBe(role)
       expect(fill.startPosition).toBe('0')
@@ -996,10 +1014,85 @@ describe('mapFill (Lighter)', () => {
         maker_position_size_before: '2',
       })
 
-      const fill = mapFill(trade, ACCOUNT_INDEX, MARKET)
+      const fill = mapValidFill(trade, ACCOUNT_INDEX, MARKET)
 
       expect(fill.startPosition).toBe('2')
       expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
+    })
+  })
+
+  it.each([
+    ['size', { size: '10oops' }, '10oops'],
+    ['price', { price: 'NaN' }, 'NaN'],
+  ] satisfies [
+    'size' | 'price',
+    Partial<LtTrade>,
+    string,
+  ][])('keeps a trade with an invalid %s and shows the venue string', (field, overrides, venueValue) => {
+    const fill = mapValidFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
+    expect(fill[field]).toBe(venueValue)
+  })
+
+  it('skips a trade with an invalid timestamp and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      mapFill(baseTrade({ timestamp: Number.NaN }), ACCOUNT_INDEX, MARKET)
+    ).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('skipping fill row: `timestamp`')
+    )
+    warn.mockRestore()
+  })
+
+  // The viewer is the maker buyer in the base fixture, so a short snapshot makes
+  // the fill reducing and every input reaches the realized PnL math.
+  describe('malformed decimal inputs', () => {
+    const reducingFill: Partial<LtTrade> = {
+      maker_position_size_before: '-2',
+      maker_entry_quote_before: '80000',
+    }
+
+    it.each([
+      [
+        'maker_position_size_before',
+        { maker_position_size_before: '10oops', maker_entry_quote_before: '1' },
+      ],
+      [
+        'taker_position_size_before',
+        {
+          is_maker_ask: true,
+          taker_position_size_before: '10oops',
+          taker_entry_quote_before: '1',
+        },
+      ],
+      [
+        'maker_entry_quote_before',
+        { ...reducingFill, maker_entry_quote_before: 'abc' },
+      ],
+    ] satisfies [
+      string,
+      Partial<LtTrade>,
+    ][])('maps the trade without realizedPnl when %s is malformed', (_field, overrides) => {
+      const fill = mapValidFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
+      expect(fill.id).toBe(baseTrade().trade_id.toString())
+      expect(fill.realizedPnl).toBeUndefined()
+    })
+
+    it('maps the trade without a fee when usd_amount is malformed', () => {
+      const fill = mapValidFill(
+        baseTrade({ usd_amount: '2,000' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.id).toBe(baseTrade().trade_id.toString())
+      expect(fill.fee).toBeUndefined()
+    })
+
+    it('derives realized PnL when every input is a decimal string', () => {
+      expect(
+        mapValidFill(baseTrade(reducingFill), ACCOUNT_INDEX, MARKET).realizedPnl
+      ).toBeDefined()
     })
   })
 })

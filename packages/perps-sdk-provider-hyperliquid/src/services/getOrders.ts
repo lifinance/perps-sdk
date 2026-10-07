@@ -39,7 +39,7 @@ const warnOnce = (key: string): void => {
 const mapRow = (
   coin: string,
   registry: MarketRegistry,
-  map: (market: MarketDisplay) => Order
+  map: (market: MarketDisplay) => Order | undefined
 ): Order | undefined => {
   if (assetIsOutcome(coin)) {
     return undefined
@@ -114,14 +114,17 @@ export const getOrders = async (
       rows.set(key, order)
     }
   }
+  const seenHistorical = new Set<string>()
   for (const detail of historical) {
     const key = String(detail.order.oid)
     // The feed carries one row per lifecycle transition, newest first, and a
     // terminal row shares its timestamp with the `open` row beneath it, so
-    // only the first row of an id states that order's current status.
-    if (rows.has(key)) {
+    // only the first row of an id states that order's current status, even
+    // when the mapper skips that row.
+    if (seenHistorical.has(key)) {
       continue
     }
+    seenHistorical.add(key)
     keep(
       key,
       mapRow(detail.order.coin, registry, (market) => mapOrder(detail, market))

@@ -459,17 +459,17 @@ const BASE_FILL: Fill = {
 }
 
 describe('Fill leverage', () => {
-  it('accepts a numeric multiple', () => {
-    const fill: Fill = { ...BASE_FILL, leverage: 10 }
+  it('accepts a decimal string multiple', () => {
+    const fill: Fill = { ...BASE_FILL, leverage: '10' }
 
-    expect(fill.leverage).toBe(10)
+    expect(fill.leverage).toBe('10')
   })
 
-  it('rejects a leverage the venue reports as a string', () => {
+  it('rejects a numeric leverage', () => {
     const fill: Fill = {
       ...BASE_FILL,
-      // @ts-expect-error leverage is a numeric multiple, not a decimal string
-      leverage: '10',
+      // @ts-expect-error leverage is a decimal string, not a number
+      leverage: 10,
     }
 
     expect(fill.id).toBe('fill-1')
@@ -611,7 +611,7 @@ describe('MarketSettings', () => {
   it('requires margin mode and leverage as a complete pair', () => {
     const complete: MarketSettings = {
       marginMode: MarginMode.ISOLATED,
-      leverage: 2.5,
+      leverage: '2.5',
     }
 
     // @ts-expect-error a mode without leverage is not a complete setting
@@ -619,14 +619,14 @@ describe('MarketSettings', () => {
       marginMode: MarginMode.CROSS,
     }
     // @ts-expect-error leverage without a mode is not a complete setting
-    const missingMode: MarketSettings = { leverage: 3 }
+    const missingMode: MarketSettings = { leverage: '3' }
 
     expect(complete).toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 2.5,
+      leverage: '2.5',
     })
     expect(missingLeverage.marginMode).toBe(MarginMode.CROSS)
-    expect(missingMode.leverage).toBe(3)
+    expect(missingMode.leverage).toBe('3')
   })
 })
 

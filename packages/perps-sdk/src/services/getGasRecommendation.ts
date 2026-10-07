@@ -39,7 +39,7 @@ export async function getGasRecommendation(
   return request<GasRecommendationResponse>(
     client.config,
     `${LIFI_API_URL}/gas/suggestion/${params.chainId}`,
-    {},
+    { perpsSdkHeader: false },
     options
   )
 }

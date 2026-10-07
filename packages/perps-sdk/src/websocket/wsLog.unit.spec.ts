@@ -100,4 +100,34 @@ describe('wsLog', () => {
       expect(logged).toBe(err)
     })
   })
+
+  describe('skippedRow', () => {
+    it('warns once for each provider, row and field, whatever the value', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-1')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-2')
+      wsLog.skippedRow('lighter', 'order book level', 'price', 'bad-1')
+
+      expect(warn.mock.calls.map(([message]) => message)).toEqual([
+        "[lighter:ws] skipping order book level row: `size` is not a valid decimal: 'bad-1'",
+        "[lighter:ws] skipping order book level row: `price` is not a valid decimal: 'bad-1'",
+      ])
+    })
+  })
+
+  describe('droppedRow', () => {
+    it('warns once for each provider and row, whatever the reason', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      wsLog.droppedRow('ondo', 'order', 'order-1: bad status')
+      wsLog.droppedRow('ondo', 'order', 'order-2: bad status')
+      wsLog.droppedRow('ondo', 'fill', 'fill-1: bad status')
+
+      expect(warn.mock.calls.map(([message]) => message)).toEqual([
+        '[ondo:ws] skipping order row: order-1: bad status',
+        '[ondo:ws] skipping fill row: fill-1: bad status',
+      ])
+    })
+  })
 })

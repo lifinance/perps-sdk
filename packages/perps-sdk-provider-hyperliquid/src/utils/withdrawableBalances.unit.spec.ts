@@ -54,7 +54,7 @@ describe('hyperliquidWithdrawableBalances', () => {
       '0'
     )
     expect(rows).toEqual([
-      { assetId: '0', route: 'spot', available: '6', max: '6' },
+      { assetId: '0', categoryId: 'spot', available: '6', max: '6' },
     ])
   })
 
@@ -66,7 +66,7 @@ describe('hyperliquidWithdrawableBalances', () => {
       '0'
     )
     expect(rows).toEqual([
-      { assetId: '0', route: 'perps', available: '2.5', max: '2.5' },
+      { assetId: '0', categoryId: 'hyperliquid', available: '2.5', max: '2.5' },
     ])
   })
 
@@ -84,16 +84,16 @@ describe('hyperliquidWithdrawableBalances', () => {
     expect(rows).toEqual([
       {
         assetId: '0',
-        route: 'spot',
+        categoryId: 'spot',
         available: '6',
         max: '6',
         withdrawalFee: '1',
         isFeeDeducted: true,
       },
-      { assetId: '150', route: 'spot', available: '3', max: '3' },
+      { assetId: '150', categoryId: 'spot', available: '3', max: '3' },
       {
         assetId: '0',
-        route: 'perps',
+        categoryId: 'hyperliquid',
         available: '2.5',
         max: '2.5',
         withdrawalFee: '1',
@@ -128,7 +128,7 @@ describe('hyperliquidWithdrawableBalances', () => {
     expect(rows).toEqual([
       {
         assetId: '0',
-        route: 'perps',
+        categoryId: 'hyperliquid',
         available: '2.5',
         max: '2.5',
         withdrawalFee: '0.0000001',
@@ -147,7 +147,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         'abc'
       )
     ).toThrowError(
-      "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'abc'"
+      "hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'abc'"
     )
   })
 })

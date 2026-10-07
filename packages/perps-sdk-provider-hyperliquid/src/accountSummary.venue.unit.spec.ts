@@ -57,11 +57,13 @@ const spotTotalTimesMid = (
 ) => {
   const priceById = spotPriceById(
     markets,
-    new Map(prices.map((p) => [p.marketId, Number.parseFloat(p.markPrice)]))
+    new Map(prices.map((p) => [p.marketId, p.markPrice]))
   )
   return snapshot.spotClearinghouseState.balances.reduce(
     (sum, b) =>
-      sum + Number.parseFloat(b.total) * (priceById.get(String(b.token)) ?? 0),
+      sum +
+      Number.parseFloat(b.total) *
+        Number.parseFloat(priceById.get(String(b.token)) ?? '0'),
     0
   )
 }

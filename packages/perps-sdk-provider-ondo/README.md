@@ -181,6 +181,11 @@ Ondo opens the account at the SIWE login, so a data read does not throw
 a new session. The WebSocket account channels throw `SetupRequired` at
 subscribe time when no session is stored.
 
+The action paths use the same codes. `signActions` and the `WITHDRAWAL`
+`resolveActionRequest` throw `SetupRequired` when no session is stored, and send
+no request to Ondo. When Ondo rejects the stored session, `signActions` removes
+that token and throws `OndoSessionExpiredError` (`PerpsErrorCode.Unauthorized`).
+
 These status and flow reads do not throw without a session, or after Ondo
 rejects the session. `getAccount` returns an empty account, and `accountExists`
 returns `false`. `getDepositFlow` and `getWithdrawFlow` return

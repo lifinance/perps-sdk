@@ -28,6 +28,7 @@ import {
   SigningMethod,
   type WasmBlobActionStep,
   type WasmBlobSignedActionStep,
+  WithdrawalType,
 } from '@lifi/perps-types'
 import { createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -644,11 +645,11 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     const provider = lighterProvider()
     // entry * (1 - 1/leverage) / (1 - mmr) = 50000 * 0.9 / 0.988
     const liq = provider.estimateLiquidationPrice(btcMarket, {
-      entryPrice: 50000,
-      leverage: 10,
+      entryPrice: '50000',
+      leverage: '10',
       isLong: true,
     })
-    expect(liq).toBeCloseTo(45546.559, 2)
+    expect(liq).toBe('45546.5587044534412955465587044534412955465587')
   })
 })
 
@@ -1136,6 +1137,9 @@ describe('LighterProvider — getWithdrawableBalances', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond({
             ...ACCOUNT_PAYLOAD,
@@ -1147,7 +1151,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     )
   })
 
-  it('reports one row per funded (asset, route) pair', async () => {
+  it('reports one row per funded (asset, category) pair', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     await expect(
@@ -1155,14 +1159,19 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '1',
-        route: 'spot',
+        categoryId: LIGHTER_SPOT_CATEGORY_ID,
         available: '0.00609091',
         max: '0.00609091',
       },
-      { assetId: '3', route: 'spot', available: '10.9886', max: '10.9886' },
       {
         assetId: '3',
-        route: 'perps',
+        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        available: '10.9886',
+        max: '10.9886',
+      },
+      {
+        assetId: '3',
+        categoryId: 'lighter',
         available: '11.009697536',
         max: '11.009697536',
       },
@@ -1185,6 +1194,9 @@ describe('LighterProvider — getWithdrawableBalances', () => {
       'fetch',
       vi.fn(async (url: string | URL) => {
         const u = String(url)
+        if (u.includes('backend.test/v1/perps/providers')) {
+          return respond(PROVIDERS_RESPONSE)
+        }
         if (u.includes('/api/v1/account?')) {
           return respond({
             ...ACCOUNT_PAYLOAD,
@@ -1208,13 +1220,13 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        route: 'spot',
+        categoryId: LIGHTER_SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
       {
         assetId: '3',
-        route: 'perps',
+        categoryId: 'lighter',
         available: '364310.903135',
         max: '364310.903135',
       },
@@ -1233,7 +1245,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        route: 'spot',
+        categoryId: LIGHTER_SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
@@ -1249,6 +1261,230 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message: expect.stringContaining('available_balance'),
+    })
+  })
+})
+
+describe('LighterProvider — getWithdrawalTypes', () => {
+  // Shapes from the Lighter OpenAPI `RespGetFastwithdrawalInfo` and
+  // `TransferFeeInfo` schemas; limits and fee are L2 6-decimal integers.
+  const FAST_INFO = {
+    code: 200,
+    to_account_index: 7,
+    withdraw_limit: '25000000',
+    max_withdrawal_amount: '40000000',
+  }
+  const FEE_INFO = { code: 200, transfer_fee_usdc: 3_000_000 }
+  const FUNDED_ACCOUNT = {
+    ...ACCOUNT_PAYLOAD,
+    accounts: [
+      {
+        ...SIMPLE_ACCOUNT,
+        available_balance: '100',
+        assets: [
+          {
+            symbol: 'USDC',
+            asset_id: 3,
+            balance: '10',
+            locked_balance: '0',
+            margin_balance: '60',
+            margin_mode: 'disabled',
+          },
+          {
+            symbol: 'BTC',
+            asset_id: 0,
+            balance: '2',
+            locked_balance: '0',
+            margin_balance: '0',
+            margin_mode: 'enabled',
+          },
+        ],
+      },
+    ],
+  }
+  const STANDARD = { mode: 'standard' }
+  const standardOnly = (categoryId: string, assetId: string, max: string) => ({
+    source: { categoryId, asset: { id: assetId } },
+    options: [
+      { type: WithdrawalType.STANDARD, max, withdrawalOptions: STANDARD },
+    ],
+  })
+
+  const stubFast = (
+    info: unknown = FAST_INFO,
+    fee: unknown = FEE_INFO,
+    account: unknown = FUNDED_ACCOUNT
+  ) =>
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        return respond(account)
+      }
+      if (url.includes('/api/v1/fastwithdraw/info')) {
+        return info instanceof Response ? info : respond(info)
+      }
+      if (url.includes('/api/v1/transferFeeInfo')) {
+        return respond(fee)
+      }
+      return undefined
+    })
+
+  const withdrawalTypes = async () => {
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('ro-seeded'),
+    })
+    provider.bind(STUB_CLIENT)
+    return provider.getWithdrawalTypes!({ address: ADDRESS })
+  }
+
+  const fastInfoCalls = () =>
+    recorded.filter((r) => r.url.includes('/api/v1/fastwithdraw/info'))
+
+  it('offers FAST on the collateral perps row, capped at the lower venue limit', async () => {
+    stubFast()
+
+    await expect(withdrawalTypes()).resolves.toEqual([
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      {
+        source: { categoryId: 'lighter', asset: { id: '3' } },
+        options: [
+          {
+            type: WithdrawalType.STANDARD,
+            max: '60',
+            withdrawalOptions: STANDARD,
+          },
+          {
+            type: WithdrawalType.FAST,
+            max: '25',
+            withdrawalOptions: {
+              mode: 'fast',
+              toAccountIndex: 7,
+              fee: 3_000_000,
+            },
+          },
+        ],
+      },
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+    ])
+  })
+
+  it('reads the fee for the transfer from the account to the operator account', async () => {
+    stubFast()
+
+    await withdrawalTypes()
+
+    const [info] = fastInfoCalls()
+    expect(new URL(info.url).searchParams.get('account_index')).toBe('42')
+    expect(authHeader(info)).toBe('ro-seeded')
+    const fee = recorded.find((r) => r.url.includes('/api/v1/transferFeeInfo'))
+    const query = new URL(fee!.url).searchParams
+    expect(query.get('account_index')).toBe('42')
+    expect(query.get('to_account_index')).toBe('7')
+  })
+
+  it('caps FAST at the row max when the venue limits are higher', async () => {
+    stubFast({
+      ...FAST_INFO,
+      withdraw_limit: '900000000',
+      max_withdrawal_amount: '800000000',
+    })
+
+    const rows = await withdrawalTypes()
+
+    expect(rows![1].options[1]).toMatchObject({
+      type: WithdrawalType.FAST,
+      max: '60',
+    })
+  })
+
+  it.each([
+    [
+      'a code other than 200 on /fastwithdraw/info',
+      { ...FAST_INFO, code: 0 },
+      FEE_INFO,
+    ],
+    [
+      'an error code on /fastwithdraw/info',
+      { code: 21500, message: 'unavailable' },
+      FEE_INFO,
+    ],
+    ['to_account_index 0', { ...FAST_INFO, to_account_index: 0 }, FEE_INFO],
+    [
+      'a code other than 200 on /transferFeeInfo',
+      FAST_INFO,
+      { ...FEE_INFO, code: 0 },
+    ],
+    [
+      'a failed /fastwithdraw/info read',
+      new Response('boom', { status: 500 }),
+      FEE_INFO,
+    ],
+  ])('offers STANDARD only for %s', async (_case, info, fee) => {
+    stubFast(info, fee)
+
+    await expect(withdrawalTypes()).resolves.toEqual([
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly('lighter', '3', '60'),
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+    ])
+  })
+
+  it('offers STANDARD only and reads no fast-withdraw terms without an API key', async () => {
+    stubFast()
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getWithdrawalTypes!({ address: ADDRESS })
+    ).resolves.toEqual([
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly('lighter', '3', '60'),
+      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+    ])
+    expect(fastInfoCalls()).toHaveLength(0)
+  })
+
+  it('retries /fastwithdraw/info with the standard token when the read-only token is rejected', async () => {
+    overrideFetch((url, init) => {
+      if (url.includes('/api/v1/account?')) {
+        return respond(FUNDED_ACCOUNT)
+      }
+      if (url.includes('/api/v1/fastwithdraw/info')) {
+        return sentToken(init)?.startsWith('ro-')
+          ? respond({ code: 20013, message: 'invalid auth string' })
+          : respond(FAST_INFO)
+      }
+      if (url.includes('/api/v1/transferFeeInfo')) {
+        return respond(FEE_INFO)
+      }
+      return undefined
+    })
+
+    const rows = await withdrawalTypes()
+
+    expect(rows![1].options.map((o) => o.type)).toEqual([
+      WithdrawalType.STANDARD,
+      WithdrawalType.FAST,
+    ])
+    const calls = fastInfoCalls()
+    expect(calls).toHaveLength(2)
+    expect(authHeader(calls[1])).toMatch(/^std-\d+$/)
+  })
+
+  it('offers FAST on the Robinhood instance under its own perps category', async () => {
+    stubFast()
+    const provider = lighterRhProvider({
+      storage: await storageWithReadOnlyToken('ro-seeded', RH_STORED_API_KEY),
+    })
+    provider.bind(STUB_CLIENT)
+
+    const rows = await provider.getWithdrawalTypes!({ address: ADDRESS })
+
+    expect(rows![1]).toMatchObject({
+      source: { categoryId: LIGHTER_RH_PROVIDER_KEY, asset: { id: '3' } },
+      options: [
+        { type: WithdrawalType.STANDARD, max: '60' },
+        { type: WithdrawalType.FAST, max: '25' },
+      ],
     })
   })
 })
@@ -3097,7 +3333,10 @@ describe('LighterProvider — data-read account-access contract', () => {
   const DEFAULT_LEVERAGE = 20
   const EMPTY = { resolves: [] }
   const VENUE_DEFAULT = {
-    resolves: { marginMode: MarginMode.CROSS, leverage: DEFAULT_LEVERAGE },
+    resolves: {
+      marginMode: MarginMode.CROSS,
+      leverage: String(DEFAULT_LEVERAGE),
+    },
   }
   const AUTHED: Record<Access, Outcome> = {
     'no credential': PerpsErrorCode.SetupRequired,
@@ -3328,6 +3567,103 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
+describe('LighterProvider — getPositions skips a bad row', () => {
+  it('drops only the row with an invalid position_value and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const goodRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: '50000',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [
+              {
+                ...ACCOUNT_PAYLOAD.accounts[0],
+                positions: [
+                  goodRow,
+                  { ...goodRow, position_value: 'rest-bad-value' },
+                ],
+              },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].size).toBe('1')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[lighter] skipping position row: `position_value` is not a valid decimal: 'rest-bad-value'"
+      )
+    )
+    warn.mockRestore()
+  })
+})
+
+describe('LighterProvider — getAccount refuses a bad open position', () => {
+  it('throws instead of a total that leaves the position out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const badRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: 'rest-bad-value',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], positions: [badRow] }],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('market 0'),
+    })
+    warn.mockRestore()
+  })
+})
+
 describe('LighterProvider — per-user reads without a Lighter account', () => {
   const accountNotFound: FetchOverride = (url) =>
     url.includes('/api/v1/account?')
@@ -3487,16 +3823,31 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
   })
 
   it.each([
-    ['marginUsed', isolatedPosition('not-a-decimal', '0')],
-    ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
-  ])('rejects a malformed position %s', async (field, malformed) => {
-    positions = [malformed]
+    [
+      'marginUsed',
+      'unrealizedPnl',
+      isolatedPosition('not-a-decimal', '0.1'),
+      '0.2',
+    ],
+    [
+      'unrealizedPnl',
+      'marginUsed',
+      isolatedPosition('0.1', 'not-a-decimal'),
+      '0.2',
+    ],
+  ] as const)('omits the %s total, keeps %s and the rows, and warns once for a malformed term', async (absent, kept, malformed, keptTotal) => {
+    positions = [malformed, isolatedPosition('0.1', '0.1')]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
-    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
-      new RegExp(field)
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toHaveLength(2)
+    expect(account).not.toHaveProperty(absent)
+    expect(account[kept]).toBe(keptTotal)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
@@ -6087,7 +6438,7 @@ describe('LighterProvider — getMarketSettings', () => {
   it("reads the market's mode and leverage from the account position row", async () => {
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 2,
+      leverage: '2',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6097,7 +6448,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 50,
+      leverage: '50',
     })
   })
 
@@ -6114,14 +6465,14 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 1.67,
+      leverage: '1.67',
     })
   })
 
   it("resolves the backend market's default leverage with cross margin for a market without a row", async () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6140,7 +6491,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6151,7 +6502,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })

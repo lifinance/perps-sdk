@@ -186,6 +186,32 @@ describe('getOrders', () => {
     ])
   })
 
+  it('reports no order when the newest row of an id is skipped', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [
+          { ...historical, order: { ...historical.order, sz: 'bad' } },
+          { ...historical, status: 'open' },
+        ],
+        frontendOpenOrders: [],
+        twapHistory: [],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [
+        OrderStatus.OPEN,
+        OrderStatus.PARTIALLY_FILLED,
+        OrderStatus.FILLED,
+      ],
+    })
+    expect(orders).toEqual([])
+    warn.mockRestore()
+  })
+
   it('combines active and terminal feeds and filters the requested statuses', async () => {
     const installed = installInfoFetchMock(
       {

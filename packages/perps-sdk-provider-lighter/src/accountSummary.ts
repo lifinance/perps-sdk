@@ -1,4 +1,9 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import {
+  addDecimalString,
+  PerpsError,
+  subtractDecimalString,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
@@ -6,14 +11,12 @@ import type {
   Position,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { atLeastZero } from './availableToTrade.js'
 import {
   LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
 } from './constants.js'
-import { toRequiredBig } from './utils/decimal.js'
 
 /**
  * The Lighter arm of `account.config`.
@@ -40,11 +43,15 @@ export const lighterConfig = (
  * Add marked holdings excluded from Lighter's settlement equity.
  */
 export const lighterPortfolioValue = (
-  perpsEquity: Big,
+  perpsEquity: string,
   holdingValuesUsd: readonly string[]
-): Big =>
+): string =>
   holdingValuesUsd.reduce(
-    (sum, valueUsd) => sum.plus(toRequiredBig(valueUsd, 'valueUsd')),
+    (sum, valueUsd) =>
+      addDecimalString(
+        sum,
+        unknownToDecimalString(valueUsd, 'valueUsd', LIGHTER_PROVIDER_KEY)
+      ),
     perpsEquity
   )
 
@@ -68,29 +75,41 @@ export function getAccountSummary(
       asset.id !== settlement.displaySymbol
   )
 
-  let marginUsed = new Big(0)
-  let unrealizedPnl = new Big(0)
-  for (const position of positions) {
-    marginUsed = marginUsed.plus(position.marginUsed)
-    unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl)
-  }
-
   return {
     portfolioValue: lighterPortfolioValue(
-      toRequiredBig(config.totalAssetValue, 'totalAssetValue').plus(
-        toRequiredBig(config.collateralSpotBalance, 'collateralSpotBalance')
+      addDecimalString(
+        unknownToDecimalString(
+          config.totalAssetValue,
+          'totalAssetValue',
+          LIGHTER_PROVIDER_KEY
+        ),
+        unknownToDecimalString(
+          config.collateralSpotBalance,
+          'collateralSpotBalance',
+          LIGHTER_PROVIDER_KEY
+        )
       ),
       holdings.map((balance) => balance.valueUsd)
-    ).toFixed(),
+    ),
     availableMargin: atLeastZero(
-      toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(
-        toRequiredBig(
+      subtractDecimalString(
+        unknownToDecimalString(
+          config.crossAssetValue,
+          'crossAssetValue',
+          LIGHTER_PROVIDER_KEY
+        ),
+        unknownToDecimalString(
           config.crossInitialMarginRequirement,
-          'crossInitialMarginRequirement'
+          'crossInitialMarginRequirement',
+          LIGHTER_PROVIDER_KEY
         )
       )
-    ).toFixed(),
-    marginUsed: marginUsed.toFixed(),
-    unrealizedPnl: unrealizedPnl.toFixed(),
+    ),
+    marginUsed: positions
+      .map((p) => p.marginUsed)
+      .reduce(addDecimalString, '0'),
+    unrealizedPnl: positions
+      .map((p) => p.unrealizedPnl)
+      .reduce(addDecimalString, '0'),
   }
 }

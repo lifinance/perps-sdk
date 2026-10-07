@@ -1,6 +1,7 @@
 import {
   DecodeChain,
   getMarketRegistry,
+  isDecimalString,
   localStorageAdapter,
   type MarketRegistry,
   numberToDecimalString,
@@ -11,6 +12,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type StorageAdapter,
+  safeCompareDecimalStrings,
   toMarketDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
@@ -28,6 +30,7 @@ import {
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { OndoTokenStore } from '../auth/OndoTokenStore.js'
+import { ondoSessionRejectedError } from '../auth/sessionToken.js'
 import {
   DEFAULT_ONDO_API_URL,
   DEFAULT_ONDO_WS_URL,
@@ -48,10 +51,12 @@ import type {
   OndoWsTrade,
 } from '../types/index.js'
 import {
+  isOpenPosition,
   mapFill,
   mapOrderUpdates,
   mapPosition,
   OndoApiClient,
+  OndoSessionExpiredError,
 } from '../utils/index.js'
 import { intervalFromBarSpan, mapInterval } from '../utils/ohlcvInterval.js'
 
@@ -112,6 +117,8 @@ export interface OndoWsProviderOptions {
   /** Session-token persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
+
+const BOOK_LEVEL_ROW = 'order book level'
 
 /**
  * Ondo WebSocket provider (extends {@link WsProviderBase}): subscribes to
@@ -634,7 +641,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * Seed the account-summary figures from the REST balance so the first emit
    * is complete before any positions frame lands. Throws {@link PerpsError}
    * with `SetupRequired` when the SIWE session is missing, matching the other
-   * authenticated channels.
+   * authenticated channels, and with `Unauthorized` when the venue rejects it.
    */
   private async seedAccountSummary(
     address: Address,
@@ -644,7 +651,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (generation !== this.accountSummaryGeneration) {
       return
     }
-    const balance = await this.readBalance(token.token)
+    const balance = await this.readBalance(address, token)
     if (generation !== this.accountSummaryGeneration) {
       return
     }
@@ -665,7 +672,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     ) {
       return
     }
-    const balance = await this.readBalance(token.token)
+    const balance = await this.readBalance(address, token)
     if (
       this.accountSummary === undefined ||
       generation !== this.accountSummaryGeneration
@@ -682,11 +689,28 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.accountSummaryChain.reset()
   }
 
-  private async readBalance(authToken: string): Promise<OndoAccountBalance> {
-    const balance = await this.restClient().get<OndoBalanceSummary>(
-      '/v1/perps/balance',
-      { authToken }
-    )
+  /**
+   * Read the venue balance with `token`. A venue 401 evicts the stored session
+   * for `address` and throws {@link PerpsError} with `Unauthorized`, so the
+   * next account subscribe reports `SetupRequired`.
+   */
+  private async readBalance(
+    address: Address,
+    token: OndoAuthToken
+  ): Promise<OndoAccountBalance> {
+    let balance: OndoBalanceSummary
+    try {
+      balance = await this.restClient().get<OndoBalanceSummary>(
+        '/v1/perps/balance',
+        { authToken: token.token }
+      )
+    } catch (err) {
+      if (!(err instanceof OndoSessionExpiredError)) {
+        throw err
+      }
+      await this.tokenStore.remove(address)
+      throw ondoSessionRejectedError('account summary', err)
+    }
     return {
       walletBalance: balance.walletBalance,
       unrealizedPnl: balance.unrealizedPnl,
@@ -765,9 +789,21 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     for (const snap of snapshots) {
       const toLevels = (levels: OndoBookSnapshot['bids'], direction: 1 | -1) =>
         levels
-          .map(([price, size]) => ({ price, size, priceNum: Number(price) }))
-          .sort((a, b) => direction * (a.priceNum - b.priceNum))
-          .map(({ price, size }) => ({ price, size }))
+          .flatMap(([price, size]) => {
+            if (!isDecimalString(price)) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'price', price)
+              return []
+            }
+            if (!isDecimalString(size)) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'size', size)
+              return []
+            }
+            return [{ price, size }]
+          })
+          .sort(
+            (a, b) =>
+              direction * (safeCompareDecimalStrings(a.price, b.price) ?? 0)
+          )
       this.emit(`orderbook:${snap.market}`, {
         channel: 'orderbook',
         data: {
@@ -910,8 +946,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const mapped = []
     for (const fill of fills) {
       const market = this.resolveMarket(fill.market)
-      if (market !== undefined) {
-        mapped.push(mapFill(fill, market))
+      const mappedFill = market && mapFill(fill, market)
+      if (mappedFill !== undefined) {
+        mapped.push(mappedFill)
       }
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
@@ -929,14 +966,13 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       return
     }
     const mapped = positions.flatMap((position) => {
-      if (
-        position.direction === 'neutral' ||
-        Number.parseFloat(position.netQuantity) === 0
-      ) {
+      if (!isOpenPosition(position)) {
         return []
       }
       const market = this.resolvePerpsMarket(position.market)
-      return market === undefined ? [] : [mapPosition(position, market)]
+      const mapped =
+        market === undefined ? undefined : mapPosition(position, market)
+      return mapped === undefined ? [] : [mapped]
     })
     this.emit(`positions:${address}`, {
       channel: 'positions',

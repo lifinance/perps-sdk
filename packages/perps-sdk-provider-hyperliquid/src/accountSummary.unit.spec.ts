@@ -47,7 +47,7 @@ const position = (marginUsed: string, unrealizedPnl: string): Position => ({
   liquidationPrice: '50',
   unrealizedPnl,
   accruedFunding: '0',
-  leverage: 10,
+  leverage: '10',
   marginUsed,
   initialMarginRequirement: marginUsed,
   marginMode: MarginMode.CROSS,

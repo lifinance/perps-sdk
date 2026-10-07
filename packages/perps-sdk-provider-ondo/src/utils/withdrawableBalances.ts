@@ -1,13 +1,15 @@
 import {
   calculateWithdrawMax,
+  isDecimalStringGreaterThan,
   type ProviderWithdrawableBalance,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
+import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoBalanceSummary } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
 
 /**
- * The single route an Ondo withdrawal draws on: `withdrawableMargin`, the
- * venue's own figure for the margin the account can take out. A route with
+ * The single category an Ondo withdrawal draws on: `withdrawableMargin`, the
+ * venue's own figure for the margin the account can take out. A category with
  * nothing left to draw carries no row, and the caller applies the per-asset
  * venue minimum.
  *
@@ -23,24 +25,26 @@ export const ondoWithdrawableBalances = (
   balance: OndoBalanceSummary,
   withdrawalFeeUsd?: string
 ): ProviderWithdrawableBalance[] => {
-  const available = toWireBig(
+  const available = unknownToDecimalString(
     balance.withdrawableMargin,
-    'balance.withdrawableMargin'
+    'balance.withdrawableMargin',
+    ONDO_PROVIDER_KEY
   )
-  if (!available.gt(0)) {
+  if (!isDecimalStringGreaterThan(available, '0')) {
     return []
   }
   const row = {
     assetId,
-    route: 'perps' as const,
-    available: available.toFixed(),
+    categoryId: ONDO_PROVIDER_KEY,
+    available,
     ...(withdrawalFeeUsd === undefined
       ? {}
       : {
-          withdrawalFee: toWireBig(
+          withdrawalFee: unknownToDecimalString(
             withdrawalFeeUsd,
-            'account.withdrawalFeeUSD'
-          ).toFixed(),
+            'account.withdrawalFeeUSD',
+            ONDO_PROVIDER_KEY
+          ),
           isFeeDeducted: false,
         }),
   }

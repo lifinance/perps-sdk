@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
 import type { LtAccount } from '../types/account.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
 import * as barrel from './index.js'
@@ -117,15 +118,15 @@ const NO_FREE_MARGIN_ACCOUNT: WithdrawableAccount = {
 }
 
 /** A Lighter row: the venue publishes no fee, so `max` equals `available`. */
-const row = (assetId: string, route: 'spot' | 'perps', available: string) => ({
+const row = (assetId: string, categoryId: string, available: string) => ({
   assetId,
-  route,
+  categoryId,
   available,
   max: available,
 })
 
 const withdrawable = (account: WithdrawableAccount) =>
-  lighterWithdrawableBalances(account, LT_ASSET_ID_USDC)
+  lighterWithdrawableBalances(account, LT_ASSET_ID_USDC, 'perps')
 
 describe('lighterWithdrawableBalances', () => {
   it('splits each held asset into its spot and perps routes', () => {
@@ -173,12 +174,27 @@ describe('lighterWithdrawableBalances', () => {
     expect(
       lighterWithdrawableBalances(
         { ...MULTI_ASSET_ACCOUNT, available_balance: '0.005' },
-        1
+        1,
+        'perps'
       )
     ).toEqual([
       row('1', 'perps', '0.005'),
       row('2', 'spot', '8.00004674'),
       row('3', 'perps', '13.89182545205'),
+    ])
+  })
+
+  it('labels perps rows with the given category id and spot rows with LIGHTER_SPOT_CATEGORY_ID', () => {
+    expect(
+      lighterWithdrawableBalances(
+        MULTI_ASSET_ACCOUNT,
+        LT_ASSET_ID_USDC,
+        'lighter-rh'
+      )
+    ).toEqual([
+      row('1', 'lighter-rh', '0.00709091'),
+      row('2', LIGHTER_SPOT_CATEGORY_ID, '8.00004674'),
+      row('3', 'lighter-rh', '13.891825'),
     ])
   })
 

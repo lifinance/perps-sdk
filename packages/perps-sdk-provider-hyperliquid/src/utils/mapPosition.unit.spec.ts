@@ -1,12 +1,12 @@
-import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HlAssetPosition } from '../types/index.js'
-import { mapPosition } from './mapPosition.js'
+import { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 
 const BTC_MARKET: PerpsMarketDisplay = {
   providerId: 'hyperliquid',
@@ -48,7 +48,17 @@ const makeAp = (
   },
 })
 
-const map = (ap: HlAssetPosition) => mapPosition(ap, BTC_MARKET)
+const map = (ap: HlAssetPosition): Position => {
+  const position = mapPosition(ap, BTC_MARKET)
+  if (position === undefined) {
+    throw new Error('expected a mapped position')
+  }
+  return position
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('mapPosition (Hyperliquid)', () => {
   it('maps a long cross position with derived mark price', () => {
@@ -60,7 +70,7 @@ describe('mapPosition (Hyperliquid)', () => {
     // markPrice = positionValue / |szi| = 9500 / 0.1 = 95000
     expect(result.markPrice).toBe('95000')
     expect(result.liquidationPrice).toBe('85000')
-    expect(result.leverage).toBe(10)
+    expect(result.leverage).toBe('10')
     expect(result.initialMarginRequirement).toBe('950')
     expect(result.marginMode).toBe(MarginMode.CROSS)
     expect(result.market).toBe(BTC_MARKET)
@@ -83,15 +93,62 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('0')
   })
 
-  it('rejects a missing positionValue instead of inventing risk data', () => {
-    expect(() => map(makeAp({ szi: '0.1', positionValue: '' }))).toThrowError()
+  it('skips the row and warns when szi is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapPosition(makeAp({ szi: 'abc' }), BTC_MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+    )
+  })
+
+  it('keeps the row without markPrice and initialMarginRequirement and warns once when positionValue is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(makeAp({ positionValue: '' }))
+
+    expect(result.size).toBe('0.1')
+    expect(result.leverage).toBe('10')
+    expect(result).not.toHaveProperty('markPrice')
+    expect(result).not.toHaveProperty('initialMarginRequirement')
+    expect(warn).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the row without leverage and initialMarginRequirement, and warns once, when leverage.value is zero', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(makeAp({ leverage: { type: 'cross', value: 0 } }))
+
+    expect(result.size).toBe('0.1')
+    expect(result.markPrice).toBe('95000')
+    expect(result).not.toHaveProperty('leverage')
+    expect(result).not.toHaveProperty('initialMarginRequirement')
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      "[hyperliquid] position `leverage.value` is not positive: '0'"
+    )
+  })
+
+  it('keeps the row without accruedFunding and warns once when cumFunding.sinceOpen is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(
+      makeAp({
+        cumFunding: { allTime: '0', sinceOpen: 'NaN', sinceChange: '0' },
+      })
+    )
+
+    expect(result.size).toBe('0.1')
+    expect(result.initialMarginRequirement).toBe('950')
+    expect(result).not.toHaveProperty('accruedFunding')
+    expect(warn).toHaveBeenCalledOnce()
   })
 
   it('maps isolated leverage type to MarginMode.ISOLATED', () => {
     const result = map(makeAp({ leverage: { type: 'isolated', value: 5 } }))
 
     expect(result.marginMode).toBe(MarginMode.ISOLATED)
-    expect(result.leverage).toBe(5)
+    expect(result.leverage).toBe('5')
     expect(result.marginUsed).toBe('940')
     expect(result.initialMarginRequirement).toBe('1900')
   })
@@ -166,5 +223,20 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.entryPrice).toBe('0')
     expect(result.liquidationPrice).toBe('0')
+  })
+})
+
+describe('isOpenAssetPosition', () => {
+  it.each(['0', '0.0', '-0.0'])('gives false for a zero szi %j', (szi) => {
+    expect(isOpenAssetPosition(makeAp({ szi }))).toBe(false)
+  })
+
+  it.each([
+    '0.1',
+    '-0.1',
+    '0.00000000000000000001',
+    '10oops',
+  ])('gives true for szi %j', (szi) => {
+    expect(isOpenAssetPosition(makeAp({ szi }))).toBe(true)
   })
 })

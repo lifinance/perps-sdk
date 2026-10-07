@@ -309,6 +309,225 @@ describe('PerpsWsClient', () => {
     })
   })
 
+  describe('provider discovery', () => {
+    const venueWsUrls: Record<string, string> = {
+      hyperliquid: 'wss://hl.example/ws',
+      lighter: 'wss://lighter.example/ws',
+      ondo: 'wss://ondo.example/ws',
+    }
+    const venues = Object.keys(venueWsUrls)
+    const threeVenueProviders = {
+      providers: venues.map((key) => ({
+        ...mockProviders.providers[0],
+        key,
+        wsUrl: venueWsUrls[key],
+      })),
+    }
+
+    function useGatedProviders(apiUrl = DEFAULT_API_URL) {
+      let open!: () => void
+      let fail!: () => void
+      const gate = new Promise<boolean>((resolve) => {
+        open = () => resolve(true)
+        fail = () => resolve(false)
+      })
+      const requests = { count: 0 }
+      server.use(
+        http.get(`${apiUrl}/providers`, async () => {
+          requests.count++
+          return (await gate)
+            ? HttpResponse.json(threeVenueProviders)
+            : new HttpResponse(null, { status: 400 })
+        })
+      )
+      return { open, fail, requests }
+    }
+
+    function makeMultiVenueWs(client = createClient()) {
+      const factories = Object.fromEntries(
+        venues.map((venue) => [venue, buildHlFactory()])
+      )
+      return {
+        ws: new PerpsWsClient(client, { wsProviders: factories }),
+        factories,
+      }
+    }
+
+    function subscribeTwicePerVenue(ws: PerpsWsClient) {
+      return venues.flatMap((dex) => [
+        ws.subscribe({ channel: 'marketsContext', dex }, vi.fn()),
+        ws.subscribe({ channel: 'orderbook', dex, marketId: 'BTC' }, vi.fn()),
+      ])
+    }
+
+    it('fetches /providers once for six concurrent subscriptions across three venues', async () => {
+      const { open, requests } = useGatedProviders()
+      const { ws, factories } = makeMultiVenueWs()
+
+      const subs = subscribeTwicePerVenue(ws)
+      open()
+      await Promise.all(subs)
+
+      expect(requests.count).toBe(1)
+      for (const venue of venues) {
+        expect(factories[venue]).toHaveBeenCalledOnce()
+        expect(factories[venue]).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider: venue,
+            wsUrl: venueWsUrls[venue],
+          })
+        )
+      }
+
+      ws.close()
+    })
+
+    it('keeps one /providers request on the single-venue path', async () => {
+      const { open, requests } = useGatedProviders()
+      const { ws, factories } = makeMultiVenueWs()
+
+      const subs = [
+        ws.subscribe({ channel: 'marketsContext', dex: 'lighter' }, vi.fn()),
+        ws.subscribe(
+          { channel: 'orderbook', dex: 'lighter', marketId: 'BTC' },
+          vi.fn()
+        ),
+      ]
+      open()
+      await Promise.all(subs)
+
+      expect(requests.count).toBe(1)
+      expect(factories.lighter).toHaveBeenCalledOnce()
+
+      ws.close()
+    })
+
+    it('fetches fresh metadata for a venue initialized after discovery settles, and keeps existing providers', async () => {
+      const { open, requests } = useGatedProviders()
+      const { ws, factories } = makeMultiVenueWs()
+      open()
+
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn()
+      )
+      await ws.subscribe({ channel: 'marketsContext', dex: 'lighter' }, vi.fn())
+      await ws.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        vi.fn()
+      )
+
+      expect(requests.count).toBe(2)
+      expect(factories.hyperliquid).toHaveBeenCalledOnce()
+      expect(factories.lighter).toHaveBeenCalledOnce()
+
+      ws.close()
+    })
+
+    it('does not share discovery between two clients with different API URLs', async () => {
+      const otherApiUrl = 'https://other.example/v1/perps'
+      const first = useGatedProviders()
+      const second = useGatedProviders(otherApiUrl)
+      const a = makeMultiVenueWs()
+      const b = makeMultiVenueWs(
+        createPerpsClient({
+          integrator: 'test-app',
+          apiKey: 'other-key',
+          apiUrl: otherApiUrl,
+        })
+      )
+
+      const subs = [
+        ...subscribeTwicePerVenue(a.ws),
+        ...subscribeTwicePerVenue(b.ws),
+      ]
+      first.open()
+      second.open()
+      await Promise.all(subs)
+
+      expect(first.requests.count).toBe(1)
+      expect(second.requests.count).toBe(1)
+
+      a.ws.close()
+      b.ws.close()
+    })
+
+    it('rejects every current waiter on a failed discovery, then retries on the next subscribe', async () => {
+      const { fail, requests } = useGatedProviders()
+      const { ws, factories } = makeMultiVenueWs()
+
+      const results = Promise.allSettled(subscribeTwicePerVenue(ws))
+      fail()
+      const settled = await results
+
+      expect(requests.count).toBe(1)
+      expect(settled.every((r) => r.status === 'rejected')).toBe(true)
+      for (const venue of venues) {
+        expect(factories[venue]).not.toHaveBeenCalled()
+      }
+
+      const { open } = useGatedProviders()
+      open()
+      await ws.subscribe({ channel: 'marketsContext', dex: 'ondo' }, vi.fn())
+
+      expect(factories.ondo).toHaveBeenCalledOnce()
+
+      ws.close()
+    })
+
+    it('rejects only the venue without a wsUrl when discovery is shared', async () => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: threeVenueProviders.providers.map((p) =>
+              p.key === 'ondo' ? { ...p, wsUrl: undefined } : p
+            ),
+          })
+        )
+      )
+      const { ws, factories } = makeMultiVenueWs()
+
+      const [hl, lighter, ondo] = await Promise.allSettled(
+        venues.map((dex) =>
+          ws.subscribe({ channel: 'marketsContext', dex }, vi.fn())
+        )
+      )
+
+      expect(hl.status).toBe('fulfilled')
+      expect(lighter.status).toBe('fulfilled')
+      expect(ondo).toMatchObject({
+        status: 'rejected',
+        reason: new Error('No WebSocket URL found for provider: ondo'),
+      })
+      expect(factories.ondo).not.toHaveBeenCalled()
+
+      ws.close()
+    })
+
+    it('opens no socket for any venue when closed during shared discovery', async () => {
+      const { open, requests } = useGatedProviders()
+      const { ws, factories } = makeMultiVenueWs()
+
+      const results = Promise.allSettled(subscribeTwicePerVenue(ws))
+      ws.close()
+      open()
+      const settled = await results
+
+      expect(requests.count).toBe(1)
+      for (const result of settled) {
+        expect(result).toMatchObject({
+          status: 'rejected',
+          reason: expect.objectContaining({
+            message: expect.stringContaining('PerpsWsClient is closed'),
+          }),
+        })
+      }
+      for (const venue of venues) {
+        expect(factories[venue]).not.toHaveBeenCalled()
+      }
+    })
+  })
+
   describe('subscribeQuote', () => {
     it('delegates to the provider with the SPI params and returns its unsubscribe', async () => {
       useWsUrlHandler()
@@ -323,7 +542,7 @@ describe('PerpsWsClient', () => {
           provider: 'hyperliquid',
           symbol: 'BTC',
           side: 'buy',
-          size: 100,
+          size: '100',
           type: 'perps',
         },
         onQuote
@@ -331,7 +550,7 @@ describe('PerpsWsClient', () => {
 
       expect(factory).toHaveBeenCalledOnce()
       expect(mockSubscribeQuote).toHaveBeenCalledWith(
-        { symbol: 'BTC', side: 'buy', size: 100, type: 'perps' },
+        { symbol: 'BTC', side: 'buy', size: '100', type: 'perps' },
         onQuote
       )
       expect(unsub).toBe(mockUnsub)
@@ -349,7 +568,7 @@ describe('PerpsWsClient', () => {
             provider: 'hyperliquid',
             symbol: 'BTC',
             side: 'buy',
-            size: 100,
+            size: '100',
             type: 'perps',
           },
           vi.fn()
@@ -433,7 +652,7 @@ describe('PerpsWsClient', () => {
             provider: 'hyperliquid',
             symbol: 'BTC',
             side: 'buy',
-            size: 100,
+            size: '100',
             type: 'perps',
           },
           vi.fn()

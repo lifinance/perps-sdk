@@ -1,5 +1,5 @@
 import type { DecimalString } from '@lifi/perps-types'
-import { requireDecimal } from '../decimal/requireDecimal.js'
+import { decimalStringToBig } from '../decimal/decimalStringToBig.js'
 
 /**
  * The part of `units` that a venue-wide free figure releases: never below
@@ -17,8 +17,8 @@ export function calculateTransferable(
   venueFigure: DecimalString,
   units: DecimalString
 ): DecimalString {
-  const figure = requireDecimal(venueFigure, 'venueFigure')
-  const held = requireDecimal(units, 'units')
+  const figure = decimalStringToBig(venueFigure)
+  const held = decimalStringToBig(units)
   if (figure.lt(0)) {
     return '0'
   }

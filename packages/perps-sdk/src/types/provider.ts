@@ -37,7 +37,11 @@ import type {
   SDKRequestOptions,
 } from './config.js'
 import type { DepositFlow } from './deposit.js'
-import type { ProviderWithdrawableBalance, WithdrawFlow } from './withdrawal.js'
+import type {
+  ProviderWithdrawableBalance,
+  WithdrawalSourceTypes,
+  WithdrawFlow,
+} from './withdrawal.js'
 
 /**
  * Low-level SDK client: resolved config, the optional end-user wallet, and the
@@ -147,8 +151,8 @@ export interface ActionSignerContribution {
  */
 export interface LiquidationEstimateParams {
   /** Entry price in quote currency per base unit. */
-  entryPrice: number
-  leverage: number
+  entryPrice: string
+  leverage: string
   /** `true` for long, `false` for short. */
   isLong: boolean
 }
@@ -196,6 +200,15 @@ export interface ProviderGetWithdrawFlowParams {
  * @public
  */
 export interface ProviderGetWithdrawableBalancesParams {
+  address: Address
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getWithdrawalTypes}.
+ *
+ * @public
+ */
+export interface ProviderGetWithdrawalTypesParams {
   address: Address
 }
 
@@ -322,7 +335,7 @@ export interface ProviderGetQuoteParams {
   /** Trade direction used to choose asks for buys or bids for sells. */
   side: QuoteSide
   /** USD notional to fill. */
-  size: number
+  size: string
   /** Product family used to disambiguate spot and perpetual markets. */
   type: TradeType
 }
@@ -434,19 +447,32 @@ export interface PerpsProviderPlugin {
   ): Promise<WithdrawFlow>
 
   /**
-   * The `(asset, route)` pairs `params.address` currently has something to
+   * The `(asset, category)` pairs `params.address` currently has something to
    * withdraw from, keyed by provider-native asset id. Only the venue knows how
-   * its balance payload splits across routes, so the split is owned here; the
+   * its balance payload splits across categories, so the split is owned here; the
    * per-asset venue minimum is applied by `PerpsClient.getWithdrawableBalances`,
    * which holds the core asset registry.
    *
-   * Optional: a provider whose withdrawals are not a per-route selection omits
-   * it, and `PerpsClient.getWithdrawableBalances` then resolves `undefined`.
+   * Optional: a provider whose withdrawals are not a per-category selection
+   * omits it, and `PerpsClient.getWithdrawableBalances` then resolves
+   * `undefined`.
    */
   getWithdrawableBalances?(
     params: ProviderGetWithdrawableBalancesParams,
     options?: SDKRequestOptions
   ): Promise<ProviderWithdrawableBalance[]>
+
+  /**
+   * The withdrawal types `params.address` can choose per withdrawable holding,
+   * each with its cap and the `withdrawalOptions` to send with it.
+   *
+   * Optional: a provider with one withdrawal type omits it, and
+   * `PerpsClient.getWithdrawalTypes` then resolves `undefined`.
+   */
+  getWithdrawalTypes?(
+    params: ProviderGetWithdrawalTypesParams,
+    options?: SDKRequestOptions
+  ): Promise<WithdrawalSourceTypes[]>
 
   getPositions(
     params: ProviderGetPositionsParams,
@@ -573,10 +599,6 @@ export interface PerpsProviderPlugin {
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —
    * does no I/O.
    *
-   * Numbers, in and out, on purpose: this is a display-tier estimate that
-   * feeds a screen, not a wire amount. It is not a `snap*` method and must
-   * not be converted to {@link DecimalString}.
-   *
    * @returns The estimated liquidation price, or `undefined` when the venue's
    *   model cannot be evaluated client-side (degenerate inputs, or `market`
    *   lacks the margin metadata the model needs).
@@ -584,7 +606,7 @@ export interface PerpsProviderPlugin {
   estimateLiquidationPrice(
     market: PerpsMarket,
     params: LiquidationEstimateParams
-  ): number | undefined
+  ): string | undefined
 
   /**
    * Margin that can be removed from `position` under the venue margin rules,

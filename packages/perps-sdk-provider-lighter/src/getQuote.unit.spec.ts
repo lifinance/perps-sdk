@@ -92,7 +92,7 @@ describe('lighterProvider.getQuote', () => {
     const quote = await makeProvider().getQuote({
       symbol: 'BTC',
       side: 'buy',
-      size: 500,
+      size: '500',
       type: 'perps',
     })
 
@@ -112,7 +112,7 @@ describe('lighterProvider.getQuote', () => {
     const quote = await makeProvider().getQuote({
       symbol: 'BTC',
       side: 'sell',
-      size: 100_000,
+      size: '100000',
       type: 'perps',
     })
 
@@ -127,7 +127,7 @@ describe('lighterProvider.getQuote', () => {
       makeProvider().getQuote({
         symbol: 'ETH',
         side: 'buy',
-        size: 10,
+        size: '10',
         type: 'perps',
       })
     ).rejects.toThrow(/No perps market found/)

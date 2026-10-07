@@ -234,6 +234,10 @@ export enum FillClassification {
   SWITCHED_SHORT = 'Switched Short',
   SPOT_BUY = 'Spot Buy',
   SPOT_SELL = 'Spot Sell',
+  /** A perp buy whose position change the venue data cannot show. */
+  BUY = 'Buy',
+  /** A perp sell whose position change the venue data cannot show. */
+  SELL = 'Sell',
 }
 
 /** Classification emitted for a liquidation activity. @public */
@@ -304,4 +308,17 @@ export enum SigningMethod {
   SIWE = 'siwe',
   /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
   SESSION = 'session',
+}
+
+/**
+ * How a venue settles a withdrawal. A provider offers the types it supports
+ * per holding through `PerpsClient.getWithdrawalTypes`.
+ *
+ * @public
+ */
+export enum WithdrawalType {
+  FAST = 'FAST',
+  STANDARD = 'STANDARD',
+  NATIVE = 'NATIVE',
+  BRIDGE = 'BRIDGE',
 }

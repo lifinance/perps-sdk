@@ -1,6 +1,8 @@
 /**
- * Display-tier order formulas. Every function takes and gives `number`;
- * exact decimal arithmetic happens internally with `DivBig`.
+ * Display-tier order formulas. Every function takes and gives decimal
+ * strings; arithmetic is exact Big.js, with division to 40 decimal places.
+ * Each formula throws `ValidationError` on an input that is not a decimal
+ * string and has a `safe*` pair that gives `undefined` in place of the throw.
  */
 
 import {
@@ -20,10 +22,14 @@ import {
   type TradeType,
   type TriggerOrder,
 } from '@lifi/perps-types'
-import type Big from 'big.js'
-import { areFinite, DivBig } from '../decimal/big.js'
-import { numberToDecimalString } from '../decimal/convert.js'
+import { DivBig } from '../decimal/big.js'
+import {
+  bigToDecimalString,
+  decimalStringToBig,
+  decimalStringToDivBig,
+} from '../decimal/decimalStringToBig.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { createSafeFunction } from '../utils/createSafeFunction.js'
 import {
   isActiveOrderStatus,
   isRegularOrder,
@@ -32,73 +38,90 @@ import {
 import { calculateRealizedPnl } from './position.js'
 
 /**
- * Calculate position size in asset units from margin.
+ * Position size in asset units from margin: `marginUsd × leverage ÷ price`.
  *
- * @param marginUsd - Margin amount in USD
- * @param leverage - Position leverage
- * @param price - Current asset price
- * @returns Position size in asset units
  * @example
  * ```ts
- * calculateSize(100, 10, 2000) // 0.5 (ETH at $2000)
+ * calculateSize('100', '10', '2000') // '0.5' (ETH at $2000)
  * ```
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string
+ *   or `price` is zero.
  * @public
  */
 export function calculateSize(
-  marginUsd: number,
-  leverage: number,
-  price: number
-): number {
-  if (price === 0) {
-    return (marginUsd * leverage) / price
+  marginUsd: string,
+  leverage: string,
+  price: string
+): string {
+  const notional = decimalStringToDivBig(marginUsd).times(
+    decimalStringToBig(leverage)
+  )
+  const priceBig = decimalStringToBig(price)
+  if (priceBig.eq(0)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Price must not be zero.'
+    )
   }
-  if (!areFinite(marginUsd, leverage, price)) {
-    return Number.NaN
-  }
-  return new DivBig(marginUsd).times(leverage).div(price).toNumber()
+  return bigToDecimalString(notional.div(priceBig))
 }
 
-/**
- * Estimate trading fees.
- *
- * @param sizeUsd - Position size in USD (notional value)
- * @param feeRate - Fee rate as decimal (e.g., 0.00035 for 0.035%)
- * @returns Estimated fee in USD
- * @public
- */
-export function estimateFees(sizeUsd: number, feeRate: number): number {
-  if (!areFinite(sizeUsd, feeRate)) {
-    return Number.NaN
-  }
-  return new DivBig(sizeUsd).times(feeRate).toNumber()
-}
+/** @public */
+export const safeCalculateSize = createSafeFunction(
+  'calculateSize',
+  calculateSize
+)
 
 /**
- * Apply slippage to a price for order execution.
+ * Estimated trading fee in USD: `sizeUsd × feeRate`.
  *
- * @param price - Base price
- * @param slippagePercent - Slippage tolerance as percentage (e.g., 0.5 for 0.5%)
- * @param isBuy - True if buying (price goes up), false if selling (price goes down)
- * @returns Price adjusted for slippage
+ * @param feeRate - Fee rate as a fraction (`'0.00035'` for 0.035%).
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
-export function applySlippage(
-  price: number,
-  slippagePercent: number,
+export function estimateFees(sizeUsd: string, feeRate: string): string {
+  return bigToDecimalString(
+    decimalStringToBig(sizeUsd).times(decimalStringToBig(feeRate))
+  )
+}
+
+/** @public */
+export const safeEstimateFees = createSafeFunction('estimateFees', estimateFees)
+
+/**
+ * Apply slippage to an order-entry price with exact decimal math: a buy
+ * multiplies by `1 + slippagePercent / 100`, a sell divides by it. The result
+ * is not rounded; snap it to the market tick before it goes to a venue.
+ *
+ * @param slippagePercent - Slippage tolerance as a percentage (`'0.5'` is 0.5%).
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal
+ *   string, or `slippagePercent` is -100 or less.
+ * @public
+ */
+export function applySlippageToPrice(
+  price: string,
+  slippagePercent: string,
   isBuy: boolean
-): number {
-  if (!areFinite(price, slippagePercent)) {
-    return Number.NaN
+): string {
+  const base = decimalStringToDivBig(price)
+  const slippage = decimalStringToBig(slippagePercent)
+  if (slippage.lte(-100)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`slippagePercent\`: ${slippagePercent}.`
+    )
   }
-  const multiplier = new DivBig(slippagePercent).div(100).plus(1)
-  if (isBuy) {
-    return new DivBig(price).times(multiplier).toNumber()
-  }
-  if (multiplier.eq(0)) {
-    return price / multiplier.toNumber()
-  }
-  return new DivBig(price).div(multiplier).toNumber()
+  const multiplier = new DivBig(slippage).div(100).plus(1)
+  return bigToDecimalString(
+    isBuy ? base.times(multiplier) : base.div(multiplier)
+  )
 }
+
+/** @public */
+export const safeApplySlippageToPrice = createSafeFunction(
+  'applySlippageToPrice',
+  applySlippageToPrice
+)
 
 /**
  * Signed expected PnL for a trigger price — see {@link calculateExpectedPnl}.
@@ -107,131 +130,154 @@ export function applySlippage(
  */
 export interface ExpectedPnl {
   /** Signed expected profit/loss in USD. */
-  amount: number
-  /** Signed expected return as a percentage (10 means 10%). */
-  percent: number
+  amount: string
+  /** Signed expected return as a percentage (`'10'` means 10%). */
+  percent: string
 }
 
 /**
- * Calculate expected gain/loss for a TP or SL trigger price.
- * Returns signed values — positive means profit, negative means loss.
+ * Expected gain or loss for a TP or SL trigger price. Positive is a profit,
+ * negative a loss.
  *
- * @param triggerPrice - The TP or SL target price
- * @param entryPrice - Position entry / current market price
- * @param leverage - Position leverage multiplier
- * @param isLong - True for long positions, false for short
- * @param margin - Margin amount in USD
+ * @param entryPrice - Position entry or current market price.
+ * @param margin - Margin amount in USD.
+ * @returns The expected PnL, or `null` when `triggerPrice`, `entryPrice` or
+ *   `margin` is zero.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateExpectedPnl(
-  triggerPrice: number,
-  entryPrice: number,
-  leverage: number,
+  triggerPrice: string,
+  entryPrice: string,
+  leverage: string,
   isLong: boolean,
-  margin: number
+  margin: string
 ): ExpectedPnl | null {
-  if (!triggerPrice || entryPrice === 0 || margin === 0) {
+  const trigger = decimalStringToDivBig(triggerPrice)
+  const entry = decimalStringToBig(entryPrice)
+  const leverageBig = decimalStringToBig(leverage)
+  const marginBig = decimalStringToBig(margin)
+  if (trigger.eq(0) || entry.eq(0) || marginBig.eq(0)) {
     return null
   }
-  if (!areFinite(triggerPrice, entryPrice, leverage, margin)) {
-    return { amount: Number.NaN, percent: Number.NaN }
-  }
   const priceDiff = isLong
-    ? new DivBig(triggerPrice).minus(entryPrice)
-    : new DivBig(entryPrice).minus(triggerPrice)
-  const percent = priceDiff.div(entryPrice).times(leverage).times(100)
-  const amount = percent.times(margin).div(100)
-  return { amount: amount.toNumber(), percent: percent.toNumber() }
+    ? trigger.minus(entry)
+    : trigger.times(-1).plus(entry)
+  const percent = priceDiff.div(entry).times(leverageBig).times(100)
+  const amount = percent.times(marginBig).div(100)
+  return {
+    amount: bigToDecimalString(amount),
+    percent: bigToDecimalString(percent),
+  }
 }
 
+/** @public */
+export const safeCalculateExpectedPnl = createSafeFunction(
+  'calculateExpectedPnl',
+  calculateExpectedPnl
+)
+
 /**
- * Calculate the trigger price that realises a percentage gain/loss.
+ * Trigger price that realises a percentage gain or loss. A zero `entryPrice`
+ * or `leverage` gives `'0'`.
  *
- * @param percent - Target gain/loss percentage (positive = profitable direction)
- * @param entryPrice - Position entry price
- * @param leverage - Position leverage multiplier
- * @param isLong - True for long positions, false for short
+ * @param percent - Target gain or loss percentage (positive = profitable
+ *   direction).
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateTriggerPrice(
-  percent: number,
-  entryPrice: number,
-  leverage: number,
+  percent: string,
+  entryPrice: string,
+  leverage: string,
   isLong: boolean
-): number {
-  if (entryPrice === 0 || leverage === 0) {
-    return 0
+): string {
+  const percentBig = decimalStringToDivBig(percent)
+  const entry = decimalStringToBig(entryPrice)
+  const leverageBig = decimalStringToBig(leverage)
+  if (entry.eq(0) || leverageBig.eq(0)) {
+    return '0'
   }
-  if (!areFinite(percent, entryPrice, leverage)) {
-    return Number.NaN
-  }
-  const priceDelta = new DivBig(percent)
-    .times(entryPrice)
-    .div(new DivBig(leverage).times(100))
-  const entry = new DivBig(entryPrice)
-  return (isLong ? entry.plus(priceDelta) : entry.minus(priceDelta)).toNumber()
+  const priceDelta = percentBig.times(entry).div(leverageBig.times(100))
+  return bigToDecimalString(
+    isLong ? entry.plus(priceDelta) : entry.minus(priceDelta)
+  )
 }
 
+/** @public */
+export const safeCalculateTriggerPrice = createSafeFunction(
+  'calculateTriggerPrice',
+  calculateTriggerPrice
+)
+
 /**
- * Calculate the percentage gain/loss a trigger price realises.
+ * Percentage gain or loss that a trigger price realises. A zero `entryPrice`
+ * or `leverage` gives `'0'`.
  *
- * @param price - Target price
- * @param entryPrice - Position entry price
- * @param leverage - Position leverage multiplier
- * @param isLong - True for long positions, false for short
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateTriggerPercent(
-  price: number,
-  entryPrice: number,
-  leverage: number,
+  price: string,
+  entryPrice: string,
+  leverage: string,
   isLong: boolean
-): number {
-  if (entryPrice === 0 || leverage === 0) {
-    return 0
-  }
-  if (!areFinite(price, entryPrice, leverage)) {
-    return Number.NaN
+): string {
+  const priceBig = decimalStringToDivBig(price)
+  const entry = decimalStringToBig(entryPrice)
+  const leverageBig = decimalStringToBig(leverage)
+  if (entry.eq(0) || leverageBig.eq(0)) {
+    return '0'
   }
   const priceDiff = isLong
-    ? new DivBig(price).minus(entryPrice)
-    : new DivBig(entryPrice).minus(price)
-  return priceDiff.div(entryPrice).times(leverage).times(100).toNumber()
+    ? priceBig.minus(entry)
+    : priceBig.times(-1).plus(entry)
+  return bigToDecimalString(priceDiff.div(entry).times(leverageBig).times(100))
 }
 
+/** @public */
+export const safeCalculateTriggerPercent = createSafeFunction(
+  'calculateTriggerPercent',
+  calculateTriggerPercent
+)
+
 /**
- * Calculate realized PnL as a percentage of position value at close.
+ * Realized PnL as a percentage of the position value at close:
+ * `realizedPnl ÷ (|size| × price) × 100`. A zero position value gives `'0'`.
  *
- * @param realizedPnl - The realized profit/loss in USD
- * @param size - Position size in asset units at close
- * @param price - Price at close
- * @returns PnL as a percentage of position value
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateRealizedPnlPercent(
-  realizedPnl: number,
-  size: number,
-  price: number
-): number {
-  if (!areFinite(realizedPnl, size, price)) {
-    return Number.NaN
-  }
-  const positionValue = new DivBig(size).abs().times(price)
+  realizedPnl: string,
+  size: string,
+  price: string
+): string {
+  const pnl = decimalStringToDivBig(realizedPnl)
+  const positionValue = decimalStringToBig(size)
+    .abs()
+    .times(decimalStringToBig(price))
   if (positionValue.eq(0)) {
-    return 0
+    return '0'
   }
-  return new DivBig(realizedPnl).div(positionValue).times(100).toNumber()
+  return bigToDecimalString(pnl.div(positionValue).times(100))
 }
+
+/** @public */
+export const safeCalculateRealizedPnlPercent = createSafeFunction(
+  'calculateRealizedPnlPercent',
+  calculateRealizedPnlPercent
+)
 
 /** Result of {@link walkOrderbook} — the fill obtained for a USD-notional walk. */
 interface BookWalk {
   /** Base amount filled. */
-  baseSize: number
+  baseSize: string
   /** Notional actually filled in USD (equals the requested size unless the book ran dry). */
-  filledNotional: number
-  /** Volume-weighted average fill price, or 0 when the book is empty. */
-  vwap: number
-  /** True when the levels could not absorb the requested notional, and for a non-finite notional. */
+  filledNotional: string
+  /** Volume-weighted average fill price, or `'0'` when the book is empty. */
+  vwap: string
+  /** True when the levels could not absorb the requested notional. */
   insufficientLiquidity: boolean
 }
 
@@ -241,34 +287,25 @@ interface BookWalk {
  * in array order — the caller passes asks for a buy and bids for a sell, each
  * already ordered best-price-first. When the book cannot absorb the full
  * notional, the walk stops at the last level and flags `insufficientLiquidity`,
- * returning the best obtainable fill. A non-finite `sizeUsd` gives NaN fill
- * fields with `insufficientLiquidity` set.
+ * returning the best obtainable fill.
  *
- * @throws {PerpsError} `ValidationError` when a level's `price` or `size`
- *   does not parse to a finite number.
+ * @throws {PerpsError} `ValidationError` when `sizeUsd` or a level's `price`
+ *   or `size` is not a decimal string.
  * @public
  */
 export function walkOrderbook(
   levels: OrderbookLevel[],
-  sizeUsd: number
+  sizeUsd: string
 ): BookWalk {
-  if (!Number.isFinite(sizeUsd)) {
-    return {
-      baseSize: Number.NaN,
-      filledNotional: Number.NaN,
-      vwap: Number.NaN,
-      insufficientLiquidity: true,
-    }
-  }
-  let remaining = new DivBig(sizeUsd)
+  let remaining = decimalStringToDivBig(sizeUsd)
   let baseSize = new DivBig(0)
   let filledNotional = new DivBig(0)
   for (const level of levels) {
     if (remaining.lte(0)) {
       break
     }
-    const { price, size } = parseLevel(level)
-    const levelNotional = size.times(price)
+    const price = decimalStringToDivBig(level.price)
+    const levelNotional = decimalStringToBig(level.size).times(price)
     const take = remaining.lt(levelNotional) ? remaining : levelNotional
     if (take.eq(0)) {
       continue
@@ -278,23 +315,20 @@ export function walkOrderbook(
     remaining = remaining.minus(take)
   }
   return {
-    baseSize: baseSize.toNumber(),
-    filledNotional: filledNotional.toNumber(),
-    vwap: baseSize.eq(0) ? 0 : filledNotional.div(baseSize).toNumber(),
+    baseSize: bigToDecimalString(baseSize),
+    filledNotional: bigToDecimalString(filledNotional),
+    vwap: baseSize.eq(0)
+      ? '0'
+      : bigToDecimalString(filledNotional.div(baseSize)),
     insufficientLiquidity: remaining.gt(0),
   }
 }
 
-function parseLevel(level: OrderbookLevel): { price: Big; size: Big } {
-  try {
-    return { price: new DivBig(level.price), size: new DivBig(level.size) }
-  } catch {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Malformed orderbook level: price='${level.price}', size='${level.size}'`
-    )
-  }
-}
+/** @public */
+export const safeWalkOrderbook = createSafeFunction(
+  'walkOrderbook',
+  walkOrderbook
+)
 
 /** Inputs to {@link buildQuote} — the resolved market, its live price, its book, and the trade ask. */
 interface BuildQuoteInput {
@@ -302,7 +336,7 @@ interface BuildQuoteInput {
   symbol: string
   type: TradeType
   side: QuoteSide
-  sizeUsd: number
+  sizeUsd: string
   market: Market
   price: MarketContext
   bids: OrderbookLevel[]
@@ -319,43 +353,44 @@ interface BuildQuoteInput {
  * versus mark, applies the base taker fee on the filled notional, and carries
  * the market's `funding` (`null` for spot, which has none).
  *
- * @throws {PerpsError} `ValidationError` when a book level does not parse to
- *   a finite number — see {@link walkOrderbook} — or when a quoted figure is
- *   not finite (a non-finite `sizeUsd`, mark price or taker fee).
+ * @throws {PerpsError} `ValidationError` when `sizeUsd`, the mark price, the
+ *   taker fee or a book level is not a decimal string.
  * @public
  */
 export function buildQuote(input: BuildQuoteInput): Quote {
   const { market, price, side, sizeUsd, feeTier } = input
-  const markPrice = Number.parseFloat(price.markPrice)
+  const markPrice = decimalStringToDivBig(price.markPrice)
   const levels = side === 'buy' ? input.asks : input.bids
   const walk = walkOrderbook(levels, sizeUsd)
+  const vwap = decimalStringToBig(walk.vwap)
   const priceImpactBps =
-    markPrice === 0 || walk.vwap === 0
-      ? 0
-      : Math.abs((walk.vwap - markPrice) / markPrice) * 10_000
-  const feeUsd = estimateFees(
-    walk.filledNotional,
-    Number.parseFloat(feeTier.taker)
-  )
+    markPrice.eq(0) || vwap.eq(0)
+      ? '0'
+      : bigToDecimalString(
+          vwap.minus(markPrice).div(markPrice).abs().times(10_000)
+        )
   return {
     provider: input.provider,
     symbol: input.symbol,
     marketId: market.id,
     type: input.type,
     side,
-    sizeUsd: numberToDecimalString(sizeUsd),
-    baseSize: numberToDecimalString(walk.baseSize),
+    sizeUsd: bigToDecimalString(decimalStringToBig(sizeUsd)),
+    baseSize: walk.baseSize,
     markPrice: price.markPrice,
-    expectedFillPrice: numberToDecimalString(walk.vwap),
-    priceImpactBps: numberToDecimalString(priceImpactBps),
+    expectedFillPrice: walk.vwap,
+    priceImpactBps,
     feeTier,
     isDefaultFeeTier: true,
-    feeUsd: numberToDecimalString(feeUsd),
+    feeUsd: estimateFees(walk.filledNotional, feeTier.taker),
     funding: price.funding ?? null,
     insufficientLiquidity: walk.insufficientLiquidity,
     timestamp: input.timestamp,
   }
 }
+
+/** @public */
+export const safeBuildQuote = createSafeFunction('buildQuote', buildQuote)
 
 /**
  * Pick the matching open position for an order's market, if any.
@@ -379,17 +414,27 @@ export function findMatchingPosition(
  *    position can only close what's open.
  *
  * Inputs are non-negative magnitudes.
+ *
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function resolveCloseSize(
-  orderSize: number,
-  positionSize: number
-): number {
-  if (orderSize === 0) {
-    return positionSize
+  orderSize: string,
+  positionSize: string
+): string {
+  const order = decimalStringToBig(orderSize)
+  const position = decimalStringToBig(positionSize)
+  if (order.eq(0)) {
+    return bigToDecimalString(position)
   }
-  return Math.min(orderSize, positionSize)
+  return bigToDecimalString(order.lt(position) ? order : position)
 }
+
+/** @public */
+export const safeResolveCloseSize = createSafeFunction(
+  'resolveCloseSize',
+  resolveCloseSize
+)
 
 /**
  * Expected rPnL for a resting limit order against a matching position.
@@ -403,7 +448,7 @@ export function resolveCloseSize(
 function regularOrderRealizedPnl(
   order: RegularOrder,
   position: Position | undefined
-): number | null {
+): string | null {
   if (!position || !isActiveOrderStatus(order.status)) {
     return null
   }
@@ -416,32 +461,29 @@ function regularOrderRealizedPnl(
     return null
   }
 
-  const limitPrice = Number.parseFloat(order.price ?? '')
-  const entryPrice = Number.parseFloat(position.entryPrice)
-  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
-  const positionSize = Math.abs(Number.parseFloat(position.size))
-  if (
-    !Number.isFinite(limitPrice) ||
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(orderSize) ||
-    !Number.isFinite(positionSize) ||
-    positionSize <= 0
-  ) {
+  if (order.price === undefined) {
+    return null
+  }
+  const orderSize = decimalStringToBig(order.remainingSize).abs()
+  const positionSize = decimalStringToBig(position.size).abs()
+  if (positionSize.lte(0)) {
     return null
   }
 
   // `resolveCloseSize` reads a zero size as "close the whole position", a
   // convention that belongs to an order's submitted size. `remainingSize` is
   // the unfilled quantity, so zero means nothing is left to fill.
-  if (orderSize === 0) {
+  if (orderSize.eq(0)) {
     return null
   }
 
-  const closeSize = resolveCloseSize(orderSize, positionSize)
   return calculateRealizedPnl({
-    entryPrice,
-    closePrice: limitPrice,
-    closeSize,
+    entryPrice: position.entryPrice,
+    closePrice: order.price,
+    closeSize: resolveCloseSize(
+      bigToDecimalString(orderSize),
+      bigToDecimalString(positionSize)
+    ),
     isLong,
   })
 }
@@ -450,9 +492,10 @@ function regularOrderRealizedPnl(
 function triggerOrderRealizedPnl(
   order: TriggerOrder,
   position: Position | undefined
-): number | null {
+): string | null {
   if (
     !position ||
+    order.triggerPrice === undefined ||
     !isActiveOrderStatus(order.status) ||
     order.status === OrderStatus.PENDING
   ) {
@@ -466,31 +509,25 @@ function triggerOrderRealizedPnl(
   ) {
     return null
   }
-  const triggerPrice = Number.parseFloat(order.triggerPrice)
-  const entryPrice = Number.parseFloat(position.entryPrice)
-  const orderSize = Math.abs(Number.parseFloat(order.remainingSize))
-  const positionSize = Math.abs(Number.parseFloat(position.size))
-  if (
-    !Number.isFinite(triggerPrice) ||
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(orderSize) ||
-    !Number.isFinite(positionSize) ||
-    positionSize <= 0
-  ) {
+  const orderSize = decimalStringToBig(order.remainingSize).abs()
+  const positionSize = decimalStringToBig(position.size).abs()
+  if (positionSize.lte(0)) {
     return null
   }
   if (
-    orderSize === 0 &&
-    (Number.parseFloat(order.originalSize) !== 0 || !order.reduceOnly)
+    orderSize.eq(0) &&
+    (!decimalStringToBig(order.originalSize).eq(0) || !order.reduceOnly)
   ) {
     return null
   }
 
-  const closeSize = resolveCloseSize(orderSize, positionSize)
   return calculateRealizedPnl({
-    entryPrice,
-    closePrice: triggerPrice,
-    closeSize,
+    entryPrice: position.entryPrice,
+    closePrice: order.triggerPrice,
+    closeSize: resolveCloseSize(
+      bigToDecimalString(orderSize),
+      bigToDecimalString(positionSize)
+    ),
     isLong,
   })
 }
@@ -503,12 +540,14 @@ function triggerOrderRealizedPnl(
  *
  * @returns Realised PnL if the order would reduce the position, otherwise
  *   `null`.
+ * @throws {PerpsError} `ValidationError` when a price or size on the order or
+ *   the position is not a decimal string.
  * @public
  */
 export function estimateRealizedPnl(
   order: Order,
   position: Position | undefined
-): number | null {
+): string | null {
   if (isTriggerOrder(order)) {
     return triggerOrderRealizedPnl(order, position)
   }
@@ -517,3 +556,9 @@ export function estimateRealizedPnl(
   }
   return null
 }
+
+/** @public */
+export const safeEstimateRealizedPnl = createSafeFunction(
+  'estimateRealizedPnl',
+  estimateRealizedPnl
+)

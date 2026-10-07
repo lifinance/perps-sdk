@@ -87,7 +87,7 @@ const FEE = { maker: '0.00015', taker: '0.00045' }
 const PARAMS = {
   symbol: 'BTC',
   side: 'buy',
-  size: 201,
+  size: '201',
   type: 'perps',
 } as const
 
@@ -275,9 +275,10 @@ describe('resolveSubscribeQuote', () => {
   })
 
   it.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])('rejects a non-finite size (%s) before it subscribes', async (size) => {
+    'NaN',
+    'Infinity',
+    'abc',
+  ])('rejects a non-decimal size (%s) before it subscribes', async (size) => {
     installMarkets([BTC_PERP])
     const subscribe = vi.fn()
 
@@ -291,7 +292,10 @@ describe('resolveSubscribeQuote', () => {
         vi.fn()
       )
     ).rejects.toThrow(
-      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining('Quote size must be a decimal string'),
+      })
     )
     expect(subscribe).not.toHaveBeenCalled()
   })

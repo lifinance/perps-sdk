@@ -278,7 +278,7 @@ export const HL_FRONTEND_OPEN_ORDERS: HlFrontendOpenOrders = [
   },
 ]
 
-const HL_ORDER_DETAIL_FOUND: HlOrderDetail = {
+export const HL_ORDER_DETAIL_FOUND: HlOrderDetail = {
   order: {
     oid: 1,
     coin: 'BTC',
