@@ -1,4 +1,4 @@
-import { numberToDecimalString, parseDecimal } from '@lifi/perps-sdk'
+import { decimalStringToNumber, numberToDecimalString } from '@lifi/perps-sdk'
 import type { Asset, Balance, Market } from '@lifi/perps-types'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlSpotBalance } from '../types/index.js'
@@ -53,7 +53,7 @@ export const spotBalance = (
     asset,
     units: total,
     valueUsd: numberToDecimalString(
-      (parseDecimal(total) ?? Number.NaN) * price
+      (decimalStringToNumber(total) ?? Number.NaN) * price
     ),
     // A zero entry means the map holds no mark for the asset, not a free asset.
     ...(price > 0 ? { price: numberToDecimalString(price) } : {}),

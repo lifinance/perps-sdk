@@ -646,6 +646,28 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('skips a level with an invalid price or size', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:0', listener)
+
+      feedBook(
+        p,
+        'subscribed/order_book',
+        [
+          { price: '100', size: '1' },
+          { price: 'abc', size: '2' },
+          { price: '99', size: 'NaN' },
+        ],
+        [{ price: '101', size: '4' }]
+      )
+
+      const book = listener.mock.calls[0][0]
+      expect(book.data.bids).toEqual([{ price: '100', size: '1' }])
+      expect(book.data.asks).toEqual([{ price: '101', size: '4' }])
+      p.close()
+    })
+
     it('stamps a second instance’s provider key on emitted data', () => {
       const p = new LighterWsProvider(
         LIGHTER_RH_WS_URL,
@@ -924,6 +946,42 @@ describe('LighterWsProvider', () => {
       expect(event.data).toHaveLength(1)
       expect(event.data[0].entryPrice).toBe('50000')
       expect(event.data[0].leverage).toBe(20)
+      p.close()
+    })
+
+    it('skips a position row with an invalid size and keeps the rest', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: {
+            '0': RAW_POSITION,
+            '1': {
+              ...RAW_POSITION,
+              market_id: 1,
+              symbol: 'ETH',
+              position: 'ws-bad-size',
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0].market.id).toBe('0')
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[lighter] skipping position row: `position` is not a valid decimal: 'ws-bad-size'"
+        )
+      )
+      warn.mockRestore()
       p.close()
     })
 

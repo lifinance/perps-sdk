@@ -1,6 +1,9 @@
 import {
   cachePromise,
+  decimalStringToNumber,
   getMarketRegistry,
+  isDecimalString,
+  isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
   type PerpsProvider,
@@ -8,6 +11,7 @@ import {
   type ProviderGetQuoteParams,
   type QuoteListener,
   ReconnectingWebSocket,
+  requireVenueDecimal,
   resolveRetryPolicy,
   resolveSubscribeQuote,
   toPerpsMarketDisplay,
@@ -63,7 +67,6 @@ import {
   mapMarketContext,
   mapOrderUpdates,
   mapPosition,
-  toRequiredBig,
 } from '../utils/index.js'
 import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
 
@@ -731,34 +734,55 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
 
-    const portfolio = toRequiredBig(
-      stats.portfolio_value,
-      'stats.portfolio_value'
+    const portfolio = new Big(
+      requireVenueDecimal(
+        stats.portfolio_value,
+        'stats.portfolio_value',
+        this.providerKey
+      )
     )
-    const collateral = toRequiredBig(stats.collateral, 'stats.collateral')
+    const collateral = new Big(
+      requireVenueDecimal(
+        stats.collateral,
+        'stats.collateral',
+        this.providerKey
+      )
+    )
 
     let available: Big
     let marginUsed: Big
     if (stats.cross_stats === undefined) {
       // Compatibility with legacy gateways that omitted the entire
       // cross_stats object.
-      available = toRequiredBig(
-        stats.available_balance,
-        'stats.available_balance'
+      available = new Big(
+        requireVenueDecimal(
+          stats.available_balance,
+          'stats.available_balance',
+          this.providerKey
+        )
       )
       marginUsed = portfolio.minus(available)
     } else {
-      const crossCollateral = toRequiredBig(
-        stats.cross_stats.collateral,
-        'stats.cross_stats.collateral'
+      const crossCollateral = new Big(
+        requireVenueDecimal(
+          stats.cross_stats.collateral,
+          'stats.cross_stats.collateral',
+          this.providerKey
+        )
       )
-      const crossPortfolio = toRequiredBig(
-        stats.cross_stats.portfolio_value,
-        'stats.cross_stats.portfolio_value'
+      const crossPortfolio = new Big(
+        requireVenueDecimal(
+          stats.cross_stats.portfolio_value,
+          'stats.cross_stats.portfolio_value',
+          this.providerKey
+        )
       )
-      available = toRequiredBig(
-        stats.cross_stats.available_balance,
-        'stats.cross_stats.available_balance'
+      available = new Big(
+        requireVenueDecimal(
+          stats.cross_stats.available_balance,
+          'stats.cross_stats.available_balance',
+          this.providerKey
+        )
       )
       const isolatedMargin = collateral.minus(crossCollateral)
       const crossMargin = crossPortfolio.minus(available)
@@ -794,11 +818,19 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     const parsed = Object.values(msg.assets ?? {}).map((asset) => ({
       assetId: asset.asset_id,
-      spot: toRequiredBig(asset.balance, 'balance'),
+      spot: new Big(
+        requireVenueDecimal(asset.balance, 'balance', this.providerKey)
+      ),
       margin:
         asset.margin_balance === undefined
           ? undefined
-          : toRequiredBig(asset.margin_balance, 'margin_balance'),
+          : new Big(
+              requireVenueDecimal(
+                asset.margin_balance,
+                'margin_balance',
+                this.providerKey
+              )
+            ),
     }))
     const balances = isSnapshot
       ? new Map<number, { spot: Big; margin: Big }>()
@@ -913,8 +945,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     for (const p of raw) {
       if (isOpenPosition(p)) {
         const market = this.registry?.get(String(p.market_id))
-        if (market) {
-          state.set(p.market_id, mapPosition(p, toPerpsMarketDisplay(market)))
+        const position = market
+          ? mapPosition(p, toPerpsMarketDisplay(market))
+          : undefined
+        if (position) {
+          state.set(p.market_id, position)
+        } else {
+          state.delete(p.market_id)
         }
       } else {
         state.delete(p.market_id)
@@ -1127,17 +1164,18 @@ function applyLevels(
   levels: LtWsOrderBook['bids']
 ): void {
   for (const level of levels) {
-    if (level.size === '0' || Number(level.size) === 0) {
+    const priceNum = decimalStringToNumber(level.price)
+    if (priceNum === undefined || !isDecimalString(level.size)) {
+      continue
+    }
+    if (isDecimalStringZero(level.size)) {
       book.delete(level.price)
     } else {
       const existing = book.get(level.price)
       if (existing) {
         existing.size = level.size
       } else {
-        book.set(level.price, {
-          size: level.size,
-          priceNum: Number(level.price),
-        })
+        book.set(level.price, { size: level.size, priceNum })
       }
     }
   }

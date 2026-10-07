@@ -1,5 +1,7 @@
+import { requireVenueDecimal } from '@lifi/perps-sdk'
 import type { Balance } from '@lifi/perps-types'
-import { toWireBig } from './decimal.js'
+import Big from 'big.js'
+import { PROVIDER_KEY } from '../constants.js'
 
 /**
  * Result of {@link partitionSpotBalances}: balances that count toward
@@ -24,7 +26,11 @@ export const partitionSpotBalances = (
   const collateralBalances: Balance[] = []
   const balances: Balance[] = []
   for (const balance of spotBalances) {
-    if (!toWireBig(balance.units, 'spotBalance.units').gt(0)) {
+    if (
+      !new Big(
+        requireVenueDecimal(balance.units, 'spotBalance.units', PROVIDER_KEY)
+      ).gt(0)
+    ) {
       continue
     }
     if (quoteAssetIds.has(balance.asset.id)) {

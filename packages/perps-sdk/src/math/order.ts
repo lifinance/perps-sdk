@@ -1,9 +1,10 @@
 /**
- * Display-tier order formulas. Every function takes and gives `number`;
- * exact decimal arithmetic happens internally with `DivBig`.
+ * Display-tier order formulas. Every function takes and gives `number`, except
+ * `applySlippageToPrice`; exact decimal arithmetic happens internally with `DivBig`.
  */
 
 import {
+  type DecimalString,
   type FeeTier,
   type Market,
   type MarketContext,
@@ -23,6 +24,7 @@ import {
 import type Big from 'big.js'
 import { areFinite, DivBig } from '../decimal/big.js'
 import { numberToDecimalString } from '../decimal/convert.js'
+import { requireDecimal } from '../decimal/requireDecimal.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
   isActiveOrderStatus,
@@ -98,6 +100,34 @@ export function applySlippage(
     return price / multiplier.toNumber()
   }
   return new DivBig(price).div(multiplier).toNumber()
+}
+
+/**
+ * Apply slippage to an order-entry price with exact decimal math. The result
+ * is not rounded; snap it to the market tick before it goes to a venue.
+ *
+ * @param slippagePercent - Slippage tolerance as a percentage (0.5 is 0.5%).
+ * @throws {PerpsError} `ValidationError` when `price` is not a decimal string,
+ *   or `slippagePercent` is not finite or is -100 or less.
+ * @public
+ */
+export function applySlippageToPrice(
+  price: DecimalString,
+  slippagePercent: number,
+  isBuy: boolean
+): DecimalString {
+  const base = requireDecimal(price, 'price')
+  if (!Number.isFinite(slippagePercent) || slippagePercent <= -100) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`slippagePercent\`: ${slippagePercent}.`
+    )
+  }
+  const multiplier = new DivBig(slippagePercent).div(100).plus(1)
+  const adjusted = isBuy
+    ? base.times(multiplier)
+    : new DivBig(base).div(multiplier)
+  return adjusted.eq(0) ? '0' : adjusted.toFixed()
 }
 
 /**

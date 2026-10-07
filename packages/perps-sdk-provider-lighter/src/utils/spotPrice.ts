@@ -1,6 +1,7 @@
+import { requireVenueDecimal } from '@lifi/perps-sdk'
 import type { Market, MarketContext } from '@lifi/perps-types'
 import Big from 'big.js'
-import { toRequiredBig } from './decimal.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 /**
  * Unit prices keyed by spot base `Asset.id` (the venue `asset_id`), read from
@@ -30,7 +31,9 @@ export const spotPriceByAssetId = (
     ) {
       continue
     }
-    const price = toRequiredBig(mark, 'markPrice')
+    const price = new Big(
+      requireVenueDecimal(mark, 'markPrice', LIGHTER_PROVIDER_KEY)
+    )
     if (price.gt(0)) {
       priceByAssetId.set(market.baseAsset.id, price)
     }

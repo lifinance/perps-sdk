@@ -24,6 +24,7 @@ import { isDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
   applySlippage,
+  applySlippageToPrice,
   buildQuote,
   calculateExpectedPnl,
   calculateRealizedPnlPercent,
@@ -129,6 +130,52 @@ describe('applySlippage', () => {
   it('should handle very small prices', () => {
     const result = applySlippage(0.00001, 0.5, true)
     expect(result).toBeGreaterThan(0.00001)
+  })
+})
+
+describe('applySlippageToPrice', () => {
+  it('raises a buy price by the exact percentage', () => {
+    expect(applySlippageToPrice('100', 0.5, true)).toBe('100.5')
+    expect(applySlippageToPrice('0.07', 10, true)).toBe('0.077')
+  })
+
+  it('divides a sell price without rounding', () => {
+    expect(applySlippageToPrice('110', 10, false)).toBe('100')
+    expect(applySlippageToPrice('100', 0.5, false)).toBe(
+      '99.5024875621890547263681592039800995024876'
+    )
+  })
+
+  it('keeps more digits than a float can hold', () => {
+    expect(applySlippageToPrice('12345678901234567.89', 1, true)).toBe(
+      '12469135690246913.5689'
+    )
+  })
+
+  it('returns the price unchanged for zero slippage', () => {
+    expect(applySlippageToPrice('50000', 0, true)).toBe('50000')
+    expect(applySlippageToPrice('50000', 0, false)).toBe('50000')
+  })
+
+  it.each([
+    'abc',
+    '1e-7',
+    '',
+  ])('throws a ValidationError for the price %j', (price) => {
+    expect(() => applySlippageToPrice(price, 1, true)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -100,
+    -150,
+  ])('throws a ValidationError for the slippage %s', (slippage) => {
+    expect(() => applySlippageToPrice('100', slippage, false)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
 

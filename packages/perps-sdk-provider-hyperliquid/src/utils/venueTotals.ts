@@ -1,6 +1,7 @@
+import { requireVenueDecimal } from '@lifi/perps-sdk'
 import type { HyperliquidMarginSummary, Position } from '@lifi/perps-types'
 import Big from 'big.js'
-import { toWireBig } from './decimal.js'
+import { PROVIDER_KEY } from '../constants.js'
 
 /**
  * One perps sub-dex entry {@link perpsTotals} reads. The REST response always
@@ -27,10 +28,22 @@ export const perpsTotals = (
       continue
     }
     accountValue = accountValue.plus(
-      toWireBig(marginSummary.accountValue, 'marginSummary.accountValue')
+      new Big(
+        requireVenueDecimal(
+          marginSummary.accountValue,
+          'marginSummary.accountValue',
+          PROVIDER_KEY
+        )
+      )
     )
     marginUsed = marginUsed.plus(
-      toWireBig(marginSummary.totalMarginUsed, 'marginSummary.totalMarginUsed')
+      new Big(
+        requireVenueDecimal(
+          marginSummary.totalMarginUsed,
+          'marginSummary.totalMarginUsed',
+          PROVIDER_KEY
+        )
+      )
     )
   }
   return { accountValue, marginUsed }
@@ -43,6 +56,14 @@ export const perpsTotals = (
 export const sumUnrealizedPnl = (positions: readonly Position[]): Big =>
   positions.reduce(
     (sum, position) =>
-      sum.plus(toWireBig(position.unrealizedPnl, 'position.unrealizedPnl')),
+      sum.plus(
+        new Big(
+          requireVenueDecimal(
+            position.unrealizedPnl,
+            'position.unrealizedPnl',
+            PROVIDER_KEY
+          )
+        )
+      ),
     new Big(0)
   )

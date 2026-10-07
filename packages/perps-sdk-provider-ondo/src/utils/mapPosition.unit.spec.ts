@@ -1,11 +1,10 @@
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
-  PerpsErrorCode,
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { OndoPosition } from '../types/wire.js'
 import { isOpenPosition, mapOpenPositions, mapPosition } from './mapPosition.js'
 
@@ -69,8 +68,8 @@ describe('mapPosition', () => {
       positionFixture({ direction: 'short', netQuantity: '-2.5' }),
       MARKET
     )
-    expect(mapped.side).toBe(PositionSide.SHORT)
-    expect(mapped.size).toBe('2.5')
+    expect(mapped?.side).toBe(PositionSide.SHORT)
+    expect(mapped?.size).toBe('2.5')
   })
 
   // Ondo already signs funding from the account's point of view, so
@@ -82,25 +81,28 @@ describe('mapPosition', () => {
   ])('passes netFundingSinceNeutral %s through to accruedFunding', (netFundingSinceNeutral) => {
     expect(
       mapPosition(positionFixture({ netFundingSinceNeutral }), MARKET)
-        .accruedFunding
+        ?.accruedFunding
     ).toBe(netFundingSinceNeutral)
   })
 
   it('parses fractional leverage', () => {
     expect(
-      mapPosition(positionFixture({ leverage: '3.7' }), MARKET).leverage
+      mapPosition(positionFixture({ leverage: '3.7' }), MARKET)?.leverage
     ).toBe(3.7)
   })
-  it('rejects a non-numeric netQuantity with an SDKError naming the field', () => {
-    expect(() =>
-      mapPosition(positionFixture({ netQuantity: 'abc' }), MARKET)
-    ).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.SDKError,
-        message: "Ondo field `netQuantity` is not a valid decimal: 'abc'",
-        tool: 'ondo',
-      })
+  it.each([
+    ['netQuantity', { netQuantity: 'abc' }, 'abc'],
+    ['leverage', { leverage: 'n/a' }, 'n/a'],
+  ] as const)('skips the row and warns when %s is invalid', (field, overrides, value) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapPosition(positionFixture(overrides), MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `[ondo] skipping position row: \`${field}\` is not a valid decimal: '${value}'`
+      )
     )
+    warn.mockRestore()
   })
 })
 

@@ -2,10 +2,11 @@ import {
   calculateTransferable,
   calculateWithdrawMax,
   type ProviderWithdrawableBalance,
+  requireVenueDecimal,
 } from '@lifi/perps-sdk'
 import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtAccount } from '../types/account.js'
-import { toRequiredBig } from './decimal.js'
 
 /**
  * Split each held asset into the two routes a Lighter withdrawal can name:
@@ -29,8 +30,16 @@ export const lighterWithdrawableBalances = (
   const rows: ProviderWithdrawableBalance[] = []
   for (const asset of account.assets) {
     const assetId = String(asset.asset_id)
-    const spot = toRequiredBig(asset.balance, 'balance').minus(
-      toRequiredBig(asset.locked_balance, 'locked_balance')
+    const spot = new Big(
+      requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
+    ).minus(
+      new Big(
+        requireVenueDecimal(
+          asset.locked_balance,
+          'locked_balance',
+          LIGHTER_PROVIDER_KEY
+        )
+      )
     )
     if (spot.gt(0)) {
       const available = spot.toFixed()
@@ -41,13 +50,22 @@ export const lighterWithdrawableBalances = (
         max: calculateWithdrawMax({ available }),
       })
     }
-    const marginBalance = toRequiredBig(asset.margin_balance, 'margin_balance')
+    const marginBalance = new Big(
+      requireVenueDecimal(
+        asset.margin_balance,
+        'margin_balance',
+        LIGHTER_PROVIDER_KEY
+      )
+    )
     const perps =
       asset.asset_id === settlementAssetIndex
         ? calculateTransferable(
-            toRequiredBig(
-              account.available_balance,
-              'available_balance'
+            new Big(
+              requireVenueDecimal(
+                account.available_balance,
+                'available_balance',
+                LIGHTER_PROVIDER_KEY
+              )
             ).toFixed(),
             marginBalance.toFixed()
           )

@@ -1,4 +1,4 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { PerpsError, requireVenueDecimal } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
@@ -13,7 +13,6 @@ import {
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
 } from './constants.js'
-import { toRequiredBig } from './utils/decimal.js'
 
 /**
  * The Lighter arm of `account.config`.
@@ -44,7 +43,10 @@ export const lighterPortfolioValue = (
   holdingValuesUsd: readonly string[]
 ): Big =>
   holdingValuesUsd.reduce(
-    (sum, valueUsd) => sum.plus(toRequiredBig(valueUsd, 'valueUsd')),
+    (sum, valueUsd) =>
+      sum.plus(
+        new Big(requireVenueDecimal(valueUsd, 'valueUsd', LIGHTER_PROVIDER_KEY))
+      ),
     perpsEquity
   )
 
@@ -77,16 +79,37 @@ export function getAccountSummary(
 
   return {
     portfolioValue: lighterPortfolioValue(
-      toRequiredBig(config.totalAssetValue, 'totalAssetValue').plus(
-        toRequiredBig(config.collateralSpotBalance, 'collateralSpotBalance')
+      new Big(
+        requireVenueDecimal(
+          config.totalAssetValue,
+          'totalAssetValue',
+          LIGHTER_PROVIDER_KEY
+        )
+      ).plus(
+        new Big(
+          requireVenueDecimal(
+            config.collateralSpotBalance,
+            'collateralSpotBalance',
+            LIGHTER_PROVIDER_KEY
+          )
+        )
       ),
       holdings.map((balance) => balance.valueUsd)
     ).toFixed(),
     availableMargin: atLeastZero(
-      toRequiredBig(config.crossAssetValue, 'crossAssetValue').minus(
-        toRequiredBig(
-          config.crossInitialMarginRequirement,
-          'crossInitialMarginRequirement'
+      new Big(
+        requireVenueDecimal(
+          config.crossAssetValue,
+          'crossAssetValue',
+          LIGHTER_PROVIDER_KEY
+        )
+      ).minus(
+        new Big(
+          requireVenueDecimal(
+            config.crossInitialMarginRequirement,
+            'crossInitialMarginRequirement',
+            LIGHTER_PROVIDER_KEY
+          )
         )
       )
     ).toFixed(),

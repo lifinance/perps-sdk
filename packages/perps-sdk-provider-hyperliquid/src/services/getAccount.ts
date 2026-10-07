@@ -1,9 +1,10 @@
 import {
   calculateTransferable,
+  decimalStringToNumber,
   getMarketRegistry,
   getMarketsContext,
   type ProviderGetAccountParams,
-  parseDecimal,
+  requireVenueDecimal,
   type SDKRequestOptions,
   toPerpsMarketDisplay,
 } from '@lifi/perps-sdk'
@@ -15,7 +16,7 @@ import type {
   HyperliquidDexAccountState,
   Position,
 } from '@lifi/perps-types'
-import type Big from 'big.js'
+import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -26,7 +27,6 @@ import type {
   HlUserFees,
 } from '../types/index.js'
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
-import { toWireBig } from '../utils/decimal.js'
 import {
   assetIsOutcome,
   partitionSpotBalances,
@@ -52,7 +52,13 @@ export type GetAccountParams = ProviderGetAccountParams
 // `crossMarginSummary` is the cross-only subset and would drop isolated
 // equity/margin.
 const getAccountValue = (state: HlClearinghouseState): Big =>
-  toWireBig(state.marginSummary.accountValue, 'marginSummary.accountValue')
+  new Big(
+    requireVenueDecimal(
+      state.marginSummary.accountValue,
+      'marginSummary.accountValue',
+      PROVIDER_KEY
+    )
+  )
 
 /** Venue buying power for the quote asset the perps dex settles in. */
 const getAvailableAfterMaintenance = (
@@ -80,12 +86,26 @@ const buildBalances = (
     spotState.balances
       .filter((b) => !assetIsOutcome(b.coin))
       .map((b) => {
-        const total = toWireBig(b.total, 'spotClearinghouseState.total')
+        const total = new Big(
+          requireVenueDecimal(
+            b.total,
+            'spotClearinghouseState.total',
+            PROVIDER_KEY
+          )
+        )
         return {
           ...spotBalance(spotAssetFromToken(b), b.total, priceById),
           transferable: calculateTransferable(
             total
-              .minus(toWireBig(b.hold, 'spotClearinghouseState.hold'))
+              .minus(
+                new Big(
+                  requireVenueDecimal(
+                    b.hold,
+                    'spotClearinghouseState.hold',
+                    PROVIDER_KEY
+                  )
+                )
+              )
               .toFixed(),
             total.toFixed()
           ),
@@ -114,9 +134,12 @@ const buildBalances = (
         valueUsd: value.toFixed(),
         price: '1',
         transferable: calculateTransferable(
-          toWireBig(
-            state.withdrawable,
-            'clearinghouseState.withdrawable'
+          new Big(
+            requireVenueDecimal(
+              state.withdrawable,
+              'clearinghouseState.withdrawable',
+              PROVIDER_KEY
+            )
           ).toFixed(),
           value.toFixed()
         ),
@@ -210,7 +233,10 @@ export const getAccount = async (
   const priceById = spotPriceById(
     markets,
     new Map(
-      prices.map((p) => [p.marketId, parseDecimal(p.markPrice) ?? Number.NaN])
+      prices.map((p) => [
+        p.marketId,
+        decimalStringToNumber(p.markPrice) ?? Number.NaN,
+      ])
     )
   )
 
@@ -219,12 +245,13 @@ export const getAccount = async (
       .filter(
         (ap) => !assetIsOutcome(ap.position.coin) && isOpenAssetPosition(ap)
       )
-      .map((ap) =>
-        mapPosition(
+      .flatMap((ap) => {
+        const position = mapPosition(
           ap,
           toPerpsMarketDisplay(registry.require(ap.position.coin))
         )
-      )
+        return position === undefined ? [] : [position]
+      })
   )
 
   const stateByDex = new Map<string, HlClearinghouseState>()

@@ -3,6 +3,7 @@ import { OrderStatus, OrderType, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_MARKETS,
+  HL_ORDER_DETAIL_FOUND,
   HL_ORDER_STATUS_FOUND,
   HL_ORDER_STATUS_FOUND_WITH_CLOID,
   HL_ORDER_STATUS_OUTCOME,
@@ -80,6 +81,28 @@ describe('getOrder', () => {
         id: '7',
       })
     ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+  })
+
+  it('throws OrderNotFound when the venue row has an invalid size', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        orderStatus: {
+          ...HL_ORDER_STATUS_FOUND,
+          order: {
+            ...HL_ORDER_DETAIL_FOUND,
+            order: { ...HL_ORDER_DETAIL_FOUND.order, origSz: 'bad-size' },
+          },
+        },
+      },
+      HL_MARKETS
+    ))
+
+    await expect(
+      getOrder(ctx, { address: ADDRESS, id: '1' })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+    warn.mockRestore()
   })
 
   it('throws OrderNotFound when the order is on an outcome market', async () => {

@@ -1,3 +1,4 @@
+import { asDecimalString } from '@lifi/perps-sdk'
 import type { PerpsMarket } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
 import Big from 'big.js'
@@ -25,10 +26,11 @@ const mapMarketOrderLimits = (
     ?.slice()
     .sort(([a], [b]) => b - a)
     .find(([minMaxLeverage]) => minMaxLeverage <= maxLeverage)
-  if (selected === undefined) {
+  const cap = selected === undefined ? undefined : asDecimalString(selected[1])
+  if (cap === undefined) {
     return {}
   }
-  const maxMarketOrderUsd = new Big(selected[1])
+  const maxMarketOrderUsd = new Big(cap)
   return {
     maxMarketOrderUsd: maxMarketOrderUsd.toFixed(),
     maxLimitOrderUsd: maxMarketOrderUsd
@@ -39,8 +41,8 @@ const mapMarketOrderLimits = (
 
 /**
  * Map Hyperliquid universe metadata and optional `maxMarketOrderNtls` tiers to
- * a {@link PerpsMarket}. Missing tiers leave both order caps unset. Live stats
- * stay on {@link MarketContext}; callers supply the provider category id
+ * a {@link PerpsMarket}. Missing tiers or an invalid cap leave both order caps
+ * unset. Live stats stay on {@link MarketContext}; callers supply the provider category id
  * because the coin string does not contain it.
  * @public
  */

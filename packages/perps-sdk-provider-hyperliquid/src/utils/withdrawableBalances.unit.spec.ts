@@ -147,7 +147,7 @@ describe('hyperliquidWithdrawableBalances', () => {
         'abc'
       )
     ).toThrowError(
-      "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'abc'"
+      "hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'abc'"
     )
   })
 })

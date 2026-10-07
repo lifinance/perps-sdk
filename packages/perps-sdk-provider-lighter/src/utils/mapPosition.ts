@@ -1,13 +1,14 @@
+import { asDecimalString, warnSkippedVenueRow } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
 import {
   LIGHTER_IMF_PERCENT_SCALE,
   LIGHTER_LEVERAGE_PRECISION,
+  LIGHTER_PROVIDER_KEY,
 } from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
-import { toPositiveRequiredBig, toRequiredBig } from './decimal.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
@@ -18,17 +19,12 @@ import { toPositiveRequiredBig, toRequiredBig } from './decimal.js'
  * @public
  */
 export const leverageFromImf = (imf: string): number | undefined => {
-  let parsed: Big
-  try {
-    parsed = new Big(imf)
-  } catch {
-    return undefined
-  }
-  if (parsed.lte(0)) {
+  const decimal = asDecimalString(imf)
+  if (decimal === undefined || new Big(decimal).lte(0)) {
     return undefined
   }
   return new Big(100)
-    .div(parsed)
+    .div(decimal)
     .round(LIGHTER_LEVERAGE_PRECISION, Big.roundHalfUp)
     .toNumber()
 }
@@ -40,35 +36,44 @@ export const leverageFromImf = (imf: string): number | undefined => {
  * fraction a `StrictInt`, so the scale division is exact.
  */
 export const leverageFromScaledImf = (imf: number): number | undefined => {
-  let percent: string
-  try {
-    percent = new Big(imf).div(LIGHTER_IMF_PERCENT_SCALE).toFixed()
-  } catch {
-    return undefined
-  }
-  return leverageFromImf(percent)
+  const decimal = asDecimalString(imf)
+  return decimal === undefined
+    ? undefined
+    : leverageFromImf(new Big(decimal).div(LIGHTER_IMF_PERCENT_SCALE).toFixed())
+}
+
+const skipPosition = (field: string, value: unknown): undefined => {
+  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'position', field, value)
+  return undefined
 }
 
 /**
- * Map a raw Lighter account position to the generic Position type.
+ * Map a raw Lighter account position to the generic Position type. A row with
+ * an invalid size, position value or a non-positive initial margin fraction
+ * gives `undefined`.
  * @param market - Backend-resolved market identity for `pos.market_id`.
  * @public
  */
 export const mapPosition = (
   pos: LtAccountPosition,
   market: PerpsMarketDisplay
-): Position => {
-  const size = toRequiredBig(pos.position, 'position')
+): Position | undefined => {
+  const sizeDecimal = asDecimalString(pos.position)
+  if (sizeDecimal === undefined) {
+    return skipPosition('position', pos.position)
+  }
+  const positionValueDecimal = asDecimalString(pos.position_value)
+  if (positionValueDecimal === undefined) {
+    return skipPosition('position_value', pos.position_value)
+  }
+  const imfDecimal = asDecimalString(pos.initial_margin_fraction)
+  if (imfDecimal === undefined || new Big(imfDecimal).lte(0)) {
+    return skipPosition('initial_margin_fraction', pos.initial_margin_fraction)
+  }
+  const size = new Big(sizeDecimal)
   const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
-  const positionValue = toRequiredBig(
-    pos.position_value,
-    'position_value'
-  ).abs()
-  const imf = toPositiveRequiredBig(
-    pos.initial_margin_fraction,
-    'initial_margin_fraction'
-  )
-  const initialMarginRequirement = positionValue.times(imf).div(100)
+  const positionValue = new Big(positionValueDecimal).abs()
+  const initialMarginRequirement = positionValue.times(imfDecimal).div(100)
   const marginUsed = isIsolated
     ? pos.allocated_margin
     : initialMarginRequirement.toFixed()
@@ -85,7 +90,7 @@ export const mapPosition = (
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
     accruedFunding: pos.total_funding_paid_out ?? '0',
-    leverage: leverageFromImf(pos.initial_margin_fraction) ?? 1,
+    leverage: leverageFromImf(imfDecimal) ?? 1,
     marginUsed,
     initialMarginRequirement: initialMarginRequirement.toFixed(),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,

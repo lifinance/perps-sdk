@@ -1,4 +1,4 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { PerpsError, requireVenueDecimal } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
@@ -8,13 +8,22 @@ import type {
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
+import { PROVIDER_KEY } from './constants.js'
 import { isUnifiedAbstraction } from './utils/abstractionMode.js'
-import { toWireBig } from './utils/decimal.js'
 import { perpsTotals, sumUnrealizedPnl } from './utils/venueTotals.js'
 
 const sumValueUsd = (balances: readonly Balance[]): Big =>
   balances.reduce(
-    (sum, balance) => sum.plus(toWireBig(balance.valueUsd, 'balance.valueUsd')),
+    (sum, balance) =>
+      sum.plus(
+        new Big(
+          requireVenueDecimal(
+            balance.valueUsd,
+            'balance.valueUsd',
+            PROVIDER_KEY
+          )
+        )
+      ),
     new Big(0)
   )
 
@@ -44,9 +53,12 @@ const getAvailableMargin = (
       `Hyperliquid '${config.abstractionMode}' account carries no quote-asset entry in \`tokenToAvailableAfterMaintenance\``
     )
   }
-  return toWireBig(
-    config.availableAfterMaintenance,
-    'tokenToAvailableAfterMaintenance'
+  return new Big(
+    requireVenueDecimal(
+      config.availableAfterMaintenance,
+      'tokenToAvailableAfterMaintenance',
+      PROVIDER_KEY
+    )
   )
 }
 

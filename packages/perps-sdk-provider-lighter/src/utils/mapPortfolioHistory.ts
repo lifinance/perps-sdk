@@ -1,9 +1,37 @@
+import { asDecimalString, warnSkippedVenueRow } from '@lifi/perps-sdk'
 import type {
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtPnLEntry } from '../types/pnl.js'
+
+const SNAPSHOT_DECIMAL_FIELDS = [
+  'trade_pnl',
+  'trade_spot_pnl',
+  'inflow',
+  'outflow',
+  'spot_inflow',
+  'spot_outflow',
+  'volume',
+] as const
+
+function isValidSnapshot(snapshot: LtPnLEntry): boolean {
+  const invalid = SNAPSHOT_DECIMAL_FIELDS.find(
+    (field) => asDecimalString(snapshot[field]) === undefined
+  )
+  if (invalid === undefined) {
+    return true
+  }
+  warnSkippedVenueRow(
+    LIGHTER_PROVIDER_KEY,
+    'portfolio history',
+    invalid,
+    snapshot[invalid]
+  )
+  return false
+}
 
 function getCumulativePnl(snapshot: LtPnLEntry): Big {
   return new Big(snapshot.trade_pnl).plus(snapshot.trade_spot_pnl)
@@ -18,16 +46,17 @@ function getCumulativeNetFlow(snapshot: LtPnLEntry): Big {
 
 /**
  * Derive window-relative history from Lighter's cumulative PnL snapshots.
- * Historical account values are anchored to the current account value.
+ * Historical account values are anchored to the current account value. A
+ * snapshot with a non-finite value is skipped.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
   snapshots: LtPnLEntry[],
   currentValue: Big
 ): PortfolioHistoryResponse => {
-  const orderedSnapshots = [...snapshots].sort(
-    (a, b) => a.timestamp - b.timestamp
-  )
+  const orderedSnapshots = snapshots
+    .filter(isValidSnapshot)
+    .sort((a, b) => a.timestamp - b.timestamp)
   const firstSnapshot = orderedSnapshots[0]
   const latestSnapshot = orderedSnapshots.at(-1)
   if (!firstSnapshot || !latestSnapshot) {

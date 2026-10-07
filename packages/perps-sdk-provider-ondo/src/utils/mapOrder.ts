@@ -1,7 +1,9 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  asDecimalString,
   PerpsError,
   triggerConditionFor,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import {
   type MarketDisplay,
@@ -13,8 +15,14 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
+import Big from 'big.js'
+import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
+
+const skipOrder = (field: string, value: unknown): undefined => {
+  warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'order', field, value)
+  return undefined
+}
 
 /** Map supported Ondo lifecycle states; unsupported states fail explicitly. */
 export const mapOrderStatus = (status: string): OrderStatus => {
@@ -66,17 +74,31 @@ const mapTimeInForce = (tif: string): TimeInForce => {
   }
 }
 
-/** Map Ondo regular, trigger and TWAP rows to the shared order union. */
+/**
+ * Map Ondo regular, trigger and TWAP rows to the shared order union. A row with
+ * an invalid size gives `undefined`. An invalid `filledCost` omits
+ * `averagePrice`.
+ */
 export const mapOrder = (
   order: OndoOrder | OndoTwapOrder,
   market: MarketDisplay,
   parentOrderId?: string
-): Order => {
+): Order | undefined => {
   const twap = 'twapId' in order
-  const filled = toWireBig(order.filledSize, 'filledSize')
-  const totalSize = twap
-    ? toWireBig(order.totalSize, 'totalSize')
-    : toWireBig(order.size, 'size')
+  const filledDecimal = asDecimalString(order.filledSize)
+  if (filledDecimal === undefined) {
+    return skipOrder('filledSize', order.filledSize)
+  }
+  const [sizeField, sizeValue] = twap
+    ? (['totalSize', order.totalSize] as const)
+    : (['size', order.size] as const)
+  const totalSizeDecimal = asDecimalString(sizeValue)
+  if (totalSizeDecimal === undefined) {
+    return skipOrder(sizeField, sizeValue)
+  }
+  const filled = new Big(filledDecimal)
+  const totalSize = new Big(totalSizeDecimal)
+  const filledCost = twap ? undefined : asDecimalString(order.filledCost)
   const status = twap
     ? twapStatus(order.orderStatus)
     : mapOrderStatus(order.status)
@@ -101,12 +123,9 @@ export const mapOrder = (
         ? (order.finishTime ?? order.startTime)
         : (order.canceledAt ?? order.filledAt ?? order.createdAt)
     ).toISOString(),
-    ...(filled.gt(0)
-      ? {
-          averagePrice: twap
-            ? order.avgFilledPrice
-            : toWireBig(order.filledCost, 'filledCost').div(filled).toFixed(),
-        }
+    ...(filled.gt(0) && twap ? { averagePrice: order.avgFilledPrice } : {}),
+    ...(filled.gt(0) && filledCost !== undefined
+      ? { averagePrice: new Big(filledCost).div(filled).toFixed() }
       : {}),
   }
   if (parentOrderId !== undefined) {

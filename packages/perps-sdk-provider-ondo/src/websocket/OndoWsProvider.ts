@@ -1,6 +1,8 @@
 import {
   DecodeChain,
+  decimalStringToNumber,
   getMarketRegistry,
+  isDecimalString,
   localStorageAdapter,
   type MarketRegistry,
   numberToDecimalString,
@@ -766,7 +768,12 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     for (const snap of snapshots) {
       const toLevels = (levels: OndoBookSnapshot['bids'], direction: 1 | -1) =>
         levels
-          .map(([price, size]) => ({ price, size, priceNum: Number(price) }))
+          .flatMap(([price, size]) => {
+            const priceNum = decimalStringToNumber(price)
+            return priceNum === undefined || !isDecimalString(size)
+              ? []
+              : [{ price, size, priceNum }]
+          })
           .sort((a, b) => direction * (a.priceNum - b.priceNum))
           .map(({ price, size }) => ({ price, size }))
       this.emit(`orderbook:${snap.market}`, {
@@ -934,7 +941,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         return []
       }
       const market = this.resolvePerpsMarket(position.market)
-      return market === undefined ? [] : [mapPosition(position, market)]
+      const mapped =
+        market === undefined ? undefined : mapPosition(position, market)
+      return mapped === undefined ? [] : [mapped]
     })
     this.emit(`positions:${address}`, {
       channel: 'positions',

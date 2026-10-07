@@ -1,7 +1,9 @@
 import {
+  asDecimalString,
   isActiveOrderStatus,
   PerpsError,
   triggerConditionFor,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { MarketDisplay, Order, OrderBase } from '@lifi/perps-types'
 import {
@@ -12,6 +14,7 @@ import {
   TimeInForce,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtOrder } from '../types/index.js'
 
 const mapOrderType = (type: string): Order['type'] => {
@@ -56,10 +59,12 @@ const mapTimeInForce = (tif: string): TimeInForce => {
   }
 }
 
-const mapOrderStatus = (
-  order: LtOrder,
-  filledSize = new Big(order.filled_base_amount)
-): OrderStatus => {
+const hasFill = (order: LtOrder): boolean => {
+  const filled = asDecimalString(order.filled_base_amount)
+  return filled !== undefined && new Big(filled).gt(0)
+}
+
+const mapOrderStatus = (order: LtOrder): OrderStatus => {
   switch (order.status) {
     case 'in-progress':
       return OrderStatus.ACCEPTED
@@ -69,7 +74,7 @@ const mapOrderStatus = (
       if (order.trigger_status === 'parent-order') {
         return OrderStatus.PENDING
       }
-      return filledSize.gt(0) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+      return hasFill(order) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
     case 'triggered':
       return OrderStatus.TRIGGERED
     case 'filled':
@@ -97,11 +102,33 @@ const mapOrderStatus = (
   }
 }
 
-/** Map a Lighter order with its venue identity, lifecycle, and execution fields. */
-export const mapOrder = (order: LtOrder, market: MarketDisplay): Order => {
+const skipOrder = (field: string, value: unknown): undefined => {
+  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'order', field, value)
+  return undefined
+}
+
+/**
+ * Map a Lighter order with its venue identity, lifecycle, and execution fields.
+ * A row with an invalid size or price gives `undefined`. An invalid filled
+ * quote amount omits `averagePrice`.
+ */
+export const mapOrder = (
+  order: LtOrder,
+  market: MarketDisplay
+): Order | undefined => {
   const type = mapOrderType(order.type)
+  for (const field of [
+    'initial_base_amount',
+    'remaining_base_amount',
+    'filled_base_amount',
+  ] as const) {
+    if (asDecimalString(order[field]) === undefined) {
+      return skipOrder(field, order[field])
+    }
+  }
   const filledSize = new Big(order.filled_base_amount)
-  const status = mapOrderStatus(order, filledSize)
+  const filledQuote = asDecimalString(order.filled_quote_amount)
+  const status = mapOrderStatus(order)
   const base: OrderBase = {
     orderId: String(order.order_index),
     ...(order.client_order_index === 0
@@ -114,12 +141,8 @@ export const mapOrder = (order: LtOrder, market: MarketDisplay): Order => {
     originalSize: order.initial_base_amount,
     remainingSize: order.remaining_base_amount,
     filledSize: order.filled_base_amount,
-    ...(filledSize.gt(0)
-      ? {
-          averagePrice: new Big(order.filled_quote_amount)
-            .div(filledSize)
-            .toFixed(),
-        }
+    ...(filledSize.gt(0) && filledQuote !== undefined
+      ? { averagePrice: new Big(filledQuote).div(filledSize).toFixed() }
       : {}),
     reduceOnly: order.reduce_only,
     ...(order.parent_order_id ? { parentOrderId: order.parent_order_id } : {}),
@@ -137,19 +160,27 @@ export const mapOrder = (order: LtOrder, market: MarketDisplay): Order => {
     case OrderType.STOP_MARKET:
     case OrderType.STOP_LIMIT:
     case OrderType.TAKE_PROFIT_MARKET:
-    case OrderType.TAKE_PROFIT_LIMIT:
+    case OrderType.TAKE_PROFIT_LIMIT: {
+      if (asDecimalString(order.trigger_price) === undefined) {
+        return skipOrder('trigger_price', order.trigger_price)
+      }
+      const limitPrice =
+        type === OrderType.STOP_LIMIT || type === OrderType.TAKE_PROFIT_LIMIT
+          ? asDecimalString(order.price)
+          : undefined
       return {
         ...base,
         type,
         triggerPrice: order.trigger_price,
         triggerCondition: triggerConditionFor(type, base.side),
-        ...(type === OrderType.STOP_LIMIT ||
-        type === OrderType.TAKE_PROFIT_LIMIT
-          ? { limitPrice: order.price }
-          : {}),
+        ...(limitPrice === undefined ? {} : { limitPrice }),
       }
+    }
     case OrderType.MARKET:
     case OrderType.LIMIT:
+      if (asDecimalString(order.price) === undefined) {
+        return skipOrder('price', order.price)
+      }
       return {
         ...base,
         type,

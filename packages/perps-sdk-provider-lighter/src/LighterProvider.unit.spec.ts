@@ -3328,6 +3328,60 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
+describe('LighterProvider — getPositions skips a bad row', () => {
+  it('drops only the row with an invalid position_value and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const goodRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: '50000',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [
+              {
+                ...ACCOUNT_PAYLOAD.accounts[0],
+                positions: [
+                  goodRow,
+                  { ...goodRow, position_value: 'rest-bad-value' },
+                ],
+              },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].size).toBe('1')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[lighter] skipping position row: `position_value` is not a valid decimal: 'rest-bad-value'"
+      )
+    )
+    warn.mockRestore()
+  })
+})
+
 describe('LighterProvider — per-user reads without a Lighter account', () => {
   const accountNotFound: FetchOverride = (url) =>
     url.includes('/api/v1/account?')

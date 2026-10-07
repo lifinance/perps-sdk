@@ -1,16 +1,19 @@
 import {
+  asDecimalString,
   calculateTransferable,
   DecodeChain,
+  decimalStringToNumber,
   getMarketRegistry,
   isActiveMarket,
   isActiveOrderStatus,
+  isDecimalStringZero,
   type MarketRegistry,
-  numberToDecimalString,
   PerpsError,
   type PerpsSDKClient,
   type ProviderGetQuoteParams,
   type QuoteListener,
   ReconnectingWebSocket,
+  requireVenueDecimal,
   resolveSubscribeQuote,
   type SubscriptionListener,
   toAssetDisplay,
@@ -67,7 +70,6 @@ import type {
   HlWsUserFillsData,
 } from '../types/index.js'
 import { HlAbstractionMode } from '../types/index.js'
-import { toWireBig } from '../utils/decimal.js'
 import {
   assetIsOutcome,
   decodeCompressedJson,
@@ -958,20 +960,24 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const map = new Map<string, number>()
     for (const byMarketId of this.perpCtxBySubDex.values()) {
       for (const [id, ctx] of Object.entries(byMarketId)) {
-        const mid = ctx.midPx ?? ctx.markPx
-        map.set(id, Number(mid))
+        const mid = decimalStringToNumber(ctx.midPx ?? ctx.markPx)
+        if (mid !== undefined) {
+          map.set(id, mid)
+        }
       }
     }
     for (const [id, ctx] of Object.entries(this.spotCtxByMarketId)) {
-      const mid = ctx.midPx ?? ctx.markPx
-      if (mid != null) {
-        map.set(id, Number(mid))
+      const mid = decimalStringToNumber(
+        asDecimalString(ctx.midPx ?? ctx.markPx)
+      )
+      if (mid !== undefined) {
+        map.set(id, mid)
       }
     }
     for (const [id, fast] of Object.entries(this.fastCtxByMarketId)) {
-      const mid = fast.midPx ?? fast.markPx
-      if (mid != null) {
-        map.set(id, Number(mid))
+      const mid = decimalStringToNumber(fast.midPx ?? fast.markPx)
+      if (mid !== undefined) {
+        map.set(id, mid)
       }
     }
     return map
@@ -984,10 +990,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
 
     const book = this.latestOrderbookByMarketId.get(marketId)
-    const bid = book?.bids[0]?.price
-    const ask = book?.asks[0]?.price
+    const bid = decimalStringToNumber(book?.bids[0]?.price)
+    const ask = decimalStringToNumber(book?.asks[0]?.price)
     if (bid !== undefined && ask !== undefined) {
-      return (Number(bid) + Number(ask)) / 2
+      return (bid + ask) / 2
     }
 
     return Number.NaN
@@ -998,11 +1004,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       provider: this.providerKey,
       marketId: data.coin,
       bids: data.levels[0]
-        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
-        .map((l) => ({ price: l.px, size: l.sz })),
+        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       asks: data.levels[1]
-        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
-        .map((l) => ({ price: l.px, size: l.sz })),
+        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       timestamp: data.time,
     }
     this.latestOrderbookByMarketId.set(data.coin, book)
@@ -1217,9 +1223,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           return []
         }
         const market = this.registry?.get(ap.position.coin)
-        return market
-          ? [mapPosition(ap as HlAssetPosition, toPerpsMarketDisplay(market))]
-          : []
+        const position =
+          market === undefined
+            ? undefined
+            : mapPosition(ap as HlAssetPosition, toPerpsMarketDisplay(market))
+        return position === undefined ? [] : [position]
       })
     )
     this.emit(`positions:${data.user.toLowerCase()}`, {
@@ -1353,7 +1361,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       ...pipeline.spot.balances,
     ].reduce(
       (sum, balance) =>
-        sum.plus(toWireBig(balance.valueUsd, 'spotBalance.valueUsd')),
+        sum.plus(
+          new Big(
+            requireVenueDecimal(
+              balance.valueUsd,
+              'spotBalance.valueUsd',
+              this.providerKey
+            )
+          )
+        ),
       new Big(0)
     )
     this.emit(`accountSummary:${key}`, {
@@ -1527,7 +1543,13 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const balances = data.spotState.balances.filter(
       (balance) =>
         !assetIsOutcome(balance.coin) &&
-        toWireBig(balance.total, 'spotState.balances.total').gt(0)
+        new Big(
+          requireVenueDecimal(
+            balance.total,
+            'spotState.balances.total',
+            this.providerKey
+          )
+        ).gt(0)
     )
     const pipeline = this.unifiedSummaryByUser.get(user)
     // Known spot markets await a price; unlisted tokens keep their unpriced balance.
@@ -1540,13 +1562,27 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       return
     }
     const rows = balances.map((balance) => {
-      const total = toWireBig(balance.total, 'spotState.balances.total')
+      const total = new Big(
+        requireVenueDecimal(
+          balance.total,
+          'spotState.balances.total',
+          this.providerKey
+        )
+      )
       return {
         ...spotBalance(spotAssetFromToken(balance), balance.total, priceById),
         locked: balance.hold,
         transferable: calculateTransferable(
           total
-            .minus(toWireBig(balance.hold, 'spotState.balances.hold'))
+            .minus(
+              new Big(
+                requireVenueDecimal(
+                  balance.hold,
+                  'spotState.balances.hold',
+                  this.providerKey
+                )
+              )
+            )
             .toFixed(),
           total.toFixed()
         ),
@@ -1609,33 +1645,21 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null
 
-const toMarketContextString = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return numberToDecimalString(value)
-  }
-  return typeof value === 'string' ? value : undefined
-}
-
 const toMarketCapString = (
   price: unknown,
   circulatingSupply: unknown
 ): string | undefined => {
-  const priceString = toMarketContextString(price)
-  const supplyString = toMarketContextString(circulatingSupply)
-  if (priceString === undefined || supplyString === undefined) {
+  const priceDecimal = asDecimalString(price)
+  const supplyDecimal = asDecimalString(circulatingSupply)
+  if (priceDecimal === undefined || supplyDecimal === undefined) {
     return undefined
   }
-
-  try {
-    const parsedPrice = new Big(priceString)
-    const parsedSupply = new Big(supplyString)
-    if (parsedPrice.lte(0) || parsedSupply.lte(0)) {
-      return undefined
-    }
-    return parsedPrice.times(parsedSupply).toFixed()
-  } catch {
+  const parsedPrice = new Big(priceDecimal)
+  const parsedSupply = new Big(supplyDecimal)
+  if (parsedPrice.lte(0) || parsedSupply.lte(0)) {
     return undefined
   }
+  return parsedPrice.times(parsedSupply).toFixed()
 }
 
 function mergePerpAssetCtx(
@@ -1685,16 +1709,16 @@ function activePerpAssetCtx(
   marketId: string,
   ctx: HlWsActiveAssetCtxData['ctx']
 ): HlWsPerpAssetCtx | undefined {
-  const funding = toMarketContextString(ctx.funding)
-  const openInterest = toMarketContextString(ctx.openInterest)
-  const dayNtlVlm = toMarketContextString(ctx.dayNtlVlm)
-  const prevDayPx = toMarketContextString(ctx.prevDayPx)
-  const markPx = toMarketContextString(ctx.markPx)
+  const funding = asDecimalString(ctx.funding)
+  const openInterest = asDecimalString(ctx.openInterest)
+  const dayNtlVlm = asDecimalString(ctx.dayNtlVlm)
+  const prevDayPx = asDecimalString(ctx.prevDayPx)
+  const markPx = asDecimalString(ctx.markPx)
   const midPx =
     ctx.midPx === undefined || ctx.midPx === null
       ? null
-      : (toMarketContextString(ctx.midPx) ?? null)
-  const oraclePx = toMarketContextString(ctx.oraclePx)
+      : (asDecimalString(ctx.midPx) ?? null)
+  const oraclePx = asDecimalString(ctx.oraclePx)
 
   if (
     funding === undefined ||
@@ -1724,8 +1748,8 @@ function mapSpotMarketContext(
   ctx: HlWsSpotAssetCtx,
   fast?: HlWsFastAssetCtx
 ): MarketContext | undefined {
-  const midPrice = toMarketContextString(ctx.midPx ?? ctx.markPx)
-  const markPrice = toMarketContextString(ctx.markPx)
+  const midPrice = asDecimalString(ctx.midPx ?? ctx.markPx)
+  const markPrice = asDecimalString(ctx.markPx)
   if (midPrice === undefined || markPrice === undefined) {
     return undefined
   }
@@ -1735,10 +1759,19 @@ function mapSpotMarketContext(
     marketId,
     midPrice: fast?.midPx != null ? fast.midPx : midPrice,
     markPrice: emittedMarkPrice,
-    prevDayPrice: toMarketContextString(ctx.prevDayPx),
-    volume24h: toMarketContextString(ctx.dayNtlVlm),
+    prevDayPrice: asDecimalString(ctx.prevDayPx),
+    volume24h: asDecimalString(ctx.dayNtlVlm),
     marketCap: toMarketCapString(emittedMarkPrice, ctx.circulatingSupply),
   }
+}
+
+/** One order-book level, or none when the venue price or size is invalid. */
+function toOrderbookLevel(price: string, size: string): OrderbookLevel[] {
+  const levelPrice = asDecimalString(price)
+  const levelSize = asDecimalString(size)
+  return levelPrice === undefined || levelSize === undefined
+    ? []
+    : [{ price: levelPrice, size: levelSize }]
 }
 
 function compactRemovalPrice(
@@ -1765,10 +1798,14 @@ function applyCompressedL2Side(
     }
   }
   for (const update of updates) {
-    if (Number(update.s) === 0) {
-      byPrice.delete(update.p)
+    const [level] = toOrderbookLevel(update.p, update.s)
+    if (level === undefined) {
+      continue
+    }
+    if (isDecimalStringZero(level.size)) {
+      byPrice.delete(level.price)
     } else {
-      byPrice.set(update.p, update.s)
+      byPrice.set(level.price, level.size)
     }
   }
 
@@ -1776,8 +1813,8 @@ function applyCompressedL2Side(
     .map(([price, size]) => ({ price, size }))
     .sort((a, b) =>
       side === 'bid'
-        ? Number(b.price) - Number(a.price)
-        : Number(a.price) - Number(b.price)
+        ? new Big(b.price).cmp(a.price)
+        : new Big(a.price).cmp(b.price)
     )
     .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE)
 }

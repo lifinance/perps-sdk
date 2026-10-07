@@ -39,7 +39,7 @@ const warnOnce = (key: string): void => {
 const mapRow = (
   coin: string,
   registry: MarketRegistry,
-  map: (market: MarketDisplay) => Order
+  map: (market: MarketDisplay) => Order | undefined
 ): Order | undefined => {
   if (assetIsOutcome(coin)) {
     return undefined

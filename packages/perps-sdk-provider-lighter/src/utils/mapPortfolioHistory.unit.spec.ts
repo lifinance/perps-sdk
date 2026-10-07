@@ -1,5 +1,5 @@
 import Big from 'big.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LtPnLEntry } from '../types/pnl.js'
 import { mapPortfolioHistory } from './mapPortfolioHistory.js'
 
@@ -26,6 +26,29 @@ function snapshot(overrides: Partial<LtPnLEntry>): LtPnLEntry {
 }
 
 describe('mapPortfolioHistory', () => {
+  it('skips a snapshot with a non-finite value and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = mapPortfolioHistory(
+      '7d',
+      [
+        snapshot({ timestamp: 1, trade_pnl: 1, volume: 10 }),
+        snapshot({ timestamp: 2, trade_pnl: Number.NaN }),
+        snapshot({ timestamp: 3, trade_pnl: 4, volume: 30 }),
+      ],
+      new Big('100')
+    )
+
+    expect(result.points.map((p) => p.timestamp)).toEqual([1_000, 3_000])
+    expect(result.volume).toBe('20')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '[lighter] skipping portfolio history row: `trade_pnl`'
+      )
+    )
+    warn.mockRestore()
+  })
+
   it('derives window changes from cumulative Lighter snapshots', () => {
     const snapshots = [
       snapshot({

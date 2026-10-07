@@ -163,7 +163,7 @@ describe('getWithdrawableBalances.venue: withdrawal fee', () => {
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message:
-        "Hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
+        "hyperliquid field `providers.withdrawalFeeUsd` is not a valid decimal: 'null'",
     })
   })
 })

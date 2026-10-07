@@ -1,8 +1,10 @@
 import {
   type AssetRegistry,
+  asDecimalString,
   ExplorerChainId,
   explorerTxUrl,
   PerpsError,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
@@ -334,7 +336,8 @@ export const mapFundingActivity = (
  * parties, so only fills whose `liquidatedUser` is the queried address count.
  * A fill whose hash a ledger liquidation row already carries is the same
  * event and is skipped. The size sign follows the closed position: a sell
- * fill closes a long. Groups whose market does not resolve are dropped.
+ * fill closes a long. Groups whose market does not resolve, or
+ * that hold a fill with an invalid size or price, are dropped.
  * @public
  */
 export const mapLiquidationFills = (
@@ -367,8 +370,18 @@ export const mapLiquidationFills = (
     let notional = new Big(0)
     let time = first.time
     for (const fill of group) {
-      size = size.plus(fill.sz)
-      notional = notional.plus(new Big(fill.px).times(fill.sz))
+      const fillSize = asDecimalString(fill.sz)
+      if (fillSize === undefined) {
+        warnSkippedVenueRow(providerKey, 'liquidation', 'sz', fill.sz)
+        return []
+      }
+      const fillPrice = asDecimalString(fill.px)
+      if (fillPrice === undefined) {
+        warnSkippedVenueRow(providerKey, 'liquidation', 'px', fill.px)
+        return []
+      }
+      size = size.plus(fillSize)
+      notional = notional.plus(new Big(fillPrice).times(fillSize))
       time = Math.max(time, fill.time)
     }
     return [

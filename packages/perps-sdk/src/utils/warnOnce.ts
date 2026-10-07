@@ -27,3 +27,21 @@ export const createWarnOnce = (): ((key: string, message: string) => void) => {
     console.warn(message)
   }
 }
+
+const warnSkippedRowOnce = createWarnOnce()
+
+/**
+ * Warn once that a provider mapper skipped a venue row because a required
+ * field is not a valid decimal.
+ *
+ * @internal
+ */
+export const warnSkippedVenueRow = (
+  provider: string,
+  row: string,
+  field: string,
+  value: unknown
+): void => {
+  const message = `[${provider}] skipping ${row} row: \`${field}\` is not a valid decimal: '${String(value)}'`
+  warnSkippedRowOnce(message, message)
+}

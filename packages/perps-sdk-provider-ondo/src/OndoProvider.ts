@@ -28,6 +28,7 @@ import {
   type ProviderGetWithdrawFlowParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
+  requireVenueDecimal,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -73,6 +74,7 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
+import Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -118,7 +120,6 @@ import {
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
-import { toWireBig } from './utils/decimal.js'
 import {
   estimateLiquidationPrice,
   listOndoDepositAddress,
@@ -392,9 +393,12 @@ export const ondoProvider = (
             requirePerpsMarketDisplay
           )
 
-          const walletBalance = toWireBig(
-            balance.walletBalance,
-            'balance.walletBalance'
+          const walletBalance = new Big(
+            requireVenueDecimal(
+              balance.walletBalance,
+              'balance.walletBalance',
+              ONDO_PROVIDER_KEY
+            )
           )
 
           // The backend owns the collateral identity; the venue supplies its
@@ -412,9 +416,12 @@ export const ondoProvider = (
                     valueUsd: balance.walletBalance,
                     price: '1',
                     transferable: calculateTransferable(
-                      toWireBig(
-                        balance.withdrawableMargin,
-                        'balance.withdrawableMargin'
+                      new Big(
+                        requireVenueDecimal(
+                          balance.withdrawableMargin,
+                          'balance.withdrawableMargin',
+                          ONDO_PROVIDER_KEY
+                        )
                       ).toFixed(),
                       walletBalance.toFixed()
                     ),
@@ -507,7 +514,9 @@ export const ondoProvider = (
             error.tool = ONDO_PROVIDER_KEY
             throw error
           }
-          const leverage = toWireBig(row.leverage, 'leverage')
+          const leverage = new Big(
+            requireVenueDecimal(row.leverage, 'leverage', ONDO_PROVIDER_KEY)
+          )
           if (leverage.lte(0)) {
             const error = new PerpsError(
               PerpsErrorCode.SDKError,
@@ -915,7 +924,16 @@ export const ondoProvider = (
               }),
             marketRegistry().sync(),
           ])
-          return mapOrder(order, requireMarketDisplay(order.market))
+          const mapped = mapOrder(order, requireMarketDisplay(order.market))
+          if (mapped === undefined) {
+            const error = new PerpsError(
+              PerpsErrorCode.OrderNotFound,
+              `Ondo order ${params.id} not found: the venue row is invalid`
+            )
+            error.tool = ONDO_PROVIDER_KEY
+            throw error
+          }
+          return mapped
         }
       )
     },

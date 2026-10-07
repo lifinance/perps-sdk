@@ -1,4 +1,4 @@
-import type { Market, PerpsMarketDisplay } from '@lifi/perps-types'
+import type { Market, PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { lighterAvailableToTrade } from './availableToTrade.js'
@@ -61,11 +61,19 @@ const row = (overrides: Partial<LtAccountPosition>): LtAccountPosition => ({
   ...overrides,
 })
 
-const positionOn = (market: Market, overrides: Partial<LtAccountPosition>) =>
-  mapPosition(
+const positionOn = (
+  market: Market,
+  overrides: Partial<LtAccountPosition>
+): Position => {
+  const position = mapPosition(
     row({ market_id: Number(market.id), ...overrides }),
     displayOf(market)
   )
+  if (position === undefined) {
+    throw new Error('expected a mapped position')
+  }
+  return position
+}
 
 describe('lighterAvailableToTrade', () => {
   it('gives both sides the available margin without a position', () => {

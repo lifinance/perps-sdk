@@ -7,7 +7,7 @@ import {
   TimeInForce,
   TriggerCondition,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   HlFrontendOpenOrder,
   HlOrderDetail,
@@ -58,7 +58,67 @@ const detail = (status: string): HlOrderDetail => ({
   statusTimestamp: 1_700_000_001_000,
 })
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('mapOrder', () => {
+  it.each([
+    ['origSz', raw({ origSz: 'abc' })],
+    ['sz', raw({ sz: '' })],
+    ['limitPx', raw({ limitPx: 'NaN' })],
+    [
+      'triggerPx',
+      raw({ orderType: 'Stop Market', isTrigger: true, triggerPx: 'x' }),
+    ],
+  ])('skips the row and warns when %s is invalid', (field, order) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(order, MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`[hyperliquid] skipping order row: \`${field}\``)
+    )
+  })
+  it('keeps a trigger market order whose unused limitPx is invalid', () => {
+    expect(
+      mapOrder(
+        raw({
+          orderType: 'Stop Market',
+          isTrigger: true,
+          triggerPx: '2900',
+          limitPx: 'x',
+        }),
+        MARKET
+      )
+    ).toMatchObject({ type: OrderType.STOP_MARKET, triggerPrice: '2900' })
+  })
+  it('skips a TWAP row with an invalid size and omits an invalid average price', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const entry = (
+      state: Partial<HlTwapHistoryEntry['state']>
+    ): HlTwapHistoryEntry => ({
+      twapId: 5,
+      time: 1_700_000_002,
+      state: {
+        coin: 'ETH',
+        side: 'B',
+        sz: '2',
+        executedSz: '0.5',
+        executedNtl: '1500',
+        minutes: 10,
+        reduceOnly: false,
+        timestamp: 1_700_000_000_000,
+        ...state,
+      },
+      status: { status: 'activated' },
+    })
+
+    expect(mapOrder(entry({ sz: 'bad' }), MARKET)).toBeUndefined()
+    expect(mapOrder(entry({ executedSz: 'bad' }), MARKET)).toBeUndefined()
+    expect(mapOrder(entry({ executedNtl: 'bad' }), MARKET)).not.toHaveProperty(
+      'averagePrice'
+    )
+  })
   it('preserves exact sizes and derives a partial fill without floating point loss', () => {
     expect(
       mapOrder(raw({ origSz: '1.000000000000000001', sz: '1' }), MARKET)
@@ -145,7 +205,7 @@ describe('mapOrder', () => {
     expect(
       mapOrder(raw({ orderType: 'Stop Market', isTrigger: true }), MARKET, '12')
     ).toMatchObject({ parentOrderId: '12', status: OrderStatus.PENDING })
-    expect(mapOrder(raw({ sz: '2.0' }), MARKET).status).toBe(OrderStatus.OPEN)
+    expect(mapOrder(raw({ sz: '2.0' }), MARKET)?.status).toBe(OrderStatus.OPEN)
   })
   it.each([
     ['open', OrderStatus.PARTIALLY_FILLED],
@@ -158,15 +218,15 @@ describe('mapOrder', () => {
     ['rejected', OrderStatus.REJECTED],
   ])('maps lifecycle %s', (status, expected) => {
     const order = mapOrder(detail(status), MARKET)
-    expect(order.status).toBe(expected)
-    expect(order.updatedAt).toBe('2023-11-14T22:13:21.000Z')
+    expect(order?.status).toBe(expected)
+    expect(order?.updatedAt).toBe('2023-11-14T22:13:21.000Z')
     if (
       expected === OrderStatus.CANCELLED ||
       expected === OrderStatus.REJECTED
     ) {
-      expect(order.statusReason).toBe(status)
+      expect(order?.statusReason).toBe(status)
     } else {
-      expect(order.statusReason).toBeUndefined()
+      expect(order?.statusReason).toBeUndefined()
     }
   })
   it.each([

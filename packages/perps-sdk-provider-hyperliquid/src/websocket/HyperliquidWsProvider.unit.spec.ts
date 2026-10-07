@@ -1005,6 +1005,43 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('skips an order-book level with an invalid price or size', async () => {
+      const provider = createProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'l2',
+          data: {
+            s: {
+              coin: 'BTC',
+              levels: [
+                [
+                  { px: 'bad', sz: '1', n: 1 },
+                  { px: '62500', sz: '2', n: 1 },
+                ],
+                [
+                  { px: '62600', sz: '', n: 1 },
+                  { px: '62700', sz: '3', n: 1 },
+                ],
+              ],
+              time: 1704067200000,
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject({
+        bids: [{ price: '62500', size: '2' }],
+        asks: [{ price: '62700', size: '3' }],
+      })
+    })
+
     it('requests full precision when no live mid is available for the market', async () => {
       // No fastAssetCtxs frame received → no reference magnitude.
       const provider = createProvider()
@@ -3323,6 +3360,57 @@ describe('HyperliquidWsProvider', () => {
       expect(event.channel).toBe('positions')
       expect(event.data).toHaveLength(1)
       expect(event.data[0].market.id).toBe('BTC')
+    })
+
+    it('skips a position row with an invalid size and emits the others', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'positions', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const position = (coin: string, szi: string) => ({
+        position: {
+          coin,
+          szi,
+          entryPx: '94000',
+          positionValue: '9500',
+          liquidationPx: '85000',
+          unrealizedPnl: '100',
+          marginUsed: '940',
+          leverage: { type: 'cross', value: 10 },
+          cumFunding: { allTime: '0', sinceOpen: '0', sinceChange: '0' },
+        },
+      })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'allDexsClearinghouseState',
+          data: {
+            user: '0xuser1',
+            clearinghouseStates: [
+              [
+                '',
+                {
+                  assetPositions: [
+                    position('BTC', '0.1'),
+                    position('ETH', 'bad'),
+                  ],
+                },
+              ],
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data.map((p: any) => p.market.id)).toEqual(['BTC'])
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+      )
     })
 
     it('enriches a spot order onto the backend BASE/QUOTE display and spot logo', async () => {

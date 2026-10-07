@@ -301,12 +301,15 @@ digits. It has no grouping, exponent, currency sign or whitespace. `'0.5'` and
 
 | Tier       | Holds                                                    | In → out                                  | Rule                                                        |
 | ---------- | -------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
-| `decimal/` | `parseDecimal`, `<a>To<B>` conversions, `format*`        | representation → representation           | No domain words. Conversions throw on invalid input.        |
+| `decimal/` | `asDecimalString`, `<a>To<B>` conversions, `format*`     | representation → representation           | No domain words. See the vocabulary for each failure mode.  |
 | `math/`    | display-tier formulas (`calculate*`, `estimate*`, …)     | `number` → `number`                       | Results are for `format*`. Never send one to a venue.       |
 | `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers   | `DecimalString` → `DecimalString`         | Venue-ready values, snapped by the market's own provider.   |
 
 A value for a venue comes from `wire/` or from a provider field. A value for a
-screen goes through `parseDecimal`, then `math/`, then `format*`.
+screen goes through `decimalStringToNumber`, then `math/`, then `format*`. A
+mapper reads a venue value with `asDecimalString`, which never throws; account
+math that must not go on with a bad total uses `requireVenueDecimal`, which
+throws.
 
 ### Vocabulary
 
@@ -314,8 +317,8 @@ One verb names one kind of transformation.
 
 | Verb                        | Input → output                                     | Fallible                          | Example                                                    |
 | --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
-| `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseDecimal`                                             |
-| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `baseUnits`, `decimal`, `decimalString` or `number` | throws on invalid, never guesses  | `decimalToBaseUnits`, `baseUnitsToDecimal`, `numberToDecimalString` |
+| `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseStoredRecord`                                        |
+| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `baseUnits`, `decimal`, `decimalString`, `formattedString` or `number` | throws on invalid, never guesses; a `<a>ToNumber` for display gives `undefined` | `decimalToBaseUnits`, `numberToDecimalString`, `decimalStringToNumber`, `formattedStringToNumber` |
 | `format<X>`                 | value → human string (grouped, localised)          | no; renders a placeholder         | `formatUsd`, `formatNumber`                                |
 | `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
 | `calculate<X>`              | values → exact result by formula                   | no                                | `calculateNotionalValue`, `calculateOrderAmounts`          |

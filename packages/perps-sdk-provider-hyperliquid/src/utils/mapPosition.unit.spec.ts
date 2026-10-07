@@ -1,10 +1,10 @@
-import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HlAssetPosition } from '../types/index.js'
 import { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 
@@ -48,7 +48,17 @@ const makeAp = (
   },
 })
 
-const map = (ap: HlAssetPosition) => mapPosition(ap, BTC_MARKET)
+const map = (ap: HlAssetPosition): Position => {
+  const position = mapPosition(ap, BTC_MARKET)
+  if (position === undefined) {
+    throw new Error('expected a mapped position')
+  }
+  return position
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('mapPosition (Hyperliquid)', () => {
   it('maps a long cross position with derived mark price', () => {
@@ -83,8 +93,23 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('0')
   })
 
-  it('rejects a missing positionValue instead of inventing risk data', () => {
-    expect(() => map(makeAp({ szi: '0.1', positionValue: '' }))).toThrowError()
+  it.each([
+    ['szi', { szi: 'abc' }],
+    ['positionValue', { positionValue: '' }],
+    ['leverage.value', { leverage: { type: 'cross' as const, value: 0 } }],
+    [
+      'cumFunding.sinceOpen',
+      { cumFunding: { allTime: '0', sinceOpen: 'NaN', sinceChange: '0' } },
+    ],
+  ])('skips the row and warns when %s is invalid', (field, overrides) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapPosition(makeAp(overrides), BTC_MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `[hyperliquid] skipping position row: \`${field}\``
+      )
+    )
   })
 
   it('maps isolated leverage type to MarginMode.ISOLATED', () => {

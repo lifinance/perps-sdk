@@ -4,7 +4,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { LIGHTER_LEVERAGE_PRECISION } from '../constants.js'
 import type { LtAccountPosition } from '../types/index.js'
 import {
@@ -36,6 +36,16 @@ const MARKET: PerpsMarketDisplay = {
     logoURI: '',
   },
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+}
+
+const map = (
+  ...args: Parameters<typeof mapPosition>
+): NonNullable<ReturnType<typeof mapPosition>> => {
+  const position = mapPosition(...args)
+  if (position === undefined) {
+    throw new Error('expected a mapped position')
+  }
+  return position
 }
 
 const basePosition = (
@@ -70,7 +80,7 @@ describe('mapPosition (Lighter)', () => {
     it('derives non-zero marginUsed for a cross-margin position with allocated_margin="0"', () => {
       // Account 5: BTC cross position, size 0.00106, notional 83.961964 USDC,
       // imf 2.00 (50× leverage).
-      const result = mapPosition(
+      const result = map(
         basePosition({
           margin_mode: LT_MARGIN_MODE_CROSS,
           allocated_margin: '0.000000',
@@ -89,7 +99,7 @@ describe('mapPosition (Lighter)', () => {
     it('derives marginUsed for a short cross-margin position', () => {
       // Account 24: ETH short cross, size 30, notional 67548.300000 USDC,
       // imf 2.00.
-      const result = mapPosition(
+      const result = map(
         basePosition({
           symbol: 'ETH',
           sign: -1,
@@ -112,7 +122,7 @@ describe('mapPosition (Lighter)', () => {
       // Account 24: USDJPY isolated long. allocated_margin (1046.077285) ≠
       // position_value × imf / 100 (47.354) because isolated positions can
       // be over-collateralized — the on-chain field is the source of truth.
-      const result = mapPosition(
+      const result = map(
         basePosition({
           symbol: 'USDJPY',
           margin_mode: LT_MARGIN_MODE_ISOLATED,
@@ -133,7 +143,7 @@ describe('mapPosition (Lighter)', () => {
       // Closed market slots return position=0 and position_value="-0.000000";
       // the derivation must collapse to "0" without producing NaN or a
       // negative number.
-      const result = mapPosition(
+      const result = map(
         basePosition({
           margin_mode: LT_MARGIN_MODE_CROSS,
           position: '0',
@@ -150,16 +160,16 @@ describe('mapPosition (Lighter)', () => {
 
   describe('other invariants', () => {
     it('maps sign>=0 to LONG and sign<0 to SHORT', () => {
-      expect(mapPosition(basePosition({ sign: 1 }), MARKET).side).toBe(
+      expect(map(basePosition({ sign: 1 }), MARKET).side).toBe(
         PositionSide.LONG
       )
-      expect(mapPosition(basePosition({ sign: -1 }), MARKET).side).toBe(
+      expect(map(basePosition({ sign: -1 }), MARKET).side).toBe(
         PositionSide.SHORT
       )
     })
 
     it('computes markPrice from position_value / |size|', () => {
-      const result = mapPosition(
+      const result = map(
         basePosition({ position: '0.00106', position_value: '83.961964' }),
         MARKET
       )
@@ -169,25 +179,21 @@ describe('mapPosition (Lighter)', () => {
 
     it('derives fractional leverage from the initial_margin_fraction', () => {
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '2.00' }), MARKET)
-          .leverage
+        map(basePosition({ initial_margin_fraction: '2.00' }), MARKET).leverage
       ).toBe(50)
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '12.50' }), MARKET)
-          .leverage
+        map(basePosition({ initial_margin_fraction: '12.50' }), MARKET).leverage
       ).toBe(8)
       // Display leverage rounds to the venue leverage precision. Risk
       // calculations consume the exact IMF separately.
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '45.00' }), MARKET)
-          .leverage
+        map(basePosition({ initial_margin_fraction: '45.00' }), MARKET).leverage
       ).toBe(2.22)
       expect(
-        mapPosition(basePosition({ initial_margin_fraction: '33.33' }), MARKET)
-          .leverage
+        map(basePosition({ initial_margin_fraction: '33.33' }), MARKET).leverage
       ).toBe(3)
       expect(
-        mapPosition(
+        map(
           basePosition({
             position_value: '1.000001',
             initial_margin_fraction: '45.00',
@@ -206,7 +212,7 @@ describe('mapPosition (Lighter)', () => {
       ['2403.643822', -1],
       ['0', 1],
     ])('passes total_funding_paid_out %s through to accruedFunding', (totalFundingPaidOut, sign) => {
-      const result = mapPosition(
+      const result = map(
         basePosition({ sign, total_funding_paid_out: totalFundingPaidOut }),
         MARKET
       )
@@ -219,22 +225,23 @@ describe('mapPosition (Lighter)', () => {
     it('defaults accruedFunding to "0" when total_funding_paid_out is absent', () => {
       const { total_funding_paid_out, ...withoutFunding } = basePosition()
 
-      expect(mapPosition(withoutFunding, MARKET).accruedFunding).toBe('0')
+      expect(map(withoutFunding, MARKET).accruedFunding).toBe('0')
     })
 
     it.each([
-      '0',
-      '-1',
-      'n/a',
-    ])('rejects invalid initial_margin_fraction %s', (initialMarginFraction) => {
-      expect(() =>
-        mapPosition(
-          basePosition({
-            initial_margin_fraction: initialMarginFraction,
-          }),
-          MARKET
-        )
-      ).toThrowError()
+      ['initial_margin_fraction', { initial_margin_fraction: '0' }],
+      ['initial_margin_fraction', { initial_margin_fraction: '-1' }],
+      ['initial_margin_fraction', { initial_margin_fraction: 'n/a' }],
+      ['position', { position: 'abc' }],
+      ['position_value', { position_value: '' }],
+    ])('skips the row and warns when %s is invalid (%o)', (field, overrides) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      expect(mapPosition(basePosition(overrides), MARKET)).toBeUndefined()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`[lighter] skipping position row: \`${field}\``)
+      )
+      warn.mockRestore()
     })
   })
 
@@ -258,7 +265,7 @@ describe('mapPosition (Lighter)', () => {
     it('emits no undefined when total_funding_paid_out is absent', () => {
       const { total_funding_paid_out, ...withoutFunding } = basePosition()
 
-      const result = mapPosition(withoutFunding, MARKET)
+      const result = map(withoutFunding, MARKET)
 
       for (const field of REQUIRED_STRINGS) {
         expect(typeof result[field]).toBe('string')

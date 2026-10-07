@@ -1,6 +1,6 @@
 import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HL_CLEARINGHOUSE_STATE, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -24,6 +24,37 @@ describe('getPositions', () => {
 
   afterEach(() => {
     restore?.()
+    vi.restoreAllMocks()
+  })
+
+  it('skips a position row with an invalid size and keeps the others', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...responses,
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            ...HL_CLEARINGHOUSE_STATE.assetPositions,
+            {
+              position: {
+                ...HL_CLEARINGHOUSE_STATE.assetPositions[0].position,
+                coin: 'ETH',
+                szi: 'not-a-number',
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getPositions(ctx, { address: ADDRESS })
+
+    expect(result.positions.map((p) => p.market.id)).toEqual(['BTC'])
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+    )
   })
 
   it('drops zero-size positions and enriches the asset display fields', async () => {

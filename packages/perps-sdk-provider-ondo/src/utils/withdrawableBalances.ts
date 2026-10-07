@@ -1,9 +1,11 @@
 import {
   calculateWithdrawMax,
   type ProviderWithdrawableBalance,
+  requireVenueDecimal,
 } from '@lifi/perps-sdk'
+import Big from 'big.js'
+import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoBalanceSummary } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
 
 /**
  * The single route an Ondo withdrawal draws on: `withdrawableMargin`, the
@@ -23,9 +25,12 @@ export const ondoWithdrawableBalances = (
   balance: OndoBalanceSummary,
   withdrawalFeeUsd?: string
 ): ProviderWithdrawableBalance[] => {
-  const available = toWireBig(
-    balance.withdrawableMargin,
-    'balance.withdrawableMargin'
+  const available = new Big(
+    requireVenueDecimal(
+      balance.withdrawableMargin,
+      'balance.withdrawableMargin',
+      ONDO_PROVIDER_KEY
+    )
   )
   if (!available.gt(0)) {
     return []
@@ -37,9 +42,12 @@ export const ondoWithdrawableBalances = (
     ...(withdrawalFeeUsd === undefined
       ? {}
       : {
-          withdrawalFee: toWireBig(
-            withdrawalFeeUsd,
-            'account.withdrawalFeeUSD'
+          withdrawalFee: new Big(
+            requireVenueDecimal(
+              withdrawalFeeUsd,
+              'account.withdrawalFeeUSD',
+              ONDO_PROVIDER_KEY
+            )
           ).toFixed(),
           isFeeDeducted: false,
         }),

@@ -1,7 +1,10 @@
 import {
   calculateWithdrawMax,
   type ProviderWithdrawableBalance,
+  requireVenueDecimal,
 } from '@lifi/perps-sdk'
+import Big from 'big.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlAbstractionMode,
   HlClearinghouseState,
@@ -9,7 +12,6 @@ import type {
 } from '../types/index.js'
 import { isUnifiedAbstraction } from './abstractionMode.js'
 import { assetIsOutcome } from './assetId.js'
-import { toWireBig } from './decimal.js'
 
 /**
  * Split a Hyperliquid account's venue figures into the routes a withdrawal
@@ -35,7 +37,13 @@ export const hyperliquidWithdrawableBalances = (
   const fee =
     withdrawalFee === undefined
       ? undefined
-      : toWireBig(withdrawalFee, 'providers.withdrawalFeeUsd').toFixed()
+      : new Big(
+          requireVenueDecimal(
+            withdrawalFee,
+            'providers.withdrawalFeeUsd',
+            PROVIDER_KEY
+          )
+        ).toFixed()
   const feeFor = (
     assetId: string
   ): Pick<ProviderWithdrawableBalance, 'withdrawalFee' | 'isFeeDeducted'> =>
@@ -48,8 +56,12 @@ export const hyperliquidWithdrawableBalances = (
       if (assetIsOutcome(balance.coin)) {
         continue
       }
-      const spot = toWireBig(balance.total, 'spotBalance.total').minus(
-        toWireBig(balance.hold, 'spotBalance.hold')
+      const spot = new Big(
+        requireVenueDecimal(balance.total, 'spotBalance.total', PROVIDER_KEY)
+      ).minus(
+        new Big(
+          requireVenueDecimal(balance.hold, 'spotBalance.hold', PROVIDER_KEY)
+        )
       )
       if (spot.gt(0)) {
         const assetId = String(balance.token)
@@ -64,7 +76,13 @@ export const hyperliquidWithdrawableBalances = (
     }
   }
 
-  const perps = toWireBig(state.withdrawable, 'clearinghouseState.withdrawable')
+  const perps = new Big(
+    requireVenueDecimal(
+      state.withdrawable,
+      'clearinghouseState.withdrawable',
+      PROVIDER_KEY
+    )
+  )
   if (perps.gt(0)) {
     const row = {
       assetId: quoteAssetId,

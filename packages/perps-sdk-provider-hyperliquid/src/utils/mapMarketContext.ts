@@ -1,3 +1,4 @@
+import { asDecimalString } from '@lifi/perps-sdk'
 import type { MarketContext } from '@lifi/perps-types'
 import Big from 'big.js'
 import type { HlWsFastAssetCtx, HlWsPerpAssetCtx } from '../types/index.js'
@@ -12,15 +13,12 @@ const toOpenInterestNotional = (
   openInterest: string,
   markPrice: string
 ): string | undefined => {
-  try {
-    const mark = new Big(markPrice)
-    if (mark.lte(0)) {
-      return undefined
-    }
-    return new Big(openInterest).times(mark).toFixed()
-  } catch {
+  const mark = asDecimalString(markPrice)
+  const interest = asDecimalString(openInterest)
+  if (mark === undefined || interest === undefined || new Big(mark).lte(0)) {
     return undefined
   }
+  return new Big(interest).times(mark).toFixed()
 }
 
 /**

@@ -435,6 +435,36 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('skips a level with an invalid price or size', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'orderbook:AAPL-USD.P', listener)
+
+      feed(p, {
+        type: 'update',
+        channel: 'depthBooksPerps',
+        data: [
+          {
+            market: 'AAPL-USD.P',
+            time: '2025-03-05T14:30:00Z',
+            asks: [
+              ['101', '4'],
+              ['abc', '5'],
+            ],
+            bids: [
+              ['100', '1'],
+              ['99', 'NaN'],
+            ],
+          },
+        ],
+      })
+
+      const book = listener.mock.calls[0][0]
+      expect(book.data.bids).toEqual([{ price: '100', size: '1' }])
+      expect(book.data.asks).toEqual([{ price: '101', size: '4' }])
+      p.close()
+    })
+
     it('replaces the book from each snapshot instead of merging deltas', () => {
       const p = makeProvider()
       const listener = vi.fn()
@@ -1232,6 +1262,43 @@ describe('OndoWsProvider', () => {
         markPrice: '227.50',
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
+      p.close()
+    })
+  })
+
+  describe('positions with a bad row', () => {
+    it('skips a positionsPerps row with an invalid netQuantity and keeps the rest', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        listener
+      )
+      feed(p, {
+        type: 'update',
+        channel: 'positionsPerps',
+        data: [
+          RAW_POSITION,
+          {
+            ...RAW_POSITION,
+            market: 'NVDA-USD.P',
+            netQuantity: 'ws-bad-quantity',
+          },
+        ],
+      })
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0].market.id).toBe('AAPL-USD.P')
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[ondo] skipping position row: `netQuantity` is not a valid decimal: 'ws-bad-quantity'"
+        )
+      )
+      warn.mockRestore()
       p.close()
     })
   })

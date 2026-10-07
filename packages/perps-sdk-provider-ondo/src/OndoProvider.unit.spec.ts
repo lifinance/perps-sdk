@@ -818,7 +818,7 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message:
-        "Ondo field `account.withdrawalFeeUSD` is not a valid decimal: 'n/a'",
+        "ondo field `account.withdrawalFeeUSD` is not a valid decimal: 'n/a'",
       tool: 'ondo',
     })
   })
@@ -874,7 +874,7 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SDKError,
       message:
-        "Ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
+        "ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
       tool: 'ondo',
     })
   })
@@ -1493,6 +1493,27 @@ describe('OndoProvider — null list results', () => {
       positions: [],
       pagination: { limit: 0, hasMore: false },
     })
+  })
+})
+
+describe('OndoProvider — getPositions skips a bad row', () => {
+  it('drops only the row with an invalid netQuantity and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    positionsResult = [
+      POSITION_RESULT,
+      { ...POSITION_RESULT, netQuantity: 'rest-bad-quantity' },
+    ]
+    const { provider } = await loggedInProvider()
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[ondo] skipping position row: `netQuantity` is not a valid decimal: 'rest-bad-quantity'"
+      )
+    )
+    warn.mockRestore()
   })
 })
 

@@ -1,10 +1,9 @@
-import { PerpsError } from '@lifi/perps-sdk'
+import { PerpsError, requireVenueDecimal } from '@lifi/perps-sdk'
 import type { AvailableToTrade } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrderSizes } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
 
 // A max amount must never exceed the exact cap, so the division truncates.
 const TruncatingBig = Big()
@@ -24,7 +23,7 @@ const outOfRange = (
 }
 
 const toPositiveBig = (value: string, field: string): Big => {
-  const parsed = toWireBig(value, field)
+  const parsed = new Big(requireVenueDecimal(value, field, ONDO_PROVIDER_KEY))
   if (parsed.lte(0)) {
     throw outOfRange(field, value, 'positive')
   }
@@ -32,7 +31,7 @@ const toPositiveBig = (value: string, field: string): Big => {
 }
 
 const toNonNegativeBig = (value: string, field: string): Big => {
-  const parsed = toWireBig(value, field)
+  const parsed = new Big(requireVenueDecimal(value, field, ONDO_PROVIDER_KEY))
   if (parsed.lt(0)) {
     throw outOfRange(field, value, 'non-negative')
   }

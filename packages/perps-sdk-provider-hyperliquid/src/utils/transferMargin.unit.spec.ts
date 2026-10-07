@@ -50,8 +50,8 @@ describe('positionRemovableMargin', () => {
     )
   })
 
-  const isolatedWithPnl = () =>
-    mapPosition(
+  const isolatedWithPnl = (): Position => {
+    const mapped = mapPosition(
       {
         position: {
           coin: 'ETH',
@@ -72,6 +72,11 @@ describe('positionRemovableMargin', () => {
       } satisfies HlAssetPosition,
       position().market
     )
+    if (mapped === undefined) {
+      throw new Error('expected a mapped position')
+    }
+    return mapped
+  }
 
   it('reports the venue isolated marginUsed unchanged', () => {
     expect(isolatedWithPnl().marginUsed).toBe('1500')

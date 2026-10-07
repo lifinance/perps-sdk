@@ -38,8 +38,11 @@ export {
   formatUsd,
 } from './decimal/format.js'
 export {
+  asDecimalString,
+  decimalStringToNumber,
+  formattedStringToNumber,
   isDecimalString,
-  parseDecimal,
+  requireVenueDecimal,
   validateDecimalString,
 } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
@@ -52,6 +55,7 @@ export {
 export type { ExpectedPnl } from './math/order.js'
 export {
   applySlippage,
+  applySlippageToPrice,
   buildQuote,
   calculateExpectedPnl,
   calculateRealizedPnlPercent,
@@ -272,7 +276,7 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
-export { createWarnOnce } from './utils/warnOnce.js'
+export { createWarnOnce, warnSkippedVenueRow } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'
 export { cachePromise } from './websocket/cachePromise.js'

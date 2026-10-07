@@ -301,6 +301,7 @@ const LIQUIDATION_INPUT = {
 /** One sample call per display-tier formula, keyed by its public name. */
 const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   applySlippage: [100, 0.5, true],
+  applySlippageToPrice: ['100', 0.5, true],
   calculateEffectiveLeverage: [{ positionValueUsd: 10000, marginUsd: 1000 }],
   calculateExpectedPnl: [0.77, 0.7, 3, true, 10],
   calculateLiquidationDistance: [
@@ -336,6 +337,9 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   ],
 }
 
+/** Formulas that give a `DecimalString` for the caller to snap to a tick. */
+const DECIMAL_STRING_RESULTS: readonly string[] = ['applySlippageToPrice']
+
 /** Formulas whose numbers sit on fields rather than on the return value. */
 const NUMERIC_FIELDS: Record<string, readonly string[]> = {
   calculateExpectedPnl: ['amount', 'percent'],
@@ -355,9 +359,13 @@ describe('display-tier formulas give back numbers', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
-  it('gives back a finite number for each sample call', () => {
+  it('gives back a finite number, or a named DecimalString, for each sample call', () => {
     for (const [name, args] of Object.entries(MATH_SAMPLES)) {
       const result = callExport(name, args)
+      if (DECIMAL_STRING_RESULTS.includes(name)) {
+        expect(sdk.isDecimalString(result), name).toBe(true)
+        continue
+      }
       const fields = NUMERIC_FIELDS[name]
       if (fields) {
         for (const field of fields) {
@@ -539,7 +547,13 @@ describe('convert and wire give DecimalStrings', () => {
 })
 
 /** `<a>To<B>` converts between representations only, so both operands come from this closed set. */
-const REPRESENTATIONS = ['baseUnits', 'decimal', 'decimalString', 'number']
+const REPRESENTATIONS = [
+  'baseUnits',
+  'decimal',
+  'decimalString',
+  'formattedString',
+  'number',
+]
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
@@ -551,7 +565,9 @@ const BANNED_VERB = /^(derive|predict|convert)/
 describe('the vocabulary pattern', () => {
   it.each([
     'baseUnitsToDecimal',
+    'decimalStringToNumber',
     'decimalToBaseUnits',
+    'formattedStringToNumber',
     'numberToDecimalString',
   ])('admits the representation conversion %s', (name) => {
     expect(VOCABULARY.test(name)).toBe(true)
@@ -574,6 +590,10 @@ describe('the vocabulary pattern', () => {
 /** Tier functions outside the vocabulary, each with the reason it keeps its name. */
 const NAMING_EXCEPTIONS: Record<string, string> = {
   applySlippage: 'display-tier formula; consumers call it by this name',
+  applySlippageToPrice: 'order-entry twin of applySlippage, named to match it',
+  asDecimalString: 'never-throwing narrow of a venue value for display',
+  requireVenueDecimal:
+    'the name says that it throws on bad venue data, unlike the as<X> narrow',
   classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
   classifyFillFromPosition: 'fill taxonomy the providers call',
   findMatchingPosition: 'structure lookup with no arithmetic',

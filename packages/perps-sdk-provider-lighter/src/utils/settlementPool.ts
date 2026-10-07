@@ -1,11 +1,20 @@
-import type Big from 'big.js'
+import { requireVenueDecimal } from '@lifi/perps-sdk'
+import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtAccountAsset } from '../types/account.js'
-import { toRequiredBig } from './decimal.js'
 
 /** Both routes of a unified account's settlement asset, as one holding. */
 export const pooledSettlementUnits = (asset: LtAccountAsset): Big =>
-  toRequiredBig(asset.balance, 'balance').plus(
-    toRequiredBig(asset.margin_balance, 'margin_balance')
+  new Big(
+    requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
+  ).plus(
+    new Big(
+      requireVenueDecimal(
+        asset.margin_balance,
+        'margin_balance',
+        LIGHTER_PROVIDER_KEY
+      )
+    )
   )
 
 /**
@@ -18,9 +27,25 @@ export const pooledSettlementSpendable = (
   asset: LtAccountAsset,
   availableBalance: Big
 ): Big => {
-  const marginBalance = toRequiredBig(asset.margin_balance, 'margin_balance')
-  return toRequiredBig(asset.balance, 'balance')
-    .minus(toRequiredBig(asset.locked_balance, 'locked_balance'))
+  const marginBalance = new Big(
+    requireVenueDecimal(
+      asset.margin_balance,
+      'margin_balance',
+      LIGHTER_PROVIDER_KEY
+    )
+  )
+  return new Big(
+    requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
+  )
+    .minus(
+      new Big(
+        requireVenueDecimal(
+          asset.locked_balance,
+          'locked_balance',
+          LIGHTER_PROVIDER_KEY
+        )
+      )
+    )
     .plus(marginBalance.lt(availableBalance) ? marginBalance : availableBalance)
 }
 
@@ -32,5 +57,7 @@ export const collateralSpotBalance = (
   const asset = assets.find((a) => a.asset_id === settlementAssetIndex)
   return asset === undefined
     ? '0'
-    : toRequiredBig(asset.balance, 'balance').toFixed()
+    : new Big(
+        requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
+      ).toFixed()
 }
