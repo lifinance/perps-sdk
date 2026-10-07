@@ -52,8 +52,9 @@ export const skippedRowMessage = (
 const warnSkippedRowOnce = createWarnOnce()
 
 /**
- * Warn once that a provider mapper skipped a venue row because a required
- * field is not valid.
+ * Warn once for each provider, row, field and expected kind that a provider
+ * mapper skipped a venue row because a required field is not valid. The key
+ * holds no venue value, so a second bad value for the same field stays silent.
  *
  * @param expected - What the field must be. Defaults to `'decimal'`.
  * @internal
@@ -65,6 +66,8 @@ export const warnSkippedVenueRow = (
   value: unknown,
   expected = 'decimal'
 ): void => {
-  const message = skippedRowMessage(provider, row, field, value, expected)
-  warnSkippedRowOnce(message, message)
+  warnSkippedRowOnce(
+    `${provider}|${row}|${field}|${expected}`,
+    skippedRowMessage(provider, row, field, value, expected)
+  )
 }

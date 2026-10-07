@@ -47,16 +47,16 @@ describe('createWarnOnce', () => {
 })
 
 describe('warnSkippedVenueRow', () => {
-  it('warns once for each provider, row, field and value', () => {
+  it('warns once for each provider, row and field, whatever the value', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc')
-    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc')
     warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'xyz')
+    warnSkippedVenueRow('hyperliquid', 'position', 'entryPx', 'abc')
 
     expect(warn.mock.calls.map(([message]) => message)).toEqual([
       "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'abc'",
-      "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'xyz'",
+      "[hyperliquid] skipping position row: `entryPx` is not a valid decimal: 'abc'",
     ])
   })
 

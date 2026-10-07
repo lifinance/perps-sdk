@@ -235,10 +235,12 @@ describe('mapPosition (Lighter)', () => {
       ['initial_margin_fraction', { initial_margin_fraction: 'n/a' }],
       ['position', { position: 'abc' }],
       ['position_value', { position_value: '' }],
-    ])('skips the row and warns when %s is invalid (%o)', (field, overrides) => {
+    ])('skips the row and warns when %s is invalid (%o)', async (field, overrides) => {
+      vi.resetModules()
+      const { mapPosition: freshMapPosition } = await import('./mapPosition.js')
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      expect(mapPosition(basePosition(overrides), MARKET)).toBeUndefined()
+      expect(freshMapPosition(basePosition(overrides), MARKET)).toBeUndefined()
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(`[lighter] skipping position row: \`${field}\``)
       )

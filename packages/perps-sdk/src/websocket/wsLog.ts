@@ -64,7 +64,8 @@ export const wsLog = {
   },
   /**
    * A frame row or order-book level with a required field that is not valid.
-   * Only that row is skipped. Each distinct message is logged once at `warn`.
+   * Only that row is skipped. Logged once at `warn` for each provider, row and
+   * field; the key holds no venue value.
    */
   skippedRow(
     provider: string,
@@ -72,23 +73,21 @@ export const wsLog = {
     field: string,
     value: unknown
   ): void {
-    const message = skippedRowMessage(
-      `${provider}:ws`,
-      row,
-      field,
-      value,
-      'decimal'
+    warnSkippedRowOnce(
+      `${provider}|${row}|${field}`,
+      skippedRowMessage(`${provider}:ws`, row, field, value, 'decimal')
     )
-    warnSkippedRowOnce(message, message)
   },
   /**
    * A frame row the mapper rejected for a reason other than one field, such as
-   * a lifecycle state the SDK does not carry. Each distinct reason is logged
-   * once at `warn`.
+   * a lifecycle state the SDK does not carry. Logged once at `warn` for each
+   * provider and row; the key holds no venue value.
    */
   droppedRow(provider: string, row: string, reason: string): void {
-    const message = `[${provider}:ws] skipping ${row} row: ${reason}`
-    warnSkippedRowOnce(message, message)
+    warnSkippedRowOnce(
+      `${provider}|${row}|dropped`,
+      `[${provider}:ws] skipping ${row} row: ${reason}`
+    )
   },
   /**
    * A background market-registry refetch rejected. Unknown-market items keep

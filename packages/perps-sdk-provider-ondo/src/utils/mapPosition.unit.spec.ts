@@ -104,11 +104,13 @@ describe('mapPosition', () => {
     'abc',
     '',
     '1,0',
-  ])('skips the row and warns once when netQuantity is %j', (netQuantity) => {
+  ])('skips the row and warns once when netQuantity is %j', async (netQuantity) => {
+    vi.resetModules()
+    const { mapPosition: freshMapPosition } = await import('./mapPosition.js')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     expect(
-      mapPosition(positionFixture({ netQuantity }), MARKET)
+      freshMapPosition(positionFixture({ netQuantity }), MARKET)
     ).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
