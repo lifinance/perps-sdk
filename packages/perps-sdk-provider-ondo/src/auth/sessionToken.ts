@@ -3,6 +3,7 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoAuthToken } from '../types/auth.js'
+import type { OndoSessionExpiredError } from '../utils/apiClient.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 
 /**
@@ -14,6 +15,25 @@ import type { OndoTokenStore } from './OndoTokenStore.js'
 export const ondoSessionRequiredError = (message: string): PerpsError => {
   const error = new PerpsError(PerpsErrorCode.SetupRequired, message)
   error.tool = ONDO_PROVIDER_KEY
+  return error
+}
+
+/**
+ * The `Unauthorized` error for a session the venue rejected with a 401.
+ * `read` names the failed operation in the message.
+ *
+ * @internal
+ */
+export const ondoSessionRejectedError = (
+  read: string,
+  cause: OndoSessionExpiredError
+): PerpsError => {
+  const error = new PerpsError(
+    PerpsErrorCode.Unauthorized,
+    `Ondo ${read} failed: the venue rejected the session; sign in again.`
+  )
+  error.tool = ONDO_PROVIDER_KEY
+  error.cause = cause
   return error
 }
 

@@ -80,6 +80,7 @@ import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import {
+  ondoSessionRejectedError,
   ondoSessionRequiredError,
   requireOndoSessionToken,
 } from './auth/sessionToken.js'
@@ -314,13 +315,7 @@ export const ondoProvider = (
   const sessionRejected =
     (read: string) =>
     (cause: OndoSessionExpiredError): never => {
-      const error = new PerpsError(
-        PerpsErrorCode.Unauthorized,
-        `Ondo ${read} failed: the venue rejected the session; sign in again.`
-      )
-      error.tool = ONDO_PROVIDER_KEY
-      error.cause = cause
-      throw error
+      throw ondoSessionRejectedError(read, cause)
     }
 
   // A data read throws the account's state: an empty result would be
