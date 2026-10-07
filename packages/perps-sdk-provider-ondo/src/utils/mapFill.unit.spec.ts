@@ -1,8 +1,16 @@
-import type { MarketDisplay } from '@lifi/perps-types'
+import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { OndoFill } from '../types/wire.js'
 import { mapFill } from './mapFill.js'
+
+const mapValidFill = (...args: Parameters<typeof mapFill>): Fill => {
+  const fill = mapFill(...args)
+  if (fill === undefined) {
+    throw new Error('mapFill skipped a valid row')
+  }
+  return fill
+}
 
 const MARKET: MarketDisplay = {
   providerId: 'ondo',
@@ -39,7 +47,7 @@ const fillFixture = (overrides?: Partial<OndoFill>): OndoFill => ({
 
 describe('mapFill', () => {
   it('maps an Ondo fill to the generic Fill shape', () => {
-    expect(mapFill(fillFixture(), MARKET)).toEqual({
+    expect(mapValidFill(fillFixture(), MARKET)).toEqual({
       id: 'fill-1',
       orderId: 'ord-1',
       market: MARKET,
@@ -55,7 +63,7 @@ describe('mapFill', () => {
   })
 
   it('maps maker role and sell side', () => {
-    const mapped = mapFill(
+    const mapped = mapValidFill(
       fillFixture({ side: 'sell', isMaker: true, direction: 'closeLong' }),
       MARKET
     )
@@ -73,31 +81,33 @@ describe('mapFill', () => {
       ['flipShortToLong', FillClassification.SWITCHED_LONG],
     ]
     for (const [direction, expected] of cases) {
-      expect(mapFill(fillFixture({ direction }), MARKET).classification).toBe(
-        expected
-      )
+      expect(
+        mapValidFill(fillFixture({ direction }), MARKET).classification
+      ).toBe(expected)
     }
   })
 
   it('classifies by side alone when direction is absent', () => {
     expect(
-      mapFill(fillFixture({ direction: undefined }), MARKET).classification
+      mapValidFill(fillFixture({ direction: undefined }), MARKET).classification
     ).toBe(FillClassification.BUY)
     expect(
-      mapFill(fillFixture({ direction: undefined, side: 'sell' }), MARKET)
+      mapValidFill(fillFixture({ direction: undefined, side: 'sell' }), MARKET)
         .classification
     ).toBe(FillClassification.SELL)
   })
 
   it('nets the fee against a rebate', () => {
-    expect(mapFill(fillFixture({ feeRebate: '0.1' }), MARKET).fee).toEqual({
-      amount: '0.3',
-      asset: 'USD',
-    })
+    expect(mapValidFill(fillFixture({ feeRebate: '0.1' }), MARKET).fee).toEqual(
+      {
+        amount: '0.3',
+        asset: 'USD',
+      }
+    )
   })
 
   it("reads the fee asset from the market's quote asset", () => {
-    const mapped = mapFill(fillFixture(), {
+    const mapped = mapValidFill(fillFixture(), {
       ...MARKET,
       quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDC' },
     })
@@ -105,31 +115,34 @@ describe('mapFill', () => {
   })
 
   it('carries realized pnl through', () => {
-    expect(mapFill(fillFixture({ pnl: '12.5' }), MARKET).realizedPnl).toBe(
+    expect(mapValidFill(fillFixture({ pnl: '12.5' }), MARKET).realizedPnl).toBe(
       '12.5'
     )
   })
 
   it('carries the wire client order ID into clientOrderId', () => {
     expect(
-      mapFill(fillFixture({ clientOrderId: 'client-order-1' }), MARKET)
+      mapValidFill(fillFixture({ clientOrderId: 'client-order-1' }), MARKET)
         .clientOrderId
     ).toBe('client-order-1')
   })
 
   it('leaves clientOrderId undefined when the wire omits it', () => {
-    expect(mapFill(fillFixture(), MARKET).clientOrderId).toBeUndefined()
+    expect(mapValidFill(fillFixture(), MARKET).clientOrderId).toBeUndefined()
   })
 
   // An Ondo fill carries no leverage and no margin fraction; the venue reports
   // leverage on the position and the balance summary only.
   it('omits the leverage key on every fill', () => {
-    expect(Object.keys(mapFill(fillFixture(), MARKET))).not.toContain(
+    expect(Object.keys(mapValidFill(fillFixture(), MARKET))).not.toContain(
       'leverage'
     )
     expect(
       Object.keys(
-        mapFill(fillFixture({ side: 'sell', direction: 'closeLong' }), MARKET)
+        mapValidFill(
+          fillFixture({ side: 'sell', direction: 'closeLong' }),
+          MARKET
+        )
       )
     ).not.toContain('leverage')
   })
@@ -137,10 +150,34 @@ describe('mapFill', () => {
   it.each([
     'fee',
     'feeRebate',
-  ] as const)('maps the fill without a fee when %s is malformed', (field) => {
-    const mapped = mapFill(fillFixture({ [field]: '10oops' }), MARKET)
+  ] as const)('maps the fill without a fee and warns once when %s is malformed', (field) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mapped = mapValidFill(fillFixture({ [field]: '10oops' }), MARKET)
     expect(mapped.fee).toBeUndefined()
     expect(mapped.id).toBe(fillFixture().id)
     expect(mapped.classification).toBe(FillClassification.OPENED_LONG)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+})
+
+describe('mapFill invalid rows', () => {
+  it.each([
+    ['size', '4 units'],
+    ['price', 'NaN'],
+  ] as const)('keeps a fill with an invalid %s as the raw venue string', (field, value) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapValidFill(fillFixture({ [field]: value }), MARKET)[field]).toBe(
+      value
+    )
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('skips a fill with an invalid time and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(fillFixture({ time: 'not a time' }), MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })

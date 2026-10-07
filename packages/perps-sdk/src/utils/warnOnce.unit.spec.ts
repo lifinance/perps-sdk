@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createWarnOnce } from './warnOnce.js'
+import { createWarnOnce, warnSkippedVenueRow } from './warnOnce.js'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -43,5 +43,30 @@ describe('createWarnOnce', () => {
     createWarnOnce()('a', 'two')
 
     expect(warn.mock.calls.map(([message]) => message)).toEqual(['one', 'two'])
+  })
+})
+
+describe('warnSkippedVenueRow', () => {
+  it('warns once for each provider, row, field and value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc')
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc')
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'xyz')
+
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'abc'",
+      "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'xyz'",
+    ])
+  })
+
+  it('names the expected kind and cuts a long value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    warnSkippedVenueRow('ondo', 'fill', 'time', 'x'.repeat(100), 'timestamp')
+
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] skipping fill row: \`time\` is not a valid timestamp: '${'x'.repeat(64)}…'`
+    )
   })
 })

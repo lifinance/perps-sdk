@@ -104,7 +104,7 @@ describe('resolveQuote', () => {
     const quote = await resolveQuote(
       client,
       'hyperliquid',
-      { symbol: 'BTC', side: 'buy', size: 201, type: 'perps' },
+      { symbol: 'BTC', side: 'buy', size: '201', type: 'perps' },
       FEE
     )
 
@@ -124,7 +124,7 @@ describe('resolveQuote', () => {
     const quote = await resolveQuote(
       client,
       'hyperliquid',
-      { symbol: 'BTC', side: 'buy', size: 50, type: 'spot' },
+      { symbol: 'BTC', side: 'buy', size: '50', type: 'spot' },
       FEE
     )
 
@@ -138,7 +138,7 @@ describe('resolveQuote', () => {
     const quote = await resolveQuote(
       client,
       'hyperliquid',
-      { symbol: 'BTC', side: 'sell', size: 99, type: 'perps' },
+      { symbol: 'BTC', side: 'sell', size: '99', type: 'perps' },
       FEE
     )
 
@@ -152,7 +152,7 @@ describe('resolveQuote', () => {
     const quote = await resolveQuote(
       client,
       'hyperliquid',
-      { symbol: 'BTC', side: 'buy', size: 100_000, type: 'perps' },
+      { symbol: 'BTC', side: 'buy', size: '100000', type: 'perps' },
       FEE
     )
 
@@ -166,7 +166,7 @@ describe('resolveQuote', () => {
       resolveQuote(
         client,
         'hyperliquid',
-        { symbol: 'DOGE', side: 'buy', size: 100, type: 'perps' },
+        { symbol: 'DOGE', side: 'buy', size: '100', type: 'perps' },
         FEE
       )
     ).rejects.toMatchObject({

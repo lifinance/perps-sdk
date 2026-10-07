@@ -21,16 +21,19 @@ describe('calculateTransferable', () => {
   })
 
   it.each([
-    ['venueFigure', '1e-7', '10'],
-    ['venueFigure', '', '10'],
-    ['units', '1', '1,000'],
-    ['units', '1', 'abc'],
-  ])('rejects a non-decimal `%s`', (field, venueFigure, units) => {
+    ['1e-7', '1e-7', '10'],
+    ['', '', '10'],
+    ['abc', '1', 'abc'],
+  ])('rejects the non-decimal %j, naming the value', (value, venueFigure, units) => {
     expect(() => calculateTransferable(venueFigure, units)).toThrow(
       expect.objectContaining({
         code: PerpsErrorCode.ValidationError,
-        message: expect.stringContaining(`\`${field}\``),
+        message: expect.stringContaining(`'${value}'`),
       })
     )
+  })
+
+  it('reads a display form after the clean step', () => {
+    expect(calculateTransferable('5', '1,000')).toBe('5')
   })
 })

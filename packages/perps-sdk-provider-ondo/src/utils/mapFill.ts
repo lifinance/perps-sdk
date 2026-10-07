@@ -1,8 +1,8 @@
-import { isDecimalString } from '@lifi/perps-sdk'
+import { safeSubtractDecimalString } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { OndoFill, OndoFillDirection } from '../types/wire.js'
+import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
 
 const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
   {
@@ -15,22 +15,26 @@ const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
   }
 
 /** Ondo's `fee` net of `feeRebate`, or `undefined` when either is malformed. */
-const netFeeAmount = (fill: OndoFill): string | undefined => {
-  const rebate = fill.feeRebate ?? '0'
-  return isDecimalString(fill.fee) && isDecimalString(rebate)
-    ? new Big(fill.fee).minus(rebate).toFixed()
-    : undefined
-}
+const netFeeAmount = (fill: OndoFill): string | undefined =>
+  safeSubtractDecimalString(fill.fee, fill.feeRebate ?? '0')
 
 /**
  * Map a raw Ondo fill to the generic {@link Fill}. The fee is netted against
  * Ondo's `feeRebate`; when the wire `direction` is absent the classification
- * is the bare fill side.
+ * is the bare fill side. Size and price are the raw venue strings. A fill
+ * with an invalid time gives `undefined`.
  *
  * @param market - Backend-resolved market identity for `fill.market`.
  * @public
  */
-export const mapFill = (fill: OndoFill, market: MarketDisplay): Fill => {
+export const mapFill = (
+  fill: OndoFill,
+  market: MarketDisplay
+): Fill | undefined => {
+  const createdAt = rowTimestampToIsoStringOrWarn('fill', 'time', fill.time)
+  if (createdAt === undefined) {
+    return undefined
+  }
   const feeAmount = netFeeAmount(fill)
   return {
     id: fill.id,
@@ -53,6 +57,6 @@ export const mapFill = (fill: OndoFill, market: MarketDisplay): Fill => {
         : fill.side === 'buy'
           ? FillClassification.BUY
           : FillClassification.SELL,
-    createdAt: new Date(fill.time).toISOString(),
+    createdAt,
   }
 }

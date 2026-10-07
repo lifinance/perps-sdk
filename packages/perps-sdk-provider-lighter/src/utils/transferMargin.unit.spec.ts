@@ -34,7 +34,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   liquidationPrice: '4000',
   unrealizedPnl: '0',
   accruedFunding: '0',
-  leverage: 100 / 45,
+  leverage: '2.22',
   marginUsed: '1500',
   initialMarginRequirement: '450.000045',
   marginMode: MarginMode.ISOLATED,
@@ -118,6 +118,36 @@ describe('positionRemovableMargin', () => {
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
     expect(() => positionRemovableMargin(position(overrides))).toThrowError(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it.each([
+    [
+      { marginUsed: 'n/a' },
+      "Invalid `Position.marginUsed`: 'n/a' is not a decimal string.",
+    ],
+    [
+      { unrealizedPnl: 'n/a' },
+      "Invalid `Position.unrealizedPnl`: 'n/a' is not a decimal string.",
+    ],
+    [
+      { initialMarginRequirement: 'n/a' },
+      "Invalid `Position.initialMarginRequirement`: 'n/a' is not a decimal string.",
+    ],
+    [{ marginUsed: '0' }, 'Position.marginUsed must be greater than zero.'],
+    [
+      { initialMarginRequirement: '-1' },
+      'Position.initialMarginRequirement must be greater than zero.',
+    ],
+  ] satisfies [
+    Partial<Position>,
+    string,
+  ][])('names the field in the error for %o', (overrides, message) => {
+    expect(() => positionRemovableMargin(position(overrides))).toThrowError(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message,
+      })
     )
   })
 

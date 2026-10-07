@@ -1,9 +1,13 @@
+import { createWarnOnce, skippedRowMessage } from '../utils/warnOnce.js'
+
 const MAX_PAYLOAD_CHARS = 512
 
 const truncate = (raw: string): string =>
   raw.length > MAX_PAYLOAD_CHARS
     ? `${raw.slice(0, MAX_PAYLOAD_CHARS)}…(${raw.length} chars)`
     : raw
+
+const warnSkippedRowOnce = createWarnOnce()
 
 /**
  * Structured logger for WS message-handling and subscription failures, shared
@@ -57,6 +61,34 @@ export const wsLog = {
     console.warn(
       `[${provider}:ws] skipping item for unknown market '${marketId}'`
     )
+  },
+  /**
+   * A frame row or order-book level with a required field that is not valid.
+   * Only that row is skipped. Each distinct message is logged once at `warn`.
+   */
+  skippedRow(
+    provider: string,
+    row: string,
+    field: string,
+    value: unknown
+  ): void {
+    const message = skippedRowMessage(
+      `${provider}:ws`,
+      row,
+      field,
+      value,
+      'decimal'
+    )
+    warnSkippedRowOnce(message, message)
+  },
+  /**
+   * A frame row the mapper rejected for a reason other than one field, such as
+   * a lifecycle state the SDK does not carry. Each distinct reason is logged
+   * once at `warn`.
+   */
+  droppedRow(provider: string, row: string, reason: string): void {
+    const message = `[${provider}:ws] skipping ${row} row: ${reason}`
+    warnSkippedRowOnce(message, message)
   },
   /**
    * A background market-registry refetch rejected. Unknown-market items keep

@@ -30,8 +30,9 @@ import {
   PerpsSigner,
   SigningMethod,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import { unknownToDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { getAssetRegistry, toAssetDisplay } from '../registry/assetRegistry.js'
 import { getMarketRegistry } from '../registry/marketRegistry.js'
@@ -224,7 +225,10 @@ function assertAllSucceeded(results: ActionResult[]): void {
 
 function isNonNegativeDecimal(value: string): boolean {
   try {
-    return new Big(value).gte(0)
+    return !isDecimalStringGreaterThan(
+      '0',
+      unknownToDecimalString(value, 'withdrawalFee', 'perps-sdk')
+    )
   } catch {
     return false
   }
@@ -884,16 +888,20 @@ export class PerpsClient {
       }
       const minimum = asset.minWithdrawalAmount
       if (minimum !== undefined) {
-        let floor: Big
+        let floor: string
         try {
-          floor = new Big(minimum)
+          floor = unknownToDecimalString(
+            minimum,
+            'minWithdrawalAmount',
+            'perps-sdk'
+          )
         } catch {
           throw new PerpsError(
             PerpsErrorCode.SDKError,
             `Asset '${asset.id}' field \`minWithdrawalAmount\` is not a valid decimal.`
           )
         }
-        if (new Big(row.available).lt(floor)) {
+        if (isDecimalStringGreaterThan(floor, row.available)) {
           return []
         }
       }

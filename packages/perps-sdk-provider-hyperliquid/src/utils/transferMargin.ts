@@ -1,32 +1,49 @@
 import {
+  isDecimalString,
+  isDecimalStringGreaterThan,
+  multiplyDecimalString,
   PerpsError,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
-  validateDecimalString,
+  roundDecimalString,
+  subtractDecimalString,
 } from '@lifi/perps-sdk'
 import {
   type DecimalString,
   PerpsErrorCode,
   type Position,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 
 const NOTIONAL_FLOOR_RATIO = '0.1'
 const AMOUNT_DECIMALS = 6
 
-function positionAmount(value: DecimalString, field: string): Big {
-  return new Big(validateDecimalString(value, `Position.${field}`))
+function requirePositionAmount(
+  value: DecimalString,
+  field: string
+): DecimalString {
+  if (!isDecimalString(value)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`Position.${field}\`: '${value}' is not a decimal string.`
+    )
+  }
+  return value
 }
 
-function positivePositionAmount(value: DecimalString, field: string): Big {
-  const amount = positionAmount(value, field)
-  if (amount.lte(0)) {
+function requirePositivePositionAmount(
+  value: DecimalString | undefined,
+  field: string
+): DecimalString {
+  if (
+    value === undefined ||
+    !isDecimalStringGreaterThan(requirePositionAmount(value, field), '0')
+  ) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
       `Position.${field} must be greater than zero.`
     )
   }
-  return amount
+  return value
 }
 
 /**
@@ -40,7 +57,8 @@ function positivePositionAmount(value: DecimalString, field: string): Big {
  *   margin adjustment; `'0'` for add-only strict-isolated markets and when
  *   nothing is removable.
  * @throws {PerpsError} `ValidationError` when a required `Position` decimal
- *   is malformed, or when a size, price or requirement is not positive.
+ *   is absent or malformed, or when a size, price or requirement is not
+ *   positive.
  * @see https://hyperliquid.gitbook.io/hyperliquid-docs/trading/margining
  * @public
  */
@@ -53,21 +71,25 @@ export function positionRemovableMargin(
   if (!positionSupportsMarginRemoval(position)) {
     return '0'
   }
-  const marginUsed = positionAmount(position.marginUsed, 'marginUsed')
-  const initialMargin = positivePositionAmount(
+  const marginUsed = requirePositionAmount(position.marginUsed, 'marginUsed')
+  const initialMargin = requirePositivePositionAmount(
     position.initialMarginRequirement,
     'initialMarginRequirement'
   )
-  const notionalFloor = positivePositionAmount(position.size, 'size')
-    .times(positivePositionAmount(position.markPrice, 'markPrice'))
-    .times(NOTIONAL_FLOOR_RATIO)
-  const minimumMargin = initialMargin.gt(notionalFloor)
+  const notionalFloor = multiplyDecimalString(
+    multiplyDecimalString(
+      requirePositivePositionAmount(position.size, 'size'),
+      requirePositivePositionAmount(position.markPrice, 'markPrice')
+    ),
+    NOTIONAL_FLOOR_RATIO
+  )
+  const minimumMargin = isDecimalStringGreaterThan(initialMargin, notionalFloor)
     ? initialMargin
     : notionalFloor
 
-  const removable = marginUsed.minus(minimumMargin)
-  if (removable.lte(0)) {
+  const removable = subtractDecimalString(marginUsed, minimumMargin)
+  if (!isDecimalStringGreaterThan(removable, '0')) {
     return '0'
   }
-  return removable.round(AMOUNT_DECIMALS, Big.roundDown).toFixed()
+  return roundDecimalString(removable, AMOUNT_DECIMALS, 'truncate')
 }

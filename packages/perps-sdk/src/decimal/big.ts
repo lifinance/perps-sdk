@@ -14,8 +14,3 @@ DivBig.DP = 40
 export const TruncBig = Big()
 TruncBig.DP = 40
 TruncBig.RM = Big.roundDown
-
-/** True when every value is a finite number, so `new DivBig(value)` cannot throw. */
-export function areFinite(...values: number[]): boolean {
-  return values.every(Number.isFinite)
-}

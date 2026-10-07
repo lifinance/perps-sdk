@@ -19,7 +19,14 @@ import * as sdk from './index.js'
 import { venueClient, venueMarket } from './wire/venueProvider.mock.js'
 
 /** Internals that must never reach the public entry point. */
-const NEVER_EXPORTED: readonly string[] = ['DivBig', 'TruncBig', 'areFinite']
+const NEVER_EXPORTED: readonly string[] = [
+  'DivBig',
+  'TruncBig',
+  'areFinite',
+  'bigToDecimalString',
+  'decimalStringToBig',
+  'decimalStringToDivBig',
+]
 
 const PACKAGE_ROOT = resolve(import.meta.dirname, '..')
 const TYPES_ROOT = join(PACKAGE_ROOT, 'dist', 'types')
@@ -269,7 +276,7 @@ const LONG_POSITION: Position = {
   liquidationPrice: '0',
   unrealizedPnl: '0',
   accruedFunding: '0',
-  leverage: 1,
+  leverage: '1',
   marginUsed: '0',
   initialMarginRequirement: '0',
   marginMode: MarginMode.CROSS,
@@ -292,56 +299,58 @@ const SELL_LIMIT: RegularOrder = {
 }
 
 const LIQUIDATION_INPUT = {
-  entryPrice: 100,
-  leverage: 10,
+  entryPrice: '100',
+  leverage: '10',
   isLong: true,
-  maintenanceMarginRate: 0.01,
+  maintenanceMarginRate: '0.01',
 }
 
 /** One sample call per display-tier formula, keyed by its public name. */
 const MATH_SAMPLES: Record<string, readonly unknown[]> = {
-  applySlippage: [100, 0.5, true],
-  calculateEffectiveLeverage: [{ positionValueUsd: 10000, marginUsd: 1000 }],
-  calculateExpectedPnl: [0.77, 0.7, 3, true, 10],
+  applySlippageToPrice: ['100', '0.5', true],
+  calculateEffectiveLeverage: [
+    { positionValueUsd: '10000', marginUsd: '1000' },
+  ],
+  calculateExpectedPnl: ['0.77', '0.7', '3', true, '10'],
   calculateLiquidationDistance: [
-    { liquidationPrice: 45000, currentPrice: 50000 },
+    { liquidationPrice: '45000', currentPrice: '50000' },
   ],
-  calculateNotionalValue: [0.5, 60000],
+  calculateNotionalValue: ['0.5', '60000'],
   calculateRealizedPnl: [
-    { entryPrice: 100, closePrice: 150, closeSize: 1, isLong: true },
+    { entryPrice: '100', closePrice: '150', closeSize: '1', isLong: true },
   ],
-  calculateRealizedPnlPercent: [50, 1, 500],
-  calculateRequiredMargin: [10000, 10],
-  calculateRoe: [500, 1000],
-  calculateSize: [1000, 10, 50000],
-  calculateTriggerPercent: [0.77, 0.7, 3, true],
-  calculateTriggerPrice: [30, 0.7, 3, true],
-  calculateUnrealizedPnl: [50000, 55000, 1],
+  calculateRealizedPnlPercent: ['50', '1', '500'],
+  calculateRequiredMargin: ['10000', '10'],
+  calculateRoe: ['500', '1000'],
+  calculateSize: ['1000', '10', '50000'],
+  calculateTriggerPercent: ['0.77', '0.7', '3', true],
+  calculateTriggerPrice: ['30', '0.7', '3', true],
+  calculateUnrealizedPnl: ['50000', '55000', '1'],
   estimateAverageEntryPrice: [
-    { currentSize: 1, currentEntry: 100, addSize: 1, fillPrice: 200 },
+    { currentSize: '1', currentEntry: '100', addSize: '1', fillPrice: '200' },
   ],
-  estimateFees: [10000, 0.00035],
+  estimateFees: ['10000', '0.00035'],
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPriceAtMarketRate: [
     { ...MARKET, maintenanceMarginRate: 0.01 },
-    { entryPrice: 100, leverage: 10, isLong: true },
+    { entryPrice: '100', leverage: '10', isLong: true },
   ],
   estimateNewLeverage: [
     {
-      currentNotional: 1000,
-      currentMargin: 100,
-      addNotional: 500,
-      addMargin: 50,
+      currentNotional: '1000',
+      currentMargin: '100',
+      addNotional: '500',
+      addMargin: '50',
     },
   ],
   estimateRealizedPnl: [SELL_LIMIT, LONG_POSITION],
   estimateUnrealizedPnl: [
-    { entryPrice: 100, markPrice: 110, size: 2, isLong: true },
+    { entryPrice: '100', markPrice: '110', size: '2', isLong: true },
   ],
 }
 
-/** Formulas whose numbers sit on fields rather than on the return value. */
-const NUMERIC_FIELDS: Record<string, readonly string[]> = {
+/** Formulas whose DecimalStrings sit on fields rather than on the return value. */
+const DECIMAL_STRING_FIELDS: Record<string, readonly string[]> = {
   calculateExpectedPnl: ['amount', 'percent'],
 }
 
@@ -354,25 +363,23 @@ const mathFormulaExports = (): string[] =>
     .filter((name) => DISPLAY_VERB.test(name))
     .sort()
 
-describe('display-tier formulas give back numbers', () => {
+describe('display-tier formulas give back DecimalStrings', () => {
   it('samples every calculate/estimate/apply export under math/', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
-  it('gives back a finite number for each sample call', () => {
+  it('gives back a DecimalString for each sample call', () => {
     for (const [name, args] of Object.entries(MATH_SAMPLES)) {
       const result = callExport(name, args)
-      const fields = NUMERIC_FIELDS[name]
-      if (fields) {
-        for (const field of fields) {
-          expect(
-            Number.isFinite(Object(result)[field]),
-            `${name}.${field}`
-          ).toBe(true)
-        }
-        continue
+      const fields = DECIMAL_STRING_FIELDS[name]
+      const values = fields
+        ? fields.map((field) => Object(result)[field])
+        : [result]
+      for (const value of values) {
+        expect(sdk.isDecimalString(value), `${name} -> ${String(value)}`).toBe(
+          true
+        )
       }
-      expect(Number.isFinite(result), name).toBe(true)
     }
   })
 })
@@ -436,10 +443,17 @@ const functionExportsFrom = (from: (specifier: string) => boolean): string[] =>
     .sort()
 
 describe('compare gives booleans', () => {
-  it('exports isDecimalStringGreaterThan and isDecimalStringZero from decimal/compare.ts', () => {
+  it('exports the compare functions and their safe pairs from decimal/compare.ts', () => {
     expect(
       functionExportsFrom((from) => from === './decimal/compare.js')
-    ).toEqual(['isDecimalStringGreaterThan', 'isDecimalStringZero'])
+    ).toEqual([
+      'compareDecimalStrings',
+      'isDecimalStringGreaterThan',
+      'isDecimalStringZero',
+      'safeCompareDecimalStrings',
+      'safeIsDecimalStringGreaterThan',
+      'safeIsDecimalStringZero',
+    ])
   })
 
   it('gives a boolean, never a Big', () => {
@@ -450,9 +464,15 @@ describe('compare gives booleans', () => {
 
 /** One sample call per `decimal/convert.ts` function. */
 const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
-  baseUnitsToDecimal: ['1234500000', 6],
-  decimalToBaseUnits: ['0.29', 2, 'truncate'],
+  decimalStringToScaledInteger: ['0.29', 2, 'truncate'],
   numberToDecimalString: [1e-8],
+  roundDecimalString: ['1.001', 2, 'up'],
+  safeDecimalStringToScaledInteger: ['0.29', 2, 'truncate'],
+  safeNumberToDecimalString: [1e-8],
+  safeRoundDecimalString: ['1.001', 2, 'up'],
+  safeScaledIntegerToDecimalString: ['1234500000', 6],
+  safeTruncateDecimal: ['1000.999', 2],
+  scaledIntegerToDecimalString: ['1234500000', 6],
   truncateDecimal: ['1000.999', 2],
 }
 
@@ -538,6 +558,20 @@ describe('convert and wire give DecimalStrings', () => {
   })
 
   it.each([
+    'applySlippage',
+    'asDecimalString',
+    'baseUnitsToDecimal',
+    'decimalToBaseUnits',
+    'formattedStringToNumber',
+    'requireDecimal',
+    'requireVenueDecimal',
+    'validateDecimalString',
+  ])('no longer exports the removed function %s', (name) => {
+    expect(entryExports.map((e) => e.exported)).not.toContain(name)
+    expect(Object.keys(sdk)).not.toContain(name)
+  })
+
+  it.each([
     'marginFromNotional',
     'marginFromSize',
     'maxOf',
@@ -551,20 +585,26 @@ describe('convert and wire give DecimalStrings', () => {
 })
 
 /** `<a>To<B>` converts between representations only, so both operands come from this closed set. */
-const REPRESENTATIONS = ['baseUnits', 'decimal', 'decimalString', 'number']
+const REPRESENTATIONS = ['decimalString', 'number', 'scaledInteger', 'unknown']
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
-  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate)(?:[A-Z]|$)' +
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round)(?:[A-Z]|$)' +
     `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
 )
 const BANNED_VERB = /^(derive|predict|convert)/
 
+/** The throwing twin of a `safe<X>` pair; any other name as it is. */
+const throwingName = (name: string): string =>
+  /^safe[A-Z]/.test(name) ? name.charAt(4).toLowerCase() + name.slice(5) : name
+
 describe('the vocabulary pattern', () => {
   it.each([
-    'baseUnitsToDecimal',
-    'decimalToBaseUnits',
+    'decimalStringToNumber',
+    'decimalStringToScaledInteger',
     'numberToDecimalString',
+    'scaledIntegerToDecimalString',
+    'unknownToDecimalString',
   ])('admits the representation conversion %s', (name) => {
     expect(VOCABULARY.test(name)).toBe(true)
   })
@@ -572,6 +612,8 @@ describe('the vocabulary pattern', () => {
   it.each([
     'walkOrderbookToDepth',
     'stringToFloat',
+    'baseUnitsToDecimal',
+    'formattedStringToNumber',
     'convertAmount',
     'baseUnitsToDecimalOrZero',
     'isolateMargin',
@@ -585,7 +627,7 @@ describe('the vocabulary pattern', () => {
 
 /** Tier functions outside the vocabulary, each with the reason it keeps its name. */
 const NAMING_EXCEPTIONS: Record<string, string> = {
-  applySlippage: 'display-tier formula; consumers call it by this name',
+  applySlippageToPrice: 'order-entry formula; consumers call it by this name',
   classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
   classifyFillFromPosition: 'fill taxonomy the providers call',
   findMatchingPosition: 'structure lookup with no arithmetic',
@@ -604,14 +646,25 @@ describe('decimal/, math/ and wire/ names follow the vocabulary', () => {
     functionExportsFrom((from) => TIER_MODULE.test(from))
 
   it('names every tier function with a vocabulary verb', () => {
-    const offenders = tierFunctions().filter(
-      (name) => !(VOCABULARY.test(name) || name in NAMING_EXCEPTIONS)
-    )
+    const offenders = tierFunctions()
+      .map(throwingName)
+      .filter((name) => !(VOCABULARY.test(name) || name in NAMING_EXCEPTIONS))
     expect(offenders).toEqual([])
   })
 
   it('names no tier function with a banned verb', () => {
-    expect(tierFunctions().filter((name) => BANNED_VERB.test(name))).toEqual([])
+    expect(
+      tierFunctions().filter((name) => BANNED_VERB.test(throwingName(name)))
+    ).toEqual([])
+  })
+
+  it('exports the throwing twin of every safe<X> function', () => {
+    const names = tierFunctions()
+    const orphans = names.filter(
+      (name) =>
+        name !== throwingName(name) && !names.includes(throwingName(name))
+    )
+    expect(orphans).toEqual([])
   })
 
   it('keeps no stale naming exception', () => {
@@ -666,7 +719,7 @@ describe('calculateOrderAmounts at the public entry point', () => {
 describe('runtime helpers that perps-types does not own', () => {
   it('exports them from @lifi/perps-sdk', () => {
     expect(typeof sdk.isDecimalString).toBe('function')
-    expect(typeof sdk.validateDecimalString).toBe('function')
+    expect(typeof sdk.unknownToDecimalString).toBe('function')
     expect(typeof sdk.positionSupportsMarginAdjustment).toBe('function')
     expect(typeof sdk.positionSupportsMarginRemoval).toBe('function')
   })

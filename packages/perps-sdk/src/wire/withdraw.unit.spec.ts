@@ -37,9 +37,9 @@ describe('calculateWithdrawMax', () => {
   })
 
   it.each([
-    ['available', '1e-7', '0.5'],
-    ['withdrawalFee', '10', '0.5 USDC'],
-  ])('rejects a non-decimal `%s`', (field, available, fee) => {
+    ['1e-7', '1e-7', '0.5'],
+    ['0.5 USDC', '10', '0.5 USDC'],
+  ])('rejects the non-decimal %j, naming the value', (value, available, fee) => {
     expect(() =>
       calculateWithdrawMax({
         available,
@@ -49,7 +49,7 @@ describe('calculateWithdrawMax', () => {
     ).toThrow(
       expect.objectContaining({
         code: PerpsErrorCode.ValidationError,
-        message: expect.stringContaining(`\`${field}\``),
+        message: expect.stringContaining(`'${value}'`),
       })
     )
   })

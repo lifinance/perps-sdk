@@ -265,13 +265,13 @@ describe('mapDepositActivity', () => {
 
   it('resolves the venue coin by primary identity, not display symbol', () => {
     expect(
-      mapDepositActivity({ ...DEPOSIT, coin: 'BTC' }, assetRegistry).asset
+      mapDepositActivity({ ...DEPOSIT, coin: 'BTC' }, assetRegistry)?.asset
     ).toEqual(BTC)
   })
 
   it('suffixes the id with the log index when one transaction carries several deposits', () => {
     expect(
-      mapDepositActivity({ ...DEPOSIT, logIndex: '7' }, assetRegistry).id
+      mapDepositActivity({ ...DEPOSIT, logIndex: '7' }, assetRegistry)?.id
     ).toBe('deposit:0xabc123:7')
   })
 
@@ -284,21 +284,21 @@ describe('mapDepositActivity', () => {
   it('resolves the explorer from the wire chain id', () => {
     expect(
       mapDepositActivity({ ...DEPOSIT, chainId: 'eth-mainnet' }, assetRegistry)
-        .explorerLink
+        ?.explorerLink
     ).toBe('https://etherscan.io/tx/0xabc123')
   })
 
   it('resolves the SnowTrace explorer for an Avalanche C-Chain deposit', () => {
     expect(
       mapDepositActivity({ ...DEPOSIT, chainId: 'avax-c-chain' }, assetRegistry)
-        .explorerLink
+        ?.explorerLink
     ).toBe('https://snowtrace.io/tx/0xabc123')
   })
 
   it('resolves the BscScan explorer for a BNB Smart Chain deposit', () => {
     expect(
       mapDepositActivity({ ...DEPOSIT, chainId: 'bsc-mainnet' }, assetRegistry)
-        .explorerLink
+        ?.explorerLink
     ).toBe('https://bscscan.com/tx/0xabc123')
   })
 
@@ -317,8 +317,8 @@ describe('mapDepositActivity', () => {
       assetRegistry
     )
 
-    expect(first.id).toBe('deposit:2026-07-01T10:30:00Z:USDC:1000.00')
-    expect(second.id).not.toBe(first.id)
+    expect(first?.id).toBe('deposit:2026-07-01T10:30:00Z:USDC:1000.00')
+    expect(second?.id).not.toBe(first?.id)
   })
 })
 

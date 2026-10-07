@@ -15,7 +15,7 @@ export interface GetQuoteParams {
   /** Buy consumes asks; sell consumes bids. */
   side: QuoteSide
   /** USD notional to fill. */
-  size: number
+  size: string
   /** Product family used to distinguish spot and perpetual markets. */
   type: TradeType
 }
@@ -36,7 +36,7 @@ export interface GetQuoteParams {
  *   provider: 'hyperliquid',
  *   symbol: 'BTC',
  *   side: 'buy',
- *   size: 10_000,
+ *   size: '10000',
  *   type: 'perps',
  * })
  * console.log(quote.expectedFillPrice, quote.priceImpactBps)

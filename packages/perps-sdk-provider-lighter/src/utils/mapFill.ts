@@ -1,15 +1,24 @@
 import {
+  absDecimalString,
+  calculateRealizedPnl,
   classifyFillFromPosition,
+  divideDecimalString,
   ExplorerChainId,
   explorerTxUrl,
   isDecimalString,
+  isDecimalStringGreaterThan,
+  isDecimalStringZero,
+  safeAddDecimalString,
+  safeDivideDecimalString,
+  safeMultiplyDecimalString,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
-import Big from 'big.js'
-import { LIGHTER_FEE_TICK_SCALE } from '../constants.js'
+import { LIGHTER_FEE_TICK_SCALE, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 import { isPlaceholderTxHash } from './txHash.js'
 
 /**
@@ -28,20 +37,29 @@ const tickToFeeAmount = (
   notional: string,
   ownTick: number,
   integratorTick: number | undefined
-): string | undefined =>
-  isDecimalString(notional)
-    ? new Big(notional)
-        .times(new Big(ownTick).plus(integratorTick ?? 0))
-        .div(LIGHTER_FEE_TICK_SCALE)
-        .toFixed()
-    : undefined
+): string | undefined => {
+  if (!isDecimalString(notional)) {
+    return undefined
+  }
+  const tickSum = safeAddDecimalString(
+    String(ownTick),
+    String(integratorTick ?? 0)
+  )
+  const scaledFee =
+    tickSum === undefined
+      ? undefined
+      : safeMultiplyDecimalString(notional, tickSum)
+  return scaledFee === undefined
+    ? undefined
+    : safeDivideDecimalString(scaledFee, String(LIGHTER_FEE_TICK_SCALE))
+}
 
 /**
  * Display leverage the viewer had set on the market when the trade executed,
  * from the pre-trade initial margin fraction. Returns `undefined` when the
  * row omits the fraction.
  */
-const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
+const leverageFromTradeImf = (imf: number | undefined): string | undefined =>
   imf === undefined ? undefined : leverageFromScaledImf(imf)
 
 /**
@@ -66,27 +84,31 @@ const deriveRealizedPnl = (
   ) {
     return undefined
   }
-  const start = new Big(startPosition)
-  if (start.eq(0)) {
+  if (isDecimalStringZero(startPosition)) {
     return undefined
   }
-  const isLong = start.gt(0)
+  const isLong = isDecimalStringGreaterThan(startPosition, '0')
   const reducing = isLong ? !isBuyer : isBuyer
   if (!reducing) {
     return undefined
   }
 
-  const absStart = start.abs()
-  const fill = new Big(fillSize)
+  const absStart = absDecimalString(startPosition)
   // A fill larger than the open size flips the position; only the portion that
   // unwinds the existing position realizes PnL.
-  const closedSize = fill.gt(absStart) ? absStart : fill
-  const avgEntry = new Big(entryQuoteBefore).abs().div(absStart)
-  const price = new Big(fillPrice)
-  const pnl = isLong
-    ? price.minus(avgEntry).times(closedSize)
-    : avgEntry.minus(price).times(closedSize)
-  return pnl.eq(0) ? null : pnl.toFixed()
+  const closedSize = isDecimalStringGreaterThan(fillSize, absStart)
+    ? absStart
+    : fillSize
+  const pnl = calculateRealizedPnl({
+    entryPrice: divideDecimalString(
+      absDecimalString(entryQuoteBefore),
+      absStart
+    ),
+    closePrice: fillPrice,
+    closeSize: closedSize,
+    isLong,
+  })
+  return isDecimalStringZero(pnl) ? null : pnl
 }
 
 /**
@@ -99,7 +121,19 @@ export const mapFill = (
   trade: LtTrade,
   accountIndex: number,
   market: MarketDisplay
-): Fill => {
+): Fill | undefined => {
+  const { size, price } = trade
+  const createdAt = rowTimestampToIsoStringOrUndefined(trade.timestamp)
+  if (createdAt === undefined) {
+    warnSkippedVenueRow(
+      LIGHTER_PROVIDER_KEY,
+      'fill',
+      'timestamp',
+      trade.timestamp,
+      'timestamp'
+    )
+    return undefined
+  }
   const isBuyer = trade.bid_account_id === accountIndex
   const isMaker =
     (trade.is_maker_ask && !isBuyer) || (!trade.is_maker_ask && isBuyer)
@@ -132,8 +166,8 @@ export const mapFill = (
     market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
     type: OrderType.LIMIT,
-    size: trade.size,
-    price: trade.price,
+    size,
+    price,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Lighter charges the fill fee in the market's quote asset.
     fee:
@@ -144,17 +178,17 @@ export const mapFill = (
     realizedPnl: deriveRealizedPnl(
       startPosition,
       entryQuoteBefore,
-      trade.size,
-      trade.price,
+      size,
+      price,
       isBuyer
     ),
     startPosition,
     classification: classifyFillFromPosition(
       startPosition,
       isBuyer ? OrderSide.BUY : OrderSide.SELL,
-      trade.size
+      size
     ),
-    createdAt: new Date(trade.timestamp).toISOString(),
+    createdAt,
     explorerLink: isPlaceholderTxHash(trade.tx_hash)
       ? undefined
       : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),

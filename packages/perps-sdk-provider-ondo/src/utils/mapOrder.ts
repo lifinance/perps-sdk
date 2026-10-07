@@ -1,7 +1,13 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  isDecimalStringGreaterThan,
   PerpsError,
+  safeDivideDecimalString,
+  subtractDecimalString,
   triggerConditionFor,
+  unknownToDecimalString,
+  warnSkippedVenueRow,
+  wsLog,
 } from '@lifi/perps-sdk'
 import {
   type MarketDisplay,
@@ -13,8 +19,26 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
+import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
+import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
+
+const skipOrder = (
+  field: string,
+  value: unknown,
+  expected?: string
+): undefined => {
+  warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'order', field, value, expected)
+  return undefined
+}
+
+const orderSizeOrSkip = (field: string, value: unknown): string | undefined => {
+  try {
+    return unknownToDecimalString(value, field, ONDO_PROVIDER_KEY)
+  } catch {
+    return skipOrder(field, value)
+  }
+}
 
 /** Map supported Ondo lifecycle states; unsupported states fail explicitly. */
 export const mapOrderStatus = (status: string): OrderStatus => {
@@ -66,48 +90,73 @@ const mapTimeInForce = (tif: string): TimeInForce => {
   }
 }
 
-/** Map Ondo regular, trigger and TWAP rows to the shared order union. */
+/**
+ * Map Ondo regular, trigger and TWAP rows to the shared order union. A row with
+ * an invalid size or time gives `undefined`. Prices are the raw venue strings;
+ * an invalid `filledCost` omits `averagePrice`.
+ */
 export const mapOrder = (
   order: OndoOrder | OndoTwapOrder,
   market: MarketDisplay,
   parentOrderId?: string
-): Order => {
+): Order | undefined => {
   const twap = 'twapId' in order
-  const filled = toWireBig(order.filledSize, 'filledSize')
-  const totalSize = twap
-    ? toWireBig(order.totalSize, 'totalSize')
-    : toWireBig(order.size, 'size')
+  const filledSize = orderSizeOrSkip('filledSize', order.filledSize)
+  if (filledSize === undefined) {
+    return undefined
+  }
+  const sizeValue = twap
+    ? orderSizeOrSkip('totalSize', order.totalSize)
+    : orderSizeOrSkip('size', order.size)
+  if (sizeValue === undefined) {
+    return undefined
+  }
+  const isPartlyFilled = isDecimalStringGreaterThan(filledSize, '0')
   const status = twap
     ? twapStatus(order.orderStatus)
     : mapOrderStatus(order.status)
-  const createdAt = new Date(
-    twap ? order.startTime : order.createdAt
-  ).toISOString()
+  const [createdField, createdValue] = twap
+    ? (['startTime', order.startTime] as const)
+    : (['createdAt', order.createdAt] as const)
+  const createdAt = rowTimestampToIsoStringOrWarn(
+    'order',
+    createdField,
+    createdValue
+  )
+  if (createdAt === undefined) {
+    return undefined
+  }
+  const updatedValue = twap
+    ? (order.finishTime ?? order.startTime)
+    : (order.canceledAt ?? order.filledAt ?? order.createdAt)
+  const updatedAt = rowTimestampToIsoStringOrWarn(
+    'order',
+    'updatedAt',
+    updatedValue
+  )
+  if (updatedAt === undefined) {
+    return undefined
+  }
+  const averagePrice = twap
+    ? order.avgFilledPrice
+    : isPartlyFilled
+      ? safeDivideDecimalString(order.filledCost, filledSize)
+      : undefined
   const base: OrderBase = {
     orderId: twap ? order.twapId : order.orderId,
     market,
     side: order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
     status:
-      status === OrderStatus.OPEN && filled.gt(0)
+      status === OrderStatus.OPEN && isPartlyFilled
         ? OrderStatus.PARTIALLY_FILLED
         : status,
-    originalSize: totalSize.toFixed(),
-    remainingSize: totalSize.minus(filled).toFixed(),
-    filledSize: order.filledSize,
+    originalSize: sizeValue,
+    remainingSize: subtractDecimalString(sizeValue, filledSize),
+    filledSize,
     reduceOnly: order.reduceOnly ?? false,
     createdAt,
-    updatedAt: new Date(
-      twap
-        ? (order.finishTime ?? order.startTime)
-        : (order.canceledAt ?? order.filledAt ?? order.createdAt)
-    ).toISOString(),
-    ...(filled.gt(0)
-      ? {
-          averagePrice: twap
-            ? order.avgFilledPrice
-            : toWireBig(order.filledCost, 'filledCost').div(filled).toFixed(),
-        }
-      : {}),
+    updatedAt,
+    ...(isPartlyFilled && averagePrice !== undefined ? { averagePrice } : {}),
   }
   if (parentOrderId !== undefined) {
     base.parentOrderId = parentOrderId
@@ -166,14 +215,15 @@ export const mapOrder = (
       ...(limit ? { limitPrice: order.price } : {}),
     }
   }
+  const marketOrder = order.type === 'market'
   return {
     ...base,
-    type: order.type === 'market' ? OrderType.MARKET : OrderType.LIMIT,
+    type: marketOrder ? OrderType.MARKET : OrderType.LIMIT,
     price: order.price,
     // Ondo market orders execute immediately and omit timeInForce on reads.
     timeInForce:
       order.timeInForce === undefined
-        ? order.type === 'market'
+        ? marketOrder
           ? TimeInForce.IOC
           : TimeInForce.GTC
         : mapTimeInForce(order.timeInForce),
@@ -204,6 +254,11 @@ export const mapOrderUpdates = (
       if (!(error instanceof PerpsError)) {
         throw error
       }
+      wsLog.droppedRow(
+        ONDO_PROVIDER_KEY,
+        'order',
+        `${row.orderId}: ${error.message}`
+      )
       continue
     }
     if (!ACTIVE_ORDER_STATUSES.has(status)) {

@@ -1,5 +1,4 @@
 import { PerpsError } from '@lifi/perps-sdk'
-import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountAsset } from '../types/account.js'
 import {
@@ -23,9 +22,9 @@ const usdc = (
 
 describe('pooledSettlementUnits', () => {
   it('adds the spot route to the perps route', () => {
-    expect(
-      pooledSettlementUnits(usdc('2.5', '1', '187.721957147883')).toFixed()
-    ).toBe('190.221957147883')
+    expect(pooledSettlementUnits(usdc('2.5', '1', '187.721957147883'))).toBe(
+      '190.221957147883'
+    )
   })
 
   it('rejects a non-decimal route', () => {
@@ -40,21 +39,17 @@ describe('pooledSettlementSpendable', () => {
     expect(
       pooledSettlementSpendable(
         usdc('0', '0', '187.721957147883'),
-        new Big('186.891946')
-      ).toFixed()
+        '186.891946'
+      )
     ).toBe('186.891946')
   })
 
   it('adds the free spot route to the whole perps route below available_balance', () => {
-    expect(
-      pooledSettlementSpendable(usdc('10', '4', '50'), new Big('80')).toFixed()
-    ).toBe('56')
+    expect(pooledSettlementSpendable(usdc('10', '4', '50'), '80')).toBe('56')
   })
 
   it('goes negative when the lock and a negative available_balance exceed the spot route', () => {
-    expect(
-      pooledSettlementSpendable(usdc('1', '3', '5'), new Big('-2')).toFixed()
-    ).toBe('-4')
+    expect(pooledSettlementSpendable(usdc('1', '3', '5'), '-2')).toBe('-4')
   })
 })
 

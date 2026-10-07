@@ -43,7 +43,7 @@ export interface Position {
   /** Average entry price in quote-asset units. */
   entryPrice: DecimalString
   /** Current provider mark price in quote-asset units. */
-  markPrice: DecimalString
+  markPrice?: DecimalString
   /** Estimated liquidation price in quote-asset units. */
   liquidationPrice: DecimalString
   /** Unrealized PnL in quote-currency units. */
@@ -54,9 +54,9 @@ export interface Position {
    * paid it, matching {@link FundingActivity} amounts. Every venue resets the
    * value when the position returns to flat.
    */
-  accruedFunding: DecimalString
-  /** Position leverage as a numeric multiple. */
-  leverage: number
+  accruedFunding?: DecimalString
+  /** Position leverage as a decimal string multiple. */
+  leverage?: DecimalString
   /**
    * Margin reserved by this position as a decimal string: the venue figure of
    * each provider, unchanged. Its unrealized-PnL treatment differs by venue.
@@ -68,7 +68,7 @@ export interface Position {
    * Exact initial margin the venue currently requires for this position.
    * Unlike `leverage`, this decimal string is safe for risk calculations.
    */
-  initialMarginRequirement: DecimalString
+  initialMarginRequirement?: DecimalString
   marginMode: MarginMode
 }
 
@@ -111,7 +111,7 @@ export interface TriggerOrder extends OrderBase {
     | OrderType.STOP_LIMIT
     | OrderType.TAKE_PROFIT_MARKET
     | OrderType.TAKE_PROFIT_LIMIT
-  triggerPrice: DecimalString
+  triggerPrice?: DecimalString
   triggerCondition: TriggerCondition
   limitPrice?: DecimalString
 }
@@ -171,9 +171,9 @@ export interface AccountResponse {
   /** Open positions the snapshot already computed; equals the unfiltered `getPositions` output. */
   positions: Position[]
   /** Margin reserved across the account, represented as a decimal string. */
-  marginUsed: DecimalString
+  marginUsed?: DecimalString
   /** Unrealized account PnL, represented as a decimal string. */
-  unrealizedPnl: DecimalString
+  unrealizedPnl?: DecimalString
   feeTier: FeeTier
   config: AccountConfig
 }
@@ -221,7 +221,7 @@ export interface AvailableToTrade {
  */
 export interface MarketSettings {
   marginMode: MarginMode
-  leverage: number
+  leverage: DecimalString
 }
 
 /**
@@ -295,12 +295,12 @@ export interface Fill {
   clientOrderId?: string
   /**
    * Leverage the account had set on the fill's market at the moment the venue
-   * executed the fill, as a numeric multiple (`10` means 10x). Absent when the
+   * executed the fill, as a decimal string multiple (`'10'` means 10x). Absent when the
    * venue reports no leverage on its fill payload. Unlike `Position.leverage`
    * this field carries no fallback: a provider omits it rather than substitute
    * a sentinel value.
    */
-  leverage?: number
+  leverage?: DecimalString
   realizedPnl?: DecimalString | null
   startPosition?: DecimalString
   classification: FillClassification

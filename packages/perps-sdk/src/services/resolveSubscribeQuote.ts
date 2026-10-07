@@ -4,6 +4,7 @@ import {
   type OrderbookResponse,
   PerpsErrorCode,
 } from '@lifi/perps-types'
+import { isDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { buildQuote } from '../math/order.js'
 import type {
@@ -44,7 +45,7 @@ export const QUOTE_THROTTLE_MS = 100
  * price, a throwing `onQuote`) is logged via `wsLog.listenerFailure` and the
  * emission is skipped, on both the immediate and the trailing-timer path.
  *
- * @throws {PerpsError} `ValidationError` when `params.size` is not finite.
+ * @throws {PerpsError} `ValidationError` when `params.size` is not a decimal string.
  * @throws {PerpsError} `MarketNotFound` when no market matches symbol+type.
  * @internal
  */
@@ -56,10 +57,10 @@ export async function resolveSubscribeQuote(
   feeTier: FeeTier,
   onQuote: QuoteListener
 ): Promise<() => void> {
-  if (!Number.isFinite(params.size)) {
+  if (!isDecimalString(params.size)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Quote size must be a finite number, got ${params.size}`
+      `Quote size must be a decimal string, got '${params.size}'`
     )
   }
   const market = await resolveQuoteMarket(client, provider, params)

@@ -1,6 +1,7 @@
 import {
   DecodeChain,
   getMarketRegistry,
+  isDecimalString,
   localStorageAdapter,
   type MarketRegistry,
   numberToDecimalString,
@@ -11,6 +12,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type StorageAdapter,
+  safeCompareDecimalStrings,
   toMarketDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
@@ -115,6 +117,8 @@ export interface OndoWsProviderOptions {
   /** Session-token persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
+
+const BOOK_LEVEL_ROW = 'order book level'
 
 /**
  * Ondo WebSocket provider (extends {@link WsProviderBase}): subscribes to
@@ -785,9 +789,21 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     for (const snap of snapshots) {
       const toLevels = (levels: OndoBookSnapshot['bids'], direction: 1 | -1) =>
         levels
-          .map(([price, size]) => ({ price, size, priceNum: Number(price) }))
-          .sort((a, b) => direction * (a.priceNum - b.priceNum))
-          .map(({ price, size }) => ({ price, size }))
+          .flatMap(([price, size]) => {
+            if (!isDecimalString(price)) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'price', price)
+              return []
+            }
+            if (!isDecimalString(size)) {
+              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'size', size)
+              return []
+            }
+            return [{ price, size }]
+          })
+          .sort(
+            (a, b) =>
+              direction * (safeCompareDecimalStrings(a.price, b.price) ?? 0)
+          )
       this.emit(`orderbook:${snap.market}`, {
         channel: 'orderbook',
         data: {
@@ -930,8 +946,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     const mapped = []
     for (const fill of fills) {
       const market = this.resolveMarket(fill.market)
-      if (market !== undefined) {
-        mapped.push(mapFill(fill, market))
+      const mappedFill = market && mapFill(fill, market)
+      if (mappedFill !== undefined) {
+        mapped.push(mappedFill)
       }
     }
     this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
@@ -953,7 +970,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         return []
       }
       const market = this.resolvePerpsMarket(position.market)
-      return market === undefined ? [] : [mapPosition(position, market)]
+      const mapped =
+        market === undefined ? undefined : mapPosition(position, market)
+      return mapped === undefined ? [] : [mapped]
     })
     this.emit(`positions:${address}`, {
       channel: 'positions',

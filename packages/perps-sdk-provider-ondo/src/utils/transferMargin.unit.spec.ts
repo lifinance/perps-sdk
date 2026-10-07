@@ -33,7 +33,7 @@ const position: Position = {
   liquidationPrice: '0',
   unrealizedPnl: '0',
   accruedFunding: '0',
-  leverage: 1,
+  leverage: '1',
   marginUsed: '100',
   initialMarginRequirement: '100',
   marginMode: MarginMode.CROSS,

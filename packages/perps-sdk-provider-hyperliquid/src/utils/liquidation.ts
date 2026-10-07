@@ -12,7 +12,11 @@
  * - margin_available = isolated_margin - maintenance_margin_required
  */
 
-import { estimateLiquidationPrice } from '@lifi/perps-sdk'
+import {
+  divideDecimalString,
+  numberToDecimalString,
+  safeEstimateLiquidationPrice,
+} from '@lifi/perps-sdk'
 
 /**
  * Calculate the maintenance margin fraction for a Hyperliquid asset.
@@ -56,19 +60,21 @@ export function calculateMaintenanceMarginRate(
  * @public
  */
 export function calculateLiquidationPrice(
-  entryPrice: number,
-  leverage: number,
+  entryPrice: string,
+  leverage: string,
   isLong: boolean,
   maxLeverage: number
-): number | undefined {
-  const mmr = calculateMaintenanceMarginRate(maxLeverage)
-  if (mmr === undefined) {
+): string | undefined {
+  if (maxLeverage === 0) {
     return undefined
   }
-  return estimateLiquidationPrice({
+  return safeEstimateLiquidationPrice({
     entryPrice,
     leverage,
     isLong,
-    maintenanceMarginRate: mmr,
+    maintenanceMarginRate: divideDecimalString(
+      '1',
+      numberToDecimalString(2 * maxLeverage)
+    ),
   })
 }

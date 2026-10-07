@@ -3,6 +3,10 @@ import {
   ExplorerChainId,
   explorerTxUrl,
   PerpsError,
+  safeAddDecimalString,
+  safeMultiplyDecimalString,
+  safeSubtractDecimalString,
+  warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
   ActivityItem,
@@ -16,7 +20,6 @@ import type {
   WithdrawalActivity,
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { zeroHash } from 'viem'
 import type {
   HlBorrowLendOperation,
@@ -35,6 +38,7 @@ import {
   isVaultTransferDelta,
   isWithdrawDelta,
 } from '../types/index.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /**
  * Hyperliquid settles every perp deposit and withdrawal in USDC, and charges
@@ -96,11 +100,12 @@ export const mapLedgerEntry = (
   resolveMarket: (coin: string) => MarketDisplay | undefined
 ): ActivityItem | null => {
   const { delta } = entry
-  const base = {
-    id: entry.hash,
-    provider: providerKey,
-    timestamp: new Date(entry.time).toISOString(),
+  const timestamp = rowTimestampToIsoStringOrUndefined(entry.time)
+  if (timestamp === undefined) {
+    warnSkippedVenueRow(providerKey, 'ledger', 'time', entry.time, 'timestamp')
+    return null
   }
+  const base = { id: entry.hash, provider: providerKey, timestamp }
 
   if (
     isSpotTransferDelta(delta) ||
@@ -315,7 +320,11 @@ export const mapFundingActivity = (
   if (market === undefined) {
     return null
   }
-  const timestamp = new Date(entry.time).toISOString()
+  const timestamp = rowTimestampToIsoStringOrUndefined(entry.time)
+  if (timestamp === undefined) {
+    warnSkippedVenueRow(providerKey, 'funding', 'time', entry.time, 'timestamp')
+    return null
+  }
   return {
     id: `funding:${entry.delta.coin}:${timestamp}`,
     provider: providerKey,
@@ -334,7 +343,8 @@ export const mapFundingActivity = (
  * parties, so only fills whose `liquidatedUser` is the queried address count.
  * A fill whose hash a ledger liquidation row already carries is the same
  * event and is skipped. The size sign follows the closed position: a sell
- * fill closes a long. Groups whose market does not resolve are dropped.
+ * fill closes a long. Groups whose market or time does not resolve are
+ * dropped; an invalid fill size or price leaves the derived field absent.
  * @public
  */
 export const mapLiquidationFills = (
@@ -363,26 +373,38 @@ export const mapLiquidationFills = (
     if (market === undefined) {
       return []
     }
-    let size = new Big(0)
-    let notional = new Big(0)
-    let time = first.time
-    for (const fill of group) {
-      size = size.plus(fill.sz)
-      notional = notional.plus(new Big(fill.px).times(fill.sz))
-      time = Math.max(time, fill.time)
+    const size = group.reduce<string | undefined>(
+      (sum, fill) =>
+        sum === undefined ? undefined : safeAddDecimalString(sum, fill.sz),
+      '0'
+    )
+    const notional = group.reduce<string | undefined>((sum, fill) => {
+      const fillNotional = safeMultiplyDecimalString(fill.px, fill.sz)
+      return sum === undefined || fillNotional === undefined
+        ? undefined
+        : safeAddDecimalString(sum, fillNotional)
+    }, '0')
+    const time = Math.max(...group.map((fill) => fill.time))
+    const timestamp = rowTimestampToIsoStringOrUndefined(time)
+    if (timestamp === undefined) {
+      warnSkippedVenueRow(providerKey, 'liquidation', 'time', time, 'timestamp')
+      return []
     }
+    const closedSize =
+      size === undefined || first.side === 'A'
+        ? size
+        : safeSubtractDecimalString('0', size)
     return [
       {
         id: `liquidation:${oid}`,
         provider: providerKey,
-        timestamp: new Date(time).toISOString(),
+        timestamp,
         type: ActivityType.LIQUIDATION,
-        liquidatedNotionalPosition: notional.toFixed(),
+        ...(notional === undefined
+          ? {}
+          : { liquidatedNotionalPosition: notional }),
         liquidatedPositions: [
-          {
-            market,
-            size: (first.side === 'A' ? size : size.neg()).toFixed(),
-          },
+          { market, ...(closedSize === undefined ? {} : { size: closedSize }) },
         ],
       } satisfies LiquidationActivity,
     ]

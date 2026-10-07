@@ -1,6 +1,10 @@
+import {
+  isDecimalStringGreaterThan,
+  multiplyDecimalString,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type { Market, MarketContext } from '@lifi/perps-types'
-import Big from 'big.js'
-import { toRequiredBig } from './decimal.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 
 /**
  * Unit prices keyed by spot base `Asset.id` (the venue `asset_id`), read from
@@ -17,9 +21,9 @@ export const spotPriceByAssetId = (
   spotCategoryId: string,
   contexts: readonly MarketContext[],
   assetIds: ReadonlySet<string>
-): Map<string, Big> => {
+): Map<string, string> => {
   const markByMarketId = new Map(contexts.map((c) => [c.marketId, c.markPrice]))
-  const priceByAssetId = new Map<string, Big>()
+  const priceByAssetId = new Map<string, string>()
   for (const market of markets) {
     const mark = markByMarketId.get(market.id)
     if (
@@ -30,8 +34,12 @@ export const spotPriceByAssetId = (
     ) {
       continue
     }
-    const price = toRequiredBig(mark, 'markPrice')
-    if (price.gt(0)) {
+    const price = unknownToDecimalString(
+      mark,
+      'markPrice',
+      LIGHTER_PROVIDER_KEY
+    )
+    if (isDecimalStringGreaterThan(price, '0')) {
       priceByAssetId.set(market.baseAsset.id, price)
     }
   }
@@ -47,13 +55,11 @@ export const spotValuation = (
   assetId: number,
   units: string,
   settlementAssetIndex: number,
-  spotPrices: ReadonlyMap<string, Big>
-): { valueUsd: string; price?: Big } => {
+  spotPrices: ReadonlyMap<string, string>
+): { valueUsd: string; price?: string } => {
   const price =
-    assetId === settlementAssetIndex
-      ? new Big(1)
-      : spotPrices.get(String(assetId))
+    assetId === settlementAssetIndex ? '1' : spotPrices.get(String(assetId))
   return price === undefined
     ? { valueUsd: '0' }
-    : { valueUsd: new Big(units).times(price).toFixed(), price }
+    : { valueUsd: multiplyDecimalString(units, price), price }
 }

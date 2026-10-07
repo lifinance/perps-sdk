@@ -122,7 +122,7 @@ describe('ondoAvailableToTrade', () => {
       expect.objectContaining({
         code: PerpsErrorCode.SDKError,
         message:
-          "Ondo field `maxOrderSize.maxBidBaseSize` is not a valid decimal: 'n/a'",
+          "ondo field `maxOrderSize.maxBidBaseSize` is not a valid decimal: 'n/a'",
       })
     )
   })

@@ -1,12 +1,13 @@
 import {
   calculateTransferable,
   calculateWithdrawMax,
+  isDecimalStringGreaterThan,
   type ProviderWithdrawableBalance,
+  subtractDecimalString,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
-import Big from 'big.js'
-import { LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
+import { LIGHTER_PROVIDER_KEY, LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
 import type { LtAccount } from '../types/account.js'
-import { toRequiredBig } from './decimal.js'
 
 /**
  * Split each held asset into the two categories a Lighter withdrawal can
@@ -33,30 +34,39 @@ export const lighterWithdrawableBalances = (
   const rows: ProviderWithdrawableBalance[] = []
   for (const asset of account.assets) {
     const assetId = String(asset.asset_id)
-    const spot = toRequiredBig(asset.balance, 'balance').minus(
-      toRequiredBig(asset.locked_balance, 'locked_balance')
+    const spot = subtractDecimalString(
+      unknownToDecimalString(asset.balance, 'balance', LIGHTER_PROVIDER_KEY),
+      unknownToDecimalString(
+        asset.locked_balance,
+        'locked_balance',
+        LIGHTER_PROVIDER_KEY
+      )
     )
-    if (spot.gt(0)) {
-      const available = spot.toFixed()
+    if (isDecimalStringGreaterThan(spot, '0')) {
       rows.push({
         assetId,
         categoryId: LIGHTER_SPOT_CATEGORY_ID,
-        available,
-        max: calculateWithdrawMax({ available }),
+        available: spot,
+        max: calculateWithdrawMax({ available: spot }),
       })
     }
-    const marginBalance = toRequiredBig(asset.margin_balance, 'margin_balance')
+    const marginBalance = unknownToDecimalString(
+      asset.margin_balance,
+      'margin_balance',
+      LIGHTER_PROVIDER_KEY
+    )
     const perps =
       asset.asset_id === settlementAssetIndex
         ? calculateTransferable(
-            toRequiredBig(
+            unknownToDecimalString(
               account.available_balance,
-              'available_balance'
-            ).toFixed(),
-            marginBalance.toFixed()
+              'available_balance',
+              LIGHTER_PROVIDER_KEY
+            ),
+            marginBalance
           )
-        : marginBalance.toFixed()
-    if (new Big(perps).gt(0)) {
+        : marginBalance
+    if (isDecimalStringGreaterThan(perps, '0')) {
       rows.push({
         assetId,
         categoryId: perpsCategoryId,

@@ -1,10 +1,11 @@
 import {
   calculateWithdrawMax,
+  isDecimalStringGreaterThan,
   type ProviderWithdrawableBalance,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoBalanceSummary } from '../types/wire.js'
-import { toWireBig } from './decimal.js'
 
 /**
  * The single category an Ondo withdrawal draws on: `withdrawableMargin`, the
@@ -24,24 +25,26 @@ export const ondoWithdrawableBalances = (
   balance: OndoBalanceSummary,
   withdrawalFeeUsd?: string
 ): ProviderWithdrawableBalance[] => {
-  const available = toWireBig(
+  const available = unknownToDecimalString(
     balance.withdrawableMargin,
-    'balance.withdrawableMargin'
+    'balance.withdrawableMargin',
+    ONDO_PROVIDER_KEY
   )
-  if (!available.gt(0)) {
+  if (!isDecimalStringGreaterThan(available, '0')) {
     return []
   }
   const row = {
     assetId,
     categoryId: ONDO_PROVIDER_KEY,
-    available: available.toFixed(),
+    available,
     ...(withdrawalFeeUsd === undefined
       ? {}
       : {
-          withdrawalFee: toWireBig(
+          withdrawalFee: unknownToDecimalString(
             withdrawalFeeUsd,
-            'account.withdrawalFeeUSD'
-          ).toFixed(),
+            'account.withdrawalFeeUSD',
+            ONDO_PROVIDER_KEY
+          ),
           isFeeDeducted: false,
         }),
   }

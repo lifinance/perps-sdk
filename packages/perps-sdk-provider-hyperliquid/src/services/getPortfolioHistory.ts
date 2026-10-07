@@ -1,11 +1,17 @@
-import { PerpsError, type SDKRequestOptions } from '@lifi/perps-sdk'
 import {
+  PerpsError,
+  type SDKRequestOptions,
+  warnSkippedVenueRow,
+} from '@lifi/perps-sdk'
+import {
+  type DecimalString,
   PerpsErrorCode,
   type PortfolioHistoryPoint,
   type PortfolioHistoryRange,
   type PortfolioHistoryResponse,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
   HlAbstractionMode,
@@ -40,19 +46,39 @@ const PERP_PERIOD_BY_RANGE: Record<PortfolioHistoryRange, HlPortfolioPeriod> = {
   all: 'perpAllTime',
 }
 
+/** The samples with a finite timestamp; each other sample is skipped. */
+const validSamples = (
+  samples: HlPortfolioWindow['pnlHistory'],
+  row: string
+): [number, DecimalString][] =>
+  samples.flatMap(([timestamp, value]): [number, DecimalString][] => {
+    if (!Number.isFinite(timestamp)) {
+      warnSkippedVenueRow(
+        PROVIDER_KEY,
+        row,
+        'timestamp',
+        timestamp,
+        'timestamp'
+      )
+      return []
+    }
+    return [[timestamp, value]]
+  })
+
 /**
  * Join the window's two series on their timestamps. `pnlHistory` is cumulative
  * from the window's start, so a point with no PnL sample carries the last
  * sampled value — `'0'` before the first one.
  */
 const joinWindow = (
-  window: HlPortfolioWindow,
+  accountValueHistory: [number, DecimalString][],
+  pnlHistory: [number, DecimalString][],
   period: HlPortfolioPeriod
 ): PortfolioHistoryPoint[] => {
-  const pnlByTimestamp = new Map(window.pnlHistory)
+  const pnlByTimestamp = new Map(pnlHistory)
   let matched = 0
   let cumulative = '0'
-  const points = window.accountValueHistory.map(([timestamp, accountValue]) => {
+  const points = accountValueHistory.map(([timestamp, accountValue]) => {
     const sample = pnlByTimestamp.get(timestamp)
     if (sample !== undefined) {
       matched += 1
@@ -60,7 +86,7 @@ const joinWindow = (
     }
     return { timestamp, accountValue, pnl: cumulative }
   })
-  if (points.length > 0 && window.pnlHistory.length > 0 && matched === 0) {
+  if (points.length > 0 && pnlHistory.length > 0 && matched === 0) {
     throw new PerpsError(
       PerpsErrorCode.ThirdPartyError,
       `Hyperliquid portfolio window '${period}' samples PnL on no ` +
@@ -111,10 +137,15 @@ export async function getPortfolioHistory(
     )
   }
 
+  const pnlHistory = validSamples(window.pnlHistory, 'portfolio PnL sample')
   return {
     range: params.range,
-    points: joinWindow(window, period),
+    points: joinWindow(
+      validSamples(window.accountValueHistory, 'portfolio value sample'),
+      pnlHistory,
+      period
+    ),
     volume: window.vlm,
-    totalPnl: window.pnlHistory.at(-1)?.[1],
+    totalPnl: pnlHistory.at(-1)?.[1],
   }
 }

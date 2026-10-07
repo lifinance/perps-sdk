@@ -1,6 +1,5 @@
-import { PerpsError } from '@lifi/perps-sdk'
-import { PerpsErrorCode, type PortfolioHistoryRange } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import type { PortfolioHistoryRange } from '@lifi/perps-types'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   OndoPortfolioGraphPoint,
   OndoPortfolioSummary,
@@ -79,13 +78,49 @@ describe('mapPortfolioHistory', () => {
     })
   })
 
-  it('throws a ThirdPartyError for an unparsable point time', () => {
-    const read = () =>
-      mapPortfolioHistory('7d', [point({ time: 'yesterday' })], SUMMARY)
-
-    expect(read).toThrowError(PerpsError)
-    expect(read).toThrowError(
-      expect.objectContaining({ code: PerpsErrorCode.ThirdPartyError })
+  it('skips a point with an invalid time and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const history = mapPortfolioHistory(
+      '7d',
+      [point({ time: 'yesterday' }), GRAPH[1]],
+      SUMMARY
     )
+
+    expect(history.points).toEqual([
+      {
+        timestamp: Date.parse('2025-03-05T00:00:00Z'),
+        accountValue: '4950.00',
+        pnl: '232.00',
+      },
+    ])
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it.each<[string, Partial<OndoPortfolioGraphPoint>, string, string]>([
+    ['marginBalance', { marginBalance: 'n/a' }, 'n/a', '180.00'],
+    ['totalPnL', { totalPnL: '' }, '4800.00', ''],
+  ])('keeps a point with an invalid %s as the raw venue string', (_field, overrides, accountValue, pnl) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const history = mapPortfolioHistory(
+      '7d',
+      [point(overrides), GRAPH[1]],
+      SUMMARY
+    )
+
+    expect(history.points).toEqual([
+      {
+        timestamp: Date.parse('2025-03-04T00:00:00Z'),
+        accountValue,
+        pnl,
+      },
+      {
+        timestamp: Date.parse('2025-03-05T00:00:00Z'),
+        accountValue: '4950.00',
+        pnl: '232.00',
+      },
+    ])
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

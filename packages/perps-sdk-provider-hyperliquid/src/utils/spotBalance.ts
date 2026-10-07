@@ -1,5 +1,9 @@
-import { numberToDecimalString, parseDecimal } from '@lifi/perps-sdk'
-import type { Asset, Balance, Market } from '@lifi/perps-types'
+import {
+  isDecimalString,
+  isDecimalStringGreaterThan,
+  multiplyDecimalString,
+} from '@lifi/perps-sdk'
+import type { Asset, Balance, DecimalString, Market } from '@lifi/perps-types'
 import { SPOT_MARKET_ID } from '../constants.js'
 import type { HlSpotBalance } from '../types/index.js'
 import { spotLogoURI } from './assetLogo.js'
@@ -7,23 +11,24 @@ import { coinAsset } from './marketDisplay.js'
 
 /**
  * Build USD prices keyed by spot token asset ID. Base tokens use the supplied
- * market mark price; quote tokens default to exactly `$1`; missing base prices
- * default to `0`.
+ * market mark price; quote tokens default to exactly `$1`; missing or invalid
+ * base prices default to `0`.
  * @public
  */
 export const spotPriceById = (
   markets: readonly Market[],
-  priceByMarketId: ReadonlyMap<string, number>
-): Map<string, number> => {
-  const map = new Map<string, number>()
+  priceByMarketId: ReadonlyMap<string, DecimalString>
+): Map<string, DecimalString> => {
+  const map = new Map<string, DecimalString>()
   for (const m of markets) {
     if (m.categoryId === SPOT_MARKET_ID) {
-      map.set(m.baseAsset.id, priceByMarketId.get(m.id) ?? 0)
+      const price = priceByMarketId.get(m.id)
+      map.set(m.baseAsset.id, isDecimalString(price) ? price : '0')
     }
   }
   for (const m of markets) {
     if (!map.has(m.quoteAsset.id)) {
-      map.set(m.quoteAsset.id, 1)
+      map.set(m.quoteAsset.id, '1')
     }
   }
   return map
@@ -44,18 +49,16 @@ export const spotAssetFromToken = (b: HlSpotBalance): Asset => ({
 /** Assemble a typed spot {@link Balance}; `total` is native token units and its unit price and USD value use `priceById`. @public */
 export const spotBalance = (
   asset: Asset,
-  total: string,
-  priceById: Map<string, number>
+  total: DecimalString,
+  priceById: ReadonlyMap<string, DecimalString>
 ): Balance => {
-  const price = priceById.get(asset.id) ?? 0
+  const price = priceById.get(asset.id) ?? '0'
   return {
     categoryId: SPOT_MARKET_ID,
     asset,
     units: total,
-    valueUsd: numberToDecimalString(
-      (parseDecimal(total) ?? Number.NaN) * price
-    ),
+    valueUsd: multiplyDecimalString(total, price),
     // A zero entry means the map holds no mark for the asset, not a free asset.
-    ...(price > 0 ? { price: numberToDecimalString(price) } : {}),
+    ...(isDecimalStringGreaterThan(price, '0') ? { price } : {}),
   }
 }

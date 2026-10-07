@@ -100,4 +100,19 @@ describe('wsLog', () => {
       expect(logged).toBe(err)
     })
   })
+
+  describe('skippedRow', () => {
+    it('warns once for each distinct skipped row', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-1')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-1')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-2')
+
+      expect(warn.mock.calls.map(([message]) => message)).toEqual([
+        "[lighter:ws] skipping order book level row: `size` is not a valid decimal: 'bad-1'",
+        "[lighter:ws] skipping order book level row: `size` is not a valid decimal: 'bad-2'",
+      ])
+    })
+  })
 })

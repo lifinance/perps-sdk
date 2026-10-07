@@ -67,12 +67,13 @@ export const getPositions = async (
       .filter(
         (ap) => !assetIsOutcome(ap.position.coin) && isOpenAssetPosition(ap)
       )
-      .map((ap) =>
-        mapPosition(
+      .flatMap((ap) => {
+        const position = mapPosition(
           ap,
           toPerpsMarketDisplay(registry.require(ap.position.coin))
         )
-      )
+        return position === undefined ? [] : [position]
+      })
   )
 
   if (params.marketId !== undefined) {

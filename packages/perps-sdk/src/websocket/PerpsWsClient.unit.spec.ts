@@ -542,7 +542,7 @@ describe('PerpsWsClient', () => {
           provider: 'hyperliquid',
           symbol: 'BTC',
           side: 'buy',
-          size: 100,
+          size: '100',
           type: 'perps',
         },
         onQuote
@@ -550,7 +550,7 @@ describe('PerpsWsClient', () => {
 
       expect(factory).toHaveBeenCalledOnce()
       expect(mockSubscribeQuote).toHaveBeenCalledWith(
-        { symbol: 'BTC', side: 'buy', size: 100, type: 'perps' },
+        { symbol: 'BTC', side: 'buy', size: '100', type: 'perps' },
         onQuote
       )
       expect(unsub).toBe(mockUnsub)
@@ -568,7 +568,7 @@ describe('PerpsWsClient', () => {
             provider: 'hyperliquid',
             symbol: 'BTC',
             side: 'buy',
-            size: 100,
+            size: '100',
             type: 'perps',
           },
           vi.fn()
@@ -652,7 +652,7 @@ describe('PerpsWsClient', () => {
             provider: 'hyperliquid',
             symbol: 'BTC',
             side: 'buy',
-            size: 100,
+            size: '100',
             type: 'perps',
           },
           vi.fn()

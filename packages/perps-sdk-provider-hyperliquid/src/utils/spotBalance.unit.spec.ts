@@ -47,7 +47,7 @@ describe('spotBalance', () => {
   }
 
   it('carries the unit price beside the USD value', () => {
-    expect(spotBalance(asset, '2', new Map([['150', 37.5]]))).toEqual({
+    expect(spotBalance(asset, '2', new Map([['150', '37.5']]))).toEqual({
       categoryId: 'spot',
       asset,
       units: '2',
@@ -63,15 +63,17 @@ describe('spotBalance', () => {
   })
 
   it('spells a sub-micro price and value in plain decimal notation', () => {
-    expect(spotBalance(asset, '2', new Map([['150', 5e-7]]))).toMatchObject({
+    expect(
+      spotBalance(asset, '2', new Map([['150', '0.0000005']]))
+    ).toMatchObject({
       price: '0.0000005',
       valueUsd: '0.000001',
     })
   })
 
   it.each([
-    ['a sub-micro', 5e-7],
-    ['a 1e21', 1e21],
+    ['a sub-micro', '0.0000005'],
+    ['a 1e21', '1000000000000000000000'],
   ])('emits a DecimalString price and value at %s mark', (_label, mark) => {
     const result = spotBalance(asset, '2', new Map([['150', mark]]))
     expect(isDecimalString(result.price), result.price).toBe(true)
@@ -79,8 +81,8 @@ describe('spotBalance', () => {
   })
 
   it('rejects a total that is not a decimal', () => {
-    expect(() => spotBalance(asset, '12abc', new Map([['150', 37.5]]))).toThrow(
-      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
-    )
+    expect(() =>
+      spotBalance(asset, '12abc', new Map([['150', '37.5']]))
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })

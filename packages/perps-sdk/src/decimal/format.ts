@@ -1,4 +1,6 @@
 import type { DecimalString } from '@lifi/perps-types'
+import Big from 'big.js'
+import { decimalStringToBig } from './decimalStringToBig.js'
 
 /**
  * Options shared by the human-facing display formatters.
@@ -8,7 +10,10 @@ import type { DecimalString } from '@lifi/perps-types'
 export interface FormatOptions {
   /** Fixed number of decimal places. Defaults are per-formatter. */
   decimals?: number
-  /** Rendered when the value is null/undefined/NaN/non-finite. Defaults to `'—'`. */
+  /**
+   * Rendered when the value is null, undefined, blank or a non-finite number.
+   * A string that is not a decimal is shown unchanged. Defaults to `'—'`.
+   */
   placeholder?: string
   /** BCP 47 locale controlling digit grouping and separators (e.g. `'en-US'`). */
   locale?: string
@@ -33,76 +38,62 @@ const DEFAULT_PLACEHOLDER = '—'
 type FormatInput = number | DecimalString | string | null | undefined
 
 /**
- * Extra decimal places used to normalise IEEE-754 representation noise before
- * truncating. `toFixed` at this higher precision cleans values like
- * `0.28999999…` back to `0.29`; truncation then chops the guard digits.
+ * Read a display input as a `Big`: `$`, `%`, `,` and whitespace are removed
+ * from a string first. `null` means the formatter renders the placeholder;
+ * a string it cannot read is returned unchanged for display.
  */
-const FLOAT_GUARD_DIGITS = 9
-
-/**
- * Tolerantly coerce a display input to a finite number.
- *
- * Strips `$`, `,`, and surrounding whitespace from strings. Returns `null`
- * when the value is null/undefined/blank or does not resolve to a finite
- * number, so callers can render a placeholder instead of `$0.00` or `$NaN`.
- */
-function toFiniteNumber(value: FormatInput): number | null {
-  let n: number
-  if (typeof value === 'string') {
-    const cleaned = value.replace(/[$,\s]/g, '')
-    if (!cleaned) {
-      return null
-    }
-    n = Number(cleaned)
-  } else if (typeof value === 'number') {
-    n = value
-  } else {
+function toBig(value: FormatInput): Big | null | string {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? new Big(value) : null
+  }
+  if (typeof value !== 'string' || value.trim() === '') {
     return null
   }
-  return Number.isFinite(n) ? n : null
-}
-
-/**
- * Truncate a non-negative value toward zero to `decimals` places using its
- * decimal string, never float scaling. Representation noise is first
- * normalised by `toFixed` at {@link FLOAT_GUARD_DIGITS} extra precision, then
- * the guard digits are chopped: `99.999` at 2dp → `99.99`, `0.29` → `0.29`.
- */
-function truncateAbs(abs: number, decimals: number): number {
-  // `toFixed` emits exponent notation at >= 1e21; every double that large is an integer.
-  if (Number.isInteger(abs)) {
-    return abs
+  try {
+    return decimalStringToBig(value)
+  } catch {
+    return value
   }
-  const s = abs.toFixed(Math.min(decimals + FLOAT_GUARD_DIGITS, 100))
-  const dot = s.indexOf('.')
-  const cut = decimals === 0 ? dot : dot + 1 + decimals
-  return Number(s.slice(0, cut))
+}
+
+function decimalSeparator(locale: string | undefined): string {
+  return (
+    new Intl.NumberFormat(locale)
+      .formatToParts(1.5)
+      .find((part) => part.type === 'decimal')?.value ?? '.'
+  )
 }
 
 /**
- * Reduce `n` to `decimals` places then split into a sign and the
+ * Reduce `value` to `decimals` places then split into a sign and the
  * locale-formatted absolute body. The sign is derived from the reduced value
  * so magnitudes that collapse to zero render without a spurious `-`/`+`.
  * `signed` emits `+` for positives; `rounding` selects half-up or truncation.
  */
 function signAndBody(
-  n: number,
+  value: Big,
   decimals: number,
   locale: string | undefined,
   grouping: boolean,
   rounding: RoundingMode,
   signed: boolean
 ): { sign: '+' | '-' | ''; body: string } {
-  const reduced =
-    rounding === 'floor'
-      ? (n < 0 ? -1 : 1) * truncateAbs(Math.abs(n), decimals)
-      : Number(n.toFixed(decimals))
-  const sign = reduced < 0 ? '-' : signed && reduced > 0 ? '+' : ''
-  const body = Math.abs(reduced).toLocaleString(locale, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-    useGrouping: grouping,
-  })
+  const reduced = value.round(
+    decimals,
+    rounding === 'floor' ? Big.roundDown : Big.roundHalfUp
+  )
+  const sign = reduced.lt(0) ? '-' : signed && reduced.gt(0) ? '+' : ''
+  const [integerPart = '0', fractionPart] = reduced
+    .abs()
+    .toFixed(decimals)
+    .split('.')
+  const integerBody = grouping
+    ? BigInt(integerPart).toLocaleString(locale)
+    : integerPart
+  const body =
+    fractionPart === undefined
+      ? integerBody
+      : `${integerBody}${decimalSeparator(locale)}${fractionPart}`
   return { sign, body }
 }
 
@@ -110,14 +101,14 @@ function signAndBody(
  * Auto-detect a sensible number of decimal places from a value's magnitude:
  * `>=1` → 2, `>=0.1` → 4, `>=0.01` → 5, otherwise 6.
  */
-function autoDecimals(abs: number): number {
-  if (abs >= 1) {
+function autoDecimals(abs: Big): number {
+  if (abs.gte(1)) {
     return 2
   }
-  if (abs >= 0.1) {
+  if (abs.gte('0.1')) {
     return 4
   }
-  if (abs >= 0.01) {
+  if (abs.gte('0.01')) {
     return 5
   }
   return 6
@@ -145,9 +136,12 @@ export function formatNumber(
     locale,
     rounding = 'halfUp',
   } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
+  }
+  if (typeof n === 'string') {
+    return n
   }
   const { sign, body } = signAndBody(n, decimals, locale, true, rounding, false)
   return `${sign}${body}`
@@ -171,9 +165,12 @@ export function formatUsd(
     locale,
     rounding = 'halfUp',
   } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
+  }
+  if (typeof n === 'string') {
+    return n
   }
   const { sign, body } = signAndBody(n, decimals, locale, true, rounding, false)
   return `${sign}$${body}`
@@ -198,9 +195,12 @@ export function formatSignedUsd(
     locale,
     rounding = 'halfUp',
   } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
+  }
+  if (typeof n === 'string') {
+    return n
   }
   const { sign, body } = signAndBody(n, decimals, locale, true, rounding, true)
   return `${sign}$${body}`
@@ -225,9 +225,12 @@ export function formatSignedPercent(
     locale,
     rounding = 'halfUp',
   } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
+  }
+  if (typeof n === 'string') {
+    return n
   }
   const { sign, body } = signAndBody(n, decimals, locale, false, rounding, true)
   return `${sign}${body}%`
@@ -252,17 +255,20 @@ export function formatPrice(
     locale,
     rounding = 'halfUp',
   } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
   }
-  const abs = Math.abs(n)
+  if (typeof n === 'string') {
+    return n
+  }
+  const abs = n.abs()
   const decimals = options.decimals ?? autoDecimals(abs)
   const { sign, body } = signAndBody(
     n,
     decimals,
     locale,
-    abs >= 1000,
+    abs.gte(1000),
     rounding,
     false
   )
@@ -283,20 +289,23 @@ export function formatCompactUsd(
   options: FormatOptions = {}
 ): string {
   const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER } = options
-  const n = toFiniteNumber(value)
+  const n = toBig(value)
   if (n === null) {
     return placeholder
   }
-  const sign = n < 0 ? '-' : ''
-  const abs = Math.abs(n)
-  if (abs >= 1_000_000_000) {
-    return `${sign}$${(abs / 1_000_000_000).toFixed(decimals)}B`
+  if (typeof n === 'string') {
+    return n
   }
-  if (abs >= 1_000_000) {
-    return `${sign}$${(abs / 1_000_000).toFixed(decimals)}M`
+  const sign = n.lt(0) ? '-' : ''
+  const abs = n.abs()
+  if (abs.gte(1_000_000_000)) {
+    return `${sign}$${abs.div(1_000_000_000).toFixed(decimals)}B`
   }
-  if (abs >= 1_000) {
-    return `${sign}$${(abs / 1_000).toFixed(decimals)}K`
+  if (abs.gte(1_000_000)) {
+    return `${sign}$${abs.div(1_000_000).toFixed(decimals)}M`
+  }
+  if (abs.gte(1_000)) {
+    return `${sign}$${abs.div(1_000).toFixed(decimals)}K`
   }
   return `${sign}$${abs.toFixed(decimals)}`
 }

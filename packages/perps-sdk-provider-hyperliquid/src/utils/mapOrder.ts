@@ -1,4 +1,15 @@
-import { PerpsError, triggerConditionFor } from '@lifi/perps-sdk'
+import {
+  isDecimalStringGreaterThan,
+  PerpsError,
+  safeDivideDecimalString,
+  safeIsDecimalStringGreaterThan,
+  safeIsDecimalStringZero,
+  safeSubtractDecimalString,
+  subtractDecimalString,
+  triggerConditionFor,
+  unknownToDecimalString,
+  warnSkippedVenueRow,
+} from '@lifi/perps-sdk'
 import type {
   MarketDisplay,
   Order,
@@ -12,13 +23,13 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlFrontendOpenOrder,
   HlOrderDetail,
   HlTwapHistoryEntry,
 } from '../types/index.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Order payload shared by frontend, historical, and single-order reads. */
 export type HlOrderLike = HlFrontendOpenOrder | HlOrderDetail['order']
@@ -87,28 +98,58 @@ export const mapOrderStatus = (status: string): OrderStatus => {
   }
 }
 
+const skipOrder = (field: string, value: unknown): undefined => {
+  warnSkippedVenueRow(PROVIDER_KEY, 'order', field, value)
+  return undefined
+}
+
+const venueDecimal = (value: unknown, field: string): string | undefined => {
+  try {
+    return unknownToDecimalString(value, field, PROVIDER_KEY)
+  } catch {
+    return undefined
+  }
+}
+
 function venueError(message: string): PerpsError {
   const error = new PerpsError(PerpsErrorCode.ThirdPartyError, message)
   error.tool = PROVIDER_KEY
   return error
 }
 
-/** Normalize regular, trigger, and TWAP rows through one lifecycle model. */
+/**
+ * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
+ * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
+ */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
   market: MarketDisplay,
   parentOrderId?: string
-): Order => {
+): Order | undefined => {
   if ('state' in raw) {
     if (raw.twapId === undefined) {
       throw venueError('Hyperliquid returned a TWAP without a twapId.')
     }
     const { state } = raw
-    const filled = new Big(state.executedSz)
+    const remainingSize = safeSubtractDecimalString(state.sz, state.executedSz)
+    if (remainingSize === undefined) {
+      return skipOrder('executedSz', state.executedSz)
+    }
+    const createdAt = rowTimestampToIsoStringOrUndefined(state.timestamp)
+    if (createdAt === undefined) {
+      return skipOrder('timestamp', state.timestamp)
+    }
+    const updatedAt = rowTimestampToIsoStringOrUndefined(raw.time * 1000)
+    if (updatedAt === undefined) {
+      return skipOrder('time', raw.time)
+    }
     let status: OrderStatus
     switch (raw.status.status) {
       case 'activated':
-        status = filled.gt(0) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+        status =
+          safeIsDecimalStringGreaterThan(state.executedSz, '0') === true
+            ? OrderStatus.PARTIALLY_FILLED
+            : OrderStatus.OPEN
         break
       case 'waitingForTrigger':
         status = OrderStatus.OPEN
@@ -128,35 +169,57 @@ export const mapOrder = (
           `Unknown Hyperliquid TWAP status: ${raw.status.status}`
         )
     }
+    const averagePrice =
+      safeIsDecimalStringZero(state.executedSz) === false
+        ? safeDivideDecimalString(state.executedNtl, state.executedSz)
+        : undefined
     return {
       orderId: String(raw.twapId),
       market,
       type: OrderType.TWAP,
       side: state.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
       originalSize: state.sz,
-      remainingSize: new Big(state.sz).minus(filled).toFixed(),
+      remainingSize,
       filledSize: state.executedSz,
-      ...(filled.eq(0)
-        ? {}
-        : { averagePrice: new Big(state.executedNtl).div(filled).toFixed() }),
+      ...(averagePrice === undefined ? {} : { averagePrice }),
       reduceOnly: state.reduceOnly,
       status,
       ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
         ? { statusReason: raw.status.description ?? raw.status.status }
         : {}),
-      createdAt: new Date(state.timestamp).toISOString(),
-      updatedAt: new Date(raw.time * 1000).toISOString(),
-      startedAt: new Date(state.timestamp).toISOString(),
+      createdAt,
+      updatedAt,
+      startedAt: createdAt,
       durationSeconds: state.minutes * 60,
     }
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const filled = new Big(o.origSz).minus(o.sz)
+  const originalSize = venueDecimal(o.origSz, 'origSz')
+  if (originalSize === undefined) {
+    return skipOrder('origSz', o.origSz)
+  }
+  const remainingSize = venueDecimal(o.sz, 'sz')
+  if (remainingSize === undefined) {
+    return skipOrder('sz', o.sz)
+  }
+  const filledSize = subtractDecimalString(originalSize, remainingSize)
+  const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
+  if (createdAt === undefined) {
+    return skipOrder('timestamp', o.timestamp)
+  }
+  const statusTimestamp = 'order' in raw ? raw.statusTimestamp : o.timestamp
+  const updatedAt = rowTimestampToIsoStringOrUndefined(statusTimestamp)
+  if (updatedAt === undefined) {
+    return skipOrder('statusTimestamp', statusTimestamp)
+  }
   let status = mapOrderStatus(venueStatus)
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING
-  } else if (status === OrderStatus.OPEN && filled.gt(0)) {
+  } else if (
+    status === OrderStatus.OPEN &&
+    isDecimalStringGreaterThan(filledSize, '0')
+  ) {
     status = OrderStatus.PARTIALLY_FILLED
   }
   const base: OrderBase = {
@@ -170,13 +233,11 @@ export const mapOrder = (
       : {}),
     originalSize: o.origSz,
     remainingSize: o.sz,
-    filledSize: filled.toFixed(),
+    filledSize,
     reduceOnly: o.reduceOnly,
     ...(parentOrderId === undefined ? {} : { parentOrderId }),
-    createdAt: new Date(o.timestamp).toISOString(),
-    updatedAt: new Date(
-      'order' in raw ? raw.statusTimestamp : o.timestamp
-    ).toISOString(),
+    createdAt,
+    updatedAt,
   }
   let type = mapOrderType(o.orderType)
   if (o.isTrigger && (type === OrderType.MARKET || type === OrderType.LIMIT)) {

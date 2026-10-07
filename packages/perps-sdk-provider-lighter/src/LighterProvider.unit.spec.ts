@@ -645,11 +645,11 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     const provider = lighterProvider()
     // entry * (1 - 1/leverage) / (1 - mmr) = 50000 * 0.9 / 0.988
     const liq = provider.estimateLiquidationPrice(btcMarket, {
-      entryPrice: 50000,
-      leverage: 10,
+      entryPrice: '50000',
+      leverage: '10',
       isLong: true,
     })
-    expect(liq).toBeCloseTo(45546.559, 2)
+    expect(liq).toBe('45546.5587044534412955465587044534412955465587')
   })
 })
 
@@ -3333,7 +3333,10 @@ describe('LighterProvider — data-read account-access contract', () => {
   const DEFAULT_LEVERAGE = 20
   const EMPTY = { resolves: [] }
   const VENUE_DEFAULT = {
-    resolves: { marginMode: MarginMode.CROSS, leverage: DEFAULT_LEVERAGE },
+    resolves: {
+      marginMode: MarginMode.CROSS,
+      leverage: String(DEFAULT_LEVERAGE),
+    },
   }
   const AUTHED: Record<Access, Outcome> = {
     'no credential': PerpsErrorCode.SetupRequired,
@@ -3564,6 +3567,103 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
+describe('LighterProvider — getPositions skips a bad row', () => {
+  it('drops only the row with an invalid position_value and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const goodRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: '50000',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [
+              {
+                ...ACCOUNT_PAYLOAD.accounts[0],
+                positions: [
+                  goodRow,
+                  { ...goodRow, position_value: 'rest-bad-value' },
+                ],
+              },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].size).toBe('1')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[lighter] skipping position row: `position_value` is not a valid decimal: 'rest-bad-value'"
+      )
+    )
+    warn.mockRestore()
+  })
+})
+
+describe('LighterProvider — getAccount refuses a bad open position', () => {
+  it('throws instead of a total that leaves the position out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const badRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '5.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.0',
+      avg_entry_price: '50000',
+      position_value: 'rest-bad-value',
+      unrealized_pnl: '10',
+      realized_pnl: '0',
+      liquidation_price: '40000',
+      total_funding_paid_out: '0',
+      margin_mode: 0,
+      allocated_margin: '2500',
+      total_discount: '0',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], positions: [badRow] }],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    await expect(
+      provider.getAccount({ address: ADDRESS })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      message: expect.stringContaining('market 0'),
+    })
+    warn.mockRestore()
+  })
+})
+
 describe('LighterProvider — per-user reads without a Lighter account', () => {
   const accountNotFound: FetchOverride = (url) =>
     url.includes('/api/v1/account?')
@@ -3723,16 +3823,31 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
   })
 
   it.each([
-    ['marginUsed', isolatedPosition('not-a-decimal', '0')],
-    ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
-  ])('rejects a malformed position %s', async (field, malformed) => {
-    positions = [malformed]
+    [
+      'marginUsed',
+      'unrealizedPnl',
+      isolatedPosition('not-a-decimal', '0.1'),
+      '0.2',
+    ],
+    [
+      'unrealizedPnl',
+      'marginUsed',
+      isolatedPosition('0.1', 'not-a-decimal'),
+      '0.2',
+    ],
+  ] as const)('omits the %s total, keeps %s and the rows, and warns once for a malformed term', async (absent, kept, malformed, keptTotal) => {
+    positions = [malformed, isolatedPosition('0.1', '0.1')]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
-    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
-      new RegExp(field)
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toHaveLength(2)
+    expect(account).not.toHaveProperty(absent)
+    expect(account[kept]).toBe(keptTotal)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
@@ -6323,7 +6438,7 @@ describe('LighterProvider — getMarketSettings', () => {
   it("reads the market's mode and leverage from the account position row", async () => {
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 2,
+      leverage: '2',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6333,7 +6448,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 50,
+      leverage: '50',
     })
   })
 
@@ -6350,14 +6465,14 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 1.67,
+      leverage: '1.67',
     })
   })
 
   it("resolves the backend market's default leverage with cross margin for a market without a row", async () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6376,7 +6491,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6387,7 +6502,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })

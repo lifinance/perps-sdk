@@ -36,7 +36,7 @@ const position = (overrides: Partial<Position> = {}): Position => ({
   liquidationPrice: '4000',
   unrealizedPnl: '0',
   accruedFunding: '0',
-  leverage: 20,
+  leverage: '20',
   marginUsed: '500',
   initialMarginRequirement: '500',
   marginMode: MarginMode.ISOLATED,
@@ -50,8 +50,8 @@ describe('positionRemovableMargin', () => {
     )
   })
 
-  const isolatedWithPnl = () =>
-    mapPosition(
+  const isolatedWithPnl = (): Position => {
+    const mapped = mapPosition(
       {
         position: {
           coin: 'ETH',
@@ -72,6 +72,11 @@ describe('positionRemovableMargin', () => {
       } satisfies HlAssetPosition,
       position().market
     )
+    if (mapped === undefined) {
+      throw new Error('expected a mapped position')
+    }
+    return mapped
+  }
 
   it('reports the venue isolated marginUsed unchanged', () => {
     expect(isolatedWithPnl().marginUsed).toBe('1500')
@@ -149,6 +154,36 @@ describe('positionRemovableMargin', () => {
   ] as const)('rejects invalid Position.%s', (_field, overrides) => {
     expect(() => positionRemovableMargin(position(overrides))).toThrowError(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it.each([
+    [
+      { marginUsed: 'n/a' },
+      "Invalid `Position.marginUsed`: 'n/a' is not a decimal string.",
+    ],
+    [
+      { initialMarginRequirement: 'n/a' },
+      "Invalid `Position.initialMarginRequirement`: 'n/a' is not a decimal string.",
+    ],
+    [{ size: '0' }, 'Position.size must be greater than zero.'],
+    [{ markPrice: '-1' }, 'Position.markPrice must be greater than zero.'],
+  ] as const)('throws a ValidationError with the message for %o', (overrides, message) => {
+    expect(() => positionRemovableMargin(position(overrides))).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError, message })
+    )
+  })
+
+  it.each([
+    'markPrice',
+    'initialMarginRequirement',
+  ] as const)('throws a ValidationError when Position.%s is absent', (field) => {
+    const { [field]: _absent, ...rest } = position()
+    expect(() => positionRemovableMargin(rest)).toThrowError(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `Position.${field} must be greater than zero.`,
+      })
     )
   })
 

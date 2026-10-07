@@ -47,11 +47,11 @@ describe('Lighter getMarketSettings leverage read-back', () => {
   // Each IMF is the account-row percent string that a save of the leverage
   // stores: `round(10000 / leverage)` basis points.
   it.each([
-    ['33.33', 3],
-    ['16.67', 6],
-    ['14.29', 7],
-    ['11.11', 9],
-  ])('reads IMF %s back as the saved %ix leverage', async (imf, leverage) => {
+    ['33.33', '3'],
+    ['16.67', '6'],
+    ['14.29', '7'],
+    ['11.11', '9'],
+  ])('reads IMF %s back as the saved %sx leverage', async (imf, leverage) => {
     await expect(
       setup(imf).getMarketSettings({
         address: ADDRESS,

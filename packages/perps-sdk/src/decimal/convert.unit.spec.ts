@@ -1,12 +1,22 @@
 import { DECIMAL_PATTERN, PerpsErrorCode } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
-  baseUnitsToDecimal,
-  decimalToBaseUnits,
+  decimalStringToScaledInteger,
   numberToDecimalString,
+  roundDecimalString,
+  safeDecimalStringToScaledInteger,
+  safeNumberToDecimalString,
+  safeRoundDecimalString,
+  safeScaledIntegerToDecimalString,
+  safeTruncateDecimal,
+  scaledIntegerToDecimalString,
   truncateDecimal,
 } from './convert.js'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 const expectValidationError = (fn: () => unknown, match: RegExp) => {
   expect(fn).toThrowError(match)
@@ -21,45 +31,51 @@ const expectValidationError = (fn: () => unknown, match: RegExp) => {
   }
 }
 
-describe('decimalToBaseUnits', () => {
+describe('decimalStringToScaledInteger', () => {
   it('scales on-grid values exactly under both roundings', () => {
     // 0.29 * 100 === 28.999999999999996 in binary floats; exact decimal
     // arithmetic must yield 29 regardless of rounding.
-    expect(decimalToBaseUnits('0.29', 2, 'truncate')).toBe(29)
-    expect(decimalToBaseUnits('0.29', 2, 'round')).toBe(29)
-    expect(decimalToBaseUnits('8.2', 1, 'truncate')).toBe(82)
-    expect(decimalToBaseUnits('1.5', 2, 'round')).toBe(150)
-    expect(decimalToBaseUnits('0.001', 6, 'truncate')).toBe(1000)
-    expect(decimalToBaseUnits('61729.6', 1, 'round')).toBe(617296)
-    expect(decimalToBaseUnits('45000', 0, 'truncate')).toBe(45000)
+    expect(decimalStringToScaledInteger('0.29', 2, 'truncate')).toBe(29)
+    expect(decimalStringToScaledInteger('0.29', 2, 'round')).toBe(29)
+    expect(decimalStringToScaledInteger('8.2', 1, 'truncate')).toBe(82)
+    expect(decimalStringToScaledInteger('1.5', 2, 'round')).toBe(150)
+    expect(decimalStringToScaledInteger('0.001', 6, 'truncate')).toBe(1000)
+    expect(decimalStringToScaledInteger('61729.6', 1, 'round')).toBe(617296)
+    expect(decimalStringToScaledInteger('45000', 0, 'truncate')).toBe(45000)
   })
 
   it('truncates off-grid values toward zero on both sides of the step', () => {
-    expect(decimalToBaseUnits('0.294', 2, 'truncate')).toBe(29)
-    expect(decimalToBaseUnits('0.296', 2, 'truncate')).toBe(29)
-    expect(decimalToBaseUnits('0.299999', 2, 'truncate')).toBe(29)
-    expect(decimalToBaseUnits('-0.296', 2, 'truncate')).toBe(-29)
+    expect(decimalStringToScaledInteger('0.294', 2, 'truncate')).toBe(29)
+    expect(decimalStringToScaledInteger('0.296', 2, 'truncate')).toBe(29)
+    expect(decimalStringToScaledInteger('0.299999', 2, 'truncate')).toBe(29)
+    expect(decimalStringToScaledInteger('-0.296', 2, 'truncate')).toBe(-29)
   })
 
   it('rounds off-grid values to the nearest grid point on both sides of the step', () => {
-    expect(decimalToBaseUnits('0.294', 2, 'round')).toBe(29)
-    expect(decimalToBaseUnits('0.296', 2, 'round')).toBe(30)
-    expect(decimalToBaseUnits('0.295', 2, 'round')).toBe(30)
-    expect(decimalToBaseUnits('-0.296', 2, 'round')).toBe(-30)
+    expect(decimalStringToScaledInteger('0.294', 2, 'round')).toBe(29)
+    expect(decimalStringToScaledInteger('0.296', 2, 'round')).toBe(30)
+    expect(decimalStringToScaledInteger('0.295', 2, 'round')).toBe(30)
+    expect(decimalStringToScaledInteger('-0.296', 2, 'round')).toBe(-30)
+  })
+
+  it('rounds off-grid values away from zero under up', () => {
+    expect(decimalStringToScaledInteger('0.291', 2, 'up')).toBe(30)
+    expect(decimalStringToScaledInteger('0.29', 2, 'up')).toBe(29)
+    expect(decimalStringToScaledInteger('-0.291', 2, 'up')).toBe(-30)
   })
 
   it('handles large magnitudes exactly up to Number.MAX_SAFE_INTEGER', () => {
-    expect(decimalToBaseUnits('4500000000.123456', 6, 'truncate')).toBe(
-      4500000000123456
-    )
-    expect(decimalToBaseUnits('9007199254740.991', 3, 'truncate')).toBe(
-      Number.MAX_SAFE_INTEGER
-    )
+    expect(
+      decimalStringToScaledInteger('4500000000.123456', 6, 'truncate')
+    ).toBe(4500000000123456)
+    expect(
+      decimalStringToScaledInteger('9007199254740.991', 3, 'truncate')
+    ).toBe(Number.MAX_SAFE_INTEGER)
   })
 
   it('rejects scaled results beyond Number.MAX_SAFE_INTEGER', () => {
     expectValidationError(
-      () => decimalToBaseUnits('9007199254740.992', 3, 'truncate'),
+      () => decimalStringToScaledInteger('9007199254740.992', 3, 'truncate'),
       /MAX_SAFE_INTEGER/
     )
   })
@@ -69,46 +85,48 @@ describe('decimalToBaseUnits', () => {
     '',
     '1e-8',
     '1E7',
-  ])('rejects the non-decimal string %j, naming the function and the value', (value) => {
+    '$1',
+    '1,000',
+  ])('rejects the non-decimal string %j, naming the value', (value) => {
     expectValidationError(
-      () => decimalToBaseUnits(value, 8, 'truncate'),
-      new RegExp(`decimalToBaseUnits\\(value\\).*'${value}'`)
+      () => decimalStringToScaledInteger(value, 8, 'truncate'),
+      new RegExp(`'${value.replace('$', '\\$')}' is not a decimal string`)
     )
   })
 
   it('scales the smallest plain decimal an exponent string would spell', () => {
-    expect(decimalToBaseUnits('0.00000001', 8, 'truncate')).toBe(1)
+    expect(decimalStringToScaledInteger('0.00000001', 8, 'truncate')).toBe(1)
   })
 
   it('rejects invalid decimals', () => {
     expectValidationError(
-      () => decimalToBaseUnits('1', -1, 'truncate'),
+      () => decimalStringToScaledInteger('1', -1, 'truncate'),
       /Invalid decimals for integer scaling/
     )
     expectValidationError(
-      () => decimalToBaseUnits('1', 1.5, 'round'),
+      () => decimalStringToScaledInteger('1', 1.5, 'round'),
       /Invalid decimals for integer scaling/
     )
   })
 })
 
-describe('baseUnitsToDecimal', () => {
+describe('scaledIntegerToDecimalString', () => {
   it('should convert USDC base units (6 decimals)', () => {
-    expect(baseUnitsToDecimal('1000000', 6)).toBe('1')
+    expect(scaledIntegerToDecimalString('1000000', 6)).toBe('1')
   })
 
   it('should convert ETH base units (18 decimals)', () => {
-    expect(baseUnitsToDecimal('1000000000000000000', 18)).toBe('1')
+    expect(scaledIntegerToDecimalString('1000000000000000000', 18)).toBe('1')
   })
 
   it('should handle fractional values', () => {
-    expect(baseUnitsToDecimal('500000', 6)).toBe('0.5')
+    expect(scaledIntegerToDecimalString('500000', 6)).toBe('0.5')
   })
 
   it('converts a 30-digit integer exactly', () => {
-    expect(baseUnitsToDecimal('123456789012345678901234567890', 18)).toBe(
-      '123456789012.34567890123456789'
-    )
+    expect(
+      scaledIntegerToDecimalString('123456789012345678901234567890', 18)
+    ).toBe('123456789012.34567890123456789')
   })
 
   it.each([
@@ -118,19 +136,19 @@ describe('baseUnitsToDecimal', () => {
     '',
   ])('rejects the non-integer string %j, naming the function and the value', (amount) => {
     expectValidationError(
-      () => baseUnitsToDecimal(amount, 6),
-      new RegExp(`baseUnitsToDecimal\\(amount\\).*'${amount}'`)
+      () => scaledIntegerToDecimalString(amount, 6),
+      new RegExp(`scaledIntegerToDecimalString\\(amount\\).*'${amount}'`)
     )
   })
 
   it('rejects invalid decimals', () => {
     expectValidationError(
-      () => baseUnitsToDecimal('1', -1),
-      /baseUnitsToDecimal\(decimals\).*-1/
+      () => scaledIntegerToDecimalString('1', -1),
+      /scaledIntegerToDecimalString\(decimals\).*-1/
     )
     expectValidationError(
-      () => baseUnitsToDecimal('1', 1.5),
-      /baseUnitsToDecimal\(decimals\).*1\.5/
+      () => scaledIntegerToDecimalString('1', 1.5),
+      /scaledIntegerToDecimalString\(decimals\).*1\.5/
     )
   })
 
@@ -143,12 +161,16 @@ describe('baseUnitsToDecimal', () => {
     ['0', 6],
     ['123456789012345678901234567890', 18],
   ] as const)('spells %s at %i decimals as a DecimalString', (amount, dp) => {
-    expect(baseUnitsToDecimal(amount, dp)).toMatch(DECIMAL_PATTERN)
+    expect(scaledIntegerToDecimalString(amount, dp)).toMatch(DECIMAL_PATTERN)
   })
 
-  it('round-trips through decimalToBaseUnits', () => {
+  it('round-trips through decimalStringToScaledInteger', () => {
     expect(
-      decimalToBaseUnits(baseUnitsToDecimal('1234500', 6), 6, 'truncate')
+      decimalStringToScaledInteger(
+        scaledIntegerToDecimalString('1234500', 6),
+        6,
+        'truncate'
+      )
     ).toBe(1234500)
   })
 })
@@ -206,11 +228,15 @@ describe('truncateDecimal', () => {
     '0x10',
     '1e-8',
     '1.5e21',
-  ])('rejects the non-decimal string %j, naming the function and the value', (value) => {
+  ])('rejects the non-decimal string %j, naming the value', (value) => {
     expectValidationError(
       () => truncateDecimal(value, 8),
-      new RegExp(`truncateDecimal\\(value\\).*'${value}'`)
+      new RegExp(`'${value}' is not a decimal string`)
     )
+  })
+
+  it('reads a display form after the clean step', () => {
+    expect(truncateDecimal('$1,000.999', 2)).toBe('1000.99')
   })
 
   it.each([-1, 1.5, Number.NaN])('rejects the decimals %j', (dp) => {
@@ -254,5 +280,57 @@ describe('numberToDecimalString', () => {
       () => numberToDecimalString(value),
       /Invalid number for decimal conversion/
     )
+  })
+})
+
+describe('roundDecimalString', () => {
+  it.each([
+    ['1.234', 2, 'truncate', '1.23'],
+    ['-1.239', 2, 'truncate', '-1.23'],
+    ['1.235', 2, 'round', '1.24'],
+    ['-1.235', 2, 'round', '-1.24'],
+    ['1.231', 2, 'up', '1.24'],
+    ['-1.231', 2, 'up', '-1.24'],
+    ['1.23', 2, 'up', '1.23'],
+    ['1.50', 1, 'round', '1.5'],
+    ['-0.001', 2, 'truncate', '0'],
+  ] as const)('rounds %s at %i decimals (%s) to %s', (value, dp, rounding, expected) => {
+    expect(roundDecimalString(value, dp, rounding)).toBe(expected)
+  })
+
+  it('throws ValidationError for a bad value', () => {
+    expectValidationError(
+      () => roundDecimalString('abc', 2, 'round'),
+      /'abc' is not a decimal string/
+    )
+  })
+
+  it.each([-1, 1.5])('throws ValidationError for the decimals %j', (dp) => {
+    expectValidationError(
+      () => roundDecimalString('1', dp, 'round'),
+      /Invalid decimals for rounding/
+    )
+  })
+})
+
+describe('safe convert functions', () => {
+  it('give the result for valid input', () => {
+    expect(safeRoundDecimalString('1.231', 2, 'up')).toBe('1.24')
+    expect(safeDecimalStringToScaledInteger('0.29', 2, 'truncate')).toBe(29)
+    expect(safeScaledIntegerToDecimalString('1000000', 6)).toBe('1')
+    expect(safeTruncateDecimal('1.239', 2)).toBe('1.23')
+    expect(safeNumberToDecimalString(1e-7)).toBe('0.0000001')
+  })
+
+  it('give undefined and warn for bad input', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeRoundDecimalString('abc', 2, 'round')).toBeUndefined()
+    expect(
+      safeDecimalStringToScaledInteger('9007199254740.992', 3, 'truncate')
+    ).toBeUndefined()
+    expect(safeScaledIntegerToDecimalString('1.5', 6)).toBeUndefined()
+    expect(safeTruncateDecimal('abc', 2)).toBeUndefined()
+    expect(safeNumberToDecimalString(Number.NaN)).toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(5)
   })
 })

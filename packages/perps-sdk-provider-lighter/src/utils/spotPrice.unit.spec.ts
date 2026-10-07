@@ -1,7 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Market, MarketContext } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
-import Big from 'big.js'
 import { describe, expect, it } from 'vitest'
 import { spotPriceByAssetId, spotValuation } from './spotPrice.js'
 
@@ -52,7 +51,7 @@ describe('spotPriceByAssetId', () => {
       HELD
     )
     expect([...prices.keys()]).toEqual(['1'])
-    expect(prices.get('1')?.toFixed()).toBe('2714.67')
+    expect(prices.get('1')).toBe('2714.67')
   })
 
   it('ignores markets outside the spot category', () => {
@@ -92,7 +91,7 @@ describe('spotPriceByAssetId', () => {
       [context('2048', '0'), context('2049', '2700'), context('2050', '2800')],
       HELD
     )
-    expect(prices.get('1')?.toFixed()).toBe('2700')
+    expect(prices.get('1')).toBe('2700')
   })
 
   it('adds no entry for a base asset outside the requested ids', () => {
@@ -112,7 +111,7 @@ describe('spotPriceByAssetId', () => {
       [context('2048', '2714.67'), context('2049', 'n/a')],
       HELD
     )
-    expect(prices.get('1')?.toFixed()).toBe('2714.67')
+    expect(prices.get('1')).toBe('2714.67')
   })
 
   it('rejects a non-decimal mark for a requested asset', () => {
@@ -128,18 +127,18 @@ describe('spotPriceByAssetId', () => {
 })
 
 describe('spotValuation', () => {
-  const PRICES = new Map([['2048', new Big('1.5')]])
+  const PRICES = new Map([['2048', '1.5']])
 
   it('values the settlement asset at 1', () => {
     const { valueUsd, price } = spotValuation(3, '10.25', 3, PRICES)
     expect(valueUsd).toBe('10.25')
-    expect(price?.toFixed()).toBe('1')
+    expect(price).toBe('1')
   })
 
   it('values a priced asset at its spot price', () => {
     const { valueUsd, price } = spotValuation(2048, '4', 3, PRICES)
     expect(valueUsd).toBe('6')
-    expect(price?.toFixed()).toBe('1.5')
+    expect(price).toBe('1.5')
   })
 
   it('values an unpriced asset at 0 with no price', () => {

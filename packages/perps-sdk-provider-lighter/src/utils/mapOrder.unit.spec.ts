@@ -7,7 +7,7 @@ import {
   TimeInForce,
   TriggerCondition,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LtOrder } from '../types/index.js'
 import { mapOrder, mapOrderUpdates } from './mapOrder.js'
 
@@ -68,8 +68,8 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
 describe('mapOrder (Lighter)', () => {
   it('separates the venue id and client id and omits an absent client id', () => {
     const order = mapOrder(baseOrder({ client_order_index: 77 }), MARKET)
-    expect(order.orderId).toBe('1')
-    expect(order.clientOrderId).toBe('77')
+    expect(order?.orderId).toBe('1')
+    expect(order?.clientOrderId).toBe('77')
     expect(mapOrder(baseOrder(), MARKET)).not.toHaveProperty('clientOrderId')
     expect(order).not.toHaveProperty('explorerLink')
   })
@@ -143,8 +143,8 @@ describe('mapOrder (Lighter)', () => {
     ['canceled-too-much-slippage', OrderStatus.CANCELLED],
   ])('maps the %s lifecycle', (status, expected) => {
     const order = mapOrder(baseOrder({ status }), MARKET)
-    expect(order.status).toBe(expected)
-    expect(order.statusReason).toBe(
+    expect(order?.status).toBe(expected)
+    expect(order?.statusReason).toBe(
       expected === OrderStatus.CANCELLED ? status : undefined
     )
   })
@@ -162,7 +162,7 @@ describe('mapOrder (Lighter)', () => {
       mapOrder(
         baseOrder({ status: 'canceled-child', trigger_status: 'parent-order' }),
         MARKET
-      ).status
+      )?.status
     ).toBe(OrderStatus.CANCELLED)
   })
 
@@ -186,10 +186,10 @@ describe('mapOrder (Lighter)', () => {
     ['a sub-micro', '0.0000001', '0.0000001'],
     ['a 1e21', '1000000000000000000000', '1000000000000000000000'],
   ])('spells %s average price without an exponent', (_label, quote, price) => {
-    const { averagePrice } = mapOrder(
+    const averagePrice = mapOrder(
       baseOrder({ filled_base_amount: '1', filled_quote_amount: quote }),
       MARKET
-    )
+    )?.averagePrice
     expect(averagePrice).toBe(price)
     expect(isDecimalString(averagePrice)).toBe(true)
   })
@@ -264,8 +264,71 @@ describe('mapOrder (Lighter)', () => {
     'liquidation',
   ])('maps regular execution type %s without a fabricated expiry', (type) => {
     const mapped = mapOrder(baseOrder({ type, order_expiry: 0 }), MARKET)
-    expect(mapped.type).toBe(OrderType.MARKET)
+    expect(mapped?.type).toBe(OrderType.MARKET)
     expect(mapped).not.toHaveProperty('expiresAt')
+  })
+
+  it.each([
+    ['initial_base_amount', { initial_base_amount: 'abc' }],
+    ['remaining_base_amount', { remaining_base_amount: '' }],
+    ['filled_base_amount', { filled_base_amount: 'NaN' }],
+    ['created_at', { created_at: Number.NaN }],
+    ['updated_at', { updated_at: 9e15 }],
+  ])('skips the row and warns when %s is invalid', (field, overrides) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(baseOrder(overrides), MARKET)).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`[lighter] skipping order row: \`${field}\``)
+    )
+    warn.mockRestore()
+  })
+
+  it.each([
+    ['price', { price: 'n/a' }, 'n/a'],
+    ['triggerPrice', { type: 'stop-loss', trigger_price: 'bad' }, 'bad'],
+  ] satisfies [
+    string,
+    Partial<LtOrder>,
+    string,
+  ][])('keeps the row and the raw venue %s when the venue value is invalid', (key, overrides, venueValue) => {
+    expect(mapOrder(baseOrder(overrides), MARKET)).toHaveProperty(
+      key,
+      venueValue
+    )
+  })
+
+  it('omits expiresAt and warns once when order_expiry is out of range', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const order = mapOrder(baseOrder({ order_expiry: 9e15 }), MARKET)
+    expect(order).toBeDefined()
+    expect(order).not.toHaveProperty('expiresAt')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('reads an exponent-form size and keeps the venue string', () => {
+    expect(
+      mapOrder(baseOrder({ initial_base_amount: '1e-3' }), MARKET)
+    ).toMatchObject({ originalSize: '1e-3' })
+  })
+
+  it('omits averagePrice when filled_quote_amount is invalid', () => {
+    expect(
+      mapOrder(
+        baseOrder({ filled_base_amount: '1', filled_quote_amount: 'x' }),
+        MARKET
+      )
+    ).not.toHaveProperty('averagePrice')
+  })
+
+  it('omits limitPrice on a limit trigger with an invalid price', () => {
+    expect(
+      mapOrder(
+        baseOrder({ type: 'stop-loss-limit', trigger_price: '90', price: '' }),
+        MARKET
+      )
+    ).not.toHaveProperty('limitPrice')
   })
 
   it('rejects an unrepresentable order type', () => {

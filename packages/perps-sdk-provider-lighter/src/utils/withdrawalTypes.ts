@@ -1,19 +1,21 @@
-import type {
-  ProviderWithdrawableBalance,
-  WithdrawalAssetRef,
-  WithdrawalSourceTypes,
-  WithdrawalTypeOption,
+import {
+  divideDecimalString,
+  isDecimalStringGreaterThan,
+  type ProviderWithdrawableBalance,
+  unknownToDecimalString,
+  type WithdrawalAssetRef,
+  type WithdrawalSourceTypes,
+  type WithdrawalTypeOption,
 } from '@lifi/perps-sdk'
 import { WithdrawalType } from '@lifi/perps-types'
-import Big from 'big.js'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type {
   LtFastwithdrawInfoResponse,
   LtTransferFeeInfoResponse,
 } from '../types/submit.js'
-import { toRequiredBig } from './decimal.js'
 
 const LIGHTER_SUCCESS_CODE = 200
-const L2_COLLATERAL_SCALE = 1_000_000
+const L2_COLLATERAL_SCALE = '1000000'
 
 /**
  * The `withdrawalOptions` a Lighter withdrawal accepts. `fast` sends the
@@ -57,18 +59,23 @@ export const lighterFastWithdrawal = (
   ) {
     return undefined
   }
-  const withdrawLimit = toRequiredBig(info.withdraw_limit, 'withdraw_limit')
-  const maxWithdrawalAmount = toRequiredBig(
-    info.max_withdrawal_amount,
-    'max_withdrawal_amount'
+  const withdrawLimit = unknownToDecimalString(
+    info.withdraw_limit,
+    'withdraw_limit',
+    LIGHTER_PROVIDER_KEY
   )
-  const limit = withdrawLimit.lt(maxWithdrawalAmount)
-    ? withdrawLimit
-    : maxWithdrawalAmount
+  const maxWithdrawalAmount = unknownToDecimalString(
+    info.max_withdrawal_amount,
+    'max_withdrawal_amount',
+    LIGHTER_PROVIDER_KEY
+  )
+  const limit = isDecimalStringGreaterThan(withdrawLimit, maxWithdrawalAmount)
+    ? maxWithdrawalAmount
+    : withdrawLimit
   return {
     toAccountIndex: info.to_account_index,
     fee: feeInfo.transfer_fee_usdc,
-    limit: limit.div(L2_COLLATERAL_SCALE).toFixed(),
+    limit: divideDecimalString(limit, L2_COLLATERAL_SCALE),
   }
 }
 
@@ -98,7 +105,6 @@ export const lighterWithdrawalTypes = (
       row.categoryId === fastSource.categoryId &&
       row.assetId === fastSource.asset.id
     ) {
-      const rowMax = new Big(row.max)
       const fastOptions: LighterWithdrawalOptions = {
         mode: 'fast',
         toAccountIndex: fast.toAccountIndex,
@@ -106,7 +112,9 @@ export const lighterWithdrawalTypes = (
       }
       options.push({
         type: WithdrawalType.FAST,
-        max: (rowMax.lt(fast.limit) ? rowMax : new Big(fast.limit)).toFixed(),
+        max: isDecimalStringGreaterThan(row.max, fast.limit)
+          ? fast.limit
+          : row.max,
         withdrawalOptions: fastOptions,
       })
     }
