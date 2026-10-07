@@ -7,6 +7,7 @@ import {
   DEFAULT_API_URL,
 } from '../client/createPerpsClient.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { version } from '../version.js'
 import { request } from './request.js'
 
 const client = createPerpsClient({
@@ -343,6 +344,34 @@ describe('request — header handling', () => {
     expect(result.ok).toBe(true)
     expect(apiKeyHeader).toBeNull()
     expect(integratorHeader).toBeNull()
+  })
+
+  it.each([
+    ['the default perps backend', undefined],
+    ['a configured apiUrl', 'https://perps.example.com/v1'],
+  ])('sends the perps backend header set to %s', async (_name, apiUrl) => {
+    const backendClient = createPerpsClient({
+      apiKey: 'test-key',
+      integrator: 'test-app',
+      apiUrl,
+    })
+    const backendUrl = `${backendClient.config.apiUrl}/markets`
+    let headers: Headers | undefined
+    server.use(
+      http.get(backendUrl, ({ request: req }) => {
+        headers = req.headers
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    await request(backendClient.config, backendUrl, { retry: false })
+
+    expect(Object.fromEntries(headers ?? [])).toEqual({
+      'content-type': 'application/json',
+      'x-lifi-perps-sdk': version,
+      'x-lifi-api-key': 'test-key',
+      'x-lifi-integrator': 'test-app',
+    })
   })
 
   it('gives the request interceptor the conditional header set', async () => {

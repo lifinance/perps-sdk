@@ -470,7 +470,15 @@ const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
       price: '1000',
     },
   ],
-  calculateRefuelAmount: [{ gasUsd: '4', priceUsd: '3', decimals: 6 }],
+  calculateRefuelAmount: [
+    {
+      recommendedAmount: '2000000000000000',
+      recommendedUsd: '5',
+      nativeBalance: '0',
+      priceUsd: '3',
+      decimals: 6,
+    },
+  ],
   calculateTransferable: ['12', '10'],
   calculateWithdrawMax: [
     { available: '10', withdrawalFee: '0.5', isFeeDeducted: false },
