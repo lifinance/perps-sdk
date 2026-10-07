@@ -1,9 +1,16 @@
-import type { DecimalString, Market } from '@lifi/perps-types'
+import {
+  type DecimalString,
+  type Market,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import type Big from 'big.js'
 import { DivBig, TruncBig } from '../decimal/big.js'
 import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
+import { invalidInput } from '../errors/invalidInput.js'
+import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsSDKClient } from '../types/provider.js'
+import { createSafeFunction } from '../utils/createSafeFunction.js'
 import { snapOrderSize } from './snap.js'
 
 /** @public */
@@ -31,13 +38,19 @@ export interface OrderAmounts {
   notional: DecimalString
 }
 
-function positiveDecimal(value: DecimalString): Big | null {
-  if (!isDecimalString(value)) {
-    return null
+function requirePositiveDecimal(value: DecimalString, parameter: string): Big {
+  const parsed = isDecimalString(value) ? new TruncBig(value) : undefined
+  if (parsed === undefined || !parsed.gt(0)) {
+    throw invalidInput(
+      parameter,
+      `must be a positive decimal, got '${String(value)}'`
+    )
   }
-  const parsed = new TruncBig(value)
-  return parsed.gt(0) ? parsed : null
+  return parsed
 }
+
+const lotSize = (market: Market): DecimalString =>
+  market.sizeIncrement ?? new TruncBig(`1e-${market.szDecimals}`).toFixed()
 
 /**
  * The three order-entry amounts, derived from whichever one the user typed.
@@ -46,26 +59,22 @@ function positiveDecimal(value: DecimalString): Big | null {
  * `notional` is the snapped size × price, and a derived margin is
  * `notional ÷ leverage` in `DivBig` (40 places, half-up).
  *
- * @returns `null` when `amount` or `price` is not a positive
- *   {@link DecimalString}, when `leverage` is not a positive finite number, or
- *   when the snapped size is zero (below one lot).
- * @throws {PerpsError} `SDKError` when `market.providerId` names no registered
- *   provider plugin.
+ * @throws {PerpsError} `ValidationError` that names `amount` or `price` when
+ *   it is not a positive decimal, or `leverage` when it is not a finite number
+ *   above zero. `ValidationError` with the lot size when the snapped size is
+ *   zero (below one lot). `SDKError` when `market.providerId` names no
+ *   registered provider plugin.
  * @public
  */
-export function calculateOrderAmounts(
-  input: OrderAmountsInput
-): OrderAmounts | null {
+export function calculateOrderAmounts(input: OrderAmountsInput): OrderAmounts {
   const { sdk, market, held, leverage } = input
-  const amount = positiveDecimal(input.amount)
-  const price = positiveDecimal(input.price)
-  if (
-    amount === null ||
-    price === null ||
-    !Number.isFinite(leverage) ||
-    leverage <= 0
-  ) {
-    return null
+  const amount = requirePositiveDecimal(input.amount, 'amount')
+  const price = requirePositiveDecimal(input.price, 'price')
+  if (!Number.isFinite(leverage) || leverage <= 0) {
+    throw invalidInput(
+      'leverage',
+      `must be a finite number above zero, got ${leverage}`
+    )
   }
 
   const requested =
@@ -76,7 +85,10 @@ export function calculateOrderAmounts(
         : amount.times(leverage).div(price).toFixed()
   const size = snapOrderSize(sdk, market, requested)
   if (isDecimalStringZero(size)) {
-    return null
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `The order size ${requested} is below the lot size ${lotSize(market)}.`
+    )
   }
 
   const notional = new TruncBig(size).times(price)
@@ -89,3 +101,9 @@ export function calculateOrderAmounts(
     notional: notional.toFixed(),
   }
 }
+
+/** @public */
+export const safeCalculateOrderAmounts = createSafeFunction(
+  'calculateOrderAmounts',
+  calculateOrderAmounts
+)

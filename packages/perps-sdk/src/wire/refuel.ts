@@ -2,7 +2,7 @@ import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 import type Big from 'big.js'
 import { DivBig } from '../decimal/big.js'
 import { BASE_UNITS_PATTERN } from '../decimal/convert.js'
-import { decimalStringToBig } from '../decimal/decimalStringToBig.js'
+import { decimalStringToDivBig } from '../decimal/decimalStringToBig.js'
 import { PerpsError } from '../errors/PerpsError.js'
 
 /**
@@ -48,7 +48,7 @@ function requireBaseUnits(value: DecimalString, field: string): Big {
  *   when `recommendedAmount`, `recommendedUsd` or `priceUsd` is not greater
  *   than zero: a route with nothing to refuel, not a failure.
  * @throws {PerpsError} `ValidationError` when a base-unit field is not an
- *   integer string, a USD field is not a {@link DecimalString}, or `decimals`
+ *   integer string, a USD field does not match the decimal pattern, or `decimals`
  *   is not a non-negative integer.
  * @public
  */
@@ -67,8 +67,8 @@ export function calculateRefuelAmount(
     'recommendedAmount'
   )
   const balance = requireBaseUnits(input.nativeBalance, 'nativeBalance')
-  const recommendedUsd = decimalStringToBig(input.recommendedUsd)
-  const priceUsd = decimalStringToBig(input.priceUsd)
+  const recommendedUsd = decimalStringToDivBig(input.recommendedUsd)
+  const priceUsd = decimalStringToDivBig(input.priceUsd)
   const deficit = recommended.minus(balance)
   if (
     !recommended.gt(0) ||

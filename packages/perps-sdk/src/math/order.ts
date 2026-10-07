@@ -28,6 +28,7 @@ import {
   decimalStringToBig,
   decimalStringToDivBig,
 } from '../decimal/decimalStringToBig.js'
+import { invalidInput } from '../errors/invalidInput.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
 import {
@@ -35,7 +36,6 @@ import {
   isRegularOrder,
   isTriggerOrder,
 } from '../utils/orderClassification.js'
-import { invalidInput } from './invalidInput.js'
 import { calculateRealizedPnl } from './position.js'
 
 /**

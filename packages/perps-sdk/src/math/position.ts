@@ -22,9 +22,9 @@ import {
   decimalStringToBig,
   decimalStringToDivBig,
 } from '../decimal/decimalStringToBig.js'
+import { invalidInput } from '../errors/invalidInput.js'
 import type { LiquidationEstimateParams } from '../types/provider.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
-import { invalidInput } from './invalidInput.js'
 
 /**
  * Notional value of a position: `|size| × price`.

@@ -493,6 +493,16 @@ const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
       price: '1000',
     },
   ],
+  safeCalculateOrderAmounts: [
+    {
+      sdk: WIRE_CLIENT,
+      market: WIRE_MARKET,
+      held: 'margin',
+      amount: '100',
+      leverage: 5,
+      price: '1000',
+    },
+  ],
   calculateRefuelAmount: [
     {
       recommendedAmount: '2000000000000000',
@@ -688,10 +698,6 @@ describe('calculateOrderAmounts at the public entry point', () => {
     'notional',
   ] as const)('gives a DecimalString in every field for a held %s', (held) => {
     const amounts = sdk.calculateOrderAmounts({ ...input, held })
-    if (amounts === null) {
-      expect.unreachable('the sample input is a valid order')
-    }
-
     for (const [field, value] of Object.entries(amounts)) {
       expect(sdk.isDecimalString(value), `${held}.${field} -> ${value}`).toBe(
         true
@@ -707,7 +713,7 @@ describe('calculateOrderAmounts at the public entry point', () => {
       quoteDecimals: 2,
     }
 
-    expect(sdk.calculateOrderAmounts(withQuoteDecimals)?.margin).toBe(
+    expect(sdk.calculateOrderAmounts(withQuoteDecimals).margin).toBe(
       '123.456789'
     )
   })

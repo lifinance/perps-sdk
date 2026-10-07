@@ -360,7 +360,10 @@ export type {
   OrderAmounts,
   OrderAmountsInput,
 } from './wire/orderAmounts.js'
-export { calculateOrderAmounts } from './wire/orderAmounts.js'
+export {
+  calculateOrderAmounts,
+  safeCalculateOrderAmounts,
+} from './wire/orderAmounts.js'
 export type { RefuelAmountInput } from './wire/refuel.js'
 export {
   calculateRefuelAmount,

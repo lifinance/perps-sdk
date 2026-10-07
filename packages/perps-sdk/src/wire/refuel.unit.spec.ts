@@ -27,6 +27,19 @@ describe('calculateRefuelAmount', () => {
     expect(calculateRefuelAmount(input())).toBe('6.000000')
   })
 
+  it('reads the USD inputs to 40 places, so a 25th-place excess still rounds up', () => {
+    expect(
+      calculateRefuelAmount(
+        input({
+          recommendedAmount: '100',
+          recommendedUsd: '1.0000000000000000000000001',
+          priceUsd: '1.2',
+          decimals: 18,
+        })
+      )
+    ).toBe('1.000000000000000001')
+  })
+
   it('buys only the deficit plus the margin on a partial balance', () => {
     expect(
       calculateRefuelAmount(input({ nativeBalance: '1500000000000000' }))

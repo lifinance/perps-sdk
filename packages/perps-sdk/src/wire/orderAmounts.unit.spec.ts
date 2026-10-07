@@ -1,7 +1,14 @@
-import { DECIMAL_PATTERN, type DecimalString } from '@lifi/perps-types'
+import {
+  DECIMAL_PATTERN,
+  type DecimalString,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import Big from 'big.js'
-import { describe, expect, it } from 'vitest'
-import { calculateOrderAmounts } from './orderAmounts.js'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  calculateOrderAmounts,
+  safeCalculateOrderAmounts,
+} from './orderAmounts.js'
 import { snapOrderSize } from './snap.js'
 import { venueMarket as market, venueClient } from './venueProvider.mock.js'
 
@@ -235,8 +242,8 @@ describe('calculateOrderAmounts', () => {
     ['margin' as const, '0.004' as DecimalString, '1' as DecimalString, 2],
     ['size' as const, '0.001' as DecimalString, '10' as DecimalString, 2],
     ['notional' as const, '0.01' as DecimalString, '50000' as DecimalString, 5],
-  ])('gives null for a held %s of %s that snaps below one lot', (held, amount, price, szDecimals) => {
-    expect(
+  ])('throws a ValidationError with the lot size for a held %s of %s that snaps below one lot', (held, amount, price, szDecimals) => {
+    expect(() =>
       calculateOrderAmounts({
         sdk,
         market: market({ szDecimals }),
@@ -245,7 +252,14 @@ describe('calculateOrderAmounts', () => {
         leverage: 1,
         price,
       })
-    ).toBeNull()
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(
+          `is below the lot size ${new Big(`1e-${szDecimals}`).toFixed()}.`
+        ),
+      })
+    )
   })
 
   it('keeps a sub-cent margin when the lot grid takes the size', () => {
@@ -285,8 +299,8 @@ describe('calculateOrderAmounts', () => {
     '0',
     '-1',
     '1e5',
-  ])('gives null for the amount %j', (amount) => {
-    expect(
+  ])('throws a ValidationError that names the amount %j', (amount) => {
+    expect(() =>
       calculateOrderAmounts({
         sdk,
         market: market(),
@@ -295,7 +309,12 @@ describe('calculateOrderAmounts', () => {
         leverage: 2,
         price: '0.07',
       })
-    ).toBeNull()
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `\`amount\` must be a positive decimal, got '${amount}'.`,
+      })
+    )
   })
 
   it.each([
@@ -304,8 +323,8 @@ describe('calculateOrderAmounts', () => {
     '0',
     '-1',
     '1e-8',
-  ])('gives null for the price %j', (price) => {
-    expect(
+  ])('throws a ValidationError that names the price %j', (price) => {
+    expect(() =>
       calculateOrderAmounts({
         sdk,
         market: market(),
@@ -314,7 +333,12 @@ describe('calculateOrderAmounts', () => {
         leverage: 2,
         price,
       })
-    ).toBeNull()
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `\`price\` must be a positive decimal, got '${price}'.`,
+      })
+    )
   })
 
   it.each([
@@ -323,8 +347,8 @@ describe('calculateOrderAmounts', () => {
     Number.NaN,
     Number.POSITIVE_INFINITY,
     Number.NEGATIVE_INFINITY,
-  ])('gives null for the leverage %j', (leverage) => {
-    expect(
+  ])('throws a ValidationError that names the leverage %j', (leverage) => {
+    expect(() =>
       calculateOrderAmounts({
         sdk,
         market: market(),
@@ -333,7 +357,56 @@ describe('calculateOrderAmounts', () => {
         leverage,
         price: '0.07',
       })
-    ).toBeNull()
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `\`leverage\` must be a finite number above zero, got ${leverage}.`,
+      })
+    )
+  })
+
+  it('names the sizeIncrement as the lot size when the market carries one', () => {
+    expect(() =>
+      calculateOrderAmounts({
+        sdk,
+        market: market({ sizeIncrement: '0.5' }),
+        held: 'size',
+        amount: '0.4',
+        leverage: 1,
+        price: '10',
+      })
+    ).toThrow('The order size 0.4 is below the lot size 0.5.')
+  })
+
+  it('throws an SDKError for a market whose provider is not registered', () => {
+    expect(() =>
+      calculateOrderAmounts({
+        sdk,
+        market: market({ providerId: 'unregistered' }),
+        held: 'margin',
+        amount: '7',
+        leverage: 2,
+        price: '0.07',
+      })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.SDKError }))
+  })
+})
+
+describe('safeCalculateOrderAmounts', () => {
+  it('gives undefined and warns on a bad amount', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      safeCalculateOrderAmounts({
+        sdk,
+        market: market(),
+        held: 'margin',
+        amount: 'abc',
+        leverage: 2,
+        price: '0.07',
+      })
+    ).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
@@ -370,10 +443,6 @@ describe('calculateOrderAmounts invariants', () => {
       leverage,
       price,
     })
-    if (amounts === null) {
-      expect.unreachable('every invariant row is a valid input')
-    }
-
     expect(amounts.margin).toBe(amount)
     expect(
       new Big(amounts.size)
@@ -400,10 +469,6 @@ describe('calculateOrderAmounts invariants', () => {
       leverage,
       price,
     })
-    if (amounts === null) {
-      expect.unreachable('every invariant row is a valid input')
-    }
-
     expect(snapOrderSize(sdk, target, amounts.size)).toBe(amounts.size)
     expect(
       new Big(amounts.notional).eq(new Big(amounts.size).times(price))
@@ -430,10 +495,6 @@ describe('calculateOrderAmounts invariants', () => {
       leverage,
       price,
     })
-    if (amounts === null) {
-      expect.unreachable('every invariant row is a valid input')
-    }
-
     expect(snapOrderSize(sdk, target, amounts.size)).toBe(amounts.size)
     expect(
       new Big(amounts.notional).eq(new Big(amounts.size).times(price))
