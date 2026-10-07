@@ -1,5 +1,36 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 27.0.0
+
+### Major Changes
+
+- [#610](https://github.com/lifinance/perps-sdk/pull/610) [`3d584a3`](https://github.com/lifinance/perps-sdk/commit/3d584a37cf56f6e79712505be785a4dcd4088088) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Make the number handling exact and fail loudly in the calculators, and keep venue rows when one venue value is bad.
+
+  Breaking changes for consumers:
+
+  - `@lifi/perps-types`: `PerpsMarket.maintenanceMarginRate` is now a `DecimalString`, not a `number`.
+  - `@lifi/perps-sdk`: decimal readers accept only strings that match the decimal pattern. `'$1,234.5'`, `'0.05%'` and `'1e5'` now throw `ValidationError`.
+  - `@lifi/perps-sdk`: the math formulas throw `ValidationError` on a degenerate input, such as a zero divisor or a zero leverage. Each formula keeps its `safeX` pair, which logs a warning and gives `undefined`.
+  - `@lifi/perps-sdk`: `calculateOrderAmounts` throws `ValidationError` and does not give `null`. Use `safeCalculateOrderAmounts` for display code.
+  - `@lifi/perps-sdk`: `estimateRealizedPnl` gives `undefined`, not `null`, when the order does not reduce the position.
+  - `@lifi/perps-sdk`: `truncateDecimal` and `safeTruncateDecimal` are removed.
+  - `@lifi/perps-sdk`: `warnSkippedVenueRow` takes an options object `{ marketId, expected }` as its fourth argument. The skipped-row warning names the market.
+  - `@lifi/perps-sdk-provider-lighter`: `marginFractionToMaxLeverage` and `leverageToFraction` are removed from the exports.
+
+  New exports in `@lifi/perps-sdk`: `addDecimalStrings`, `safeAddDecimalStrings`, `safeUnknownToDecimalString`, `safeCalculateOrderAmounts` and `createSafeFunction`.
+
+  Provider behaviour:
+
+  - Hyperliquid, Lighter and Ondo keep a position, order or fill row when one optional venue value is bad. The SDK logs a warning once and leaves the derived field absent.
+  - A WebSocket account summary that has a bad required value keeps the last summary and logs a warning.
+  - Lighter order sizes and fee rates pass the venue values verbatim. Account totals skip a bad term and log a warning.
+
+### Patch Changes
+
+- Updated dependencies [[`3d584a3`](https://github.com/lifinance/perps-sdk/commit/3d584a37cf56f6e79712505be785a4dcd4088088)]:
+  - @lifi/perps-types@22.0.0
+  - @lifi/perps-sdk@25.0.0
+
 ## 26.0.0
 
 ### Major Changes
