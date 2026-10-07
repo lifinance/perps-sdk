@@ -115,7 +115,7 @@ describe('mapPosition', () => {
     expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        `[ondo] skipping position row: \`netQuantity\` is not a valid decimal: '${netQuantity}'`
+        `[ondo] skipping position row on market 'AAPL-USD.P': \`netQuantity\` is not a valid decimal: '${netQuantity}'`
       )
     )
     warn.mockRestore()

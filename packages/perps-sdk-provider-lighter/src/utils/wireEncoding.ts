@@ -1,6 +1,6 @@
 /**
- * Lighter wire encoding for the WASM signer: basis-point margin fractions and
- * order-type/time-in-force/expiry resolution mirroring lighter-go's rules.
+ * Lighter wire encoding for the WASM signer: order-type/time-in-force/expiry
+ * resolution mirroring lighter-go's rules.
  */
 
 import { PerpsError } from '@lifi/perps-sdk'
@@ -18,47 +18,6 @@ import {
   LT_TIME_IN_FORCE_IOC,
   LT_TIME_IN_FORCE_POST_ONLY,
 } from '../types/action.js'
-
-/**
- * Convert Lighter's initial-margin fraction to the largest whole-number
- * leverage exposed by the provider.
- *
- * Lighter expresses margin fractions in basis points (`10_000` = 100%), so
- * the conversion is `floor(10_000 / fraction)`. Non-finite or non-positive
- * input uses the safe `1x` fallback.
- *
- * @param fraction - Lighter's basis-point initial-margin fraction.
- * @returns The floored maximum leverage, or `1` for invalid input.
- * @public
- */
-export const marginFractionToMaxLeverage = (fraction: number): number => {
-  if (!Number.isFinite(fraction) || fraction <= 0) {
-    return 1
-  }
-  return Math.floor(10_000 / fraction)
-}
-
-/**
- * Convert requested leverage to Lighter's basis-point margin fraction.
- *
- * The signer expects `round(10_000 / leverage)`, where the result is the
- * margin requirement in basis points.
- *
- * @param leverage - Requested leverage multiplier.
- * @returns The rounded basis-point margin fraction.
- * @throws {PerpsError} With `ValidationError` when leverage is less than
- * or equal to zero.
- * @public
- */
-export const leverageToFraction = (leverage: number): number => {
-  if (leverage <= 0) {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Invalid leverage: ${leverage}`
-    )
-  }
-  return Math.round(10_000 / leverage)
-}
 
 /**
  * Map a LI.FI `OrderType` value to Lighter's integer wire type.

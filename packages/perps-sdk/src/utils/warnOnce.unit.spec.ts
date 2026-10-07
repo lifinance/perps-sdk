@@ -47,23 +47,35 @@ describe('createWarnOnce', () => {
 })
 
 describe('warnSkippedVenueRow', () => {
-  it('warns once for each provider, row and field, whatever the value', () => {
+  it('warns once for each provider, row, field and market, whatever the value', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc')
-    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'xyz')
-    warnSkippedVenueRow('hyperliquid', 'position', 'entryPx', 'abc')
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc', {
+      marketId: 'BTC',
+    })
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'xyz', {
+      marketId: 'BTC',
+    })
+    warnSkippedVenueRow('hyperliquid', 'position', 'entryPx', 'abc', {
+      marketId: 'BTC',
+    })
+    warnSkippedVenueRow('hyperliquid', 'position', 'szi', 'abc', {
+      marketId: 'ETH',
+    })
 
     expect(warn.mock.calls.map(([message]) => message)).toEqual([
-      "[hyperliquid] skipping position row: `szi` is not a valid decimal: 'abc'",
-      "[hyperliquid] skipping position row: `entryPx` is not a valid decimal: 'abc'",
+      "[hyperliquid] skipping position row on market 'BTC': `szi` is not a valid decimal: 'abc'",
+      "[hyperliquid] skipping position row on market 'BTC': `entryPx` is not a valid decimal: 'abc'",
+      "[hyperliquid] skipping position row on market 'ETH': `szi` is not a valid decimal: 'abc'",
     ])
   })
 
   it('names the expected kind and cuts a long value', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    warnSkippedVenueRow('ondo', 'fill', 'time', 'x'.repeat(100), 'timestamp')
+    warnSkippedVenueRow('ondo', 'fill', 'time', 'x'.repeat(100), {
+      expected: 'timestamp',
+    })
 
     expect(warn).toHaveBeenCalledWith(
       `[ondo] skipping fill row: \`time\` is not a valid timestamp: '${'x'.repeat(64)}…'`

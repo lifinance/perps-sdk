@@ -95,3 +95,14 @@ export function unknownToDecimalString(
   error.tool = tool
   throw error
 }
+
+/**
+ * The safe pair of {@link unknownToDecimalString}: `undefined` and a warning
+ * in place of a throw.
+ *
+ * @public
+ */
+export const safeUnknownToDecimalString = createSafeFunction(
+  'unknownToDecimalString',
+  unknownToDecimalString
+)

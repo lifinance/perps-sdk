@@ -102,31 +102,46 @@ describe('wsLog', () => {
   })
 
   describe('skippedRow', () => {
-    it('warns once for each provider, row and field, whatever the value', () => {
+    it('warns once for each provider, row, field and market, whatever the value', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-1')
-      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-2')
-      wsLog.skippedRow('lighter', 'order book level', 'price', 'bad-1')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-1', '0')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-2', '0')
+      wsLog.skippedRow('lighter', 'order book level', 'price', 'bad-1', '0')
+      wsLog.skippedRow('lighter', 'order book level', 'size', 'bad-3', '1')
 
       expect(warn.mock.calls.map(([message]) => message)).toEqual([
-        "[lighter:ws] skipping order book level row: `size` is not a valid decimal: 'bad-1'",
-        "[lighter:ws] skipping order book level row: `price` is not a valid decimal: 'bad-1'",
+        "[lighter:ws] skipping order book level row on market '0': `size` is not a valid decimal: 'bad-1'",
+        "[lighter:ws] skipping order book level row on market '0': `price` is not a valid decimal: 'bad-1'",
+        "[lighter:ws] skipping order book level row on market '1': `size` is not a valid decimal: 'bad-3'",
       ])
     })
   })
 
   describe('droppedRow', () => {
-    it('warns once for each provider and row, whatever the reason', () => {
+    it('warns once for each provider, row and reason', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      wsLog.droppedRow('ondo', 'order', 'order-1: bad status')
-      wsLog.droppedRow('ondo', 'order', 'order-2: bad status')
-      wsLog.droppedRow('ondo', 'fill', 'fill-1: bad status')
+      wsLog.droppedRow('ondo', 'order', 'bad status: expired')
+      wsLog.droppedRow('ondo', 'order', 'bad status: expired')
+      wsLog.droppedRow('ondo', 'order', 'bad status: unknown')
+      wsLog.droppedRow('ondo', 'fill', 'bad status: expired')
 
       expect(warn.mock.calls.map(([message]) => message)).toEqual([
-        '[ondo:ws] skipping order row: order-1: bad status',
-        '[ondo:ws] skipping fill row: fill-1: bad status',
+        '[ondo:ws] skipping order row: bad status: expired',
+        '[ondo:ws] skipping order row: bad status: unknown',
+        '[ondo:ws] skipping fill row: bad status: expired',
+      ])
+    })
+
+    it('cuts a long reason in the key and the message', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      wsLog.droppedRow('ondo', 'order', `${'x'.repeat(64)}-first`)
+      wsLog.droppedRow('ondo', 'order', `${'x'.repeat(64)}-second`)
+
+      expect(warn.mock.calls.map(([message]) => message)).toEqual([
+        `[ondo:ws] skipping order row: ${'x'.repeat(64)}…`,
       ])
     })
   })

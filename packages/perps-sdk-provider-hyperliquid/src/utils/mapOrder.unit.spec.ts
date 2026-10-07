@@ -71,7 +71,9 @@ describe('mapOrder', () => {
 
     expect(mapOrder(order, MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`[hyperliquid] skipping order row: \`${field}\``)
+      expect.stringContaining(
+        `[hyperliquid] skipping order row on market 'ETH': \`${field}\``
+      )
     )
   })
   it('keeps a limit order with a non-decimal limitPx as the raw venue string', () => {

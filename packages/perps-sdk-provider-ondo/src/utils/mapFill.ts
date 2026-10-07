@@ -31,7 +31,12 @@ export const mapFill = (
   fill: OndoFill,
   market: MarketDisplay
 ): Fill | undefined => {
-  const createdAt = rowTimestampToIsoStringOrWarn('fill', 'time', fill.time)
+  const createdAt = rowTimestampToIsoStringOrWarn(
+    'fill',
+    'time',
+    fill.time,
+    market.id
+  )
   if (createdAt === undefined) {
     return undefined
   }

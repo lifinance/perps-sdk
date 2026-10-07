@@ -98,7 +98,9 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(mapPosition(makeAp({ szi: 'abc' }), BTC_MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+      expect.stringContaining(
+        "[hyperliquid] skipping position row on market 'BTC': `szi`"
+      )
     )
   })
 

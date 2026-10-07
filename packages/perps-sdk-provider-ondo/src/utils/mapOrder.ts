@@ -24,19 +24,23 @@ import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
 import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
 
 const skipOrder = (
+  marketId: string,
   field: string,
-  value: unknown,
-  expected?: string
+  value: unknown
 ): undefined => {
-  warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'order', field, value, expected)
+  warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'order', field, value, { marketId })
   return undefined
 }
 
-const orderSizeOrSkip = (field: string, value: unknown): string | undefined => {
+const orderSizeOrSkip = (
+  marketId: string,
+  field: string,
+  value: unknown
+): string | undefined => {
   try {
     return unknownToDecimalString(value, field, ONDO_PROVIDER_KEY)
   } catch {
-    return skipOrder(field, value)
+    return skipOrder(marketId, field, value)
   }
 }
 
@@ -101,13 +105,13 @@ export const mapOrder = (
   parentOrderId?: string
 ): Order | undefined => {
   const twap = 'twapId' in order
-  const filledSize = orderSizeOrSkip('filledSize', order.filledSize)
+  const filledSize = orderSizeOrSkip(market.id, 'filledSize', order.filledSize)
   if (filledSize === undefined) {
     return undefined
   }
   const sizeValue = twap
-    ? orderSizeOrSkip('totalSize', order.totalSize)
-    : orderSizeOrSkip('size', order.size)
+    ? orderSizeOrSkip(market.id, 'totalSize', order.totalSize)
+    : orderSizeOrSkip(market.id, 'size', order.size)
   if (sizeValue === undefined) {
     return undefined
   }
@@ -121,7 +125,8 @@ export const mapOrder = (
   const createdAt = rowTimestampToIsoStringOrWarn(
     'order',
     createdField,
-    createdValue
+    createdValue,
+    market.id
   )
   if (createdAt === undefined) {
     return undefined
@@ -132,7 +137,8 @@ export const mapOrder = (
   const updatedAt = rowTimestampToIsoStringOrWarn(
     'order',
     'updatedAt',
-    updatedValue
+    updatedValue,
+    market.id
   )
   if (updatedAt === undefined) {
     return undefined

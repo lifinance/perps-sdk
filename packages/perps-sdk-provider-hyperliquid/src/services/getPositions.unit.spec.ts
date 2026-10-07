@@ -53,7 +53,9 @@ describe('getPositions', () => {
 
     expect(result.positions.map((p) => p.market.id)).toEqual(['BTC'])
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+      expect.stringContaining(
+        "[hyperliquid] skipping position row on market 'ETH': `szi`"
+      )
     )
   })
 

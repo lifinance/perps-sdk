@@ -18,8 +18,12 @@ import type { HlAssetPosition } from '../types/index.js'
 
 const warnNonPositiveLeverageOnce = createWarnOnce()
 
-const skipPosition = (field: string, value: unknown): undefined => {
-  warnSkippedVenueRow(PROVIDER_KEY, 'position', field, value)
+const skipPosition = (
+  marketId: string,
+  field: string,
+  value: unknown
+): undefined => {
+  warnSkippedVenueRow(PROVIDER_KEY, 'position', field, value, { marketId })
   return undefined
 }
 
@@ -48,7 +52,7 @@ export const mapPosition = (
 ): Position | undefined => {
   const pos = ap.position
   if (!isDecimalString(pos.szi)) {
-    return skipPosition('szi', pos.szi)
+    return skipPosition(market.id, 'szi', pos.szi)
   }
   const size = absDecimalString(pos.szi)
   const positionValue = safeAbsDecimalString(pos.positionValue)

@@ -3567,8 +3567,8 @@ describe('LighterProvider — getAccount carries positions', () => {
   })
 })
 
-describe('LighterProvider — getPositions skips a bad row', () => {
-  it('drops only the row with an invalid position_value and warns', async () => {
+describe('LighterProvider — getPositions keeps a row with a bad position_value', () => {
+  it('keeps the row without the derived mark price and warns', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const goodRow = {
       market_id: 0,
@@ -3610,19 +3610,21 @@ describe('LighterProvider — getPositions skips a bad row', () => {
 
     const { positions } = await provider.getPositions({ address: ADDRESS })
 
-    expect(positions).toHaveLength(1)
-    expect(positions[0].size).toBe('1')
+    expect(positions).toHaveLength(2)
+    expect(positions[0].markPrice).toBe('50000')
+    expect(positions[1].size).toBe('1')
+    expect(positions[1].markPrice).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        "[lighter] skipping position row: `position_value` is not a valid decimal: 'rest-bad-value'"
+        "[lighter] position `position_value` is not readable, so the derived fields are absent: 'rest-bad-value'"
       )
     )
     warn.mockRestore()
   })
 })
 
-describe('LighterProvider — getAccount refuses a bad open position', () => {
-  it('throws instead of a total that leaves the position out', async () => {
+describe('LighterProvider — getAccount keeps a position with a bad position_value', () => {
+  it('returns the position and totals instead of a throw', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const badRow = {
       market_id: 0,
@@ -3654,12 +3656,12 @@ describe('LighterProvider — getAccount refuses a bad open position', () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
-    await expect(
-      provider.getAccount({ address: ADDRESS })
-    ).rejects.toMatchObject({
-      code: PerpsErrorCode.SDKError,
-      message: expect.stringContaining('market 0'),
-    })
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toHaveLength(1)
+    expect(account.positions[0].market.id).toBe('0')
+    expect(account.positions[0].markPrice).toBeUndefined()
+    expect(account.unrealizedPnl).toBe('10')
     warn.mockRestore()
   })
 })

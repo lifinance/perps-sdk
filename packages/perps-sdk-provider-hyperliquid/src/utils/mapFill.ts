@@ -31,7 +31,10 @@ export const mapFill = (
   const size = fill.sz
   const createdAt = rowTimestampToIsoStringOrUndefined(fill.time)
   if (createdAt === undefined) {
-    warnSkippedVenueRow(PROVIDER_KEY, 'fill', 'time', fill.time, 'timestamp')
+    warnSkippedVenueRow(PROVIDER_KEY, 'fill', 'time', fill.time, {
+      marketId: market.id,
+      expected: 'timestamp',
+    })
     return undefined
   }
   // HL charges the builder portion in the same token as the total fee.

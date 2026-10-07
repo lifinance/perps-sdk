@@ -23,10 +23,8 @@ export { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'
 export { positionRemovableMargin } from './transferMargin.js'
 export {
-  leverageToFraction,
   mapOrderTypeToInt,
   mapTimeInForceToInt,
-  marginFractionToMaxLeverage,
   orderExpiryForTif,
   resolveTimeInForce,
 } from './wireEncoding.js'

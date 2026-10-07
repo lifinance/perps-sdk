@@ -33,13 +33,9 @@ const mapPoint = (
 ): PortfolioHistoryPoint | undefined => {
   const timestamp = Date.parse(point.time)
   if (Number.isNaN(timestamp)) {
-    warnSkippedVenueRow(
-      ONDO_PROVIDER_KEY,
-      POINT_ROW,
-      'time',
-      point.time,
-      'timestamp'
-    )
+    warnSkippedVenueRow(ONDO_PROVIDER_KEY, POINT_ROW, 'time', point.time, {
+      expected: 'timestamp',
+    })
     return undefined
   }
   return { timestamp, accountValue: point.marginBalance, pnl: point.totalPnL }

@@ -31,7 +31,8 @@ export const mapPosition = (
       ONDO_PROVIDER_KEY,
       'position',
       'netQuantity',
-      pos.netQuantity
+      pos.netQuantity,
+      { marketId: market.id }
     )
     return undefined
   }

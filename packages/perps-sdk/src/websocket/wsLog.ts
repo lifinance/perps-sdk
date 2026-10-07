@@ -1,4 +1,8 @@
-import { createWarnOnce, skippedRowMessage } from '../utils/warnOnce.js'
+import {
+  createWarnOnce,
+  cutVenueText,
+  skippedRowMessage,
+} from '../utils/warnOnce.js'
 
 const MAX_PAYLOAD_CHARS = 512
 
@@ -64,29 +68,38 @@ export const wsLog = {
   },
   /**
    * A frame row or order-book level with a required field that is not valid.
-   * Only that row is skipped. Logged once at `warn` for each provider, row and
-   * field; the key holds no venue value.
+   * Only that row is skipped. Logged once at `warn` for each provider, row,
+   * field and market; the key holds no venue value.
    */
   skippedRow(
     provider: string,
     row: string,
     field: string,
-    value: unknown
+    value: unknown,
+    marketId?: string
   ): void {
     warnSkippedRowOnce(
-      `${provider}|${row}|${field}`,
-      skippedRowMessage(`${provider}:ws`, row, field, value, 'decimal')
+      `${provider}|${row}|${field}|${marketId ?? ''}`,
+      skippedRowMessage(
+        `${provider}:ws`,
+        row,
+        field,
+        value,
+        'decimal',
+        marketId
+      )
     )
   },
   /**
    * A frame row the mapper rejected for a reason other than one field, such as
    * a lifecycle state the SDK does not carry. Logged once at `warn` for each
-   * provider and row; the key holds no venue value.
+   * provider, row and reason; the reason is cut to a fixed length.
    */
   droppedRow(provider: string, row: string, reason: string): void {
+    const shown = cutVenueText(reason)
     warnSkippedRowOnce(
-      `${provider}|${row}|dropped`,
-      `[${provider}:ws] skipping ${row} row: ${reason}`
+      `${provider}|${row}|dropped|${shown}`,
+      `[${provider}:ws] skipping ${row} row: ${shown}`
     )
   },
   /**

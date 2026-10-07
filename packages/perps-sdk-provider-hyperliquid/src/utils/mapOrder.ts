@@ -100,8 +100,12 @@ export const mapOrderStatus = (status: string): OrderStatus => {
   }
 }
 
-const skipOrder = (field: string, value: unknown): undefined => {
-  warnSkippedVenueRow(PROVIDER_KEY, 'order', field, value)
+const skipOrder = (
+  marketId: string,
+  field: string,
+  value: unknown
+): undefined => {
+  warnSkippedVenueRow(PROVIDER_KEY, 'order', field, value, { marketId })
   return undefined
 }
 
@@ -158,15 +162,15 @@ export const mapOrder = (
     const { state } = raw
     const remainingSize = safeSubtractDecimalString(state.sz, state.executedSz)
     if (remainingSize === undefined) {
-      return skipOrder('executedSz', state.executedSz)
+      return skipOrder(market.id, 'executedSz', state.executedSz)
     }
     const createdAt = rowTimestampToIsoStringOrUndefined(state.timestamp)
     if (createdAt === undefined) {
-      return skipOrder('timestamp', state.timestamp)
+      return skipOrder(market.id, 'timestamp', state.timestamp)
     }
     const updatedAt = rowTimestampToIsoStringOrUndefined(raw.time * 1000)
     if (updatedAt === undefined) {
-      return skipOrder('time', raw.time)
+      return skipOrder(market.id, 'time', raw.time)
     }
     let status: OrderStatus
     switch (raw.status.status) {
@@ -223,17 +227,17 @@ export const mapOrder = (
   const filledSize = safeSubtractDecimalString(o.origSz, o.sz)
   if (filledSize === undefined) {
     return isDecimalString(o.origSz)
-      ? skipOrder('sz', o.sz)
-      : skipOrder('origSz', o.origSz)
+      ? skipOrder(market.id, 'sz', o.sz)
+      : skipOrder(market.id, 'origSz', o.origSz)
   }
   const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
   if (createdAt === undefined) {
-    return skipOrder('timestamp', o.timestamp)
+    return skipOrder(market.id, 'timestamp', o.timestamp)
   }
   const statusTimestamp = 'order' in raw ? raw.statusTimestamp : o.timestamp
   const updatedAt = rowTimestampToIsoStringOrUndefined(statusTimestamp)
   if (updatedAt === undefined) {
-    return skipOrder('statusTimestamp', statusTimestamp)
+    return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
   let status = mapOrderStatus(venueStatus)
   if (parentOrderId !== undefined && !('order' in raw)) {

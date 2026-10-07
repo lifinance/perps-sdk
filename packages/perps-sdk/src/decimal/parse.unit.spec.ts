@@ -5,6 +5,7 @@ import {
   decimalStringToNumber,
   isDecimalString,
   safeDecimalStringToNumber,
+  safeUnknownToDecimalString,
   unknownToDecimalString,
 } from './parse.js'
 
@@ -115,6 +116,18 @@ describe('unknownToDecimalString', () => {
       tool: 'lighter',
       message: expect.stringMatching(/^lighter field `balance`/),
     })
+  })
+})
+
+describe('safeUnknownToDecimalString', () => {
+  it('spells out a venue number', () => {
+    expect(safeUnknownToDecimalString(1e-7, 'field', 'tool')).toBe('0.0000001')
+  })
+
+  it('gives undefined and warns for a bad value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeUnknownToDecimalString('abc', 'field', 'tool')).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
   })
 })
 

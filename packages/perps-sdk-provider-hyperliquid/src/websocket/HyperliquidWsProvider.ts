@@ -1018,10 +1018,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       provider: this.providerKey,
       marketId: data.coin,
       bids: data.levels[0]
-        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .flatMap((l) => toOrderbookLevel(data.coin, l.px, l.sz))
         .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       asks: data.levels[1]
-        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .flatMap((l) => toOrderbookLevel(data.coin, l.px, l.sz))
         .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       timestamp: data.time,
     }
@@ -1065,12 +1065,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       provider: this.providerKey,
       marketId: delta.c,
       bids: applyCompressedL2Side(
+        delta.c,
         previous.bids,
         delta.l[0],
         delta.r?.[0] ?? [],
         'bid'
       ),
       asks: applyCompressedL2Side(
+        delta.c,
         previous.asks,
         delta.l[1],
         delta.r?.[1] ?? [],
@@ -1768,27 +1770,38 @@ function mapSpotMarketContext(
 const BOOK_LEVEL_ROW = 'order book level'
 
 /** The venue price when it is a decimal string, or `undefined` after a logged skip. */
-function bookLevelPrice(price: string): DecimalString | undefined {
+function bookLevelPrice(
+  marketId: string,
+  price: string
+): DecimalString | undefined {
   if (!isDecimalString(price)) {
-    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'price', price)
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'price', price, marketId)
     return undefined
   }
   return price
 }
 
 /** The venue size when it is a decimal string, or `undefined` after a logged skip. */
-function bookLevelSize(size: string): DecimalString | undefined {
+function bookLevelSize(
+  marketId: string,
+  size: string
+): DecimalString | undefined {
   if (!isDecimalString(size)) {
-    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'size', size)
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'size', size, marketId)
     return undefined
   }
   return size
 }
 
 /** One order-book level, or none when the venue price or size is invalid. */
-function toOrderbookLevel(price: string, size: string): OrderbookLevel[] {
-  const levelPrice = bookLevelPrice(price)
-  const levelSize = levelPrice === undefined ? undefined : bookLevelSize(size)
+function toOrderbookLevel(
+  marketId: string,
+  price: string,
+  size: string
+): OrderbookLevel[] {
+  const levelPrice = bookLevelPrice(marketId, price)
+  const levelSize =
+    levelPrice === undefined ? undefined : bookLevelSize(marketId, size)
   return levelPrice === undefined || levelSize === undefined
     ? []
     : [{ price: levelPrice, size: levelSize }]
@@ -1805,6 +1818,7 @@ function compactRemovalPrice(
 }
 
 function applyCompressedL2Side(
+  marketId: string,
   previous: OrderbookLevel[],
   updates: HlWsCompressedL2Data['l'][number],
   removals: NonNullable<HlWsCompressedL2Data['r']>[number],
@@ -1818,11 +1832,11 @@ function applyCompressedL2Side(
     }
   }
   for (const update of updates) {
-    const price = bookLevelPrice(update.p)
+    const price = bookLevelPrice(marketId, update.p)
     if (price === undefined) {
       continue
     }
-    const size = bookLevelSize(update.s)
+    const size = bookLevelSize(marketId, update.s)
     // A level whose new size is unknown must not keep its old size.
     if (size === undefined || safeIsDecimalStringZero(size) !== false) {
       byPrice.delete(price)

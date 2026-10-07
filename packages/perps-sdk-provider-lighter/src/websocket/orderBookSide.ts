@@ -31,7 +31,8 @@ export class OrderBookSide {
 
   constructor(
     private readonly order: PriceOrder,
-    private readonly providerKey: string
+    private readonly providerKey: string,
+    private readonly marketId: string
   ) {}
 
   /**
@@ -42,11 +43,23 @@ export class OrderBookSide {
   apply(updates: LtWsOrderBook['bids']): void {
     for (const { price, size } of updates) {
       if (!isDecimalString(price)) {
-        wsLog.skippedRow(this.providerKey, 'order book level', 'price', price)
+        wsLog.skippedRow(
+          this.providerKey,
+          'order book level',
+          'price',
+          price,
+          this.marketId
+        )
         continue
       }
       if (!isDecimalString(size)) {
-        wsLog.skippedRow(this.providerKey, 'order book level', 'size', size)
+        wsLog.skippedRow(
+          this.providerKey,
+          'order book level',
+          'size',
+          size,
+          this.marketId
+        )
         this.remove(price)
         continue
       }

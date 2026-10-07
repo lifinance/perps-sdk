@@ -3471,7 +3471,9 @@ describe('HyperliquidWsProvider', () => {
       const event = listener.mock.calls[0][0]
       expect(event.data.map((p: any) => p.market.id)).toEqual(['BTC'])
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+        expect.stringContaining(
+          "[hyperliquid] skipping position row on market 'ETH': `szi`"
+        )
       )
     })
 
@@ -3758,7 +3760,9 @@ describe('HyperliquidWsProvider', () => {
         terminated: [],
       })
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[hyperliquid] skipping order row: `timestamp`')
+        expect.stringContaining(
+          "[hyperliquid] skipping order row on market 'BTC': `timestamp`"
+        )
       )
       expect(errorSpy).not.toHaveBeenCalled()
       errorSpy.mockRestore()

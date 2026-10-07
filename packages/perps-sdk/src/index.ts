@@ -65,6 +65,7 @@ export {
   decimalStringToNumber,
   isDecimalString,
   safeDecimalStringToNumber,
+  safeUnknownToDecimalString,
   unknownToDecimalString,
 } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
