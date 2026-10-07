@@ -147,7 +147,7 @@ const MARKETS_RESPONSE = {
       maxLeverage: 20,
       onlyIsolated: false,
       positionMarginAdjustment: PositionMarginAdjustment.NONE,
-      maintenanceMarginRate: 0.02,
+      maintenanceMarginRate: '0.02',
       funding: { rate: '0.0001', nextFundingTime: 0 },
     },
   ],
@@ -1513,7 +1513,7 @@ describe('OndoProvider — getPositions skips a bad row', () => {
     expect(positions).toHaveLength(1)
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        "[ondo] skipping position row: `netQuantity` is not a valid decimal: 'rest-bad-quantity'"
+        "[ondo] skipping position row on market 'AAPL-USD.P': `netQuantity` is not a valid decimal: 'rest-bad-quantity'"
       )
     )
     warn.mockRestore()

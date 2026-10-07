@@ -170,16 +170,29 @@ describe('mapOrder (Lighter)', () => {
     expect(
       mapOrder(
         baseOrder({
-          filled_base_amount: '1e-400',
-          filled_quote_amount: '2e-397',
+          filled_base_amount: `0.${'0'.repeat(399)}1`,
+          filled_quote_amount: `0.${'0'.repeat(396)}2`,
         }),
         MARKET
       )
     ).toMatchObject({
       status: OrderStatus.PARTIALLY_FILLED,
-      filledSize: '1e-400',
       averagePrice: '2000',
     })
+  })
+
+  it('passes an exponent-form fill verbatim and omits the average price', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mapped = mapOrder(
+      baseOrder({ filled_base_amount: '1e-4', filled_quote_amount: '2e-1' }),
+      MARKET
+    )
+    expect(mapped).toMatchObject({
+      status: OrderStatus.OPEN,
+      filledSize: '1e-4',
+    })
+    expect(mapped).not.toHaveProperty('averagePrice')
+    warn.mockRestore()
   })
 
   it.each([
@@ -269,9 +282,23 @@ describe('mapOrder (Lighter)', () => {
   })
 
   it.each([
-    ['initial_base_amount', { initial_base_amount: 'abc' }],
-    ['remaining_base_amount', { remaining_base_amount: '' }],
-    ['filled_base_amount', { filled_base_amount: 'NaN' }],
+    ['originalSize', { initial_base_amount: 'abc' }, 'abc'],
+    ['remainingSize', { remaining_base_amount: '' }, ''],
+    ['filledSize', { filled_base_amount: 'NaN' }, 'NaN'],
+  ] satisfies [
+    string,
+    Partial<LtOrder>,
+    string,
+  ][])('keeps the row and the raw venue %s', (key, overrides, venueValue) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapOrder(baseOrder(overrides), MARKET)).toHaveProperty(
+      key,
+      venueValue
+    )
+    vi.restoreAllMocks()
+  })
+
+  it.each([
     ['created_at', { created_at: Number.NaN }],
     ['updated_at', { updated_at: 9e15 }],
   ])('skips the row and warns when %s is invalid', (field, overrides) => {
@@ -279,7 +306,9 @@ describe('mapOrder (Lighter)', () => {
 
     expect(mapOrder(baseOrder(overrides), MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`[lighter] skipping order row: \`${field}\``)
+      expect.stringContaining(
+        `[lighter] skipping order row on market '1': \`${field}\``
+      )
     )
     warn.mockRestore()
   })
@@ -322,13 +351,13 @@ describe('mapOrder (Lighter)', () => {
     ).not.toHaveProperty('averagePrice')
   })
 
-  it('omits limitPrice on a limit trigger with an invalid price', () => {
+  it('keeps the raw venue limitPrice on a limit trigger', () => {
     expect(
       mapOrder(
         baseOrder({ type: 'stop-loss-limit', trigger_price: '90', price: '' }),
         MARKET
       )
-    ).not.toHaveProperty('limitPrice')
+    ).toHaveProperty('limitPrice', '')
   })
 
   it('rejects an unrepresentable order type', () => {
@@ -373,6 +402,23 @@ describe('mapOrderUpdates (Lighter)', () => {
       ['3', OrderStatus.PENDING],
     ])
     expect(result.terminated).toEqual(['2'])
+  })
+
+  it('drops a row the mapper rejects, warns once and keeps the other rows', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = mapOrderUpdates(
+      [
+        baseOrder({ order_index: 7, type: 'unknown' }),
+        baseOrder({ order_index: 8 }),
+      ],
+      () => MARKET
+    )
+    expect(result.orders.map(({ orderId }) => orderId)).toEqual(['8'])
+    expect(result.terminated).toEqual([])
+    expect(warn).toHaveBeenCalledWith(
+      '[lighter:ws] skipping order row: 7: Unknown Lighter order type: unknown'
+    )
+    warn.mockRestore()
   })
 
   it('emits a pre-book row and keeps it out of the eviction ids', () => {

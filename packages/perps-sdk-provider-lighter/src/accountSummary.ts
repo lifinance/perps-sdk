@@ -1,6 +1,9 @@
 import {
   addDecimalString,
+  createWarnOnce,
+  isDecimalString,
   PerpsError,
+  safeAddDecimalStrings,
   subtractDecimalString,
   unknownToDecimalString,
 } from '@lifi/perps-sdk'
@@ -55,6 +58,22 @@ export const lighterPortfolioValue = (
     perpsEquity
   )
 
+const warnSkippedTermOnce = createWarnOnce()
+
+const sumReadableTerms = (terms: readonly string[], field: string): string => {
+  const readable = terms.filter((term) => {
+    if (isDecimalString(term)) {
+      return true
+    }
+    warnSkippedTermOnce(
+      `${LIGHTER_PROVIDER_KEY}|${field}`,
+      `[${LIGHTER_PROVIDER_KEY}] skipping a \`${field}\` term that does not match the decimal pattern: '${String(term).slice(0, 64)}'`
+    )
+    return false
+  })
+  return safeAddDecimalStrings(readable) ?? '0'
+}
+
 /**
  * Roll up settlement equity, spot holdings and non-settlement margin holdings.
  * The settlement asset counts as `totalAssetValue` plus its spot-route balance,
@@ -105,11 +124,13 @@ export function getAccountSummary(
         )
       )
     ),
-    marginUsed: positions
-      .map((p) => p.marginUsed)
-      .reduce(addDecimalString, '0'),
-    unrealizedPnl: positions
-      .map((p) => p.unrealizedPnl)
-      .reduce(addDecimalString, '0'),
+    marginUsed: sumReadableTerms(
+      positions.map((p) => p.marginUsed),
+      'position.marginUsed'
+    ),
+    unrealizedPnl: sumReadableTerms(
+      positions.map((p) => p.unrealizedPnl),
+      'position.unrealizedPnl'
+    ),
   }
 }

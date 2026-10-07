@@ -98,7 +98,9 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(mapPosition(makeAp({ szi: 'abc' }), BTC_MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+      expect.stringContaining(
+        "[hyperliquid] skipping position row on market 'BTC': `szi`"
+      )
     )
   })
 
@@ -223,6 +225,10 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.entryPrice).toBe('0')
     expect(result.liquidationPrice).toBe('0')
+  })
+
+  it('maps an empty liquidationPx to "0"', () => {
+    expect(map(makeAp({ liquidationPx: '' })).liquidationPrice).toBe('0')
   })
 })
 

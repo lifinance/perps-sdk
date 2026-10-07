@@ -2,6 +2,7 @@ import {
   ACTIVE_ORDER_STATUSES,
   calculateTransferable,
   type DepositFlow,
+  divideDecimalString,
   estimateLiquidationPriceAtMarketRate,
   explorerTxUrl,
   explorerTxUrlFromBase,
@@ -38,7 +39,7 @@ import {
   type SignActionsContext,
   type StorageAdapter,
   safeAbsDecimalString,
-  safeAddDecimalString,
+  safeAddDecimalStrings,
   safeMultiplyDecimalString,
   subtractDecimalString,
   toPerpsMarketDisplay,
@@ -168,7 +169,6 @@ import {
   toIsoFromMs,
   toIsoFromSeconds,
 } from './utils/index.js'
-import { requireOpenPositions } from './utils/mapOpenPositions.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -184,16 +184,11 @@ import { wireList } from './utils/wireList.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
-/** The sum of `values`, or `undefined` when any term is not a decimal string. */
-const safeSum = (values: readonly string[]): string | undefined =>
-  values.reduce<string | undefined>(
-    (sum, value) =>
-      sum === undefined ? undefined : safeAddDecimalString(sum, value),
-    '0'
-  )
-
 const tickToFeeString = (tick: number): string =>
-  numberToDecimalString(tick / LIGHTER_FEE_TICK_SCALE)
+  divideDecimalString(
+    numberToDecimalString(tick),
+    numberToDecimalString(LIGHTER_FEE_TICK_SCALE)
+  )
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -1095,13 +1090,16 @@ export const createLighterProvider = (
             ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
             : Promise.resolve(undefined),
         ])
-      const positions: Position[] = requireOpenPositions(
-        account.positions,
-        (id) => toPerpsMarketDisplay(registry.require(String(id)))
+      const positions: Position[] = mapOpenPositions(account.positions, (id) =>
+        toPerpsMarketDisplay(registry.require(String(id)))
       )
 
-      const totalMarginUsed = safeSum(positions.map((p) => p.marginUsed))
-      const totalUnrealizedPnl = safeSum(positions.map((p) => p.unrealizedPnl))
+      const totalMarginUsed = safeAddDecimalStrings(
+        positions.map((p) => p.marginUsed)
+      )
+      const totalUnrealizedPnl = safeAddDecimalStrings(
+        positions.map((p) => p.unrealizedPnl)
+      )
 
       const instanceMeta = providers.find((p) => p.key === providerKey)
       const categories = instanceMeta?.categories ?? []

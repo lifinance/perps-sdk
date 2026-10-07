@@ -21,8 +21,8 @@ export { FillClassification }
  * @param startPosition Signed position held BEFORE this fill (`> 0` long,
  *   `< 0` short, `0` flat).
  * @param sz Unsigned fill size.
- * @returns `BUY` or `SELL` when `startPosition` or `sz` is not a decimal
- *   string, so one malformed venue fill still maps.
+ * @returns `BUY` or `SELL` when `startPosition` or `sz` does not match the
+ *   decimal pattern, so one malformed venue fill still maps.
  * @public
  */
 export function classifyFillFromPosition(
@@ -74,8 +74,8 @@ export function classifyFillFromPosition(
  * Classify a fill as open or close based on realizedPnl.
  * @deprecated Use `Fill.classification` instead — it uses startPosition
  * for accurate open/increase/reduce/close/reverse classification.
- * @returns `BUY` or `SELL` when `realizedPnl` is a string that is not a
- *   decimal string.
+ * @returns `BUY` or `SELL` when `realizedPnl` is a string that does not match the
+ *   decimal pattern.
  * @public
  */
 export function classifyFill(

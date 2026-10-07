@@ -9,8 +9,8 @@ import { decimalStringToBig } from '../decimal/decimalStringToBig.js'
  * @param venueFigure - The venue's free figure for the category, which can
  *   exceed `units` or fall below zero.
  * @param units - Units held in the category, the upper bound of the clamp.
- * @throws {PerpsError} `ValidationError` when either input is not a
- *   {@link DecimalString}, naming the field.
+ * @throws {PerpsError} `ValidationError` when either input does not match the
+ *   decimal pattern, naming the field.
  * @public
  */
 export function calculateTransferable(

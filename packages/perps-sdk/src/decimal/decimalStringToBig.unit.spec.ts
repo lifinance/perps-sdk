@@ -12,9 +12,6 @@ describe('decimalStringToBig', () => {
     ['0', '0'],
     ['1.5', '1.5'],
     ['-2.25', '-2.25'],
-    ['$1,234.5', '1234.5'],
-    ['12.5%', '12.5'],
-    [' 1 ', '1'],
   ])('reads %j as %s', (value, expected) => {
     expect(decimalStringToBig(value).toFixed()).toBe(expected)
   })
@@ -25,9 +22,15 @@ describe('decimalStringToBig', () => {
     'n/a',
     '',
     '$',
+    '$1,234.5',
+    '0.05%',
+    ' 1 ',
   ])('throws ValidationError for %j', (value) => {
     expect(() => decimalStringToBig(value)).toThrowError(
-      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(`'${value}'`),
+      })
     )
   })
 

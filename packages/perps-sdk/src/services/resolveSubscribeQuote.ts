@@ -45,7 +45,7 @@ export const QUOTE_THROTTLE_MS = 100
  * price, a throwing `onQuote`) is logged via `wsLog.listenerFailure` and the
  * emission is skipped, on both the immediate and the trailing-timer path.
  *
- * @throws {PerpsError} `ValidationError` when `params.size` is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when `params.size` does not match the decimal pattern.
  * @throws {PerpsError} `MarketNotFound` when no market matches symbol+type.
  * @internal
  */

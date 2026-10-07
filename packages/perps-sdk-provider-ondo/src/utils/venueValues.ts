@@ -8,12 +8,16 @@ import { ONDO_PROVIDER_KEY } from '../constants.js'
 export const rowTimestampToIsoStringOrWarn = (
   row: string,
   field: string,
-  value: string
+  value: string,
+  marketId?: string
 ): string | undefined => {
   try {
     return timestampToIsoString(value)
   } catch {
-    warnSkippedVenueRow(ONDO_PROVIDER_KEY, row, field, value, 'timestamp')
+    warnSkippedVenueRow(ONDO_PROVIDER_KEY, row, field, value, {
+      marketId,
+      expected: 'timestamp',
+    })
     return undefined
   }
 }

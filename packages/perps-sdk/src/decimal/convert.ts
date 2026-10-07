@@ -27,7 +27,7 @@ const BIG_ROUNDING = {
  * The result has no trailing zeros: `roundDecimalString('1.50', 1, 'round')`
  * is `'1.5'`.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal string,
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern,
  *   or `decimals` is not a non-negative integer.
  * @public
  */
@@ -62,7 +62,7 @@ export const safeRoundDecimalString = createSafeFunction(
  * arithmetic: `'0.29'` at 2 decimals is 29, never 28. Off-grid input resolves
  * per `rounding`. No `$`, `%` or `,` is removed first.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal string,
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern,
  *   `decimals` is not a non-negative integer, or the result's magnitude
  *   exceeds `Number.MAX_SAFE_INTEGER`.
  * @public
@@ -75,7 +75,7 @@ export function decimalStringToScaledInteger(
   if (!isDecimalString(value)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `'${value}' is not a decimal string.`
+      `'${value}' does not match the decimal pattern.`
     )
   }
   if (!Number.isInteger(decimals) || decimals < 0) {
@@ -145,43 +145,6 @@ export function scaledIntegerToDecimalString(
 export const safeScaledIntegerToDecimalString = createSafeFunction(
   'scaledIntegerToDecimalString',
   scaledIntegerToDecimalString
-)
-
-/**
- * Round `value` down to `decimals` and pad the result to exactly that many
- * decimal places. The padding is the point: this seeds a fixed-decimal input,
- * where `'500.00'` and `'500'` are two renderings of one amount and the field
- * wants the first. For a canonical wire amount with no trailing zeros, read
- * the amount off `calculateOrderAmounts` or a provider snap instead.
- *
- * Exact decimal arithmetic throughout, so there is no 2^53 ceiling and no
- * float artifact: `'0.01'` at 18 decimals gives
- * `'0.010000000000000000'`, which `Number#toFixed` cannot.
- *
- * @throws {PerpsError} `ValidationError` when `value` is not a
- *   decimal string, or `decimals` is not a non-negative integer.
- * @public
- */
-export function truncateDecimal(value: string, decimals: number): string {
-  if (!Number.isInteger(decimals) || decimals < 0) {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Invalid decimals for truncation: ${decimals}`
-    )
-  }
-  const truncated = decimalStringToBig(value).round(decimals, Big.roundDown)
-  // big.js carries the sign through a round to zero; '-0.00' is not a spelling.
-  return (truncated.eq(0) ? new Big(0) : truncated).toFixed(decimals)
-}
-
-/**
- * {@link truncateDecimal}, or `undefined` with a warning when it throws.
- *
- * @public
- */
-export const safeTruncateDecimal = createSafeFunction(
-  'truncateDecimal',
-  truncateDecimal
 )
 
 /**

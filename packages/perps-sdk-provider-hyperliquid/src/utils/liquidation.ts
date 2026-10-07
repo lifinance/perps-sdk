@@ -13,50 +13,56 @@
  */
 
 import {
+  createSafeFunction,
   divideDecimalString,
+  estimateLiquidationPrice,
   numberToDecimalString,
-  safeEstimateLiquidationPrice,
+  PerpsError,
 } from '@lifi/perps-sdk'
+import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 
 /**
- * Calculate the maintenance margin fraction for a Hyperliquid asset.
- *
- * Maintenance margin is half of the initial margin at max leverage.
+ * Maintenance margin fraction for a Hyperliquid asset: half of the initial
+ * margin at max leverage, `1 / (2 × maxLeverage)`.
  *
  * @param maxLeverage - Maximum leverage for the asset (e.g., 50 for BTC)
- * @returns Maintenance margin fraction (e.g., 0.01 for 50x max leverage),
- *   or undefined if maxLeverage is zero
+ * @returns Maintenance margin fraction (`'0.01'` for 50x max leverage)
+ * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
+ *   number above zero.
  * @public
  */
 export function calculateMaintenanceMarginRate(
   maxLeverage: number
-): number | undefined {
-  if (maxLeverage === 0) {
-    return undefined
+): DecimalString {
+  if (!Number.isFinite(maxLeverage) || maxLeverage <= 0) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `\`maxLeverage\` must be a finite number above zero, got ${maxLeverage}.`
+    )
   }
-  return 1 / (2 * maxLeverage)
+  return divideDecimalString('1', numberToDecimalString(2 * maxLeverage))
 }
 
+/** @public */
+export const safeCalculateMaintenanceMarginRate = createSafeFunction(
+  'calculateMaintenanceMarginRate',
+  calculateMaintenanceMarginRate
+)
+
 /**
- * Calculate liquidation price using the exact Hyperliquid formula.
- *
- * For isolated margin, new position prediction. For existing positions,
- * prefer Position.liquidationPrice from the API.
+ * Liquidation price of a new isolated position with the exact Hyperliquid
+ * formula. For an existing position, prefer `Position.liquidationPrice` from
+ * the API.
  *
  * Formula derivation (isolated margin, single position):
- *   margin_per_unit        = entryPrice / leverage
- *   maintenance_per_unit   = entryPrice * mmr
- *   margin_available       = margin_per_unit - maintenance_per_unit
- *   liq_price              = entryPrice - side * margin_available / (1 - mmr * side)
+ *   margin_available = entryPrice × (1 / leverage - mmr)
+ *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
  *
- * Where mmr = 1 / (2 * maxLeverage).
- *
- * @param entryPrice - Position entry price
- * @param leverage - User-selected leverage (e.g., 10)
- * @param isLong - True if long position, false if short
- * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Determines
- *   the maintenance margin rate: mmr = 1 / (2 * maxLeverage)
- * @returns Estimated liquidation price, or undefined if inputs are invalid
+ * @param leverage - User-selected leverage (e.g., `'10'`)
+ * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Sets
+ *   mmr = 1 / (2 × maxLeverage).
+ * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
+ *   number above zero, or on an input that `estimateLiquidationPrice` rejects.
  * @public
  */
 export function calculateLiquidationPrice(
@@ -64,17 +70,17 @@ export function calculateLiquidationPrice(
   leverage: string,
   isLong: boolean,
   maxLeverage: number
-): string | undefined {
-  if (maxLeverage === 0) {
-    return undefined
-  }
-  return safeEstimateLiquidationPrice({
+): string {
+  return estimateLiquidationPrice({
     entryPrice,
     leverage,
     isLong,
-    maintenanceMarginRate: divideDecimalString(
-      '1',
-      numberToDecimalString(2 * maxLeverage)
-    ),
+    maintenanceMarginRate: calculateMaintenanceMarginRate(maxLeverage),
   })
 }
+
+/** @public */
+export const safeCalculateLiquidationPrice = createSafeFunction(
+  'calculateLiquidationPrice',
+  calculateLiquidationPrice
+)

@@ -229,8 +229,8 @@ describe('calculateOrderAmounts over the Ondo plugin', () => {
     })
   })
 
-  it('gives null for an amount below one Ondo lot', () => {
-    expect(
+  it('throws for an amount below one Ondo lot', () => {
+    expect(() =>
       calculateOrderAmounts({
         sdk,
         market: marketFixture({ sizeIncrement: '0.5' }),
@@ -239,7 +239,7 @@ describe('calculateOrderAmounts over the Ondo plugin', () => {
         leverage: 1,
         price: '10',
       })
-    ).toBeNull()
+    ).toThrowError('The order size 0.4 is below the lot size 0.5.')
   })
 
   it('propagates the missing price grid through the client wrapper', () => {

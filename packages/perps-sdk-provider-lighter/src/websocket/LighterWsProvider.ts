@@ -1,6 +1,7 @@
 import {
   addDecimalString,
   cachePromise,
+  createSafeFunction,
   getMarketRegistry,
   isDecimalStringGreaterThan,
   type MarketRegistry,
@@ -12,6 +13,7 @@ import {
   ReconnectingWebSocket,
   resolveRetryPolicy,
   resolveSubscribeQuote,
+  safeUnknownToDecimalString,
   subtractDecimalString,
   toPerpsMarketDisplay,
   unknownToDecimalString,
@@ -23,6 +25,7 @@ import {
 import {
   type AccountSummary,
   type Fill,
+  type Market,
   type MarketContext,
   PerpsErrorCode,
   type Position,
@@ -171,6 +174,57 @@ export interface LighterWsProviderOptions {
    */
   resolveAuthToken?: LighterAuthTokenResolver
 }
+
+/**
+ * Perps equity plus the USD value of every positive held balance. A non-
+ * settlement asset counts its spot and margin routes; the settlement asset
+ * counts its spot route only, because the equity already holds its margin.
+ *
+ * @throws {PerpsError} `SDKError` when a held asset's spot mark does not
+ *   match the decimal pattern.
+ */
+const heldPortfolioValue = (
+  perpsEquity: string,
+  balances: ReadonlyMap<number, { spot: string; margin: string }>,
+  settlementAssetIndex: number,
+  markets: readonly Market[],
+  contexts: readonly MarketContext[]
+): string => {
+  const held = [...balances]
+    .map(
+      ([assetId, { spot, margin }]) =>
+        [
+          assetId,
+          assetId === settlementAssetIndex
+            ? spot
+            : addDecimalString(spot, margin),
+        ] as const
+    )
+    .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
+  const spotPrices = spotPriceByAssetId(
+    markets,
+    LIGHTER_SPOT_CATEGORY_ID,
+    contexts,
+    new Set(
+      held
+        .filter(([assetId]) => assetId !== settlementAssetIndex)
+        .map(([assetId]) => String(assetId))
+    )
+  )
+  return lighterPortfolioValue(
+    perpsEquity,
+    held.map(
+      ([assetId, balance]) =>
+        spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
+          .valueUsd
+    )
+  )
+}
+
+const safeHeldPortfolioValue = createSafeFunction(
+  'heldPortfolioValue',
+  heldPortfolioValue
+)
 
 /**
  * Lighter WebSocket provider (extends {@link WsProviderBase}): subscribes to
@@ -723,47 +777,53 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
 
-    const portfolio = unknownToDecimalString(
-      stats.portfolio_value,
-      'stats.portfolio_value',
-      this.providerKey
-    )
-    const collateral = unknownToDecimalString(
-      stats.collateral,
-      'stats.collateral',
-      this.providerKey
-    )
+    const read = (value: unknown, field: string): string | undefined =>
+      safeUnknownToDecimalString(value, field, this.providerKey)
+    const portfolio = read(stats.portfolio_value, 'stats.portfolio_value')
+    const collateral = read(stats.collateral, 'stats.collateral')
 
-    let available: string
-    let marginUsed: string
+    let available: string | undefined
+    let marginUsed: string | undefined
     if (stats.cross_stats === undefined) {
       // Compatibility with legacy gateways that omitted the entire
       // cross_stats object.
-      available = unknownToDecimalString(
-        stats.available_balance,
-        'stats.available_balance',
-        this.providerKey
-      )
-      marginUsed = subtractDecimalString(portfolio, available)
+      available = read(stats.available_balance, 'stats.available_balance')
+      marginUsed =
+        portfolio === undefined || available === undefined
+          ? undefined
+          : subtractDecimalString(portfolio, available)
     } else {
-      const crossCollateral = unknownToDecimalString(
+      const crossCollateral = read(
         stats.cross_stats.collateral,
-        'stats.cross_stats.collateral',
-        this.providerKey
+        'stats.cross_stats.collateral'
       )
-      const crossPortfolio = unknownToDecimalString(
+      const crossPortfolio = read(
         stats.cross_stats.portfolio_value,
-        'stats.cross_stats.portfolio_value',
-        this.providerKey
+        'stats.cross_stats.portfolio_value'
       )
-      available = unknownToDecimalString(
+      available = read(
         stats.cross_stats.available_balance,
-        'stats.cross_stats.available_balance',
-        this.providerKey
+        'stats.cross_stats.available_balance'
       )
-      const isolatedMargin = subtractDecimalString(collateral, crossCollateral)
-      const crossMargin = subtractDecimalString(crossPortfolio, available)
-      marginUsed = addDecimalString(isolatedMargin, crossMargin)
+      marginUsed =
+        collateral === undefined ||
+        crossCollateral === undefined ||
+        crossPortfolio === undefined ||
+        available === undefined
+          ? undefined
+          : addDecimalString(
+              subtractDecimalString(collateral, crossCollateral),
+              subtractDecimalString(crossPortfolio, available)
+            )
+    }
+    // Every AccountSummary field is required, so the last summary stays.
+    if (
+      portfolio === undefined ||
+      collateral === undefined ||
+      available === undefined ||
+      marginUsed === undefined
+    ) {
+      return
     }
 
     const inputs = this.accountSummaryInputs.get(address)
@@ -827,36 +887,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     if (inputs?.perps === undefined || inputs.balances === undefined) {
       return
     }
-    const settlementAssetIndex = this.settlementAssetIndex()
-    const held = [...inputs.balances]
-      .map(
-        ([assetId, { spot, margin }]) =>
-          [
-            assetId,
-            assetId === settlementAssetIndex
-              ? spot
-              : addDecimalString(spot, margin),
-          ] as const
-      )
-      .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
-    const spotPrices = spotPriceByAssetId(
-      this.registry?.markets ?? [],
-      LIGHTER_SPOT_CATEGORY_ID,
-      Object.values(this.marketsContext),
-      new Set(
-        held
-          .filter(([assetId]) => assetId !== settlementAssetIndex)
-          .map(([assetId]) => String(assetId))
-      )
-    )
-    const portfolioValue = lighterPortfolioValue(
+    const portfolioValue = safeHeldPortfolioValue(
       inputs.perps.equity,
-      held.map(
-        ([assetId, balance]) =>
-          spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
-            .valueUsd
-      )
+      inputs.balances,
+      this.settlementAssetIndex(),
+      this.registry?.markets ?? [],
+      Object.values(this.marketsContext)
     )
+    if (portfolioValue === undefined) {
+      return
+    }
     if (onlyOnChange && portfolioValue === inputs.lastPortfolioValue) {
       return
     }
@@ -1017,8 +1057,8 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     let state = this.orderbooks.get(marketId)
     if (!state || isSnapshot) {
       state = {
-        bids: new OrderBookSide(bidOrder, this.providerKey),
-        asks: new OrderBookSide(askOrder, this.providerKey),
+        bids: new OrderBookSide(bidOrder, this.providerKey, assetId),
+        asks: new OrderBookSide(askOrder, this.providerKey, assetId),
         assetId,
       }
       this.orderbooks.set(marketId, state)

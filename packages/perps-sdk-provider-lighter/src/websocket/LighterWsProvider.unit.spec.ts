@@ -978,7 +978,7 @@ describe('LighterWsProvider', () => {
       expect(event.data[0].market.id).toBe('0')
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(
-          "[lighter] skipping position row: `position` is not a valid decimal: 'ws-bad-size'"
+          "[lighter] skipping position row on market '1': `position` is not a valid decimal: 'ws-bad-size'"
         )
       )
       warn.mockRestore()
@@ -2025,12 +2025,15 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
-    it('rejects malformed current cross_stats instead of using the legacy fallback', () => {
+    it('keeps the last summary and warns when current cross_stats is malformed', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const p = makeProvider()
-      const internals = p as unknown as LighterWsProviderInternals
-      internals.accountIndexCache.set(TEST_ADDR, ACCOUNT_IDX)
-      expect(() =>
-        internals.handleUserStats({
+      seedAccount(p)
+      const listener = vi.fn()
+      inject(p, `accountSummary:${TEST_ADDR}`, listener)
+      sendAccountAll(p, 'subscribed/account_all', {})
+      const stats = (crossAvailable: string) =>
+        JSON.stringify({
           type: 'update/user_stats',
           channel: `user_stats:${ACCOUNT_IDX}`,
           stats: {
@@ -2040,11 +2043,26 @@ describe('LighterWsProvider', () => {
             cross_stats: {
               collateral: '1000',
               portfolio_value: '1100',
-              available_balance: 'not-a-decimal',
+              available_balance: crossAvailable,
             },
           },
         })
-      ).toThrow(/cross_stats\.available_balance/)
+
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(stats('800'))
+      expect(() =>
+        internals.handleMessage(stats('not-a-decimal'))
+      ).not.toThrow()
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data.availableMargin).toBe('800')
+      expect(warn).toHaveBeenCalledWith(
+        '[perps-sdk] unknownToDecimalString failed',
+        expect.objectContaining({
+          message: expect.stringContaining('cross_stats.available_balance'),
+        })
+      )
+      warn.mockRestore()
       p.close()
     })
 

@@ -1,5 +1,5 @@
 import { PositionMarginAdjustment } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { HlMaxMarketOrderNtls, HlUniverseItem } from '../types/index.js'
 import { mapMarket } from './mapMarket.js'
 
@@ -27,7 +27,7 @@ describe('mapMarket (Hyperliquid)', () => {
     // 6 - szDecimals
     expect(result.priceDecimals).toBe(1)
     // 1 / (2 * maxLeverage)
-    expect(result.maintenanceMarginRate).toBeCloseTo(0.01, 9)
+    expect(result.maintenanceMarginRate).toBe('0.01')
     expect(result.maxLeverage).toBe(50)
     expect(result.onlyIsolated).toBe(false)
     expect(result.positionMarginAdjustment).toBe(
@@ -59,6 +59,14 @@ describe('mapMarket (Hyperliquid)', () => {
 
     expect(result.maxMarketOrderUsd).toBe('30000000.0')
     expect(result.maxLimitOrderUsd).toBe('300000000')
+  })
+
+  it('leaves maintenanceMarginRate unset and warns for a zero maxLeverage', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = mapMarket({ ...universe, maxLeverage: 0 }, 'hyperliquid')
+    expect(result.maintenanceMarginRate).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 
   it('selects the tier whose threshold equals the market maxLeverage', () => {

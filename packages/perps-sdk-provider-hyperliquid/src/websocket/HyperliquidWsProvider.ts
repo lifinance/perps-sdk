@@ -7,7 +7,6 @@ import {
   isActiveMarket,
   isActiveOrderStatus,
   isDecimalString,
-  isDecimalStringGreaterThan,
   isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
@@ -24,6 +23,7 @@ import {
   safeIsDecimalStringZero,
   safeMultiplyDecimalString,
   safeNumberToDecimalString,
+  safeSubtractDecimalString,
   subtractDecimalString,
   toAssetDisplay,
   toPerpsMarketDisplay,
@@ -100,6 +100,7 @@ import {
   spotPriceById,
   sumUnrealizedPnl,
 } from '../utils/index.js'
+import { mapOrderRow } from '../utils/mapOrder.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
@@ -973,7 +974,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   /** Latest mid per `Market.id` across asset-context and fast feeds. */
   /** Latest mid per `Market.id` across asset-context and fast feeds; a mid
-   * that is not a decimal string is left out. */
+   * that does not match the decimal pattern is left out. */
   private mergedMids(): Map<string, DecimalString> {
     const map = new Map<string, DecimalString>()
     const setMid = (id: string, mid: string | number | null | undefined) => {
@@ -1017,10 +1018,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       provider: this.providerKey,
       marketId: data.coin,
       bids: data.levels[0]
-        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .flatMap((l) => toOrderbookLevel(data.coin, l.px, l.sz))
         .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       asks: data.levels[1]
-        .flatMap((l) => toOrderbookLevel(l.px, l.sz))
+        .flatMap((l) => toOrderbookLevel(data.coin, l.px, l.sz))
         .slice(0, HL_L2_BOOK_MAX_LEVELS_PER_SIDE),
       timestamp: data.time,
     }
@@ -1064,12 +1065,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       provider: this.providerKey,
       marketId: delta.c,
       bids: applyCompressedL2Side(
+        delta.c,
         previous.bids,
         delta.l[0],
         delta.r?.[0] ?? [],
         'bid'
       ),
       asks: applyCompressedL2Side(
+        delta.c,
         previous.asks,
         delta.l[1],
         delta.r?.[1] ?? [],
@@ -1141,48 +1144,33 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
+      const user = key.slice('orderUpdates:'.length)
       const mapped = await Promise.all(
         data.map(async (update) => {
           const basic = update.order
-          if (assetIsOutcome(basic.coin)) {
+          if (
+            assetIsOutcome(basic.coin) ||
+            this.registry?.get(basic.coin) === undefined
+          ) {
             return undefined
           }
-          const market = this.registry?.get(basic.coin)
-          if (market === undefined) {
-            return undefined
-          }
-          const response = await infoRequest<HlOrderStatusResponse>(
-            this.orderApiUrl,
-            {
-              type: 'orderStatus',
-              user: key.slice('orderUpdates:'.length),
-              oid: basic.oid,
-            },
-            hlInfoOptions(client)
-          )
-          if (response.status !== 'order') {
-            throw new PerpsError(
-              PerpsErrorCode.OrderNotFound,
-              `Hyperliquid order metadata not found: ${basic.oid}`
+          let detail: HlOrderDetail
+          try {
+            detail = await this.readOrderDetail(user, client, update)
+          } catch (error) {
+            if (!(error instanceof PerpsError)) {
+              throw error
+            }
+            wsLog.droppedRow(
+              this.providerKey,
+              'order',
+              `${basic.oid}: ${error.message}`
             )
+            return undefined
           }
-          // REST supplies execution metadata; the stream owns this event's lifecycle and quantities.
-          const detail: HlOrderDetail = {
-            status: update.status,
-            statusTimestamp: update.statusTimestamp,
-            order: {
-              ...response.order.order,
-              coin: basic.coin,
-              side: basic.side,
-              limitPx: basic.limitPx,
-              sz: basic.sz,
-              oid: basic.oid,
-              timestamp: basic.timestamp,
-              origSz: basic.origSz,
-              cloid: basic.cloid ?? response.order.order.cloid,
-            },
-          }
-          return mapOrder(detail, market)
+          return mapOrderRow(basic.coin, this.registry, (resolved) =>
+            mapOrder(detail, resolved)
+          )
         })
       )
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
@@ -1201,6 +1189,41 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })
+  }
+
+  // REST supplies execution metadata; the stream owns this event's lifecycle and quantities.
+  private async readOrderDetail(
+    user: string,
+    client: PerpsSDKClient,
+    update: HlWsOrder
+  ): Promise<HlOrderDetail> {
+    const basic = update.order
+    const response = await infoRequest<HlOrderStatusResponse>(
+      this.orderApiUrl,
+      { type: 'orderStatus', user, oid: basic.oid },
+      hlInfoOptions(client)
+    )
+    if (response.status !== 'order') {
+      throw new PerpsError(
+        PerpsErrorCode.OrderNotFound,
+        `Hyperliquid order metadata not found: ${basic.oid}`
+      )
+    }
+    return {
+      status: update.status,
+      statusTimestamp: update.statusTimestamp,
+      order: {
+        ...response.order.order,
+        coin: basic.coin,
+        side: basic.side,
+        limitPx: basic.limitPx,
+        sz: basic.sz,
+        oid: basic.oid,
+        timestamp: basic.timestamp,
+        origSz: basic.origSz,
+        cloid: basic.cloid ?? response.order.order.cloid,
+      },
+    }
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
@@ -1552,15 +1575,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const priceById = spotPriceById(markets, this.mergedMids())
     const balances = data.spotState.balances
       .filter((balance) => !assetIsOutcome(balance.coin))
-      .map((balance) => ({
-        balance,
-        total: unknownToDecimalString(
-          balance.total,
-          'spotState.balances.total',
-          this.providerKey
-        ),
-      }))
-      .filter(({ total }) => isDecimalStringGreaterThan(total, '0'))
+      .filter(
+        (balance) => safeIsDecimalStringGreaterThan(balance.total, '0') === true
+      )
+      .map((balance) => ({ balance, total: balance.total }))
     const pipeline = this.unifiedSummaryByUser.get(user)
     // Known spot markets await a price; unlisted tokens keep their unpriced balance.
     if (
@@ -1574,21 +1592,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       return
     }
-    const rows = balances.map(({ balance, total }) => ({
-      ...spotBalance(spotAssetFromToken(balance), total, priceById),
-      locked: balance.hold,
-      transferable: calculateTransferable(
-        subtractDecimalString(
-          total,
-          unknownToDecimalString(
-            balance.hold,
-            'spotState.balances.hold',
-            this.providerKey
-          )
-        ),
-        total
-      ),
-    }))
+    const rows = balances.map(({ balance, total }) => {
+      const free = safeSubtractDecimalString(total, balance.hold)
+      return {
+        ...spotBalance(spotAssetFromToken(balance), total, priceById),
+        locked: balance.hold,
+        transferable:
+          free === undefined ? '0' : calculateTransferable(free, total),
+      }
+    })
     this.emit(`spotState:${user}`, {
       channel: 'spotBalances',
       data: rows,
@@ -1776,27 +1788,38 @@ function mapSpotMarketContext(
 const BOOK_LEVEL_ROW = 'order book level'
 
 /** The venue price when it is a decimal string, or `undefined` after a logged skip. */
-function bookLevelPrice(price: string): DecimalString | undefined {
+function bookLevelPrice(
+  marketId: string,
+  price: string
+): DecimalString | undefined {
   if (!isDecimalString(price)) {
-    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'price', price)
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'price', price, marketId)
     return undefined
   }
   return price
 }
 
 /** The venue size when it is a decimal string, or `undefined` after a logged skip. */
-function bookLevelSize(size: string): DecimalString | undefined {
+function bookLevelSize(
+  marketId: string,
+  size: string
+): DecimalString | undefined {
   if (!isDecimalString(size)) {
-    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'size', size)
+    wsLog.skippedRow(PROVIDER_KEY, BOOK_LEVEL_ROW, 'size', size, marketId)
     return undefined
   }
   return size
 }
 
 /** One order-book level, or none when the venue price or size is invalid. */
-function toOrderbookLevel(price: string, size: string): OrderbookLevel[] {
-  const levelPrice = bookLevelPrice(price)
-  const levelSize = levelPrice === undefined ? undefined : bookLevelSize(size)
+function toOrderbookLevel(
+  marketId: string,
+  price: string,
+  size: string
+): OrderbookLevel[] {
+  const levelPrice = bookLevelPrice(marketId, price)
+  const levelSize =
+    levelPrice === undefined ? undefined : bookLevelSize(marketId, size)
   return levelPrice === undefined || levelSize === undefined
     ? []
     : [{ price: levelPrice, size: levelSize }]
@@ -1813,6 +1836,7 @@ function compactRemovalPrice(
 }
 
 function applyCompressedL2Side(
+  marketId: string,
   previous: OrderbookLevel[],
   updates: HlWsCompressedL2Data['l'][number],
   removals: NonNullable<HlWsCompressedL2Data['r']>[number],
@@ -1826,11 +1850,11 @@ function applyCompressedL2Side(
     }
   }
   for (const update of updates) {
-    const price = bookLevelPrice(update.p)
+    const price = bookLevelPrice(marketId, update.p)
     if (price === undefined) {
       continue
     }
-    const size = bookLevelSize(update.s)
+    const size = bookLevelSize(marketId, update.s)
     // A level whose new size is unknown must not keep its old size.
     if (size === undefined || safeIsDecimalStringZero(size) !== false) {
       byPrice.delete(price)

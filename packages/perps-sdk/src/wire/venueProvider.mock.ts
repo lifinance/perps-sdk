@@ -84,7 +84,9 @@ export const venueProviderPlugin = (
     },
     snapOrderSize: venueSnapSize,
     snapOrderPrice: venueSnapPrice,
-    estimateLiquidationPrice: () => undefined,
+    estimateLiquidationPrice: () => {
+      throw new Error('venueProviderPlugin: method not implemented')
+    },
     positionRemovableMargin: () => undefined,
     getMarketSettings: unimplemented,
     projectConfig: () => [],

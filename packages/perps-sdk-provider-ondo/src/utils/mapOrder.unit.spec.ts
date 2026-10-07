@@ -289,7 +289,7 @@ describe('mapOrder', () => {
     ).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        `[ondo] skipping order row: \`${field}\` is not a valid decimal: 'bad-${field}'`
+        `[ondo] skipping order row on market 'AAPL-USD.P': \`${field}\` is not a valid decimal: 'bad-${field}'`
       )
     )
     warn.mockRestore()
@@ -303,7 +303,7 @@ describe('mapOrder', () => {
     ).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        "[ondo] skipping order row: `totalSize` is not a valid decimal: 'bad-total'"
+        "[ondo] skipping order row on market 'AAPL-USD.P': `totalSize` is not a valid decimal: 'bad-total'"
       )
     )
     warn.mockRestore()
@@ -371,7 +371,9 @@ describe('mapOrder', () => {
 
     expect(mapOrder(row, MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`[ondo] skipping order row: \`${field}\``)
+      expect.stringContaining(
+        `[ondo] skipping order row on market 'AAPL-USD.P': \`${field}\``
+      )
     )
     warn.mockRestore()
   })

@@ -20,11 +20,13 @@ export { requireProvider } from './client/requireProvider.js'
 export {
   absDecimalString,
   addDecimalString,
+  addDecimalStrings,
   divideDecimalString,
   divideDecimalStringRoundDown,
   multiplyDecimalString,
   safeAbsDecimalString,
   safeAddDecimalString,
+  safeAddDecimalStrings,
   safeDivideDecimalString,
   safeDivideDecimalStringRoundDown,
   safeMultiplyDecimalString,
@@ -48,9 +50,7 @@ export {
   safeNumberToDecimalString,
   safeRoundDecimalString,
   safeScaledIntegerToDecimalString,
-  safeTruncateDecimal,
   scaledIntegerToDecimalString,
-  truncateDecimal,
 } from './decimal/convert.js'
 export type { FormatOptions, RoundingMode } from './decimal/format.js'
 export {
@@ -65,6 +65,7 @@ export {
   decimalStringToNumber,
   isDecimalString,
   safeDecimalStringToNumber,
+  safeUnknownToDecimalString,
   unknownToDecimalString,
 } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
@@ -293,6 +294,7 @@ export type {
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
 export { paginateActivity } from './utils/activityPaging.js'
+export { createSafeFunction } from './utils/createSafeFunction.js'
 export {
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
@@ -359,7 +361,10 @@ export type {
   OrderAmounts,
   OrderAmountsInput,
 } from './wire/orderAmounts.js'
-export { calculateOrderAmounts } from './wire/orderAmounts.js'
+export {
+  calculateOrderAmounts,
+  safeCalculateOrderAmounts,
+} from './wire/orderAmounts.js'
 export type { RefuelAmountInput } from './wire/refuel.js'
 export {
   calculateRefuelAmount,

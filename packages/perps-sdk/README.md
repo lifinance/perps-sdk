@@ -233,10 +233,15 @@ are display and comparison values. No quote grid applies to them.
 - A derived size truncates onto the lot grid, so a held margin always funds
   its size: `size × price ≤ margin × leverage`.
 
-The call gives `null` when `amount` or `price` is not a positive
-`DecimalString`, when `leverage` is not a positive finite number, or when the
-snapped size is zero (below one lot). A sub-cent margin is a valid order when
-the lot grid takes the size.
+The call throws `PerpsError(ValidationError)` that names `amount` or `price`
+when it is not a positive decimal, or `leverage` when it is not a finite number
+above zero. It also throws, with the lot size in the message, when the snapped
+size is zero (below one lot). `safeCalculateOrderAmounts` gives `undefined` in
+place of the throw. A sub-cent margin is a valid order when the lot grid takes
+the size.
+
+`OrderAmountsInput.leverage` is a `number`. `Position.leverage` is a
+`DecimalString`, so a caller converts it with `safeDecimalStringToNumber`.
 
 ```ts
 import { calculateOrderAmounts } from '@lifi/perps-sdk'
@@ -249,14 +254,12 @@ const amounts = calculateOrderAmounts({
   leverage: 5,
   price: '1000',
 })
-// { margin: '100', size: '0.5', notional: '500' }, or null — see above
+// { margin: '100', size: '0.5', notional: '500' }
 ```
 
 Send `amounts.size` as `PlaceOrderParams.size`. It is the same string that the
 size field shows.
 
-`truncateDecimal(value, decimals)` rounds a decimal string down and pads it to
-exactly `decimals` places, which seeds a fixed-decimal input field.
 `roundDecimalString(value, decimals, rounding)` rounds to `decimals` places,
 with `'truncate'` or `'round'` (half-up), and keeps no trailing zeros.
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
@@ -287,8 +290,8 @@ passes through a `number`:
   wallet already holds the recommendation, or when the recommendation, its
   USD value or the price is not greater than zero.
 
-Each one throws `PerpsError(ValidationError)` when an input is not a decimal
-string. `calculateRefuelAmount` also throws when a
+Each one throws `PerpsError(ValidationError)` when an input does not match the
+decimal pattern. `calculateRefuelAmount` also throws when a
 base-unit input is not an integer string.
 
 ## Numbers
@@ -301,13 +304,13 @@ signature carries a `Big` or does float math on an amount.
 
 - Display shows the venue string unchanged. The SDK tests a string only where
   it sorts or calculates with it.
-- To read a string for a calculation, the SDK removes `$`, `%`, `,` and
-  whitespace, then tests `DECIMAL_PATTERN` (an optional `-`, digits, and an
-  optional `.` with digits), then reads it with `big.js`. So
-  `addDecimalString('$4', '$6')` gives `'10'`. An exponent form such as
-  `'1e-7'` fails the test.
-- `isDecimalString(value)` tests a value against `DECIMAL_PATTERN` with no
-  cleaning. It never throws.
+- To read a string for a calculation, the SDK tests `DECIMAL_PATTERN` (an
+  optional `-`, digits, and an optional `.` with digits), then reads it with
+  `big.js`. The SDK does not clean the string. A display form such as `'$4'`
+  or `'0.05%'`, or an exponent form such as `'1e-7'`, fails the test and
+  throws.
+- `isDecimalString(value)` tests a value against `DECIMAL_PATTERN`. It never
+  throws.
 - `decimalStringToNumber` is for chart and pixel values only. A `number` holds
   about 15 significant digits.
 
@@ -315,8 +318,9 @@ signature carries a `Big` or does float math on an amount.
 
 Each fallible function has two forms:
 
-- `X(...)` throws `PerpsError(ValidationError)` on an input that is not a
-  decimal string, or on a zero divisor.
+- `X(...)` throws `PerpsError(ValidationError)` on an input that does not
+  match the decimal pattern, or on a degenerate input such as a zero divisor.
+  The message names the parameter.
 - `safeX(...)` calls `X`, catches any error, logs a `console.warn` with the
   function name and the error, and gives `undefined`. It has no default: the
   caller writes `?? fallback`.
@@ -329,20 +333,21 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 
 | Group      | Functions                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Arithmetic | `addDecimalString`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
+| Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
 | Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
-| Convert    | `roundDecimalString`, `truncateDecimal`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `timestampToIsoString` |
+| Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
 | Formulas   | every `calculate*`, `estimate*`, `apply*`, `walkOrderbook`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`       |
+| Wire       | `calculateOrderAmounts`                                                                                                                      |
 
-`format*` is display only. It formats with `big.js`, shows a string that is not
-a decimal unchanged, and shows the placeholder for `null` or `undefined`. It
-never throws and has no `safe` form.
+`format*` is display only. It formats with `big.js`, shows a string that does
+not match the decimal pattern unchanged, and shows the placeholder for `null`
+or `undefined`. It never throws and has no `safe` form.
 
 ### Three tiers
 
 | Tier       | Holds                                                         | In → out          | Rule                                                       |
 | ---------- | ------------------------------------------------------------- | ----------------- | ---------------------------------------------------------- |
-| `decimal/` | arithmetic, compare, `<a>To<B>` conversions, `format*`        | string → string   | No domain words. See the vocabulary for each failure mode. |
+| `decimal/` | arithmetic, compare, `<a>To<B>` conversions, `format*`        | string → string; `number` from `decimalStringToNumber` and `decimalStringToScaledInteger` | No domain words. See the vocabulary for each failure mode. |
 | `math/`    | trading formulas (`calculate*`, `estimate*`, …)               | string → string   | Estimates for a screen or a preview.                       |
 | `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers        | string → string   | Venue-ready values, snapped by the market's own provider.  |
 
@@ -357,14 +362,15 @@ One verb names one kind of transformation.
 | `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseStoredRecord`                                        |
 | `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `scaledInteger`, `decimalString`, `number`, `timestamp` or `isoString` | throws on invalid; `safe<a>To<B>` gives `undefined` | `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber` |
 | `format<X>`                 | value → human string (grouped, localised)          | no; renders the value or a placeholder | `formatUsd`, `formatNumber`                                |
-| `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
+| `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`                          |
 | `calculate<X>`              | values → exact result by formula                   | throws; `safe` form               | `calculateNotionalValue`, `calculateOrderAmounts`          |
 | `estimate<X>`               | values → approximation or forward-looking value    | throws; `safe` form               | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
 | `resolve<X>`                | candidates and rules → the one to use              | throws; `safe` form               | `resolveCloseSize`, `resolveQuote`                         |
-| `validate<X>`               | values → ok or error result                        | —                                 | —                                                          |
-| `is<X>` `would<X>` `has<X>` | → `boolean`                                        | —                                 | `isDecimalString`, `wouldImmediatelyLiquidate`             |
+| `is<X>`                     | value → `boolean`, a pattern test                  | no                                | `isDecimalString`                                          |
+| `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
+| `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
 | `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
-| `aggregate<X>`              | collection → totals                                | —                                 | —                                                          |
+| `aggregate<X>`              | collection → total                                 | throws; `safe` form               | `addDecimalStrings`                                        |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every

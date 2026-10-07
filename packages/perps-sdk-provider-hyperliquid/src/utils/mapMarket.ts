@@ -3,7 +3,7 @@ import type { PerpsMarket } from '@lifi/perps-types'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlMaxMarketOrderNtls, HlUniverseItem } from '../types/index.js'
-import { calculateMaintenanceMarginRate } from './liquidation.js'
+import { safeCalculateMaintenanceMarginRate } from './liquidation.js'
 import { coinAsset } from './marketDisplay.js'
 import { getMaxPriceDecimals } from './orderFormatting.js'
 
@@ -72,5 +72,7 @@ export const mapMarket = (
     (universe.marginMode === undefined && universe.onlyIsolated !== true)
       ? PositionMarginAdjustment.ADD_AND_REMOVE
       : PositionMarginAdjustment.ADD_ONLY,
-  maintenanceMarginRate: calculateMaintenanceMarginRate(universe.maxLeverage),
+  maintenanceMarginRate: safeCalculateMaintenanceMarginRate(
+    universe.maxLeverage
+  ),
 })

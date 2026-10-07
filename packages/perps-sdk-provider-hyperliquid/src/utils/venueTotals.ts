@@ -1,6 +1,8 @@
 import {
   addDecimalString,
-  safeAddDecimalString,
+  addDecimalStrings,
+  createWarnOnce,
+  isDecimalString,
   unknownToDecimalString,
 } from '@lifi/perps-sdk'
 import type {
@@ -55,35 +57,26 @@ export const perpsTotals = (
   return { accountValue, marginUsed }
 }
 
+const warnSkippedTermOnce = createWarnOnce()
+
 /**
- * Sum the unrealized PnL of every position, in quote-asset units.
+ * Sum the unrealized PnL of every position, in quote-asset units. A term that
+ * does not match the decimal pattern adds nothing and warns once.
  * @public
  */
 export const sumUnrealizedPnl = (
   positions: readonly Position[]
-): DecimalString =>
-  positions.reduce(
-    (sum, position) =>
-      addDecimalString(
-        sum,
-        unknownToDecimalString(
-          position.unrealizedPnl,
-          'position.unrealizedPnl',
-          PROVIDER_KEY
-        )
-      ),
-    '0'
-  )
-
-/**
- * Sum every term, or `undefined` with a warning when any term is not a
- * decimal string. A bad term never gives a partial sum.
- */
-export const safeSumDecimalStrings = (
-  terms: readonly string[]
-): DecimalString | undefined =>
-  terms.reduce<DecimalString | undefined>(
-    (sum, term) =>
-      sum === undefined ? undefined : safeAddDecimalString(sum, term),
-    '0'
-  )
+): DecimalString => {
+  const terms: DecimalString[] = []
+  for (const { unrealizedPnl } of positions) {
+    if (isDecimalString(unrealizedPnl)) {
+      terms.push(unrealizedPnl)
+      continue
+    }
+    warnSkippedTermOnce(
+      `${PROVIDER_KEY}|position.unrealizedPnl`,
+      `[${PROVIDER_KEY}] skipping a \`position.unrealizedPnl\` term that does not match the decimal pattern: '${String(unrealizedPnl).slice(0, 64)}'`
+    )
+  }
+  return addDecimalStrings(terms)
+}

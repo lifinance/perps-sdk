@@ -130,7 +130,7 @@ export const mapFill = (
       'fill',
       'timestamp',
       trade.timestamp,
-      'timestamp'
+      { marketId: market.id, expected: 'timestamp' }
     )
     return undefined
   }

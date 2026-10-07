@@ -791,11 +791,23 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         levels
           .flatMap(([price, size]) => {
             if (!isDecimalString(price)) {
-              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'price', price)
+              wsLog.skippedRow(
+                this.providerKey,
+                BOOK_LEVEL_ROW,
+                'price',
+                price,
+                snap.market
+              )
               return []
             }
             if (!isDecimalString(size)) {
-              wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'size', size)
+              wsLog.skippedRow(
+                this.providerKey,
+                BOOK_LEVEL_ROW,
+                'size',
+                size,
+                snap.market
+              )
               return []
             }
             return [{ price, size }]

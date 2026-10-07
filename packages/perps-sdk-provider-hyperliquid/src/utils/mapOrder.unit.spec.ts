@@ -71,7 +71,9 @@ describe('mapOrder', () => {
 
     expect(mapOrder(order, MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`[hyperliquid] skipping order row: \`${field}\``)
+      expect.stringContaining(
+        `[hyperliquid] skipping order row on market 'ETH': \`${field}\``
+      )
     )
   })
   it('keeps a limit order with a non-decimal limitPx as the raw venue string', () => {
@@ -146,6 +148,20 @@ describe('mapOrder', () => {
       type: OrderType.LIMIT,
       timeInForce: TimeInForce.GTC,
     })
+  })
+  it('skips a row with an exponent-form size and does not respell it', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(raw({ sz: '1e-3' }), MARKET)).toBeUndefined()
+  })
+  it('passes the venue size strings verbatim', () => {
+    expect(mapOrder(raw({ origSz: '2.50', sz: '0.50' }), MARKET)).toMatchObject(
+      {
+        originalSize: '2.50',
+        remainingSize: '0.50',
+        filledSize: '2',
+      }
+    )
   })
   it('keeps both venue and client ids and omits a null client id', () => {
     expect(mapOrder(raw({ cloid: '0x1234' }), MARKET)).toMatchObject({

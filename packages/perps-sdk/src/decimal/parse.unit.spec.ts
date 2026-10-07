@@ -5,6 +5,7 @@ import {
   decimalStringToNumber,
   isDecimalString,
   safeDecimalStringToNumber,
+  safeUnknownToDecimalString,
   unknownToDecimalString,
 } from './parse.js'
 
@@ -18,8 +19,6 @@ describe('decimalStringToNumber', () => {
     ['123.45', 123.45],
     ['-42.5', -42.5],
     ['0.000599', 0.000599],
-    ['$1,234.5', 1234.5],
-    ['12.5%', 12.5],
   ])('reads %j as %j', (input, expected) => {
     expect(decimalStringToNumber(input)).toBe(expected)
   })
@@ -30,6 +29,8 @@ describe('decimalStringToNumber', () => {
     '1e-7',
     'NaN',
     'not-a-number',
+    '$1,234.5',
+    '12.5%',
   ])('throws ValidationError for %j', (input) => {
     expect(() => decimalStringToNumber(input)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
@@ -115,6 +116,18 @@ describe('unknownToDecimalString', () => {
       tool: 'lighter',
       message: expect.stringMatching(/^lighter field `balance`/),
     })
+  })
+})
+
+describe('safeUnknownToDecimalString', () => {
+  it('spells out a venue number', () => {
+    expect(safeUnknownToDecimalString(1e-7, 'field', 'tool')).toBe('0.0000001')
+  })
+
+  it('gives undefined and warns for a bad value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeUnknownToDecimalString('abc', 'field', 'tool')).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
   })
 })
 

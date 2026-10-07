@@ -1300,7 +1300,7 @@ describe('OndoWsProvider', () => {
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(
-          "[ondo] skipping position row: `netQuantity` is not a valid decimal: 'ws-bad-quantity'"
+          "[ondo] skipping position row on market 'NVDA-USD.P': `netQuantity` is not a valid decimal: 'ws-bad-quantity'"
         )
       )
       warn.mockRestore()

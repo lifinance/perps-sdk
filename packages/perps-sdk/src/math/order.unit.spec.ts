@@ -178,9 +178,13 @@ describe('calculateRealizedPnlPercent', () => {
     expect(calculateRealizedPnlPercent('-25', '0.5', '1000')).toBe('-5')
   })
 
-  it('should return zero for zero position value', () => {
-    expect(calculateRealizedPnlPercent('100', '0', '1000')).toBe('0')
-    expect(calculateRealizedPnlPercent('100', '1', '0')).toBe('0')
+  it('throws a ValidationError for a zero position value', () => {
+    expect(() => calculateRealizedPnlPercent('100', '0', '1000')).toThrow(
+      '`size × price` must not be zero.'
+    )
+    expect(() => calculateRealizedPnlPercent('100', '1', '0')).toThrow(
+      '`size × price` must not be zero.'
+    )
   })
 
   it('should use absolute size for negative sizes', () => {
@@ -482,13 +486,13 @@ describe('buildQuote decimal spelling', () => {
     )
   })
 
-  it('rejects a taker fee that is not a decimal string', () => {
+  it('rejects a taker fee that does not match the decimal pattern', () => {
     expect(() =>
       quoteOf({ sizeUsd: '100', feeTier: { maker: '0', taker: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 
-  it('rejects a mark price that is not a decimal string', () => {
+  it('rejects a mark price that does not match the decimal pattern', () => {
     expect(() =>
       quoteOf({ sizeUsd: '100', price: { ...perpsPrice, markPrice: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
@@ -514,6 +518,34 @@ describe('exact decimal results', () => {
     expect(calculateExpectedPnl('0.63', '0.7', '3', false, '10')?.percent).toBe(
       '30'
     )
+  })
+
+  it.each([
+    ['triggerPrice', '0', '0.7', '10'],
+    ['entryPrice', '0.77', '0', '10'],
+    ['margin', '0.77', '0.7', '0'],
+  ])('calculateExpectedPnl throws a ValidationError that names a zero %s', (name, trigger, entry, margin) => {
+    expect(() =>
+      calculateExpectedPnl(trigger, entry, '3', true, margin)
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `\`${name}\` must not be zero.`,
+      })
+    )
+  })
+
+  it.each([
+    ['entryPrice', '0', '3'],
+    ['leverage', '0.7', '0'],
+  ])('calculateTriggerPrice and calculateTriggerPercent throw a ValidationError that names a zero %s', (name, entry, leverage) => {
+    const message = `\`${name}\` must not be zero.`
+    expect(() => calculateTriggerPrice('30', entry, leverage, true)).toThrow(
+      message
+    )
+    expect(() =>
+      calculateTriggerPercent('0.77', entry, leverage, true)
+    ).toThrow(message)
   })
 
   it('calculateTriggerPrice', () => {
@@ -813,7 +845,7 @@ describe('estimateRealizedPnl on a regular order', () => {
     expect(r).toBe('50')
   })
 
-  it('returns null when nothing remains to fill', () => {
+  it('returns undefined when nothing remains to fill', () => {
     const r = estimateRealizedPnl(
       openOrder({
         side: OrderSide.SELL,
@@ -824,7 +856,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
   it('computes loss for a SELL order reducing a long below entry', () => {
@@ -877,28 +909,28 @@ describe('estimateRealizedPnl on a regular order', () => {
     expect(r).toBe('50')
   })
 
-  it('returns null when the order matches no position', () => {
+  it('returns undefined when the order matches no position', () => {
     const r = estimateRealizedPnl(
       openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '150' }),
       undefined
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
-  it('returns null for a same-side BUY against a long (adds to the position)', () => {
+  it('returns undefined for a same-side BUY against a long (adds to the position)', () => {
     const r = estimateRealizedPnl(
       openOrder({ side: OrderSide.BUY, remainingSize: '1', price: '90' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
-  it('returns null for a same-side SELL against a short (adds to the short)', () => {
+  it('returns undefined for a same-side SELL against a short (adds to the short)', () => {
     const r = estimateRealizedPnl(
       openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '110' }),
       position({ side: PositionSide.SHORT, size: '1', entryPrice: '100' })
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
   it('treats a signed position size correctly via its absolute value', () => {
@@ -991,7 +1023,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
     expect(r).toBe('50')
   })
 
-  it('returns null when the trigger order carries no triggerPrice', () => {
+  it('returns undefined when the trigger order carries no triggerPrice', () => {
     const { triggerPrice: _, ...withoutTrigger } = triggerOrder({
       remainingSize: '1',
       triggerPrice: '150',
@@ -1000,10 +1032,10 @@ describe('estimateRealizedPnl on a trigger order', () => {
       withoutTrigger,
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
-  it('throws a ValidationError for a trigger price that is not a decimal string', () => {
+  it('throws a ValidationError for a trigger price that does not match the decimal pattern', () => {
     expect(() =>
       estimateRealizedPnl(
         triggerOrder({ remainingSize: '1', triggerPrice: 'abc' }),
@@ -1023,12 +1055,12 @@ describe('estimateRealizedPnl on a trigger order', () => {
     }
   })
 
-  it('returns null when the trigger has no matching position', () => {
+  it('returns undefined when the trigger has no matching position', () => {
     const r = estimateRealizedPnl(
       triggerOrder({ remainingSize: '1', triggerPrice: '150' }),
       undefined
     )
-    expect(r).toBeNull()
+    expect(r).toBeUndefined()
   })
 
   it('does not project pending, terminal, same-side, or exhausted trigger orders', () => {
@@ -1052,7 +1084,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
           }),
           long
         )
-      ).toBeNull()
+      ).toBeUndefined()
     }
   })
 })
@@ -1064,7 +1096,7 @@ describe('estimateRealizedPnl dispatch', () => {
         twapOrder(),
         position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
       )
-    ).toBeNull()
+    ).toBeUndefined()
   })
 
   it('prices a regular order at its limit and a trigger order at its trigger', () => {

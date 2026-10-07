@@ -102,7 +102,9 @@ export const mapLedgerEntry = (
   const { delta } = entry
   const timestamp = rowTimestampToIsoStringOrUndefined(entry.time)
   if (timestamp === undefined) {
-    warnSkippedVenueRow(providerKey, 'ledger', 'time', entry.time, 'timestamp')
+    warnSkippedVenueRow(providerKey, 'ledger', 'time', entry.time, {
+      expected: 'timestamp',
+    })
     return null
   }
   const base = { id: entry.hash, provider: providerKey, timestamp }
@@ -322,7 +324,9 @@ export const mapFundingActivity = (
   }
   const timestamp = rowTimestampToIsoStringOrUndefined(entry.time)
   if (timestamp === undefined) {
-    warnSkippedVenueRow(providerKey, 'funding', 'time', entry.time, 'timestamp')
+    warnSkippedVenueRow(providerKey, 'funding', 'time', entry.time, {
+      expected: 'timestamp',
+    })
     return null
   }
   return {
@@ -387,7 +391,9 @@ export const mapLiquidationFills = (
     const time = Math.max(...group.map((fill) => fill.time))
     const timestamp = rowTimestampToIsoStringOrUndefined(time)
     if (timestamp === undefined) {
-      warnSkippedVenueRow(providerKey, 'liquidation', 'time', time, 'timestamp')
+      warnSkippedVenueRow(providerKey, 'liquidation', 'time', time, {
+        expected: 'timestamp',
+      })
       return []
     }
     const closedSize =

@@ -12,7 +12,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getAccountSummary, lighterPortfolioValue } from './accountSummary.js'
 
 const USDC: Asset = {
@@ -228,6 +228,25 @@ describe('getAccountSummary', () => {
     expect(summary.marginUsed).toBe('250')
     expect(summary.unrealizedPnl).toBe('-20')
     expect(summary.availableMargin).toBe('1000')
+  })
+
+  it('skips a total term that does not match the decimal pattern and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const summary = getAccountSummary(account('1000', '1250'), [
+      position('100', '10'),
+      position('bad-margin', 'bad-pnl'),
+      position('bad-margin', 'bad-pnl'),
+    ])
+    expect(summary.marginUsed).toBe('100')
+    expect(summary.unrealizedPnl).toBe('10')
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith(
+      "[lighter] skipping a `position.marginUsed` term that does not match the decimal pattern: 'bad-margin'"
+    )
+    expect(warn).toHaveBeenCalledWith(
+      "[lighter] skipping a `position.unrealizedPnl` term that does not match the decimal pattern: 'bad-pnl'"
+    )
+    warn.mockRestore()
   })
 
   it('returns string scalars for an empty account', () => {

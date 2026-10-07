@@ -1040,7 +1040,7 @@ describe('mapFill (Lighter)', () => {
     ).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('skipping fill row: `timestamp`')
+      expect.stringContaining("skipping fill row on market '1': `timestamp`")
     )
     warn.mockRestore()
   })

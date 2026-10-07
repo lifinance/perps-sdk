@@ -332,7 +332,7 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   estimateFees: ['10000', '0.00035'],
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPriceAtMarketRate: [
-    { ...MARKET, maintenanceMarginRate: 0.01 },
+    { ...MARKET, maintenanceMarginRate: '0.01' },
     { entryPrice: '100', leverage: '10', isLong: true },
   ],
   estimateNewLeverage: [
@@ -471,9 +471,7 @@ const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
   safeNumberToDecimalString: [1e-8],
   safeRoundDecimalString: ['1.001', 2, 'up'],
   safeScaledIntegerToDecimalString: ['1234500000', 6],
-  safeTruncateDecimal: ['1000.999', 2],
   scaledIntegerToDecimalString: ['1234500000', 6],
-  truncateDecimal: ['1000.999', 2],
 }
 
 const WIRE_MARKET = venueMarket({ szDecimals: 4 })
@@ -486,6 +484,16 @@ const WIRE_CLIENT = venueClient()
  */
 const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
   calculateOrderAmounts: [
+    {
+      sdk: WIRE_CLIENT,
+      market: WIRE_MARKET,
+      held: 'margin',
+      amount: '100',
+      leverage: 5,
+      price: '1000',
+    },
+  ],
+  safeCalculateOrderAmounts: [
     {
       sdk: WIRE_CLIENT,
       market: WIRE_MARKET,
@@ -635,7 +643,6 @@ const NAMING_EXCEPTIONS: Record<string, string> = {
     'is-class predicate; a rename is a second breaking change, parked for a human decision',
   positionSupportsMarginRemoval:
     'is-class predicate; a rename is a second breaking change, parked for a human decision',
-  truncateDecimal: 'the tracker vocabulary lists it under snap<X>',
   walkOrderbook: 'book traversal that buildQuote composes',
 }
 
@@ -691,10 +698,6 @@ describe('calculateOrderAmounts at the public entry point', () => {
     'notional',
   ] as const)('gives a DecimalString in every field for a held %s', (held) => {
     const amounts = sdk.calculateOrderAmounts({ ...input, held })
-    if (amounts === null) {
-      expect.unreachable('the sample input is a valid order')
-    }
-
     for (const [field, value] of Object.entries(amounts)) {
       expect(sdk.isDecimalString(value), `${held}.${field} -> ${value}`).toBe(
         true
@@ -710,7 +713,7 @@ describe('calculateOrderAmounts at the public entry point', () => {
       quoteDecimals: 2,
     }
 
-    expect(sdk.calculateOrderAmounts(withQuoteDecimals)?.margin).toBe(
+    expect(sdk.calculateOrderAmounts(withQuoteDecimals).margin).toBe(
       '123.456789'
     )
   })

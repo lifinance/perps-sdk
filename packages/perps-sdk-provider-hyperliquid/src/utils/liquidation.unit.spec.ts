@@ -2,35 +2,54 @@ import {
   isDecimalStringGreaterThan,
   subtractDecimalString,
 } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import {
   calculateLiquidationPrice,
   calculateMaintenanceMarginRate,
+  safeCalculateLiquidationPrice,
+  safeCalculateMaintenanceMarginRate,
 } from './liquidation.js'
 
 describe('calculateMaintenanceMarginRate', () => {
   it('should return 1% for 50x max leverage', () => {
-    expect(calculateMaintenanceMarginRate(50)).toBe(0.01)
+    expect(calculateMaintenanceMarginRate(50)).toBe('0.01')
   })
 
   it('should return 1.25% for 40x max leverage', () => {
-    expect(calculateMaintenanceMarginRate(40)).toBe(0.0125)
+    expect(calculateMaintenanceMarginRate(40)).toBe('0.0125')
   })
 
   it('should return 2.5% for 20x max leverage', () => {
-    expect(calculateMaintenanceMarginRate(20)).toBe(0.025)
+    expect(calculateMaintenanceMarginRate(20)).toBe('0.025')
   })
 
   it('should return 5% for 10x max leverage', () => {
-    expect(calculateMaintenanceMarginRate(10)).toBe(0.05)
+    expect(calculateMaintenanceMarginRate(10)).toBe('0.05')
   })
 
   it('should return 16.67% for 3x max leverage', () => {
-    expect(calculateMaintenanceMarginRate(3)).toBeCloseTo(0.16667, 4)
+    expect(calculateMaintenanceMarginRate(3)).toBe(
+      '0.1666666666666666666666666666666666666667'
+    )
   })
 
-  it('should return undefined for zero max leverage', () => {
-    expect(calculateMaintenanceMarginRate(0)).toBeUndefined()
+  it.each([
+    0,
+    -5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('throws a ValidationError for maxLeverage %s', (maxLeverage) => {
+    expect(() => calculateMaintenanceMarginRate(maxLeverage)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('safeCalculateMaintenanceMarginRate gives undefined and warns for zero max leverage', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeCalculateMaintenanceMarginRate(0)).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
@@ -103,12 +122,20 @@ describe('calculateLiquidationPrice', () => {
     expect(calculateLiquidationPrice('0', '10', true, 50)).toBe('0')
   })
 
-  it('should return undefined for zero leverage', () => {
-    expect(calculateLiquidationPrice('100000', '0', true, 50)).toBeUndefined()
+  it('throws a ValidationError that names a zero leverage', () => {
+    expect(() => calculateLiquidationPrice('100000', '0', true, 50)).toThrow(
+      '`leverage` must not be zero.'
+    )
   })
 
-  it('should return undefined for zero max leverage', () => {
-    expect(calculateLiquidationPrice('100000', '10', true, 0)).toBeUndefined()
+  it.each([
+    0,
+    -1,
+    Number.NaN,
+  ])('throws a ValidationError for maxLeverage %s', (maxLeverage) => {
+    expect(() =>
+      calculateLiquidationPrice('100000', '10', true, maxLeverage)
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 
   it('should handle 1x leverage long', () => {
@@ -117,9 +144,17 @@ describe('calculateLiquidationPrice', () => {
     expect(calculateLiquidationPrice('100000', '1', true, 50)).toBe('0')
   })
 
-  it('should return undefined and warn for a non-decimal leverage', () => {
+  it('throws a ValidationError for a leverage that does not match the decimal pattern', () => {
+    expect(() => calculateLiquidationPrice('100000', 'abc', true, 50)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('safeCalculateLiquidationPrice gives undefined and warns', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(calculateLiquidationPrice('100000', 'abc', true, 50)).toBeUndefined()
+    expect(
+      safeCalculateLiquidationPrice('100000', 'abc', true, 50)
+    ).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })

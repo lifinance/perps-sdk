@@ -3,7 +3,7 @@
  * The wrapper logs a warning with `name` and the error, which carries the
  * stack trace.
  *
- * @internal
+ * @public
  */
 export function createSafeFunction<Args extends unknown[], Result>(
   name: string,

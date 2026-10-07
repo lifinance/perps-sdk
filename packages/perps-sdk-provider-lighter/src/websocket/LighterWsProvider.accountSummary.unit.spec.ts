@@ -173,10 +173,18 @@ const restPortfolioValue = async (client: PerpsSDKClient) => {
   return getAccountSummary(account, positions).portfolioValue
 }
 
+const backendClient = (): PerpsSDKClient =>
+  ({
+    config: { apiUrl: 'https://backend.test/v1/perps' },
+    providers: [],
+    getProvider: () => undefined,
+  }) as unknown as PerpsSDKClient
+
 const streamedSummaries = async (
   client: PerpsSDKClient,
   totalAssetValue: string,
-  order: readonly Frame[]
+  order: readonly Frame[],
+  spotMid: (mark: (typeof SPOT_MARKS)[number]) => string = (mark) => mark.mid
 ): Promise<AccountSummary[]> => {
   const ws = new LighterWsProvider('ws://127.0.0.1:1', 'lighter', {}, client)
   const internals = ws as unknown as WsInternals
@@ -199,9 +207,9 @@ const streamedSummaries = async (
           {
             market_id: Number(m.marketId),
             symbol: `${m.symbol}/USDC`,
-            index_price: m.mid,
-            mid_price: m.mid,
-            last_trade_price: m.mid,
+            index_price: spotMid(m),
+            mid_price: spotMid(m),
+            last_trade_price: spotMid(m),
             daily_base_token_volume: 0,
             daily_quote_token_volume: 0,
             daily_price_low: 0,
@@ -255,11 +263,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
     it.each(
       FRAME_ORDERS.map((order) => [order.join(', '), order] as const)
     )('streams the REST portfolioValue after the frames %s', async (_label, order) => {
-      const client = {
-        config: { apiUrl: 'https://backend.test/v1/perps' },
-        providers: [],
-        getProvider: () => undefined,
-      } as unknown as PerpsSDKClient
+      const client = backendClient()
 
       const rest = await restPortfolioValue(client)
       const streamed = await streamedSummaries(client, totalAssetValue, order)
@@ -273,11 +277,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
   // LIGHTER_SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
   it('streams the REST portfolioValue when /providers names a different spot category id', async () => {
     stubFetch('0', 'cash')
-    const client = {
-      config: { apiUrl: 'https://backend.test/v1/perps' },
-      providers: [],
-      getProvider: () => undefined,
-    } as unknown as PerpsSDKClient
+    const client = backendClient()
 
     const rest = await restPortfolioValue(client)
     const streamed = await streamedSummaries(client, '0', FRAME_ORDERS[0])
@@ -285,5 +285,25 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
     expect(rest).toBe('154.00625')
     expect(streamed).toHaveLength(1)
     expect(streamed[0].portfolioValue).toBe(rest)
+  })
+
+  it('emits no summary and warns when a held asset mark does not match the decimal pattern', async () => {
+    stubFetch('0')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const client = backendClient()
+
+    const streamed = await streamedSummaries(
+      client,
+      '0',
+      FRAME_ORDERS[0],
+      (mark) => (mark.assetId === ETH ? 'bad-mid' : mark.mid)
+    )
+
+    expect(streamed).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith(
+      '[perps-sdk] heldPortfolioValue failed',
+      expect.anything()
+    )
+    warn.mockRestore()
   })
 })

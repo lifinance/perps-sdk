@@ -53,13 +53,9 @@ const validSamples = (
 ): [number, DecimalString][] =>
   samples.flatMap(([timestamp, value]): [number, DecimalString][] => {
     if (!Number.isFinite(timestamp)) {
-      warnSkippedVenueRow(
-        PROVIDER_KEY,
-        row,
-        'timestamp',
-        timestamp,
-        'timestamp'
-      )
+      warnSkippedVenueRow(PROVIDER_KEY, row, 'timestamp', timestamp, {
+        expected: 'timestamp',
+      })
       return []
     }
     return [[timestamp, value]]

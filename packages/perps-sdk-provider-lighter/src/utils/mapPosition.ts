@@ -1,5 +1,6 @@
 import {
   absDecimalString,
+  createWarnOnce,
   divideDecimalString,
   isDecimalString,
   isDecimalStringZero,
@@ -53,16 +54,32 @@ export const leverageFromScaledImf = (imf: number): string | undefined => {
   return percent === undefined ? undefined : leverageFromImf(percent)
 }
 
-const skipPosition = (field: string, value: unknown): undefined => {
-  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'position', field, value)
+const skipPosition = (
+  marketId: string,
+  field: string,
+  value: unknown
+): undefined => {
+  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'position', field, value, {
+    marketId,
+  })
   return undefined
+}
+
+const warnUnreadableFieldOnce = createWarnOnce()
+
+const warnUnreadableField = (field: string, value: unknown): void => {
+  warnUnreadableFieldOnce(
+    `${LIGHTER_PROVIDER_KEY}|position.${field}`,
+    `[${LIGHTER_PROVIDER_KEY}] position \`${field}\` is not readable, so the derived fields are absent: '${String(value).slice(0, 64)}'`
+  )
 }
 
 /**
  * Map a raw Lighter account position to the generic Position type. A row with
- * an invalid size or value, or a non-positive initial margin fraction, gives
- * `undefined`: the mapper derives the size, mark price, margin and leverage
- * from them. Prices, PnL, funding and isolated margin pass through raw.
+ * an invalid size gives `undefined`. An invalid position value or a
+ * non-positive initial margin fraction keeps the row, leaves `leverage` and
+ * `initialMarginRequirement` absent, sets a cross `marginUsed` to `'0'` and
+ * warns once. Prices, PnL, funding and isolated margin pass through raw.
  * @param market - Backend-resolved market identity for `pos.market_id`.
  * @public
  */
@@ -71,39 +88,49 @@ export const mapPosition = (
   market: PerpsMarketDisplay
 ): Position | undefined => {
   if (!isDecimalString(pos.position)) {
-    return skipPosition('position', pos.position)
+    return skipPosition(market.id, 'position', pos.position)
   }
-  if (!isDecimalString(pos.position_value)) {
-    return skipPosition('position_value', pos.position_value)
+  const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
+  const size = absDecimalString(pos.position)
+  const positionValue = isDecimalString(pos.position_value)
+    ? absDecimalString(pos.position_value)
+    : undefined
+  if (positionValue === undefined) {
+    warnUnreadableField('position_value', pos.position_value)
   }
   const imf = pos.initial_margin_fraction
   const leverage = isDecimalString(imf) ? leverageFromImf(imf) : undefined
   if (leverage === undefined) {
-    return skipPosition('initial_margin_fraction', imf)
+    warnUnreadableField('initial_margin_fraction', imf)
   }
-  const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
-  const size = absDecimalString(pos.position)
-  const positionValue = absDecimalString(pos.position_value)
-  const initialMarginRequirement = divideDecimalString(
-    multiplyDecimalString(positionValue, imf),
-    '100'
-  )
+  const initialMarginRequirement =
+    positionValue === undefined || leverage === undefined
+      ? undefined
+      : divideDecimalString(multiplyDecimalString(positionValue, imf), '100')
 
   return {
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size,
     entryPrice: pos.avg_entry_price,
-    markPrice:
-      isDecimalStringZero(positionValue) || isDecimalStringZero(size)
-        ? '0'
-        : divideDecimalString(positionValue, size),
+    ...(positionValue === undefined
+      ? {}
+      : {
+          markPrice:
+            isDecimalStringZero(positionValue) || isDecimalStringZero(size)
+              ? '0'
+              : divideDecimalString(positionValue, size),
+        }),
     liquidationPrice: pos.liquidation_price,
     unrealizedPnl: pos.unrealized_pnl,
     accruedFunding: pos.total_funding_paid_out ?? '0',
-    leverage,
-    marginUsed: isIsolated ? pos.allocated_margin : initialMarginRequirement,
-    initialMarginRequirement,
+    ...(leverage === undefined ? {} : { leverage }),
+    marginUsed: isIsolated
+      ? pos.allocated_margin
+      : (initialMarginRequirement ?? '0'),
+    ...(initialMarginRequirement === undefined
+      ? {}
+      : { initialMarginRequirement }),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }
 }

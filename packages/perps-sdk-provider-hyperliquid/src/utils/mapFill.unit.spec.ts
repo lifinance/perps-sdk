@@ -389,7 +389,7 @@ describe('mapFill (Hyperliquid) invalid rows', () => {
     expect(mapFill(baseFill({ time: Number.NaN }), ETH_MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('skipping fill row: `time`')
+      expect.stringContaining("skipping fill row on market 'ETH': `time`")
     )
     warn.mockRestore()
   })

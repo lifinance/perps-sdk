@@ -1,13 +1,14 @@
 import {
+  createWarnOnce,
+  isDecimalString,
   isDecimalStringGreaterThan,
+  type MarketRegistry,
   PerpsError,
   safeDivideDecimalString,
   safeIsDecimalStringGreaterThan,
   safeIsDecimalStringZero,
   safeSubtractDecimalString,
-  subtractDecimalString,
   triggerConditionFor,
-  unknownToDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
@@ -29,6 +30,7 @@ import type {
   HlOrderDetail,
   HlTwapHistoryEntry,
 } from '../types/index.js'
+import { assetIsOutcome } from './assetId.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Order payload shared by frontend, historical, and single-order reads. */
@@ -98,15 +100,42 @@ export const mapOrderStatus = (status: string): OrderStatus => {
   }
 }
 
-const skipOrder = (field: string, value: unknown): undefined => {
-  warnSkippedVenueRow(PROVIDER_KEY, 'order', field, value)
+const skipOrder = (
+  marketId: string,
+  field: string,
+  value: unknown
+): undefined => {
+  warnSkippedVenueRow(PROVIDER_KEY, 'order', field, value, { marketId })
   return undefined
 }
 
-const venueDecimal = (value: unknown, field: string): string | undefined => {
+const warnDroppedRowOnce = createWarnOnce()
+
+/**
+ * Map one venue row, or drop it. An outcome market identity, a coin the backend
+ * market list does not hold, and a row the mapper rejects each drop only their
+ * own row; each distinct mapper message warns once.
+ */
+export const mapOrderRow = (
+  coin: string,
+  registry: MarketRegistry | undefined,
+  map: (market: MarketDisplay) => Order | undefined
+): Order | undefined => {
+  if (assetIsOutcome(coin)) {
+    return undefined
+  }
+  const market = registry?.get(coin)
+  if (market === undefined) {
+    return undefined
+  }
   try {
-    return unknownToDecimalString(value, field, PROVIDER_KEY)
-  } catch {
+    return map(market)
+  } catch (error) {
+    if (!(error instanceof PerpsError)) {
+      throw error
+    }
+    const message = `[${PROVIDER_KEY}] dropped order row: ${error.message}`
+    warnDroppedRowOnce(message, message)
     return undefined
   }
 }
@@ -133,15 +162,15 @@ export const mapOrder = (
     const { state } = raw
     const remainingSize = safeSubtractDecimalString(state.sz, state.executedSz)
     if (remainingSize === undefined) {
-      return skipOrder('executedSz', state.executedSz)
+      return skipOrder(market.id, 'executedSz', state.executedSz)
     }
     const createdAt = rowTimestampToIsoStringOrUndefined(state.timestamp)
     if (createdAt === undefined) {
-      return skipOrder('timestamp', state.timestamp)
+      return skipOrder(market.id, 'timestamp', state.timestamp)
     }
     const updatedAt = rowTimestampToIsoStringOrUndefined(raw.time * 1000)
     if (updatedAt === undefined) {
-      return skipOrder('time', raw.time)
+      return skipOrder(market.id, 'time', raw.time)
     }
     let status: OrderStatus
     switch (raw.status.status) {
@@ -195,23 +224,20 @@ export const mapOrder = (
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const originalSize = venueDecimal(o.origSz, 'origSz')
-  if (originalSize === undefined) {
-    return skipOrder('origSz', o.origSz)
+  const filledSize = safeSubtractDecimalString(o.origSz, o.sz)
+  if (filledSize === undefined) {
+    return isDecimalString(o.origSz)
+      ? skipOrder(market.id, 'sz', o.sz)
+      : skipOrder(market.id, 'origSz', o.origSz)
   }
-  const remainingSize = venueDecimal(o.sz, 'sz')
-  if (remainingSize === undefined) {
-    return skipOrder('sz', o.sz)
-  }
-  const filledSize = subtractDecimalString(originalSize, remainingSize)
   const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
   if (createdAt === undefined) {
-    return skipOrder('timestamp', o.timestamp)
+    return skipOrder(market.id, 'timestamp', o.timestamp)
   }
   const statusTimestamp = 'order' in raw ? raw.statusTimestamp : o.timestamp
   const updatedAt = rowTimestampToIsoStringOrUndefined(statusTimestamp)
   if (updatedAt === undefined) {
-    return skipOrder('statusTimestamp', statusTimestamp)
+    return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
   let status = mapOrderStatus(venueStatus)
   if (parentOrderId !== undefined && !('order' in raw)) {

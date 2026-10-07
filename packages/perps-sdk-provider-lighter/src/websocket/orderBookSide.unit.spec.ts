@@ -96,7 +96,7 @@ const replaySide = (
 ) => {
   const incrementalCount = countingOrder(order)
   const referenceCount = countingOrder(order)
-  const side = new OrderBookSide(incrementalCount.order, 'lighter')
+  const side = new OrderBookSide(incrementalCount.order, 'lighter', '0')
   const reference = new FullSortReference(referenceCount.order)
 
   side.apply(replay.snapshot)
@@ -171,7 +171,7 @@ describe('OrderBookSide', () => {
   })
 
   it('places a new level after an equal price, as a stable sort does', () => {
-    const side = new OrderBookSide(askOrder, 'lighter')
+    const side = new OrderBookSide(askOrder, 'lighter', '0')
     side.apply([
       { price: '100', size: '1' },
       { price: '101', size: '2' },
@@ -191,14 +191,14 @@ describe('OrderBookSide', () => {
   })
 
   it('ignores a deletion of a price that is not in the book', () => {
-    const side = new OrderBookSide(bidOrder, 'lighter')
+    const side = new OrderBookSide(bidOrder, 'lighter', '0')
     side.apply([{ price: '100', size: '1' }])
     side.apply([{ price: '99', size: '0' }])
     expect(side.toLevels()).toEqual([{ price: '100', size: '1' }])
   })
 
   it('returns a fresh array that a caller cannot use to change the book', () => {
-    const side = new OrderBookSide(bidOrder, 'lighter')
+    const side = new OrderBookSide(bidOrder, 'lighter', '0')
     side.apply([{ price: '100', size: '1' }])
     const first = side.toLevels()
     first[0].size = '9'
@@ -208,7 +208,7 @@ describe('OrderBookSide', () => {
 
   it('skips a level with an invalid price and logs it', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const side = new OrderBookSide(bidOrder, 'lighter')
+    const side = new OrderBookSide(bidOrder, 'lighter', '0')
     side.apply([
       { price: 'bad-price', size: '1' },
       { price: '100', size: '1' },
@@ -222,7 +222,7 @@ describe('OrderBookSide', () => {
 
   it('removes the level at a price whose new size is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const side = new OrderBookSide(bidOrder, 'lighter')
+    const side = new OrderBookSide(bidOrder, 'lighter', '0')
     side.apply([
       { price: '100', size: '1' },
       { price: '101', size: '2' },

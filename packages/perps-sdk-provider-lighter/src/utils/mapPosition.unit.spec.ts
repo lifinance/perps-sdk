@@ -17,7 +17,6 @@ import {
   leverageFromScaledImf,
   mapPosition,
 } from './mapPosition.js'
-import { leverageToFraction } from './wireEncoding.js'
 
 const SYMBOL = 'BTC'
 const MARKET: PerpsMarketDisplay = {
@@ -233,8 +232,62 @@ describe('mapPosition (Lighter)', () => {
       ['initial_margin_fraction', { initial_margin_fraction: '0' }],
       ['initial_margin_fraction', { initial_margin_fraction: '-1' }],
       ['initial_margin_fraction', { initial_margin_fraction: 'n/a' }],
+    ])('keeps the row without leverage and warns once when %s is invalid (%o)', async (field, overrides) => {
+      vi.resetModules()
+      const { mapPosition: freshMapPosition } = await import('./mapPosition.js')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const position = freshMapPosition(basePosition(overrides), MARKET)
+      expect(position).toMatchObject({ size: '0.00106', marginUsed: '0' })
+      expect(position).not.toHaveProperty('leverage')
+      expect(position).not.toHaveProperty('initialMarginRequirement')
+      freshMapPosition(basePosition(overrides), MARKET)
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `[lighter] position \`${field}\` is not readable`
+        )
+      )
+      warn.mockRestore()
+    })
+
+    it('keeps the isolated margin when the initial margin fraction is invalid', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      expect(
+        map(
+          basePosition({
+            margin_mode: LT_MARGIN_MODE_ISOLATED,
+            allocated_margin: '12.5',
+            initial_margin_fraction: 'n/a',
+          }),
+          MARKET
+        )
+      ).toMatchObject({ marginUsed: '12.5' })
+      vi.restoreAllMocks()
+    })
+
+    it('keeps the row without markPrice or initialMarginRequirement when position_value is invalid', async () => {
+      vi.resetModules()
+      const { mapPosition: freshMapPosition } = await import('./mapPosition.js')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const position = freshMapPosition(
+        basePosition({ position_value: '' }),
+        MARKET
+      )
+      expect(position).toMatchObject({ leverage: '50', marginUsed: '0' })
+      expect(position).not.toHaveProperty('markPrice')
+      expect(position).not.toHaveProperty('initialMarginRequirement')
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '[lighter] position `position_value` is not readable'
+        )
+      )
+      warn.mockRestore()
+    })
+
+    it.each([
       ['position', { position: 'abc' }],
-      ['position_value', { position_value: '' }],
     ])('skips the row and warns when %s is invalid (%o)', async (field, overrides) => {
       vi.resetModules()
       const { mapPosition: freshMapPosition } = await import('./mapPosition.js')
@@ -242,7 +295,9 @@ describe('mapPosition (Lighter)', () => {
 
       expect(freshMapPosition(basePosition(overrides), MARKET)).toBeUndefined()
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining(`[lighter] skipping position row: \`${field}\``)
+        expect.stringContaining(
+          `[lighter] skipping position row on market '1': \`${field}\``
+        )
       )
       warn.mockRestore()
     })
@@ -313,6 +368,9 @@ describe('leverageFromScaledImf', () => {
   })
 })
 
+const venueImfFromLeverage = (leverage: number): number =>
+  Math.round(10_000 / leverage)
+
 describe('leverageFromImf', () => {
   it.each([
     ['33.33', '3'],
@@ -333,12 +391,14 @@ describe('leverageFromImf', () => {
   it('reads every leverage at the precision back to a value that re-saves the same IMF', () => {
     const steps = 10 ** LIGHTER_LEVERAGE_PRECISION
     for (let step = steps; step <= 100 * steps; step++) {
-      const fraction = leverageToFraction(step / steps)
+      const fraction = venueImfFromLeverage(step / steps)
       const readBack = leverageFromScaledImf(fraction)
       if (readBack === undefined) {
         expect.unreachable(`IMF ${fraction} has no read-back`)
       }
-      expect(leverageToFraction(decimalStringToNumber(readBack))).toBe(fraction)
+      expect(venueImfFromLeverage(decimalStringToNumber(readBack))).toBe(
+        fraction
+      )
     }
   })
 })

@@ -160,11 +160,11 @@ describe('positionRemovableMargin', () => {
   it.each([
     [
       { marginUsed: 'n/a' },
-      "Invalid `Position.marginUsed`: 'n/a' is not a decimal string.",
+      "Invalid `Position.marginUsed`: 'n/a' does not match the decimal pattern.",
     ],
     [
       { initialMarginRequirement: 'n/a' },
-      "Invalid `Position.initialMarginRequirement`: 'n/a' is not a decimal string.",
+      "Invalid `Position.initialMarginRequirement`: 'n/a' does not match the decimal pattern.",
     ],
     [{ size: '0' }, 'Position.size must be greater than zero.'],
     [{ markPrice: '-1' }, 'Position.markPrice must be greater than zero.'],

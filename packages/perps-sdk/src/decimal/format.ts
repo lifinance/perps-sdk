@@ -38,9 +38,9 @@ const DEFAULT_PLACEHOLDER = '—'
 type FormatInput = number | DecimalString | string | null | undefined
 
 /**
- * Read a display input as a `Big`: `$`, `%`, `,` and whitespace are removed
- * from a string first. `null` means the formatter renders the placeholder;
- * a string it cannot read is returned unchanged for display.
+ * Read a display input as a `Big`. `null` means the formatter renders the
+ * placeholder; a string that does not match the decimal pattern is returned
+ * unchanged for display.
  */
 function toBig(value: FormatInput): Big | null | string {
   if (typeof value === 'number') {

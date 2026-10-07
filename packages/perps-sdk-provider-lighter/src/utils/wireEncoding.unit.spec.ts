@@ -15,10 +15,8 @@ import {
   LT_TIME_IN_FORCE_POST_ONLY,
 } from '../types/action.js'
 import {
-  leverageToFraction,
   mapOrderTypeToInt,
   mapTimeInForceToInt,
-  marginFractionToMaxLeverage,
   orderExpiryForTif,
   resolveTimeInForce,
 } from './wireEncoding.js'
@@ -35,55 +33,6 @@ const expectValidationError = (fn: () => unknown, match: RegExp) => {
     expect(e.code).toBe(PerpsErrorCode.ValidationError)
   }
 }
-
-describe('leverageToFraction', () => {
-  it('converts leverage to basis-point fraction', () => {
-    expect(leverageToFraction(10)).toBe(1000)
-    expect(leverageToFraction(3)).toBe(3333)
-  })
-
-  it('accepts decimal leverage', () => {
-    expect(leverageToFraction(2.5)).toBe(4000)
-    expect(leverageToFraction(3.33)).toBe(3003)
-  })
-
-  it('throws on non-positive leverage', () => {
-    expectValidationError(() => leverageToFraction(0), /Invalid leverage/)
-    expectValidationError(() => leverageToFraction(-2), /Invalid leverage/)
-  })
-})
-
-describe('marginFractionToMaxLeverage', () => {
-  it('converts basis-point fractions to max leverage', () => {
-    expect(marginFractionToMaxLeverage(1000)).toBe(10)
-    expect(marginFractionToMaxLeverage(200)).toBe(50)
-    expect(marginFractionToMaxLeverage(100)).toBe(100)
-  })
-
-  it('floors non-integer results', () => {
-    expect(marginFractionToMaxLeverage(300)).toBe(33)
-  })
-
-  it('returns 1 for zero, negative, and non-finite fractions', () => {
-    expect(marginFractionToMaxLeverage(0)).toBe(1)
-    expect(marginFractionToMaxLeverage(-100)).toBe(1)
-    expect(marginFractionToMaxLeverage(Number.NaN)).toBe(1)
-    expect(marginFractionToMaxLeverage(Number.POSITIVE_INFINITY)).toBe(1)
-  })
-
-  it('round-trips leverage through basis-point fractions for exact divisors', () => {
-    for (const leverage of [1, 2, 3, 4, 5, 8, 10, 20, 25, 33, 50, 100]) {
-      expect(marginFractionToMaxLeverage(leverageToFraction(leverage))).toBe(
-        leverage
-      )
-    }
-  })
-
-  it('floors the round-trip when the fraction rounds up past the divisor', () => {
-    // round(10000/7) = 1429 → floor(10000/1429) = 6
-    expect(marginFractionToMaxLeverage(leverageToFraction(7))).toBe(6)
-  })
-})
 
 describe('mapOrderTypeToInt', () => {
   it('maps each known order type to its wire integer', () => {

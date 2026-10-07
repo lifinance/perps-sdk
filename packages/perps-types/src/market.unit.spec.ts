@@ -37,7 +37,7 @@ const perpsMarket: PerpsMarket = {
   maxLeverage: 50,
   onlyIsolated: false,
   positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
-  maintenanceMarginRate: 0.01,
+  maintenanceMarginRate: '0.01',
   maxMarketOrderUsd: '1000000',
   maxLimitOrderUsd: '281474976.710655',
 }
@@ -66,7 +66,7 @@ describe('PerpsMarket', () => {
 
   it('optionally carries venue tick and margin metadata', () => {
     expect(perpsMarket.priceDecimals).toBe(1)
-    expect(perpsMarket.maintenanceMarginRate).toBe(0.01)
+    expect(perpsMarket.maintenanceMarginRate).toBe('0.01')
   })
 })
 

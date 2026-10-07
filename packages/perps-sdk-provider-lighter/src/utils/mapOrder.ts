@@ -1,12 +1,12 @@
 import {
   isActiveOrderStatus,
-  isDecimalStringGreaterThan,
   PerpsError,
   safeDivideDecimalString,
+  safeIsDecimalStringGreaterThan,
   safeTimestampToIsoString,
   triggerConditionFor,
-  unknownToDecimalString,
   warnSkippedVenueRow,
+  wsLog,
 } from '@lifi/perps-sdk'
 import type { MarketDisplay, Order, OrderBase } from '@lifi/perps-types'
 import {
@@ -62,18 +62,8 @@ const mapTimeInForce = (tif: string): TimeInForce => {
   }
 }
 
-const venueDecimal = (value: unknown, field: string): string | undefined => {
-  try {
-    return unknownToDecimalString(value, field, LIGHTER_PROVIDER_KEY)
-  } catch {
-    return undefined
-  }
-}
-
-const hasFill = (order: LtOrder): boolean => {
-  const filled = venueDecimal(order.filled_base_amount, 'filled_base_amount')
-  return filled !== undefined && isDecimalStringGreaterThan(filled, '0')
-}
+const hasFill = (order: LtOrder): boolean =>
+  safeIsDecimalStringGreaterThan(order.filled_base_amount, '0') === true
 
 const mapOrderStatus = (order: LtOrder): OrderStatus => {
   switch (order.status) {
@@ -113,67 +103,39 @@ const mapOrderStatus = (order: LtOrder): OrderStatus => {
   }
 }
 
-const skipOrder = (field: string, value: unknown): undefined => {
-  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'order', field, value)
+const skipOrder = (
+  marketId: string,
+  field: string,
+  value: unknown
+): undefined => {
+  warnSkippedVenueRow(LIGHTER_PROVIDER_KEY, 'order', field, value, { marketId })
   return undefined
 }
 
-const orderSizeOrSkip = (
-  field: 'initial_base_amount' | 'remaining_base_amount' | 'filled_base_amount',
-  value: string
-): string | undefined =>
-  venueDecimal(value, field) === undefined ? skipOrder(field, value) : value
-
 /**
  * Map a Lighter order with its venue identity, lifecycle, and execution fields.
- * A row with an invalid size or time gives `undefined`. An invalid limit price or
- * filled quote amount omits that field.
+ * Venue sizes and prices pass verbatim. A row with an invalid time gives
+ * `undefined`. An average price that cannot be derived is omitted.
  */
 export const mapOrder = (
   order: LtOrder,
   market: MarketDisplay
 ): Order | undefined => {
   const type = mapOrderType(order.type)
-  const originalSize = orderSizeOrSkip(
-    'initial_base_amount',
-    order.initial_base_amount
-  )
-  if (originalSize === undefined) {
-    return undefined
-  }
-  const remainingSize = orderSizeOrSkip(
-    'remaining_base_amount',
-    order.remaining_base_amount
-  )
-  if (remainingSize === undefined) {
-    return undefined
-  }
-  const filledSize = orderSizeOrSkip(
-    'filled_base_amount',
-    order.filled_base_amount
-  )
-  if (filledSize === undefined) {
-    return undefined
-  }
   const createdAt = rowTimestampToIsoStringOrUndefined(order.created_at * 1000)
   if (createdAt === undefined) {
-    return skipOrder('created_at', order.created_at)
+    return skipOrder(market.id, 'created_at', order.created_at)
   }
   const updatedAt = rowTimestampToIsoStringOrUndefined(order.updated_at * 1000)
   if (updatedAt === undefined) {
-    return skipOrder('updated_at', order.updated_at)
+    return skipOrder(market.id, 'updated_at', order.updated_at)
   }
-  const filledQuote = venueDecimal(
-    order.filled_quote_amount,
-    'filled_quote_amount'
-  )
-  const filledAmount = venueDecimal(filledSize, 'filled_base_amount')
-  const averagePrice =
-    filledQuote !== undefined &&
-    filledAmount !== undefined &&
-    isDecimalStringGreaterThan(filledAmount, '0')
-      ? safeDivideDecimalString(filledQuote, filledAmount)
-      : undefined
+  const averagePrice = hasFill(order)
+    ? safeDivideDecimalString(
+        order.filled_quote_amount,
+        order.filled_base_amount
+      )
+    : undefined
   const expiresAt =
     order.order_expiry > 0
       ? safeTimestampToIsoString(order.order_expiry)
@@ -188,9 +150,9 @@ export const mapOrder = (
     side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
     status,
     ...(status === OrderStatus.CANCELLED ? { statusReason: order.status } : {}),
-    originalSize,
-    remainingSize,
-    filledSize,
+    originalSize: order.initial_base_amount,
+    remainingSize: order.remaining_base_amount,
+    filledSize: order.filled_base_amount,
     ...(averagePrice === undefined ? {} : { averagePrice }),
     reduceOnly: order.reduce_only,
     ...(order.parent_order_id ? { parentOrderId: order.parent_order_id } : {}),
@@ -214,9 +176,8 @@ export const mapOrder = (
         type,
         triggerPrice: order.trigger_price,
         triggerCondition: triggerConditionFor(type, base.side),
-        ...((type === OrderType.STOP_LIMIT ||
-          type === OrderType.TAKE_PROFIT_LIMIT) &&
-        venueDecimal(order.price, 'price') !== undefined
+        ...(type === OrderType.STOP_LIMIT ||
+        type === OrderType.TAKE_PROFIT_LIMIT
           ? { limitPrice: order.price }
           : {}),
       }
@@ -233,7 +194,10 @@ export const mapOrder = (
   }
 }
 
-/** Include terminal rows and their ids so consumers can update history and active caches. */
+/**
+ * Include terminal rows and their ids so consumers can update history and
+ * active caches. A row the mapper rejects is dropped and warns once.
+ */
 export const mapOrderUpdates = (
   rawOrders: LtOrder[],
   resolveMarket: (marketIndex: number) => MarketDisplay | undefined
@@ -242,8 +206,23 @@ export const mapOrderUpdates = (
   const terminated: string[] = []
   for (const raw of rawOrders) {
     const market = resolveMarket(raw.market_index)
-    const order = market === undefined ? undefined : mapOrder(raw, market)
-    if (!isActiveOrderStatus(order?.status ?? mapOrderStatus(raw))) {
+    let order: Order | undefined
+    let status: OrderStatus
+    try {
+      order = market === undefined ? undefined : mapOrder(raw, market)
+      status = order?.status ?? mapOrderStatus(raw)
+    } catch (error) {
+      if (!(error instanceof PerpsError)) {
+        throw error
+      }
+      wsLog.droppedRow(
+        LIGHTER_PROVIDER_KEY,
+        'order',
+        `${raw.order_index}: ${error.message}`
+      )
+      continue
+    }
+    if (!isActiveOrderStatus(status)) {
       terminated.push(String(raw.order_index))
     }
     if (order !== undefined) {

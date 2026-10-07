@@ -2672,6 +2672,66 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('drops a row the mapper rejects, warns once and still emits the frame', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            sparseOrderUpdate({ oid: 100 }, 'unknownVenueStatus'),
+            sparseOrderUpdate({ oid: 101 }),
+          ],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data.orders).toHaveLength(1)
+      expect(listener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
+      expect(warn).toHaveBeenCalledWith(
+        '[hyperliquid] dropped order row: Unknown Hyperliquid order status: unknownVenueStatus'
+      )
+      warn.mockRestore()
+    })
+
+    it('drops a row whose metadata lookup fails, warns once and still emits the frame', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockImplementation(async (body: { oid: number }) =>
+          body.oid === 100
+            ? { status: 'unknownOid' }
+            : orderMetadata({ oid: 101 })
+        )
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [
+            sparseOrderUpdate({ oid: 100 }),
+            sparseOrderUpdate({ oid: 101 }),
+          ],
+        })
+      )
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data.orders).toHaveLength(1)
+      expect(listener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
+      expect(warn).toHaveBeenCalledWith(
+        '[hyperliquid:ws] skipping order row: 100: Hyperliquid order metadata not found: 100'
+      )
+      warn.mockRestore()
+    })
+
     it('gets trigger type and price from HTTP metadata for a sparse trigger update', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
@@ -2846,7 +2906,7 @@ describe('HyperliquidWsProvider', () => {
     it('does not invent execution metadata when orderStatus cannot find the order', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
-      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       orderStatusFetchMock
         .mockReset()
         .mockResolvedValue({ status: 'unknownOid' })
@@ -2855,11 +2915,20 @@ describe('HyperliquidWsProvider', () => {
         listener
       )
       getMockRwsInstance().simulateMessage(
-        JSON.stringify({ channel: 'orderUpdates', data: [sparseOrderUpdate()] })
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ oid: 102 })],
+        })
       )
-      await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledOnce())
-      expect(listener).not.toHaveBeenCalled()
-      errorSpy.mockRestore()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      expect(listener.mock.calls[0][0].data).toEqual({
+        orders: [],
+        terminated: [],
+      })
+      expect(warn).toHaveBeenCalledWith(
+        '[hyperliquid:ws] skipping order row: 102: Hyperliquid order metadata not found: 102'
+      )
+      warn.mockRestore()
     })
 
     it('should emit fills event for userFills channel', async () => {
@@ -3097,6 +3166,41 @@ describe('HyperliquidWsProvider', () => {
       expect(positionsListener).toHaveBeenCalledOnce()
       expect(spotListener).toHaveBeenCalledOnce()
       await vi.waitFor(() => expect(ordersListener).toHaveBeenCalledOnce())
+    })
+
+    it('keeps the spot frame when a balance total or hold does not match the decimal pattern', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const listener = vi.fn()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'spotState',
+          data: {
+            user: '0xuser1',
+            spotState: {
+              balances: [
+                { coin: 'USDC', token: 0, total: '500', hold: 'abc' },
+                { coin: 'GHOST', token: 9, total: 'abc', hold: '0' },
+              ],
+            },
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const rows = listener.mock.calls[0][0].data
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        units: '500',
+        locked: 'abc',
+        transferable: '0',
+      })
+      warn.mockRestore()
     })
 
     it('emits typed non-zero spot Balances keyed on the wire token index', async () => {
@@ -3409,7 +3513,9 @@ describe('HyperliquidWsProvider', () => {
       const event = listener.mock.calls[0][0]
       expect(event.data.map((p: any) => p.market.id)).toEqual(['BTC'])
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('[hyperliquid] skipping position row: `szi`')
+        expect.stringContaining(
+          "[hyperliquid] skipping position row on market 'ETH': `szi`"
+        )
       )
     })
 
@@ -3640,7 +3746,11 @@ describe('HyperliquidWsProvider', () => {
       const priceListener = vi.fn()
       const orderListener = vi.fn()
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+      // A malformed metadata body throws a TypeError, which is not a PerpsError
+      // and so escapes the per-row catch.
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValue({ status: 'order', order: null })
 
       await provider.subscribe(
         { channel: 'marketsContext', dex: 'hyperliquid' },
@@ -3654,7 +3764,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [sparseOrderUpdate({}, 'mysteryStatus')],
+          data: [sparseOrderUpdate()],
         })
       )
 
@@ -3694,7 +3804,9 @@ describe('HyperliquidWsProvider', () => {
         terminated: [],
       })
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[hyperliquid] skipping order row: `timestamp`')
+        expect.stringContaining(
+          "[hyperliquid] skipping order row on market 'BTC': `timestamp`"
+        )
       )
       expect(errorSpy).not.toHaveBeenCalled()
       errorSpy.mockRestore()
