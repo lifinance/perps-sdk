@@ -3,27 +3,22 @@ import Big from 'big.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import { DivBig } from './big.js'
 
-const DISPLAY_CHARACTERS = /[\s$%,]/g
-
 /**
- * Read a decimal string as a `Big`. Whitespace, `$`, `%` and `,` are removed
- * first, so `'$1,234.5'` reads as `1234.5`; the rest must match
- * `DECIMAL_PATTERN`, so an exponent form such as `'1e5'` is rejected.
+ * Read a decimal string as a `Big`. The string must match `DECIMAL_PATTERN`,
+ * so `'$1,234.5'`, `'0.05%'` and the exponent form `'1e5'` are rejected.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a string or the
- *   cleaned string is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when `value` does not match the
+ *   decimal pattern.
  * @internal
  */
 export function decimalStringToBig(value: string): Big {
-  const cleaned =
-    typeof value === 'string' ? value.replace(DISPLAY_CHARACTERS, '') : ''
-  if (!DECIMAL_PATTERN.test(cleaned)) {
+  if (typeof value !== 'string' || !DECIMAL_PATTERN.test(value)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `'${String(value)}' is not a decimal string.`
+      `'${String(value)}' does not match the decimal pattern.`
     )
   }
-  return new Big(cleaned)
+  return new Big(value)
 }
 
 /**

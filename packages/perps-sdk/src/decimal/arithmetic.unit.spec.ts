@@ -3,11 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   absDecimalString,
   addDecimalString,
+  addDecimalStrings,
   divideDecimalString,
   divideDecimalStringRoundDown,
   multiplyDecimalString,
   safeAbsDecimalString,
   safeAddDecimalString,
+  safeAddDecimalStrings,
   safeDivideDecimalString,
   safeDivideDecimalStringRoundDown,
   safeMultiplyDecimalString,
@@ -28,12 +30,49 @@ describe('addDecimalString', () => {
     expect(addDecimalString('0.1', '0.2')).toBe('0.3')
   })
 
-  it('reads display forms after the clean step', () => {
-    expect(addDecimalString('$4', '$6')).toBe('10')
+  it('rejects a display form', () => {
+    expect(() => addDecimalString('$4', '$6')).toThrow(validationError)
   })
 
   it('throws ValidationError for a bad input', () => {
     expect(() => addDecimalString('abc', '1')).toThrow(validationError)
+  })
+})
+
+describe('addDecimalStrings', () => {
+  it('gives 0 for an empty list', () => {
+    expect(addDecimalStrings([])).toBe('0')
+  })
+
+  it('adds every value exactly', () => {
+    expect(addDecimalStrings(['0.1', '0.2', '-0.05'])).toBe('0.25')
+  })
+
+  it('keeps digits past the float grid', () => {
+    expect(addDecimalStrings(['9007199254740993', '0.0000000000000001'])).toBe(
+      '9007199254740993.0000000000000001'
+    )
+  })
+
+  it('throws ValidationError naming a bad value', () => {
+    expect(() => addDecimalStrings(['1', 'abc'])).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining("'abc'"),
+      })
+    )
+  })
+})
+
+describe('safeAddDecimalStrings', () => {
+  it('gives the sum for good values', () => {
+    expect(safeAddDecimalStrings(['1', '2'])).toBe('3')
+  })
+
+  it('gives undefined and warns for one bad value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeAddDecimalStrings(['0.1', 'abc', '0.2'])).toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
 

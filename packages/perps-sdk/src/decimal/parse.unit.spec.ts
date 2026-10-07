@@ -18,8 +18,6 @@ describe('decimalStringToNumber', () => {
     ['123.45', 123.45],
     ['-42.5', -42.5],
     ['0.000599', 0.000599],
-    ['$1,234.5', 1234.5],
-    ['12.5%', 12.5],
   ])('reads %j as %j', (input, expected) => {
     expect(decimalStringToNumber(input)).toBe(expected)
   })
@@ -30,6 +28,8 @@ describe('decimalStringToNumber', () => {
     '1e-7',
     'NaN',
     'not-a-number',
+    '$1,234.5',
+    '12.5%',
   ])('throws ValidationError for %j', (input) => {
     expect(() => decimalStringToNumber(input)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })

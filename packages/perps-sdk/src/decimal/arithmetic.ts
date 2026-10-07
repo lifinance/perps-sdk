@@ -6,10 +6,9 @@ import { DivBig, TruncBig } from './big.js'
 import { bigToDecimalString, decimalStringToBig } from './decimalStringToBig.js'
 
 /**
- * Exact `a + b`. Each input may carry `$`, `%`, `,` or whitespace:
- * `addDecimalString('$4', '$6')` is `'10'`.
+ * Exact `a + b`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function addDecimalString(a: string, b: string): string {
@@ -27,9 +26,36 @@ export const safeAddDecimalString = createSafeFunction(
 )
 
 /**
+ * Exact sum of every value; `'0'` for an empty list.
+ *
+ * @throws {PerpsError} `ValidationError` when a value does not match the
+ *   decimal pattern.
+ * @public
+ */
+export function addDecimalStrings(values: readonly string[]): string {
+  return bigToDecimalString(
+    values.reduce<Big>(
+      (sum, value) => sum.plus(decimalStringToBig(value)),
+      decimalStringToBig('0')
+    )
+  )
+}
+
+/**
+ * {@link addDecimalStrings}, or `undefined` with a warning when it throws.
+ * One bad value gives `undefined`, never a partial sum.
+ *
+ * @public
+ */
+export const safeAddDecimalStrings = createSafeFunction(
+  'addDecimalStrings',
+  addDecimalStrings
+)
+
+/**
  * Exact `a - b`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function subtractDecimalString(a: string, b: string): string {
@@ -49,7 +75,7 @@ export const safeSubtractDecimalString = createSafeFunction(
 /**
  * Exact `a × b`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function multiplyDecimalString(a: string, b: string): string {
@@ -126,7 +152,7 @@ export const safeDivideDecimalStringRoundDown = createSafeFunction(
 /**
  * Exact `|value|`.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern.
  * @public
  */
 export function absDecimalString(value: string): string {

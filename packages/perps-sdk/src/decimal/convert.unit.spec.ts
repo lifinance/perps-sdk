@@ -9,9 +9,7 @@ import {
   safeNumberToDecimalString,
   safeRoundDecimalString,
   safeScaledIntegerToDecimalString,
-  safeTruncateDecimal,
   scaledIntegerToDecimalString,
-  truncateDecimal,
 } from './convert.js'
 
 afterEach(() => {
@@ -90,7 +88,9 @@ describe('decimalStringToScaledInteger', () => {
   ])('rejects the non-decimal string %j, naming the value', (value) => {
     expectValidationError(
       () => decimalStringToScaledInteger(value, 8, 'truncate'),
-      new RegExp(`'${value.replace('$', '\\$')}' is not a decimal string`)
+      new RegExp(
+        `'${value.replace('$', '\\$')}' does not match the decimal pattern`
+      )
     )
   })
 
@@ -175,78 +175,6 @@ describe('scaledIntegerToDecimalString', () => {
   })
 })
 
-describe('truncateDecimal', () => {
-  it.each([
-    ['500', 2, '500.00'],
-    ['1000.999', 2, '1000.99'],
-    ['0.0000006', 8, '0.00000060'],
-    ['-1.239', 2, '-1.23'],
-    ['7', 2, '7.00'],
-    ['0.1', 2, '0.10'],
-  ] as const)('pads %s at %i decimals to %s', (value, dp, expected) => {
-    expect(truncateDecimal(value, dp)).toBe(expected)
-  })
-
-  it('pads past the float grid, where toFixed on a number cannot', () => {
-    expect(truncateDecimal('0.01', 18)).toBe('0.010000000000000000')
-  })
-
-  it('truncates magnitudes beyond Number.MAX_SAFE_INTEGER exactly', () => {
-    expect(truncateDecimal('9007199254740993.129', 2)).toBe(
-      '9007199254740993.12'
-    )
-  })
-
-  it('keeps the smallest step of its own grid', () => {
-    expect(truncateDecimal('0.00000001', 8)).toBe('0.00000001')
-  })
-
-  it('drops the sign when the truncation lands on zero', () => {
-    expect(truncateDecimal('-0.001', 2)).toBe('0.00')
-    expect(truncateDecimal('-0', 2)).toBe('0.00')
-  })
-
-  it('emits no decimal point at zero decimals', () => {
-    expect(truncateDecimal('1000.999', 0)).toBe('1000')
-  })
-
-  it.each([
-    ['500', 2],
-    ['1000.999', 2],
-    ['-1.239', 2],
-    ['-0.001', 2],
-    ['0.0000006', 8],
-    ['1000.999', 0],
-  ] as const)('spells %s at %i decimals as a DecimalString', (value, dp) => {
-    expect(truncateDecimal(value, dp)).toMatch(DECIMAL_PATTERN)
-  })
-
-  it.each([
-    '',
-    'abc',
-    '1.2.3',
-    '0x10',
-    '1e-8',
-    '1.5e21',
-  ])('rejects the non-decimal string %j, naming the value', (value) => {
-    expectValidationError(
-      () => truncateDecimal(value, 8),
-      new RegExp(`'${value}' is not a decimal string`)
-    )
-  })
-
-  it('reads a display form after the clean step', () => {
-    expect(truncateDecimal('$1,000.999', 2)).toBe('1000.99')
-  })
-
-  it.each([-1, 1.5, Number.NaN])('rejects the decimals %j', (dp) => {
-    expectValidationError(
-      () => truncateDecimal('1', dp),
-      /Invalid decimals for truncation/
-    )
-  })
-})
-
 describe('numberToDecimalString', () => {
   it.each([
     [1e-7, '0.0000001'],
@@ -294,6 +222,9 @@ describe('roundDecimalString', () => {
     ['1.23', 2, 'up', '1.23'],
     ['1.50', 1, 'round', '1.5'],
     ['-0.001', 2, 'truncate', '0'],
+    ['1000.999', 2, 'truncate', '1000.99'],
+    ['1000.999', 0, 'truncate', '1000'],
+    ['9007199254740993.129', 2, 'truncate', '9007199254740993.12'],
   ] as const)('rounds %s at %i decimals (%s) to %s', (value, dp, rounding, expected) => {
     expect(roundDecimalString(value, dp, rounding)).toBe(expected)
   })
@@ -301,7 +232,14 @@ describe('roundDecimalString', () => {
   it('throws ValidationError for a bad value', () => {
     expectValidationError(
       () => roundDecimalString('abc', 2, 'round'),
-      /'abc' is not a decimal string/
+      /'abc' does not match the decimal pattern/
+    )
+  })
+
+  it('rejects a display form', () => {
+    expectValidationError(
+      () => roundDecimalString('$1,000.999', 2, 'truncate'),
+      /'\$1,000\.999' does not match the decimal pattern/
     )
   })
 
@@ -318,7 +256,6 @@ describe('safe convert functions', () => {
     expect(safeRoundDecimalString('1.231', 2, 'up')).toBe('1.24')
     expect(safeDecimalStringToScaledInteger('0.29', 2, 'truncate')).toBe(29)
     expect(safeScaledIntegerToDecimalString('1000000', 6)).toBe('1')
-    expect(safeTruncateDecimal('1.239', 2)).toBe('1.23')
     expect(safeNumberToDecimalString(1e-7)).toBe('0.0000001')
   })
 
@@ -329,8 +266,7 @@ describe('safe convert functions', () => {
       safeDecimalStringToScaledInteger('9007199254740.992', 3, 'truncate')
     ).toBeUndefined()
     expect(safeScaledIntegerToDecimalString('1.5', 6)).toBeUndefined()
-    expect(safeTruncateDecimal('abc', 2)).toBeUndefined()
     expect(safeNumberToDecimalString(Number.NaN)).toBeUndefined()
-    expect(warn).toHaveBeenCalledTimes(5)
+    expect(warn).toHaveBeenCalledTimes(4)
   })
 })

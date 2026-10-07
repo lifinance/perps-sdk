@@ -21,7 +21,7 @@ describe('formatUsd', () => {
     expect(formatUsd(42, { locale: 'en-US' })).toBe('$42.00')
   })
 
-  it('parses tolerant strings', () => {
+  it('shows a string that does not match the decimal pattern unchanged', () => {
     expect(formatUsd('$1,234.50', { locale: 'en-US' })).toBe('$1,234.50')
   })
 
@@ -149,8 +149,8 @@ describe('formatNumber', () => {
     expect(formatNumber(42, { locale: 'en-US' })).toBe('42.00')
   })
 
-  it('parses tolerant strings, stripping $ and commas', () => {
-    expect(formatNumber('$1,234.50', { locale: 'en-US' })).toBe('1,234.50')
+  it('shows a string that does not match the decimal pattern unchanged', () => {
+    expect(formatNumber('$1,234.50', { locale: 'en-US' })).toBe('$1,234.50')
   })
 
   it('honours a custom decimals count', () => {

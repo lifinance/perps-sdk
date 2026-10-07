@@ -184,7 +184,7 @@ import { wireList } from './utils/wireList.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
 
-/** The sum of `values`, or `undefined` when any term is not a decimal string. */
+/** The sum of `values`, or `undefined` when any term does not match the decimal pattern. */
 const safeSum = (values: readonly string[]): string | undefined =>
   values.reduce<string | undefined>(
     (sum, value) =>

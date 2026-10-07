@@ -973,7 +973,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
 
   /** Latest mid per `Market.id` across asset-context and fast feeds. */
   /** Latest mid per `Market.id` across asset-context and fast feeds; a mid
-   * that is not a decimal string is left out. */
+   * that does not match the decimal pattern is left out. */
   private mergedMids(): Map<string, DecimalString> {
     const map = new Map<string, DecimalString>()
     const setMid = (id: string, mid: string | number | null | undefined) => {

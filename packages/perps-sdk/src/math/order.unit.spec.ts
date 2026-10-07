@@ -482,13 +482,13 @@ describe('buildQuote decimal spelling', () => {
     )
   })
 
-  it('rejects a taker fee that is not a decimal string', () => {
+  it('rejects a taker fee that does not match the decimal pattern', () => {
     expect(() =>
       quoteOf({ sizeUsd: '100', feeTier: { maker: '0', taker: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 
-  it('rejects a mark price that is not a decimal string', () => {
+  it('rejects a mark price that does not match the decimal pattern', () => {
     expect(() =>
       quoteOf({ sizeUsd: '100', price: { ...perpsPrice, markPrice: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
@@ -1003,7 +1003,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
     expect(r).toBeNull()
   })
 
-  it('throws a ValidationError for a trigger price that is not a decimal string', () => {
+  it('throws a ValidationError for a trigger price that does not match the decimal pattern', () => {
     expect(() =>
       estimateRealizedPnl(
         triggerOrder({ remainingSize: '1', triggerPrice: 'abc' }),

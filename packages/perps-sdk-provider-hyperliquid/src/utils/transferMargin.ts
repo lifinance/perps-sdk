@@ -24,7 +24,7 @@ function requirePositionAmount(
   if (!isDecimalString(value)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid \`Position.${field}\`: '${value}' is not a decimal string.`
+      `Invalid \`Position.${field}\`: '${value}' does not match the decimal pattern.`
     )
   }
   return value

@@ -9,7 +9,7 @@ import type { LtWsOrderBook } from '../types/index.js'
 /**
  * Orders two decimal-string prices: a negative result puts `a` before `b`.
  *
- * @throws {PerpsError} `ValidationError` when a price is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when a price does not match the decimal pattern.
  */
 export type PriceOrder = (a: string, b: string) => number
 

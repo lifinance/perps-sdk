@@ -27,7 +27,6 @@ describe('isDecimalStringGreaterThan', () => {
       '123456789012345678901234567890.000000000000000001',
       true,
     ],
-    ['$1,000', '999.5', true],
   ] as const)('gives %s > %s as %s', (a, b, expected) => {
     expect(isDecimalStringGreaterThan(a, b)).toBe(expected)
   })
@@ -37,6 +36,7 @@ describe('isDecimalStringGreaterThan', () => {
     ['1', '1e-7'],
     ['', '1'],
     ['abc', '1'],
+    ['$1,000', '999.5'],
   ])('throws ValidationError for %j vs %j', (a, b) => {
     expect(() => isDecimalStringGreaterThan(a, b)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
@@ -62,15 +62,12 @@ describe('isDecimalStringZero', () => {
     expect(isDecimalStringZero(value)).toBe(false)
   })
 
-  it('reads a display form after the clean step', () => {
-    expect(isDecimalStringZero('$0')).toBe(true)
-  })
-
   it.each([
     'abc',
     '10oops',
     '0e0',
     '',
+    '$0',
   ])('throws ValidationError for %j', (value) => {
     expect(() => isDecimalStringZero(value)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })

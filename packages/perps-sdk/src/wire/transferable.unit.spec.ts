@@ -33,7 +33,9 @@ describe('calculateTransferable', () => {
     )
   })
 
-  it('reads a display form after the clean step', () => {
-    expect(calculateTransferable('5', '1,000')).toBe('5')
+  it('rejects a display form', () => {
+    expect(() => calculateTransferable('5', '1,000')).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })

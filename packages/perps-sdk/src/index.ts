@@ -20,11 +20,13 @@ export { requireProvider } from './client/requireProvider.js'
 export {
   absDecimalString,
   addDecimalString,
+  addDecimalStrings,
   divideDecimalString,
   divideDecimalStringRoundDown,
   multiplyDecimalString,
   safeAbsDecimalString,
   safeAddDecimalString,
+  safeAddDecimalStrings,
   safeDivideDecimalString,
   safeDivideDecimalStringRoundDown,
   safeMultiplyDecimalString,
@@ -48,9 +50,7 @@ export {
   safeNumberToDecimalString,
   safeRoundDecimalString,
   safeScaledIntegerToDecimalString,
-  safeTruncateDecimal,
   scaledIntegerToDecimalString,
-  truncateDecimal,
 } from './decimal/convert.js'
 export type { FormatOptions, RoundingMode } from './decimal/format.js'
 export {

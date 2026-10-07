@@ -44,7 +44,7 @@ import { calculateRealizedPnl } from './position.js'
  * ```ts
  * calculateSize('100', '10', '2000') // '0.5' (ETH at $2000)
  * ```
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern
  *   or `price` is zero.
  * @public
  */
@@ -76,7 +76,7 @@ export const safeCalculateSize = createSafeFunction(
  * Estimated trading fee in USD: `sizeUsd × feeRate`.
  *
  * @param feeRate - Fee rate as a fraction (`'0.00035'` for 0.035%).
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateFees(sizeUsd: string, feeRate: string): string {
@@ -143,7 +143,7 @@ export interface ExpectedPnl {
  * @param margin - Margin amount in USD.
  * @returns The expected PnL, or `null` when `triggerPrice`, `entryPrice` or
  *   `margin` is zero.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateExpectedPnl(
@@ -183,7 +183,7 @@ export const safeCalculateExpectedPnl = createSafeFunction(
  *
  * @param percent - Target gain or loss percentage (positive = profitable
  *   direction).
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateTriggerPrice(
@@ -214,7 +214,7 @@ export const safeCalculateTriggerPrice = createSafeFunction(
  * Percentage gain or loss that a trigger price realises. A zero `entryPrice`
  * or `leverage` gives `'0'`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateTriggerPercent(
@@ -245,7 +245,7 @@ export const safeCalculateTriggerPercent = createSafeFunction(
  * Realized PnL as a percentage of the position value at close:
  * `realizedPnl ÷ (|size| × price) × 100`. A zero position value gives `'0'`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateRealizedPnlPercent(
@@ -290,7 +290,7 @@ interface BookWalk {
  * returning the best obtainable fill.
  *
  * @throws {PerpsError} `ValidationError` when `sizeUsd` or a level's `price`
- *   or `size` is not a decimal string.
+ *   or `size` does not match the decimal pattern.
  * @public
  */
 export function walkOrderbook(
@@ -354,7 +354,7 @@ interface BuildQuoteInput {
  * the market's `funding` (`null` for spot, which has none).
  *
  * @throws {PerpsError} `ValidationError` when `sizeUsd`, the mark price, the
- *   taker fee or a book level is not a decimal string.
+ *   taker fee or a book level does not match the decimal pattern.
  * @public
  */
 export function buildQuote(input: BuildQuoteInput): Quote {
@@ -415,7 +415,7 @@ export function findMatchingPosition(
  *
  * Inputs are non-negative magnitudes.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function resolveCloseSize(
@@ -541,7 +541,7 @@ function triggerOrderRealizedPnl(
  * @returns Realised PnL if the order would reduce the position, otherwise
  *   `null`.
  * @throws {PerpsError} `ValidationError` when a price or size on the order or
- *   the position is not a decimal string.
+ *   the position does not match the decimal pattern.
  * @public
  */
 export function estimateRealizedPnl(

@@ -2,7 +2,7 @@
  * Display-tier position formulas and margin-adjustment predicates. Every
  * formula takes and gives decimal strings; arithmetic is exact Big.js, with
  * division to 40 decimal places. Each formula throws `ValidationError` on an
- * input that is not a decimal string and has a `safe*` pair that gives
+ * input that does not match the decimal pattern and has a `safe*` pair that gives
  * `undefined` in place of the throw.
  *
  * Sign convention: long = +1, short = -1. Sizes passed to the `estimate*`
@@ -31,7 +31,7 @@ import { createSafeFunction } from '../utils/createSafeFunction.js'
 /**
  * Notional value of a position: `|size| × price`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateNotionalValue(size: string, price: string): string {
@@ -50,7 +50,7 @@ export const safeCalculateNotionalValue = createSafeFunction(
  * Unrealized PnL: `(currentPrice - entryPrice) × size`, where `size` is
  * positive for a long and negative for a short.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateUnrealizedPnl(
@@ -75,7 +75,7 @@ export const safeCalculateUnrealizedPnl = createSafeFunction(
  * Return on equity as a percentage (`'10'` for 10%): `pnl ÷ margin × 100`.
  * A zero margin gives `'0'`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateRoe(pnl: string, margin: string): string {
@@ -93,7 +93,7 @@ export const safeCalculateRoe = createSafeFunction('calculateRoe', calculateRoe)
 /**
  * Required margin: `notionalValue ÷ leverage`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern
  *   or `leverage` is zero.
  * @public
  */
@@ -122,7 +122,7 @@ export const safeCalculateRequiredMargin = createSafeFunction(
  * Distance from the current price to the liquidation price, as an absolute
  * percentage of the current price. A zero current price gives `'0'`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateLiquidationDistance(params: {
@@ -149,7 +149,7 @@ export const safeCalculateLiquidationDistance = createSafeFunction(
  * Effective leverage of an open position: `positionValueUsd ÷ marginUsd`.
  * A zero margin gives `'0'`.
  *
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateEffectiveLeverage(params: {
@@ -184,7 +184,7 @@ export const safeCalculateEffectiveLeverage = createSafeFunction(
  *   (`'0.01'` = 1%).
  * @returns The estimate, or `undefined` for a zero leverage or a zero
  *   denominator.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateLiquidationPrice(params: {
@@ -222,7 +222,7 @@ export const safeEstimateLiquidationPrice = createSafeFunction(
  *
  * @returns The estimate, or `undefined` when the market carries no
  *   `maintenanceMarginRate` or `estimateLiquidationPrice` gives `undefined`.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateLiquidationPriceAtMarketRate(
@@ -252,7 +252,7 @@ export const safeEstimateLiquidationPriceAtMarketRate = createSafeFunction(
  * liquidation level, a short when it rises to it. A non-positive price on
  * either side counts as unknown, so the result is `false`.
  *
- * @throws {PerpsError} `ValidationError` when a price is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when a price does not match the decimal pattern.
  * @public
  */
 export function wouldImmediatelyLiquidate(params: {
@@ -285,7 +285,7 @@ export const safeWouldImmediatelyLiquidate = createSafeFunction(
  *   limit orders).
  * @returns The new average entry price, or `undefined` when the combined size
  *   is not positive.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateAverageEntryPrice(params: {
@@ -322,7 +322,7 @@ export const safeEstimateAverageEntryPrice = createSafeFunction(
  *
  * @returns The new leverage, or `undefined` when the total margin is not
  *   positive.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateNewLeverage(params: {
@@ -354,7 +354,7 @@ export const safeEstimateNewLeverage = createSafeFunction(
  * `(markPrice - entryPrice) × size × (isLong ? 1 : -1)`.
  *
  * @param size - Position size as a non-negative magnitude.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function estimateUnrealizedPnl(params: {
@@ -382,7 +382,7 @@ export const safeEstimateUnrealizedPnl = createSafeFunction(
  * `(closePrice - entryPrice) × closeSize × (isLong ? 1 : -1)`.
  *
  * @param closeSize - Size being closed as a non-negative magnitude.
- * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when an input does not match the decimal pattern.
  * @public
  */
 export function calculateRealizedPnl(params: {

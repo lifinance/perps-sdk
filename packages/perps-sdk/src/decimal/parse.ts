@@ -9,7 +9,7 @@ import { decimalStringToBig } from './decimalStringToBig.js'
  * float holds about 15 significant digits, so the result can lose precision;
  * never use it for an amount sent to a venue.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal string
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern
  *   or is too large for a finite float.
  * @public
  */

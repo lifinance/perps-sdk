@@ -6,7 +6,7 @@ import { decimalStringToBig } from './decimalStringToBig.js'
  * gate can tell `'1.0000000000000001'` from `'1'`. The other relations follow
  * from it: `a <= b` is `!isDecimalStringGreaterThan(a, b)`.
  *
- * @throws {PerpsError} `ValidationError` when either operand is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern.
  * @public
  */
 export function isDecimalStringGreaterThan(a: string, b: string): boolean {
@@ -28,7 +28,7 @@ export const safeIsDecimalStringGreaterThan = createSafeFunction(
  * Exact `value == 0`, so a flat-position check never reads `'0.0'` as
  * non-zero.
  *
- * @throws {PerpsError} `ValidationError` when `value` is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern.
  * @public
  */
 export function isDecimalStringZero(value: string): boolean {
@@ -49,7 +49,7 @@ export const safeIsDecimalStringZero = createSafeFunction(
  * Exact three-way compare for a sort: `-1` when `a < b`, `0` when equal, `1`
  * when `a > b`.
  *
- * @throws {PerpsError} `ValidationError` when either operand is not a decimal string.
+ * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern.
  * @public
  */
 export function compareDecimalStrings(a: string, b: string): -1 | 0 | 1 {

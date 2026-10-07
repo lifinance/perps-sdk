@@ -2,7 +2,7 @@
 
 Trading formulas. Every formula takes and gives decimal strings, alone or in a `params` object. Arithmetic is exact `big.js`, with division to 40 decimal places, and no `Big` crosses the module boundary.
 
-Each formula `X` throws `PerpsError(ValidationError)` on an input that is not a decimal string, and has a `safeX` pair that logs a warning and gives `undefined`. A money-path caller uses `X`; a display caller uses `safeX`.
+Each formula `X` throws `PerpsError(ValidationError)` on an input that does not match the decimal pattern, and has a `safeX` pair that logs a warning and gives `undefined`. A money-path caller uses `X`; a display caller uses `safeX`.
 
 Some helpers read SDK structures instead:
 

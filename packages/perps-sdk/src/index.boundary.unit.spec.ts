@@ -471,9 +471,7 @@ const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
   safeNumberToDecimalString: [1e-8],
   safeRoundDecimalString: ['1.001', 2, 'up'],
   safeScaledIntegerToDecimalString: ['1234500000', 6],
-  safeTruncateDecimal: ['1000.999', 2],
   scaledIntegerToDecimalString: ['1234500000', 6],
-  truncateDecimal: ['1000.999', 2],
 }
 
 const WIRE_MARKET = venueMarket({ szDecimals: 4 })
@@ -635,7 +633,6 @@ const NAMING_EXCEPTIONS: Record<string, string> = {
     'is-class predicate; a rename is a second breaking change, parked for a human decision',
   positionSupportsMarginRemoval:
     'is-class predicate; a rename is a second breaking change, parked for a human decision',
-  truncateDecimal: 'the tracker vocabulary lists it under snap<X>',
   walkOrderbook: 'book traversal that buildQuote composes',
 }
 
