@@ -1,4 +1,6 @@
 import type { DecimalString } from '@lifi/perps-types'
+import Big from 'big.js'
+import { isDecimalString } from './parse.js'
 import { requireDecimal } from './requireDecimal.js'
 
 /**
@@ -14,4 +16,16 @@ export function isDecimalStringGreaterThan(
   b: DecimalString
 ): boolean {
   return requireDecimal(a, 'a').gt(requireDecimal(b, 'b'))
+}
+
+/**
+ * Exact `value == 0` on a venue decimal string, so a flat-position check never
+ * reads `'0.0'` as non-zero or `'10oops'` as `10`.
+ *
+ * @returns `false` when `value` is not a decimal string, so a malformed size
+ *   is never taken as flat.
+ * @public
+ */
+export function isDecimalStringZero(value: DecimalString): boolean {
+  return isDecimalString(value) && new Big(value).eq(0)
 }

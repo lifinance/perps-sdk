@@ -4,7 +4,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
-import { mapOpenPositions } from './mapOpenPositions.js'
+import { isOpenPosition, mapOpenPositions } from './mapOpenPositions.js'
 
 const rawPosition = (
   overrides: Partial<LtAccountPosition> = {}
@@ -79,5 +79,24 @@ describe('mapOpenPositions', () => {
     const positions = mapOpenPositions([withoutFunding], resolveMarket)
 
     expect(positions[0].accruedFunding).toBe('0')
+  })
+})
+
+describe('isOpenPosition', () => {
+  it.each([
+    '0',
+    '0.00',
+    '-0',
+  ])('gives false for a zero position %j', (position) => {
+    expect(isOpenPosition(rawPosition({ position }))).toBe(false)
+  })
+
+  it.each([
+    '1',
+    '-0.5',
+    '0.00000000000000000001',
+    '10oops',
+  ])('gives true for position %j', (position) => {
+    expect(isOpenPosition(rawPosition({ position }))).toBe(true)
   })
 })

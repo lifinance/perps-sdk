@@ -1035,19 +1035,29 @@ describe('mapFill (Lighter)', () => {
       ],
       ['size', { ...reducingFill, size: '1e' }],
       ['price', { ...reducingFill, price: 'NaN' }],
-      ['usd_amount', { usd_amount: '2,000' }],
     ] satisfies [
       string,
       Partial<LtTrade>,
-    ][])('throws ValidationError naming %s', (field, overrides) => {
-      expect(() =>
-        mapFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
-      ).toThrow(
-        expect.objectContaining({
-          code: PerpsErrorCode.ValidationError,
-          message: expect.stringContaining(`LtTrade.${field}`),
-        })
+    ][])('maps the trade without realizedPnl when %s is malformed', (_field, overrides) => {
+      const fill = mapFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
+      expect(fill.id).toBe(baseTrade().trade_id.toString())
+      expect(fill.realizedPnl).toBeUndefined()
+    })
+
+    it('maps the trade without a fee when usd_amount is malformed', () => {
+      const fill = mapFill(
+        baseTrade({ usd_amount: '2,000' }),
+        ACCOUNT_INDEX,
+        MARKET
       )
+      expect(fill.id).toBe(baseTrade().trade_id.toString())
+      expect(fill.fee).toBeUndefined()
+    })
+
+    it('derives realized PnL when every input is a decimal string', () => {
+      expect(
+        mapFill(baseTrade(reducingFill), ACCOUNT_INDEX, MARKET).realizedPnl
+      ).toBeDefined()
     })
   })
 })

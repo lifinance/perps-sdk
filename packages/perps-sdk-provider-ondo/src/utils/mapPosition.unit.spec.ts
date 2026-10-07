@@ -7,7 +7,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { OndoPosition } from '../types/wire.js'
-import { mapOpenPositions, mapPosition } from './mapPosition.js'
+import { isOpenPosition, mapOpenPositions, mapPosition } from './mapPosition.js'
 
 const MARKET: PerpsMarketDisplay = {
   providerId: 'ondo',
@@ -127,5 +127,32 @@ describe('mapOpenPositions', () => {
       return MARKET
     })
     expect(seen).toEqual(['AAPL-USD.P'])
+  })
+})
+
+describe('isOpenPosition', () => {
+  it.each([
+    '0',
+    '0.0',
+    '-0',
+  ])('gives false for a zero netQuantity %j', (netQuantity) => {
+    expect(isOpenPosition(positionFixture({ netQuantity }))).toBe(false)
+  })
+
+  it('gives false for a neutral row with a non-zero netQuantity', () => {
+    expect(
+      isOpenPosition(
+        positionFixture({ direction: 'neutral', netQuantity: '1' })
+      )
+    ).toBe(false)
+  })
+
+  it.each([
+    '10',
+    '-0.5',
+    '0.00000000000000000001',
+    '10oops',
+  ])('gives true for netQuantity %j', (netQuantity) => {
+    expect(isOpenPosition(positionFixture({ netQuantity }))).toBe(true)
   })
 })

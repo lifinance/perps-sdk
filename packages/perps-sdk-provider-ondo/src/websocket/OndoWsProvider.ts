@@ -48,6 +48,7 @@ import type {
   OndoWsTrade,
 } from '../types/index.js'
 import {
+  isOpenPosition,
   mapFill,
   mapOrderUpdates,
   mapPosition,
@@ -929,10 +930,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       return
     }
     const mapped = positions.flatMap((position) => {
-      if (
-        position.direction === 'neutral' ||
-        Number.parseFloat(position.netQuantity) === 0
-      ) {
+      if (!isOpenPosition(position)) {
         return []
       }
       const market = this.resolvePerpsMarket(position.market)
